@@ -1,0 +1,60 @@
+/* Header */
+"app.name" = "ClipMemory";
+"app.title" = "剪忆";
+
+/* Buttons */
+"button.clear" = "清空";
+"button.all" = "全部";
+"button.pinned" = "固定";
+"button.view" = "查看";
+"button.collapse" = "收起";
+"button.cancel" = "取消";
+"button.delete" = "删除";
+"button.copy" = "复制";
+"button.settings" = "设置";
+
+/* Search */
+"search.placeholder" = "搜索剪贴板历史...";
+
+/* Empty States */
+"empty.no_history" = "暂无剪贴板历史";
+"empty.no_pinned" = "暂无固定片段";
+"empty.hint.history" = "复制内容后将自动记录到这里";
+"empty.hint.pinned" = "点击片段右侧 ⭐ 将其固定，被固定的片段不会自动清理";
+
+/* Alerts */
+"alert.clear.title" = "清空历史";
+"alert.clear.message" = "确定清空 %d 条历史记录？\n固定片段不会被删除。";
+"alert.clear.no_history" = "没有可清空的历史记录。";
+"alert.delete.title" = "删除片段";
+"alert.delete.message" = "确定删除该片段吗？";
+"alert.cancel" = "取消";
+
+/* Settings */
+"settings.title" = "设置";
+"settings.about" = "关于";
+"settings.language" = "语言";
+"settings.version" = "版本";
+"settings.free_version" = "免费版 · 本地剪贴板历史管理";
+"settings.app_name_version" = "ClipMemory 剪忆 v1.0";
+
+/* Item Labels */
+"label.sensitive" = "敏感";
+"label.pinned" = "已固定";
+
+/* Tooltips */
+"tooltip.clear" = "清空历史（保留固定片段）";
+"tooltip.show_all" = "显示全部剪贴板历史";
+"tooltip.pinned_only" = "仅显示已固定的片段（不会被自动清理）";
+"tooltip.view_sensitive" = "查看敏感内容";
+"tooltip.collapse_sensitive" = "收起敏感内容";
+"tooltip.unpin" = "取消固定";
+"tooltip.pin" = "固定此片段（不会被自动清理）";
+
+/* Context Menu */
+"context.copy" = "复制";
+"context.show_content" = "显示内容";
+"context.hide_content" = "收起内容";
+"context.unpin" = "取消固定";
+"context.pin" = "固定片段";
+"context.delete" = "删除";
