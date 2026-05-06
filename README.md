@@ -17,9 +17,16 @@
 - 📋 剪贴板历史记录（文本/链接）
 - ⭐ 固定重要片段，永不丢失
 - 🔍 快速搜索历史记录
-- 🔒 敏感信息自动保护（星号遮蔽 + 24h 自动清理）
+- 🔒 敏感信息自动保护（星号遮蔽 + 自动清理）
 - ⌨️ 全局快捷键 `Cmd+Ctrl+V` 呼出
 - 🛡️ 开机自启动（可选）
+- 🌍 多语言支持（简体中文/English）
+
+### 设置选项
+
+- 历史记录最大条数（50/100/200/500条）
+- 敏感信息清除策略（1小时/24小时/48小时/7天/不自动清除）
+- 语言切换
 
 ### 系统要求
 
@@ -48,9 +55,16 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 - 📋 Clipboard history (text/links)
 - ⭐ Pin important snippets, never lose them
 - 🔍 Quick search through history
-- 🔒 Sensitive info protection (masked by default + auto-clear after 24h)
+- 🔒 Sensitive info protection (masked + auto-clear)
 - ⌨️ Global hotkey `Cmd+Ctrl+V` to summon
 - 🛡️ Launch at login (optional)
+- 🌍 Multi-language support (Chinese/English)
+
+### Settings
+
+- Max history items (50/100/200/500)
+- Sensitive data auto-clear policy (1h/24h/48h/7days/never)
+- Language switcher
 
 ### Requirements
 
