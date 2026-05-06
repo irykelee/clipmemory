@@ -14,8 +14,9 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     var isPinned: Bool
     var isSensitive: Bool
     var expiresAt: Date?
+    var isEncrypted: Bool = false
 
-    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil) {
+    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false) {
         self.id = id
         self.content = content
         self.type = type
@@ -23,6 +24,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.isPinned = isPinned
         self.isSensitive = isSensitive
         self.expiresAt = expiresAt
+        self.isEncrypted = isEncrypted
     }
 
     var isExpired: Bool {

@@ -56,7 +56,24 @@ class ClipboardStore: ObservableObject {
     }
 
     func addItem(_ item: ClipboardItem) {
-        if let existingIndex = items.firstIndex(where: { $0.content == item.content }) {
+        var newItem = item
+
+        if item.isSensitive {
+            if let encrypted = CryptoService.shared.encrypt(item.content) {
+                newItem = ClipboardItem(
+                    id: item.id,
+                    content: encrypted,
+                    type: item.type,
+                    createdAt: item.createdAt,
+                    isPinned: item.isPinned,
+                    isSensitive: item.isSensitive,
+                    expiresAt: item.expiresAt,
+                    isEncrypted: true
+                )
+            }
+        }
+
+        if let existingIndex = items.firstIndex(where: { $0.content == newItem.content }) {
             var existing = items.remove(at: existingIndex)
             existing = ClipboardItem(
                 id: existing.id,
@@ -65,16 +82,24 @@ class ClipboardStore: ObservableObject {
                 createdAt: Date(),
                 isPinned: existing.isPinned,
                 isSensitive: existing.isSensitive,
-                expiresAt: existing.expiresAt
+                expiresAt: existing.expiresAt,
+                isEncrypted: existing.isEncrypted
             )
             items.insert(existing, at: 0)
         } else {
-            items.insert(item, at: 0)
+            items.insert(newItem, at: 0)
         }
 
         trimToMaxItems()
         updatePinnedItems()
         saveItems()
+    }
+
+    func getDecryptedContent(_ item: ClipboardItem) -> String {
+        if item.isEncrypted {
+            return CryptoService.shared.decrypt(item.content) ?? item.content
+        }
+        return item.content
     }
 
     private func trimToMaxItems() {
@@ -114,9 +139,10 @@ class ClipboardStore: ObservableObject {
     }
 
     func copyToClipboard(_ item: ClipboardItem) {
+        let content = getDecryptedContent(item)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(item.content, forType: .string)
+        pasteboard.setString(content, forType: .string)
     }
 
     private func updatePinnedItems() {
