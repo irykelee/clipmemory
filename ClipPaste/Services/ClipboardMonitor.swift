@@ -6,10 +6,39 @@ class ClipboardMonitor {
     private var lastChangeCount: Int = 0
     private let pasteboard = NSPasteboard.general
 
-    private let sensitivePatterns = [
-        "password", "pwd", "passwd", "secret",
-        "api_key", "apikey", "token", "auth",
-        "Bearer ", "sk-", "ghp_", "ssh-rsa"
+    private let sensitivePatterns: [(pattern: String, isRegex: Bool)] = [
+        ("password", false),
+        ("pwd", false),
+        ("passwd", false),
+        ("passcode", false),
+        ("secret", false),
+        ("api_key", false),
+        ("apikey", false),
+        ("api-key", false),
+        ("token", false),
+        ("auth", false),
+        ("bearer", false),
+        ("sk-", false),
+        ("ghp_", false),
+        ("ssh-rsa", false),
+        ("-----BEGIN.*PRIVATE KEY-----", true),
+        ("-----BEGIN.*RSA PRIVATE KEY-----", true),
+        ("-----BEGIN.*OPENSSH PRIVATE KEY-----", true),
+        ("-----BEGIN EC PRIVATE KEY-----", true),
+        ("[a-zA-Z0-9]{20,}\\.[a-zA-Z0-9]{10,}\\.[a-zA-Z0-9_-]{50,}", true),
+        ("AIza[0-9A-Za-z_-]{35}", true),
+        ("AKIA[0-9A-Z]{16}", true),
+        ("sq0csp-[0-9A-Za-z_-]{43}", true),
+        ("sq0atp-[0-9A-Za-z_-]{22}", true),
+        ("amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", true),
+        ("[0-9a-f]{32}", true),
+    ]
+
+    private let sensitiveValuePatterns = [
+        "(?i)(password|passwd|pwd)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
+        "(?i)(api_key|apikey|api-key)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
+        "(?i)(token|bearer)\\s*[=:]\\s*['\"]?[a-zA-Z0-9_-]{20,}",
+        "(?i)(sk|secret)\\s*[=:]\\s*['\"]?[^'\"\\s]{20,}",
     ]
 
     func startMonitoring() {
@@ -60,11 +89,31 @@ class ClipboardMonitor {
 
     private func detectSensitive(_ content: String) -> Bool {
         let lowercased = content.lowercased()
-        for pattern in sensitivePatterns {
-            if lowercased.contains(pattern) {
-                return true
+
+        for (pattern, isRegex) in sensitivePatterns {
+            if isRegex {
+                if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                    let range = NSRange(content.startIndex..., in: content)
+                    if regex.firstMatch(in: content, options: [], range: range) != nil {
+                        return true
+                    }
+                }
+            } else {
+                if lowercased.contains(pattern) {
+                    return true
+                }
             }
         }
+
+        for pattern in sensitiveValuePatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let range = NSRange(content.startIndex..., in: content)
+                if regex.firstMatch(in: content, options: [], range: range) != nil {
+                    return true
+                }
+            }
+        }
+
         return false
     }
 }

@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		2F0DC3A136EC5E2A7F14E686 /* ClipboardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DA028A30EF2DF580AF6D93 /* ClipboardStore.swift */; };
 		39EF13FE91AC8AD4C7A4E91B /* LanguageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D7E114ACBA7144BBA8496A6 /* LanguageManager.swift */; };
+		43A09AAFB22736740C0DE4A9 /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48905ABEC94B60296D9D9CB /* CryptoService.swift */; };
 		4B5301643493C34AFA494838 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = F7E423EE2B4ADAA1AC240148 /* Localizable.strings */; };
 		4B5C5113E5E77B99E93A4E91 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20815CA14FD5FD21BB7DBF99 /* main.swift */; };
 		711DCDC1BF5A296BF52888EC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070E0137745C7D6C224F0DC4 /* AppDelegate.swift */; };
@@ -27,6 +28,7 @@
 		6A768DB1A8129716F5E2C13A /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
 		94E7877532C9687A4B486791 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
 		9D7E114ACBA7144BBA8496A6 /* LanguageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageManager.swift; sourceTree = "<group>"; };
+		A48905ABEC94B60296D9D9CB /* CryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoService.swift; sourceTree = "<group>"; };
 		B6F904995EC2FC12E675D821 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C7DA028A30EF2DF580AF6D93 /* ClipboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStore.swift; sourceTree = "<group>"; };
 		CA7F721F286B5D447A3BB8D2 /* ClipPaste.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClipPaste.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -56,6 +58,7 @@
 			children = (
 				E4BCFD40B329340F94CD9A0A /* ClipboardMonitor.swift */,
 				C7DA028A30EF2DF580AF6D93 /* ClipboardStore.swift */,
+				A48905ABEC94B60296D9D9CB /* CryptoService.swift */,
 				6A768DB1A8129716F5E2C13A /* HotKeyManager.swift */,
 				9D7E114ACBA7144BBA8496A6 /* LanguageManager.swift */,
 			);
@@ -170,6 +173,7 @@
 				9CCD097C9054AF2042E6BB36 /* ClipboardMonitor.swift in Sources */,
 				2F0DC3A136EC5E2A7F14E686 /* ClipboardStore.swift in Sources */,
 				883763A3A3B25EE859BA47DC /* ContentView.swift in Sources */,
+				43A09AAFB22736740C0DE4A9 /* CryptoService.swift in Sources */,
 				A15334BFF0ED178F2CE20AAC /* HotKeyManager.swift in Sources */,
 				39EF13FE91AC8AD4C7A4E91B /* LanguageManager.swift in Sources */,
 				4B5C5113E5E77B99E93A4E91 /* main.swift in Sources */,
