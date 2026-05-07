@@ -35,6 +35,8 @@ class ImageStorage {
             logger.warning("Image too large (\(data.count) bytes), skipping save")
             return nil
         }
+        // PNG and TIFF clipboard data are both saved as .png (NSImage loads both formats).
+        // The actual image format (PNG/TIFF) is lost after saving, but functionality is preserved.
         let filename = "\(id.uuidString).png"
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         // Encrypt image data before writing to disk (N2)

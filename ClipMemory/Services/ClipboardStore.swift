@@ -22,8 +22,12 @@ class ClipboardStore: ObservableObject {
         let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
         maxItems = savedMaxItems > 0 ? savedMaxItems : 100
 
-        let savedSensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
-        sensitiveClearHours = savedSensitiveClearHours > 0 ? savedSensitiveClearHours : 24
+        // Use object(forKey:) to distinguish "key doesn't exist" (nil) from "user selected Never" (0)
+        if UserDefaults.standard.object(forKey: sensitiveClearHoursKey) != nil {
+            sensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
+        } else {
+            sensitiveClearHours = 24 // Default: clear after 24 hours
+        }
 
         loadItems()
         cleanupExpiredItems()
