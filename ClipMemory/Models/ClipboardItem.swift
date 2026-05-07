@@ -18,9 +18,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// SHA256 hash of plaintext content for fast search pre-filtering
     var contentHash: String?
 
-    /// Caches decrypted content to avoid double decryption in displayedItems + ClipboardItemRow
-    private var _cachedDecryptedContent: String?
-
     init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil) {
         self.id = id
         self.content = content
@@ -38,14 +35,10 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         return Date() > expiresAt
     }
 
-    /// Decrypts content once and caches it. Subsequent calls return cached value.
-    mutating func ensureDecrypted() {
-        guard _cachedDecryptedContent == nil else { return }
-        _cachedDecryptedContent = isEncrypted ? (CryptoService.shared.decrypt(content) ?? content) : content
-    }
-
+    /// Returns decrypted content. For encrypted items, decrypts on each access.
+    /// Note: struct value type prevents instance-level caching across multiple accesses.
     var decryptedContent: String {
-        _cachedDecryptedContent ?? (isEncrypted ? (CryptoService.shared.decrypt(content) ?? content) : content)
+        isEncrypted ? (CryptoService.shared.decrypt(content) ?? content) : content
     }
 
     var displayContent: String {
