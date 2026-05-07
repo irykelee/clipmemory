@@ -115,6 +115,7 @@ class ImageStorage {
 
     func deleteImage(filename: String) {
         guard isValidFilename(filename) else { return }
+        imageCache.removeObject(forKey: filename as NSString)
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         try? fileManager.removeItem(at: fileURL)
     }
