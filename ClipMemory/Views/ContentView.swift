@@ -85,6 +85,8 @@ struct ContentView: View {
     @State private var showingClearAlert = false
     @State private var revealedItems: Set<UUID> = []
     @State private var keyboardSelectedIndex: Int? = nil
+    @State private var lastCopiedId: UUID? = nil
+    @State private var selectedItems: Set<UUID> = []
     @State var pinnedOnly: Bool = false
     @State var settingsOnly: Bool = false
 
@@ -97,6 +99,11 @@ struct ContentView: View {
         return baseItems.filter { item in
             item.decryptedContent.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    /// Flat list with global indices for keyboard navigation
+    private var flattenedItems: [(item: ClipboardItem, globalIndex: Int)] {
+        displayedItems.enumerated().map { (index, item) in (item: item, globalIndex: index) }
     }
 
     var body: some View {
@@ -135,7 +142,12 @@ struct ContentView: View {
                 },
                 onReturn: {
                     if let idx = keyboardSelectedIndex, idx < displayedItems.count {
-                        copyItem(displayedItems[idx])
+                        let item = displayedItems[idx]
+                        lastCopiedId = item.id
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            if lastCopiedId == item.id { lastCopiedId = nil }
+                        }
+                        copyItem(item)
                     }
                 },
                 onEscape: {
@@ -261,6 +273,44 @@ struct ContentView: View {
     private var listView: some View {
         ScrollView {
             LazyVStack(spacing: 1) {
+                if !selectedItems.isEmpty {
+                    HStack {
+                        Text(L10n.batchSelected(selectedItems.count))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button(action: {
+                            let itemsToToggle = displayedItems.filter { selectedItems.contains($0.id) }
+                            store.togglePinItems(itemsToToggle)
+                            selectedItems.removeAll()
+                        }) {
+                            Image(systemName: "star")
+                            Text(L10n.actionPin)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.caption)
+                        Button(action: {
+                            let itemsToDelete = displayedItems.filter { selectedItems.contains($0.id) }
+                            store.deleteItems(itemsToDelete)
+                            selectedItems.removeAll()
+                        }) {
+                            Image(systemName: "trash")
+                            Text(L10n.actionDelete)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        Button(action: { selectedItems.removeAll() }) {
+                            Text(L10n.buttonCancel)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.caption)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(.windowBackgroundColor).opacity(0.8))
+                }
+
                 if pinnedOnly && store.pinnedItems.count > 1 {
                     Button(action: { store.unpinAll() }) {
                         HStack(spacing: 4) {
@@ -274,15 +324,31 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                 }
 
-                ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
+                ForEach(flattenedItems, id: \.item.id) { entry in
                     ClipboardItemRow(
-                        item: item,
-                        isRevealed: revealedItems.contains(item.id),
-                        isKeyboardSelected: keyboardSelectedIndex == index,
-                        onCopy: { copyItem(item) },
-                        onPin: { store.togglePin(item) },
-                        onDelete: { itemToDelete = item; showingDeleteAlert = true },
-                        onToggleReveal: { toggleReveal(item.id) }
+                        item: entry.item,
+                        isRevealed: revealedItems.contains(entry.item.id),
+                        isKeyboardSelected: keyboardSelectedIndex == entry.globalIndex,
+                        isCopied: lastCopiedId == entry.item.id,
+                        isSelected: selectedItems.contains(entry.item.id),
+                        searchText: searchText,
+                        onCopyWithFeedback: {
+                            lastCopiedId = entry.item.id
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                if lastCopiedId == entry.item.id { lastCopiedId = nil }
+                            }
+                            copyItem(entry.item)
+                        },
+                        onPin: { store.togglePin(entry.item) },
+                        onDelete: { itemToDelete = entry.item; showingDeleteAlert = true },
+                        onSelect: { selected in
+                            if selected {
+                                selectedItems.insert(entry.item.id)
+                            } else {
+                                selectedItems.remove(entry.item.id)
+                            }
+                        },
+                        onToggleReveal: { toggleReveal(entry.item.id) }
                     )
                 }
             }
@@ -317,13 +383,24 @@ struct ClipboardItemRow: View {
     let item: ClipboardItem
     let isRevealed: Bool
     var isKeyboardSelected: Bool = false
-    let onCopy: () -> Void
+    var isCopied: Bool = false
+    var isSelected: Bool = false
+    var searchText: String = ""
+    var onCopyWithFeedback: (() -> Void)?
     let onPin: () -> Void
     let onDelete: () -> Void
+    let onSelect: ((Bool) -> Void)?
     let onToggleReveal: () -> Void
 
     @State private var isHovered = false
     @State private var loadedImage: NSImage?
+
+    private var rowBackground: Color {
+        if isCopied { return Color.green.opacity(0.3) }
+        if isSelected { return Color.accentColor.opacity(0.15) }
+        if isHovered || isKeyboardSelected { return Color(.selectedContentBackgroundColor).opacity(0.3) }
+        return Color.clear
+    }
 
     private var pinText: String {
         item.isPinned ? L10n.actionUnpin : L10n.actionPin
@@ -334,8 +411,34 @@ struct ClipboardItemRow: View {
         item.decryptedContent
     }
 
+    /// Creates attributed string with search term highlighted in yellow
+    private func highlightedContent(_ text: String, highlight: String) -> AttributedString {
+        var attributed = AttributedString(String(text.prefix(200)))
+        if highlight.isEmpty { return attributed }
+        let lowerText = text.lowercased()
+        let lowerHighlight = highlight.lowercased()
+        var searchStart = lowerText.startIndex
+        while let range = lowerText.range(of: lowerHighlight, range: searchStart..<lowerText.endIndex) {
+            let attrStart = AttributedString.Index(range.lowerBound, within: attributed)
+            let attrEnd = AttributedString.Index(range.upperBound, within: attributed)
+            if let attrStart = attrStart, let attrEnd = attrEnd {
+                attributed[attrStart..<attrEnd].backgroundColor = .yellow.opacity(0.4)
+                attributed[attrStart..<attrEnd].foregroundColor = .orange
+            }
+            searchStart = range.upperBound
+        }
+        return attributed
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
+            Button(action: { onSelect?(!isSelected) }) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.caption)
+                    .foregroundColor(isSelected ? .accentColor : .secondary)
+            }
+            .buttonStyle(.plain)
+
             Image(systemName: iconName)
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -372,7 +475,7 @@ struct ClipboardItemRow: View {
                             }
                         }
                     } else if item.isSensitive && !isRevealed {
-                        Text(maskContent(decryptedContent))
+                        Text(maskedHighlightedContent(decryptedContent, highlight: searchText))
                             .font(.system(size: 12))
                             .foregroundColor(.orange)
                             .lineLimit(3)
@@ -380,7 +483,7 @@ struct ClipboardItemRow: View {
                                 onToggleReveal()
                             }
                     } else {
-                        Text(String(decryptedContent.prefix(200)))
+                        Text(highlightedContent(decryptedContent, highlight: searchText))
                             .font(.system(size: 12))
                             .foregroundColor(item.isSensitive ? .orange : .primary)
                             .lineLimit(3)
@@ -421,13 +524,14 @@ struct ClipboardItemRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(isHovered || isKeyboardSelected ? Color(.selectedContentBackgroundColor).opacity(0.3) : Color.clear)
+        .background(rowBackground)
+        .animation(.easeOut(duration: 0.3), value: isCopied)
         .contentShape(Rectangle())
         .onHover { hovering in isHovered = hovering }
         .onTapGesture(count: 2) { onPin() }
-        .onTapGesture { onCopy() }
+        .onTapGesture { onCopyWithFeedback?() }
         .contextMenu {
-            Button(action: onCopy) {
+            Button(action: { onCopyWithFeedback?() }) {
                 Label(L10n.actionCopy, systemImage: "doc.on.doc")
             }
             if item.isSensitive {
@@ -454,6 +558,72 @@ struct ClipboardItemRow: View {
         let middleCount = content.count - 4
         let middle = String(repeating: "•", count: middleCount)
         return prefix + middle + suffix
+    }
+
+    /// Returns masked content with highlighted search matches and surrounding context visible
+    /// e.g. "•••••• token: sk-abc••••••" when searching "sk" with contextChars=10
+    private func maskedHighlightedContent(_ content: String, highlight: String, contextChars: Int = 15) -> AttributedString {
+        if highlight.isEmpty {
+            return AttributedString(maskContent(content))
+        }
+
+        let lowerContent = content.lowercased()
+        let lowerHighlight = highlight.lowercased()
+
+        // Find all match ranges expanded with context
+        var visibleRanges: [Range<String.Index>] = []
+        var searchStart = lowerContent.startIndex
+
+        while let range = lowerContent.range(of: lowerHighlight, range: searchStart..<lowerContent.endIndex) {
+            let contextStart = lowerContent.index(range.lowerBound, offsetBy: -contextChars, limitedBy: lowerContent.startIndex) ?? lowerContent.startIndex
+            let contextEnd = lowerContent.index(range.upperBound, offsetBy: contextChars, limitedBy: lowerContent.endIndex) ?? lowerContent.endIndex
+            visibleRanges.append(contextStart..<contextEnd)
+            searchStart = range.upperBound
+        }
+
+        guard !visibleRanges.isEmpty else {
+            return AttributedString(maskContent(content))
+        }
+
+        // Merge overlapping ranges
+        visibleRanges.sort { $0.lowerBound < $1.lowerBound }
+        var mergedRanges: [Range<String.Index>] = []
+        for range in visibleRanges {
+            if let last = mergedRanges.last, last.upperBound >= range.lowerBound {
+                mergedRanges[mergedRanges.count - 1] = last.lowerBound..<max(last.upperBound, range.upperBound)
+            } else {
+                mergedRanges.append(range)
+            }
+        }
+
+        // Build result: masked parts + highlighted visible parts
+        var result = AttributedString()
+        var currentIndex = content.startIndex
+
+        for range in mergedRanges {
+            // Masked part before this visible range
+            if currentIndex < range.lowerBound {
+                let maskedCount = content.distance(from: currentIndex, to: range.lowerBound)
+                result += AttributedString(String(repeating: "•", count: maskedCount))
+            }
+
+            // Visible highlighted part
+            let visibleText = String(content[range])
+            var highlighted = AttributedString(visibleText)
+            highlighted.backgroundColor = .yellow.opacity(0.4)
+            highlighted.foregroundColor = .orange
+            result += highlighted
+
+            currentIndex = range.upperBound
+        }
+
+        // Masked part after last visible range
+        if currentIndex < content.endIndex {
+            let maskedCount = content.distance(from: currentIndex, to: content.endIndex)
+            result += AttributedString(String(repeating: "•", count: maskedCount))
+        }
+
+        return result
     }
 
     private var iconName: String {

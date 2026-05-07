@@ -8,8 +8,15 @@ class ClipboardStore: ObservableObject {
 
     @Published var items: [ClipboardItem] = []
     @Published var pinnedItems: [ClipboardItem] = []
-    @Published var maxItems: Int
-    @Published var sensitiveClearHours: Int
+
+    // @Published with didSet for automatic UserDefaults persistence
+    @Published var maxItems: Int {
+        didSet { UserDefaults.standard.set(maxItems, forKey: maxItemsKey) }
+    }
+
+    @Published var sensitiveClearHours: Int {
+        didSet { UserDefaults.standard.set(sensitiveClearHours, forKey: sensitiveClearHoursKey) }
+    }
 
     private let storageKey = "ClipboardItems"
     private let maxItemsKey = "maxClipboardItems"
@@ -164,6 +171,28 @@ class ClipboardStore: ObservableObject {
             updatePinnedItems()
             saveItems()
         }
+    }
+
+    func togglePinItems(_ itemsToToggle: [ClipboardItem]) {
+        for item in itemsToToggle {
+            if let index = items.firstIndex(where: { $0.id == item.id }) {
+                items[index].isPinned.toggle()
+            }
+        }
+        trimToMaxItems()
+        updatePinnedItems()
+        saveItems()
+    }
+
+    func deleteItems(_ itemsToDelete: [ClipboardItem]) {
+        let filenames = itemsToDelete.filter { $0.type == .image }.map { $0.content }
+        for filename in filenames {
+            ImageStorage.shared.deleteImage(filename: filename)
+        }
+        let idsToDelete = Set(itemsToDelete.map { $0.id })
+        items.removeAll { idsToDelete.contains($0.id) }
+        updatePinnedItems()
+        saveItems()
     }
 
     func unpinAll() {
