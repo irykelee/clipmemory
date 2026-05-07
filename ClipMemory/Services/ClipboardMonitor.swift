@@ -58,7 +58,16 @@ class ClipboardMonitor {
             "(?i)(token|bearer)\\s*[=:]\\s*['\"]?[a-zA-Z0-9_-]{20,}",
             "(?i)(sk|secret)\\s*[=:]\\s*['\"]?[^'\"\\s]{20,}",
         ]
-        return patterns.compactMap { try? NSRegularExpression(pattern: $0, options: []) }
+        var compiled: [NSRegularExpression] = []
+        for pattern in patterns {
+            do {
+                let regex = try NSRegularExpression(pattern: pattern, options: [])
+                compiled.append(regex)
+            } catch {
+                logger.error("Failed to compile sensitive value regex: \(pattern) — \(error.localizedDescription)")
+            }
+        }
+        return compiled
     }()
 
     // Pre-compiled regex patterns for sensitive pattern matching
