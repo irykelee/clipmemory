@@ -5,7 +5,7 @@ import CommonCrypto
 class CryptoService {
     static let shared = CryptoService()
 
-    private let keyTag = "com.clippaste.clipboard.key"
+    private let keyTag = "com.clipmemory.clipboard.key"
 
     private init() {
         if getKey() == nil {
