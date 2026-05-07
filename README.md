@@ -58,7 +58,7 @@
 
 ### 系统要求
 
-- macOS 10.15 (Catalina) 或更高版本
+- macOS 13.0 (Ventura) 或更高版本
 
 ### 安装
 
@@ -69,6 +69,19 @@ brew install --cask https://raw.githubusercontent.com/irykelee/clipmemory/main/c
 ### 联系方式
 
 - GitHub: https://github.com/irykelee/clipmemory
+
+### 开发
+
+```bash
+# 安装依赖
+brew install swiftlint xcodegen
+
+# 生成 Xcode 项目
+xcodegen generate
+
+# 构建
+xcodebuild -scheme ClipMemory -configuration Release
+```
 
 ---
 
@@ -124,7 +137,7 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 
 ### Requirements
 
-- macOS 10.15 (Catalina) or higher
+- macOS 13.0 (Ventura) or higher
 
 ### Installation
 
@@ -135,3 +148,16 @@ brew install --cask https://raw.githubusercontent.com/irykelee/clipmemory/main/c
 ### Contact
 
 - GitHub: https://github.com/irykelee/clipmemory
+
+### Development
+
+```bash
+# Install dependencies
+brew install swiftlint xcodegen
+
+# Generate Xcode project
+xcodegen generate
+
+# Build
+xcodebuild -scheme ClipMemory -configuration Release
+```
