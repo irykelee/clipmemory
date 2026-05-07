@@ -42,14 +42,19 @@ class ClipboardStore: ObservableObject {
             items = []
             return
         }
-        items = savedItems.filter { !$0.isExpired }
+        let loadedItems = savedItems.filter { !$0.isExpired }
+        items = loadedItems
         updatePinnedItems()
+        ImageStorage.shared.cleanupOrphanedImages(keptItems: loadedItems)
     }
 
     func saveItems() {
         let encoder = JSONEncoder()
-        if let data = try? encoder.encode(items) {
+        do {
+            let data = try encoder.encode(items)
             UserDefaults.standard.set(data, forKey: storageKey)
+        } catch {
+            logger.error("Failed to save clipboard items: \(error.localizedDescription)")
         }
     }
 
@@ -173,20 +178,32 @@ class ClipboardStore: ObservableObject {
 
     func copyToClipboard(_ item: ClipboardItem) {
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
+
+        // Prepare content first, then clear + write (prevents data loss if prepare fails)
+        var preparedImage: NSImage?
+        var preparedText: String?
+
         switch item.type {
         case .image:
             if let data = ImageStorage.shared.loadImage(filename: item.content),
                let image = NSImage(data: data) {
-                pasteboard.writeObjects([image as NSImage])
-                if let monitor = clipboardMonitor {
-                    monitor.recordOwnWrite()
-                }
+                preparedImage = image
             }
         default:
-            guard let content = getDecryptedContent(item) else { return }
-            pasteboard.setString(content, forType: .string)
+            preparedText = getDecryptedContent(item)
         }
+
+        // Only clear and write if we have content ready
+        guard (preparedImage != nil) || (preparedText != nil) else { return }
+
+        pasteboard.clearContents()
+
+        if let image = preparedImage {
+            pasteboard.writeObjects([image as NSImage])
+        } else if let text = preparedText {
+            pasteboard.setString(text, forType: .string)
+        }
+
         // Update changeCount immediately to prevent ClipboardMonitor from re-capturing
         // what we just wrote. This breaks the copy → re-capture → duplicate loop.
         if let monitor = clipboardMonitor {

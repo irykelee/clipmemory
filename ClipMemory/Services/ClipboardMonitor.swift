@@ -114,23 +114,9 @@ class ClipboardMonitor {
                 ClipboardStore.shared.addItem(item)
             }
         } else if let imageData = pasteboard.data(forType: .png), !imageData.isEmpty {
-            let id = UUID()
-            if let filename = ImageStorage.shared.saveImage(imageData, id: id) {
-                // Only mark large images (>= 10KB) as sensitive — small images are likely icons/emoji
-                let isSensitive = imageData.count >= 10 * 1024
-                let hours = ClipboardStore.shared.sensitiveClearHours
-                let expiresAt: Date? = isSensitive && hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
-                let item = ClipboardItem(
-                    id: id,
-                    content: filename,
-                    type: .image,
-                    isSensitive: isSensitive,
-                    expiresAt: expiresAt
-                )
-                DispatchQueue.main.async {
-                    ClipboardStore.shared.addItem(item)
-                }
-            }
+            processImageData(imageData)
+        } else if let imageData = pasteboard.data(forType: .tiff), !imageData.isEmpty {
+            processImageData(imageData)
         }
     }
 
@@ -141,24 +127,39 @@ class ClipboardMonitor {
         return .text
     }
 
+    private func processImageData(_ imageData: Data) {
+        let id = UUID()
+        if let filename = ImageStorage.shared.saveImage(imageData, id: id) {
+            let isSensitive = imageData.count >= 10 * 1024
+            let hours = ClipboardStore.shared.sensitiveClearHours
+            let expiresAt: Date? = isSensitive && hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
+            let item = ClipboardItem(
+                id: id,
+                content: filename,
+                type: .image,
+                isSensitive: isSensitive,
+                expiresAt: expiresAt
+            )
+            DispatchQueue.main.async {
+                ClipboardStore.shared.addItem(item)
+            }
+        }
+    }
+
     private func detectSensitive(_ content: String) -> Bool {
         let lowercased = content.lowercased()
         let range = NSRange(content.startIndex..., in: content)
-        var regexIndex = 0
+        var regexIdx = 0
 
         for (pattern, isRegex) in sensitivePatterns {
             if isRegex {
-                // R10: use pre-compiled regex at matching index
-                if regexIndex < sensitivePatternRegexes.count {
-                    if sensitivePatternRegexes[regexIndex].firstMatch(in: content, options: [], range: range) != nil {
-                        return true
-                    }
-                }
-                regexIndex += 1
-            } else {
-                if lowercased.contains(pattern) {
+                if regexIdx < sensitivePatternRegexes.count,
+                   sensitivePatternRegexes[regexIdx].firstMatch(in: content, options: [], range: range) != nil {
                     return true
                 }
+                regexIdx += 1
+            } else if lowercased.contains(pattern) {
+                return true
             }
         }
 
