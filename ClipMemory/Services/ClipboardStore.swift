@@ -204,10 +204,8 @@ class ClipboardStore: ObservableObject {
 
         switch item.type {
         case .image:
-            if let data = ImageStorage.shared.loadImage(filename: item.content),
-               let image = NSImage(data: data) {
-                preparedImage = image
-            }
+            // Use cached image load for fast access on repeated copies
+            preparedImage = ImageStorage.shared.loadImageObject(filename: item.content)
         default:
             preparedText = getDecryptedContent(item)
         }
@@ -254,26 +252,6 @@ class ClipboardStore: ObservableObject {
 
     private func updatePinnedItems() {
         pinnedItems = items.filter { $0.isPinned }
-    }
-
-    func searchItems(_ query: String) -> [ClipboardItem] {
-        guard !query.isEmpty else { return items }
-        // Use contentHash for fast pre-filter: items whose plaintext might contain the query
-        // then decrypt only candidates for substring match
-        let queryHash = sha256(query)
-        return items.filter { item in
-            // contentHash matches → plaintext might contain query → decrypt and verify
-            if let hash = item.contentHash, hash == queryHash {
-                let content = item.isEncrypted ? (CryptoService.shared.decrypt(item.content) ?? item.content) : item.content
-                return content.localizedCaseInsensitiveContains(query)
-            }
-            // No contentHash (legacy items) or hash mismatch → fall back to decrypt-and-match
-            if item.isEncrypted {
-                let content = CryptoService.shared.decrypt(item.content) ?? item.content
-                return content.localizedCaseInsensitiveContains(query)
-            }
-            return item.content.localizedCaseInsensitiveContains(query)
-        }
     }
 
     private func sha256(_ string: String) -> String {
