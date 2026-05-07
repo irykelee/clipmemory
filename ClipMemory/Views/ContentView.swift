@@ -323,6 +323,7 @@ struct ClipboardItemRow: View {
     let onToggleReveal: () -> Void
 
     @State private var isHovered = false
+    @State private var loadedImage: NSImage?
 
     private var pinText: String {
         item.isPinned ? L10n.actionUnpin : L10n.actionPin
@@ -351,15 +352,19 @@ struct ClipboardItemRow: View {
                     .help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
 
                     if item.type == .image {
-                        if let data = ImageStorage.shared.loadImage(filename: item.content),
-                           let nsImage = NSImage(data: data),
-                           nsImage.isValid {
+                        if let nsImage = loadedImage {
                             Image(nsImage: nsImage)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .frame(maxHeight: 80)
                                 .onTapGesture {
                                     onToggleReveal()
+                                }
+                                .task(id: item.content) {
+                                    let data = await ImageStorage.shared.loadImageAsync(filename: item.content)
+                                    if let data = data, let nsImage = NSImage(data: data), nsImage.isValid {
+                                        self.loadedImage = nsImage
+                                    }
                                 }
                         } else {
                             Text(L10n.itemImage)

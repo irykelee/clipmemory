@@ -1,10 +1,12 @@
 import AppKit
 import Foundation
+import os.log
 
 class ClipboardMonitor {
     private var timer: Timer?
     private var lastChangeCount: Int = 0
     private let pasteboard = NSPasteboard.general
+    private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
 
     /// Set to true when ClipboardStore writes to pasteboard, so we skip re-capturing.
     var skipNextCapture = false
@@ -62,7 +64,16 @@ class ClipboardMonitor {
     // Pre-compiled regex patterns for sensitive pattern matching
     private lazy var sensitivePatternRegexes: [NSRegularExpression] = {
         let regexPatterns = sensitivePatterns.filter { $0.isRegex }.map { $0.pattern }
-        return regexPatterns.compactMap { try? NSRegularExpression(pattern: $0, options: .caseInsensitive) }
+        var compiled: [NSRegularExpression] = []
+        for pattern in regexPatterns {
+            do {
+                let regex = try NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+                compiled.append(regex)
+            } catch {
+                logger.error("Failed to compile sensitive pattern regex: \(pattern) — \(error.localizedDescription)")
+            }
+        }
+        return compiled
     }()
 
     func startMonitoring() {
