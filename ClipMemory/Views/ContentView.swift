@@ -18,7 +18,11 @@ struct ContentView: View {
         if searchText.isEmpty {
             return baseItems
         }
-        return baseItems.filter { $0.content.localizedCaseInsensitiveContains(searchText) }
+        // Search must decrypt content to match — ciphertext would never match plaintext queries
+        return baseItems.filter { item in
+            let content = item.isEncrypted ? (ClipboardStore.shared.getDecryptedContent(item) ?? item.content) : item.content
+            return content.localizedCaseInsensitiveContains(searchText)
+        }
     }
 
     var body: some View {
