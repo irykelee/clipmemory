@@ -240,6 +240,14 @@ struct ClipboardItemRow: View {
         languageManager.selectedLanguage == "zh-Hans" ? "敏感" : "Sensitive"
     }
 
+    /// Decrypts content for display — M3 encrypts all text, so we must decrypt before showing
+    private var decryptedContent: String {
+        if item.isEncrypted {
+            return ClipboardStore.shared.getDecryptedContent(item) ?? item.content
+        }
+        return item.content
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: iconName)
@@ -274,7 +282,7 @@ struct ClipboardItemRow: View {
                                 .foregroundColor(.secondary)
                         }
                     } else if item.isSensitive && !isRevealed {
-                        Text(maskContent(item.displayContent))
+                        Text(maskContent(decryptedContent))
                             .font(.system(size: 12))
                             .foregroundColor(.orange)
                             .lineLimit(3)
@@ -282,7 +290,7 @@ struct ClipboardItemRow: View {
                                 onToggleReveal()
                             }
                     } else {
-                        Text(item.displayContent)
+                        Text(String(decryptedContent.prefix(200)))
                             .font(.system(size: 12))
                             .foregroundColor(item.isSensitive ? .orange : .primary)
                             .lineLimit(3)
@@ -451,62 +459,5 @@ struct SettingsView: View {
             .padding()
         }
         .frame(minWidth: 380, minHeight: 400)
-    }
-}
-
-struct HoverButton<Content: View>: View {
-    let tooltip: String
-    let content: () -> Content
-    @State private var isHovering = false
-
-    var body: some View {
-        content()
-            .overlay(alignment: .bottom) {
-                if isHovering {
-                    Text(tooltip)
-                        .font(.caption)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.black.opacity(0.85))
-                        .cornerRadius(4)
-                        .offset(y: 4)
-                        .allowsHitTesting(false)
-                }
-            }
-            .onHover { isHovering = $0 }
-    }
-}
-
-struct QuickHelp: ViewModifier {
-    let text: String
-    let preferBelow: Bool
-    @State private var isHovering = false
-
-    init(_ text: String, preferBelow: Bool = false) {
-        self.text = text
-        self.preferBelow = preferBelow
-    }
-
-    func body(content: Content) -> some View {
-        content
-            .background(
-                Group {
-                    if isHovering {
-                        Text(text)
-                            .font(.caption)
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color(nsColor: .controlBackgroundColor))
-                            .cornerRadius(6)
-                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                            .fixedSize()
-                            .offset(x: 0, y: preferBelow ? 30 : -30)
-                            .allowsHitTesting(false)
-                    }
-                }
-            )
-            .onHover { isHovering = $0 }
     }
 }

@@ -55,29 +55,18 @@ class CryptoService {
     /// Storage format: IV (16 bytes) + ciphertext + HMAC (32 bytes).
     /// HMAC is computed over IV || ciphertext to prevent bit-flipping attacks.
     func encrypt(_ string: String) -> String? {
-        guard let key = getKey(),
-              let data = string.data(using: .utf8) else { return nil }
-
-        var iv = Data(count: 16)
-        let ivResult = iv.withUnsafeMutableBytes {
-            SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!)
-        }
-        guard ivResult == errSecSuccess else { return nil }
-
-        guard let encrypted = aesEncrypt(data: data, key: key, iv: iv) else { return nil }
-
-        var ivAndCiphertext = iv
-        ivAndCiphertext.append(encrypted)
-        let hmac = computeHMAC(data: ivAndCiphertext, key: key)
-
-        var combined = iv
-        combined.append(encrypted)
-        combined.append(hmac)
+        guard let data = string.data(using: .utf8) else { return nil }
+        guard let combined = encryptBytes(Array(data)) else { return nil }
         return combined.base64EncodedString()
     }
 
-    /// Encrypts raw Data (for images). Returns base64-encoded encrypted data.
+    /// Encrypts raw Data (for images).
     func encryptData(_ data: Data) -> Data? {
+        return encryptBytes(Array(data))
+    }
+
+    /// N7: Common encryption logic — AES-256-CBC + HMAC-SHA256 over raw bytes
+    private func encryptBytes(_ bytes: [UInt8]) -> Data? {
         guard let key = getKey() else { return nil }
 
         var iv = Data(count: 16)
@@ -86,7 +75,7 @@ class CryptoService {
         }
         guard ivResult == errSecSuccess else { return nil }
 
-        guard let encrypted = aesEncrypt(data: data, key: key, iv: iv) else { return nil }
+        guard let encrypted = aesEncrypt(data: Data(bytes), key: key, iv: iv) else { return nil }
 
         var ivAndCiphertext = iv
         ivAndCiphertext.append(encrypted)
@@ -101,42 +90,19 @@ class CryptoService {
     /// Decrypts and verifies HMAC before decryption.
     /// Falls back to legacy format (no HMAC) for backwards compatibility with pre-1.2.0 data.
     func decrypt(_ base64String: String) -> String? {
-        guard let key = getKey(),
-              let combined = Data(base64Encoded: base64String) else { return nil }
-
-        // New format: IV (16) + ciphertext + HMAC (32) — minimum 49 bytes
-        if combined.count >= 49 {
-            let hmacSize = 32
-            let ivAndCiphertextLength = combined.count - hmacSize
-            let ivAndCiphertext = combined.prefix(ivAndCiphertextLength)
-            let storedHMAC = combined.suffix(hmacSize)
-
-            let computedHMAC = computeHMAC(data: Data(ivAndCiphertext), key: key)
-            if computedHMAC == storedHMAC {
-                let iv = combined.prefix(16)
-                let encryptedData = combined.dropFirst(16).dropLast(hmacSize)
-                if let decrypted = aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv)) {
-                    return String(data: decrypted, encoding: .utf8)
-                }
-            }
-            // HMAC mismatch or decrypt failed — don't fall through to legacy
-            return nil
-        }
-
-        // Legacy format (pre-1.2.0): IV (16) + ciphertext — no HMAC
-        if combined.count > 16 {
-            let iv = combined.prefix(16)
-            let encryptedData = combined.dropFirst(16)
-            if let decrypted = aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv)) {
-                return String(data: decrypted, encoding: .utf8)
-            }
-        }
-
-        return nil
+        guard let combined = Data(base64Encoded: base64String) else { return nil }
+        guard let bytes = decryptBytes(from: combined) else { return nil }
+        return String(bytes: bytes, encoding: .utf8)
     }
 
     /// Decrypts Data (for images).
     func decryptData(_ combined: Data) -> Data? {
+        guard let bytes = decryptBytes(from: combined) else { return nil }
+        return Data(bytes)
+    }
+
+    /// N7: Common decryption logic — verifies HMAC then AES-256-CBC decrypt
+    private func decryptBytes(from combined: Data) -> [UInt8]? {
         guard let key = getKey() else { return nil }
 
         // New format: IV (16) + ciphertext + HMAC (32) — minimum 49 bytes
@@ -150,7 +116,9 @@ class CryptoService {
             if computedHMAC == storedHMAC {
                 let iv = combined.prefix(16)
                 let encryptedData = combined.dropFirst(16).dropLast(hmacSize)
-                return aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv))
+                if let decrypted = aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv)) {
+                    return Array(decrypted)
+                }
             }
             return nil
         }
@@ -159,7 +127,9 @@ class CryptoService {
         if combined.count > 16 {
             let iv = combined.prefix(16)
             let encryptedData = combined.dropFirst(16)
-            return aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv))
+            if let decrypted = aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv)) {
+                return Array(decrypted)
+            }
         }
 
         return nil
