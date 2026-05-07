@@ -11,6 +11,7 @@
 		54EB58BA9A8F29C3E48C7DE6 /* ImageStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3153EAFCF0B2690D5DEB113 /* ImageStorage.swift */; };
 		7F23EF5F15D0EE3F180A79E3 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AB1C7BD0454681ABF687DF9 /* main.swift */; };
 		83892A798C8F07BCB2A87488 /* LanguageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B185E481A34967FB1CC7F192 /* LanguageManager.swift */; };
+		8AE3D6EABA7C52180921E9EE /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576BC9BCA44C3479F2691F5B /* AppVersion.swift */; };
 		919909C13EFD40D730CCD15E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A060CA837242FD57B25DFFD9 /* ContentView.swift */; };
 		A9458EE0D526D8B63812E216 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C816574DD183240D08D58A64 /* AppDelegate.swift */; };
 		BF8CC00B3E0A62207FBAE413 /* ClipboardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4499CFF1A5F60ED377D402EB /* ClipboardStore.swift */; };
@@ -31,6 +32,7 @@
 		39A66E3A5ABC7317320C7A62 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		443EB217154D9B586C055F7D /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
 		4499CFF1A5F60ED377D402EB /* ClipboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStore.swift; sourceTree = "<group>"; };
+		576BC9BCA44C3479F2691F5B /* AppVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersion.swift; sourceTree = "<group>"; };
 		57CCB6D91997FD344D04495D /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
 		5FA613C869D9CDC57944F917 /* ClipMemory.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClipMemory.entitlements; sourceTree = "<group>"; };
 		8F250C19E7199E18D95521A3 /* CryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoService.swift; sourceTree = "<group>"; };
@@ -57,6 +59,7 @@
 		2C1F1D179179031A984F43B8 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				576BC9BCA44C3479F2691F5B /* AppVersion.swift */,
 				1E73A6EE834EA648971BFC98 /* ClipboardItem.swift */,
 			);
 			path = Models;
@@ -114,6 +117,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 9079F144064022E30BA9BB91 /* Build configuration list for PBXNativeTarget "ClipMemory" */;
 			buildPhases = (
+				400C01C7CE932458CFE8F129 /* SwiftLint */,
 				D1DDC7454E05F9AB4F29A47B /* Sources */,
 				EAA072E26751BD22FC3FBD95 /* Resources */,
 			);
@@ -179,12 +183,35 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		400C01C7CE932458CFE8F129 /* SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = SwiftLint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if which swiftlint >/dev/null; then\n  swiftlint\nelse\n  echo \"warning: SwiftLint not installed. Run: brew install swiftlint\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		D1DDC7454E05F9AB4F29A47B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				A9458EE0D526D8B63812E216 /* AppDelegate.swift in Sources */,
+				8AE3D6EABA7C52180921E9EE /* AppVersion.swift in Sources */,
 				E77E5CDEAD35A99186F367F2 /* ClipboardItem.swift in Sources */,
 				3F86CCA09C748C2CC0687BD8 /* ClipboardMonitor.swift in Sources */,
 				BF8CC00B3E0A62207FBAE413 /* ClipboardStore.swift in Sources */,

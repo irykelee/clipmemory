@@ -1,0 +1,65 @@
+# SwiftLint Configuration for ClipMemory
+# https://realm.github.io/SwiftLint/
+
+# 禁用的规则（根据项目需求调整）
+disabled_rules:
+  - trailing_whitespace
+  - line_length
+  - function_body_length
+  - file_length
+  - type_body_length
+  - cyclomatic_complexity
+  - function_parameter_count
+  - force_cast
+  - closure_spacing
+  - multiline_parameters
+
+# 启用的规则
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - first_where
+  - sorted_first_last
+  - redundant_nil_coalescing
+  - contains_over_first_not_nil
+  - fallthrough
+  - fatal_error_message
+  - unneeded_parentheses_in_closure
+
+# 排除的文件/目录
+excluded:
+  - .build
+  - .swiftpm
+  - Pods
+  - ClipMemory.xcodeproj
+  - "**/*.lproj"
+  - "**/Fonts/"
+  - "**/Resources/"
+  - Carthage
+  - Modules
+  - Vendor
+
+# Reporter: xcode 输出到 Xcode 的 Issue Navigator
+reporter: "xcode"
+
+# 规则参数
+identifier_name:
+  min_length:
+    warning: 1
+  max_length:
+    warning: 40
+    error: 60
+  excluded:
+    - id
+    - x
+    - y
+    - w
+    - h
+    - i
+    - j
+    - k
+    - to
+    - of
+    - in
+    - on
+    - at
