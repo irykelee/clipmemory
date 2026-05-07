@@ -77,6 +77,20 @@ class ClipboardMonitor {
             DispatchQueue.main.async {
                 ClipboardStore.shared.addItem(item)
             }
+        } else if let imageData = pasteboard.data(forType: .png), !imageData.isEmpty {
+            let id = UUID()
+            if let filename = ImageStorage.shared.saveImage(imageData, id: id) {
+                let item = ClipboardItem(
+                    id: id,
+                    content: filename,
+                    type: .image,
+                    isSensitive: false,
+                    expiresAt: nil
+                )
+                DispatchQueue.main.async {
+                    ClipboardStore.shared.addItem(item)
+                }
+            }
         }
     }
 

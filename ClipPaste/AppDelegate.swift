@@ -2,11 +2,13 @@ import AppKit
 import SwiftUI
 import ServiceManagement
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     var statusItem: NSStatusItem!
     var clipboardMonitor: ClipboardMonitor!
     var hotKeyManager: HotKeyManager!
+    private var lastPinnedOnly = false
+    private var lastSettingsOnly = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -93,20 +95,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyManager.register()
     }
 
+    // MARK: - Window Frame Persistence
+
+    private let windowFrameKey = "WindowFrame"
+
+    private var savedWindowFrame: NSRect {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: windowFrameKey),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: CGFloat],
+                  let x = dict["x"], let y = dict["y"],
+                  let w = dict["w"], let h = dict["h"] else {
+                return NSRect(x: 0, y: 0, width: 400, height: 500)
+            }
+            return NSRect(x: x, y: y, width: w, height: h)
+        }
+        set {
+            let dict: [String: CGFloat] = [
+                "x": newValue.origin.x,
+                "y": newValue.origin.y,
+                "w": newValue.size.width,
+                "h": newValue.size.height
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: dict) {
+                UserDefaults.standard.set(data, forKey: windowFrameKey)
+            }
+        }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        if let w = window {
+            savedWindowFrame = w.frame
+        }
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        if let w = window {
+            savedWindowFrame = w.frame
+        }
+    }
+
     func showMainWindow(pinnedOnly: Bool = false, settingsOnly: Bool = false) {
+        lastPinnedOnly = pinnedOnly
+        lastSettingsOnly = settingsOnly
         if window == nil {
             let contentView = ContentView(pinnedOnly: pinnedOnly, settingsOnly: settingsOnly)
             window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 400, height: 500),
+                contentRect: savedWindowFrame,
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
             )
             window.title = "ClipPaste"
-            window.center()
-            window.contentView = NSHostingView(rootView: contentView)
+            window.delegate = self
             window.isReleasedWhenClosed = false
             window.makeKeyAndOrderFront(nil)
+            window.contentView = NSHostingView(rootView: contentView)
         } else {
             window.contentView = NSHostingView(rootView: ContentView(pinnedOnly: pinnedOnly, settingsOnly: settingsOnly))
             window.makeKeyAndOrderFront(nil)
