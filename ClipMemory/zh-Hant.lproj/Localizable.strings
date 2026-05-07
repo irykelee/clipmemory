@@ -78,6 +78,12 @@
 "item.image" = "[圖片]";
 "item.unpin.all" = "取消全部釘選";
 
+/* Date Groups */
+"group.today" = "今天";
+"group.yesterday" = "昨天";
+"group.thisWeek" = "本週";
+"group.older" = "更早";
+
 /* Languages */
 "lang.zh-Hans" = "简体中文";
 "lang.zh-Hant" = "繁體中文";
@@ -95,3 +101,4 @@
 "app.launch.at.login.disabled" = "已關閉開機自啟";
 "app.launch.at.login.disabled.body" = "ClipMemory 將不會在登入時啟動。";
 "app.error" = "錯誤";
+"batch.selected" = "已選擇 %d 項";
