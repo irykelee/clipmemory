@@ -1,15 +1,92 @@
 import SwiftUI
 import AppKit
 
+/// Invisible view that captures key events for keyboard navigation.
+/// Falls back to ArrowKeyView on macOS 13 (NSEvent monitor).
+struct KeyCaptureView: NSViewRepresentable {
+    var onUp: () -> Void
+    var onDown: () -> Void
+    var onReturn: () -> Void
+    var onEscape: () -> Void
+
+    func makeNSView(context: Context) -> KeyCaptureNSView {
+        let view = KeyCaptureNSView()
+        view.onUp = onUp
+        view.onDown = onDown
+        view.onReturn = onReturn
+        view.onEscape = onEscape
+        return view
+    }
+
+    func updateNSView(_ nsView: KeyCaptureNSView, context: Context) {
+        nsView.onUp = onUp
+        nsView.onDown = onDown
+        nsView.onReturn = onReturn
+        nsView.onEscape = onEscape
+    }
+}
+
+final class KeyCaptureNSView: NSView {
+    var onUp: (() -> Void)?
+    var onDown: (() -> Void)?
+    var onReturn: (() -> Void)?
+    var onEscape: (() -> Void)?
+
+    private var eventMonitor: Any?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupMonitor()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupMonitor()
+    }
+
+    private func setupMonitor() {
+        // Monitor key events even when other views have focus
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return event }
+            switch event.keyCode {
+            case 126: // upArrow
+                self.onUp?()
+                return nil
+            case 125: // downArrow
+                self.onDown?()
+                return nil
+            case 36: // return
+                self.onReturn?()
+                return nil
+            case 53: // escape
+                self.onEscape?()
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    deinit {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+}
+
 struct ContentView: View {
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
-    @State private var searchText = ""
+    @State private var searchText = "" {
+        didSet { keyboardSelectedIndex = nil }
+    }
     @State private var selectedItem: ClipboardItem?
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: ClipboardItem?
     @State private var showingClearAlert = false
     @State private var revealedItems: Set<UUID> = []
+    @State private var keyboardSelectedIndex: Int? = nil
+    @State private var isFocused: Bool = true
     @State var pinnedOnly: Bool = false
     @State var settingsOnly: Bool = false
 
@@ -40,6 +117,36 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 380, minHeight: 400)
+        .overlay(alignment: .top) {
+            KeyCaptureView(
+                onUp: {
+                    if displayedItems.isEmpty { return }
+                    if let idx = keyboardSelectedIndex, idx > 0 {
+                        keyboardSelectedIndex = idx - 1
+                    } else {
+                        keyboardSelectedIndex = displayedItems.count - 1
+                    }
+                },
+                onDown: {
+                    if displayedItems.isEmpty { return }
+                    let last = displayedItems.count - 1
+                    if let idx = keyboardSelectedIndex, idx < last {
+                        keyboardSelectedIndex = idx + 1
+                    } else {
+                        keyboardSelectedIndex = 0
+                    }
+                },
+                onReturn: {
+                    if let idx = keyboardSelectedIndex, idx < displayedItems.count {
+                        copyItem(displayedItems[idx])
+                    }
+                },
+                onEscape: {
+                    NSApp.keyWindow?.close()
+                }
+            )
+            .frame(width: 0, height: 0)
+        }
     }
 
     private var headerView: some View {
@@ -174,10 +281,11 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                 }
 
-                ForEach(displayedItems) { item in
+                ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
                     ClipboardItemRow(
                         item: item,
                         isRevealed: revealedItems.contains(item.id),
+                        isKeyboardSelected: keyboardSelectedIndex == index,
                         onCopy: { copyItem(item) },
                         onPin: { store.togglePin(item) },
                         onDelete: { itemToDelete = item; showingDeleteAlert = true },
@@ -216,6 +324,7 @@ struct ContentView: View {
 struct ClipboardItemRow: View {
     let item: ClipboardItem
     let isRevealed: Bool
+    var isKeyboardSelected: Bool = false
     let onCopy: () -> Void
     let onPin: () -> Void
     let onDelete: () -> Void
@@ -331,7 +440,7 @@ struct ClipboardItemRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(isHovered ? Color(.selectedContentBackgroundColor).opacity(0.3) : Color.clear)
+        .background(isHovered || isKeyboardSelected ? Color(.selectedContentBackgroundColor).opacity(0.3) : Color.clear)
         .contentShape(Rectangle())
         .onHover { hovering in isHovered = hovering }
         .onTapGesture { onCopy() }
