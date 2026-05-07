@@ -104,9 +104,9 @@ class ClipboardStore: ObservableObject {
         saveItems()
     }
 
-    func getDecryptedContent(_ item: ClipboardItem) -> String {
+    func getDecryptedContent(_ item: ClipboardItem) -> String? {
         if item.isEncrypted {
-            return CryptoService.shared.decrypt(item.content) ?? item.content
+            return CryptoService.shared.decrypt(item.content)
         }
         return item.content
     }
@@ -153,7 +153,7 @@ class ClipboardStore: ObservableObject {
     }
 
     func clearSensitiveItems() {
-        items.removeAll { $0.isSensitive }
+        items.removeAll { $0.isSensitive && !$0.isPinned }
         updatePinnedItems()
         saveItems()
     }
@@ -165,6 +165,7 @@ class ClipboardStore: ObservableObject {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
         items.removeAll { !pinnedIds.contains($0.id) }
+        updatePinnedItems()
         saveItems()
     }
 
@@ -178,7 +179,7 @@ class ClipboardStore: ObservableObject {
                 pasteboard.writeObjects([image as NSImage])
             }
         default:
-            let content = getDecryptedContent(item)
+            guard let content = getDecryptedContent(item) else { return }
             pasteboard.setString(content, forType: .string)
         }
         // Update changeCount immediately to prevent ClipboardMonitor from re-capturing
