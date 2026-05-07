@@ -61,13 +61,14 @@
 
 ### 安装
 
-通过 Homebrew 安装（推荐）：
-
 ```bash
-brew install irykelee/clipmemory/clipmemory
+brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory
+brew install --cask clipmemory
 ```
 
-或从 GitHub Releases 直接下载：https://github.com/irykelee/clipmemory/releases
+安装后 App 在 `/Applications/ClipMemory.app`。启动后看**屏幕右上角菜单栏**的 📋 图标，点击即可使用。「登录时启动」选项在菜单中，启用后每次开机自动运行。
+
+或从 [GitHub Releases](https://github.com/irykelee/clipmemory/releases) 下载 `.tar.gz` 手动解压到 `/Applications/`。
 
 ### 联系方式
 
