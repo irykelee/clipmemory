@@ -56,7 +56,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func showHistory() {
-        ClipboardStore.shared.loadItems()
         showMainWindow()
     }
 

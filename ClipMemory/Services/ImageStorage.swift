@@ -29,27 +29,40 @@ class ImageStorage {
     }
 
     private let maxImageSize = 50 * 1024 * 1024 // 50MB limit
+    private let backgroundQueue = DispatchQueue(label: "com.clipmemory.imagestorage", qos: .userInitiated)
 
-    func saveImage(_ data: Data, id: UUID) -> String? {
+    /// Saves image data asynchronously on a background queue to avoid blocking the main thread.
+    /// Encryption and disk I/O happen off the main thread.
+    func saveImage(_ data: Data, id: UUID, completion: @escaping (String?) -> Void) {
         guard data.count <= maxImageSize else {
             logger.warning("Image too large (\(data.count) bytes), skipping save")
-            return nil
+            DispatchQueue.main.async { completion(nil) }
+            return
         }
-        // PNG and TIFF clipboard data are both saved as .png (NSImage loads both formats).
-        // The actual image format (PNG/TIFF) is lost after saving, but functionality is preserved.
-        let filename = "\(id.uuidString).png"
-        let fileURL = imagesDirectory.appendingPathComponent(filename)
-        // Encrypt image data before writing to disk (N2)
-        guard let encryptedData = CryptoService.shared.encryptData(data) else {
-            logger.error("Failed to encrypt image data")
-            return nil
-        }
-        do {
-            try encryptedData.write(to: fileURL)
-            return filename
-        } catch {
-            logger.error("Failed to save encrypted image: \(error.localizedDescription)")
-            return nil
+
+        backgroundQueue.async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+
+            let filename = "\(id.uuidString).png"
+            let fileURL = self.imagesDirectory.appendingPathComponent(filename)
+
+            // Encrypt image data before writing to disk (N2)
+            guard let encryptedData = CryptoService.shared.encryptData(data) else {
+                self.logger.error("Failed to encrypt image data")
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+
+            do {
+                try encryptedData.write(to: fileURL)
+                DispatchQueue.main.async { completion(filename) }
+            } catch {
+                self.logger.error("Failed to save encrypted image: \(error.localizedDescription)")
+                DispatchQueue.main.async { completion(nil) }
+            }
         }
     }
 
