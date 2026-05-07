@@ -155,7 +155,7 @@ struct ContentView: View {
                 Image(systemName: "doc.on.clipboard")
                     .font(.title)
                     .foregroundColor(.accentColor)
-                Text("ClipMemory")
+                Text(L10n.appName)
                     .font(.title3)
 
                 Spacer()
@@ -163,36 +163,36 @@ struct ContentView: View {
                 Button(action: { showingClearAlert = true }) {
                     HStack(spacing: 4) {
                         Image(systemName: "trash")
-                        Text("清空")
+                        Text(L10n.buttonClear)
                     }
                     .font(.callout)
                     .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("清空历史（保留固定片段）")
+                .help(L10n.tooltipClearHistory)
                 .disabled(store.items.isEmpty)
 
                 Button(action: { pinnedOnly.toggle() }) {
                     HStack(spacing: 4) {
                         Image(systemName: pinnedOnly ? "star.fill" : "star")
-                        Text(pinnedOnly ? "全部" : "固定")
+                        Text(pinnedOnly ? L10n.headerShowAll : L10n.headerShowPinned)
                     }
                     .font(.callout)
                     .foregroundColor(pinnedOnly ? .orange : .secondary)
                 }
                 .buttonStyle(.plain)
-                .help(pinnedOnly ? "显示全部剪贴板历史" : "仅显示已固定的片段（不会被自动清理）")
+                .help(pinnedOnly ? L10n.tooltipShowAll : L10n.tooltipPinnedOnly)
 
                 Button(action: { settingsOnly = true }) {
                     HStack(spacing: 4) {
                         Image(systemName: "gear")
-                        Text("设置")
+                        Text(L10n.buttonSettings)
                     }
                     .font(.callout)
                     .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("设置")
+                .help(L10n.buttonSettings)
             }
             .padding(.horizontal, 12)
             .padding(.top, 12)
@@ -200,7 +200,7 @@ struct ContentView: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                TextField(searchPlaceholder, text: $searchText)
+                TextField(L10n.searchPlaceholder, text: $searchText)
                     .textFieldStyle(.plain)
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }) {
@@ -217,23 +217,19 @@ struct ContentView: View {
             .padding(.bottom, 8)
         }
         .background(Color(.windowBackgroundColor).opacity(0.5))
-        .alert("清空历史", isPresented: $showingClearAlert) {
-            Button("取消", role: .cancel) {}
-            Button("清空", role: .destructive) {
+        .alert(L10n.alertClearTitle, isPresented: $showingClearAlert) {
+            Button(L10n.buttonCancel, role: .cancel) {}
+            Button(L10n.buttonClear, role: .destructive) {
                 clearHistory()
             }
         } message: {
             let count = store.items.filter { !$0.isPinned }.count
             if count > 0 {
-                Text("确定清空 \(count) 条历史记录？\n固定片段不会被删除。")
+                Text(L10n.alertClearMessage(count))
             } else {
-                Text("没有可清空的历史记录。")
+                Text(L10n.alertClearNone)
             }
         }
-    }
-
-    private var searchPlaceholder: String {
-        languageManager.selectedLanguage == "zh-Hans" ? "搜索剪贴板历史..." : "Search clipboard history..."
     }
 
     private func clearHistory() {
@@ -246,17 +242,17 @@ struct ContentView: View {
             Image(systemName: pinnedOnly ? "star" : "doc.on.clipboard")
                 .font(.system(size: 48))
                 .foregroundColor(.secondary)
-            Text(pinnedOnly ? (languageManager.selectedLanguage == "zh-Hans" ? "暂无固定片段" : "No pinned items") : (languageManager.selectedLanguage == "zh-Hans" ? "暂无剪贴板历史" : "No clipboard history"))
+            Text(pinnedOnly ? L10n.emptyNoPinned : L10n.emptyNoHistory)
                 .font(.headline)
                 .foregroundColor(.secondary)
             if pinnedOnly {
-                Text(languageManager.selectedLanguage == "zh-Hans" ? "点击片段右侧「固定」将其固定，被固定的片段不会自动清理" : "Click 'Pin' on an item to pin it. Pinned items won't be auto-cleared")
+                Text(L10n.emptyPinnedHint)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
             } else {
-                Text(languageManager.selectedLanguage == "zh-Hans" ? "复制内容后将自动记录到这里" : "Copied content will appear here automatically")
+                Text(L10n.emptyHistoryHint)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -272,7 +268,7 @@ struct ContentView: View {
                     Button(action: { store.unpinAll() }) {
                         HStack(spacing: 4) {
                             Image(systemName: "star.slash")
-                            Text("取消全部固定")
+                            Text(L10n.headerPinAll)
                         }
                         .font(.callout)
                         .foregroundColor(.orange)
@@ -289,22 +285,21 @@ struct ContentView: View {
                         onCopy: { copyItem(item) },
                         onPin: { store.togglePin(item) },
                         onDelete: { itemToDelete = item; showingDeleteAlert = true },
-                        onToggleReveal: { toggleReveal(item.id) },
-                        languageManager: languageManager
+                        onToggleReveal: { toggleReveal(item.id) }
                     )
                 }
             }
             .padding(.vertical, 4)
         }
-        .alert("删除片段", isPresented: $showingDeleteAlert) {
-            Button("取消", role: .cancel) {}
-            Button("删除", role: .destructive) {
+        .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) {
+            Button(L10n.buttonCancel, role: .cancel) {}
+            Button(L10n.buttonDelete, role: .destructive) {
                 if let item = itemToDelete {
                     store.deleteItem(item)
                 }
             }
         } message: {
-            Text("确定删除该片段吗？")
+            Text(L10n.alertDeleteMessage)
         }
     }
 
@@ -329,24 +324,11 @@ struct ClipboardItemRow: View {
     let onPin: () -> Void
     let onDelete: () -> Void
     let onToggleReveal: () -> Void
-    let languageManager: LanguageManager
 
     @State private var isHovered = false
 
-    private var viewText: String {
-        languageManager.selectedLanguage == "zh-Hans" ? "查看" : "View"
-    }
-
-    private var collapseText: String {
-        languageManager.selectedLanguage == "zh-Hans" ? "收起" : "Hide"
-    }
-
     private var pinText: String {
-        languageManager.selectedLanguage == "zh-Hans" ? (item.isPinned ? "取消" : "固定") : (item.isPinned ? "Unpin" : "Pin")
-    }
-
-    private var sensitiveText: String {
-        languageManager.selectedLanguage == "zh-Hans" ? "敏感" : "Sensitive"
+        item.isPinned ? L10n.actionUnpin : L10n.actionPin
     }
 
     /// Decrypts content for display — M3 encrypts all text, so we must decrypt before showing
@@ -372,7 +354,7 @@ struct ClipboardItemRow: View {
                             .foregroundColor(item.isPinned ? .orange : .secondary)
                     }
                     .buttonStyle(.plain)
-                    .help(item.isPinned ? "取消固定" : "固定此片段（不会被自动清理）")
+                    .help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
 
                     if item.type == .image {
                         if let data = ImageStorage.shared.loadImage(filename: item.content),
@@ -386,7 +368,7 @@ struct ClipboardItemRow: View {
                                     onToggleReveal()
                                 }
                         } else {
-                            Text("[图片]")
+                            Text(L10n.itemImage)
                                 .font(.system(size: 12))
                                 .foregroundColor(.secondary)
                         }
@@ -410,12 +392,12 @@ struct ClipboardItemRow: View {
                 HStack(spacing: 8) {
                     if item.isSensitive {
                         Button(action: onToggleReveal) {
-                            Text(isRevealed ? collapseText : viewText)
+                            Text(isRevealed ? L10n.actionHide : L10n.actionView)
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
                         .buttonStyle(.plain)
-                        .help("查看敏感内容")
+                        .help(L10n.tooltipDelete)
                     }
 
                     Text(formattedDate)
@@ -423,7 +405,7 @@ struct ClipboardItemRow: View {
                         .foregroundColor(.secondary)
 
                     if item.isSensitive {
-                        Label(sensitiveText, systemImage: "exclamationmark.shield")
+                        Label(L10n.itemSensitive, systemImage: "exclamationmark.shield")
                             .font(.caption2)
                             .foregroundColor(.orange)
                     }
@@ -436,7 +418,7 @@ struct ClipboardItemRow: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .help("删除")
+            .help(L10n.tooltipDelete)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -446,19 +428,19 @@ struct ClipboardItemRow: View {
         .onTapGesture { onCopy() }
         .contextMenu {
             Button(action: onCopy) {
-                Label("复制", systemImage: "doc.on.doc")
+                Label(L10n.actionCopy, systemImage: "doc.on.doc")
             }
             if item.isSensitive {
                 Button(action: onToggleReveal) {
-                    Label(isRevealed ? "收起内容" : "显示内容", systemImage: isRevealed ? "eye.slash" : "eye")
+                    Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye")
                 }
             }
             Button(action: onPin) {
-                Label(item.isPinned ? "取消固定" : "固定片段", systemImage: item.isPinned ? "star.slash" : "star")
+                Label(pinText, systemImage: item.isPinned ? "star.slash" : "star")
             }
             Divider()
             Button(role: .destructive, action: onDelete) {
-                Label("删除", systemImage: "trash")
+                Label(L10n.actionDelete, systemImage: "trash")
             }
         }
     }
@@ -502,7 +484,7 @@ struct SettingsView: View {
                 Button(action: { isSettingsOnly = false }) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
-                        Text("返回")
+                        Text(L10n.buttonBack)
                     }
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -511,7 +493,7 @@ struct SettingsView: View {
 
                 Spacer()
 
-                Text("设置")
+                Text(L10n.settingsTitle)
                     .font(.headline)
 
                 Spacer()
@@ -522,19 +504,19 @@ struct SettingsView: View {
             Divider()
 
             Form {
-                Section(header: Text("历史记录")) {
-                    Picker("最大条数", selection: Binding(
+                Section(header: Text(L10n.settingsSectionHistory)) {
+                    Picker(L10n.settingsMaxItems, selection: Binding(
                         get: { store.maxItems },
                         set: { store.maxItems = $0 }
                     )) {
                         ForEach(maxItemOptions, id: \.self) { count in
-                            Text("\(count) 条").tag(count)
+                            Text(L10n.settingsMaxItemsCount(count)).tag(count)
                         }
                     }
                 }
 
-                Section(header: Text("敏感信息保护")) {
-                    Picker("自动清除", selection: Binding(
+                Section(header: Text(L10n.settingsSectionSensitive)) {
+                    Picker(L10n.settingsAutoClear, selection: Binding(
                         get: { store.sensitiveClearHours },
                         set: { store.sensitiveClearHours = $0 }
                     )) {
@@ -542,13 +524,13 @@ struct SettingsView: View {
                             Text(option.label).tag(option.hours)
                         }
                     }
-                    Text("检测到密码、API密钥等敏感内容时，自动清除前的等待时间")
+                    Text(L10n.settingsSensitiveHint)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
 
-                Section(header: Text("语言 / Language")) {
-                    Picker("语言", selection: $languageManager.selectedLanguage) {
+                Section(header: Text(L10n.settingsSectionLanguage)) {
+                    Picker(L10n.buttonSettings, selection: $languageManager.selectedLanguage) {
                         ForEach(languageManager.availableLanguages, id: \.code) { lang in
                             Text(lang.name).tag(lang.code)
                         }
@@ -556,10 +538,10 @@ struct SettingsView: View {
                     .pickerStyle(.radioGroup)
                 }
 
-                Section(header: Text("关于")) {
-                    Text("ClipMemory 剪忆 v1.2.0")
+                Section(header: Text(L10n.settingsSectionAbout)) {
+                    Text(L10n.aboutVersion("1.2.0"))
                         .foregroundColor(.secondary)
-                    Text("免费版 · 本地剪贴板历史管理")
+                    Text(L10n.aboutFreeEdition)
                         .foregroundColor(.secondary)
                         .font(.caption)
                 }

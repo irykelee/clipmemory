@@ -1,0 +1,86 @@
+/* General */
+"app.name" = "ClipMemory";
+"button.clear" = "Vaciar";
+"button.settings" = "Preferencias";
+"button.back" = "Atrás";
+"button.cancel" = "Cancelar";
+"button.delete" = "Eliminar";
+"button.confirm" = "Confirmar";
+"button.close" = "Cerrar";
+
+/* Header */
+"header.clear.history" = "Vaciar historial";
+"header.show.all" = "Todo";
+"header.show.pinned" = "Fijados";
+"header.pin.all" = "Desfijar todo";
+
+/* Search */
+"search.placeholder" = "Buscar en el portapapeles...";
+
+/* Empty State */
+"empty.no.history" = "Sin historial del portapapeles";
+"empty.no.pinned" = "Sin favoritos";
+"empty.history.hint" = "Lo copiado aparecerá aquí automáticamente";
+"empty.pinned.hint" = "Fija un elemento para que no se elimine automáticamente";
+
+/* Item Actions */
+"action.pin" = "Fijar";
+"action.unpin" = "Desfijar";
+"action.delete" = "Eliminar";
+"action.copy" = "Copiar";
+"action.view" = "Ver";
+"action.hide" = "Ocultar";
+"action.show.content" = "Mostrar contenido";
+"action.hide.content" = "Ocultar contenido";
+
+/* Tooltips */
+"tooltip.unpin" = "Desfijar";
+"tooltip.pin" = "Fijar (no se elimina automáticamente)";
+"tooltip.delete" = "Eliminar";
+"tooltip.clear.history" = "Vaciar historial (favoritos conservados)";
+"tooltip.show.all" = "Ver todo el historial";
+"tooltip.pinned.only" = "Ver solo favoritos";
+
+/* Alerts */
+"alert.clear.title" = "Vaciar historial";
+"alert.clear.message" = "¿Eliminar %d elementos?\nLos favoritos se conservarán.";
+"alert.clear.none" = "No hay nada que vaciar.";
+"alert.delete.title" = "Eliminar";
+"alert.delete.message" = "¿Eliminar este elemento?";
+
+/* Settings */
+"settings.title" = "Preferencias";
+"settings.section.history" = "Historial";
+"settings.section.sensitive" = "Datos sensibles";
+"settings.section.language" = "Idioma";
+"settings.section.about" = "Acerca de";
+"settings.max.items" = "Máximo de elementos";
+"settings.max.items.count" = "%d elementos";
+"settings.auto.clear" = "Borrado automático";
+"settings.sensitive.hint" = "Tiempo hasta borrar automáticamente contraseñas, claves API, etc.";
+
+/* Sensitive Options */
+"sensitive.1.hour" = "1 hora";
+"sensitive.24.hours" = "24 horas";
+"sensitive.48.hours" = "48 horas";
+"sensitive.7.days" = "7 días";
+"sensitive.never" = "Nunca";
+
+/* About */
+"about.version" = "ClipMemory v%@";
+"about.free.edition" = "Versión gratuita · Gestor local del portapapeles";
+"about.paid.edition" = "Versión profesional";
+
+/* Item Labels */
+"item.sensitive" = "Sensible";
+"item.image" = "[Imagen]";
+"item.unpin.all" = "Desfijar todo";
+
+/* Languages */
+"lang.zh-Hans" = "简体中文";
+"lang.zh-Hant" = "繁體中文";
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ko" = "한국어";
+"lang.es" = "Español";
+"lang.pt" = "Português";
