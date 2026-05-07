@@ -124,4 +124,5 @@ struct L10n {
     static var launchAtLoginDisabled: String { string("app.launch.at.login.disabled") }
     static var launchAtLoginDisabledBody: String { string("app.launch.at.login.disabled.body") }
     static var error: String { string("app.error") }
+    static func batchSelected(_ count: Int) -> String { string("batch.selected", count) }
 }
