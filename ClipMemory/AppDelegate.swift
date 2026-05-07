@@ -7,8 +7,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusItem: NSStatusItem!
     var clipboardMonitor: ClipboardMonitor!
     var hotKeyManager: HotKeyManager!
-    private var lastPinnedOnly = false
-    private var lastSettingsOnly = false
     private var launchAtLoginMenuItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -145,8 +143,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func showMainWindow(pinnedOnly: Bool = false, settingsOnly: Bool = false) {
-        lastPinnedOnly = pinnedOnly
-        lastSettingsOnly = settingsOnly
         if window == nil {
             let contentView = ContentView(pinnedOnly: pinnedOnly, settingsOnly: settingsOnly)
             window = NSWindow(
