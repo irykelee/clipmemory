@@ -117,10 +117,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 return defaultFrame
             }
             let savedFrame = NSRect(x: x, y: y, width: w, height: h)
-            // R3: validate window is within current screen bounds
-            guard let screen = NSScreen.main else { return defaultFrame }
-            let visible = screen.visibleFrame
-            if !visible.intersects(savedFrame) {
+            // R3: validate window is within ANY screen bounds (multi-monitor support)
+            let anyScreenIntersects = NSScreen.screens.contains { $0.visibleFrame.intersects(savedFrame) }
+            if !anyScreenIntersects {
+                let visible = NSScreen.main?.visibleFrame ?? defaultFrame
                 return NSRect(x: visible.midX - 200, y: visible.midY - 250, width: 400, height: 500)
             }
             return savedFrame
