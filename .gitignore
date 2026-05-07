@@ -9,3 +9,7 @@ DerivedData/
 *.mode2v3
 *.perspectivev3
 build/
+
+# Binary releases — generated locally, not stored in git
+Releases/
+Homebrew/*.tar.gz
