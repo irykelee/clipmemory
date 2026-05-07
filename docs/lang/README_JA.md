@@ -1,23 +1,10 @@
-<details>
-<summary><b>🌐 Languages / 语言</b></summary>
-
-| Language | Link |
-|----------|------|
-| English | [README_EN.md](./README_EN.md) |
-| 简体中文 | [README.md](../README.md) |
-| 日本語 | [README_JA.md](./README_JA.md) |
-| 한국어 | [README_KO.md](./README_KO.md) |
-| Español | [README_ES.md](./README_ES.md) |
-| Português | [README_PT.md](./README_PT.md) |
-
----
-</details>
-
----
-
 # ClipMemory 剪憶（日本語）
 
 **ローカルクリップボード履歴マネージャー**
+
+[English](./README_EN.md) · [简体中文](../README.md) · [Español](./README_ES.md) · [Português](./README_PT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md)
+
+---
 
 ## 機能
 
@@ -41,19 +28,13 @@
 
 | 操作 | 方法 |
 |------|------|
-| ウィンドウ呼び出し | `⌘⇧V` |
+| ウィンドウ呼び出し | `⌘⇧V`（グローバルホットキー） |
 | 移動 | `↑` / `↓` キー |
-| コピー | `Enter` |
+| コピー | `Enter` またはシングルクリックでコピーして閉じる |
 | 閉じる | `Esc` |
 | 検索 | キーワード入力でリアルタイムフィルタリング |
-| ピン留め | ⭐ クリックまたは右クリック→「ピン留め」 |
-| 削除 | 🗑 クリックまたは右クリック→「削除」 |
-
-## 設定
-
-- 最大履歴数（50/100/200/500/1000/2000）
-- 機密情報自動削除ポリシー（1時間/24時間/48時間/7日/なし）
-- 言語切り替え
+| ピン留め/解除 | ダブルクリックで切り替え |
+| 削除 | 🗑 クリックまたはコンテキストメニュー |
 
 ## 必要環境
 
