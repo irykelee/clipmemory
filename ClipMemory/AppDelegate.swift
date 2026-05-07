@@ -26,16 +26,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func createMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "显示历史", action: #selector(showHistory), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: L10n.headerShowAll, action: #selector(showHistory), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "固定片段", action: #selector(showPinned), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: L10n.headerShowPinned, action: #selector(showPinned), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         launchAtLoginMenuItem = NSMenuItem(title: launchAtLoginTitle(), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         menu.addItem(launchAtLoginMenuItem)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "设置", action: #selector(showSettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: L10n.buttonSettings, action: #selector(showSettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "退出 ClipMemory", action: #selector(quitApp), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: L10n.quitApp, action: #selector(quitApp), keyEquivalent: "q"))
         return menu
     }
 
@@ -54,7 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func launchAtLoginTitle() -> String {
         let enabled = SMAppService.mainApp.status == .enabled
-        return enabled ? "✓ 开机自启" : "  开机自启"
+        return enabled ? "✓ \(L10n.launchAtLogin)" : "  \(L10n.launchAtLogin)"
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -62,14 +62,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         do {
             if service.status == .enabled {
                 try service.unregister()
-                showNotification(title: "已关闭开机自启", body: "ClipMemory 将不会在登录时启动")
+                showNotification(title: L10n.launchAtLoginDisabled, body: L10n.launchAtLoginDisabledBody)
             } else {
                 try service.register()
-                showNotification(title: "已开启开机自启", body: "ClipMemory 将会在登录时自动启动")
+                showNotification(title: L10n.launchAtLoginEnabled, body: L10n.launchAtLoginEnabledBody)
             }
             launchAtLoginMenuItem.title = launchAtLoginTitle()
         } catch {
-            showNotification(title: "设置失败", body: error.localizedDescription)
+            showNotification(title: L10n.error, body: error.localizedDescription)
         }
     }
 
@@ -78,7 +78,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         alert.messageText = title
         alert.informativeText = body
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: L10n.buttonConfirm)
         alert.runModal()
     }
 
@@ -89,7 +89,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func setupClipboardMonitor() {
         clipboardMonitor = ClipboardMonitor()
         clipboardMonitor.startMonitoring()
-        // Inject monitor reference so ClipboardStore.copyToClipboard can break the re-capture loop
         ClipboardStore.shared.clipboardMonitor = clipboardMonitor
     }
 
@@ -103,8 +102,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         hotKeyManager.register()
     }
 
-    // MARK: - Window Frame Persistence
-
     private let windowFrameKey = "WindowFrame"
 
     private var savedWindowFrame: NSRect {
@@ -117,7 +114,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 return defaultFrame
             }
             let savedFrame = NSRect(x: x, y: y, width: w, height: h)
-            // R3: validate window is within ANY screen bounds (multi-monitor support)
             let anyScreenIntersects = NSScreen.screens.contains { $0.visibleFrame.intersects(savedFrame) }
             if !anyScreenIntersects {
                 let visible = NSScreen.main?.visibleFrame ?? defaultFrame
@@ -159,7 +155,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "ClipMemory"
+            window.title = L10n.appName
             window.delegate = self
             window.isReleasedWhenClosed = false
             window.makeKeyAndOrderFront(nil)

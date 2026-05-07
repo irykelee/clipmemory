@@ -42,7 +42,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         case .link:
             return content
         case .image:
-            return "[图片]"
+            return L10n.itemImage
         }
     }
 }

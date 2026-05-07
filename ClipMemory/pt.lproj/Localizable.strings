@@ -86,3 +86,12 @@
 "lang.ko" = "한국어";
 "lang.es" = "Español";
 "lang.pt" = "Português";
+
+/* App Delegate */
+"app.quit" = "Sair do ClipMemory";
+"app.launch.at.login" = "Iniciar ao iniciar sessão";
+"app.launch.at.login.enabled" = "Início automático ativado";
+"app.launch.at.login.enabled.body" = "ClipMemory será iniciado automaticamente ao fazer login.";
+"app.launch.at.login.disabled" = "Início automático desativado";
+"app.launch.at.login.disabled.body" = "ClipMemory não será iniciado automaticamente.";
+"app.error" = "Erro";
