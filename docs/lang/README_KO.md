@@ -1,4 +1,17 @@
-[English](../../README.md) · [简体中文](../../README.md) · [Español](./README_ES.md) · [Português](./README_PT.md) · [日本語](./README_JA.md)
+<details>
+<summary><b>🌐 Languages / 언어</b></summary>
+
+| Language | Link |
+|----------|------|
+| English | [README_EN.md](./README_EN.md) |
+| 简体中文 | [README.md](../README.md) |
+| 日本語 | [README_JA.md](./README_JA.md) |
+| 한국어 | [README_KO.md](./README_KO.md) |
+| Español | [README_ES.md](./README_ES.md) |
+| Português | [README_PT.md](./README_PT.md) |
+
+---
+</details>
 
 ---
 
@@ -20,7 +33,7 @@
 ## 보안 기능
 
 - **AES-256 암호화** — 비밀번호, API 키 등 민감 콘텐츠는 AES-256으로 암호화
-- **안전한 키 관리** — 암호화 키는 macOS Keychain에 안전하게 저장
+- **안전한 키 관리** — 키는 로컬에 안전하게 저장
 - **스마트 감지** — 25+ 민감 데이터 패턴 지원
 - **자동 삭제** — 민감 콘텐츠 자동 삭제 시간 설정 가능
 

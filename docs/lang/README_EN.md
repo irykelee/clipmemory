@@ -1,10 +1,25 @@
-English · [简体中文](../README.md) · [Español](./README_ES.md) · [Português](./README_PT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md)
+<details>
+<summary><b>🌐 Languages / 语言</b></summary>
+
+| Language | Link |
+|----------|------|
+| English | [README_EN.md](./README_EN.md) |
+| 简体中文 | [README.md](../README.md) |
+| 日本語 | [README_JA.md](./README_JA.md) |
+| 한국어 | [README_KO.md](./README_KO.md) |
+| Español | [README_ES.md](./README_ES.md) |
+| Português | [README_PT.md](./README_PT.md) |
+
+---
+</details>
 
 ---
 
 # ClipMemory
 
 **Local Clipboard History Manager**
+
+---
 
 ## Introduction
 
@@ -24,7 +39,7 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 ### Security Features
 
 - **AES-256 Encryption** — Sensitive content (passwords, API keys) encrypted with AES-256
-- **Secure Key Storage** — Encryption keys stored in macOS Keychain with device-level protection
+- **Secure Key Storage** — Keys stored locally with device-level protection
 - **Smart Detection** — 25+ sensitive data patterns supported
 - **Auto-Clear** — Configurable auto-clear time for sensitive content
 

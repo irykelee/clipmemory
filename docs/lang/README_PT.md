@@ -1,4 +1,17 @@
-[English](../../README.md) · [简体中文](../../README.md) · [Español](./README_ES.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md)
+<details>
+<summary><b>🌐 Languages / 语言</b></summary>
+
+| Language | Link |
+|----------|------|
+| English | [README_EN.md](./README_EN.md) |
+| 简体中文 | [README.md](../README.md) |
+| 日本語 | [README_JA.md](./README_JA.md) |
+| 한국어 | [README_KO.md](./README_KO.md) |
+| Español | [README_ES.md](./README_ES.md) |
+| Português | [README_PT.md](./README_PT.md) |
+
+---
+</details>
 
 ---
 
@@ -17,12 +30,12 @@
 - 🛡️ Iniciar ao iniciar sessão (opcional)
 - 🌍 Suporte multilíngue
 
-## Funções de segurança
+## Segurança
 
-- **Criptografia AES-256** — Conteúdo sensível (senhas, chaves de API) criptografado com AES-256
-- **Gerenciamento seguro de chaves** — Chaves armazenadas no macOS Keychain
+- **Criptografia AES-256** — Conteúdo sensível criptografado com AES-256
+- **Gerenciamento seguro de chaves** — Chaves armazenadas localmente
 - **Detecção inteligente** — 25+ padrões de dados sensíveis
-- **Limpeza automática** — Tempo configurável para limpeza automática
+- **Limpeza automática** — Tempo configurável
 
 ## Uso
 
@@ -32,15 +45,6 @@
 | Navegar | `↑` / `↓` |
 | Copiar | `Enter` |
 | Fechar | `Esc` |
-| Buscar | Digite para filtrar |
-| Fixar | ⭐ clique ou menu→「Fixar」 |
-| Excluir | 🗑 clique ou menu→「Excluir」 |
-
-## Configurações
-
-- Máximo de itens (50/100/200/500/1000/2000)
-- Limpeza automática de sensíveis (1h/24h/48h/7d/Nunca)
-- Troca de idioma
 
 ## Requisitos
 
