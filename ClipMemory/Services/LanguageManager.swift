@@ -9,6 +9,7 @@ class LanguageManager: ObservableObject {
             UserDefaults.standard.set(selectedLanguage, forKey: "appLanguage")
             applyLanguage()
             objectWillChange.send()
+            NotificationCenter.default.post(name: Notification.Name("LanguageDidChange"), object: nil)
         }
     }
 
