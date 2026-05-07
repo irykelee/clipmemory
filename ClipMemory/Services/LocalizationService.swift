@@ -114,4 +114,12 @@ struct L10n {
     static var itemUnpinAll: String { string("item.unpin.all") }
 
     static func langName(_ code: String) -> String { string("lang.\(code)") }
+
+    static var quitApp: String { string("app.quit") }
+    static var launchAtLogin: String { string("app.launch.at.login") }
+    static var launchAtLoginEnabled: String { string("app.launch.at.login.enabled") }
+    static var launchAtLoginEnabledBody: String { string("app.launch.at.login.enabled.body") }
+    static var launchAtLoginDisabled: String { string("app.launch.at.login.disabled") }
+    static var launchAtLoginDisabledBody: String { string("app.launch.at.login.disabled.body") }
+    static var error: String { string("app.error") }
 }
