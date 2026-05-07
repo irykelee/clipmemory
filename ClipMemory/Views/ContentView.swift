@@ -78,7 +78,10 @@ struct ContentView: View {
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
     @State private var searchText = "" {
-        didSet { keyboardSelectedIndex = nil }
+        didSet {
+            keyboardSelectedIndex = nil
+            updateDebouncedSearch(searchText)
+        }
     }
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: ClipboardItem?
@@ -90,14 +93,30 @@ struct ContentView: View {
     @State var pinnedOnly: Bool = false
     @State var settingsOnly: Bool = false
 
+    // Debounced search to avoid decrypting on every keystroke
+    @State private var debouncedSearchText = ""
+    @State private var searchTask: Task<Void, Never>?
+
+    private func updateDebouncedSearch(_ text: String) {
+        searchTask?.cancel()
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+            if !Task.isCancelled {
+                await MainActor.run {
+                    debouncedSearchText = text
+                }
+            }
+        }
+    }
+
     var displayedItems: [ClipboardItem] {
         let baseItems = pinnedOnly ? store.pinnedItems : store.items
-        if searchText.isEmpty {
+        if debouncedSearchText.isEmpty {
             return baseItems
         }
         // Search must decrypt content to match — ciphertext would never match plaintext queries
         return baseItems.filter { item in
-            item.decryptedContent.localizedCaseInsensitiveContains(searchText)
+            item.decryptedContent.localizedCaseInsensitiveContains(debouncedSearchText)
         }
     }
 
@@ -331,7 +350,7 @@ struct ContentView: View {
                         isKeyboardSelected: keyboardSelectedIndex == entry.globalIndex,
                         isCopied: lastCopiedId == entry.item.id,
                         isSelected: selectedItems.contains(entry.item.id),
-                        searchText: searchText,
+                        searchText: debouncedSearchText,
                         onCopyWithFeedback: {
                             lastCopiedId = entry.item.id
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -413,12 +432,41 @@ struct ClipboardItemRow: View {
 
     /// Creates attributed string with search term highlighted in yellow
     private func highlightedContent(_ text: String, highlight: String) -> AttributedString {
-        var attributed = AttributedString(String(text.prefix(200)))
-        if highlight.isEmpty { return attributed }
+        if highlight.isEmpty {
+            return AttributedString(String(text.prefix(200)))
+        }
+
         let lowerText = text.lowercased()
         let lowerHighlight = highlight.lowercased()
-        var searchStart = lowerText.startIndex
-        while let range = lowerText.range(of: lowerHighlight, range: searchStart..<lowerText.endIndex) {
+
+        // Find first match
+        guard let firstMatch = lowerText.range(of: lowerHighlight) else {
+            return AttributedString(String(text.prefix(200)))
+        }
+
+        // Calculate character offset from lowerText (safe since we only use it as a number)
+        let matchStartOffset = lowerText.distance(from: lowerText.startIndex, to: firstMatch.lowerBound)
+        var prefix = ""
+
+        // Use text's own indices to avoid Unicode case-mapping issues (e.g. "ß" → "ss")
+        let displayStartIdx: String.Index
+        if matchStartOffset > 30 {
+            let matchIdx = text.index(text.startIndex, offsetBy: matchStartOffset)
+            displayStartIdx = text.index(matchIdx, offsetBy: -20, limitedBy: text.startIndex) ?? text.startIndex
+            prefix = "..."
+        } else {
+            displayStartIdx = text.startIndex
+        }
+
+        // Take up to 200 chars from display start
+        let displayEndIdx = text.index(displayStartIdx, offsetBy: 200, limitedBy: text.endIndex) ?? text.endIndex
+        let displaySlice = String(text[displayStartIdx..<displayEndIdx])
+        var attributed = AttributedString(prefix + displaySlice)
+
+        // Re-find matches in the displayed slice and apply highlighting
+        let lowerSlice = displaySlice.lowercased()
+        var searchStart = lowerSlice.startIndex
+        while let range = lowerSlice.range(of: lowerHighlight, range: searchStart..<lowerSlice.endIndex) {
             let attrStart = AttributedString.Index(range.lowerBound, within: attributed)
             let attrEnd = AttributedString.Index(range.upperBound, within: attributed)
             if let attrStart = attrStart, let attrEnd = attrEnd {
@@ -427,6 +475,7 @@ struct ClipboardItemRow: View {
             }
             searchStart = range.upperBound
         }
+
         return attributed
     }
 

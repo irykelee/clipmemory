@@ -80,14 +80,27 @@ class CryptoService {
     /// Decrypts and verifies HMAC before decryption.
     /// Falls back to legacy format (no HMAC) for backwards compatibility with pre-1.2.0 data.
     func decrypt(_ base64String: String) -> String? {
-        guard let combined = Data(base64Encoded: base64String) else { return nil }
-        guard let bytes = decryptBytes(from: combined) else { return nil }
-        return String(bytes: bytes, encoding: .utf8)
+        guard let combined = Data(base64Encoded: base64String) else {
+            logger.warning("Base64 decode failed for encrypted content")
+            return nil
+        }
+        guard let bytes = decryptBytes(from: combined) else {
+            logger.warning("Decryption failed — key unavailable, HMAC mismatch, or corrupted data")
+            return nil
+        }
+        guard let result = String(bytes: bytes, encoding: .utf8) else {
+            logger.warning("Decrypted data is not valid UTF-8")
+            return nil
+        }
+        return result
     }
 
     /// Decrypts Data (for images).
     func decryptData(_ combined: Data) -> Data? {
-        guard let bytes = decryptBytes(from: combined) else { return nil }
+        guard let bytes = decryptBytes(from: combined) else {
+            logger.warning("Image decryption failed — key unavailable, HMAC mismatch, or corrupted data")
+            return nil
+        }
         return Data(bytes)
     }
 
