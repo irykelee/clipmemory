@@ -21,7 +21,7 @@
 "empty.no.history" = "Nenhum histórico";
 "empty.no.pinned" = "Sem itens fixados";
 "empty.history.hint" = "O que você copiar aparecerá aqui";
-"empty.pinned.hint" = "Toque em 'Fixar' para manter um item permanentemente";
+"empty.pinned.hint" = "Clique em 'Fixar' para manter um item permanentemente";
 
 /* Item Actions */
 "action.pin" = "Fixar";
@@ -102,3 +102,5 @@
 "app.launch.at.login.disabled.body" = "ClipMemory não será iniciado automaticamente.";
 "app.error" = "Erro";
 "batch.selected" = "%d selecionados";
+"app.send.feedback" = "Feedback";
+"alert.encrypt.failed" = "Falha ao criptografar dados sensíveis. Item não foi salvo.";

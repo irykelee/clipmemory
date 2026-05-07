@@ -102,3 +102,5 @@
 "app.launch.at.login.disabled.body" = "ClipMemory は自動的に起動しません。";
 "app.error" = "エラー";
 "batch.selected" = "%d 件選択中";
+"app.send.feedback" = "フィードバック";
+"alert.encrypt.failed" = "機密データの暗号化に失敗しました。保存されませんでした。";
