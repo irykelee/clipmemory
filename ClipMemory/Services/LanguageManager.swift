@@ -28,6 +28,12 @@ class LanguageManager: ObservableObject {
         if preferred.hasPrefix("zh") {
             return "zh-Hans"
         }
+        if preferred.hasPrefix("ja") {
+            return "ja"
+        }
+        if preferred.hasPrefix("ko") {
+            return "ko"
+        }
         if preferred.hasPrefix("es") {
             return "es"
         }
@@ -46,6 +52,8 @@ class LanguageManager: ObservableObject {
         [
             ("zh-Hans", "简体中文"),
             ("en", "English"),
+            ("ja", "日本語"),
+            ("ko", "한국어"),
             ("es", "Español"),
             ("pt", "Português")
         ]
@@ -60,6 +68,10 @@ struct SensitiveClearOption: Identifiable {
         let lm = LanguageManager.shared.selectedLanguage
         if lm == "zh-Hans" {
             return Self.labels_zh[hours] ?? "\(hours) 小时"
+        } else if lm == "ja" {
+            return Self.labels_ja[hours] ?? "\(hours) 時間"
+        } else if lm == "ko" {
+            return Self.labels_ko[hours] ?? "\(hours) 시간"
         } else if lm == "es" {
             return Self.labels_es[hours] ?? "\(hours) hours"
         } else if lm == "pt" {
@@ -73,6 +85,12 @@ struct SensitiveClearOption: Identifiable {
     ]
     private static let labels_en: [Int: String] = [
         1: "1 hour", 24: "24 hours", 48: "48 hours", 168: "7 days", 0: "Never"
+    ]
+    private static let labels_ja: [Int: String] = [
+        1: "1 時間", 24: "24 時間", 48: "48 時間", 168: "7 日間", 0: "自動削除しない"
+    ]
+    private static let labels_ko: [Int: String] = [
+        1: "1시간", 24: "24시간", 48: "48시간", 168: "7일", 0: "자동 삭제 안함"
     ]
     private static let labels_es: [Int: String] = [
         1: "1 hora", 24: "24 horas", 48: "48 horas", 168: "7 días", 0: "Nunca"
