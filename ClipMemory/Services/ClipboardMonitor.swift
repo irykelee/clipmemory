@@ -34,15 +34,24 @@ class ClipboardMonitor {
         ("sq0csp-[0-9A-Za-z_-]{43}", true),
         ("sq0atp-[0-9A-Za-z_-]{22}", true),
         ("amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", true),
-        // Removed [0-9a-f]{32} - too broad, matches UUIDs, MD5 hashes, any hex string
     ]
 
-    private let sensitiveValuePatterns = [
-        "(?i)(password|passwd|pwd)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
-        "(?i)(api_key|apikey|api-key)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
-        "(?i)(token|bearer)\\s*[=:]\\s*['\"]?[a-zA-Z0-9_-]{20,}",
-        "(?i)(sk|secret)\\s*[=:]\\s*['\"]?[^'\"\\s]{20,}",
-    ]
+    // Pre-compiled regex patterns for sensitive value detection (R10: compile once)
+    private lazy var sensitiveValueRegexes: [NSRegularExpression] = {
+        let patterns = [
+            "(?i)(password|passwd|pwd)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
+            "(?i)(api_key|apikey|api-key)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
+            "(?i)(token|bearer)\\s*[=:]\\s*['\"]?[a-zA-Z0-9_-]{20,}",
+            "(?i)(sk|secret)\\s*[=:]\\s*['\"]?[^'\"\\s]{20,}",
+        ]
+        return patterns.compactMap { try? NSRegularExpression(pattern: $0, options: []) }
+    }()
+
+    // Pre-compiled regex patterns for sensitive pattern matching
+    private lazy var sensitivePatternRegexes: [NSRegularExpression] = {
+        let regexPatterns = sensitivePatterns.filter { $0.isRegex }.map { $0.pattern }
+        return regexPatterns.compactMap { try? NSRegularExpression(pattern: $0, options: .caseInsensitive) }
+    }()
 
     func startMonitoring() {
         lastChangeCount = pasteboard.changeCount
@@ -122,15 +131,18 @@ class ClipboardMonitor {
 
     private func detectSensitive(_ content: String) -> Bool {
         let lowercased = content.lowercased()
+        let range = NSRange(content.startIndex..., in: content)
+        var regexIndex = 0
 
         for (pattern, isRegex) in sensitivePatterns {
             if isRegex {
-                if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
-                    let range = NSRange(content.startIndex..., in: content)
-                    if regex.firstMatch(in: content, options: [], range: range) != nil {
+                // R10: use pre-compiled regex at matching index
+                if regexIndex < sensitivePatternRegexes.count {
+                    if sensitivePatternRegexes[regexIndex].firstMatch(in: content, options: [], range: range) != nil {
                         return true
                     }
                 }
+                regexIndex += 1
             } else {
                 if lowercased.contains(pattern) {
                     return true
@@ -138,12 +150,10 @@ class ClipboardMonitor {
             }
         }
 
-        for pattern in sensitiveValuePatterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
-                let range = NSRange(content.startIndex..., in: content)
-                if regex.firstMatch(in: content, options: [], range: range) != nil {
-                    return true
-                }
+        // R10: use pre-compiled sensitive value regexes
+        for regex in sensitiveValueRegexes {
+            if regex.firstMatch(in: content, options: [], range: range) != nil {
+                return true
             }
         }
 
