@@ -78,7 +78,7 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 ### Installation
 
 ```bash
-brew install --cask https://raw.githubusercontent.com/irykelee/clipmemory/main/clipmemory.rb
+brew install irykelee/clipmemory/clipmemory
 ```
 
 ### Contact
