@@ -164,6 +164,10 @@ class ClipboardStore: ObservableObject {
     }
 
     func clearSensitiveItems() {
+        let removedImages = items.filter { $0.isSensitive && !$0.isPinned && $0.type == .image }
+        for item in removedImages {
+            ImageStorage.shared.deleteImage(filename: item.content)
+        }
         items.removeAll { $0.isSensitive && !$0.isPinned }
         updatePinnedItems()
         saveItems()
@@ -272,6 +276,10 @@ class ClipboardStore: ObservableObject {
 
     private func cleanupExpiredItems() {
         let beforeCount = items.count
+        let expiredImages = items.filter { $0.isExpired && $0.type == .image }
+        for item in expiredImages {
+            ImageStorage.shared.deleteImage(filename: item.content)
+        }
         items.removeAll { $0.isExpired }
         if items.count != beforeCount {
             updatePinnedItems()
