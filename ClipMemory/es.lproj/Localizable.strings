@@ -40,6 +40,8 @@
 "tooltip.clear.history" = "Vaciar historial (favoritos conservados)";
 "tooltip.show.all" = "Ver todo el historial";
 "tooltip.pinned.only" = "Ver solo favoritos";
+"tooltip.reveal" = "Mostrar contenido";
+"tooltip.hide" = "Ocultar contenido";
 
 /* Alerts */
 "alert.clear.title" = "Vaciar historial";
