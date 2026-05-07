@@ -328,7 +328,7 @@ struct ClipboardItemRow: View {
         item.isPinned ? L10n.actionUnpin : L10n.actionPin
     }
 
-    /// Decrypts content for display — uses item.decryptedContent which caches per instance
+    /// Decrypts content for display — delegates to item.decryptedContent
     private var decryptedContent: String {
         item.decryptedContent
     }

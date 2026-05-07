@@ -89,9 +89,18 @@ class ClipboardStore: ObservableObject {
             }
         }
 
+        // Use contentHash for fast pre-filter before expensive decryption
+        let newHash = sha256(plaintextContent)
         if let existingIndex = items.firstIndex(where: { existing in
+            // Type must match
+            guard existing.type == newItem.type else { return false }
+            // If both have contentHash, compare hashes first (avoids decryption)
+            if let existingHash = existing.contentHash, existingHash == newHash {
+                return true
+            }
+            // Fall back to decrypt-and-compare for items without contentHash
             let existingPlaintext = existing.isEncrypted ? (CryptoService.shared.decrypt(existing.content) ?? existing.content) : existing.content
-            return existingPlaintext == plaintextContent && existing.type == newItem.type
+            return existingPlaintext == plaintextContent
         }) {
             var existing = items.remove(at: existingIndex)
             existing = ClipboardItem(
@@ -117,6 +126,8 @@ class ClipboardStore: ObservableObject {
 
     func getDecryptedContent(_ item: ClipboardItem) -> String? {
         if item.isEncrypted {
+            // Return nil if decryption fails (e.g., key lost after reinstall).
+            // Caller must handle nil — never fall back to ciphertext (which is garbage text).
             return CryptoService.shared.decrypt(item.content)
         }
         return item.content
