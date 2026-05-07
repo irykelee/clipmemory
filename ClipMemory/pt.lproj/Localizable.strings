@@ -40,6 +40,8 @@
 "tooltip.clear.history" = "Limpar histórico (fixados mantidos)";
 "tooltip.show.all" = "Mostrar todo o histórico";
 "tooltip.pinned.only" = "Mostrar só os fixados";
+"tooltip.reveal" = "Mostrar conteúdo";
+"tooltip.hide" = "Ocultar conteúdo";
 
 /* Alerts */
 "alert.clear.title" = "Limpar histórico";

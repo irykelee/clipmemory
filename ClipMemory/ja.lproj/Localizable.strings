@@ -40,6 +40,8 @@
 "tooltip.clear.history" = "履歴をクリア（ピン留めは保持）";
 "tooltip.show.all" = "すべての履歴を表示";
 "tooltip.pinned.only" = "ピン留めのみ表示";
+"tooltip.reveal" = "内容を表示";
+"tooltip.hide" = "内容を非表示";
 
 /* Alerts */
 "alert.clear.title" = "履歴をクリア";

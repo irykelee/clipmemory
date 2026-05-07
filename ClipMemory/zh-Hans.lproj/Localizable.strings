@@ -40,6 +40,8 @@
 "tooltip.clear.history" = "清空历史（已收藏的保留）";
 "tooltip.show.all" = "显示全部记录";
 "tooltip.pinned.only" = "只看收藏内容";
+"tooltip.reveal" = "显示内容";
+"tooltip.hide" = "隐藏内容";
 
 /* Alerts */
 "alert.clear.title" = "清空历史";

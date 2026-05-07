@@ -40,6 +40,8 @@
 "tooltip.clear.history" = "Clear history (pinned items preserved)";
 "tooltip.show.all" = "Show all clipboard history";
 "tooltip.pinned.only" = "Show pinned items only (won't be auto-cleared)";
+"tooltip.reveal" = "Show content";
+"tooltip.hide" = "Hide content";
 
 /* Alerts */
 "alert.clear.title" = "Clear History";
