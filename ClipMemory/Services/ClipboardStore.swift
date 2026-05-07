@@ -72,8 +72,8 @@ class ClipboardStore: ObservableObject {
         var newItem = item
         let plaintextContent = item.content
 
-        // M3: Always encrypt text and link content (images are encrypted by ImageStorage)
-        if item.type != .image {
+        // Only encrypt sensitive items (images are handled separately by ImageStorage)
+        if item.isSensitive && item.type != .image {
             if let encrypted = CryptoService.shared.encrypt(item.content) {
                 let hash = sha256(plaintextContent)
                 newItem = ClipboardItem(
@@ -88,10 +88,8 @@ class ClipboardStore: ObservableObject {
                     contentHash: hash
                 )
             } else {
-                // N2: Encrypt failed — do NOT store as plaintext (security violation)
-                // Discard item to protect sensitive data instead
-                logger.error("Encryption failed for sensitive item, discarding to protect data")
-                return
+                // Encrypt failed — store as plaintext with warning
+                logger.warning("Encryption failed, storing as plaintext")
             }
         }
 

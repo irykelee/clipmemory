@@ -1,4 +1,17 @@
-[English](../../README.md) · [简体中文](../../README.md) · [Español](./README_ES.md) · [Português](./README_PT.md) · [한국어](./README_KO.md)
+<details>
+<summary><b>🌐 Languages / 语言</b></summary>
+
+| Language | Link |
+|----------|------|
+| English | [README_EN.md](./README_EN.md) |
+| 简体中文 | [README.md](../README.md) |
+| 日本語 | [README_JA.md](./README_JA.md) |
+| 한국어 | [README_KO.md](./README_KO.md) |
+| Español | [README_ES.md](./README_ES.md) |
+| Português | [README_PT.md](./README_PT.md) |
+
+---
+</details>
 
 ---
 
@@ -20,7 +33,7 @@
 ## セキュリティ機能
 
 - **AES-256暗号化** — パスワード、APIキーなどの機密コンテンツはAES-256で暗号化
-- **安全なキー管理** — 暗号化キーはmacOS Keychainに安全に保管
+- **安全なキー管理** — キーはローカルに安全に保管
 - **スマート検出** — 25+の機密データパターン対応
 - **自動削除** — 機密コンテンツの自動削除時間設定可能
 

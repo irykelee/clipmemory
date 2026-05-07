@@ -1,8 +1,23 @@
+<details>
+<summary><b>🌐 Languages / 语言</b></summary>
+
+| Language | Link |
+|----------|------|
+| English | [README_EN.md](./docs/lang/README_EN.md) |
+| 简体中文 | [README.md](./README.md) |
+| 日本語 | [README_JA.md](./docs/lang/README_JA.md) |
+| 한국어 | [README_KO.md](./docs/lang/README_KO.md) |
+| Español | [README_ES.md](./docs/lang/README_ES.md) |
+| Português | [README_PT.md](./docs/lang/README_PT.md) |
+
+---
+</details>
+
+---
+
 # ClipMemory 剪忆
 
 **Local Clipboard History Manager / 本地剪贴板历史管理器**
-
-[English](./docs/lang/README_EN.md) · [简体中文](./README.md) · [Español](./docs/lang/README_ES.md) · [Português](./docs/lang/README_PT.md) · [日本語](./docs/lang/README_JA.md) · [한국어](./docs/lang/README_KO.md)
 
 ---
 
@@ -24,7 +39,7 @@
 ### 安全特性
 
 - **AES-256 加密存储** — 敏感内容（密码、API密钥等）使用 AES-256 加密存储
-- **密钥安全保管** — 加密密钥存储在 macOS Keychain，设备级别保护
+- **密钥安全保管** — 加密密钥存储在本地，设备级别保护
 - **智能检测** — 支持 25+ 种敏感信息模式检测
 - **自动清理** — 敏感内容可设置自动清除时间
 
@@ -77,9 +92,3 @@ xcodegen generate
 # 构建
 xcodebuild -scheme ClipMemory -configuration Release
 ```
-
----
-
-## English
-
-For English documentation, please visit: [English README](./docs/lang/README_EN.md)
