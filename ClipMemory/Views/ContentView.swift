@@ -468,6 +468,7 @@ struct ClipboardItemRow: View {
     private var formattedDate: String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
+        formatter.locale = Locale(identifier: LanguageManager.shared.selectedLanguage)
         return formatter.localizedString(for: item.createdAt, relativeTo: Date())
     }
 }
