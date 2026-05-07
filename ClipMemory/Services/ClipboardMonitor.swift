@@ -10,6 +10,7 @@ class ClipboardMonitor {
     var skipNextCapture = false
 
     private let sensitivePatterns: [(pattern: String, isRegex: Bool)] = [
+        // Credentials
         ("password", false),
         ("pwd", false),
         ("passwd", false),
@@ -24,16 +25,27 @@ class ClipboardMonitor {
         ("sk-", false),
         ("ghp_", false),
         ("ssh-rsa", false),
+        // Private keys
         ("-----BEGIN.*PRIVATE KEY-----", true),
         ("-----BEGIN.*RSA PRIVATE KEY-----", true),
         ("-----BEGIN.*OPENSSH PRIVATE KEY-----", true),
         ("-----BEGIN EC PRIVATE KEY-----", true),
+        // API keys & tokens
         ("[a-zA-Z0-9]{20,}\\.[a-zA-Z0-9]{10,}\\.[a-zA-Z0-9_-]{50,}", true),
         ("AIza[0-9A-Za-z_-]{35}", true),
         ("AKIA[0-9A-Z]{16}", true),
         ("sq0csp-[0-9A-Za-z_-]{43}", true),
         ("sq0atp-[0-9A-Za-z_-]{22}", true),
         ("amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", true),
+        // Personal IDs
+        ("\\b[1-9]\\d{5}(?:19|20)\\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{3}[\\dXx]\\b", true),  // China ID card (18-digit)
+        ("\\b[1-9]\\d{7}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{2}\\b", true),                         // China ID card (15-digit)
+        // Bank cards (16-19 digit, basic check — may overlap with some IDs but safe to flag)
+        ("\\b(?:4\\d{15}|5[1-5]\\d{14}|3[47]\\d{13}|6(?:011|5\\d{2})\\d{12}|3(?:0[0-5]|[68]\\d)\\d{11}|9\\d{15})\\b", true),
+        // US SSN
+        ("\\b\\d{3}-\\d{2}-\\d{4}\\b", true),
+        // JWT
+        ("eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}", true),
     ]
 
     // Pre-compiled regex patterns for sensitive value detection (R10: compile once)
