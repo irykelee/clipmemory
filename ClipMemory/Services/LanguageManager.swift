@@ -74,44 +74,15 @@ struct SensitiveClearOption: Identifiable {
     let hours: Int
 
     var label: String {
-        let lang = LanguageManager.shared.selectedLanguage
-        if lang == "zh-Hant" {
-            return Self.zhHantLabels[hours] ?? "\(hours) 小時"
-        } else if lang == "zh-Hans" {
-            return Self.zhHansLabels[hours] ?? "\(hours) 小时"
-        } else if lang == "ja" {
-            return Self.jaLabels[hours] ?? "\(hours) 時間"
-        } else if lang == "ko" {
-            return Self.koLabels[hours] ?? "\(hours) 時間"
-        } else if lang == "es" {
-            return Self.esLabels[hours] ?? "\(hours) hours"
-        } else if lang == "pt" {
-            return Self.ptLabels[hours] ?? "\(hours) hours"
+        switch hours {
+        case 1: return L10n.sensitive1Hour
+        case 24: return L10n.sensitive24Hours
+        case 48: return L10n.sensitive48Hours
+        case 168: return L10n.sensitive7Days
+        case 0: return L10n.sensitiveNever
+        default: return "\(hours) hours"
         }
-        return Self.enLabels[hours] ?? "\(hours) hours"
     }
-
-    private static let enLabels: [Int: String] = [
-        1: "1 hour", 24: "24 hours", 48: "48 hours", 168: "7 days", 0: "Never"
-    ]
-    private static let zhHansLabels: [Int: String] = [
-        1: "1 小时", 24: "24 小时", 48: "48 小时", 168: "7 天", 0: "不自动清除"
-    ]
-    private static let zhHantLabels: [Int: String] = [
-        1: "1 小時", 24: "24 小時", 48: "48 小時", 168: "7 天", 0: "不自動清除"
-    ]
-    private static let jaLabels: [Int: String] = [
-        1: "1 時間", 24: "24 時間", 48: "48 時間", 168: "7 日間", 0: "自動削除しない"
-    ]
-    private static let koLabels: [Int: String] = [
-        1: "1시간", 24: "24시간", 48: "48시간", 168: "7일", 0: "자동 삭제 안함"
-    ]
-    private static let esLabels: [Int: String] = [
-        1: "1 hora", 24: "24 horas", 48: "48 horas", 168: "7 días", 0: "Nunca"
-    ]
-    private static let ptLabels: [Int: String] = [
-        1: "1 hora", 24: "24 horas", 48: "48 horas", 168: "7 dias", 0: "Nunca"
-    ]
 
     static let options: [SensitiveClearOption] = [
         SensitiveClearOption(hours: 1),
