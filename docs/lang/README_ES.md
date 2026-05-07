@@ -1,23 +1,10 @@
-<details>
-<summary><b>🌐 Languages / 语言</b></summary>
-
-| Language | Link |
-|----------|------|
-| English | [README_EN.md](./README_EN.md) |
-| 简体中文 | [README.md](../README.md) |
-| 日本語 | [README_JA.md](./README_JA.md) |
-| 한국어 | [README_KO.md](./README_KO.md) |
-| Español | [README_ES.md](./README_ES.md) |
-| Português | [README_PT.md](./README_PT.md) |
-
----
-</details>
-
----
-
 # ClipMemory (Español)
 
 **Gestor local de historial del portapapeles**
+
+[English](./README_EN.md) · [简体中文](../README.md) · [Español](./README_ES.md) · [Português](./README_PT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md)
+
+---
 
 ## Funciones
 
@@ -41,10 +28,13 @@
 
 | Acción | Cómo |
 |--------|------|
-| Abrir ventana | `⌘⇧V` |
-| Navegar | `↑` / `↓` |
-| Copiar | `Enter` |
+| Abrir ventana | `⌘⇧V` (atajo global) |
+| Navegar | `↑` / `↓` para循环浏览 |
+| Copiar | `Enter` o clic único copia y cierra |
 | Cerrar | `Esc` |
+| Buscar | Escribir para filtrar en tiempo real |
+| Fijar/Desfijar | Doble clic para alternar estado |
+| Eliminar | Clic en 🗑 o menú contextual |
 
 ## Requisitos
 

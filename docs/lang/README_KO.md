@@ -1,23 +1,10 @@
-<details>
-<summary><b>🌐 Languages / 언어</b></summary>
-
-| Language | Link |
-|----------|------|
-| English | [README_EN.md](./README_EN.md) |
-| 简体中文 | [README.md](../README.md) |
-| 日本語 | [README_JA.md](./README_JA.md) |
-| 한국어 | [README_KO.md](./README_KO.md) |
-| Español | [README_ES.md](./README_ES.md) |
-| Português | [README_PT.md](./README_PT.md) |
-
----
-</details>
-
----
-
 # ClipMemory 클립모리 (한국어)
 
 **로컬 클립보드 히스토리 관리자**
+
+[English](./README_EN.md) · [简体中文](../README.md) · [Español](./README_ES.md) · [Português](./README_PT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md)
+
+---
 
 ## 기능
 
@@ -41,19 +28,13 @@
 
 | 작업 | 방법 |
 |------|------|
-| 창 호출 | `⌘⇧V` |
+| 창 호출 | `⌘⇧V` (전역 단축키) |
 | 이동 | `↑` / `↓` 키 |
-| 복사 | `Enter` |
+| 복사 | `Enter` 또는 싱글 클릭으로 복사 후 닫기 |
 | 닫기 | `Esc` |
 | 검색 | 키워드 입력으로 실시간 필터링 |
-| 고정 | ⭐ 클릭 또는 우클릭→「고정」 |
-| 삭제 | 🗑 클릭 또는 우클릭→「삭제」 |
-
-## 설정
-
-- 최대 히스토리 수 (50/100/200/500/1000/2000)
-- 민감정보 자동 삭제 정책 (1시간/24시간/48시간/7일/안함)
-- 언어 전환
+| 고정/해제 | 더블 클릭으로 전환 |
+| 삭제 | 🗑 클릭 또는 컨텍스트 메뉴 |
 
 ## 필요 환경
 
