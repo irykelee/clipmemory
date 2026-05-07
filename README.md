@@ -14,8 +14,9 @@
 
 ### 功能特点
 
-- 📋 剪贴板历史记录（文本/链接）
+- 📋 剪贴板历史记录（文本/图片/链接）
 - ⭐ 固定重要片段，永不丢失
+- 💾 图片突破存储限制（文件存储）
 - 🔍 快速搜索历史记录
 - 🔒 敏感信息自动保护（加密存储 + 自动清理）
 - ⌨️ 全局快捷键 `Cmd+Ctrl+V` 呼出
@@ -62,8 +63,9 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 
 ### Features
 
-- 📋 Clipboard history (text/links)
+- 📋 Clipboard history (text/images/links)
 - ⭐ Pin important snippets, never lose them
+- 💾 Images stored as files, no storage limits
 - 🔍 Quick search through history
 - 🔒 Sensitive info protection (encrypted + auto-clear)
 - ⌨️ Global hotkey `Cmd+Ctrl+V` to summon
