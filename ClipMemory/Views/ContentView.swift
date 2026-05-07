@@ -507,9 +507,3 @@ struct QuickHelp: ViewModifier {
             .onHover { isHovering = $0 }
     }
 }
-
-extension View {
-    func quickHelp(_ text: String, preferBelow: Bool = false) -> some View {
-        modifier(QuickHelp(text, preferBelow: preferBelow))
-    }
-}
