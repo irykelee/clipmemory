@@ -43,7 +43,7 @@
 ## インストール
 
 ```bash
-brew install --cask https://raw.githubusercontent.com/irykelee/clipmemory/main/clipmemory.rb
+brew install irykelee/clipmemory/clipmemory
 ```
 
 ## 開発
