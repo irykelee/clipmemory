@@ -352,24 +352,24 @@ struct ClipboardItemRow: View {
                     .help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
 
                     if item.type == .image {
-                        if let nsImage = loadedImage {
-                            Image(nsImage: nsImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxHeight: 80)
-                                .onTapGesture {
-                                    onToggleReveal()
-                                }
-                                .task(id: item.content) {
-                                    let data = await ImageStorage.shared.loadImageAsync(filename: item.content)
-                                    if let data = data, let nsImage = NSImage(data: data), nsImage.isValid {
-                                        self.loadedImage = nsImage
-                                    }
-                                }
-                        } else {
-                            Text(L10n.itemImage)
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
+                        Group {
+                            if let nsImage = loadedImage {
+                                Image(nsImage: nsImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxHeight: 80)
+                            } else {
+                                Text(L10n.itemImage)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .onTapGesture { onToggleReveal() }
+                        .task(id: item.content) {
+                            let data = await ImageStorage.shared.loadImageAsync(filename: item.content)
+                            if let data = data, let nsImage = NSImage(data: data), nsImage.isValid {
+                                self.loadedImage = nsImage
+                            }
                         }
                     } else if item.isSensitive && !isRevealed {
                         Text(maskContent(decryptedContent))
