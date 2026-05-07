@@ -1,23 +1,8 @@
-<details>
-<summary><b>🌐 Languages / 语言</b></summary>
-
-| Language | Link |
-|----------|------|
-| English | [README_EN.md](./docs/lang/README_EN.md) |
-| 简体中文 | [README.md](./README.md) |
-| 日本語 | [README_JA.md](./docs/lang/README_JA.md) |
-| 한국어 | [README_KO.md](./docs/lang/README_KO.md) |
-| Español | [README_ES.md](./docs/lang/README_ES.md) |
-| Português | [README_PT.md](./docs/lang/README_PT.md) |
-
----
-</details>
-
----
-
 # ClipMemory 剪忆
 
 **Local Clipboard History Manager / 本地剪贴板历史管理器**
+
+[English](./docs/lang/README_EN.md) · [简体中文](./README.md) · [Español](./docs/lang/README_ES.md) · [Português](./docs/lang/README_PT.md) · [日本語](./docs/lang/README_JA.md) · [한국어](./docs/lang/README_KO.md)
 
 ---
 
