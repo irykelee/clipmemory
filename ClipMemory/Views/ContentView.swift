@@ -511,6 +511,7 @@ struct SettingsView: View {
                             Text(L10n.settingsMaxItemsCount(count)).tag(count)
                         }
                     }
+                    .id(languageManager.selectedLanguage) // Force refresh on language change
                 }
 
                 Section(header: Text(L10n.settingsSectionSensitive)) {
@@ -519,6 +520,7 @@ struct SettingsView: View {
                             Text(option.label).tag(option.hours)
                         }
                     }
+                    .id(languageManager.selectedLanguage) // Force refresh on language change
                     Text(L10n.settingsSensitiveHint)
                         .font(.caption)
                         .foregroundColor(.secondary)
