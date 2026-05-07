@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CommonCrypto
 
 class ClipboardStore: ObservableObject {
     static let shared = ClipboardStore()
@@ -65,8 +66,10 @@ class ClipboardStore: ObservableObject {
         var newItem = item
         let plaintextContent = item.content
 
-        if item.isSensitive {
+        // M3: Always encrypt text and link content (images are encrypted by ImageStorage)
+        if item.type != .image {
             guard let encrypted = CryptoService.shared.encrypt(item.content) else { return }
+            let hash = sha256(plaintextContent)
             newItem = ClipboardItem(
                 id: item.id,
                 content: encrypted,
@@ -75,7 +78,8 @@ class ClipboardStore: ObservableObject {
                 isPinned: item.isPinned,
                 isSensitive: item.isSensitive,
                 expiresAt: item.expiresAt,
-                isEncrypted: true
+                isEncrypted: true,
+                contentHash: hash
             )
         }
 
@@ -92,7 +96,8 @@ class ClipboardStore: ObservableObject {
                 isPinned: existing.isPinned,
                 isSensitive: existing.isSensitive,
                 expiresAt: existing.expiresAt,
-                isEncrypted: existing.isEncrypted
+                isEncrypted: existing.isEncrypted,
+                contentHash: existing.contentHash
             )
             items.insert(existing, at: 0)
         } else {
@@ -204,7 +209,8 @@ class ClipboardStore: ObservableObject {
             isPinned: moved.isPinned,
             isSensitive: moved.isSensitive,
             expiresAt: moved.expiresAt,
-            isEncrypted: moved.isEncrypted
+            isEncrypted: moved.isEncrypted,
+            contentHash: moved.contentHash
         )
         items.insert(moved, at: 0)
         saveItems()
@@ -216,10 +222,24 @@ class ClipboardStore: ObservableObject {
 
     func searchItems(_ query: String) -> [ClipboardItem] {
         guard !query.isEmpty else { return items }
+        let queryHash = sha256(query)
         return items.filter { item in
-            let content = item.isEncrypted ? (CryptoService.shared.decrypt(item.content) ?? item.content) : item.content
-            return content.localizedCaseInsensitiveContains(query)
+            // P1: If contentHash matches, decrypt and do full text match
+            if let hash = item.contentHash, hash == queryHash {
+                let content = item.isEncrypted ? (CryptoService.shared.decrypt(item.content) ?? item.content) : item.content
+                return content.localizedCaseInsensitiveContains(query)
+            }
+            return false
         }
+    }
+
+    private func sha256(_ string: String) -> String {
+        guard let data = string.data(using: .utf8) else { return "" }
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes { bytes in
+            _ = CC_SHA256(bytes.baseAddress, CC_LONG(data.count), &hash)
+        }
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
 
     private func cleanupExpiredItems() {
