@@ -9,6 +9,9 @@ class ImageStorage {
 
     private let fileManager = FileManager.default
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ImageStorage")
+    /// Memory cache for loaded images — avoids repeated disk I/O for items visible in the list or copied shortly after
+    private let imageCache = NSCache<NSString, NSImage>()
+
     private lazy var imagesDirectory: URL = {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = appSupport.appendingPathComponent("ClipMemory/Images", isDirectory: true)
@@ -72,6 +75,22 @@ class ImageStorage {
         guard let encryptedData = try? Data(contentsOf: fileURL) else { return nil }
         // Decrypt image data after reading from disk (N2)
         return CryptoService.shared.decryptData(encryptedData)
+    }
+
+    /// Loads image as NSImage, checking memory cache first for fast repeated access.
+    func loadImageObject(filename: String) -> NSImage? {
+        guard isValidFilename(filename) else { return nil }
+        // Check memory cache first
+        if let cached = imageCache.object(forKey: filename as NSString) {
+            return cached
+        }
+        // Load from disk and cache
+        guard let data = loadImage(filename: filename),
+              let image = NSImage(data: data) else {
+            return nil
+        }
+        imageCache.setObject(image, forKey: filename as NSString)
+        return image
     }
 
     /// Loads and decrypts image data asynchronously on a background queue.
