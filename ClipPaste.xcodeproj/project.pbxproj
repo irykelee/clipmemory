@@ -11,7 +11,6 @@
 		2F0DC3A136EC5E2A7F14E686 /* ClipboardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DA028A30EF2DF580AF6D93 /* ClipboardStore.swift */; };
 		39EF13FE91AC8AD4C7A4E91B /* LanguageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D7E114ACBA7144BBA8496A6 /* LanguageManager.swift */; };
 		43A09AAFB22736740C0DE4A9 /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48905ABEC94B60296D9D9CB /* CryptoService.swift */; };
-		4B5301643493C34AFA494838 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = F7E423EE2B4ADAA1AC240148 /* Localizable.strings */; };
 		4B5C5113E5E77B99E93A4E91 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20815CA14FD5FD21BB7DBF99 /* main.swift */; };
 		711DCDC1BF5A296BF52888EC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070E0137745C7D6C224F0DC4 /* AppDelegate.swift */; };
 		883763A3A3B25EE859BA47DC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1688AF93B1CB960196AD2783 /* ContentView.swift */; };
@@ -25,13 +24,11 @@
 		1688AF93B1CB960196AD2783 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		20815CA14FD5FD21BB7DBF99 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		3F95596ABE8FD97F6F1B8B6E /* ImageStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStorage.swift; sourceTree = "<group>"; };
-		4141F0B3BA0BD5A43A67B516 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		659DCDE3FB43A6938761ADF5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6A768DB1A8129716F5E2C13A /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
 		94E7877532C9687A4B486791 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
 		9D7E114ACBA7144BBA8496A6 /* LanguageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageManager.swift; sourceTree = "<group>"; };
 		A48905ABEC94B60296D9D9CB /* CryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoService.swift; sourceTree = "<group>"; };
-		B6F904995EC2FC12E675D821 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C7DA028A30EF2DF580AF6D93 /* ClipboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStore.swift; sourceTree = "<group>"; };
 		CA7F721F286B5D447A3BB8D2 /* ClipPaste.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClipPaste.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E122E0C8C17F5AEFC6DF95AC /* ClipPaste.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClipPaste.entitlements; sourceTree = "<group>"; };
@@ -75,7 +72,6 @@
 				E122E0C8C17F5AEFC6DF95AC /* ClipPaste.entitlements */,
 				659DCDE3FB43A6938761ADF5 /* Info.plist */,
 				20815CA14FD5FD21BB7DBF99 /* main.swift */,
-				F7E423EE2B4ADAA1AC240148 /* Localizable.strings */,
 				049A9ECBED4E914D7B466922 /* Models */,
 				40B764D59C29332E7C7D3687 /* Services */,
 				27F2EC156EEE529106F20DCE /* Views */,
@@ -107,7 +103,6 @@
 			buildConfigurationList = 968EC562B8F2E907895E50BC /* Build configuration list for PBXNativeTarget "ClipPaste" */;
 			buildPhases = (
 				F29DB77C0EADCEE1B8162D87 /* Sources */,
-				9CDFC259FAA72744792AACA9 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -141,7 +136,6 @@
 			knownRegions = (
 				Base,
 				en,
-				"zh-Hans",
 			);
 			mainGroup = B502CEBD927EEDD55D097571;
 			minimizedProjectReferenceProxies = 1;
@@ -154,17 +148,6 @@
 			);
 		};
 /* End PBXProject section */
-
-/* Begin PBXResourcesBuildPhase section */
-		9CDFC259FAA72744792AACA9 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				4B5301643493C34AFA494838 /* Localizable.strings in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		F29DB77C0EADCEE1B8162D87 /* Sources */ = {
@@ -185,18 +168,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXVariantGroup section */
-		F7E423EE2B4ADAA1AC240148 /* Localizable.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				B6F904995EC2FC12E675D821 /* en */,
-				4141F0B3BA0BD5A43A67B516 /* zh-Hans */,
-			);
-			name = Localizable.strings;
-			sourceTree = "<group>";
-		};
-/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		731B1D36066B3D717C02B558 /* Debug */ = {
@@ -249,7 +220,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -263,7 +234,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = ClipPaste;
@@ -310,7 +281,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -330,7 +301,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
