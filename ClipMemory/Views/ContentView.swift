@@ -343,13 +343,12 @@ struct ClipboardItemRow: View {
     }
 
     private func maskContent(_ content: String) -> String {
-        if content.count <= 8 {
+        if content.count <= 4 {
             return String(repeating: "•", count: content.count)
         }
-        let visibleCount = min(4, content.count / 4)
-        let prefix = String(content.prefix(visibleCount))
-        let suffix = String(content.suffix(visibleCount))
-        let middleCount = content.count - visibleCount * 2
+        let prefix = String(content.prefix(2))
+        let suffix = String(content.suffix(2))
+        let middleCount = content.count - 4
         let middle = String(repeating: "•", count: middleCount)
         return prefix + middle + suffix
     }

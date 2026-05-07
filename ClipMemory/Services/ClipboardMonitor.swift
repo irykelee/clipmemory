@@ -95,10 +95,10 @@ class ClipboardMonitor {
         } else if let imageData = pasteboard.data(forType: .png), !imageData.isEmpty {
             let id = UUID()
             if let filename = ImageStorage.shared.saveImage(imageData, id: id) {
-                // Treat screenshots as potentially sensitive by default (may contain passwords/IDs)
-                let isSensitive = true
+                // Only mark large images (>= 10KB) as sensitive — small images are likely icons/emoji
+                let isSensitive = imageData.count >= 10 * 1024
                 let hours = ClipboardStore.shared.sensitiveClearHours
-                let expiresAt: Date? = hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
+                let expiresAt: Date? = isSensitive && hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
                 let item = ClipboardItem(
                     id: id,
                     content: filename,
