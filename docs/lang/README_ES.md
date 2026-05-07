@@ -29,7 +29,7 @@
 | Acción | Cómo |
 |--------|------|
 | Abrir ventana | `⌘⇧V` (atajo global) |
-| Navegar | `↑` / `↓` para循环浏览 |
+| Navegar | `↑` / `↓` para navegar |
 | Copiar | `Enter` o clic único copia y cierra |
 | Cerrar | `Esc` |
 | Buscar | Escribir para filtrar en tiempo real |
