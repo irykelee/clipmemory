@@ -26,7 +26,13 @@ class ImageStorage {
         return UUID(uuidString: nameWithoutExt) != nil
     }
 
+    private let maxImageSize = 50 * 1024 * 1024 // 50MB limit
+
     func saveImage(_ data: Data, id: UUID) -> String? {
+        guard data.count <= maxImageSize else {
+            logger.warning("Image too large (\(data.count) bytes), skipping save")
+            return nil
+        }
         let filename = "\(id.uuidString).png"
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         do {
