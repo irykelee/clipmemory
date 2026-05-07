@@ -1,0 +1,86 @@
+/* General */
+"app.name" = "ClipMemory";
+"button.clear" = "清空";
+"button.settings" = "偏好设置";
+"button.back" = "返回";
+"button.cancel" = "取消";
+"button.delete" = "删除";
+"button.confirm" = "确认";
+"button.close" = "关闭";
+
+/* Header */
+"header.clear.history" = "清空历史";
+"header.show.all" = "全部";
+"header.show.pinned" = "已收藏";
+"header.pin.all" = "取消全部收藏";
+
+/* Search */
+"search.placeholder" = "搜索剪贴板...";
+
+/* Empty State */
+"empty.no.history" = "暂无剪贴板记录";
+"empty.no.pinned" = "暂无收藏内容";
+"empty.history.hint" = "复制内容后将自动记录到这里";
+"empty.pinned.hint" = "点击「收藏」将内容固定，不会被自动清理";
+
+/* Item Actions */
+"action.pin" = "收藏";
+"action.unpin" = "取消收藏";
+"action.delete" = "删除";
+"action.copy" = "复制";
+"action.view" = "查看";
+"action.hide" = "收起";
+"action.show.content" = "显示内容";
+"action.hide.content" = "收起内容";
+
+/* Tooltips */
+"tooltip.unpin" = "取消收藏";
+"tooltip.pin" = "收藏（不会被自动清理）";
+"tooltip.delete" = "删除";
+"tooltip.clear.history" = "清空历史（已收藏的保留）";
+"tooltip.show.all" = "显示全部记录";
+"tooltip.pinned.only" = "只看收藏内容";
+
+/* Alerts */
+"alert.clear.title" = "清空历史";
+"alert.clear.message" = "确定清空 %d 条记录？\n收藏内容不会被删除。";
+"alert.clear.none" = "没有可清空的记录。";
+"alert.delete.title" = "删除内容";
+"alert.delete.message" = "确定删除该内容吗？";
+
+/* Settings */
+"settings.title" = "偏好设置";
+"settings.section.history" = "历史记录";
+"settings.section.sensitive" = "敏感信息保护";
+"settings.section.language" = "语言";
+"settings.section.about" = "关于";
+"settings.max.items" = "最大条数";
+"settings.max.items.count" = "%d 条";
+"settings.auto.clear" = "自动清理";
+"settings.sensitive.hint" = "检测到密码、API密钥等敏感内容时，自动清理前的等待时间";
+
+/* Sensitive Options */
+"sensitive.1.hour" = "1 小时后";
+"sensitive.24.hours" = "24 小时后";
+"sensitive.48.hours" = "48 小时后";
+"sensitive.7.days" = "7 天后";
+"sensitive.never" = "不自动清理";
+
+/* About */
+"about.version" = "ClipMemory 剪忆 v%@";
+"about.free.edition" = "免费版 · 本地剪贴板管理器";
+"about.paid.edition" = "专业版";
+
+/* Item Labels */
+"item.sensitive" = "敏感";
+"item.image" = "[图片]";
+"item.unpin.all" = "取消全部收藏";
+
+/* Languages */
+"lang.zh-Hans" = "简体中文";
+"lang.zh-Hant" = "繁體中文";
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ko" = "한국어";
+"lang.es" = "Español";
+"lang.pt" = "Português";

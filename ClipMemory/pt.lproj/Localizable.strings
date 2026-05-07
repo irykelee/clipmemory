@@ -1,0 +1,86 @@
+/* General */
+"app.name" = "ClipMemory";
+"button.clear" = "Limpar";
+"button.settings" = "Configurações";
+"button.back" = "Voltar";
+"button.cancel" = "Cancelar";
+"button.delete" = "Excluir";
+"button.confirm" = "Confirmar";
+"button.close" = "Fechar";
+
+/* Header */
+"header.clear.history" = "Limpar histórico";
+"header.show.all" = "Todos";
+"header.show.pinned" = "Fixados";
+"header.pin.all" = "Desfixar tudo";
+
+/* Search */
+"search.placeholder" = "Pesquisar na área de transferência...";
+
+/* Empty State */
+"empty.no.history" = "Nenhum histórico";
+"empty.no.pinned" = "Sem itens fixados";
+"empty.history.hint" = "O que você copiar aparecerá aqui";
+"empty.pinned.hint" = "Toque em 'Fixar' para manter um item permanentemente";
+
+/* Item Actions */
+"action.pin" = "Fixar";
+"action.unpin" = "Desfixar";
+"action.delete" = "Excluir";
+"action.copy" = "Copiar";
+"action.view" = "Ver";
+"action.hide" = "Ocultar";
+"action.show.content" = "Mostrar conteúdo";
+"action.hide.content" = "Ocultar conteúdo";
+
+/* Tooltips */
+"tooltip.unpin" = "Desfixar";
+"tooltip.pin" = "Fixar (não é excluído automaticamente)";
+"tooltip.delete" = "Excluir";
+"tooltip.clear.history" = "Limpar histórico (fixados mantidos)";
+"tooltip.show.all" = "Mostrar todo o histórico";
+"tooltip.pinned.only" = "Mostrar só os fixados";
+
+/* Alerts */
+"alert.clear.title" = "Limpar histórico";
+"alert.clear.message" = "Excluir %d itens?\nItens fixados serão mantidos.";
+"alert.clear.none" = "Nada para limpar.";
+"alert.delete.title" = "Excluir";
+"alert.delete.message" = "Excluir este item?";
+
+/* Settings */
+"settings.title" = "Configurações";
+"settings.section.history" = "Histórico";
+"settings.section.sensitive" = "Dados sensíveis";
+"settings.section.language" = "Idioma";
+"settings.section.about" = "Sobre";
+"settings.max.items" = "Máximo de itens";
+"settings.max.items.count" = "%d itens";
+"settings.auto.clear" = "Exclusão automática";
+"settings.sensitive.hint" = "Tempo até excluir automaticamente senhas, chaves de API, etc.";
+
+/* Sensitive Options */
+"sensitive.1.hour" = "1 hora";
+"sensitive.24.hours" = "24 horas";
+"sensitive.48.hours" = "48 horas";
+"sensitive.7.days" = "7 dias";
+"sensitive.never" = "Nunca";
+
+/* About */
+"about.version" = "ClipMemory v%@";
+"about.free.edition" = "Versão gratuita · Gerenciador local de área de transferência";
+"about.paid.edition" = "Versão profissional";
+
+/* Item Labels */
+"item.sensitive" = "Sensível";
+"item.image" = "[Imagem]";
+"item.unpin.all" = "Desfixar tudo";
+
+/* Languages */
+"lang.zh-Hans" = "简体中文";
+"lang.zh-Hant" = "繁體中文";
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ko" = "한국어";
+"lang.es" = "Español";
+"lang.pt" = "Português";
