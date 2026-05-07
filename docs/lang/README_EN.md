@@ -30,7 +30,9 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 - 📋 Clipboard history (text/images/links)
 - ⭐ Pin important snippets, never lose them
 - 💾 Images stored as files, no storage limits
-- 🔍 Quick search through history
+- 🔍 Quick search through history (with highlighted matches)
+- ✅ Copy feedback (green flash confirmation)
+- ☑️ Multi-select batch operations (batch pin/delete)
 - 🔒 Sensitive info protection (encrypted + auto-clear)
 - ⌨️ Global hotkey `Cmd+Ctrl+V` to summon
 - 🛡️ Launch at login (optional)
@@ -49,14 +51,16 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 |--------|-----|
 | Summon window | `⌘⇧V` (global hotkey, works anywhere) |
 | Navigate | `↑` / `↓` keys to cycle through items |
-| Copy item | `Enter` or single-click copies selected and closes window |
+| Copy item | `Enter` or single-click copies (green flash confirms) |
+| Multi-select | Click checkbox to enter multi-select mode, Shift+click for range |
+| Batch actions | After selecting, batch pin/delete with toolbar buttons |
 | Close window | `Esc` |
-| Search | Type to filter history in real-time |
+| Search | Type to filter history, matches highlighted |
 | Pin/Unpin | Double-click to toggle pin status |
 | Pin item | Click ⭐ or right-click → "Pin" |
 | Unpin item | Click ⭐ again or right-click → "Unpin" |
 | Delete item | Click 🗑 or right-click → "Delete" |
-| Reveal sensitive | Click orange masked text → "View" |
+| Reveal sensitive | Click masked text → "View" (search shows matching region) |
 | Clear history | Top "Clear" button (pinned items preserved) |
 
 > 💡 Pinned items are never auto-cleared and won't trigger deduplication (re-copying updates timestamp)

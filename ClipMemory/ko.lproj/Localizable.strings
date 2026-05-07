@@ -78,6 +78,12 @@
 "item.image" = "[이미지]";
 "item.unpin.all" = "전체 고정 해제";
 
+/* Date Groups */
+"group.today" = "오늘";
+"group.yesterday" = "어제";
+"group.thisWeek" = "이번 주";
+"group.older" = "이전";
+
 /* Languages */
 "lang.zh-Hans" = "简体中文";
 "lang.zh-Hant" = "繁體中文";
@@ -95,3 +101,4 @@
 "app.launch.at.login.disabled" = "로그인 시 시작 비활성화됨";
 "app.launch.at.login.disabled.body" = "ClipMemory이 자동으로 시작되지 않습니다.";
 "app.error" = "오류";
+"batch.selected" = "%d개 선택됨";

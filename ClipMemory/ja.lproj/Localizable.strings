@@ -78,6 +78,12 @@
 "item.image" = "[画像]";
 "item.unpin.all" = "すべてピン留め解除";
 
+/* Date Groups */
+"group.today" = "今日";
+"group.yesterday" = "昨日";
+"group.thisWeek" = "今週";
+"group.older" = "それ以前";
+
 /* Languages */
 "lang.zh-Hans" = "简体中文";
 "lang.zh-Hant" = "繁體中文";
@@ -95,3 +101,4 @@
 "app.launch.at.login.disabled" = "ログイン時に起動が無効";
 "app.launch.at.login.disabled.body" = "ClipMemory は自動的に起動しません。";
 "app.error" = "エラー";
+"batch.selected" = "%d 件選択中";
