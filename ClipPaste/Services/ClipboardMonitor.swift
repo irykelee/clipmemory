@@ -6,6 +6,9 @@ class ClipboardMonitor {
     private var lastChangeCount: Int = 0
     private let pasteboard = NSPasteboard.general
 
+    /// Set to true when ClipboardStore writes to pasteboard, so we skip re-capturing.
+    var skipNextCapture = false
+
     private let sensitivePatterns: [(pattern: String, isRegex: Bool)] = [
         ("password", false),
         ("pwd", false),
@@ -31,7 +34,7 @@ class ClipboardMonitor {
         ("sq0csp-[0-9A-Za-z_-]{43}", true),
         ("sq0atp-[0-9A-Za-z_-]{22}", true),
         ("amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", true),
-        ("[0-9a-f]{32}", true),
+        // Removed [0-9a-f]{32} - too broad, matches UUIDs, MD5 hashes, any hex string
     ]
 
     private let sensitiveValuePatterns = [
@@ -53,7 +56,19 @@ class ClipboardMonitor {
         timer = nil
     }
 
+    /// Called by ClipboardStore after it writes to pasteboard, so we skip re-capturing.
+    func recordOwnWrite() {
+        skipNextCapture = true
+        lastChangeCount = pasteboard.changeCount
+    }
+
     private func checkClipboard() {
+        // Skip if ClipboardStore just wrote to pasteboard (break copy loop)
+        if skipNextCapture {
+            skipNextCapture = false
+            lastChangeCount = pasteboard.changeCount
+            return
+        }
         let currentCount = pasteboard.changeCount
         guard currentCount != lastChangeCount else { return }
         lastChangeCount = currentCount
@@ -80,12 +95,16 @@ class ClipboardMonitor {
         } else if let imageData = pasteboard.data(forType: .png), !imageData.isEmpty {
             let id = UUID()
             if let filename = ImageStorage.shared.saveImage(imageData, id: id) {
+                // Treat screenshots as potentially sensitive by default (may contain passwords/IDs)
+                let isSensitive = true
+                let hours = ClipboardStore.shared.sensitiveClearHours
+                let expiresAt: Date? = hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
                 let item = ClipboardItem(
                     id: id,
                     content: filename,
                     type: .image,
-                    isSensitive: false,
-                    expiresAt: nil
+                    isSensitive: isSensitive,
+                    expiresAt: expiresAt
                 )
                 DispatchQueue.main.async {
                     ClipboardStore.shared.addItem(item)

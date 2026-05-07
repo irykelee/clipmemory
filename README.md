@@ -35,7 +35,7 @@
 
 ### 设置选项
 
-- 历史记录最大条数（50/100/200/500条）
+- 历史记录最大条数（50/100/200/500/1000/2000条）
 - 敏感信息清除策略（1小时/24小时/48小时/7天/不自动清除）
 - 语言切换
 
@@ -84,7 +84,7 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 
 ### Settings
 
-- Max history items (50/100/200/500)
+- Max history items (50/100/200/500/1000/2000)
 - Sensitive data auto-clear policy (1h/24h/48h/7days/never)
 - Language switcher
 
