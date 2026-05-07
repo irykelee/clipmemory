@@ -33,6 +33,23 @@
   - 通用凭证模式（password=value、token=value 等）
 - **自动清理** — 敏感内容可设置自动清除时间
 
+### 使用方法
+
+| 操作 | 方式 |
+|------|------|
+| 呼出窗口 | `⌘⇧V`（全局热键，任意界面均可） |
+| 上下选择 | `↑` / `↓` 键循环浏览 |
+| 复制内容 | `Enter` 复制选中项并关闭窗口 |
+| 关闭窗口 | `Esc` |
+| 搜索 | 输入关键词实时过滤 |
+| 固定片段 | 点击 ⭐ 或右键菜单「固定片段」|
+| 取消固定 | 再次点击 ⭐ 或右键菜单「取消固定」|
+| 删除片段 | 点击 🗑 或右键菜单「删除」|
+| 查看敏感内容 | 点击橙色遮罩文字「查看」|
+| 清空历史 | 顶部「清空」按钮（保留固定片段）|
+
+> 💡 固定片段不会被自动清理，也不会触发去重（复制相同内容会更新时间戳）
+
 ### 设置选项
 
 - 历史记录最大条数（50/100/200/500/1000/2000条）
@@ -81,6 +98,23 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
   - API keys (AWS, Google AI, Stripe, Square, etc.)
   - Generic credential patterns (password=value, token=value, etc.)
 - **Auto-Clear** — Configurable auto-clear time for sensitive content
+
+### Usage
+
+| Action | How |
+|--------|-----|
+| Summon window | `⌘⇧V` (global hotkey, works anywhere) |
+| Navigate | `↑` / `↓` keys to cycle through items |
+| Copy item | `Enter` copies selected and closes window |
+| Close window | `Esc` |
+| Search | Type to filter history in real-time |
+| Pin item | Click ⭐ or right-click → "Pin" |
+| Unpin item | Click ⭐ again or right-click → "Unpin" |
+| Delete item | Click 🗑 or right-click → "Delete" |
+| Reveal sensitive | Click orange masked text → "View" |
+| Clear history | Top "Clear" button (pinned items preserved) |
+
+> 💡 Pinned items are never auto-cleared and won't trigger deduplication (re-copying updates timestamp)
 
 ### Settings
 
