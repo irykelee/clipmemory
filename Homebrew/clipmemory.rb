@@ -1,12 +1,18 @@
-class Clipmemory < Formula
-  desc "本地剪贴板历史管理器 - 永久记忆你的每一次复制"
-  homepage "https://github.com/irykelee/clipmemory"
-  url "https://github.com/irykelee/clipmemory/releases/download/1.2.0/ClipMemory.tar.gz"
-  sha256 "d584b502f8462257b1257a1ebb4d4198d2a02bc801edeb3c55ed703b7546bff6"
-  version "1.2.0"
-  depends_on macOS: ">= :catalina"
+cask "clipmemory" do
+  version "1.2.13"
+  sha256 "9f9919e12592c215813bd49b576213f0ceaed9c1120cf3ff71d4cde4e7137923"
 
-  def install
-    prefix.install "ClipMemory.app"
-  end
+  url "https://github.com/irykelee/clipmemory/releases/download/v#{version}/ClipMemory.tar.gz"
+  name "ClipMemory"
+  desc "Local clipboard history manager with AES-256 encryption"
+  homepage "https://github.com/irykelee/clipmemory"
+
+  depends_on macos: ">= :ventura"
+
+  app "ClipMemory.app"
+
+  zap trash: [
+    "~/Library/Application Support/ClipMemory",
+    "~/Library/Preferences/com.clipmemory.app.plist",
+  ]
 end
