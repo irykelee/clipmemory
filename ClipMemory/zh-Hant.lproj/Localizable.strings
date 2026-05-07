@@ -40,6 +40,8 @@
 "tooltip.clear.history" = "清除歷史（已釘選的保留）";
 "tooltip.show.all" = "顯示全部記錄";
 "tooltip.pinned.only" = "只看釘選內容";
+"tooltip.reveal" = "顯示內容";
+"tooltip.hide" = "隱藏內容";
 
 /* Alerts */
 "alert.clear.title" = "清除歷史";

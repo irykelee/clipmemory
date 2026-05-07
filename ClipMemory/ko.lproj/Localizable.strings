@@ -40,6 +40,8 @@
 "tooltip.clear.history" = "기록 비우기 (고정된 항목 제외)";
 "tooltip.show.all" = "전체 클립보드 기록 보기";
 "tooltip.pinned.only" = "고정된 항목만 보기";
+"tooltip.reveal" = "내용 보기";
+"tooltip.hide" = "내용 숨기기";
 
 /* Alerts */
 "alert.clear.title" = "기록 비우기";

@@ -397,7 +397,7 @@ struct ClipboardItemRow: View {
                                 .foregroundColor(.secondary)
                         }
                         .buttonStyle(.plain)
-                        .help(L10n.tooltipDelete)
+                        .help(isRevealed ? L10n.tooltipHide : L10n.tooltipReveal)
                     }
 
                     Text(formattedDate)
@@ -539,7 +539,7 @@ struct SettingsView: View {
                 }
 
                 Section(header: Text(L10n.settingsSectionAbout)) {
-                    Text(L10n.aboutVersion("1.2.0"))
+                    Text(L10n.aboutVersion(AppVersion.current))
                         .foregroundColor(.secondary)
                     Text(L10n.aboutFreeEdition)
                         .foregroundColor(.secondary)
