@@ -1,10 +1,12 @@
 import Foundation
 import AppKit
+import os.log
 
 class ImageStorage {
     static let shared = ImageStorage()
 
     private let fileManager = FileManager.default
+    private let logger = Logger(subsystem: "com.clippaste.app", category: "ImageStorage")
     private lazy var imagesDirectory: URL = {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = appSupport.appendingPathComponent("ClipPaste/Images", isDirectory: true)
@@ -23,7 +25,7 @@ class ImageStorage {
             try data.write(to: fileURL)
             return filename
         } catch {
-            print("ImageStorage: failed to save image - \(error)")
+            logger.error("Failed to save image: \(error.localizedDescription)")
             return nil
         }
     }
