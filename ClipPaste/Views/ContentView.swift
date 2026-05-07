@@ -374,7 +374,7 @@ struct SettingsView: View {
     @ObservedObject var languageManager = LanguageManager.shared
     @ObservedObject var store = ClipboardStore.shared
 
-    let maxItemOptions = [50, 100, 200, 500]
+    let maxItemOptions = [50, 100, 200, 500, 1000, 2000]
 
     var body: some View {
         VStack(spacing: 0) {
