@@ -80,13 +80,11 @@ struct ContentView: View {
     @State private var searchText = "" {
         didSet { keyboardSelectedIndex = nil }
     }
-    @State private var selectedItem: ClipboardItem?
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: ClipboardItem?
     @State private var showingClearAlert = false
     @State private var revealedItems: Set<UUID> = []
     @State private var keyboardSelectedIndex: Int? = nil
-    @State private var isFocused: Bool = true
     @State var pinnedOnly: Bool = false
     @State var settingsOnly: Bool = false
 
@@ -97,8 +95,7 @@ struct ContentView: View {
         }
         // Search must decrypt content to match — ciphertext would never match plaintext queries
         return baseItems.filter { item in
-            let content = item.isEncrypted ? (ClipboardStore.shared.getDecryptedContent(item) ?? item.content) : item.content
-            return content.localizedCaseInsensitiveContains(searchText)
+            item.decryptedContent.localizedCaseInsensitiveContains(searchText)
         }
     }
 
@@ -331,12 +328,9 @@ struct ClipboardItemRow: View {
         item.isPinned ? L10n.actionUnpin : L10n.actionPin
     }
 
-    /// Decrypts content for display — M3 encrypts all text, so we must decrypt before showing
+    /// Decrypts content for display — uses item.decryptedContent which caches per instance
     private var decryptedContent: String {
-        if item.isEncrypted {
-            return ClipboardStore.shared.getDecryptedContent(item) ?? item.content
-        }
-        return item.content
+        item.decryptedContent
     }
 
     var body: some View {

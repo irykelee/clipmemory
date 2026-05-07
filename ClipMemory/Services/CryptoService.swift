@@ -6,7 +6,6 @@ import os.log
 class CryptoService {
     static let shared = CryptoService()
 
-    private let keyTag = "com.clipmemory.clipboard.key"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
 
     private var keyFileURL: URL {
