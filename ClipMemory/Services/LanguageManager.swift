@@ -84,11 +84,13 @@ struct SensitiveClearOption: Identifiable {
         }
     }
 
-    static let options: [SensitiveClearOption] = [
-        SensitiveClearOption(hours: 1),
-        SensitiveClearOption(hours: 24),
-        SensitiveClearOption(hours: 48),
-        SensitiveClearOption(hours: 168),
-        SensitiveClearOption(hours: 0)
-    ]
+    static var options: [SensitiveClearOption] {
+        [
+            SensitiveClearOption(hours: 1),
+            SensitiveClearOption(hours: 24),
+            SensitiveClearOption(hours: 48),
+            SensitiveClearOption(hours: 168),
+            SensitiveClearOption(hours: 0)
+        ]
+    }
 }
