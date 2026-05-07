@@ -505,47 +505,65 @@ struct SettingsView: View {
 
             Divider()
 
-            Form {
-                Section(header: Text(L10n.settingsSectionHistory)) {
-                    Picker(L10n.settingsMaxItems, selection: $store.maxItems) {
-                        ForEach(maxItemOptions, id: \.self) { count in
-                            Text(L10n.settingsMaxItemsCount(count)).tag(count)
-                        }
-                    }
-                    .id(languageManager.selectedLanguage) // Force refresh on language change
-                }
-
-                Section(header: Text(L10n.settingsSectionSensitive)) {
-                    Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) {
-                        ForEach(SensitiveClearOption.options) { option in
-                            Text(option.label).tag(option.hours)
-                        }
-                    }
-                    .id(languageManager.selectedLanguage) // Force refresh on language change
-                    Text(L10n.settingsSensitiveHint)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Section(header: Text(L10n.settingsSectionLanguage)) {
-                    Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) {
-                        ForEach(languageManager.availableLanguages, id: \.code) { lang in
-                            Text(lang.name).tag(lang.code)
-                        }
-                    }
-                }
-
-                Section(header: Text(L10n.settingsSectionAbout)) {
-                    Text(L10n.aboutVersion(AppVersion.current))
-                        .foregroundColor(.secondary)
-                    Text(L10n.aboutFreeEdition)
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                }
-            }
-            .formStyle(.grouped)
-            .padding()
+            settingsForm
+                .padding()
         }
         .frame(minWidth: 380, minHeight: 400)
+    }
+
+    @ViewBuilder
+    private var settingsForm: some View {
+        if #available(macOS 14, *) {
+            Form {
+                settingsSections
+            }
+            .formStyle(.grouped)
+        } else {
+            Form {
+                settingsSections
+            }
+            .formStyle(.automatic)
+        }
+    }
+
+    private var settingsSections: some View {
+        Group {
+            Section(header: Text(L10n.settingsSectionHistory)) {
+                Picker(L10n.settingsMaxItems, selection: $store.maxItems) {
+                    ForEach(maxItemOptions, id: \.self) { count in
+                        Text(L10n.settingsMaxItemsCount(count)).tag(count)
+                    }
+                }
+                .id(languageManager.selectedLanguage)
+            }
+
+            Section(header: Text(L10n.settingsSectionSensitive)) {
+                Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) {
+                    ForEach(SensitiveClearOption.options) { option in
+                        Text(option.label).tag(option.hours)
+                    }
+                }
+                .id(languageManager.selectedLanguage)
+                Text(L10n.settingsSensitiveHint)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text(L10n.settingsSectionLanguage)) {
+                Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) {
+                    ForEach(languageManager.availableLanguages, id: \.code) { lang in
+                        Text(lang.name).tag(lang.code)
+                    }
+                }
+            }
+
+            Section(header: Text(L10n.settingsSectionAbout)) {
+                Text(L10n.aboutVersion(AppVersion.current))
+                    .foregroundColor(.secondary)
+                Text(L10n.aboutFreeEdition)
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+            }
+        }
     }
 }
