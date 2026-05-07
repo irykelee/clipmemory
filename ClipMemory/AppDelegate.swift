@@ -8,11 +8,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var clipboardMonitor: ClipboardMonitor!
     var hotKeyManager: HotKeyManager!
     private var launchAtLoginMenuItem: NSMenuItem!
+    private var languageObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
         setupClipboardMonitor()
         setupHotKey()
+        setupLanguageObserver()
         NSApp.setActivationPolicy(.accessory)
     }
 
@@ -21,6 +23,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "ClipMemory")
         }
+        statusItem.menu = createMenu()
+    }
+
+    private func setupLanguageObserver() {
+        languageObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("LanguageDidChange"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.rebuildMenu()
+        }
+    }
+
+    private func rebuildMenu() {
         statusItem.menu = createMenu()
     }
 
@@ -165,5 +181,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.makeKeyAndOrderFront(nil)
         }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    deinit {
+        if let observer = languageObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }
