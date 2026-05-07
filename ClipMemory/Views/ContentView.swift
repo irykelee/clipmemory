@@ -366,9 +366,9 @@ struct ClipboardItemRow: View {
                         }
                         .onTapGesture { onToggleReveal() }
                         .task(id: item.content) {
-                            let data = await ImageStorage.shared.loadImageAsync(filename: item.content)
-                            if let data = data, let nsImage = NSImage(data: data), nsImage.isValid {
-                                self.loadedImage = nsImage
+                            // Use cached loadImageObject for fast repeated access during scroll
+                            if let image = ImageStorage.shared.loadImageObject(filename: item.content) {
+                                self.loadedImage = image
                             }
                         }
                     } else if item.isSensitive && !isRevealed {
