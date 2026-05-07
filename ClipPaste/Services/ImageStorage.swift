@@ -18,6 +18,14 @@ class ImageStorage {
 
     private init() {}
 
+    /// Validates that a filename is safe: must be a UUID string + ".png" extension.
+    /// Prevents path traversal attacks where content like "../../.ssh/id_rsa" could be used.
+    private func isValidFilename(_ filename: String) -> Bool {
+        guard filename.hasSuffix(".png") else { return false }
+        let nameWithoutExt = String(filename.dropLast(4))
+        return UUID(uuidString: nameWithoutExt) != nil
+    }
+
     func saveImage(_ data: Data, id: UUID) -> String? {
         let filename = "\(id.uuidString).png"
         let fileURL = imagesDirectory.appendingPathComponent(filename)
@@ -31,11 +39,13 @@ class ImageStorage {
     }
 
     func loadImage(filename: String) -> Data? {
+        guard isValidFilename(filename) else { return nil }
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         return try? Data(contentsOf: fileURL)
     }
 
     func deleteImage(filename: String) {
+        guard isValidFilename(filename) else { return }
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         try? fileManager.removeItem(at: fileURL)
     }
@@ -43,6 +53,7 @@ class ImageStorage {
     func deleteAllExcept(filenames: Set<String>) {
         guard let files = try? fileManager.contentsOfDirectory(atPath: imagesDirectory.path) else { return }
         for file in files {
+            guard isValidFilename(file) else { continue }
             if !filenames.contains(file) {
                 try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(file))
             }
