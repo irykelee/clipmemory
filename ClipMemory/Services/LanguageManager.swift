@@ -8,7 +8,6 @@ class LanguageManager: ObservableObject {
         didSet {
             UserDefaults.standard.set(selectedLanguage, forKey: "appLanguage")
             applyLanguage()
-            objectWillChange.send()
             NotificationCenter.default.post(name: Notification.Name("LanguageDidChange"), object: nil)
         }
     }
@@ -71,8 +70,13 @@ class LanguageManager: ObservableObject {
 }
 
 struct SensitiveClearOption: Identifiable {
-    let id = UUID()
+    let id: Int  // Use hours as stable identity for SwiftUI ForEach
     let hours: Int
+
+    init(hours: Int) {
+        self.hours = hours
+        self.id = hours
+    }
 
     var label: String {
         switch hours {

@@ -129,10 +129,12 @@ class ClipboardMonitor {
 
     private func processImageData(_ imageData: Data) {
         let id = UUID()
-        if let filename = ImageStorage.shared.saveImage(imageData, id: id) {
-            let isSensitive = imageData.count >= 10 * 1024
-            let hours = ClipboardStore.shared.sensitiveClearHours
-            let expiresAt: Date? = isSensitive && hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
+        let isSensitive = imageData.count >= 10 * 1024
+        let hours = ClipboardStore.shared.sensitiveClearHours
+        let expiresAt: Date? = isSensitive && hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
+
+        ImageStorage.shared.saveImage(imageData, id: id) { [weak self] filename in
+            guard let filename = filename else { return }
             let item = ClipboardItem(
                 id: id,
                 content: filename,
@@ -140,9 +142,7 @@ class ClipboardMonitor {
                 isSensitive: isSensitive,
                 expiresAt: expiresAt
             )
-            DispatchQueue.main.async {
-                ClipboardStore.shared.addItem(item)
-            }
+            ClipboardStore.shared.addItem(item)
         }
     }
 
