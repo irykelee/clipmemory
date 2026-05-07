@@ -76,6 +76,28 @@ class CryptoService {
         return combined.base64EncodedString()
     }
 
+    /// Encrypts raw Data (for images). Returns base64-encoded encrypted data.
+    func encryptData(_ data: Data) -> Data? {
+        guard let key = getKey() else { return nil }
+
+        var iv = Data(count: 16)
+        let ivResult = iv.withUnsafeMutableBytes {
+            SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!)
+        }
+        guard ivResult == errSecSuccess else { return nil }
+
+        guard let encrypted = aesEncrypt(data: data, key: key, iv: iv) else { return nil }
+
+        var ivAndCiphertext = iv
+        ivAndCiphertext.append(encrypted)
+        let hmac = computeHMAC(data: ivAndCiphertext, key: key)
+
+        var combined = iv
+        combined.append(encrypted)
+        combined.append(hmac)
+        return combined
+    }
+
     /// Decrypts and verifies HMAC before decryption.
     /// Falls back to legacy format (no HMAC) for backwards compatibility with pre-1.2.0 data.
     func decrypt(_ base64String: String) -> String? {
@@ -108,6 +130,36 @@ class CryptoService {
             if let decrypted = aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv)) {
                 return String(data: decrypted, encoding: .utf8)
             }
+        }
+
+        return nil
+    }
+
+    /// Decrypts Data (for images).
+    func decryptData(_ combined: Data) -> Data? {
+        guard let key = getKey() else { return nil }
+
+        // New format: IV (16) + ciphertext + HMAC (32) — minimum 49 bytes
+        if combined.count >= 49 {
+            let hmacSize = 32
+            let ivAndCiphertextLength = combined.count - hmacSize
+            let ivAndCiphertext = combined.prefix(ivAndCiphertextLength)
+            let storedHMAC = combined.suffix(hmacSize)
+
+            let computedHMAC = computeHMAC(data: Data(ivAndCiphertext), key: key)
+            if computedHMAC == storedHMAC {
+                let iv = combined.prefix(16)
+                let encryptedData = combined.dropFirst(16).dropLast(hmacSize)
+                return aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv))
+            }
+            return nil
+        }
+
+        // Legacy format (pre-1.2.0): IV (16) + ciphertext — no HMAC
+        if combined.count > 16 {
+            let iv = combined.prefix(16)
+            let encryptedData = combined.dropFirst(16)
+            return aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv))
         }
 
         return nil

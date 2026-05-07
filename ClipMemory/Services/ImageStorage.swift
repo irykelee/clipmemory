@@ -2,6 +2,8 @@ import Foundation
 import AppKit
 import os.log
 
+// CryptoService is in the same module, no import needed
+
 class ImageStorage {
     static let shared = ImageStorage()
 
@@ -35,11 +37,16 @@ class ImageStorage {
         }
         let filename = "\(id.uuidString).png"
         let fileURL = imagesDirectory.appendingPathComponent(filename)
+        // Encrypt image data before writing to disk (N2)
+        guard let encryptedData = CryptoService.shared.encryptData(data) else {
+            logger.error("Failed to encrypt image data")
+            return nil
+        }
         do {
-            try data.write(to: fileURL)
+            try encryptedData.write(to: fileURL)
             return filename
         } catch {
-            logger.error("Failed to save image: \(error.localizedDescription)")
+            logger.error("Failed to save encrypted image: \(error.localizedDescription)")
             return nil
         }
     }
@@ -47,7 +54,9 @@ class ImageStorage {
     func loadImage(filename: String) -> Data? {
         guard isValidFilename(filename) else { return nil }
         let fileURL = imagesDirectory.appendingPathComponent(filename)
-        return try? Data(contentsOf: fileURL)
+        guard let encryptedData = try? Data(contentsOf: fileURL) else { return nil }
+        // Decrypt image data after reading from disk (N2)
+        return CryptoService.shared.decryptData(encryptedData)
     }
 
     func deleteImage(filename: String) {

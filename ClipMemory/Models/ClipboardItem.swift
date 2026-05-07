@@ -15,8 +15,10 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     var isSensitive: Bool
     var expiresAt: Date?
     var isEncrypted: Bool = false
+    /// SHA256 hash of plaintext content for fast search pre-filtering
+    var contentHash: String?
 
-    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false) {
+    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil) {
         self.id = id
         self.content = content
         self.type = type
@@ -25,6 +27,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.isSensitive = isSensitive
         self.expiresAt = expiresAt
         self.isEncrypted = isEncrypted
+        self.contentHash = contentHash
     }
 
     var isExpired: Bool {
