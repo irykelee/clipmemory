@@ -90,6 +90,9 @@ class ClipboardMonitor {
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.checkClipboard()
         }
+        if let t = timer {
+            RunLoop.current.add(t, forMode: .common)
+        }
     }
 
     func stopMonitoring() {

@@ -102,3 +102,5 @@
 "app.launch.at.login.disabled.body" = "ClipMemory will not start automatically.";
 "app.error" = "Error";
 "batch.selected" = "%d selected";
+"app.send.feedback" = "Feedback";
+"alert.encrypt.failed" = "Failed to encrypt sensitive data. Item was not saved.";
