@@ -35,10 +35,13 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         return Date() > expiresAt
     }
 
-    /// Returns decrypted content. For encrypted items, decrypts on each access.
-    /// Note: struct value type prevents instance-level caching across multiple accesses.
+    /// Returns decrypted content. If decryption fails, returns a placeholder (not ciphertext).
     var decryptedContent: String {
-        isEncrypted ? (CryptoService.shared.decrypt(content) ?? content) : content
+        guard !isEncrypted else {
+            // Return placeholder instead of garbage ciphertext if decrypt fails
+            return CryptoService.shared.decrypt(content) ?? "(decryption failed)"
+        }
+        return content
     }
 
     var displayContent: String {
