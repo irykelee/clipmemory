@@ -88,19 +88,10 @@ class ClipboardStore: ObservableObject {
                     contentHash: hash
                 )
             } else {
-                // N2: Encrypt failed — store as plaintext with warning (don't silently drop)
-                logger.warning("Encryption failed for item, storing as plaintext")
-                newItem = ClipboardItem(
-                    id: item.id,
-                    content: plaintextContent,
-                    type: item.type,
-                    createdAt: item.createdAt,
-                    isPinned: item.isPinned,
-                    isSensitive: item.isSensitive,
-                    expiresAt: item.expiresAt,
-                    isEncrypted: false,
-                    contentHash: sha256(plaintextContent)
-                )
+                // N2: Encrypt failed — do NOT store as plaintext (security violation)
+                // Discard item to protect sensitive data instead
+                logger.error("Encryption failed for sensitive item, discarding to protect data")
+                return
             }
         }
 
