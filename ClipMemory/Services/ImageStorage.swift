@@ -6,10 +6,10 @@ class ImageStorage {
     static let shared = ImageStorage()
 
     private let fileManager = FileManager.default
-    private let logger = Logger(subsystem: "com.clippaste.app", category: "ImageStorage")
+    private let logger = Logger(subsystem: "com.clipmemory.app", category: "ImageStorage")
     private lazy var imagesDirectory: URL = {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("ClipPaste/Images", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("ClipMemory/Images", isDirectory: true)
         if !fileManager.fileExists(atPath: dir.path) {
             try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         }
