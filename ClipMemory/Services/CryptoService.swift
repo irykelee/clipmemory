@@ -1,11 +1,13 @@
 import Foundation
 import Security
 import CommonCrypto
+import os.log
 
 class CryptoService {
     static let shared = CryptoService()
 
     private let keyTag = "com.clipmemory.clipboard.key"
+    private let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
 
     private init() {
         if getKey() == nil {
@@ -18,15 +20,20 @@ class CryptoService {
         let result = keyData.withUnsafeMutableBytes {
             SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!)
         }
-        if result == errSecSuccess {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrAccount as String: keyTag,
-                kSecValueData as String: keyData,
-                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            ]
-            SecItemDelete(query as CFDictionary)
-            SecItemAdd(query as CFDictionary, nil)
+        guard result == errSecSuccess else {
+            logger.error("Failed to generate random key bytes")
+            return
+        }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: keyTag,
+            kSecValueData as String: keyData,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
+        SecItemDelete(query as CFDictionary)
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status != errSecSuccess {
+            logger.error("Failed to store encryption key in Keychain: \(status)")
         }
     }
 
