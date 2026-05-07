@@ -1,0 +1,86 @@
+/* General */
+"app.name" = "ClipMemory";
+"button.clear" = "비우기";
+"button.settings" = "환경설정";
+"button.back" = "뒤로";
+"button.cancel" = "취소";
+"button.delete" = "삭제";
+"button.confirm" = "확인";
+"button.close" = "닫기";
+
+/* Header */
+"header.clear.history" = "기록 비우기";
+"header.show.all" = "전체";
+"header.show.pinned" = "고정됨";
+"header.pin.all" = "전체 고정 해제";
+
+/* Search */
+"search.placeholder" = "클립보드 검색...";
+
+/* Empty State */
+"empty.no.history" = "클립보드 기록 없음";
+"empty.no.pinned" = "고정된 항목 없음";
+"empty.history.hint" = "복사하면 여기에 자동으로 표시됩니다";
+"empty.pinned.hint" = "'고정'을 클릭하면 자동으로 삭제되지 않습니다";
+
+/* Item Actions */
+"action.pin" = "고정";
+"action.unpin" = "고정 해제";
+"action.delete" = "삭제";
+"action.copy" = "복사";
+"action.view" = "보기";
+"action.hide" = "숨기기";
+"action.show.content" = "내용 보기";
+"action.hide.content" = "내용 숨기기";
+
+/* Tooltips */
+"tooltip.unpin" = "고정 해제";
+"tooltip.pin" = "고정 (자동 삭제되지 않음)";
+"tooltip.delete" = "삭제";
+"tooltip.clear.history" = "기록 비우기 (고정된 항목 제외)";
+"tooltip.show.all" = "전체 클립보드 기록 보기";
+"tooltip.pinned.only" = "고정된 항목만 보기";
+
+/* Alerts */
+"alert.clear.title" = "기록 비우기";
+"alert.clear.message" = "%d개 항목을 지울까요?\n고정된 항목은 삭제되지 않습니다.";
+"alert.clear.none" = "비울 기록이 없습니다.";
+"alert.delete.title" = "항목 삭제";
+"alert.delete.message" = "이 항목을 삭제할까요?";
+
+/* Settings */
+"settings.title" = "환경설정";
+"settings.section.history" = "기록";
+"settings.section.sensitive" = "민감정보";
+"settings.section.language" = "언어";
+"settings.section.about" = "정보";
+"settings.max.items" = "최대 개수";
+"settings.max.items.count" = "%d개";
+"settings.auto.clear" = "자동 삭제";
+"settings.sensitive.hint" = "비밀번호, API 키 등 민감정보 자동 삭제까지의 대기 시간";
+
+/* Sensitive Options */
+"sensitive.1.hour" = "1시간 후";
+"sensitive.24.hours" = "24시간 후";
+"sensitive.48.hours" = "48시간 후";
+"sensitive.7.days" = "7일 후";
+"sensitive.never" = "자동 삭제 안함";
+
+/* About */
+"about.version" = "ClipMemory v%@";
+"about.free.edition" = "무료版 · 로컬 클립보드 관리";
+"about.paid.edition" = "프로版";
+
+/* Item Labels */
+"item.sensitive" = "민감";
+"item.image" = "[이미지]";
+"item.unpin.all" = "전체 고정 해제";
+
+/* Languages */
+"lang.zh-Hans" = "简体中文";
+"lang.zh-Hant" = "繁體中文";
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ko" = "한국어";
+"lang.es" = "Español";
+"lang.pt" = "Português";

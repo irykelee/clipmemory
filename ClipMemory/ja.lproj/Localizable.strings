@@ -1,0 +1,86 @@
+/* General */
+"app.name" = "ClipMemory";
+"button.clear" = "クリア";
+"button.settings" = "環境設定";
+"button.back" = "戻る";
+"button.cancel" = "キャンセル";
+"button.delete" = "削除";
+"button.confirm" = "確認";
+"button.close" = "閉じる";
+
+/* Header */
+"header.clear.history" = "履歴をクリア";
+"header.show.all" = "すべて";
+"header.show.pinned" = "ピン留め";
+"header.pin.all" = "ピン留め解除";
+
+/* Search */
+"search.placeholder" = "クリップボードを検索...";
+
+/* Empty State */
+"empty.no.history" = "クリップボード履歴なし";
+"empty.no.pinned" = "ピン留めした項目なし";
+"empty.history.hint" = "コピーした内容がここに自動表示されます";
+"empty.pinned.hint" = "「ピン留め」を押すと自動削除されなくなります";
+
+/* Item Actions */
+"action.pin" = "ピン留め";
+"action.unpin" = "ピン留め解除";
+"action.delete" = "削除";
+"action.copy" = "コピー";
+"action.view" = "表示";
+"action.hide" = "非表示";
+"action.show.content" = "内容を表示";
+"action.hide.content" = "内容を非表示";
+
+/* Tooltips */
+"tooltip.unpin" = "ピン留め解除";
+"tooltip.pin" = "ピン留め（自動削除されない）";
+"tooltip.delete" = "削除";
+"tooltip.clear.history" = "履歴をクリア（ピン留めは保持）";
+"tooltip.show.all" = "すべての履歴を表示";
+"tooltip.pinned.only" = "ピン留めのみ表示";
+
+/* Alerts */
+"alert.clear.title" = "履歴をクリア";
+"alert.clear.message" = "%d件の履歴を削除しますか？\nピン留めした項目は削除されません。";
+"alert.clear.none" = "削除する履歴がありません。";
+"alert.delete.title" = "項目を削除";
+"alert.delete.message" = "この項目を削除しますか？";
+
+/* Settings */
+"settings.title" = "環境設定";
+"settings.section.history" = "履歴";
+"settings.section.sensitive" = "プライバシー保護";
+"settings.section.language" = "言語";
+"settings.section.about" = "このアプリについて";
+"settings.max.items" = "最大保存数";
+"settings.max.items.count" = "%d件";
+"settings.auto.clear" = "自動削除";
+"settings.sensitive.hint" = "パスワード、APIキーなどの重要な情報を自動削除するまでの時間";
+
+/* Sensitive Options */
+"sensitive.1.hour" = "1時間後";
+"sensitive.24.hours" = "24時間後";
+"sensitive.48.hours" = "48時間後";
+"sensitive.7.days" = "7日後";
+"sensitive.never" = "自動削除しない";
+
+/* About */
+"about.version" = "ClipMemory v%@";
+"about.free.edition" = "無料版 · ローカルクリップボード管理";
+"about.paid.edition" = "プロ版";
+
+/* Item Labels */
+"item.sensitive" = "重要";
+"item.image" = "[画像]";
+"item.unpin.all" = "すべてピン留め解除";
+
+/* Languages */
+"lang.zh-Hans" = "简体中文";
+"lang.zh-Hant" = "繁體中文";
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ko" = "한국어";
+"lang.es" = "Español";
+"lang.pt" = "Português";
