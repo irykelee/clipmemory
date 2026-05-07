@@ -40,7 +40,9 @@ struct L10n {
     }
 
     private static func getFromBundle(_ key: String, bundle: Bundle) -> String? {
-        bundle.localizedString(forKey: key, value: nil, table: "Localizable")
+        let result = bundle.localizedString(forKey: key, value: nil, table: "Localizable")
+        // localizedString returns the key itself when not found - return nil to trigger fallback
+        return result == key ? nil : result
     }
 
     // MARK: - Convenience Accessors
