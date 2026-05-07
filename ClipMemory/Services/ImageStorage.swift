@@ -74,6 +74,26 @@ class ImageStorage {
         return CryptoService.shared.decryptData(encryptedData)
     }
 
+    /// Loads and decrypts image data asynchronously on a background queue.
+    func loadImageAsync(filename: String) async -> Data? {
+        guard isValidFilename(filename) else { return nil }
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Data?, Never>) in
+            backgroundQueue.async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let fileURL = self.imagesDirectory.appendingPathComponent(filename)
+                guard let encryptedData = try? Data(contentsOf: fileURL) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let decrypted: Data? = CryptoService.shared.decryptData(encryptedData)
+                continuation.resume(returning: decrypted)
+            }
+        }
+    }
+
     func deleteImage(filename: String) {
         guard isValidFilename(filename) else { return }
         let fileURL = imagesDirectory.appendingPathComponent(filename)

@@ -65,11 +65,12 @@ class ClipboardStore: ObservableObject {
     func addItem(_ item: ClipboardItem) {
         var newItem = item
         let plaintextContent = item.content
+        var newHash: String? = nil
 
         // M3: Always encrypt text and link content (images are encrypted by ImageStorage)
         if item.type != .image {
             if let encrypted = CryptoService.shared.encrypt(item.content) {
-                let hash = sha256(plaintextContent)
+                newHash = sha256(plaintextContent)
                 newItem = ClipboardItem(
                     id: item.id,
                     content: encrypted,
@@ -79,7 +80,7 @@ class ClipboardStore: ObservableObject {
                     isSensitive: item.isSensitive,
                     expiresAt: item.expiresAt,
                     isEncrypted: true,
-                    contentHash: hash
+                    contentHash: newHash
                 )
             } else {
                 // N2: Encrypt failed — do NOT store as plaintext (security violation)
@@ -90,7 +91,6 @@ class ClipboardStore: ObservableObject {
         }
 
         // Use contentHash for fast pre-filter before expensive decryption
-        let newHash = sha256(plaintextContent)
         if let existingIndex = items.firstIndex(where: { existing in
             // Type must match
             guard existing.type == newItem.type else { return false }
