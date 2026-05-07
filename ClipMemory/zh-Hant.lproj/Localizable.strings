@@ -86,3 +86,12 @@
 "lang.ko" = "한국어";
 "lang.es" = "Español";
 "lang.pt" = "Português";
+
+/* App Delegate */
+"app.quit" = "退出 ClipMemory";
+"app.launch.at.login" = "開機自啟";
+"app.launch.at.login.enabled" = "已開啟開機自啟";
+"app.launch.at.login.enabled.body" = "ClipMemory 將會在登入時自動啟動。";
+"app.launch.at.login.disabled" = "已關閉開機自啟";
+"app.launch.at.login.disabled.body" = "ClipMemory 將不會在登入時啟動。";
+"app.error" = "錯誤";

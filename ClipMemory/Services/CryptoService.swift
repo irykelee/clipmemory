@@ -9,6 +9,13 @@ class CryptoService {
     private let keyTag = "com.clipmemory.clipboard.key"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
 
+    private var keyFileURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("ClipMemory", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(".encryption_key")
+    }
+
     private init() {
         if getKey() == nil {
             generateKey()
@@ -24,31 +31,15 @@ class CryptoService {
             logger.error("Failed to generate random key bytes")
             return
         }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: keyTag,
-            kSecValueData as String: keyData,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        ]
-        SecItemDelete(query as CFDictionary)
-        let status = SecItemAdd(query as CFDictionary, nil)
-        if status != errSecSuccess {
-            logger.error("Failed to store encryption key in Keychain: \(status)")
+        do {
+            try keyData.write(to: keyFileURL, options: [.atomic, .completeFileProtection])
+        } catch {
+            logger.error("Failed to store encryption key: \(error.localizedDescription)")
         }
     }
 
     private func getKey() -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: keyTag,
-            kSecReturnData as String: true
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecSuccess {
-            return result as? Data
-        }
-        return nil
+        return try? Data(contentsOf: keyFileURL)
     }
 
     /// Encrypts with AES-256-CBC + HMAC-SHA256 for authenticated encryption.

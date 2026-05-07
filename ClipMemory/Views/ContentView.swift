@@ -425,6 +425,7 @@ struct ClipboardItemRow: View {
         .background(isHovered || isKeyboardSelected ? Color(.selectedContentBackgroundColor).opacity(0.3) : Color.clear)
         .contentShape(Rectangle())
         .onHover { hovering in isHovered = hovering }
+        .onTapGesture(count: 2) { onPin() }
         .onTapGesture { onCopy() }
         .contextMenu {
             Button(action: onCopy) {
@@ -505,10 +506,7 @@ struct SettingsView: View {
 
             Form {
                 Section(header: Text(L10n.settingsSectionHistory)) {
-                    Picker(L10n.settingsMaxItems, selection: Binding(
-                        get: { store.maxItems },
-                        set: { store.maxItems = $0 }
-                    )) {
+                    Picker(L10n.settingsMaxItems, selection: $store.maxItems) {
                         ForEach(maxItemOptions, id: \.self) { count in
                             Text(L10n.settingsMaxItemsCount(count)).tag(count)
                         }
@@ -516,10 +514,7 @@ struct SettingsView: View {
                 }
 
                 Section(header: Text(L10n.settingsSectionSensitive)) {
-                    Picker(L10n.settingsAutoClear, selection: Binding(
-                        get: { store.sensitiveClearHours },
-                        set: { store.sensitiveClearHours = $0 }
-                    )) {
+                    Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) {
                         ForEach(SensitiveClearOption.options) { option in
                             Text(option.label).tag(option.hours)
                         }
@@ -530,12 +525,11 @@ struct SettingsView: View {
                 }
 
                 Section(header: Text(L10n.settingsSectionLanguage)) {
-                    Picker(L10n.buttonSettings, selection: $languageManager.selectedLanguage) {
+                    Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) {
                         ForEach(languageManager.availableLanguages, id: \.code) { lang in
                             Text(lang.name).tag(lang.code)
                         }
                     }
-                    .pickerStyle(.radioGroup)
                 }
 
                 Section(header: Text(L10n.settingsSectionAbout)) {
