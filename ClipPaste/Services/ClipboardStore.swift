@@ -59,21 +59,20 @@ class ClipboardStore: ObservableObject {
         var newItem = item
 
         if item.isSensitive {
-            if let encrypted = CryptoService.shared.encrypt(item.content) {
-                newItem = ClipboardItem(
-                    id: item.id,
-                    content: encrypted,
-                    type: item.type,
-                    createdAt: item.createdAt,
-                    isPinned: item.isPinned,
-                    isSensitive: item.isSensitive,
-                    expiresAt: item.expiresAt,
-                    isEncrypted: true
-                )
-            }
+            guard let encrypted = CryptoService.shared.encrypt(item.content) else { return }
+            newItem = ClipboardItem(
+                id: item.id,
+                content: encrypted,
+                type: item.type,
+                createdAt: item.createdAt,
+                isPinned: item.isPinned,
+                isSensitive: item.isSensitive,
+                expiresAt: item.expiresAt,
+                isEncrypted: true
+            )
         }
 
-        if let existingIndex = items.firstIndex(where: { $0.content == newItem.content }) {
+        if let existingIndex = items.firstIndex(where: { $0.content == newItem.content && $0.type == newItem.type }) {
             var existing = items.remove(at: existingIndex)
             existing = ClipboardItem(
                 id: existing.id,
@@ -108,10 +107,19 @@ class ClipboardStore: ObservableObject {
         var nonPinned = items.filter { !$0.isPinned }
         let allowedNonPinned = max(0, maxItems - pinned.count)
         nonPinned = Array(nonPinned.prefix(allowedNonPinned))
-        items = pinned + nonPinned
+        let trimmed = pinned + nonPinned
+        let trimmedIds = Set(trimmed.map { $0.id })
+        let removedImages = items.filter { $0.type == .image && !trimmedIds.contains($0.id) }
+        for item in removedImages {
+            ImageStorage.shared.deleteImage(filename: item.content)
+        }
+        items = trimmed
     }
 
     func deleteItem(_ item: ClipboardItem) {
+        if item.type == .image {
+            ImageStorage.shared.deleteImage(filename: item.content)
+        }
         items.removeAll { $0.id == item.id }
         updatePinnedItems()
         saveItems()
@@ -126,6 +134,14 @@ class ClipboardStore: ObservableObject {
         }
     }
 
+    func unpinAll() {
+        for i in items.indices {
+            items[i].isPinned = false
+        }
+        updatePinnedItems()
+        saveItems()
+    }
+
     func clearSensitiveItems() {
         items.removeAll { $0.isSensitive }
         updatePinnedItems()
@@ -134,15 +150,45 @@ class ClipboardStore: ObservableObject {
 
     func clearAllItems() {
         let pinnedIds = Set(pinnedItems.map { $0.id })
+        let removedImages = items.filter { !pinnedIds.contains($0.id) && $0.type == .image }
+        for item in removedImages {
+            ImageStorage.shared.deleteImage(filename: item.content)
+        }
         items.removeAll { !pinnedIds.contains($0.id) }
         saveItems()
     }
 
     func copyToClipboard(_ item: ClipboardItem) {
-        let content = getDecryptedContent(item)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(content, forType: .string)
+        switch item.type {
+        case .image:
+            if let data = ImageStorage.shared.loadImage(filename: item.content),
+               let image = NSImage(data: data) {
+                pasteboard.writeObjects([image as NSImage])
+            }
+        default:
+            let content = getDecryptedContent(item)
+            pasteboard.setString(content, forType: .string)
+        }
+        moveToTop(item)
+    }
+
+    private func moveToTop(_ item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        var moved = items.remove(at: index)
+        moved = ClipboardItem(
+            id: moved.id,
+            content: moved.content,
+            type: moved.type,
+            createdAt: Date(),
+            isPinned: moved.isPinned,
+            isSensitive: moved.isSensitive,
+            expiresAt: moved.expiresAt,
+            isEncrypted: moved.isEncrypted
+        )
+        items.insert(moved, at: 0)
+        saveItems()
     }
 
     private func updatePinnedItems() {

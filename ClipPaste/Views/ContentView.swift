@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ContentView: View {
     @ObservedObject var store = ClipboardStore.shared
@@ -41,10 +42,10 @@ struct ContentView: View {
         VStack(spacing: 8) {
             HStack {
                 Image(systemName: "doc.on.clipboard")
-                    .font(.title2)
+                    .font(.title)
                     .foregroundColor(.accentColor)
                 Text("ClipMemory")
-                    .font(.headline)
+                    .font(.title3)
 
                 Spacer()
 
@@ -53,7 +54,7 @@ struct ContentView: View {
                         Image(systemName: "trash")
                         Text("清空")
                     }
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -65,16 +66,19 @@ struct ContentView: View {
                         Image(systemName: pinnedOnly ? "star.fill" : "star")
                         Text(pinnedOnly ? "全部" : "固定")
                     }
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundColor(pinnedOnly ? .orange : .secondary)
                 }
                 .buttonStyle(.plain)
                 .help(pinnedOnly ? "显示全部剪贴板历史" : "仅显示已固定的片段（不会被自动清理）")
 
                 Button(action: { settingsOnly = true }) {
-                    Image(systemName: "gear")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 4) {
+                        Image(systemName: "gear")
+                        Text("设置")
+                    }
+                    .font(.callout)
+                    .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
                 .help("设置")
@@ -95,7 +99,7 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(8)
+            .padding(10)
             .background(Color(.textBackgroundColor))
             .cornerRadius(8)
             .padding(.horizontal, 12)
@@ -135,7 +139,7 @@ struct ContentView: View {
                 .font(.headline)
                 .foregroundColor(.secondary)
             if pinnedOnly {
-                Text(languageManager.selectedLanguage == "zh-Hans" ? "点击片段右侧 ⭐ 将其固定，被固定的片段不会自动清理" : "Click ⭐ on an item to pin it. Pinned items won't be auto-cleared")
+                Text(languageManager.selectedLanguage == "zh-Hans" ? "点击片段右侧「固定」将其固定，被固定的片段不会自动清理" : "Click 'Pin' on an item to pin it. Pinned items won't be auto-cleared")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -153,6 +157,19 @@ struct ContentView: View {
     private var listView: some View {
         ScrollView {
             LazyVStack(spacing: 1) {
+                if pinnedOnly && store.pinnedItems.count > 1 {
+                    Button(action: { store.unpinAll() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.slash")
+                            Text("取消全部固定")
+                        }
+                        .font(.callout)
+                        .foregroundColor(.orange)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 8)
+                }
+
                 ForEach(displayedItems) { item in
                     ClipboardItemRow(
                         item: item,
@@ -220,7 +237,7 @@ struct ClipboardItemRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 6) {
             Image(systemName: iconName)
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -228,7 +245,31 @@ struct ClipboardItemRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .top) {
-                    if item.isSensitive && !isRevealed {
+                    Button(action: onPin) {
+                        Image(systemName: item.isPinned ? "star.fill" : "star")
+                            .font(.caption)
+                            .foregroundColor(item.isPinned ? .orange : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(item.isPinned ? "取消固定" : "固定此片段（不会被自动清理）")
+
+                    if item.type == .image {
+                        if let data = ImageStorage.shared.loadImage(filename: item.content),
+                           let nsImage = NSImage(data: data),
+                           nsImage.isValid {
+                            Image(nsImage: nsImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 80)
+                                .onTapGesture {
+                                    onToggleReveal()
+                                }
+                        } else {
+                            Text("[图片]")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                    } else if item.isSensitive && !isRevealed {
                         Text(maskContent(item.displayContent))
                             .font(.system(size: 12))
                             .foregroundColor(.orange)
@@ -246,6 +287,16 @@ struct ClipboardItemRow: View {
                 }
 
                 HStack(spacing: 8) {
+                    if item.isSensitive {
+                        Button(action: onToggleReveal) {
+                            Text(isRevealed ? collapseText : viewText)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("查看敏感内容")
+                    }
+
                     Text(formattedDate)
                         .font(.caption2)
                         .foregroundColor(.secondary)
@@ -258,25 +309,13 @@ struct ClipboardItemRow: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                if item.isSensitive {
-                    Button(action: onToggleReveal) {
-                        Text(isRevealed ? collapseText : viewText)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help(isRevealed ? "收起敏感内容" : "查看敏感内容")
-                }
-
-                Button(action: onPin) {
-                    Text(pinText)
-                        .font(.caption)
-                        .foregroundColor(item.isPinned ? .orange : .secondary)
-                }
-                .buttonStyle(.plain)
-                .help(item.isPinned ? "取消固定" : "固定此片段（不会被自动清理）")
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
+            .buttonStyle(.plain)
+            .help("删除")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -409,5 +448,68 @@ struct SettingsView: View {
             .padding()
         }
         .frame(minWidth: 380, minHeight: 400)
+    }
+}
+
+struct HoverButton<Content: View>: View {
+    let tooltip: String
+    let content: () -> Content
+    @State private var isHovering = false
+
+    var body: some View {
+        content()
+            .overlay(alignment: .bottom) {
+                if isHovering {
+                    Text(tooltip)
+                        .font(.caption)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.85))
+                        .cornerRadius(4)
+                        .offset(y: 4)
+                        .allowsHitTesting(false)
+                }
+            }
+            .onHover { isHovering = $0 }
+    }
+}
+
+struct QuickHelp: ViewModifier {
+    let text: String
+    let preferBelow: Bool
+    @State private var isHovering = false
+
+    init(_ text: String, preferBelow: Bool = false) {
+        self.text = text
+        self.preferBelow = preferBelow
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                Group {
+                    if isHovering {
+                        Text(text)
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color(nsColor: .controlBackgroundColor))
+                            .cornerRadius(6)
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                            .fixedSize()
+                            .offset(x: 0, y: preferBelow ? 30 : -30)
+                            .allowsHitTesting(false)
+                    }
+                }
+            )
+            .onHover { isHovering = $0 }
+    }
+}
+
+extension View {
+    func quickHelp(_ text: String, preferBelow: Bool = false) -> some View {
+        modifier(QuickHelp(text, preferBelow: preferBelow))
     }
 }
