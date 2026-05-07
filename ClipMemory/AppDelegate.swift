@@ -34,6 +34,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ) { [weak self] _ in
             self?.rebuildMenu()
         }
+
+        NotificationCenter.default.addObserver(
+            forName: .encryptionFailed,
+            object: nil,
+            queue: .main
+        ) { _ in
+            let alert = NSAlert()
+            alert.messageText = L10n.error
+            alert.informativeText = L10n.alertEncryptFailed
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: L10n.buttonConfirm)
+            alert.runModal()
+        }
     }
 
     private func rebuildMenu() {
@@ -50,6 +63,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(launchAtLoginMenuItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: L10n.buttonSettings, action: #selector(showSettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: L10n.sendFeedback, action: #selector(sendFeedback), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: L10n.quitApp, action: #selector(quitApp), keyEquivalent: "q"))
         return menu
@@ -99,6 +114,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func quitApp() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func sendFeedback() {
+        let url = URL(string: "https://github.com/irykelee/clipmemory/issues/new")!
+        NSWorkspace.shared.open(url)
     }
 
     private func setupClipboardMonitor() {

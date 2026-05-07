@@ -3,6 +3,10 @@ import AppKit
 import CommonCrypto
 import os.log
 
+extension Notification.Name {
+    static let encryptionFailed = Notification.Name("ClipboardStore.encryptionFailed")
+}
+
 class ClipboardStore: ObservableObject {
     static let shared = ClipboardStore()
 
@@ -40,6 +44,9 @@ class ClipboardStore: ObservableObject {
         cleanupExpiredItems()
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.cleanupExpiredItems()
+        }
+        if let t = cleanupTimer {
+            RunLoop.current.add(t, forMode: .common)
         }
     }
 
@@ -93,6 +100,7 @@ class ClipboardStore: ObservableObject {
                 // N2: Encrypt failed — do NOT store as plaintext (security violation)
                 // Discard item to protect sensitive data instead
                 logger.error("Encryption failed for sensitive item, discarding to protect data")
+                NotificationCenter.default.post(name: .encryptionFailed, object: nil)
                 return
             }
         }
