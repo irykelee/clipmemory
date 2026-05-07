@@ -437,7 +437,7 @@ struct SettingsView: View {
                 }
 
                 Section(header: Text("关于")) {
-                    Text("ClipMemory 剪忆 v1.0")
+                    Text("ClipMemory 剪忆 v1.1")
                         .foregroundColor(.secondary)
                     Text("免费版 · 本地剪贴板历史管理")
                         .foregroundColor(.secondary)
