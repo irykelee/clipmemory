@@ -21,7 +21,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "ClipPaste")
+            button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "ClipMemory")
         }
         statusItem.menu = createMenu()
     }
@@ -37,7 +37,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "设置", action: #selector(showSettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "退出 ClipPaste", action: #selector(quitApp), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "退出 ClipMemory", action: #selector(quitApp), keyEquivalent: "q"))
         return menu
     }
 
@@ -64,10 +64,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         do {
             if service.status == .enabled {
                 try service.unregister()
-                showNotification(title: "已关闭开机自启", body: "ClipPaste 将不会在登录时启动")
+                showNotification(title: "已关闭开机自启", body: "ClipMemory 将不会在登录时启动")
             } else {
                 try service.register()
-                showNotification(title: "已开启开机自启", body: "ClipPaste 将会在登录时自动启动")
+                showNotification(title: "已开启开机自启", body: "ClipMemory 将会在登录时自动启动")
             }
             launchAtLoginMenuItem.title = launchAtLoginTitle()
         } catch {
@@ -155,7 +155,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "ClipPaste"
+            window.title = "ClipMemory"
             window.delegate = self
             window.isReleasedWhenClosed = false
             window.makeKeyAndOrderFront(nil)
