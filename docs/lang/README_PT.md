@@ -1,23 +1,10 @@
-<details>
-<summary><b>🌐 Languages / 语言</b></summary>
-
-| Language | Link |
-|----------|------|
-| English | [README_EN.md](./README_EN.md) |
-| 简体中文 | [README.md](../README.md) |
-| 日本語 | [README_JA.md](./README_JA.md) |
-| 한국어 | [README_KO.md](./README_KO.md) |
-| Español | [README_ES.md](./README_ES.md) |
-| Português | [README_PT.md](./README_PT.md) |
-
----
-</details>
-
----
-
 # ClipMemory (Português)
 
 **Gerenciador local de histórico da área de transferência**
+
+[English](./README_EN.md) · [简体中文](../README.md) · [Español](./README_ES.md) · [Português](./README_PT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md)
+
+---
 
 ## Funções
 
@@ -41,10 +28,13 @@
 
 | Ação | Como |
 |------|------|
-| Abrir janela | `⌘⇧V` |
-| Navegar | `↑` / `↓` |
-| Copiar | `Enter` |
+| Abrir janela | `⌘⇧V` (atalho global) |
+| Navegar | `↑` / `↓` para navegar |
+| Copiar | `Enter` ou clique único copia e fecha |
 | Fechar | `Esc` |
+| Buscar | Digite para filtrar em tempo real |
+| Fixar/Desfixar | Clique duplo para alternar |
+| Excluir | Clique em 🗑 ou menu contextual |
 
 ## Requisitos
 

@@ -49,9 +49,10 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 |--------|-----|
 | Summon window | `⌘⇧V` (global hotkey, works anywhere) |
 | Navigate | `↑` / `↓` keys to cycle through items |
-| Copy item | `Enter` copies selected and closes window |
+| Copy item | `Enter` or single-click copies selected and closes window |
 | Close window | `Esc` |
 | Search | Type to filter history in real-time |
+| Pin/Unpin | Double-click to toggle pin status |
 | Pin item | Click ⭐ or right-click → "Pin" |
 | Unpin item | Click ⭐ again or right-click → "Unpin" |
 | Delete item | Click 🗑 or right-click → "Delete" |
