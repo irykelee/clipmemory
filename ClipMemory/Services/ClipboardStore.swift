@@ -8,40 +8,25 @@ class ClipboardStore: ObservableObject {
 
     @Published var items: [ClipboardItem] = []
     @Published var pinnedItems: [ClipboardItem] = []
+    @Published var maxItems: Int
+    @Published var sensitiveClearHours: Int
 
     private let storageKey = "ClipboardItems"
     private let maxItemsKey = "maxClipboardItems"
     private let sensitiveClearHoursKey = "sensitiveClearHours"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
-    var maxItems: Int {
-        get {
-            let saved = UserDefaults.standard.integer(forKey: maxItemsKey)
-            return saved > 0 ? saved : 100
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: maxItemsKey)
-            trimToMaxItems()
-            saveItems()
-        }
-    }
-
-    var sensitiveClearHours: Int {
-        get {
-            let saved = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
-            return saved > 0 ? saved : 24
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: sensitiveClearHoursKey)
-        }
-    }
-
     private var cleanupTimer: Timer?
 
     private init() {
+        let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
+        maxItems = savedMaxItems > 0 ? savedMaxItems : 100
+
+        let savedSensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
+        sensitiveClearHours = savedSensitiveClearHours > 0 ? savedSensitiveClearHours : 24
+
         loadItems()
         cleanupExpiredItems()
-        // Periodically cleanup expired sensitive items (every 1 minute)
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.cleanupExpiredItems()
         }

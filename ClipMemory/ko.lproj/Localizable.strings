@@ -86,3 +86,12 @@
 "lang.ko" = "한국어";
 "lang.es" = "Español";
 "lang.pt" = "Português";
+
+/* App Delegate */
+"app.quit" = "ClipMemory 종료";
+"app.launch.at.login" = "로그인 시 시작";
+"app.launch.at.login.enabled" = "로그인 시 시작 활성화됨";
+"app.launch.at.login.enabled.body" = "ClipMemory이 로그인 시 자동으로 시작됩니다.";
+"app.launch.at.login.disabled" = "로그인 시 시작 비활성화됨";
+"app.launch.at.login.disabled.body" = "ClipMemory이 자동으로 시작되지 않습니다.";
+"app.error" = "오류";
