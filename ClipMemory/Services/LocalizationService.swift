@@ -80,6 +80,8 @@ struct L10n {
     static var tooltipClearHistory: String { string("tooltip.clear.history") }
     static var tooltipShowAll: String { string("tooltip.show.all") }
     static var tooltipPinnedOnly: String { string("tooltip.pinned.only") }
+    static var tooltipReveal: String { string("tooltip.reveal") }
+    static var tooltipHide: String { string("tooltip.hide") }
 
     static var alertClearTitle: String { string("alert.clear.title") }
     static func alertClearMessage(_ count: Int) -> String { string("alert.clear.message", count) }
