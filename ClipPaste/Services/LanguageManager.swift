@@ -34,7 +34,6 @@ class LanguageManager: ObservableObject {
     func applyLanguage() {
         let defaults = UserDefaults.standard
         defaults.set([selectedLanguage], forKey: "AppleLanguages")
-        defaults.synchronize()
     }
 
     var availableLanguages: [(code: String, name: String)] {

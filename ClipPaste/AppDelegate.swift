@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var hotKeyManager: HotKeyManager!
     private var lastPinnedOnly = false
     private var lastSettingsOnly = false
+    private var launchAtLoginMenuItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -31,7 +32,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "固定片段", action: #selector(showPinned), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "开机自启", action: #selector(toggleLaunchAtLogin), keyEquivalent: ""))
+        launchAtLoginMenuItem = NSMenuItem(title: launchAtLoginTitle(), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        menu.addItem(launchAtLoginMenuItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "设置", action: #selector(showSettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
@@ -52,6 +54,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showMainWindow(settingsOnly: true)
     }
 
+    private func launchAtLoginTitle() -> String {
+        let enabled = SMAppService.mainApp.status == .enabled
+        return enabled ? "✓ 开机自启" : "  开机自启"
+    }
+
     @objc private func toggleLaunchAtLogin() {
         let service = SMAppService.mainApp
         do {
@@ -62,6 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 try service.register()
                 showNotification(title: "已开启开机自启", body: "ClipPaste 将会在登录时自动启动")
             }
+            launchAtLoginMenuItem.title = launchAtLoginTitle()
         } catch {
             showNotification(title: "设置失败", body: error.localizedDescription)
         }
@@ -83,6 +91,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func setupClipboardMonitor() {
         clipboardMonitor = ClipboardMonitor()
         clipboardMonitor.startMonitoring()
+        // Inject monitor reference so ClipboardStore.copyToClipboard can break the re-capture loop
+        ClipboardStore.shared.clipboardMonitor = clipboardMonitor
     }
 
     private func setupHotKey() {

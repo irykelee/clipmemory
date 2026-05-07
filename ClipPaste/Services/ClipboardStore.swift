@@ -33,9 +33,15 @@ class ClipboardStore: ObservableObject {
         }
     }
 
+    private var cleanupTimer: Timer?
+
     private init() {
         loadItems()
         cleanupExpiredItems()
+        // Periodically cleanup expired sensitive items (every 1 minute)
+        cleanupTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.cleanupExpiredItems()
+        }
     }
 
     func loadItems() {
@@ -57,6 +63,7 @@ class ClipboardStore: ObservableObject {
 
     func addItem(_ item: ClipboardItem) {
         var newItem = item
+        let plaintextContent = item.content
 
         if item.isSensitive {
             guard let encrypted = CryptoService.shared.encrypt(item.content) else { return }
@@ -72,7 +79,10 @@ class ClipboardStore: ObservableObject {
             )
         }
 
-        if let existingIndex = items.firstIndex(where: { $0.content == newItem.content && $0.type == newItem.type }) {
+        if let existingIndex = items.firstIndex(where: { existing in
+            let existingPlaintext = existing.isEncrypted ? (CryptoService.shared.decrypt(existing.content) ?? existing.content) : existing.content
+            return existingPlaintext == plaintextContent && existing.type == newItem.type
+        }) {
             var existing = items.remove(at: existingIndex)
             existing = ClipboardItem(
                 id: existing.id,
@@ -171,8 +181,16 @@ class ClipboardStore: ObservableObject {
             let content = getDecryptedContent(item)
             pasteboard.setString(content, forType: .string)
         }
+        // Update changeCount immediately to prevent ClipboardMonitor from re-capturing
+        // what we just wrote. This breaks the copy → re-capture → duplicate loop.
+        if let monitor = clipboardMonitor {
+            monitor.recordOwnWrite()
+        }
         moveToTop(item)
     }
+
+    // Injected by AppDelegate so copyToClipboard can break the re-capture loop
+    var clipboardMonitor: ClipboardMonitor?
 
     private func moveToTop(_ item: ClipboardItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
@@ -197,7 +215,10 @@ class ClipboardStore: ObservableObject {
 
     func searchItems(_ query: String) -> [ClipboardItem] {
         guard !query.isEmpty else { return items }
-        return items.filter { $0.content.localizedCaseInsensitiveContains(query) }
+        return items.filter { item in
+            let content = item.isEncrypted ? (CryptoService.shared.decrypt(item.content) ?? item.content) : item.content
+            return content.localizedCaseInsensitiveContains(query)
+        }
     }
 
     private func cleanupExpiredItems() {
