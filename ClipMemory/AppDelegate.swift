@@ -109,13 +109,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private var savedWindowFrame: NSRect {
         get {
+            let defaultFrame = NSRect(x: 0, y: 0, width: 400, height: 500)
             guard let data = UserDefaults.standard.data(forKey: windowFrameKey),
                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: CGFloat],
                   let x = dict["x"], let y = dict["y"],
                   let w = dict["w"], let h = dict["h"] else {
-                return NSRect(x: 0, y: 0, width: 400, height: 500)
+                return defaultFrame
             }
-            return NSRect(x: x, y: y, width: w, height: h)
+            let savedFrame = NSRect(x: x, y: y, width: w, height: h)
+            // R3: validate window is within current screen bounds
+            guard let screen = NSScreen.main else { return defaultFrame }
+            let visible = screen.visibleFrame
+            if !visible.intersects(savedFrame) {
+                return NSRect(x: visible.midX - 200, y: visible.midY - 250, width: 400, height: 500)
+            }
+            return savedFrame
         }
         set {
             let dict: [String: CGFloat] = [
