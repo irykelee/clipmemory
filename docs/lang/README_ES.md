@@ -13,7 +13,7 @@
 - 💾 Imágenes almacenadas como archivos (sin límite)
 - 🔍 Búsqueda rápida
 - 🔒 Protección de información sensible (cifrado + limpieza automática)
-- ⌨️ Atajo global `Cmd+Ctrl+V` para abrir
+- ⌨️ Atajo global `⌘⌃V` para abrir
 - 🛡️ Iniciar al arrancar (opcional)
 - 🌍 Soporte multilingüe
 
