@@ -2,18 +2,107 @@ import AppKit
 import Carbon.HIToolbox
 import os.log
 
+/// HotKey configuration stored in UserDefaults
+struct HotKeyConfig: Codable, Equatable {
+    var keyCode: UInt32
+    var modifiers: UInt32
+
+    static let defaultConfig = HotKeyConfig(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | controlKey))
+
+    private static let keyCodeKey = "HotKeyKeyCode"
+    private static let modifiersKey = "HotKeyModifiers"
+
+    func save() {
+        UserDefaults.standard.set(Int(keyCode), forKey: Self.keyCodeKey)
+        UserDefaults.standard.set(Int(modifiers), forKey: Self.modifiersKey)
+    }
+
+    static func load() -> HotKeyConfig {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: keyCodeKey) != nil {
+            return HotKeyConfig(
+                keyCode: UInt32(defaults.integer(forKey: keyCodeKey)),
+                modifiers: UInt32(defaults.integer(forKey: modifiersKey))
+            )
+        }
+        return .defaultConfig
+    }
+
+    /// Human-readable description of the hotkey (e.g. "⌘⌃V")
+    var displayString: String {
+        var parts: [String] = []
+        if modifiers & UInt32(cmdKey) != 0 { parts.append("⌘") }
+        if modifiers & UInt32(controlKey) != 0 { parts.append("⌃") }
+        if modifiers & UInt32(optionKey) != 0 { parts.append("⌥") }
+        if modifiers & UInt32(shiftKey) != 0 { parts.append("⇧") }
+        parts.append(keyCodeToString(keyCode))
+        return parts.joined()
+    }
+
+    private func keyCodeToString(_ code: UInt32) -> String {
+        switch code {
+        case UInt32(kVK_ANSI_A): return "A"
+        case UInt32(kVK_ANSI_B): return "B"
+        case UInt32(kVK_ANSI_C): return "C"
+        case UInt32(kVK_ANSI_D): return "D"
+        case UInt32(kVK_ANSI_E): return "E"
+        case UInt32(kVK_ANSI_F): return "F"
+        case UInt32(kVK_ANSI_G): return "G"
+        case UInt32(kVK_ANSI_H): return "H"
+        case UInt32(kVK_ANSI_I): return "I"
+        case UInt32(kVK_ANSI_J): return "J"
+        case UInt32(kVK_ANSI_K): return "K"
+        case UInt32(kVK_ANSI_L): return "L"
+        case UInt32(kVK_ANSI_M): return "M"
+        case UInt32(kVK_ANSI_N): return "N"
+        case UInt32(kVK_ANSI_O): return "O"
+        case UInt32(kVK_ANSI_P): return "P"
+        case UInt32(kVK_ANSI_Q): return "Q"
+        case UInt32(kVK_ANSI_R): return "R"
+        case UInt32(kVK_ANSI_S): return "S"
+        case UInt32(kVK_ANSI_T): return "T"
+        case UInt32(kVK_ANSI_U): return "U"
+        case UInt32(kVK_ANSI_V): return "V"
+        case UInt32(kVK_ANSI_W): return "W"
+        case UInt32(kVK_ANSI_X): return "X"
+        case UInt32(kVK_ANSI_Y): return "Y"
+        case UInt32(kVK_ANSI_Z): return "Z"
+        case UInt32(kVK_ANSI_0): return "0"
+        case UInt32(kVK_ANSI_1): return "1"
+        case UInt32(kVK_ANSI_2): return "2"
+        case UInt32(kVK_ANSI_3): return "3"
+        case UInt32(kVK_ANSI_4): return "4"
+        case UInt32(kVK_ANSI_5): return "5"
+        case UInt32(kVK_ANSI_6): return "6"
+        case UInt32(kVK_ANSI_7): return "7"
+        case UInt32(kVK_ANSI_8): return "8"
+        case UInt32(kVK_ANSI_9): return "9"
+        case UInt32(kVK_Space): return "Space"
+        case UInt32(kVK_Return): return "⏎"
+        case UInt32(kVK_Escape): return "ESC"
+        case UInt32(kVK_Delete): return "⌫"
+        case UInt32(kVK_Tab): return "⇥"
+        default: return "Key \(code)"
+        }
+    }
+}
+
 class HotKeyManager {
     private var eventHandler: EventHandlerRef?
     private var hotKeyRef: EventHotKeyRef?
     private var showWindowHandler: (() -> Void)?
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "HotKeyManager")
 
+    private(set) var config: HotKeyConfig = .load()
+
     init() {}
 
     func register() {
+        unregister()
+
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
 
-        let handler: EventHandlerUPP = { _, event, userData -> OSStatus in
+        let handler: EventHandlerUPP = { _, _, userData -> OSStatus in
             guard let userData = userData else { return OSStatus(eventNotHandledErr) }
             let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
             DispatchQueue.main.async {
@@ -30,13 +119,19 @@ class HotKeyManager {
         }
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x434C5050), id: 1)
-        let keyCode: UInt32 = UInt32(kVK_ANSI_V)
-        let modifiers: UInt32 = UInt32(cmdKey | controlKey)
-
-        let hotKeyStatus = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+        let hotKeyStatus = RegisterEventHotKey(config.keyCode, config.modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
         if hotKeyStatus != noErr {
-            logger.error("Failed to register hotkey Cmd+Ctrl+V: \(hotKeyStatus)")
+            logger.error("Failed to register hotkey \(self.config.displayString): \(hotKeyStatus)")
+        } else {
+            logger.info("Hotkey registered: \(self.config.displayString)")
         }
+    }
+
+    /// Update hotkey and re-register. Saves to UserDefaults.
+    func updateHotKey(keyCode: UInt32, modifiers: UInt32) {
+        config = HotKeyConfig(keyCode: keyCode, modifiers: modifiers)
+        config.save()
+        register()
     }
 
     func setShowWindowHandler(_ handler: @escaping () -> Void) {
@@ -55,6 +150,9 @@ class HotKeyManager {
     }
 
     deinit {
+        // Note: Do not set hotKeyManager to nil manually — unregistering during app
+        // shutdown is expected and harmless. The deinit here ensures cleanup if the
+        // instance is released before app termination.
         unregister()
     }
 }

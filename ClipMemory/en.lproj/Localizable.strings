@@ -55,11 +55,19 @@
 "settings.section.history" = "History";
 "settings.section.sensitive" = "Sensitive Information";
 "settings.section.language" = "Language";
+"settings.section.hotkey" = "Hotkey";
+"settings.section.excluded.apps" = "Excluded Apps";
 "settings.section.about" = "About";
 "settings.max.items" = "Max Items";
 "settings.max.items.count" = "%d items";
 "settings.auto.clear" = "Auto-Clear";
 "settings.sensitive.hint" = "Automatically clears sensitive content (passwords, API keys, etc.) after the selected time.";
+"settings.hotkey.change" = "Change";
+"settings.hotkey.recording" = "Press a key combination...";
+"settings.excluded.apps" = "Excluded Apps";
+"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
+"settings.excluded.apps.label" = "Excluded Apps";
+"settings.excluded.apps.hint" = "Comma-separated bundle IDs of apps to exclude from clipboard monitoring (e.g. com.1password.1password, com.bitwarden.desktop). Copy actions from these apps will not be recorded.";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 hour";

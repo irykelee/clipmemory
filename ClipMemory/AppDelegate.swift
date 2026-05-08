@@ -2,20 +2,25 @@ import AppKit
 import SwiftUI
 import ServiceManagement
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    var window: NSWindow!
+class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var clipboardMonitor: ClipboardMonitor!
-    var hotKeyManager: HotKeyManager!
+    private(set) var hotKeyManager: HotKeyManager!
+    private(set) var windowManager: WindowManager!
     private var launchAtLoginMenuItem: NSMenuItem!
     private var languageObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
+        setupWindowManager()
         setupClipboardMonitor()
         setupHotKey()
         setupLanguageObserver()
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func setupWindowManager() {
+        windowManager = WindowManager()
     }
 
     private func setupStatusItem() {
@@ -123,83 +128,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func setupClipboardMonitor() {
         clipboardMonitor = ClipboardMonitor()
+        clipboardMonitor.delegate = ClipboardStore.shared
         clipboardMonitor.startMonitoring()
         ClipboardStore.shared.clipboardMonitor = clipboardMonitor
+        ClipboardStore.shared.updateExcludedAppsOnMonitor()
     }
 
     private func setupHotKey() {
         hotKeyManager = HotKeyManager()
         hotKeyManager.setShowWindowHandler { [weak self] in
             DispatchQueue.main.async {
-                self?.showMainWindow()
+                self?.windowManager?.showWindow()
             }
         }
         hotKeyManager.register()
     }
 
-    private let windowFrameKey = "WindowFrame"
-
-    private var savedWindowFrame: NSRect {
-        get {
-            let defaultFrame = NSRect(x: 0, y: 0, width: 400, height: 500)
-            guard let data = UserDefaults.standard.data(forKey: windowFrameKey),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: CGFloat],
-                  let x = dict["x"], let y = dict["y"],
-                  let w = dict["w"], let h = dict["h"] else {
-                return defaultFrame
-            }
-            let savedFrame = NSRect(x: x, y: y, width: w, height: h)
-            let anyScreenIntersects = NSScreen.screens.contains { $0.visibleFrame.intersects(savedFrame) }
-            if !anyScreenIntersects {
-                let visible = NSScreen.main?.visibleFrame ?? defaultFrame
-                return NSRect(x: visible.midX - 200, y: visible.midY - 250, width: 400, height: 500)
-            }
-            return savedFrame
-        }
-        set {
-            let dict: [String: CGFloat] = [
-                "x": newValue.origin.x,
-                "y": newValue.origin.y,
-                "w": newValue.size.width,
-                "h": newValue.size.height
-            ]
-            if let data = try? JSONSerialization.data(withJSONObject: dict) {
-                UserDefaults.standard.set(data, forKey: windowFrameKey)
-            }
-        }
-    }
-
-    func windowDidMove(_ notification: Notification) {
-        if let w = window {
-            savedWindowFrame = w.frame
-        }
-    }
-
-    func windowDidResize(_ notification: Notification) {
-        if let w = window {
-            savedWindowFrame = w.frame
-        }
-    }
-
     func showMainWindow(pinnedOnly: Bool = false, settingsOnly: Bool = false) {
-        if window == nil {
-            let contentView = ContentView(pinnedOnly: pinnedOnly, settingsOnly: settingsOnly)
-            window = NSWindow(
-                contentRect: savedWindowFrame,
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = L10n.appName
-            window.delegate = self
-            window.isReleasedWhenClosed = false
-            window.makeKeyAndOrderFront(nil)
-            window.contentView = NSHostingView(rootView: contentView)
-        } else {
-            window.contentView = NSHostingView(rootView: ContentView(pinnedOnly: pinnedOnly, settingsOnly: settingsOnly))
-            window.makeKeyAndOrderFront(nil)
-        }
-        NSApp.activate(ignoringOtherApps: true)
+        windowManager?.showWindow(pinnedOnly: pinnedOnly, settingsOnly: settingsOnly)
     }
 
     deinit {

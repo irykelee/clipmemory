@@ -7,6 +7,12 @@ extension Notification.Name {
     static let encryptionFailed = Notification.Name("ClipboardStore.encryptionFailed")
 }
 
+extension ClipboardStore: ClipboardMonitorDelegate {
+    func sensitiveClearHoursForMonitor() -> Int {
+        return sensitiveClearHours
+    }
+}
+
 class ClipboardStore: ObservableObject {
     static let shared = ClipboardStore()
 
@@ -22,16 +28,25 @@ class ClipboardStore: ObservableObject {
         didSet { UserDefaults.standard.set(sensitiveClearHours, forKey: sensitiveClearHoursKey) }
     }
 
+    /// Comma-separated bundle IDs of apps excluded from clipboard monitoring
+    @Published var excludedBundleIdsString: String {
+        didSet {
+            UserDefaults.standard.set(excludedBundleIdsString, forKey: excludedBundleIdsKey)
+            updateExcludedAppsOnMonitor()
+        }
+    }
+
     private let storageKey = "ClipboardItems"
     private let maxItemsKey = "maxClipboardItems"
     private let sensitiveClearHoursKey = "sensitiveClearHours"
+    private let excludedBundleIdsKey = "excludedBundleIds"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
     private var cleanupTimer: Timer?
 
     private init() {
         let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
-        maxItems = savedMaxItems > 0 ? savedMaxItems : 100
+        maxItems = savedMaxItems > 0 ? min(savedMaxItems, 500) : 100
 
         // Use object(forKey:) to distinguish "key doesn't exist" (nil) from "user selected Never" (0)
         if UserDefaults.standard.object(forKey: sensitiveClearHoursKey) != nil {
@@ -40,7 +55,10 @@ class ClipboardStore: ObservableObject {
             sensitiveClearHours = 24 // Default: clear after 24 hours
         }
 
+        excludedBundleIdsString = UserDefaults.standard.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
+
         loadItems()
+        updateExcludedAppsOnMonitor()
         cleanupExpiredItems()
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.cleanupExpiredItems()
@@ -52,6 +70,15 @@ class ClipboardStore: ObservableObject {
 
     deinit {
         cleanupTimer?.invalidate()
+    }
+
+    /// Sync excluded bundle IDs from settings string to the clipboard monitor
+    func updateExcludedAppsOnMonitor() {
+        let ids = Set(excludedBundleIdsString
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty })
+        clipboardMonitor?.excludedBundleIds = ids
     }
 
     func loadItems() {
@@ -79,7 +106,7 @@ class ClipboardStore: ObservableObject {
     func addItem(_ item: ClipboardItem) {
         var newItem = item
         let plaintextContent = item.content
-        var newHash: String? = nil
+        var newHash: String?
 
         // M3: Always encrypt text and link content (images are encrypted by ImageStorage)
         if item.type != .image {
