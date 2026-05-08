@@ -95,11 +95,18 @@ struct L10n {
     static var settingsSectionHistory: String { string("settings.section.history") }
     static var settingsSectionSensitive: String { string("settings.section.sensitive") }
     static var settingsSectionLanguage: String { string("settings.section.language") }
+    static var settingsSectionHotkey: String { string("settings.section.hotkey") }
+    static var settingsSectionExcludedApps: String { string("settings.section.excluded.apps") }
     static var settingsSectionAbout: String { string("settings.section.about") }
     static var settingsMaxItems: String { string("settings.max.items") }
     static func settingsMaxItemsCount(_ count: Int) -> String { string("settings.max.items.count", count) }
     static var settingsAutoClear: String { string("settings.auto.clear") }
     static var settingsSensitiveHint: String { string("settings.sensitive.hint") }
+    static var settingsHotkeyChange: String { string("settings.hotkey.change") }
+    static var settingsHotkeyRecording: String { string("settings.hotkey.recording") }
+    static var settingsExcludedAppsPlaceholder: String { string("settings.excluded.apps.placeholder") }
+    static var settingsExcludedAppsLabel: String { string("settings.excluded.apps.label") }
+    static var settingsExcludedAppsHint: String { string("settings.excluded.apps.hint") }
 
     static var sensitive1Hour: String { string("sensitive.1.hour") }
     static var sensitive24Hours: String { string("sensitive.24.hours") }

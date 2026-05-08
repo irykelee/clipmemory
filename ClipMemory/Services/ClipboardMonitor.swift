@@ -11,6 +11,21 @@ class ClipboardMonitor {
     /// Set to true when ClipboardStore writes to pasteboard, so we skip re-capturing.
     var skipNextCapture = false
 
+    /// Bundle identifiers of apps to exclude from clipboard monitoring (e.g. password managers)
+    var excludedBundleIds: Set<String> = []
+
+    /// Delegate for accessing store configuration (breaks circular dependency)
+    weak var delegate: ClipboardMonitorDelegate?
+
+    /// Tracks the last known app that was frontmost before clipboard changed
+    private var lastKnownSourceBundleId: String?
+
+    /// Returns the bundle ID of the frontmost app, or nil if unavailable
+    private func frontmostAppBundleId() -> String? {
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
+        return frontApp.bundleIdentifier
+    }
+
     private let sensitivePatterns: [(pattern: String, isRegex: Bool)] = [
         // Credentials
         ("password", false),
@@ -47,7 +62,7 @@ class ClipboardMonitor {
         // US SSN
         ("\\b\\d{3}-\\d{2}-\\d{4}\\b", true),
         // JWT
-        ("eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}", true),
+        ("eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}", true)
     ]
 
     // Pre-compiled regex patterns for sensitive value detection (R10: compile once)
@@ -56,7 +71,7 @@ class ClipboardMonitor {
             "(?i)(password|passwd|pwd)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
             "(?i)(api_key|apikey|api-key)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
             "(?i)(token|bearer)\\s*[=:]\\s*['\"]?[a-zA-Z0-9_-]{20,}",
-            "(?i)(sk|secret)\\s*[=:]\\s*['\"]?[^'\"\\s]{20,}",
+            "(?i)(sk|secret)\\s*[=:]\\s*['\"]?[^'\"\\s]{20,}"
         ]
         var compiled: [NSRegularExpression] = []
         for pattern in patterns {
@@ -87,6 +102,15 @@ class ClipboardMonitor {
 
     func startMonitoring() {
         lastChangeCount = pasteboard.changeCount
+        // Track frontmost app changes via notification
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(appDidActivate(_:)),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+        // Initialize with current frontmost app
+        lastKnownSourceBundleId = frontmostAppBundleId()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.checkClipboard()
         }
@@ -98,6 +122,14 @@ class ClipboardMonitor {
     func stopMonitoring() {
         timer?.invalidate()
         timer = nil
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+
+    @objc private func appDidActivate(_ notification: Notification) {
+        if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+           let bundleId = app.bundleIdentifier {
+            lastKnownSourceBundleId = bundleId
+        }
     }
 
     /// Called by ClipboardStore after it writes to pasteboard, so we skip re-capturing.
@@ -113,6 +145,12 @@ class ClipboardMonitor {
             lastChangeCount = pasteboard.changeCount
             return
         }
+
+        // Skip if the source app is in the exclusion list (e.g. password managers)
+        if let sourceApp = lastKnownSourceBundleId, excludedBundleIds.contains(sourceApp) {
+            lastChangeCount = pasteboard.changeCount
+            return
+        }
         let currentCount = pasteboard.changeCount
         guard currentCount != lastChangeCount else { return }
         lastChangeCount = currentCount
@@ -120,9 +158,9 @@ class ClipboardMonitor {
         if let content = pasteboard.string(forType: .string), !content.isEmpty {
             let itemType = detectType(content)
             let isSensitive = detectSensitive(content)
-            var expiresAt: Date? = nil
+            var expiresAt: Date?
             if isSensitive {
-                let hours = ClipboardStore.shared.sensitiveClearHours
+                let hours = delegate?.sensitiveClearHoursForMonitor() ?? 0
                 if hours > 0 {
                     expiresAt = Date().addingTimeInterval(TimeInterval(hours * 3600))
                 }
@@ -156,7 +194,7 @@ class ClipboardMonitor {
         let hours = ClipboardStore.shared.sensitiveClearHours
         let expiresAt: Date? = isSensitive && hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
 
-        ImageStorage.shared.saveImage(imageData, id: id) { [weak self] filename in
+        ImageStorage.shared.saveImage(imageData, id: id) { filename in
             guard let filename = filename else { return }
             let item = ClipboardItem(
                 id: id,
@@ -187,10 +225,8 @@ class ClipboardMonitor {
         }
 
         // R10: use pre-compiled sensitive value regexes
-        for regex in sensitiveValueRegexes {
-            if regex.firstMatch(in: content, options: [], range: range) != nil {
-                return true
-            }
+        for regex in sensitiveValueRegexes where regex.firstMatch(in: content, options: [], range: range) != nil {
+            return true
         }
 
         return false

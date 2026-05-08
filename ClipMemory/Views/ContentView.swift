@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Carbon.HIToolbox
 
 /// Invisible view that captures key events for keyboard navigation.
 /// Falls back to ArrowKeyView on macOS 13 (NSEvent monitor).
@@ -87,8 +88,8 @@ struct ContentView: View {
     @State private var itemToDelete: ClipboardItem?
     @State private var showingClearAlert = false
     @State private var revealedItems: Set<UUID> = []
-    @State private var keyboardSelectedIndex: Int? = nil
-    @State private var lastCopiedId: UUID? = nil
+    @State private var keyboardSelectedIndex: Int?
+    @State private var lastCopiedId: UUID?
     @State private var selectedItems: Set<UUID> = []
     @State var pinnedOnly: Bool = false
     @State var settingsOnly: Bool = false
@@ -128,7 +129,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             if settingsOnly {
-                SettingsView(isSettingsOnly: $settingsOnly)
+                SettingsView(isSettingsOnly: $settingsOnly, hotKeyManager: (NSApp.delegate as? AppDelegate)?.hotKeyManager)
             } else {
                 headerView
                 Divider()
@@ -695,8 +696,14 @@ struct SettingsView: View {
     @Binding var isSettingsOnly: Bool
     @ObservedObject var languageManager = LanguageManager.shared
     @ObservedObject var store = ClipboardStore.shared
+    var hotKeyManager: HotKeyManager?
 
-    let maxItemOptions = [50, 100, 200, 500, 1000, 2000]
+    @State private var isRecordingHotKey = false
+    @State private var recordingKeyCode: UInt32 = 0
+    @State private var recordingModifiers: UInt32 = 0
+    @State private var keyEventMonitor: Any?
+
+    let maxItemOptions = [50, 100, 200, 500]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -775,6 +782,19 @@ struct SettingsView: View {
                 }
             }
 
+            Section(header: Text(L10n.settingsSectionHotkey)) {
+                hotKeyRow
+            }
+
+            Section(header: Text(L10n.settingsSectionExcludedApps)) {
+                TextField(L10n.settingsExcludedAppsPlaceholder, text: $store.excludedBundleIdsString)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                Text(L10n.settingsExcludedAppsHint)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section(header: Text(L10n.settingsSectionAbout)) {
                 Text(L10n.aboutVersion(AppVersion.current))
                     .foregroundColor(.secondary)
@@ -782,6 +802,64 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
                     .font(.caption)
             }
+        }
+    }
+
+    private var hotKeyRow: some View {
+        HStack {
+            if isRecordingHotKey {
+                Text(L10n.settingsHotkeyRecording)
+                    .foregroundColor(.orange)
+                    .font(.callout)
+                Spacer()
+                Button(L10n.buttonCancel) {
+                    isRecordingHotKey = false
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+            } else {
+                Text(hotKeyManager?.config.displayString ?? "⌘⌃V")
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundColor(.primary)
+                Spacer()
+                Button(L10n.settingsHotkeyChange) {
+                    startRecording()
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.accentColor)
+            }
+        }
+        .padding(.vertical, 4)
+        .background(isRecordingHotKey ? Color.orange.opacity(0.1) : Color.clear)
+        .cornerRadius(6)
+    }
+
+    private func startRecording() {
+        isRecordingHotKey = true
+        stopKeyEventMonitor()
+        // SettingsView is a SwiftUI struct (value type) — no retain cycle possible.
+        // The monitor is cleaned up via stopKeyEventMonitor() after recording ends.
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+            guard isRecordingHotKey else { return event }
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard !mods.isEmpty else { return nil }
+            let keyCode = UInt32(event.keyCode)
+            var modifiers: UInt32 = 0
+            if mods.contains(.command) { modifiers |= UInt32(cmdKey) }
+            if mods.contains(.control) { modifiers |= UInt32(controlKey) }
+            if mods.contains(.option) { modifiers |= UInt32(optionKey) }
+            if mods.contains(.shift) { modifiers |= UInt32(shiftKey) }
+            isRecordingHotKey = false
+            stopKeyEventMonitor()
+            hotKeyManager?.updateHotKey(keyCode: keyCode, modifiers: modifiers)
+            return nil
+        }
+    }
+
+    private func stopKeyEventMonitor() {
+        if let monitor = keyEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyEventMonitor = nil
         }
     }
 }
