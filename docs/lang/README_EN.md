@@ -49,7 +49,7 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 
 | Action | How |
 |--------|-----|
-| Summon window | `⌘⇧V` (global hotkey, works anywhere) |
+| Summon window | `⌘⌃V` (global hotkey, works anywhere) |
 | Navigate | `↑` / `↓` keys to cycle through items |
 | Copy item | `Enter` or single-click copies (green flash confirms) |
 | Multi-select | Click checkbox to enter multi-select mode, Shift+click for range |
@@ -67,7 +67,7 @@ ClipMemory is a local clipboard history manager for macOS. Never lose what you c
 
 ### Settings
 
-- Max history items (50/100/200/500/1000/2000)
+- Max history items (50/100/200/500)
 - Sensitive data auto-clear policy (1h/24h/48h/7days/never)
 - Language switcher
 
