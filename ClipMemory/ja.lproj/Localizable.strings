@@ -145,3 +145,9 @@
 /* QuickBar */
 "quickbar.recent" = "%d 件";
 "quickbar.open.full" = "完全なウィンドウを開く";
+
+/* Font Size */
+"settings.font.size" = "フォントサイズ";
+"font.size.small" = "小";
+"font.size.medium" = "中";
+"font.size.large" = "大";

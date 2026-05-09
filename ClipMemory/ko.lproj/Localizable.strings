@@ -145,3 +145,9 @@
 /* QuickBar */
 "quickbar.recent" = "%d개";
 "quickbar.open.full" = "전체 창 열기";
+
+/* Font Size */
+"settings.font.size" = "글꼴 크기";
+"font.size.small" = "작게";
+"font.size.medium" = "보통";
+"font.size.large" = "크게";

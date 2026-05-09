@@ -145,3 +145,9 @@
 /* QuickBar */
 "quickbar.recent" = "%d items";
 "quickbar.open.full" = "Open Clipboard";
+
+/* Font Size */
+"settings.font.size" = "Font Size";
+"font.size.small" = "Small";
+"font.size.medium" = "Medium";
+"font.size.large" = "Large";

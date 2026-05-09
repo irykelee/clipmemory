@@ -145,3 +145,9 @@
 /* QuickBar */
 "quickbar.recent" = "%d itens";
 "quickbar.open.full" = "Abrir janela completa";
+
+/* Font Size */
+"settings.font.size" = "Tamanho da fonte";
+"font.size.small" = "Pequeno";
+"font.size.medium" = "Médio";
+"font.size.large" = "Grande";
