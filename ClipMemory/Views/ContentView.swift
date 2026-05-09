@@ -143,7 +143,7 @@ struct ContentView: View {
                 Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyMaterial)
             }
         }
-        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(bodyMaterial).accentColor(accentColorOverride)
+        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(bodyMaterial).tint(accentColorOverride ?? Color.accentColor)
         .onAppear { applyAppearance() }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
         .overlay(alignment: .top) { KeyCaptureView(onUp: {

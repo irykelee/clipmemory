@@ -130,3 +130,21 @@
 "welcome.step3.desc" = "Marca con estrella los elementos que quieras guardar para siempre.";
 "welcome.hotkey.conflict" = "Conflicto de atajo detectado. Cámbialo en Preferencias.";
 "welcome.get.started" = "Comenzar";
+
+/* Theme */
+"settings.section.theme" = "Theme";
+"theme.effect" = "Window Effect";
+"theme.effect.solid" = "Solid";
+"theme.effect.frosted" = "Frosted";
+"theme.effect.ultra" = "Ultra";
+"theme.accent" = "Accent Color";
+"theme.accent.system" = "System";
+"theme.accent.blue" = "Blue";
+"theme.accent.green" = "Green";
+"theme.accent.orange" = "Orange";
+"theme.accent.purple" = "Purple";
+"theme.accent.red" = "Red";
+"theme.appearance" = "Appearance";
+"theme.appearance.system" = "Follow System";
+"theme.appearance.light" = "Light";
+"theme.appearance.dark" = "Dark";

@@ -130,3 +130,21 @@
 "welcome.step3.desc" = "중요한 항목에 별표를 지정하면 자동으로 삭제되지 않습니다.";
 "welcome.hotkey.conflict" = "단축키 충돌이 감지되었습니다. 설정에서 변경하세요.";
 "welcome.get.started" = "시작하기";
+
+/* Theme */
+"settings.section.theme" = "Theme";
+"theme.effect" = "Window Effect";
+"theme.effect.solid" = "Solid";
+"theme.effect.frosted" = "Frosted";
+"theme.effect.ultra" = "Ultra";
+"theme.accent" = "Accent Color";
+"theme.accent.system" = "System";
+"theme.accent.blue" = "Blue";
+"theme.accent.green" = "Green";
+"theme.accent.orange" = "Orange";
+"theme.accent.purple" = "Purple";
+"theme.accent.red" = "Red";
+"theme.appearance" = "Appearance";
+"theme.appearance.system" = "Follow System";
+"theme.appearance.light" = "Light";
+"theme.appearance.dark" = "Dark";
