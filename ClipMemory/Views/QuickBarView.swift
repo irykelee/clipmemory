@@ -9,10 +9,13 @@ struct QuickBarView: View {
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
     @State private var showFullWindow = false
+    @AppStorage("fontScale") private var fontScale: Double = 1.0
 
     let onDismiss: () -> Void
 
     private let maxItems = 8
+
+    private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
 
     var displayedItems: [ClipboardItem] {
         let base = searchText.isEmpty
@@ -27,16 +30,16 @@ struct QuickBarView: View {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                    .font(.system(size: 12))
+                    .font(.system(size: sz(12)))
                 TextField(L10n.searchPlaceholder, text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(.system(size: sz(13)))
                     .onChange(of: searchText) { _ in keyboardSelectedIndex = nil }
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
-                            .font(.system(size: 11))
+                            .font(.system(size: sz(11)))
                     }
                     .buttonStyle(.plain)
                 }
@@ -48,7 +51,7 @@ struct QuickBarView: View {
 
             // Section label
             Text(L10n.quickbarRecent(displayedItems.count))
-                .font(.system(size: 10))
+                .font(.system(size: sz(10)))
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -57,11 +60,11 @@ struct QuickBarView: View {
                 VStack(spacing: 8) {
                     Spacer(minLength: 40)
                     Text(L10n.emptyNoHistory)
-                        .font(.system(size: 12))
+                        .font(.system(size: sz(12)))
                         .foregroundColor(.secondary)
                     if searchText.isEmpty {
                         Text(L10n.emptyHistoryHint)
-                            .font(.system(size: 11))
+                            .font(.system(size: sz(11)))
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 16)
@@ -77,6 +80,7 @@ struct QuickBarView: View {
                                 isSelected: keyboardSelectedIndex == index,
                                 isCopied: lastCopiedId == item.id,
                                 searchText: searchText,
+                                sz: sz,
                                 onTap: {
                                     lastCopiedId = item.id
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -98,10 +102,10 @@ struct QuickBarView: View {
 
             // macOS 26 menu style bottom section
             VStack(spacing: 0) {
-                MacOSMenuItem(icon: "rectangle.expand.vertical", label: L10n.quickbarOpenFull, shortcut: "⌘⌃V")
+                MacOSMenuItem(icon: "rectangle.expand.vertical", label: L10n.quickbarOpenFull, shortcut: "⌘⌃V", sz: sz)
                     .onTapGesture { showFullWindow = true }
                 Divider().padding(.vertical, 2)
-                MacOSMenuItem(icon: "xmark.circle", label: L10n.quitApp, color: .secondary, shortcut: "⌘Q")
+                MacOSMenuItem(icon: "xmark.circle", label: L10n.quitApp, color: .secondary, shortcut: "⌘Q", sz: sz)
                     .onTapGesture { NSApp.terminate(nil) }
             }
             .padding(.vertical, 6)
@@ -160,22 +164,23 @@ struct MacOSMenuItem: View {
     let label: String
     var color: Color = .accentColor
     var shortcut: String = ""
+    var sz: (CGFloat) -> CGFloat = { $0 }
 
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .regular))
+                .font(.system(size: sz(14), weight: .regular))
                 .foregroundColor(color)
                 .frame(width: 20, height: 22)
             Text(label)
-                .font(.system(size: 14))
+                .font(.system(size: sz(14)))
                 .foregroundColor(Color(nsColor: .controlTextColor))
             Spacer()
             if !shortcut.isEmpty {
                 Text(shortcut)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: sz(11), design: .monospaced))
                     .foregroundColor(.secondary)
             }
         }
@@ -193,6 +198,7 @@ struct QuickBarRow: View {
     let isSelected: Bool
     let isCopied: Bool
     let searchText: String
+    let sz: (CGFloat) -> CGFloat
     let onTap: () -> Void
 
     @State private var isHovered = false
@@ -215,30 +221,30 @@ struct QuickBarRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: iconName)
-                .font(.system(size: 12))
+                .font(.system(size: sz(12)))
                 .foregroundColor(.secondary)
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 1) {
                 if item.type == .image {
                     Text(L10n.itemImage)
-                        .font(.system(size: 12))
+                        .font(.system(size: sz(12)))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 } else if item.isSensitive {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.shield.fill")
-                            .font(.system(size: 9))
+                            .font(.system(size: sz(9)))
                             .foregroundColor(.orange)
                         Text("[Sensitive]")
-                            .font(.system(size: 12))
+                            .font(.system(size: sz(12)))
                             .foregroundColor(.orange)
                             .lineLimit(1)
                     }
                 } else {
                     let content = item.decryptedContent.replacingOccurrences(of: "\n", with: " ")
                     Text(String(content.prefix(80)))
-                        .font(.system(size: 12))
+                        .font(.system(size: sz(12)))
                         .foregroundColor(item.isSensitive ? .orange : Color(nsColor: .controlTextColor))
                         .lineLimit(1)
                 }
@@ -247,7 +253,7 @@ struct QuickBarRow: View {
             Spacer()
 
             Text(formattedDate)
-                .font(.system(size: 10))
+                .font(.system(size: sz(10)))
                 .foregroundColor(.secondary)
         }
         .padding(.horizontal, 12)
