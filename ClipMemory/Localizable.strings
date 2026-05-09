@@ -1,5 +1,5 @@
 /* General */
-"app.name" = "ClipMemory";
+"app.name" = "剪憶 ClipMemory";
 "button.clear" = "清除";
 "button.settings" = "偏好設定";
 "button.back" = "返回";
@@ -75,7 +75,7 @@
 "sensitive.never" = "不自動清理";
 
 /* About */
-"about.version" = "ClipMemory 剪憶 v%@";
+"about.version" = "剪憶 ClipMemory v%@";
 "about.free.edition" = "免費版 · 本地剪貼簿管理器";
 "about.paid.edition" = "專業版";
 
@@ -122,3 +122,9 @@
 "welcome.step3.desc" = "點選星標釘選重要內容，永久保存，不會被自動清理。";
 "welcome.hotkey.conflict" = "檢測到快捷鍵衝突，請在設定中修改。";
 "welcome.get.started" = "開始使用";
+
+/* Font Size */
+"settings.font.size" = "字體大小";
+"font.size.small" = "小";
+"font.size.medium" = "中";
+"font.size.large" = "大";

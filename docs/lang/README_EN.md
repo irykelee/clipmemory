@@ -1,99 +1,139 @@
-<details>
-<summary><b>🌐 Languages / 语言</b></summary>
+# ClipMemory v2
 
-| Language | Link |
-|----------|------|
-| English | [README_EN.md](./README_EN.md) |
-| 简体中文 | [README.md](../README.md) |
-| 日本語 | [README_JA.md](./README_JA.md) |
-| 한국어 | [README_KO.md](./README_KO.md) |
-| Español | [README_ES.md](./README_ES.md) |
-| Português | [README_PT.md](./README_PT.md) |
+**Next-gen macOS Clipboard Manager — Better UI, Faster Actions, More Features**
 
----
-</details>
+[English](./README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
-# ClipMemory
+## What's New in v2 vs v1
 
-**Local Clipboard History Manager**
+| Aspect | v1 | v2 |
+|--------|----|----|
+| **Interaction** | Menu bar click → menu → open window (3 steps) | Menu bar click → **Quick Bar popup** (1 step) |
+| **Main Window** | Fixed-width ContentView, no sidebar | **NavigationSplitView sidebar**: All / Text / Image / Link / Pinned / Settings |
+| **Type Filter** | Horizontal FilterChip buttons | Vertical sidebar navigation with item counts |
+| **Time Grouping** | None | Today / Yesterday / This Week / This Month / Older, collapsible |
+| **Global Hotkey** | Cmd+Ctrl+V only | Customizable (record from Settings) |
+| **Quick Bar** | None | 8 recent items in popover, search + copy + open window |
+| **Long Press Preview** | None | Text → full content, sensitive → reveal, image → enlarge (0.4s hold) |
+| **Search Highlight** | Highlight on text | Accurate `offsetByCharacters` positioning, works with CJK |
+| **Icon Layout** | Checkbox + type icon + star + content | Checkbox + content + star + delete (removed redundant type icon) |
+| **Window Style** | Standard NSWindow | `.fullSizeContentView` + `.ultraThinMaterial`/`.regularMaterial` glass effect |
+| **Traffic Lights** | In titlebar | Hidden titlebar, lights inline with toolbar (Safari 26 style) |
+| **Dock Icon** | Always hidden | Appears when window opens, hides when closed |
+| **Font Scaling** | None | Small / Medium / Large in Settings |
+| **Launch at Login** | None (menu only) | Toggle in menu bar |
 
 ---
 
-## Introduction
+## New Features
 
-ClipMemory is a local clipboard history manager for macOS. Never lose what you copy.
+### Quick Bar
+Click menu bar icon → NSPopover with 8 recent items → click to copy / search / open full window
 
-### Features
+### Long Press Actions (0.4s)
+| Content Type | Default View | Long Press Shows |
+|-------------|-------------|------------------|
+| Regular Text | First 200 chars, 3 lines | Full content (no truncation) |
+| Sensitive Content | Masked `ab••••••yz` | Revealed text + search highlight |
+| Image | Thumbnail 80px | Enlarged to 300px |
 
-- 📋 Clipboard history (text/images/links)
-- ⭐ Pin important snippets, never lose them
-- 💾 Images stored as files, no storage limits
-- 🔍 Quick search through history (with highlighted matches)
-- ✅ Copy feedback (green flash confirmation)
-- ☑️ Multi-select batch operations (batch pin/delete)
-- 🔒 Sensitive info protection (encrypted + auto-clear)
-- ⌨️ Global hotkey `Cmd+Ctrl+V` to summon
-- 🛡️ Launch at login (optional)
-- 🌍 Multi-language support (Chinese/English/Japanese/Korean/Spanish/Portuguese)
+### Time Grouping
+Items auto-grouped by creation time: Today / Yesterday / This Week / This Month / Older, collapsible sections.
 
-### Security Features
+### Font Scaling
+Settings → Font Size → Small / Medium / Large — scales all UI text.
 
-- **AES-256 Encryption** — Sensitive content (passwords, API keys) encrypted with AES-256
-- **Secure Key Storage** — Keys stored locally with device-level protection
-- **Smart Detection** — 25+ sensitive data patterns supported
-- **Auto-Clear** — Configurable auto-clear time for sensitive content
+### Customizable Hotkey
+Settings allows recording a new global hotkey to replace the default `Cmd+Ctrl+V`.
 
-### Usage
+---
+
+## Features
+
+- 📋 Clipboard history (text / images / links)
+- ⭐ Pin important items
+- 💾 Images stored as encrypted files
+- 🔍 Quick search with accurate CJK highlight
+- ✅ Copy feedback (green flash)
+- ☑️ Multi-select batch pin / delete
+- 🔒 AES-256 + HMAC-SHA256 encryption
+- 🔍 25+ sensitive data detection rules
+- ⌨️ Global hotkey `Cmd+Ctrl+V`
+- 🌍 7 languages (Simplified Chinese / Traditional Chinese / English / Japanese / Korean / Spanish / Portuguese)
+- 📎 Settings → About → Send Feedback → GitHub Issues
+
+---
+
+## Usage Guide
 
 | Action | How |
 |--------|-----|
-| Summon window | `⌘⌃V` (global hotkey, works anywhere) |
-| Navigate | `↑` / `↓` keys to cycle through items |
-| Copy item | `Enter` or single-click copies (green flash confirms) |
-| Multi-select | Click checkbox to enter multi-select mode, Shift+click for range |
-| Batch actions | After selecting, batch pin/delete with toolbar buttons |
+| Open Quick Bar | Click menu bar 📋 / `Cmd+Ctrl+V` |
+| Copy from Quick Bar | Click item / ↑↓ + Enter |
+| Open Full Window | Quick Bar → "Open Clipboard" |
+| Pin / Unpin | Click ⭐, double-click row, or right-click menu |
+| Delete | Click 🗑 or right-click menu |
+| Reveal sensitive | Hold 0.4s to show, release to hide |
+| Enlarge image | Hold 0.4s to zoom, release to shrink |
+| Show full text | Hold 0.4s on any text item |
+| Multi-select | Click checkbox |
+| Batch operations | Select multiple → batch pin / delete |
 | Close window | `Esc` |
-| Search | Type to filter history, matches highlighted |
-| Pin/Unpin | Double-click to toggle pin status |
-| Pin item | Click ⭐ or right-click → "Pin" |
-| Unpin item | Click ⭐ again or right-click → "Unpin" |
-| Delete item | Click 🗑 or right-click → "Delete" |
-| Reveal sensitive | Click masked text → "View" (search shows matching region) |
-| Clear history | Top "Clear" button (pinned items preserved) |
+| Clear history | Top toolbar 🗑 (pinned preserved) |
 
-> 💡 Pinned items are never auto-cleared and won't trigger deduplication (re-copying updates timestamp)
+> 💡 Pinned items are never auto-cleared. Re-copying same content updates timestamp without duplication.
 
-### Settings
+---
 
-- Max history items (50/100/200/500)
-- Sensitive data auto-clear policy (1h/24h/48h/7days/never)
-- Language switcher
+## Security
 
-### Requirements
+- **AES-256 + HMAC-SHA256** — All text and images encrypted before disk write
+- **Smart Detection** — 25+ rules (keyword + regex) for passwords, API keys, tokens, private keys, IDs
+- **Auto-Clear** — Configurable timer (1h / 24h / 48h / 7d / never)
 
-- macOS 13.0 (Ventura) or higher
+---
 
-### Installation
+## Settings
+
+- Max history items (50 / 100 / 200 / 500)
+- Sensitive auto-clear policy (1h / 24h / 48h / 7d / never)
+- Language (7 languages)
+- Global hotkey recording
+- Font size (Small / Medium / Large)
+
+---
+
+## Requirements
+
+- macOS 13.0 (Ventura) or later
+
+---
+
+## Installation
 
 ```bash
-brew install irykelee/clipmemory/clipmemory
+brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install --cask clipmemory
 ```
 
-### Contact
+Find the 📋 icon in the **menu bar** (top right) after launching. Click to use.
 
-- GitHub: https://github.com/irykelee/clipmemory
+Or download from [GitHub Releases](https://github.com/irykelee/clipmemory/releases).
 
-### Development
+---
+
+## Development
 
 ```bash
-# Install dependencies
 brew install swiftlint xcodegen
-
-# Generate Xcode project
 xcodegen generate
-
-# Build
 xcodebuild -scheme ClipMemory -configuration Release
 ```
+
+---
+
+## Contact
+
+- GitHub: https://github.com/irykelee/clipmemory
+- Feedback: Settings → About → Send Feedback → GitHub Issues

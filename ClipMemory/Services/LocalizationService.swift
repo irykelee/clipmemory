@@ -107,6 +107,10 @@ struct L10n {
     static var settingsExcludedAppsPlaceholder: String { string("settings.excluded.apps.placeholder") }
     static var settingsExcludedAppsLabel: String { string("settings.excluded.apps.label") }
     static var settingsExcludedAppsHint: String { string("settings.excluded.apps.hint") }
+    static var settingsFontSize: String { string("settings.font.size") }
+    static var fontSizeSmall: String { string("font.size.small") }
+    static var fontSizeMedium: String { string("font.size.medium") }
+    static var fontSizeLarge: String { string("font.size.large") }
 
     static var sensitive1Hour: String { string("sensitive.1.hour") }
     static var sensitive24Hours: String { string("sensitive.24.hours") }
@@ -134,4 +138,33 @@ struct L10n {
     static func batchSelected(_ count: Int) -> String { string("batch.selected", count) }
     static var sendFeedback: String { string("app.send.feedback") }
     static var alertEncryptFailed: String { string("alert.encrypt.failed") }
+
+    // MARK: - Type Filter
+    static var filterAll: String { string("filter.all") }
+    static var filterText: String { string("filter.text") }
+    static var filterImage: String { string("filter.image") }
+    static var filterLink: String { string("filter.link") }
+
+    // MARK: - Welcome View
+    static var welcomeTitle: String { string("welcome.title") }
+    static var welcomeSubtitle: String { string("welcome.subtitle") }
+    static var welcomeStep1Title: String { string("welcome.step1.title") }
+    static var welcomeStep1Desc: String { string("welcome.step1.desc") }
+    static var welcomeStep2Title: String { string("welcome.step2.title") }
+    static func welcomeStep2Desc(_ hotkey: String) -> String { string("welcome.step2.desc", hotkey) }
+    static var welcomeStep3Title: String { string("welcome.step3.title") }
+    static var welcomeStep3Desc: String { string("welcome.step3.desc") }
+    static var welcomeHotkeyConflict: String { string("welcome.hotkey.conflict") }
+    static var welcomeGetStarted: String { string("welcome.get.started") }
+
+    // MARK: - Time Groups
+    static var groupToday: String { string("group.today") }
+    static var groupYesterday: String { string("group.yesterday") }
+    static var groupThisWeek: String { string("group.thisWeek") }
+    static var groupThisMonth: String { string("group.thisMonth") }
+    static var groupOlder: String { string("group.older") }
+
+    // MARK: - QuickBar
+    static func quickbarRecent(_ count: Int) -> String { string("quickbar.recent", count) }
+    static var quickbarOpenFull: String { string("quickbar.open.full") }
 }

@@ -63,3 +63,6 @@ identifier_name:
     - in
     - on
     - at
+    - KeyCaptureView
+    - MacOSMenuItem
+    - NotificationCenter

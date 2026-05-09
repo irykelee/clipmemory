@@ -17,6 +17,12 @@
 /* Search */
 "search.placeholder" = "Search clipboard history...";
 
+/* Type Filter */
+"filter.all" = "All";
+"filter.text" = "Text";
+"filter.image" = "Image";
+"filter.link" = "Link";
+
 /* Empty State */
 "empty.no.history" = "No clipboard history";
 "empty.no.pinned" = "No pinned items";
@@ -112,3 +118,15 @@
 "batch.selected" = "%d selected";
 "app.send.feedback" = "Feedback";
 "alert.encrypt.failed" = "Failed to encrypt sensitive data. Item was not saved.";
+
+/* Welcome View */
+"welcome.title" = "Welcome to ClipMemory";
+"welcome.subtitle" = "Your clipboard history, always at hand";
+"welcome.step1.title" = "Find the menu bar icon";
+"welcome.step1.desc" = "ClipMemory lives in your menu bar. Look for the clipboard icon.";
+"welcome.step2.title" = "Press the shortcut";
+"welcome.step2.desc" = "Press %@ anytime to open clipboard history.";
+"welcome.step3.title" = "Pin important items";
+"welcome.step3.desc" = "Star items you want to keep forever. They'll never be auto-deleted.";
+"welcome.hotkey.conflict" = "Shortcut conflict detected. Please change it in Settings.";
+"welcome.get.started" = "Get Started";

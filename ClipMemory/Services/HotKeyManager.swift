@@ -89,7 +89,7 @@ struct HotKeyConfig: Codable, Equatable {
 
 class HotKeyManager {
     private var eventHandler: EventHandlerRef?
-    private var hotKeyRef: EventHotKeyRef?
+    var hotKeyRef: EventHotKeyRef?
     private var showWindowHandler: (() -> Void)?
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "HotKeyManager")
 

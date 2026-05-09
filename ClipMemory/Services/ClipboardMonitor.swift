@@ -194,7 +194,7 @@ class ClipboardMonitor {
         let hours = ClipboardStore.shared.sensitiveClearHours
         let expiresAt: Date? = isSensitive && hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
 
-        ImageStorage.shared.saveImage(imageData, id: id) { filename in
+        ImageStorage.shared.saveImage(imageData, id: id) { [weak self] filename in
             guard let filename = filename else { return }
             let item = ClipboardItem(
                 id: id,

@@ -1,59 +1,44 @@
-# ClipMemory (Español)
+# ClipMemory v2
 
-**Gestor local de historial del portapapeles**
+**Gestor de portapapeles de nueva generación para macOS — Mejor interfaz, acciones más rápidas, más funciones**
 
-[English](./README_EN.md) · [简体中文](../README.md) · [Español](./README_ES.md) · [Português](./README_PT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md)
+[English](../docs/lang/README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
-## Funciones
+## Mejoras respecto a v1
 
-- 📋 Historial del portapapeles (texto/imágenes/enlaces)
-- ⭐ Fija fragmentos importantes
-- 💾 Imágenes almacenadas como archivos (sin límite)
-- 🔍 Búsqueda rápida
-- 🔒 Protección de información sensible (cifrado + limpieza automática)
-- ⌨️ Atajo global `⌘⌃V` para abrir
-- 🛡️ Iniciar al arrancar (opcional)
-- 🌍 Soporte multilingüe
+| Aspecto | v1 | v2 |
+|---------|----|----|
+| **Interacción** | Clic menú → menú → ventana | Quick Bar emergente (1 paso) |
+| **Ventana principal** | Ancho fijo, sin barra lateral | **Navegación con barra lateral** |
+| **Filtro de tipo** | Botones horizontales | Lista vertical en barra lateral |
+| **Agrupación por tiempo** | Ninguna | Hoy / Ayer / Esta semana / Este mes / Anterior |
+| **Vista previa larga** | Ninguna | Texto completo, contenido sensible, imagen ampliada (0.4s) |
+| **Estilo de ventana** | NSWindow estándar | Efecto de vidrio estilo Safari 26 |
+| **Tamaño de letra** | Ninguno | Pequeño / Mediano / Grande en ajustes |
 
-## Seguridad
+## Nuevas funciones
 
-- **Cifrado AES-256** — Contenido sensible cifrado con AES-256
-- **Gestión segura de claves** — Claves almacenadas localmente
-- **Detección inteligente** — 25+ patrones de datos sensibles
-- **Limpieza automática** — Tiempo configurable
-
-## Uso
-
-| Acción | Cómo |
-|--------|------|
-| Abrir ventana | `⌘⇧V` (atajo global) |
-| Navegar | `↑` / `↓` para navegar |
-| Copiar | `Enter` o clic único copia y cierra |
-| Cerrar | `Esc` |
-| Buscar | Escribir para filtrar en tiempo real |
-| Fijar/Desfijar | Doble clic para alternar estado |
-| Eliminar | Clic en 🗑 o menú contextual |
-
-## Requisitos
-
-- macOS 13.0 (Ventura) o superior
+- **Quick Bar**: Clic en ícono de menú → últimos 8 elementos → copiar / buscar
+- **Pulsación larga**: 0.4s para ver texto completo, revelar contenido sensible, ampliar imagen
+- **Agrupación por tiempo**: Agrupación automática por fecha de creación (plegable)
+- **Escalado de fuente**: Ajuste de tamaño de texto en configuración
+- **Atajo personalizable**: Grabar nuevo hotkey global en configuración
 
 ## Instalación
 
 ```bash
-brew install irykelee/clipmemory/clipmemory
+brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install --cask clipmemory
 ```
 
-## Desarrollo
+Busque el ícono 📋 en la **barra de menú** (esquina superior derecha). O descargue desde [GitHub Releases](https://github.com/irykelee/clipmemory/releases).
 
-```bash
-brew install swiftlint xcodegen
-xcodegen generate
-xcodebuild -scheme ClipMemory -configuration Release
-```
+## Requisitos
+
+macOS 13.0 (Ventura) o superior
 
 ## Contacto
+- Comentarios: Configuración → Acerca de → GitHub Issues
 
 - GitHub: https://github.com/irykelee/clipmemory

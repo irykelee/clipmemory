@@ -4,7 +4,7 @@ cask "clipmemory" do
 
   url "https://github.com/irykelee/clipmemory/releases/download/v#{version}/ClipMemory.tar.gz"
   name "ClipMemory"
-  desc "Local clipboard history manager with AES-256 encryption"
+  desc "Local clipboard history manager with AES-256 encryption, sensitive data detection, and multi-language support (7 languages)"
   homepage "https://github.com/irykelee/clipmemory"
 
   depends_on macos: ">= :ventura"
