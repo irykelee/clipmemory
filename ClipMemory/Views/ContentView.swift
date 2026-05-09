@@ -53,15 +53,6 @@ struct ContentView: View {
     private var sidebarMaterial: Material {
         switch windowEffect { case "solid": .regular; case "ultra": .ultraThinMaterial; default: .ultraThinMaterial }
     }
-    private var accentColorOverride: Color? {
-        switch themeAccent { case "blue": .blue; case "green": .green; case "orange": .orange; case "purple": .purple; case "red": .red; default: nil }
-    }
-    private func applyAppearance() {
-        switch themeAppearance {
-        case "light": NSApp.appearance = NSAppearance(named: .aqua)
-        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
-        default: NSApp.appearance = nil
-        }
     }
 
     var displayedItems: [ClipboardItem] {
