@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0102C98B3EC6466B275F8C7C /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 9F95D9B3E0F0D925FB6DDD24 /* Localizable.strings */; };
 		3F86CCA09C748C2CC0687BD8 /* ClipboardMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F180418B42AA03636D90BCA9 /* ClipboardMonitor.swift */; };
 		5471B4D6439F9B57C50A37BA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E8D75A92FDF0E0DE3ACCDF12 /* Assets.xcassets */; };
 		54EB58BA9A8F29C3E48C7DE6 /* ImageStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3153EAFCF0B2690D5DEB113 /* ImageStorage.swift */; };
@@ -47,7 +46,6 @@
 		8736B83768848E6CBB1834EA /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		8F250C19E7199E18D95521A3 /* CryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoService.swift; sourceTree = "<group>"; };
 		901900D40CAF1527A6AEE527 /* KeyCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyCaptureView.swift; sourceTree = "<group>"; };
-		9F95D9B3E0F0D925FB6DDD24 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
 		A060CA837242FD57B25DFFD9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A7F26B268CA5CF8662C3C930 /* QuickBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickBarView.swift; sourceTree = "<group>"; };
 		B03BAB1E9E84361A3845CEA9 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -89,7 +87,6 @@
 				E8D75A92FDF0E0DE3ACCDF12 /* Assets.xcassets */,
 				5FA613C869D9CDC57944F917 /* ClipMemory.entitlements */,
 				FCD6D7725E44DB26E42915AE /* Info.plist */,
-				9F95D9B3E0F0D925FB6DDD24 /* Localizable.strings */,
 				2AB1C7BD0454681ABF687DF9 /* main.swift */,
 				031A31F7A3F610D547F9908B /* Localizable.strings */,
 				2C1F1D179179031A984F43B8 /* Models */,
@@ -199,7 +196,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				5471B4D6439F9B57C50A37BA /* Assets.xcassets in Resources */,
-				0102C98B3EC6466B275F8C7C /* Localizable.strings in Resources */,
 				F9142E898BD5660C9E087A88 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
