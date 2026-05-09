@@ -147,3 +147,7 @@
 "theme.appearance.system" = "跟随系统";
 "theme.appearance.light" = "浅色";
 "theme.appearance.dark" = "深色";
+
+/* QuickBar */
+"quickbar.recent" = "%d 条内容";
+"quickbar.open.full" = "打开完整窗口";
