@@ -137,13 +137,6 @@
 "theme.effect.solid" = "단색";
 "theme.effect.frosted" = "유리";
 "theme.effect.ultra" = "고투명";
-"theme.accent" = "강조 색상";
-"theme.accent.system" = "시스템 따라가기";
-"theme.accent.blue" = "파랑";
-"theme.accent.green" = "초록";
-"theme.accent.orange" = "주황";
-"theme.accent.purple" = "보라";
-"theme.accent.red" = "빨강";
 "theme.appearance" = "외관";
 "theme.appearance.system" = "시스템 따라가기";
 "theme.appearance.light" = "라이트";

@@ -163,13 +163,6 @@ struct L10n {
     static var themeEffectSolid: String { string("theme.effect.solid") }
     static var themeEffectFrosted: String { string("theme.effect.frosted") }
     static var themeEffectUltra: String { string("theme.effect.ultra") }
-    static var themeAccent: String { string("theme.accent") }
-    static var themeAccentSystem: String { string("theme.accent.system") }
-    static var themeAccentBlue: String { string("theme.accent.blue") }
-    static var themeAccentGreen: String { string("theme.accent.green") }
-    static var themeAccentOrange: String { string("theme.accent.orange") }
-    static var themeAccentPurple: String { string("theme.accent.purple") }
-    static var themeAccentRed: String { string("theme.accent.red") }
     static var themeAppearance: String { string("theme.appearance") }
     static var themeAppearanceSystem: String { string("theme.appearance.system") }
     static var themeAppearanceLight: String { string("theme.appearance.light") }
