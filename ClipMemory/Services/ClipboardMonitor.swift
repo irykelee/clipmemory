@@ -100,6 +100,8 @@ class ClipboardMonitor {
         return compiled
     }()
 
+    deinit { stopMonitoring() }
+
     func startMonitoring() {
         lastChangeCount = pasteboard.changeCount
         // Track frontmost app changes via notification

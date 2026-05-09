@@ -8,6 +8,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var hotKeyManager: HotKeyManager!
     private(set) var windowManager: WindowManager!
     private var languageObserver: NSObjectProtocol?
+    private var encryptionFailedObserver: NSObjectProtocol?
     private var welcomeWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -47,7 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         languageObserver = NotificationCenter.default.addObserver(forName: Notification.Name("LanguageDidChange"), object: nil, queue: .main) { [weak self] _ in
             self?.statusItem.button?.toolTip = L10n.appName
         }
-        NotificationCenter.default.addObserver(forName: .encryptionFailed, object: nil, queue: .main) { _ in
+        encryptionFailedObserver = NotificationCenter.default.addObserver(forName: .encryptionFailed, object: nil, queue: .main) { _ in
             let a = NSAlert(); a.messageText = L10n.error; a.informativeText = L10n.alertEncryptFailed; a.alertStyle = .warning; a.addButton(withTitle: L10n.buttonConfirm); a.runModal()
         }
     }
@@ -74,5 +75,5 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyManager.register()
     }
 
-    deinit { if let o = languageObserver { NotificationCenter.default.removeObserver(o) } }
+    deinit { if let o = languageObserver { NotificationCenter.default.removeObserver(o) }; if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) } }
 }

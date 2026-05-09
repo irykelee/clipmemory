@@ -31,7 +31,8 @@ class CryptoService {
             return
         }
         do {
-            try keyData.write(to: keyFileURL, options: [.atomic, .completeFileProtection])
+            try keyData.write(to: keyFileURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyFileURL.path)
         } catch {
             logger.error("Failed to store encryption key: \(error.localizedDescription)")
         }
