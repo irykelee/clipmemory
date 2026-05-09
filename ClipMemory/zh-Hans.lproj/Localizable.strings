@@ -144,3 +144,9 @@
 /* QuickBar */
 "quickbar.recent" = "%d 条内容";
 "quickbar.open.full" = "打开完整窗口";
+
+/* Font Size */
+"settings.font.size" = "字体大小";
+"font.size.small" = "小";
+"font.size.medium" = "中";
+"font.size.large" = "大";
