@@ -29,6 +29,18 @@
 
 ---
 
+## 介面預覽
+
+<p align="center">
+  <img src="../screenshots/cm_main.png" alt="主介面" width="45%">
+  <img src="../screenshots/cm_settings.png" alt="偏好設定" width="45%">
+</p>
+<p align="center">
+  <img src="../screenshots/cm_quickbar.png" alt="Quick Bar 彈窗" width="45%">
+</p>
+
+---
+
 ## 新增功能
 
 ### Quick Bar（選單列彈窗）

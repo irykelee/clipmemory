@@ -148,6 +148,7 @@
 "quickbar.open.full" = "Abrir ventana completa";
 
 /* Font Size */
+"settings.font.picker" = "Establecer";
 "settings.font.size" = "Tamaño de letra";
 "font.size.small" = "Pequeño";
 "font.size.medium" = "Mediano";
