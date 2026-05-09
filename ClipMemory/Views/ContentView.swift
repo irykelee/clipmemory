@@ -53,7 +53,6 @@ struct ContentView: View {
     private var sidebarMaterial: Material {
         switch windowEffect { case "solid": .regular; case "ultra": .ultraThinMaterial; default: .ultraThinMaterial }
     }
-    }
 
     var displayedItems: [ClipboardItem] {
         var base: [ClipboardItem]
