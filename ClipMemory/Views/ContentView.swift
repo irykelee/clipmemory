@@ -30,7 +30,11 @@ struct ContentView: View {
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
     @State private var selectedItems: Set<UUID> = []
-    @State private var collapsedGroups: Set<TimeGroup> = []
+    @State private var collapsedGroups: Set<TimeGroup> = {
+        guard let data = UserDefaults.standard.string(forKey: "collapsedGroups")?.data(using: .utf8),
+              let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(arr.compactMap { TimeGroup(rawValue: $0) })
+    }()
     @State private var isRecordingHotKey = false
     @State private var keyEventMonitor: Any?
     @AppStorage("fontScale") private var fontScale: Double = 1.0
@@ -46,11 +50,19 @@ struct ContentView: View {
         default: NSApp.appearance = nil
         }
     }
-    private var bodyMaterial: Material {
-        switch windowEffect { case "solid": .regular; case "ultra": .ultraThinMaterial; default: .regularMaterial }
+    private var bodyBackground: AnyShapeStyle {
+        switch windowEffect {
+        case "solid": AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+        case "ultra": AnyShapeStyle(Material.ultraThinMaterial)
+        default: AnyShapeStyle(Material.regularMaterial)
+        }
     }
-    private var sidebarMaterial: Material {
-        switch windowEffect { case "solid": .regular; case "ultra": .ultraThinMaterial; default: .ultraThinMaterial }
+    private var sidebarBackground: AnyShapeStyle {
+        switch windowEffect {
+        case "solid": AnyShapeStyle(Color(nsColor: .controlBackgroundColor))
+        case "ultra": AnyShapeStyle(Material.ultraThinMaterial)
+        default: AnyShapeStyle(Material.ultraThinMaterial)
+        }
     }
 
     var displayedItems: [ClipboardItem] {
@@ -61,7 +73,7 @@ struct ContentView: View {
         return base.filter { $0.decryptedContent.localizedCaseInsensitiveContains(searchText) }
     }
 
-    private enum TimeGroup: CaseIterable { case today, yesterday, thisWeek, thisMonth, older
+    private enum TimeGroup: String, CaseIterable { case today, yesterday, thisWeek, thisMonth, older
         var label: String {
             switch self { case .today: L10n.groupToday; case .yesterday: L10n.groupYesterday; case .thisWeek: L10n.groupThisWeek; case .thisMonth: L10n.groupThisMonth; case .older: L10n.groupOlder }
         }
@@ -120,7 +132,7 @@ struct ContentView: View {
                             .frame(minWidth: 260)
                         if !searchText.isEmpty { Button(action: { searchText = "" }) { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.system(size: sz(11))) }.buttonStyle(.plain) }
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 4).background(sidebarMaterial).cornerRadius(appCornerRadius)
+                    .padding(.horizontal, 8).padding(.vertical, 4).background(sidebarBackground).cornerRadius(appCornerRadius)
                     Button(action: { showingClearAlert = true }) { Image(systemName: "trash").font(.system(size: sz(14))).foregroundColor(.secondary) }.buttonStyle(.plain).help(L10n.tooltipClearHistory).disabled(store.items.isEmpty)
                     Spacer(minLength: 12)
                 }.padding(.vertical, 6)
@@ -133,13 +145,17 @@ struct ContentView: View {
                     Text(L10n.appName).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 12).padding(.vertical, 10)
                     Divider()
                     sidebar
-                }.frame(width: 170).background(sidebarMaterial)
+                }.frame(width: 170).background(sidebarBackground)
                 Divider()
-                Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyMaterial)
+                Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyBackground)
             }
         }
-        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(bodyMaterial)
+        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(bodyBackground)
         .onAppear { applyAppearance() }
+        .onChange(of: collapsedGroups) { val in
+            let arr = val.map { $0.rawValue }
+            if let d = try? JSONEncoder().encode(arr), let s = String(data: d, encoding: .utf8) { UserDefaults.standard.set(s, forKey: "collapsedGroups") }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
         .overlay(alignment: .top) { KeyCaptureView(onUp: {
             guard !displayedItems.isEmpty else { return }
@@ -167,7 +183,7 @@ struct ContentView: View {
                     Button(action: { store.togglePinItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(batchAllPinned ? L10n.actionUnpin : L10n.actionPin, systemImage: batchAllPinned ? "star.slash" : "star").font(.system(size: sz(12))) }.buttonStyle(.plain)
                     Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(L10n.actionDelete, systemImage: "trash").font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.red)
                     Button(action: { selectedItems.removeAll() }) { Text(L10n.buttonCancel).font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.secondary)
-                }.padding(.horizontal, 16).padding(.vertical, 8).background(sidebarMaterial)
+                }.padding(.horizontal, 16).padding(.vertical, 8).background(sidebarBackground)
                 Divider()
             }
             if displayedItems.isEmpty { emptyState } else {
@@ -197,7 +213,7 @@ struct ContentView: View {
                                         .font(.system(size: sz(10))).foregroundColor(.secondary)
                                 }
                                 .contentShape(Rectangle()).onTapGesture { toggleGroup(group) }
-                                .padding(.horizontal, 16).padding(.vertical, 4).background(bodyMaterial)
+                                .padding(.horizontal, 16).padding(.vertical, 4).background(bodyBackground)
                             }
                         }
                     }.padding(.vertical, 2)
