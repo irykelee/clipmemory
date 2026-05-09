@@ -1,59 +1,44 @@
-# ClipMemory 剪憶（日本語）
+# ClipMemory v2
 
-**ローカルクリップボード履歴マネージャー**
+**次世代 macOS クリップボード管理 — より良いUI、より速い操作、より多くの機能**
 
-[English](./README_EN.md) · [简体中文](../README.md) · [Español](./README_ES.md) · [Português](./README_PT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md)
+[English](../docs/lang/README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
-## 機能
+## v1 からの改善点
 
-- 📋 クリップボード履歴（テキスト/画像/リンク）
-- ⭐ 重要なスニペットをピン留め
-- 💾 画像はファイルとして保存（容量制限なし）
-- 🔍 高速検索
-- 🔒 機密情報保護（暗号化 + 自動削除）
-- ⌨️ グローバルホットキー `⌘⌃V` で呼び出し
-- 🛡️ ログイン時に起動（オプション）
-- 🌍 マルチリンガルサポート
+| 項目 | v1 | v2 |
+|------|----|----|
+| **操作** | メニューバー → メニュー → ウィンドウ | Quick Bar ポップアップ（1ステップ）|
+| **メイン画面** | 固定幅、サイドバーなし | **サイドバーナビゲーション** |
+| **タイプフィルター** | 横並びボタン | サイドバーの垂直リスト |
+| **時間グループ** | なし | 今日 / 昨日 / 今週 / 今月 / 以前 |
+| **ロングプレス** | なし | テキスト→全文、機密→表示、画像→拡大（0.4秒長押し）|
+| **ウィンドウ** | 標準 NSWindow | Safari 26 スタイルのガラス効果 |
+| **フォントサイズ** | なし | 小/中/大の3段階設定 |
 
-## セキュリティ機能
+## 新機能
 
-- **AES-256暗号化** — パスワード、APIキーなどの機密コンテンツはAES-256で暗号化
-- **安全なキー管理** — キーはローカルに安全に保管
-- **スマート検出** — 25+の機密データパターン対応
-- **自動削除** — 機密コンテンツの自動削除時間設定可能
-
-## 使用方法
-
-| 操作 | 方法 |
-|------|------|
-| ウィンドウ呼び出し | `⌘⇧V`（グローバルホットキー） |
-| 移動 | `↑` / `↓` キー |
-| コピー | `Enter` またはシングルクリックでコピーして閉じる |
-| 閉じる | `Esc` |
-| 検索 | キーワード入力でリアルタイムフィルタリング |
-| ピン留め/解除 | ダブルクリックで切り替え |
-| 削除 | 🗑 クリックまたはコンテキストメニュー |
-
-## 必要環境
-
-- macOS 13.0 (Ventura) 以上
+- **Quick Bar**: メニューバークリック → 最近8件 → クリックでコピー / 検索
+- **ロングプレス**: 0.4秒長押しで全文表示、機密内容表示、画像拡大
+- **時間グループ**: 作成日時で自動グループ化（折りたたみ可能）
+- **フォントスケーリング**: 設定でUIテキストサイズ調整
+- **ショートカットカスタマイズ**: 設定でホットキー録音
 
 ## インストール
 
 ```bash
-brew install irykelee/clipmemory/clipmemory
+brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install --cask clipmemory
 ```
 
-## 開発
+起動後、**画面右上のメニューバー**の 📋 アイコンをクリック。または [GitHub Releases](https://github.com/irykelee/clipmemory/releases) からダウンロード。
 
-```bash
-brew install swiftlint xcodegen
-xcodegen generate
-xcodebuild -scheme ClipMemory -configuration Release
-```
+## システム要件
 
-## 連絡先
+macOS 13.0 (Ventura) 以降
+
+## お問い合わせ
+- フィードバック: 設定 → このアプリについて → GitHub Issues
 
 - GitHub: https://github.com/irykelee/clipmemory

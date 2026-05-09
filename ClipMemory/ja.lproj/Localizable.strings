@@ -17,6 +17,12 @@
 /* Search */
 "search.placeholder" = "クリップボードを検索...";
 
+/* Type Filter */
+"filter.all" = "すべて";
+"filter.text" = "テキスト";
+"filter.image" = "画像";
+"filter.link" = "リンク";
+
 /* Empty State */
 "empty.no.history" = "クリップボード履歴なし";
 "empty.no.pinned" = "ピン留めした項目なし";
@@ -60,6 +66,14 @@
 "settings.max.items.count" = "%d件";
 "settings.auto.clear" = "自動削除";
 "settings.sensitive.hint" = "パスワード、APIキーなどの重要な情報を自動削除するまでの時間";
+"settings.section.hotkey" = "ホットキー";
+"settings.section.excluded.apps" = "除外アプリ";
+"settings.hotkey.change" = "変更";
+"settings.hotkey.recording" = "キーの組み合わせを押してください...";
+"settings.excluded.apps" = "除外アプリ";
+"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
+"settings.excluded.apps.label" = "除外アプリ";
+"settings.excluded.apps.hint" = "クリップボード監視から除外するアプリのバンドルIDをカンマ区切りで指定（例：com.1password.1password, com.bitwarden.desktop）。これら";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1時間後";
@@ -104,3 +118,15 @@
 "batch.selected" = "%d 件選択中";
 "app.send.feedback" = "フィードバック";
 "alert.encrypt.failed" = "機密データの暗号化に失敗しました。保存されませんでした。";
+
+/* Welcome View */
+"welcome.title" = "ClipMemory へようこそ";
+"welcome.subtitle" = "クリップボード履歴をいつでも利用可能";
+"welcome.step1.title" = "メニューバーのアイコンを見つける";
+"welcome.step1.desc" = "ClipMemory はメニューバーに常住しています。クリップボードのアイコンを探してください。";
+"welcome.step2.title" = "ショートカットを押す";
+"welcome.step2.desc" = "%@ を押すとクリップボード履歴が開きます。";
+"welcome.step3.title" = "重要な項目をピン留め";
+"welcome.step3.desc" = "星印で重要な項目をピン留めすると、自動的に削除されなくなります。";
+"welcome.hotkey.conflict" = "ショートカットの競合が検出されました。設定で変更してください。";
+"welcome.get.started" = "始める";

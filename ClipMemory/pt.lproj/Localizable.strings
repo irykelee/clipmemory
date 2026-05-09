@@ -17,6 +17,12 @@
 /* Search */
 "search.placeholder" = "Pesquisar na área de transferência...";
 
+/* Type Filter */
+"filter.all" = "Todos";
+"filter.text" = "Texto";
+"filter.image" = "Imagem";
+"filter.link" = "Link";
+
 /* Empty State */
 "empty.no.history" = "Nenhum histórico";
 "empty.no.pinned" = "Sem itens fixados";
@@ -60,6 +66,14 @@
 "settings.max.items.count" = "%d itens";
 "settings.auto.clear" = "Exclusão automática";
 "settings.sensitive.hint" = "Tempo até excluir automaticamente senhas, chaves de API, etc.";
+"settings.section.hotkey" = "Atalho";
+"settings.section.excluded.apps" = "Apps Excluídas";
+"settings.hotkey.change" = "Alterar";
+"settings.hotkey.recording" = "Pressione uma combinação de teclas...";
+"settings.excluded.apps" = "Apps Excluídas";
+"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
+"settings.excluded.apps.label" = "Apps Excluídas";
+"settings.excluded.apps.hint" = "IDs de pacote separados por vírgula de apps a excluir do monitoramento da área de transferência (ex. com.1password.1password, com.bitwarden.desktop). Ações de copiar dessas apps não serão gravadas.";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 hora";
@@ -104,3 +118,15 @@
 "batch.selected" = "%d selecionados";
 "app.send.feedback" = "Feedback";
 "alert.encrypt.failed" = "Falha ao criptografar dados sensíveis. Item não foi salvo.";
+
+/* Welcome View */
+"welcome.title" = "Bem-vindo ao ClipMemory";
+"welcome.subtitle" = "Seu histórico da área de transferência, sempre à mão";
+"welcome.step1.title" = "Encontre o ícone na barra de menus";
+"welcome.step1.desc" = "O ClipMemory vive na sua barra de menus. Procure o ícone do portapapéis.";
+"welcome.step2.title" = "Pressione o atalho";
+"welcome.step2.desc" = "Pressione %@ a qualquer momento para abrir o histórico.";
+"welcome.step3.title" = "Fixar itens importantes";
+"welcome.step3.desc" = "Marque com estrela os itens que deseja manter para sempre.";
+"welcome.hotkey.conflict" = "Conflito de atalho detectado. Altere nas Configurações.";
+"welcome.get.started" = "Começar";

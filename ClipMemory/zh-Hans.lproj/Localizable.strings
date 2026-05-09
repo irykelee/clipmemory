@@ -17,6 +17,12 @@
 /* Search */
 "search.placeholder" = "搜索剪贴板...";
 
+/* Type Filter */
+"filter.all" = "全部";
+"filter.text" = "文本";
+"filter.image" = "图片";
+"filter.link" = "链接";
+
 /* Empty State */
 "empty.no.history" = "暂无剪贴板记录";
 "empty.no.pinned" = "暂无收藏内容";
@@ -111,3 +117,15 @@
 "batch.selected" = "已选择 %d 项";
 "app.send.feedback" = "反馈";
 "alert.encrypt.failed" = "敏感数据加密失败，内容未保存。";
+
+/* Welcome View */
+"welcome.title" = "欢迎使用 ClipMemory";
+"welcome.subtitle" = "剪贴板历史，随手可得";
+"welcome.step1.title" = "找到菜单栏图标";
+"welcome.step1.desc" = "ClipMemory 运行在菜单栏，找到剪贴板图标即可使用。";
+"welcome.step2.title" = "按下快捷键";
+"welcome.step2.desc" = "随时按下 %@ 打开剪贴板历史。";
+"welcome.step3.title" = "收藏重要内容";
+"welcome.step3.desc" = "点击星标收藏重要内容，永久保存，不会被自动清理。";
+"welcome.hotkey.conflict" = "检测到快捷键冲突，请在设置中修改。";
+"welcome.get.started" = "开始使用";

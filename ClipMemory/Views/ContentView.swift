@@ -1,89 +1,29 @@
 import SwiftUI
 import AppKit
 import Carbon.HIToolbox
+import ServiceManagement
+import ServiceManagement
 
-/// Invisible view that captures key events for keyboard navigation.
-/// Falls back to ArrowKeyView on macOS 13 (NSEvent monitor).
-struct KeyCaptureView: NSViewRepresentable {
-    var onUp: () -> Void
-    var onDown: () -> Void
-    var onReturn: () -> Void
-    var onEscape: () -> Void
-
-    func makeNSView(context: Context) -> KeyCaptureNSView {
-        let view = KeyCaptureNSView()
-        view.onUp = onUp
-        view.onDown = onDown
-        view.onReturn = onReturn
-        view.onEscape = onEscape
-        return view
+enum SidebarTab: String, CaseIterable {
+    case all, text, image, link, pinned, settings
+    var icon: String {
+        switch self { case .all: "tray.full"; case .text: "doc.text"; case .image: "photo"; case .link: "link"; case .pinned: "star"; case .settings: "gear" }
     }
-
-    func updateNSView(_ nsView: KeyCaptureNSView, context: Context) {
-        nsView.onUp = onUp
-        nsView.onDown = onDown
-        nsView.onReturn = onReturn
-        nsView.onEscape = onEscape
+    var label: String {
+        switch self { case .all: L10n.filterAll; case .text: L10n.filterText; case .image: L10n.filterImage; case .link: L10n.filterLink; case .pinned: L10n.headerShowPinned; case .settings: L10n.buttonSettings }
+    }
+    var typeFilter: ClipboardItemType? {
+        switch self { case .text: .text; case .image: .image; case .link: .link; default: nil }
     }
 }
 
-final class KeyCaptureNSView: NSView {
-    var onUp: (() -> Void)?
-    var onDown: (() -> Void)?
-    var onReturn: (() -> Void)?
-    var onEscape: (() -> Void)?
-
-    private var eventMonitor: Any?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        setupMonitor()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupMonitor()
-    }
-
-    private func setupMonitor() {
-        // Monitor key events even when other views have focus
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self else { return event }
-            switch event.keyCode {
-            case 126: // upArrow
-                self.onUp?()
-                return nil
-            case 125: // downArrow
-                self.onDown?()
-                return nil
-            case 36: // return
-                self.onReturn?()
-                return nil
-            case 53: // escape
-                self.onEscape?()
-                return nil
-            default:
-                return event
-            }
-        }
-    }
-
-    deinit {
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
-    }
-}
+let appCornerRadius: CGFloat = 8
 
 struct ContentView: View {
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
-    @State private var searchText = "" {
-        didSet {
-            keyboardSelectedIndex = nil
-            updateDebouncedSearch(searchText)
-        }
-    }
+    @State private var selectedTab: SidebarTab = .all
+    @State private var searchText = "" { didSet { keyboardSelectedIndex = nil } }
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: ClipboardItem?
     @State private var showingClearAlert = false
@@ -91,754 +31,170 @@ struct ContentView: View {
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
     @State private var selectedItems: Set<UUID> = []
-    @State var pinnedOnly: Bool = false
-    @State var settingsOnly: Bool = false
-
-    // Debounced search to avoid decrypting on every keystroke
-    @State private var debouncedSearchText = ""
-    @State private var searchTask: Task<Void, Never>?
-
-    private func updateDebouncedSearch(_ text: String) {
-        searchTask?.cancel()
-        searchTask = Task {
-            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
-            if !Task.isCancelled {
-                await MainActor.run {
-                    debouncedSearchText = text
-                }
-            }
-        }
-    }
+    @State private var collapsedGroups: Set<TimeGroup> = []
+    @State private var isRecordingHotKey = false
+    @State private var keyEventMonitor: Any?
+    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
 
     var displayedItems: [ClipboardItem] {
-        let baseItems = pinnedOnly ? store.pinnedItems : store.items
-        if debouncedSearchText.isEmpty {
-            return baseItems
-        }
-        // Search must decrypt content to match — ciphertext would never match plaintext queries
-        return baseItems.filter { item in
-            item.decryptedContent.localizedCaseInsensitiveContains(debouncedSearchText)
-        }
+        var base: [ClipboardItem]
+        switch selectedTab { case .pinned: base = store.pinnedItems; default: base = store.items }
+        if let f = selectedTab.typeFilter { base = base.filter { $0.type == f } }
+        if searchText.isEmpty { return base }
+        return base.filter { $0.decryptedContent.localizedCaseInsensitiveContains(searchText) }
     }
 
-    /// Flat list with global indices for keyboard navigation
+    private enum TimeGroup: CaseIterable { case today, yesterday, thisWeek, thisMonth, older
+        var label: String {
+            switch self { case .today: L10n.groupToday; case .yesterday: L10n.groupYesterday; case .thisWeek: L10n.groupThisWeek; case .thisMonth: L10n.groupThisMonth; case .older: L10n.groupOlder }
+        }
+    }
+    private var groupedItems: [(TimeGroup, [ClipboardItem])] {
+        let cal = Calendar.current, now = Date()
+        var dict: [TimeGroup: [ClipboardItem]] = [:]
+        for item in displayedItems {
+            let g: TimeGroup
+            if cal.isDateInToday(item.createdAt) { g = .today }
+            else if cal.isDateInYesterday(item.createdAt) { g = .yesterday }
+            else if let week = cal.date(byAdding: .day, value: -7, to: now), item.createdAt > week { g = .thisWeek }
+            else if let month = cal.date(byAdding: .month, value: -1, to: now), item.createdAt > month { g = .thisMonth }
+            else { g = .older }
+            dict[g, default: []].append(item)
+        }
+        return TimeGroup.allCases.compactMap { guard let items = dict[$0], !items.isEmpty else { return nil }; return ($0, items) }
+    }
+
     private var flattenedItems: [(item: ClipboardItem, globalIndex: Int)] {
-        displayedItems.enumerated().map { (index, item) in (item: item, globalIndex: index) }
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            if settingsOnly {
-                SettingsView(isSettingsOnly: $settingsOnly, hotKeyManager: (NSApp.delegate as? AppDelegate)?.hotKeyManager)
-            } else {
-                headerView
-                Divider()
-                if displayedItems.isEmpty {
-                    emptyStateView
-                } else {
-                    listView
-                }
+        var result: [(item: ClipboardItem, globalIndex: Int)] = []
+        var idx = 0
+        for section in groupedItems {
+            for item in section.1 {
+                result.append((item, idx)); idx += 1
             }
         }
-        .frame(minWidth: 380, minHeight: 400)
-        .overlay(alignment: .top) {
-            KeyCaptureView(
-                onUp: {
-                    if displayedItems.isEmpty { return }
-                    if let idx = keyboardSelectedIndex, idx > 0 {
-                        keyboardSelectedIndex = idx - 1
-                    } else {
-                        keyboardSelectedIndex = displayedItems.count - 1
-                    }
-                },
-                onDown: {
-                    if displayedItems.isEmpty { return }
-                    let last = displayedItems.count - 1
-                    if let idx = keyboardSelectedIndex, idx < last {
-                        keyboardSelectedIndex = idx + 1
-                    } else {
-                        keyboardSelectedIndex = 0
-                    }
-                },
-                onReturn: {
-                    if let idx = keyboardSelectedIndex, idx < displayedItems.count {
-                        let item = displayedItems[idx]
-                        lastCopiedId = item.id
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            if lastCopiedId == item.id { lastCopiedId = nil }
-                        }
-                        copyItem(item)
-                    }
-                },
-                onEscape: {
-                    NSApp.keyWindow?.close()
-                }
-            )
-            .frame(width: 0, height: 0)
-        }
-    }
-
-    private var headerView: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Image(systemName: "doc.on.clipboard")
-                    .font(.title)
-                    .foregroundColor(.accentColor)
-                Text(L10n.appName)
-                    .font(.title3)
-
-                Spacer()
-
-                Button(action: { showingClearAlert = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "trash")
-                        Text(L10n.buttonClear)
-                    }
-                    .font(.callout)
-                    .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help(L10n.tooltipClearHistory)
-                .disabled(store.items.isEmpty)
-
-                Button(action: { pinnedOnly.toggle() }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: pinnedOnly ? "star.fill" : "star")
-                        Text(pinnedOnly ? L10n.headerShowAll : L10n.headerShowPinned)
-                    }
-                    .font(.callout)
-                    .foregroundColor(pinnedOnly ? .orange : .secondary)
-                }
-                .buttonStyle(.plain)
-                .help(pinnedOnly ? L10n.tooltipShowAll : L10n.tooltipPinnedOnly)
-
-                Button(action: { settingsOnly = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "gear")
-                        Text(L10n.buttonSettings)
-                    }
-                    .font(.callout)
-                    .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help(L10n.buttonSettings)
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
-
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                TextField(L10n.searchPlaceholder, text: $searchText)
-                    .textFieldStyle(.plain)
-                if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(10)
-            .background(Color(.textBackgroundColor))
-            .cornerRadius(8)
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-        }
-        .background(Color(.windowBackgroundColor).opacity(0.5))
-        .alert(L10n.alertClearTitle, isPresented: $showingClearAlert) {
-            Button(L10n.buttonCancel, role: .cancel) {}
-            Button(L10n.buttonClear, role: .destructive) {
-                clearHistory()
-            }
-        } message: {
-            let count = store.items.filter { !$0.isPinned }.count
-            if count > 0 {
-                Text(L10n.alertClearMessage(count))
-            } else {
-                Text(L10n.alertClearNone)
-            }
-        }
-    }
-
-    private func clearHistory() {
-        store.clearAllItems()
-    }
-
-    private var emptyStateView: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: pinnedOnly ? "star" : "doc.on.clipboard")
-                .font(.system(size: 48))
-                .foregroundColor(.secondary)
-            Text(pinnedOnly ? L10n.emptyNoPinned : L10n.emptyNoHistory)
-                .font(.headline)
-                .foregroundColor(.secondary)
-            if pinnedOnly {
-                Text(L10n.emptyPinnedHint)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            } else {
-                Text(L10n.emptyHistoryHint)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var listView: some View {
-        ScrollView {
-            LazyVStack(spacing: 1) {
-                if !selectedItems.isEmpty {
-                    HStack {
-                        Text(L10n.batchSelected(selectedItems.count))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Button(action: {
-                            let itemsToToggle = displayedItems.filter { selectedItems.contains($0.id) }
-                            store.togglePinItems(itemsToToggle)
-                            selectedItems.removeAll()
-                        }) {
-                            Image(systemName: "star")
-                            Text(L10n.actionPin)
-                        }
-                        .buttonStyle(.plain)
-                        .font(.caption)
-                        Button(action: {
-                            let itemsToDelete = displayedItems.filter { selectedItems.contains($0.id) }
-                            store.deleteItems(itemsToDelete)
-                            selectedItems.removeAll()
-                        }) {
-                            Image(systemName: "trash")
-                            Text(L10n.actionDelete)
-                        }
-                        .buttonStyle(.plain)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                        Button(action: { selectedItems.removeAll() }) {
-                            Text(L10n.buttonCancel)
-                        }
-                        .buttonStyle(.plain)
-                        .font(.caption)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.windowBackgroundColor).opacity(0.8))
-                }
-
-                if pinnedOnly && store.pinnedItems.count > 1 {
-                    Button(action: { store.unpinAll() }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "star.slash")
-                            Text(L10n.headerPinAll)
-                        }
-                        .font(.callout)
-                        .foregroundColor(.orange)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.vertical, 8)
-                }
-
-                ForEach(flattenedItems, id: \.item.id) { entry in
-                    ClipboardItemRow(
-                        item: entry.item,
-                        isRevealed: revealedItems.contains(entry.item.id),
-                        isKeyboardSelected: keyboardSelectedIndex == entry.globalIndex,
-                        isCopied: lastCopiedId == entry.item.id,
-                        isSelected: selectedItems.contains(entry.item.id),
-                        searchText: debouncedSearchText,
-                        onCopyWithFeedback: {
-                            lastCopiedId = entry.item.id
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                if lastCopiedId == entry.item.id { lastCopiedId = nil }
-                            }
-                            copyItem(entry.item)
-                        },
-                        onPin: { store.togglePin(entry.item) },
-                        onDelete: { itemToDelete = entry.item; showingDeleteAlert = true },
-                        onSelect: { selected in
-                            if selected {
-                                selectedItems.insert(entry.item.id)
-                            } else {
-                                selectedItems.remove(entry.item.id)
-                            }
-                        },
-                        onToggleReveal: { toggleReveal(entry.item.id) }
-                    )
-                }
-            }
-            .padding(.vertical, 4)
-        }
-        .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) {
-            Button(L10n.buttonCancel, role: .cancel) {}
-            Button(L10n.buttonDelete, role: .destructive) {
-                if let item = itemToDelete {
-                    store.deleteItem(item)
-                }
-            }
-        } message: {
-            Text(L10n.alertDeleteMessage)
-        }
-    }
-
-    private func copyItem(_ item: ClipboardItem) {
-        store.copyToClipboard(item)
-    }
-
-    private func toggleReveal(_ id: UUID) {
-        if revealedItems.contains(id) {
-            revealedItems.remove(id)
-        } else {
-            revealedItems.insert(id)
-        }
-    }
-}
-
-struct ClipboardItemRow: View {
-    let item: ClipboardItem
-    let isRevealed: Bool
-    var isKeyboardSelected: Bool = false
-    var isCopied: Bool = false
-    var isSelected: Bool = false
-    var searchText: String = ""
-    var onCopyWithFeedback: (() -> Void)?
-    let onPin: () -> Void
-    let onDelete: () -> Void
-    let onSelect: ((Bool) -> Void)?
-    let onToggleReveal: () -> Void
-
-    @State private var isHovered = false
-    @State private var loadedImage: NSImage?
-
-    private var rowBackground: Color {
-        if isCopied { return Color.green.opacity(0.3) }
-        if isSelected { return Color.accentColor.opacity(0.15) }
-        if isHovered || isKeyboardSelected { return Color(.selectedContentBackgroundColor).opacity(0.3) }
-        return Color.clear
-    }
-
-    private var pinText: String {
-        item.isPinned ? L10n.actionUnpin : L10n.actionPin
-    }
-
-    /// Decrypts content for display — delegates to item.decryptedContent
-    private var decryptedContent: String {
-        item.decryptedContent
-    }
-
-    /// Creates attributed string with search term highlighted in yellow
-    private func highlightedContent(_ text: String, highlight: String) -> AttributedString {
-        if highlight.isEmpty {
-            return AttributedString(String(text.prefix(200)))
-        }
-
-        let lowerText = text.lowercased()
-        let lowerHighlight = highlight.lowercased()
-
-        // Find first match
-        guard let firstMatch = lowerText.range(of: lowerHighlight) else {
-            return AttributedString(String(text.prefix(200)))
-        }
-
-        // Calculate character offset from lowerText (safe since we only use it as a number)
-        let matchStartOffset = lowerText.distance(from: lowerText.startIndex, to: firstMatch.lowerBound)
-        var prefix = ""
-
-        // Use text's own indices to avoid Unicode case-mapping issues (e.g. "ß" → "ss")
-        let displayStartIdx: String.Index
-        if matchStartOffset > 30 {
-            let matchIdx = text.index(text.startIndex, offsetBy: matchStartOffset)
-            displayStartIdx = text.index(matchIdx, offsetBy: -20, limitedBy: text.startIndex) ?? text.startIndex
-            prefix = "..."
-        } else {
-            displayStartIdx = text.startIndex
-        }
-
-        // Take up to 200 chars from display start
-        let displayEndIdx = text.index(displayStartIdx, offsetBy: 200, limitedBy: text.endIndex) ?? text.endIndex
-        let displaySlice = String(text[displayStartIdx..<displayEndIdx])
-        var attributed = AttributedString(prefix + displaySlice)
-
-        // Re-find matches in the displayed slice and apply highlighting
-        let lowerSlice = displaySlice.lowercased()
-        var searchStart = lowerSlice.startIndex
-        while let range = lowerSlice.range(of: lowerHighlight, range: searchStart..<lowerSlice.endIndex) {
-            let attrStart = AttributedString.Index(range.lowerBound, within: attributed)
-            let attrEnd = AttributedString.Index(range.upperBound, within: attributed)
-            if let attrStart = attrStart, let attrEnd = attrEnd {
-                attributed[attrStart..<attrEnd].backgroundColor = .yellow.opacity(0.4)
-                attributed[attrStart..<attrEnd].foregroundColor = .orange
-            }
-            searchStart = range.upperBound
-        }
-
-        return attributed
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 6) {
-            Button(action: { onSelect?(!isSelected) }) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.caption)
-                    .foregroundColor(isSelected ? .accentColor : .secondary)
-            }
-            .buttonStyle(.plain)
-
-            Image(systemName: iconName)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .frame(width: 16)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .top) {
-                    Button(action: onPin) {
-                        Image(systemName: item.isPinned ? "star.fill" : "star")
-                            .font(.caption)
-                            .foregroundColor(item.isPinned ? .orange : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
-
-                    if item.type == .image {
-                        Group {
-                            if let nsImage = loadedImage {
-                                Image(nsImage: nsImage)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(maxHeight: 80)
-                            } else {
-                                Text(L10n.itemImage)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .onTapGesture { onToggleReveal() }
-                        .task(id: item.content) {
-                            // Use cached loadImageObject for fast repeated access during scroll
-                            if let image = ImageStorage.shared.loadImageObject(filename: item.content) {
-                                self.loadedImage = image
-                            }
-                        }
-                    } else if item.isSensitive && !isRevealed {
-                        Text(maskedHighlightedContent(decryptedContent, highlight: searchText))
-                            .font(.system(size: 12))
-                            .foregroundColor(.orange)
-                            .lineLimit(3)
-                            .onTapGesture {
-                                onToggleReveal()
-                            }
-                    } else {
-                        Text(highlightedContent(decryptedContent, highlight: searchText))
-                            .font(.system(size: 12))
-                            .foregroundColor(item.isSensitive ? .orange : .primary)
-                            .lineLimit(3)
-                    }
-                    Spacer()
-                }
-
-                HStack(spacing: 8) {
-                    if item.isSensitive {
-                        Button(action: onToggleReveal) {
-                            Text(isRevealed ? L10n.actionHide : L10n.actionView)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help(isRevealed ? L10n.tooltipHide : L10n.tooltipReveal)
-                    }
-
-                    Text(formattedDate)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-
-                    if item.isSensitive {
-                        Label(L10n.itemSensitive, systemImage: "exclamationmark.shield")
-                            .font(.caption2)
-                            .foregroundColor(.orange)
-                    }
-                }
-            }
-
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help(L10n.tooltipDelete)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(rowBackground)
-        .animation(.easeOut(duration: 0.3), value: isCopied)
-        .contentShape(Rectangle())
-        .onHover { hovering in isHovered = hovering }
-        .onTapGesture(count: 2) { onPin() }
-        .onTapGesture { onCopyWithFeedback?() }
-        .contextMenu {
-            Button(action: { onCopyWithFeedback?() }) {
-                Label(L10n.actionCopy, systemImage: "doc.on.doc")
-            }
-            if item.isSensitive {
-                Button(action: onToggleReveal) {
-                    Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye")
-                }
-            }
-            Button(action: onPin) {
-                Label(pinText, systemImage: item.isPinned ? "star.slash" : "star")
-            }
-            Divider()
-            Button(role: .destructive, action: onDelete) {
-                Label(L10n.actionDelete, systemImage: "trash")
-            }
-        }
-    }
-
-    private func maskContent(_ content: String) -> String {
-        if content.count <= 4 {
-            return String(repeating: "•", count: content.count)
-        }
-        let prefix = String(content.prefix(2))
-        let suffix = String(content.suffix(2))
-        let middleCount = content.count - 4
-        let middle = String(repeating: "•", count: middleCount)
-        return prefix + middle + suffix
-    }
-
-    /// Returns masked content with highlighted search matches and surrounding context visible
-    /// e.g. "•••••• token: sk-abc••••••" when searching "sk" with contextChars=10
-    private func maskedHighlightedContent(_ content: String, highlight: String, contextChars: Int = 15) -> AttributedString {
-        if highlight.isEmpty {
-            return AttributedString(maskContent(content))
-        }
-
-        let lowerContent = content.lowercased()
-        let lowerHighlight = highlight.lowercased()
-
-        // Find all match ranges expanded with context
-        var visibleRanges: [Range<String.Index>] = []
-        var searchStart = lowerContent.startIndex
-
-        while let range = lowerContent.range(of: lowerHighlight, range: searchStart..<lowerContent.endIndex) {
-            let contextStart = lowerContent.index(range.lowerBound, offsetBy: -contextChars, limitedBy: lowerContent.startIndex) ?? lowerContent.startIndex
-            let contextEnd = lowerContent.index(range.upperBound, offsetBy: contextChars, limitedBy: lowerContent.endIndex) ?? lowerContent.endIndex
-            visibleRanges.append(contextStart..<contextEnd)
-            searchStart = range.upperBound
-        }
-
-        guard !visibleRanges.isEmpty else {
-            return AttributedString(maskContent(content))
-        }
-
-        // Merge overlapping ranges
-        visibleRanges.sort { $0.lowerBound < $1.lowerBound }
-        var mergedRanges: [Range<String.Index>] = []
-        for range in visibleRanges {
-            if let last = mergedRanges.last, last.upperBound >= range.lowerBound {
-                mergedRanges[mergedRanges.count - 1] = last.lowerBound..<max(last.upperBound, range.upperBound)
-            } else {
-                mergedRanges.append(range)
-            }
-        }
-
-        // Build result: masked parts + highlighted visible parts
-        var result = AttributedString()
-        var currentIndex = content.startIndex
-
-        for range in mergedRanges {
-            // Masked part before this visible range
-            if currentIndex < range.lowerBound {
-                let maskedCount = content.distance(from: currentIndex, to: range.lowerBound)
-                result += AttributedString(String(repeating: "•", count: maskedCount))
-            }
-
-            // Visible highlighted part
-            let visibleText = String(content[range])
-            var highlighted = AttributedString(visibleText)
-            highlighted.backgroundColor = .yellow.opacity(0.4)
-            highlighted.foregroundColor = .orange
-            result += highlighted
-
-            currentIndex = range.upperBound
-        }
-
-        // Masked part after last visible range
-        if currentIndex < content.endIndex {
-            let maskedCount = content.distance(from: currentIndex, to: content.endIndex)
-            result += AttributedString(String(repeating: "•", count: maskedCount))
-        }
-
         return result
     }
 
-    private var iconName: String {
-        switch item.type {
-        case .text: return "doc.text"
-        case .image: return "photo"
-        case .link: return "link"
-        }
+    private var itemIndexMap: [UUID: Int] {
+        Dictionary(uniqueKeysWithValues: flattenedItems.map { ($0.item.id, $0.globalIndex) })
     }
 
-    private var formattedDate: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        formatter.locale = Locale(identifier: LanguageManager.shared.selectedLanguage)
-        return formatter.localizedString(for: item.createdAt, relativeTo: Date())
+    private var tabCounts: [SidebarTab: Int] {
+        let items = store.items
+        return [.all: items.count, .text: items.filter { $0.type == .text }.count, .image: items.filter { $0.type == .image }.count, .link: items.filter { $0.type == .link }.count]
     }
-}
 
-struct SettingsView: View {
-    @Binding var isSettingsOnly: Bool
-    @ObservedObject var languageManager = LanguageManager.shared
-    @ObservedObject var store = ClipboardStore.shared
-    var hotKeyManager: HotKeyManager?
-
-    @State private var isRecordingHotKey = false
-    @State private var recordingKeyCode: UInt32 = 0
-    @State private var recordingModifiers: UInt32 = 0
-    @State private var keyEventMonitor: Any?
-
-    let maxItemOptions = [50, 100, 200, 500]
+    private var batchAllPinned: Bool {
+        let sel = selectedItems
+        guard !sel.isEmpty else { return false }
+        return displayedItems.filter { sel.contains($0.id) }.allSatisfy { $0.isPinned }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button(action: { isSettingsOnly = false }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                        Text(L10n.buttonBack)
+            HStack(spacing: 0) {
+                Color.clear.frame(width: 170)
+                Divider()
+                HStack(spacing: 12) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.system(size: sz(12)))
+                        TextField(L10n.searchPlaceholder, text: $searchText)
+                            .textFieldStyle(.plain).font(.system(size: sz(13)))
+                            .frame(minWidth: 260)
+                        if !searchText.isEmpty { Button(action: { searchText = "" }) { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.system(size: sz(11))) }.buttonStyle(.plain) }
                     }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                Text(L10n.settingsTitle)
-                    .font(.headline)
-
-                Spacer()
+                    .padding(.horizontal, 8).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(appCornerRadius)
+                    Button(action: { showingClearAlert = true }) { Image(systemName: "trash").font(.system(size: sz(14))).foregroundColor(.secondary) }.buttonStyle(.plain).help(L10n.tooltipClearHistory).disabled(store.items.isEmpty)
+                    Spacer(minLength: 12)
+                }.padding(.vertical, 6)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-
+            .frame(height: 42)
+            .background(.clear)
             Divider()
-
-            settingsForm
-                .padding()
+            HStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    Text(L10n.appName).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 12).padding(.vertical, 10)
+                    Divider()
+                    sidebar
+                }.frame(width: 170).background(.ultraThinMaterial)
+                Divider()
+                Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(.regularMaterial)
+            }
         }
-        .frame(minWidth: 380, minHeight: 400)
+        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(.ultraThinMaterial)
+        .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
+        .overlay(alignment: .top) { KeyCaptureView(onUp: {
+            guard !displayedItems.isEmpty else { return }
+            if let idx = keyboardSelectedIndex, idx > 0 { keyboardSelectedIndex = idx - 1 } else { keyboardSelectedIndex = displayedItems.count - 1 }
+        }, onDown: {
+            guard !displayedItems.isEmpty else { return }
+            let last = displayedItems.count - 1; if let idx = keyboardSelectedIndex, idx < last { keyboardSelectedIndex = idx + 1 } else { keyboardSelectedIndex = 0 }
+        }, onReturn: {
+            if let idx = keyboardSelectedIndex, idx < displayedItems.count { let item = displayedItems[idx]; lastCopiedId = item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == item.id { lastCopiedId = nil } }; copyItem(item) }
+        }, onEscape: { if selectedTab == .settings { selectedTab = .all } else if !searchText.isEmpty { searchText = "" } else { NSApp.keyWindow?.close() } }).frame(width: 0, height: 0) }
     }
 
-    @ViewBuilder
-    private var settingsForm: some View {
-        if #available(macOS 14, *) {
-            Form {
-                settingsSections
-            }
-            .formStyle(.grouped)
-        } else {
-            Form {
-                settingsSections
-            }
-            .formStyle(.automatic)
-        }
+    private var sidebar: some View {
+        List(selection: $selectedTab) {
+            Section { ForEach([SidebarTab.all, .text, .image, .link], id: \.self) { tab in Label { HStack { Text(tab.label).font(.system(size: sz(13))); Spacer(); Text("(\(tabCounts[tab] ?? 0))").font(.system(size: sz(11))).foregroundColor(.secondary) } } icon: { Image(systemName: tab.icon) }.tag(tab) } }
+            Section { Label { Text(SidebarTab.pinned.label).font(.system(size: sz(13))) } icon: { Image(systemName: SidebarTab.pinned.icon) }.tag(SidebarTab.pinned) }
+            Section { Label { Text(SidebarTab.settings.label).font(.system(size: sz(13))) } icon: { Image(systemName: SidebarTab.settings.icon) }.tag(SidebarTab.settings) }
+        }.listStyle(.sidebar).onChange(of: selectedTab) { _ in keyboardSelectedIndex = nil }.environment(\.defaultMinListRowHeight, sz(28))
     }
 
-    private var settingsSections: some View {
-        Group {
-            Section(header: Text(L10n.settingsSectionHistory)) {
-                Picker(L10n.settingsMaxItems, selection: $store.maxItems) {
-                    ForEach(maxItemOptions, id: \.self) { count in
-                        Text(L10n.settingsMaxItemsCount(count)).tag(count)
-                    }
-                }
-                .id(languageManager.selectedLanguage)
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            if !selectedItems.isEmpty {
+                HStack { Text(L10n.batchSelected(selectedItems.count)).font(.system(size: sz(12))).foregroundColor(.secondary); Spacer()
+                    Button(action: { store.togglePinItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(batchAllPinned ? L10n.actionUnpin : L10n.actionPin, systemImage: batchAllPinned ? "star.slash" : "star").font(.system(size: sz(12))) }.buttonStyle(.plain)
+                    Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(L10n.actionDelete, systemImage: "trash").font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.red)
+                    Button(action: { selectedItems.removeAll() }) { Text(L10n.buttonCancel).font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.secondary)
+                }.padding(.horizontal, 16).padding(.vertical, 8).background(.ultraThinMaterial)
+                Divider()
             }
-
-            Section(header: Text(L10n.settingsSectionSensitive)) {
-                Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) {
-                    ForEach(SensitiveClearOption.options) { option in
-                        Text(option.label).tag(option.hours)
-                    }
-                }
-                .id(languageManager.selectedLanguage)
-                Text(L10n.settingsSensitiveHint)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Section(header: Text(L10n.settingsSectionLanguage)) {
-                Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) {
-                    ForEach(languageManager.availableLanguages, id: \.code) { lang in
-                        Text(lang.name).tag(lang.code)
-                    }
-                }
-            }
-
-            Section(header: Text(L10n.settingsSectionHotkey)) {
-                hotKeyRow
-            }
-
-            Section(header: Text(L10n.settingsSectionExcludedApps)) {
-                TextField(L10n.settingsExcludedAppsPlaceholder, text: $store.excludedBundleIdsString)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
-                Text(L10n.settingsExcludedAppsHint)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Section(header: Text(L10n.settingsSectionAbout)) {
-                Text(L10n.aboutVersion(AppVersion.current))
-                    .foregroundColor(.secondary)
-                Text(L10n.aboutFreeEdition)
-                    .foregroundColor(.secondary)
-                    .font(.caption)
-            }
-        }
+            if displayedItems.isEmpty { emptyState } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(groupedItems, id: \.0) { group, items in
+                            Section {
+                                if !collapsedGroups.contains(group) {
+                                    ForEach(Array(items.enumerated()), id: \.element.id) { _, item in
+                                        let gi = itemIndexMap[item.id] ?? 0
+                                        ClipboardItemRow(item: item, isRevealed: revealedItems.contains(item.id),
+                                            isKeyboardSelected: keyboardSelectedIndex == gi,
+                                            isCopied: lastCopiedId == item.id, isSelected: selectedItems.contains(item.id),
+                                            searchText: searchText,
+                                            onCopyWithFeedback: { lastCopiedId = item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == item.id { lastCopiedId = nil } }; copyItem(item) },
+                                            onPin: { store.togglePin(item) }, onDelete: { itemToDelete = item; showingDeleteAlert = true },
+                                            onSelect: { if $0 { selectedItems.insert(item.id) } else { selectedItems.remove(item.id) } },
+                                            onToggleReveal: { toggleReveal(item.id) })
+                                }
+                                }
+                            } header: {
+                                HStack {
+                                    Text(group.label).font(.system(size: sz(11), weight: .semibold)).foregroundColor(.secondary).textCase(.uppercase)
+                                        .onTapGesture { toggleGroup(group) }
+                                    Spacer()
+                                    Image(systemName: collapsedGroups.contains(group) ? "chevron.right" : "chevron.down")
+                                        .font(.system(size: sz(10))).foregroundColor(.secondary)
+                                }
+                                .contentShape(Rectangle()).onTapGesture { toggleGroup(group) }
+                                .padding(.horizontal, 16).padding(.vertical, 4).background(.regularMaterial)
+                            }
+                        }
+                    }.padding(.vertical, 2)
+}
     }
+}
 
-    private var hotKeyRow: some View {
-        HStack {
-            if isRecordingHotKey {
-                Text(L10n.settingsHotkeyRecording)
-                    .foregroundColor(.orange)
-                    .font(.callout)
-                Spacer()
-                Button(L10n.buttonCancel) {
-                    isRecordingHotKey = false
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.secondary)
-            } else {
-                Text(hotKeyManager?.config.displayString ?? "⌘⌃V")
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundColor(.primary)
-                Spacer()
-                Button(L10n.settingsHotkeyChange) {
-                    startRecording()
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.accentColor)
-            }
-        }
-        .padding(.vertical, 4)
-        .background(isRecordingHotKey ? Color.orange.opacity(0.1) : Color.clear)
-        .cornerRadius(6)
+        .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) { Button(L10n.buttonCancel, role: .cancel) {}; Button(L10n.buttonDelete, role: .destructive) { if let item = itemToDelete { store.deleteItem(item) } } } message: { Text(L10n.alertDeleteMessage) }
+        .alert(L10n.alertClearTitle, isPresented: $showingClearAlert) { Button(L10n.buttonCancel, role: .cancel) {}; Button(L10n.buttonClear, role: .destructive) { store.clearAllItems() } } message: { let c = store.items.filter { !$0.isPinned }.count; Text(c > 0 ? L10n.alertClearMessage(c) : L10n.alertClearNone) }
     }
 
     private func startRecording() {
         isRecordingHotKey = true
         stopKeyEventMonitor()
-        // SettingsView is a SwiftUI struct (value type) — no retain cycle possible.
-        // The monitor is cleaned up via stopKeyEventMonitor() after recording ends.
         keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
             guard isRecordingHotKey else { return event }
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -851,15 +207,183 @@ struct SettingsView: View {
             if mods.contains(.shift) { modifiers |= UInt32(shiftKey) }
             isRecordingHotKey = false
             stopKeyEventMonitor()
-            hotKeyManager?.updateHotKey(keyCode: keyCode, modifiers: modifiers)
+            (NSApp.delegate as? AppDelegate)?.hotKeyManager.updateHotKey(keyCode: keyCode, modifiers: modifiers)
             return nil
         }
     }
 
     private func stopKeyEventMonitor() {
-        if let monitor = keyEventMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyEventMonitor = nil
+        if let m = keyEventMonitor { NSEvent.removeMonitor(m); keyEventMonitor = nil }
+    }
+
+    private func toggleGroup(_ g: TimeGroup) {
+        if collapsedGroups.contains(g) { collapsedGroups.remove(g) } else { collapsedGroups.insert(g) }
+    }
+
+    private var settingsDetail: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(L10n.settingsTitle).font(.system(size: sz(20), weight: .semibold)).padding(.leading, 24).padding(.vertical, 16)
+                Divider()
+                Group {
+                    settingsSection(L10n.settingsSectionHistory) { Picker(L10n.settingsMaxItems, selection: $store.maxItems) { ForEach([50,100,200,500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).font(.system(size: sz(13))).tag($0) } }.id(languageManager.selectedLanguage) }
+                    settingsSection(L10n.settingsSectionSensitive) { Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).font(.system(size: sz(13))).tag($0.hours) } }.id(languageManager.selectedLanguage); Text(L10n.settingsSensitiveHint).font(.system(size: sz(11))).foregroundColor(.secondary) }
+                    settingsSection(L10n.settingsSectionLanguage) { Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) { ForEach(languageManager.availableLanguages, id: \.code) { Text($0.name).font(.system(size: sz(13))).tag($0.code) } } }
+                    settingsSection(L10n.launchAtLogin) {
+                        Toggle(isOn: Binding(get: { SMAppService.mainApp.status == .enabled }, set: { v in
+                            do { if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } } catch {}
+                        })) { Text(L10n.launchAtLogin).font(.system(size: sz(13))) }
+                    }
+                    if let hk = (NSApp.delegate as? AppDelegate)?.hotKeyManager {
+                        settingsSection(L10n.settingsSectionHotkey) {
+                            HStack {
+                                if isRecordingHotKey {
+                                    Text(L10n.settingsHotkeyRecording).font(.system(size: sz(13))).foregroundColor(.orange)
+                                    Spacer()
+                                    Button(L10n.buttonCancel) { isRecordingHotKey = false }.buttonStyle(.plain).font(.system(size: sz(12))).foregroundColor(.secondary)
+                                } else {
+                                    Text(hk.config.displayString).font(.system(size: sz(13), design: .monospaced))
+                                    Spacer()
+                                    Button(L10n.settingsHotkeyChange) { startRecording() }.buttonStyle(.plain).font(.system(size: sz(12))).foregroundColor(.accentColor)
+                                }
+                            }
+                        }
+                    }
+                    settingsSection(L10n.settingsFontSize) { Picker("", selection: $fontScale) { Text(L10n.fontSizeSmall).font(.system(size: sz(13))).tag(0.85); Text(L10n.fontSizeMedium).font(.system(size: sz(13))).tag(1.0); Text(L10n.fontSizeLarge).font(.system(size: sz(13))).tag(1.15) } }
+                    settingsSection(L10n.settingsSectionAbout) { Text(L10n.aboutVersion(AppVersion.current)).font(.system(size: sz(12))).foregroundColor(.secondary); Text(L10n.aboutFreeEdition).font(.system(size: sz(11))).foregroundColor(.secondary); Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.font(.system(size: sz(12))).buttonStyle(.link).foregroundColor(.accentColor) }
+                }.padding(.horizontal, 24).padding(.vertical, 16)
+}
+    }
+}
+
+    private func settingsSection<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 6) { Text(title).font(.system(size: sz(11), weight: .semibold)).foregroundColor(.secondary).textCase(.uppercase); content().padding(.bottom, 12) }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) { Spacer(); Image(systemName: selectedTab == .pinned ? "star" : "tray").font(.system(size: sz(40))).foregroundColor(.secondary); Text(selectedTab == .pinned ? L10n.emptyNoPinned : L10n.emptyNoHistory).font(.system(size: sz(14))).foregroundColor(.secondary); if selectedTab == .pinned { Text(L10n.emptyPinnedHint).font(.system(size: sz(12))).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal) } else { Text(L10n.emptyHistoryHint).font(.system(size: sz(12))).foregroundColor(.secondary) }; Spacer() }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func copyItem(_ item: ClipboardItem) { store.copyToClipboard(item) }
+    private func toggleReveal(_ id: UUID) { if revealedItems.contains(id) { revealedItems.remove(id) } else { revealedItems.insert(id) } }
+}
+
+// MARK: - AppKit NSPressGestureRecognizer for stable image long-press
+struct PressableImage: NSViewRepresentable {
+    let onPressChanged: (Bool) -> Void
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView(frame: .zero)
+        let p = NSPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pressed(_:)))
+        p.minimumPressDuration = 0.4; p.buttonMask = 1 << 0; v.addGestureRecognizer(p)
+        return v
+    }
+    func updateNSView(_: NSView, context: Context) { context.coordinator.onPressChanged = onPressChanged }
+    func makeCoordinator() -> Coordinator { Coordinator(onPressChanged: onPressChanged) }
+    class Coordinator: NSObject {
+        var onPressChanged: (Bool) -> Void
+        init(onPressChanged: @escaping (Bool) -> Void) { self.onPressChanged = onPressChanged }
+        @objc func pressed(_ sender: NSPressGestureRecognizer) {
+            DispatchQueue.main.async { self.onPressChanged(sender.state == .began || sender.state == .changed) }
         }
+    }
+}
+
+struct ClipboardItemRow: View {
+    let item: ClipboardItem; let isRevealed: Bool; var isKeyboardSelected = false; var isCopied = false; var isSelected = false; var searchText = ""
+    var onCopyWithFeedback: (() -> Void)?; let onPin: () -> Void; let onDelete: () -> Void; let onSelect: ((Bool) -> Void)?; let onToggleReveal: () -> Void
+    @State private var isHovered = false; @State private var loadedImage: NSImage?
+    @State private var longPressing = false
+    @State private var imageLongPressing = false
+    @State private var showFullContent = false
+    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    private var iconSize: CGFloat { fontScale * 13 }
+
+    private var rowBackground: Color {
+        if isCopied { Color.green.opacity(0.3) } else if isSelected { Color.accentColor.opacity(0.15) } else if isHovered || isKeyboardSelected { Color(.selectedContentBackgroundColor).opacity(0.3) } else { Color.clear }
+    }
+    private var pinText: String { item.isPinned ? L10n.actionUnpin : L10n.actionPin }
+    private var decryptedContent: String { item.decryptedContent }
+    private var formattedDate: String { let f = RelativeDateTimeFormatter(); f.unitsStyle = .abbreviated; f.locale = Locale(identifier: LanguageManager.shared.selectedLanguage); return f.localizedString(for: item.createdAt, relativeTo: Date()) }
+
+    private func highlightedContent(_ text: String, highlight: String) -> AttributedString {
+        if highlight.isEmpty { return AttributedString(String(text.prefix(200))) }
+        let lt = text.lowercased(), lh = highlight.lowercased()
+        guard lt.range(of: lh) != nil else { return AttributedString(String(text.prefix(200))) }
+        let fm = lt.range(of: lh)!
+        let mso = lt.distance(from: lt.startIndex, to: fm.lowerBound)
+        var prefix = ""
+        let dsi: String.Index
+        if mso > 30 { dsi = text.index(text.index(text.startIndex, offsetBy: mso), offsetBy: -20, limitedBy: text.startIndex) ?? text.startIndex; prefix = "..." } else { dsi = text.startIndex }
+        let dei = text.index(dsi, offsetBy: 200, limitedBy: text.endIndex) ?? text.endIndex
+        let ds = String(text[dsi..<dei])
+        let prefixLen = prefix.count
+        var a = AttributedString(prefix + ds)
+        let lowerDS = ds.lowercased()
+        var ss = lowerDS.startIndex
+        while let r = lowerDS.range(of: lh, range: ss..<lowerDS.endIndex) {
+            let startOff = lowerDS.distance(from: lowerDS.startIndex, to: r.lowerBound)
+            let endOff = startOff + lowerDS.distance(from: r.lowerBound, to: r.upperBound)
+            if startOff < 200 {
+                let si = a.index(a.startIndex, offsetByCharacters: prefixLen + startOff)
+                let ei = a.index(a.startIndex, offsetByCharacters: min(prefixLen + endOff, prefixLen + 200))
+                a[si..<ei].backgroundColor = .yellow.opacity(0.4)
+                a[si..<ei].foregroundColor = .orange
+            }
+            ss = r.upperBound
+        }
+        return a
+    }
+    private func maskContent(_ c: String) -> String { c.count <= 4 ? String(repeating: "\u{2022}", count: c.count) : String(c.prefix(2)) + String(repeating: "\u{2022}", count: c.count - 4) + String(c.suffix(2)) }
+    private func maskedHighlightedContent(_ content: String, highlight: String, ctx: Int = 15) -> AttributedString {
+        if highlight.isEmpty { return AttributedString(maskContent(content)) }
+        let lc = content.lowercased(), lh = highlight.lowercased(); var vis: [Range<String.Index>] = []; var ss = lc.startIndex
+        while let r = lc.range(of: lh, range: ss..<lc.endIndex) { let cs = lc.index(r.lowerBound, offsetBy: -ctx, limitedBy: lc.startIndex) ?? lc.startIndex; let ce = lc.index(r.upperBound, offsetBy: ctx, limitedBy: lc.endIndex) ?? lc.endIndex; vis.append(cs..<ce); ss = r.upperBound }
+        guard !vis.isEmpty else { return AttributedString(maskContent(content)) }; vis.sort { $0.lowerBound < $1.lowerBound }
+        var merged: [Range<String.Index>] = []; for r in vis { if let last = merged.last, last.upperBound >= r.lowerBound { merged[merged.count-1] = last.lowerBound..<max(last.upperBound, r.upperBound) } else { merged.append(r) } }
+        var res = AttributedString(); var ci = content.startIndex
+        for r in merged { if ci < r.lowerBound { res += AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: r.lowerBound))) }; var h = AttributedString(String(content[r])); h.backgroundColor = .yellow.opacity(0.4); h.foregroundColor = .orange; res += h; ci = r.upperBound }
+        if ci < content.endIndex { res += AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: content.endIndex))) }
+        return res
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Button(action: { onSelect?(!isSelected) }) { Image(systemName: isSelected ? "checkmark.circle.fill" : "circle").font(.system(size: iconSize)).foregroundColor(isSelected ? .accentColor : .secondary).frame(width: 22, height: 22) }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .top) {
+                    if item.type == .image {
+                        Group {
+                            if let ns = loadedImage {
+                                Image(nsImage: ns)
+                                    .resizable().aspectRatio(contentMode: .fit)
+                                    .frame(maxHeight: imageLongPressing ? 300 : 80)
+                                    .overlay(PressableImage { pressed in imageLongPressing = pressed })
+                            } else {
+                                Text(L10n.itemImage).font(.system(size: fontScale * 13)).foregroundColor(.secondary)
+                            }
+                        }
+                        .task(id: item.content) { if let img = ImageStorage.shared.loadImageObject(filename: item.content) { loadedImage = img } }
+                    } else if item.isSensitive && !isRevealed {
+                        Text(longPressing ? highlightedContent(decryptedContent, highlight: searchText) : maskedHighlightedContent(decryptedContent, highlight: searchText))
+                            .font(.system(size: fontScale * 13)).foregroundColor(.orange).lineLimit(3)
+                            .overlay(PressableImage { pressed in longPressing = pressed })
+                    } else {
+                        Text(showFullContent ? AttributedString(decryptedContent) : highlightedContent(decryptedContent, highlight: searchText))
+                            .font(.system(size: fontScale * 12)).foregroundColor(Color(nsColor: .controlTextColor))
+                            .lineLimit(showFullContent ? nil : 3)
+                            .overlay(PressableImage { pressed in showFullContent = pressed })
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle()).onTapGesture(count: 2) { onPin() }.onTapGesture { onCopyWithFeedback?() }
+                HStack(spacing: 8) { if item.isSensitive { Button(action: onToggleReveal) { Text(isRevealed ? L10n.actionHide : L10n.actionView).font(.system(size: fontScale * 11)).foregroundColor(.secondary) }.buttonStyle(.plain) }; Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.secondary); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) } }
+            }
+            HStack(spacing: 6) {
+                Button(action: onPin) { Image(systemName: item.isPinned ? "star.fill" : "star").font(.system(size: iconSize)).foregroundColor(item.isPinned ? .orange : .secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
+                Button(action: onDelete) { Image(systemName: "trash").font(.system(size: iconSize)).foregroundColor(.secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(L10n.tooltipDelete)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle()).onTapGesture(count: 2) { onPin() }.onHover { isHovered = $0 }
+        .contextMenu { Button(action: { onCopyWithFeedback?() }) { Label(L10n.actionCopy, systemImage: "doc.on.doc") }; if item.isSensitive { Button(action: onToggleReveal) { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") } }; Button(action: onPin) { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }; Divider(); Button(role: .destructive, action: onDelete) { Label(L10n.actionDelete, systemImage: "trash") } }
     }
 }

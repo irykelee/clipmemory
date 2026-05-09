@@ -17,6 +17,12 @@
 /* Search */
 "search.placeholder" = "Buscar en el portapapeles...";
 
+/* Type Filter */
+"filter.all" = "Todo";
+"filter.text" = "Texto";
+"filter.image" = "Imagen";
+"filter.link" = "Enlace";
+
 /* Empty State */
 "empty.no.history" = "Sin historial del portapapeles";
 "empty.no.pinned" = "Sin favoritos";
@@ -60,6 +66,14 @@
 "settings.max.items.count" = "%d elementos";
 "settings.auto.clear" = "Borrado automático";
 "settings.sensitive.hint" = "Tiempo hasta borrar automáticamente contraseñas, claves API, etc.";
+"settings.section.hotkey" = "Atajo";
+"settings.section.excluded.apps" = "Apps excluidas";
+"settings.hotkey.change" = "Cambiar";
+"settings.hotkey.recording" = "Presione una combinación de teclas...";
+"settings.excluded.apps" = "Apps excluidas";
+"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
+"settings.excluded.apps.label" = "Apps excluidas";
+"settings.excluded.apps.hint" = "IDs de paquete separados por comas de apps a excluir del monitoreo del portapapeles (ej. com.1password.1password, com.bitwarden.desktop). Las acciones de copiar de estas apps no se registrarán.";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 hora";
@@ -104,3 +118,15 @@
 "batch.selected" = "%d seleccionados";
 "app.send.feedback" = "Comentarios";
 "alert.encrypt.failed" = "Error al cifrar datos sensibles. El elemento no se guardó.";
+
+/* Welcome View */
+"welcome.title" = "Bienvenido a ClipMemory";
+"welcome.subtitle" = "Tu historial del portapapeles, siempre a mano";
+"welcome.step1.title" = "Encuentra el icono en la barra de menú";
+"welcome.step1.desc" = "ClipMemory vive en tu barra de menú. Busca el icono del portapapeles.";
+"welcome.step2.title" = "Presiona el atajo";
+"welcome.step2.desc" = "Presiona %@ en cualquier momento para abrir el historial.";
+"welcome.step3.title" = "Fija los elementos importantes";
+"welcome.step3.desc" = "Marca con estrella los elementos que quieras guardar para siempre.";
+"welcome.hotkey.conflict" = "Conflicto de atajo detectado. Cámbialo en Preferencias.";
+"welcome.get.started" = "Comenzar";
