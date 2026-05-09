@@ -132,22 +132,22 @@
 "welcome.get.started" = "Comenzar";
 
 /* Theme */
-"settings.section.theme" = "Theme";
-"theme.effect" = "Window Effect";
-"theme.effect.solid" = "Solid";
-"theme.effect.frosted" = "Frosted";
+"settings.section.theme" = "Tema";
+"theme.effect" = "Efecto de ventana";
+"theme.effect.solid" = "Sólido";
+"theme.effect.frosted" = "Esmerilado";
 "theme.effect.ultra" = "Ultra";
-"theme.accent" = "Accent Color";
-"theme.accent.system" = "System";
-"theme.accent.blue" = "Blue";
-"theme.accent.green" = "Green";
-"theme.accent.orange" = "Orange";
-"theme.accent.purple" = "Purple";
-"theme.accent.red" = "Red";
-"theme.appearance" = "Appearance";
-"theme.appearance.system" = "Follow System";
-"theme.appearance.light" = "Light";
-"theme.appearance.dark" = "Dark";
+"theme.accent" = "Color de acento";
+"theme.accent.system" = "Sistema";
+"theme.accent.blue" = "Azul";
+"theme.accent.green" = "Verde";
+"theme.accent.orange" = "Naranja";
+"theme.accent.purple" = "Púrpura";
+"theme.accent.red" = "Rojo";
+"theme.appearance" = "Apariencia";
+"theme.appearance.system" = "Sistema";
+"theme.appearance.light" = "Claro";
+"theme.appearance.dark" = "Oscuro";
 
 /* QuickBar */
 "quickbar.recent" = "%d elementos";

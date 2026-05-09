@@ -132,22 +132,22 @@
 "welcome.get.started" = "始める";
 
 /* Theme */
-"settings.section.theme" = "Theme";
-"theme.effect" = "Window Effect";
-"theme.effect.solid" = "Solid";
-"theme.effect.frosted" = "Frosted";
-"theme.effect.ultra" = "Ultra";
-"theme.accent" = "Accent Color";
-"theme.accent.system" = "System";
-"theme.accent.blue" = "Blue";
-"theme.accent.green" = "Green";
-"theme.accent.orange" = "Orange";
-"theme.accent.purple" = "Purple";
-"theme.accent.red" = "Red";
-"theme.appearance" = "Appearance";
-"theme.appearance.system" = "Follow System";
-"theme.appearance.light" = "Light";
-"theme.appearance.dark" = "Dark";
+"settings.section.theme" = "テーマ";
+"theme.effect" = "ウィンドウ効果";
+"theme.effect.solid" = "ソリッド";
+"theme.effect.frosted" = "すりガラス";
+"theme.effect.ultra" = "高透過";
+"theme.accent" = "アクセントカラー";
+"theme.accent.system" = "システム準拠";
+"theme.accent.blue" = "青";
+"theme.accent.green" = "緑";
+"theme.accent.orange" = "オレンジ";
+"theme.accent.purple" = "紫";
+"theme.accent.red" = "赤";
+"theme.appearance" = "外観";
+"theme.appearance.system" = "システムに合わせる";
+"theme.appearance.light" = "ライト";
+"theme.appearance.dark" = "ダーク";
 
 /* QuickBar */
 "quickbar.recent" = "%d 件";
