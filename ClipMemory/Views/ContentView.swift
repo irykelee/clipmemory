@@ -35,7 +35,28 @@ struct ContentView: View {
     @State private var isRecordingHotKey = false
     @State private var keyEventMonitor: Any?
     @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("windowEffect") private var windowEffect = "frosted"
+    @AppStorage("themeAccent") private var themeAccent = "system"
+    @AppStorage("themeAppearance") private var themeAppearance = "system"
     private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
+
+    // MARK: - Theme
+    private var bodyMaterial: Material {
+        switch windowEffect { case "solid": .regular; case "ultra": .ultraThinMaterial; default: .regularMaterial }
+    }
+    private var sidebarMaterial: Material {
+        switch windowEffect { case "solid": .regular; case "ultra": .ultraThinMaterial; default: .ultraThinMaterial }
+    }
+    private var accentColorOverride: Color? {
+        switch themeAccent { case "blue": .blue; case "green": .green; case "orange": .orange; case "purple": .purple; case "red": .red; default: nil }
+    }
+    private func applyAppearance() {
+        switch themeAppearance {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
+    }
 
     var displayedItems: [ClipboardItem] {
         var base: [ClipboardItem]
@@ -104,7 +125,7 @@ struct ContentView: View {
                             .frame(minWidth: 260)
                         if !searchText.isEmpty { Button(action: { searchText = "" }) { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.system(size: sz(11))) }.buttonStyle(.plain) }
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(appCornerRadius)
+                    .padding(.horizontal, 8).padding(.vertical, 4).background(sidebarMaterial).cornerRadius(appCornerRadius)
                     Button(action: { showingClearAlert = true }) { Image(systemName: "trash").font(.system(size: sz(14))).foregroundColor(.secondary) }.buttonStyle(.plain).help(L10n.tooltipClearHistory).disabled(store.items.isEmpty)
                     Spacer(minLength: 12)
                 }.padding(.vertical, 6)
@@ -117,12 +138,13 @@ struct ContentView: View {
                     Text(L10n.appName).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 12).padding(.vertical, 10)
                     Divider()
                     sidebar
-                }.frame(width: 170).background(.ultraThinMaterial)
+                }.frame(width: 170).background(sidebarMaterial)
                 Divider()
-                Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(.regularMaterial)
+                Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyMaterial)
             }
         }
-        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(.ultraThinMaterial)
+        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(bodyMaterial).accentColor(accentColorOverride)
+        .onAppear { applyAppearance() }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
         .overlay(alignment: .top) { KeyCaptureView(onUp: {
             guard !displayedItems.isEmpty else { return }
@@ -150,7 +172,7 @@ struct ContentView: View {
                     Button(action: { store.togglePinItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(batchAllPinned ? L10n.actionUnpin : L10n.actionPin, systemImage: batchAllPinned ? "star.slash" : "star").font(.system(size: sz(12))) }.buttonStyle(.plain)
                     Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(L10n.actionDelete, systemImage: "trash").font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.red)
                     Button(action: { selectedItems.removeAll() }) { Text(L10n.buttonCancel).font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.secondary)
-                }.padding(.horizontal, 16).padding(.vertical, 8).background(.ultraThinMaterial)
+                }.padding(.horizontal, 16).padding(.vertical, 8).background(sidebarMaterial)
                 Divider()
             }
             if displayedItems.isEmpty { emptyState } else {
@@ -169,7 +191,7 @@ struct ContentView: View {
                                             onPin: { store.togglePin(item) }, onDelete: { itemToDelete = item; showingDeleteAlert = true },
                                             onSelect: { if $0 { selectedItems.insert(item.id) } else { selectedItems.remove(item.id) } },
                                             onToggleReveal: { toggleReveal(item.id) })
-                                }
+                                    }
                                 }
                             } header: {
                                 HStack {
@@ -180,7 +202,7 @@ struct ContentView: View {
                                         .font(.system(size: sz(10))).foregroundColor(.secondary)
                                 }
                                 .contentShape(Rectangle()).onTapGesture { toggleGroup(group) }
-                                .padding(.horizontal, 16).padding(.vertical, 4).background(.regularMaterial)
+                                .padding(.horizontal, 16).padding(.vertical, 4).background(bodyMaterial)
                             }
                         }
                     }.padding(.vertical, 2)
@@ -229,6 +251,13 @@ struct ContentView: View {
                     settingsSection(L10n.settingsSectionHistory) { Picker(L10n.settingsMaxItems, selection: $store.maxItems) { ForEach([50,100,200,500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).font(.system(size: sz(13))).tag($0) } }.id(languageManager.selectedLanguage) }
                     settingsSection(L10n.settingsSectionSensitive) { Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).font(.system(size: sz(13))).tag($0.hours) } }.id(languageManager.selectedLanguage); Text(L10n.settingsSensitiveHint).font(.system(size: sz(11))).foregroundColor(.secondary) }
                     settingsSection(L10n.settingsSectionLanguage) { Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) { ForEach(languageManager.availableLanguages, id: \.code) { Text($0.name).font(.system(size: sz(13))).tag($0.code) } } }
+                    settingsSection(L10n.settingsSectionTheme) {
+                        Picker(L10n.themeEffect, selection: $windowEffect) { Text(L10n.themeEffectSolid).tag("solid"); Text(L10n.themeEffectFrosted).tag("frosted"); Text(L10n.themeEffectUltra).tag("ultra") }
+                        Picker(L10n.themeAccent, selection: $themeAccent) { Text(L10n.themeAccentSystem).tag("system"); Text(L10n.themeAccentBlue).tag("blue"); Text(L10n.themeAccentGreen).tag("green"); Text(L10n.themeAccentOrange).tag("orange"); Text(L10n.themeAccentPurple).tag("purple"); Text(L10n.themeAccentRed).tag("red") }
+                        Picker(L10n.themeAppearance, selection: Binding(get: { themeAppearance }, set: { themeAppearance = $0; applyAppearance() })) {
+                            Text(L10n.themeAppearanceSystem).tag("system"); Text(L10n.themeAppearanceLight).tag("light"); Text(L10n.themeAppearanceDark).tag("dark")
+                        }
+                    }
                     settingsSection(L10n.launchAtLogin) {
                         Toggle(isOn: Binding(get: { SMAppService.mainApp.status == .enabled }, set: { v in
                             do { if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } } catch {}
