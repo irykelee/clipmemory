@@ -96,6 +96,7 @@
 "group.today" = "今日";
 "group.yesterday" = "昨日";
 "group.thisWeek" = "今週";
+"group.thisMonth" = "今月";
 "group.older" = "それ以前";
 
 /* Languages */

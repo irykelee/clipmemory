@@ -1,6 +1,6 @@
 #!/bin/bash
 # ClipMemory packaging script
-VERSION=${1:-1.2.0}
+VERSION=${1:-2.0.0}
 APP_NAME="ClipMemory"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OUTPUT_DIR="${PROJECT_DIR}/Releases"

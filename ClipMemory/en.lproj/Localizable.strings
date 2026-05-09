@@ -96,6 +96,7 @@
 "group.today" = "Today";
 "group.yesterday" = "Yesterday";
 "group.thisWeek" = "This Week";
+"group.thisMonth" = "This Month";
 "group.older" = "Older";
 
 /* Languages */
