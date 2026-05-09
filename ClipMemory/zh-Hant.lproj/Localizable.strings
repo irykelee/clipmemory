@@ -122,3 +122,21 @@
 "welcome.step3.desc" = "點選星標釘選重要內容，永久保存，不會被自動清理。";
 "welcome.hotkey.conflict" = "檢測到快捷鍵衝突，請在設定中修改。";
 "welcome.get.started" = "開始使用";
+
+/* Theme */
+"settings.section.theme" = "Theme";
+"theme.effect" = "Window Effect";
+"theme.effect.solid" = "Solid";
+"theme.effect.frosted" = "Frosted";
+"theme.effect.ultra" = "Ultra";
+"theme.accent" = "Accent Color";
+"theme.accent.system" = "System";
+"theme.accent.blue" = "Blue";
+"theme.accent.green" = "Green";
+"theme.accent.orange" = "Orange";
+"theme.accent.purple" = "Purple";
+"theme.accent.red" = "Red";
+"theme.appearance" = "Appearance";
+"theme.appearance.system" = "Follow System";
+"theme.appearance.light" = "Light";
+"theme.appearance.dark" = "Dark";
