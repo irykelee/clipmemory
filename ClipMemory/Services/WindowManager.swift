@@ -34,7 +34,7 @@ class WindowManager: NSObject, NSWindowDelegate {
                 backing: .buffered, defer: false
             )
             window.title = L10n.appName
-            if #available(macOS 26, *) { window.toolbarStyle = .unified }
+            window.toolbarStyle = .unified
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)

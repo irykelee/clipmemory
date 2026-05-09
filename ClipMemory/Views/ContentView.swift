@@ -2,7 +2,6 @@ import SwiftUI
 import AppKit
 import Carbon.HIToolbox
 import ServiceManagement
-import ServiceManagement
 
 enum SidebarTab: String, CaseIterable {
     case all, text, image, link, pinned, settings

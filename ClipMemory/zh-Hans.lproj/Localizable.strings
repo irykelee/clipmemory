@@ -95,6 +95,7 @@
 "group.today" = "今天";
 "group.yesterday" = "昨天";
 "group.thisWeek" = "本周";
+"group.thisMonth" = "本月";
 "group.older" = "更早";
 
 /* Languages */
