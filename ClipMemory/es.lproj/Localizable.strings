@@ -148,3 +148,7 @@
 "theme.appearance.system" = "Follow System";
 "theme.appearance.light" = "Light";
 "theme.appearance.dark" = "Dark";
+
+/* QuickBar */
+"quickbar.recent" = "%d elementos";
+"quickbar.open.full" = "Abrir ventana completa";

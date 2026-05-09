@@ -140,3 +140,7 @@
 "theme.appearance.system" = "Follow System";
 "theme.appearance.light" = "Light";
 "theme.appearance.dark" = "Dark";
+
+/* QuickBar */
+"quickbar.recent" = "%d 條內容";
+"quickbar.open.full" = "打開完整視窗";
