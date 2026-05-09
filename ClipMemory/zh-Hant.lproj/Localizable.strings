@@ -1,5 +1,5 @@
 /* General */
-"app.name" = "ClipMemory";
+"app.name" = "剪憶 ClipMemory";
 "button.clear" = "清除";
 "button.settings" = "偏好設定";
 "button.back" = "返回";
@@ -129,13 +129,6 @@
 "theme.effect.solid" = "實心";
 "theme.effect.frosted" = "毛玻璃";
 "theme.effect.ultra" = "高透";
-"theme.accent" = "強調色";
-"theme.accent.system" = "跟隨系統";
-"theme.accent.blue" = "藍色";
-"theme.accent.green" = "綠色";
-"theme.accent.orange" = "橙色";
-"theme.accent.purple" = "紫色";
-"theme.accent.red" = "紅色";
 "theme.appearance" = "外觀";
 "theme.appearance.system" = "跟隨系統";
 "theme.appearance.light" = "淺色";

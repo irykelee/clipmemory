@@ -137,13 +137,6 @@
 "theme.effect.solid" = "Sólido";
 "theme.effect.frosted" = "Fosco";
 "theme.effect.ultra" = "Ultra";
-"theme.accent" = "Cor de destaque";
-"theme.accent.system" = "Sistema";
-"theme.accent.blue" = "Azul";
-"theme.accent.green" = "Verde";
-"theme.accent.orange" = "Laranja";
-"theme.accent.purple" = "Roxo";
-"theme.accent.red" = "Vermelho";
 "theme.appearance" = "Aparência";
 "theme.appearance.system" = "Sistema";
 "theme.appearance.light" = "Claro";

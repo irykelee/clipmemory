@@ -36,11 +36,17 @@ struct ContentView: View {
     @State private var keyEventMonitor: Any?
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @AppStorage("windowEffect") private var windowEffect = "frosted"
-    @AppStorage("themeAccent") private var themeAccent = "system"
     @AppStorage("themeAppearance") private var themeAppearance = "system"
     private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
 
     // MARK: - Theme
+    private func applyAppearance() {
+        switch themeAppearance {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
+    }
     private var bodyMaterial: Material {
         switch windowEffect { case "solid": .regular; case "ultra": .ultraThinMaterial; default: .regularMaterial }
     }
@@ -143,7 +149,7 @@ struct ContentView: View {
                 Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyMaterial)
             }
         }
-        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(bodyMaterial).accentColor(accentColorOverride ?? Color.accentColor).tint(accentColorOverride ?? Color.accentColor)
+        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(bodyMaterial)
         .onAppear { applyAppearance() }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
         .overlay(alignment: .top) { KeyCaptureView(onUp: {
@@ -253,7 +259,6 @@ struct ContentView: View {
                     settingsSection(L10n.settingsSectionLanguage) { Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) { ForEach(languageManager.availableLanguages, id: \.code) { Text($0.name).font(.system(size: sz(13))).tag($0.code) } } }
                     settingsSection(L10n.settingsSectionTheme) {
                         Picker(L10n.themeEffect, selection: $windowEffect) { Text(L10n.themeEffectSolid).tag("solid"); Text(L10n.themeEffectFrosted).tag("frosted"); Text(L10n.themeEffectUltra).tag("ultra") }
-                        Picker(L10n.themeAccent, selection: $themeAccent) { Text(L10n.themeAccentSystem).tag("system"); Text(L10n.themeAccentBlue).tag("blue"); Text(L10n.themeAccentGreen).tag("green"); Text(L10n.themeAccentOrange).tag("orange"); Text(L10n.themeAccentPurple).tag("purple"); Text(L10n.themeAccentRed).tag("red") }
                         Picker(L10n.themeAppearance, selection: Binding(get: { themeAppearance }, set: { themeAppearance = $0; applyAppearance() })) {
                             Text(L10n.themeAppearanceSystem).tag("system"); Text(L10n.themeAppearanceLight).tag("light"); Text(L10n.themeAppearanceDark).tag("dark")
                         }
