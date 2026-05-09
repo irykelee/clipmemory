@@ -20,7 +20,7 @@
 | **Search Highlight** | Highlight on text | Accurate `offsetByCharacters` positioning, works with CJK |
 | **Icon Layout** | Checkbox + type icon + star + content | Checkbox + content + star + delete (removed redundant type icon) |
 | **Window Style** | Standard NSWindow | `.fullSizeContentView` + `.ultraThinMaterial`/`.regularMaterial` glass effect |
-| **Traffic Lights** | In titlebar | Hidden titlebar, lights inline with toolbar (Safari 26 style) |
+| **Traffic Lights** | In titlebar | Hidden titlebar, lights inline with toolbar (macOS 26 Liquid Glass) |
 | **Dock Icon** | Always hidden | Appears when window opens, hides when closed |
 | **Font Scaling** | None | Small / Medium / Large in Settings |
 | **Launch at Login** | None (menu only) | Toggle in menu bar |
