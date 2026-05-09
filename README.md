@@ -29,18 +29,6 @@
 
 ---
 
-## 界面预览
-
-<p align="center">
-  <img src="docs/screenshots/cm_main.png" alt="主界面" width="45%">
-  <img src="docs/screenshots/cm_settings.png" alt="偏好设置" width="45%">
-</p>
-<p align="center">
-  <img src="docs/screenshots/cm_quickbar.png" alt="Quick Bar 弹窗" width="45%">
-</p>
-
----
-
 ## 新增功能
 
 ### Quick Bar（菜单栏弹窗）

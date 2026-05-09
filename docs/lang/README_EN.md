@@ -27,18 +27,6 @@
 
 ---
 
-## Screenshots
-
-<p align="center">
-  <img src="../screenshots/cm_main.png" alt="Main Window" width="45%">
-  <img src="../screenshots/cm_settings.png" alt="Settings" width="45%">
-</p>
-<p align="center">
-  <img src="../screenshots/cm_quickbar.png" alt="Quick Bar" width="45%">
-</p>
-
----
-
 ## New Features
 
 ### Quick Bar

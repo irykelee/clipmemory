@@ -29,18 +29,6 @@
 
 ---
 
-## Capturas de pantalla
-
-<p align="center">
-  <img src="../screenshots/cm_main.png" alt="Ventana principal" width="45%">
-  <img src="../screenshots/cm_settings.png" alt="Preferencias" width="45%">
-</p>
-<p align="center">
-  <img src="../screenshots/cm_quickbar.png" alt="Quick Bar" width="45%">
-</p>
-
----
-
 ## Nuevas funciones
 
 ### Quick Bar (popover de menú)
