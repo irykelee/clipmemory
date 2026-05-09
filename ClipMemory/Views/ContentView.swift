@@ -173,7 +173,7 @@ struct ContentView: View {
             Section { ForEach([SidebarTab.all, .text, .image, .link], id: \.self) { tab in Label { HStack { Text(tab.label).font(.system(size: sz(13))); Spacer(); Text("(\(tabCounts[tab] ?? 0))").font(.system(size: sz(11))).foregroundColor(.secondary) } } icon: { Image(systemName: tab.icon) }.tag(tab) } }
             Section { Label { Text(SidebarTab.pinned.label).font(.system(size: sz(13))) } icon: { Image(systemName: SidebarTab.pinned.icon) }.tag(SidebarTab.pinned) }
             Section { Label { Text(SidebarTab.settings.label).font(.system(size: sz(13))) } icon: { Image(systemName: SidebarTab.settings.icon) }.tag(SidebarTab.settings) }
-        }.listStyle(.sidebar).onChange(of: selectedTab) { _ in keyboardSelectedIndex = nil }.environment(\.defaultMinListRowHeight, sz(28))
+        }.listStyle(.sidebar).onChange(of: selectedTab) { _ in keyboardSelectedIndex = nil }.environment(\.defaultMinListRowHeight, sz(32))
     }
 
     private var mainContent: some View {
@@ -288,7 +288,7 @@ struct ContentView: View {
                             }
                         }
                     }
-                    settingsSection(L10n.settingsFontSize) { Picker("", selection: $fontScale) { Text(L10n.fontSizeSmall).font(.system(size: sz(13))).tag(0.85); Text(L10n.fontSizeMedium).font(.system(size: sz(13))).tag(1.0); Text(L10n.fontSizeLarge).font(.system(size: sz(13))).tag(1.15) } }
+                    settingsSection(L10n.settingsFontSize) { Picker(L10n.string("settings.font.picker"), selection: $fontScale) { Text(L10n.fontSizeSmall).font(.system(size: sz(13))).tag(1.0); Text(L10n.fontSizeMedium).font(.system(size: sz(13))).tag(1.2); Text(L10n.fontSizeLarge).font(.system(size: sz(13))).tag(1.4) } }
                     settingsSection(L10n.settingsSectionAbout) { Text(L10n.aboutVersion(AppVersion.current)).font(.system(size: sz(12))).foregroundColor(.secondary); Text(L10n.aboutFreeEdition).font(.system(size: sz(11))).foregroundColor(.secondary); Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.font(.system(size: sz(12))).buttonStyle(.link).foregroundColor(.accentColor) }
                 }.padding(.horizontal, 24).padding(.vertical, 16)
 }
@@ -296,7 +296,7 @@ struct ContentView: View {
 }
 
     private func settingsSection<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 6) { Text(title).font(.system(size: sz(11), weight: .semibold)).foregroundColor(.secondary).textCase(.uppercase); content().padding(.bottom, 12) }
+        VStack(alignment: .leading, spacing: 6) { Text(title).font(.system(size: sz(11), weight: .semibold)).foregroundColor(.secondary).textCase(.uppercase); content().padding(.bottom, 4).padding(.leading, 20) }
     }
 
     private var emptyState: some View {

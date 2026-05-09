@@ -29,6 +29,18 @@
 
 ---
 
+## Capturas de tela
+
+<p align="center">
+  <img src="../screenshots/cm_main.png" alt="Janela principal" width="45%">
+  <img src="../screenshots/cm_settings.png" alt="Configurações" width="45%">
+</p>
+<p align="center">
+  <img src="../screenshots/cm_quickbar.png" alt="Quick Bar" width="45%">
+</p>
+
+---
+
 ## Novos recursos
 
 ### Quick Bar (pop-up da barra de menu)

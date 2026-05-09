@@ -148,6 +148,7 @@
 "quickbar.open.full" = "完全なウィンドウを開く";
 
 /* Font Size */
+"settings.font.picker" = "設定：";
 "settings.font.size" = "フォントサイズ";
 "font.size.small" = "小";
 "font.size.medium" = "中";

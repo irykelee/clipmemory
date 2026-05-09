@@ -148,6 +148,7 @@
 "quickbar.open.full" = "Open Clipboard";
 
 /* Font Size */
+"settings.font.picker" = "Set to";
 "settings.font.size" = "Font Size";
 "font.size.small" = "Small";
 "font.size.medium" = "Medium";

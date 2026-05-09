@@ -147,6 +147,7 @@
 "quickbar.open.full" = "打开完整窗口";
 
 /* Font Size */
+"settings.font.picker" = "设置为";
 "settings.font.size" = "字体大小";
 "font.size.small" = "小";
 "font.size.medium" = "中";

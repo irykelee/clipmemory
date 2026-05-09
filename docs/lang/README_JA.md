@@ -29,6 +29,18 @@
 
 ---
 
+## スクリーンショット
+
+<p align="center">
+  <img src="../screenshots/cm_main.png" alt="メイン画面" width="45%">
+  <img src="../screenshots/cm_settings.png" alt="環境設定" width="45%">
+</p>
+<p align="center">
+  <img src="../screenshots/cm_quickbar.png" alt="Quick Bar" width="45%">
+</p>
+
+---
+
 ## 新機能
 
 ### Quick Bar（メニューバーポップアップ）

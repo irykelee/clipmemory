@@ -29,6 +29,18 @@
 
 ---
 
+## 스크린샷
+
+<p align="center">
+  <img src="../screenshots/cm_main.png" alt="메인 화면" width="45%">
+  <img src="../screenshots/cm_settings.png" alt="환경설정" width="45%">
+</p>
+<p align="center">
+  <img src="../screenshots/cm_quickbar.png" alt="Quick Bar" width="45%">
+</p>
+
+---
+
 ## 새로운 기능
 
 ### Quick Bar (메뉴바 팝업)
