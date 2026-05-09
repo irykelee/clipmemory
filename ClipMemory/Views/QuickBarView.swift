@@ -236,7 +236,7 @@ struct QuickBarRow: View {
                         Image(systemName: "exclamationmark.shield.fill")
                             .font(.system(size: sz(9)))
                             .foregroundColor(.orange)
-                        Text("[Sensitive]")
+                        Text("[\(L10n.itemSensitive)]")
                             .font(.system(size: sz(12)))
                             .foregroundColor(.orange)
                             .lineLimit(1)
