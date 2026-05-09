@@ -11,7 +11,7 @@
 | Aspect | v1 | v2 |
 |--------|----|----|
 | **Interaction** | Menu bar click → menu → open window (3 steps) | Menu bar click → **Quick Bar popup** (1 step) |
-| **Main Window** | Fixed-width ContentView, no sidebar | **NavigationSplitView sidebar**: All / Text / Image / Link / Pinned / Settings |
+| **Main Window** | Fixed-width ContentView, no sidebar | **Fixed sidebar**: All / Text / Image / Link / Pinned Only / Settings |
 | **Type Filter** | Horizontal FilterChip buttons | Vertical sidebar navigation with item counts |
 | **Time Grouping** | None | Today / Yesterday / This Week / This Month / Older, collapsible |
 | **Global Hotkey** | Cmd+Ctrl+V only | Customizable (record from Settings) |
@@ -20,10 +20,10 @@
 | **Search Highlight** | Highlight on text | Accurate `offsetByCharacters` positioning, works with CJK |
 | **Icon Layout** | Checkbox + type icon + star + content | Checkbox + content + star + delete (removed redundant type icon) |
 | **Window Style** | Standard NSWindow | `.fullSizeContentView` + `.ultraThinMaterial`/`.regularMaterial` glass effect |
-| **Traffic Lights** | In titlebar | Hidden titlebar, lights inline with toolbar (macOS 26 Liquid Glass) |
+| **Traffic Lights** | In titlebar | Hidden titlebar, unified toolbar area (macOS 26 Liquid Glass) |
 | **Dock Icon** | Always hidden | Appears when window opens, hides when closed |
 | **Font Scaling** | None | Small / Medium / Large in Settings |
-| **Launch at Login** | None (menu only) | Toggle in menu bar |
+| **Launch at Login** | None (menu only) | Toggle in Settings |
 
 ---
 
@@ -47,6 +47,9 @@ Settings → Font Size → Small / Medium / Large — scales all UI text.
 
 ### Customizable Hotkey
 Settings allows recording a new global hotkey to replace the default `Cmd+Ctrl+V`.
+
+### Theme System
+Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance (Light / Dark / Follow System).
 
 ---
 
@@ -102,6 +105,8 @@ Settings allows recording a new global hotkey to replace the default `Cmd+Ctrl+V
 - Language (7 languages)
 - Global hotkey recording
 - Font size (Small / Medium / Large)
+- Window Effect (Solid / Frosted / Ultra)
+- Appearance (Light / Dark / Follow System)
 
 ---
 
