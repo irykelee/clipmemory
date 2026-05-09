@@ -124,22 +124,22 @@
 "welcome.get.started" = "開始使用";
 
 /* Theme */
-"settings.section.theme" = "Theme";
-"theme.effect" = "Window Effect";
-"theme.effect.solid" = "Solid";
-"theme.effect.frosted" = "Frosted";
-"theme.effect.ultra" = "Ultra";
-"theme.accent" = "Accent Color";
-"theme.accent.system" = "System";
-"theme.accent.blue" = "Blue";
-"theme.accent.green" = "Green";
-"theme.accent.orange" = "Orange";
-"theme.accent.purple" = "Purple";
-"theme.accent.red" = "Red";
-"theme.appearance" = "Appearance";
-"theme.appearance.system" = "Follow System";
-"theme.appearance.light" = "Light";
-"theme.appearance.dark" = "Dark";
+"settings.section.theme" = "主題";
+"theme.effect" = "視窗效果";
+"theme.effect.solid" = "實心";
+"theme.effect.frosted" = "毛玻璃";
+"theme.effect.ultra" = "高透";
+"theme.accent" = "強調色";
+"theme.accent.system" = "跟隨系統";
+"theme.accent.blue" = "藍色";
+"theme.accent.green" = "綠色";
+"theme.accent.orange" = "橙色";
+"theme.accent.purple" = "紫色";
+"theme.accent.red" = "紅色";
+"theme.appearance" = "外觀";
+"theme.appearance.system" = "跟隨系統";
+"theme.appearance.light" = "淺色";
+"theme.appearance.dark" = "深色";
 
 /* QuickBar */
 "quickbar.recent" = "%d 條內容";
