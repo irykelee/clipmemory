@@ -94,9 +94,36 @@ class ClipboardStore: ObservableObject {
             return
         }
         let loadedItems = savedItems.filter { !$0.isExpired }
-        items = loadedItems
+
+        // Migrate old-format encrypted items to v2 (AES-GCM)
+        var migratedItems = loadedItems
+        var needsMigrationSave = false
+        for (index, item) in migratedItems.enumerated() where item.isEncrypted && item.type != .image {
+            if CryptoService.shared.isOldFormat(item.content),
+               let newContent = CryptoService.shared.migrateToV2(item.content) {
+                migratedItems[index] = ClipboardItem(
+                    id: item.id,
+                    content: newContent,
+                    type: item.type,
+                    createdAt: item.createdAt,
+                    isPinned: item.isPinned,
+                    isSensitive: item.isSensitive,
+                    expiresAt: item.expiresAt,
+                    isEncrypted: true,
+                    contentHash: item.contentHash
+                )
+                needsMigrationSave = true
+            }
+        }
+
+        items = migratedItems
         updatePinnedItems()
-        ImageStorage.shared.cleanupOrphanedImages(keptItems: loadedItems)
+        ImageStorage.shared.cleanupOrphanedImages(keptItems: migratedItems)
+
+        // Save migrated items immediately after load
+        if needsMigrationSave {
+            flushSave()
+        }
     }
 
     func saveItems() {
