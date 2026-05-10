@@ -44,6 +44,9 @@ class ClipboardStore: ObservableObject {
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
     private var cleanupTimer: Timer?
+    private var saveTimer: Timer?
+    private var needsSave = false
+    private let saveDebounceInterval: TimeInterval = 0.5
 
     private init() {
         let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
@@ -71,6 +74,8 @@ class ClipboardStore: ObservableObject {
 
     deinit {
         cleanupTimer?.invalidate()
+        saveTimer?.invalidate()
+        flushSave()
     }
 
     /// Sync excluded bundle IDs from settings string to the clipboard monitor
@@ -102,6 +107,28 @@ class ClipboardStore: ObservableObject {
         } catch {
             logger.error("Failed to save clipboard items: \(error.localizedDescription)")
         }
+    }
+
+    /// Schedules a debounced save — coalesces multiple rapid mutations into a single disk write.
+    /// The actual write happens after `saveDebounceInterval` seconds of inactivity.
+    private func scheduleSave() {
+        needsSave = true
+        saveTimer?.invalidate()
+        saveTimer = Timer.scheduledTimer(withTimeInterval: saveDebounceInterval, repeats: false) { [weak self] _ in
+            self?.flushSave()
+        }
+        if let t = saveTimer {
+            RunLoop.current.add(t, forMode: .common)
+        }
+    }
+
+    /// Flushes pending saves to disk immediately. Called by the debounce timer or on deinit.
+    private func flushSave() {
+        guard needsSave else { return }
+        needsSave = false
+        saveTimer?.invalidate()
+        saveTimer = nil
+        saveItems()
     }
 
     func addItem(_ item: ClipboardItem) {
@@ -164,7 +191,7 @@ class ClipboardStore: ObservableObject {
 
         trimToMaxItems()
         updatePinnedItems()
-        saveItems()
+        scheduleSave()
     }
 
     func getDecryptedContent(_ item: ClipboardItem) -> String? {
@@ -198,7 +225,7 @@ class ClipboardStore: ObservableObject {
         }
         items.removeAll { $0.id == item.id }
         updatePinnedItems()
-        saveItems()
+        scheduleSave()
     }
 
     func togglePin(_ item: ClipboardItem) {
@@ -206,7 +233,7 @@ class ClipboardStore: ObservableObject {
             items[index].isPinned.toggle()
             trimToMaxItems()
             updatePinnedItems()
-            saveItems()
+            scheduleSave()
         }
     }
 
@@ -218,7 +245,7 @@ class ClipboardStore: ObservableObject {
         }
         trimToMaxItems()
         updatePinnedItems()
-        saveItems()
+        scheduleSave()
     }
 
     func deleteItems(_ itemsToDelete: [ClipboardItem]) {
@@ -229,7 +256,7 @@ class ClipboardStore: ObservableObject {
         let idsToDelete = Set(itemsToDelete.map { $0.id })
         items.removeAll { idsToDelete.contains($0.id) }
         updatePinnedItems()
-        saveItems()
+        scheduleSave()
     }
 
     func unpinAll() {
@@ -237,7 +264,7 @@ class ClipboardStore: ObservableObject {
             items[i].isPinned = false
         }
         updatePinnedItems()
-        saveItems()
+        scheduleSave()
     }
 
     func clearSensitiveItems() {
@@ -247,7 +274,7 @@ class ClipboardStore: ObservableObject {
         }
         items.removeAll { $0.isSensitive && !$0.isPinned }
         updatePinnedItems()
-        saveItems()
+        scheduleSave()
     }
 
     func clearAllItems() {
@@ -258,7 +285,7 @@ class ClipboardStore: ObservableObject {
         }
         items.removeAll { !pinnedIds.contains($0.id) }
         updatePinnedItems()
-        saveItems()
+        scheduleSave()
     }
 
     func copyToClipboard(_ item: ClipboardItem) {
@@ -313,7 +340,7 @@ class ClipboardStore: ObservableObject {
             contentHash: moved.contentHash
         )
         items.insert(moved, at: 0)
-        saveItems()
+        scheduleSave()
     }
 
     private func updatePinnedItems() {
@@ -338,7 +365,7 @@ class ClipboardStore: ObservableObject {
         items.removeAll { $0.isExpired }
         if items.count != beforeCount {
             updatePinnedItems()
-            saveItems()
+            scheduleSave()
         }
     }
 }
