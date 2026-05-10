@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CommonCrypto
 import os.log
 
 // CryptoService is in the same module, no import needed
@@ -73,8 +74,86 @@ class ImageStorage {
         guard isValidFilename(filename) else { return nil }
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         guard let encryptedData = try? Data(contentsOf: fileURL) else { return nil }
-        // Decrypt image data after reading from disk (N2)
-        return CryptoService.shared.decryptData(encryptedData)
+
+        // Try new v2 format first
+        if let data = CryptoService.shared.decryptData(encryptedData) {
+            return data
+        }
+
+        // Try legacy format; if successful, re-encrypt and save with new format
+        if let legacyData = try? legacyDecryptImage(encryptedData) {
+            // Re-encrypt with new format and overwrite the file
+            if let newEncrypted = CryptoService.shared.encryptData(legacyData) {
+                try? newEncrypted.write(to: fileURL)
+            }
+            return legacyData
+        }
+
+        return nil
+    }
+
+    /// Decrypts image data using legacy AES-CBC+HMAC format (pre-v2).
+    /// Used only for migrating existing image files to the new v2 format.
+    private func legacyDecryptImage(_ combined: Data) throws -> Data? {
+        guard let key = try? Data(contentsOf: CryptoService.keyFileURL), key.count == 32 else {
+            return nil
+        }
+
+        if combined.count >= 49 {
+            let hmacSize = 32
+            let storedHMAC = combined.suffix(hmacSize)
+            let ivAndCiphertext = combined.dropLast(hmacSize)
+
+            let computedHMAC = CryptoService.computeLegacyHMAC(data: Data(ivAndCiphertext), key: key)
+            guard computedHMAC == storedHMAC else { return nil }
+
+            let iv = combined.prefix(16)
+            let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
+
+            return try aesDecryptCBC(data: Data(ciphertext), key: Data(iv))
+        }
+
+        if combined.count > 16 {
+            let iv = combined.prefix(16)
+            let ciphertext = combined.dropFirst(16)
+            return try aesDecryptCBC(data: Data(ciphertext), key: Data(iv))
+        }
+
+        return nil
+    }
+
+    private func aesDecryptCBC(data: Data, key: Data) throws -> Data? {
+        var iv = Data(count: 16)
+        if key.count >= 16 {
+            iv = key.prefix(16)
+        }
+
+        let bufferSize = data.count + kCCBlockSizeAES128
+        var decryptedBytes = [UInt8](repeating: 0, count: bufferSize)
+        var numBytesDecrypted: size_t = 0
+
+        var symmetricKey = [UInt8](repeating: 0, count: 32)
+        symmetricKey.withUnsafeMutableBytes { symBytes in
+            key.withUnsafeBytes { keyBytes in
+                iv.withUnsafeBytes { ivBytes in
+                    data.withUnsafeBytes { dataBytes in
+                        CCCrypt(
+                            CCOperation(kCCDecrypt),
+                            CCAlgorithm(kCCAlgorithmAES),
+                            CCOptions(kCCOptionPKCS7Padding),
+                            keyBytes.baseAddress, 32,
+                            ivBytes.baseAddress,
+                            dataBytes.baseAddress, data.count,
+                            &decryptedBytes, bufferSize,
+                            &numBytesDecrypted
+                        )
+                    }
+                }
+            }
+        }
+
+        guard numBytesDecrypted > 0 else { return nil }
+        return Data(decryptedBytes.prefix(numBytesDecrypted))
     }
 
     /// Loads image as NSImage, checking memory cache first for fast repeated access.

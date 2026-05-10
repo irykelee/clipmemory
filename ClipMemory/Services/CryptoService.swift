@@ -1,11 +1,23 @@
 import Foundation
+import CryptoKit
 import CommonCrypto
 import os.log
 
+/// Encryption format versions:
+/// - v2 (current): "v2" prefix + AES-GCM sealed box (nonce + ciphertext + tag)
+/// - v1 (legacy): AES-CBC + HMAC-SHA256, no prefix, for backwards compatibility
 class CryptoService {
     static let shared = CryptoService()
 
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
+
+    /// Exposed for ImageStorage migration
+    static var keyFileURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("ClipMemory", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(".encryption_key")
+    }
 
     private var keyFileURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -37,81 +49,33 @@ class CryptoService {
         }
     }
 
-    private func getKey() -> Data? {
-        try? Data(contentsOf: keyFileURL)
+    private func getKey() -> SymmetricKey? {
+        guard let keyData = try? Data(contentsOf: keyFileURL), keyData.count == 32 else {
+            return nil
+        }
+        return SymmetricKey(data: keyData)
     }
 
-    /// Encrypts with AES-256-CBC + HMAC-SHA256 for authenticated encryption.
-    /// Storage format: IV (16 bytes) + ciphertext + HMAC (32 bytes).
-    /// HMAC is computed over IV || ciphertext to prevent bit-flipping attacks.
+    // MARK: - Public API
+
+    /// Encrypts string using AES-GCM (v2 format). Returns base64 encoded string with "v2" prefix.
     func encrypt(_ string: String) -> String? {
         guard let data = string.data(using: .utf8) else { return nil }
         return encryptBytes(Array(data)).map { $0.base64EncodedString() }
     }
 
-    /// Encrypts raw Data (for images).
+    /// Encrypts raw Data (for images) using AES-GCM (v2 format).
     func encryptData(_ data: Data) -> Data? {
         return encryptBytes(Array(data))
     }
 
-    // MARK: - Encryption
-
-    private func encryptBytes(_ bytes: [UInt8]) -> Data? {
-        guard let key = getKey(), key.count == 32 else { return nil }
-
-        var iv = Data(count: 16)
-        guard iv.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }) == errSecSuccess else {
-            return nil
-        }
-
-        guard let ciphertext = aesEncrypt(data: Data(bytes), key: key, iv: iv) else { return nil }
-
-        // HMAC over IV || ciphertext
-        var ivAndCiphertext = iv
-        ivAndCiphertext.append(ciphertext)
-        let hmac = computeHMAC(data: ivAndCiphertext, key: key)
-
-        var combined = iv
-        combined.append(ciphertext)
-        combined.append(hmac)
-        return combined
-    }
-
-    private func aesEncrypt(data: Data, key: Data, iv: Data) -> Data? {
-        let bufferSize = data.count + kCCBlockSizeAES128
-        var encryptedBytes = [UInt8](repeating: 0, count: bufferSize)
-        var numBytesEncrypted: size_t = 0
-
-        let status = key.withUnsafeBytes { keyBytes in
-            iv.withUnsafeBytes { ivBytes in
-                data.withUnsafeBytes { dataBytes in
-                    CCCrypt(
-                        CCOperation(kCCEncrypt),
-                        CCAlgorithm(kCCAlgorithmAES),
-                        CCOptions(kCCOptionPKCS7Padding),
-                        keyBytes.baseAddress, key.count,
-                        ivBytes.baseAddress,
-                        dataBytes.baseAddress, data.count,
-                        &encryptedBytes, bufferSize,
-                        &numBytesEncrypted
-                    )
-                }
-            }
-        }
-
-        guard status == kCCSuccess else { return nil }
-        return Data(encryptedBytes.prefix(numBytesEncrypted))
-    }
-
-    // MARK: - Decryption
-
+    /// Decrypts base64 string. Automatically detects format (v2 or legacy).
     func decrypt(_ base64String: String) -> String? {
         guard let combined = Data(base64Encoded: base64String) else {
             logger.warning("Base64 decode failed for encrypted content")
             return nil
         }
         guard let bytes = decryptBytes(from: combined) else {
-            logger.warning("Decryption failed — key unavailable, HMAC mismatch, or corrupted data")
             return nil
         }
         guard let result = String(bytes: bytes, encoding: .utf8) else {
@@ -121,50 +85,120 @@ class CryptoService {
         return result
     }
 
+    /// Decrypts raw Data (for images). Automatically detects format.
     func decryptData(_ combined: Data) -> Data? {
         guard let bytes = decryptBytes(from: combined) else {
-            logger.warning("Image decryption failed — key unavailable, HMAC mismatch, or corrupted data")
             return nil
         }
         return Data(bytes)
     }
 
-    private func decryptBytes(from combined: Data) -> [UInt8]? {
-        guard let key = getKey(), key.count == 32 else { return nil }
+    // MARK: - Encryption (v2: AES-GCM)
 
-        // New format: IV (16) + ciphertext + HMAC (32) — minimum 49 bytes
+    private func encryptBytes(_ bytes: [UInt8]) -> Data? {
+        guard let key = getKey() else { return nil }
+
+        do {
+            let sealedBox = try AES.GCM.seal(bytes, using: key)
+            guard let combined = sealedBox.combined else { return nil }
+
+            // Prepend "v2" format marker
+            var result = Data("v2".utf8)
+            result.append(combined)
+            return result
+        } catch {
+            logger.error("AES-GCM encryption failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    // MARK: - Decryption (v2 and legacy)
+
+    /// Returns nil if decryption fails for any reason.
+    /// Tries v2 (AES-GCM) first, then legacy (AES-CBC+HMAC).
+    private func decryptBytes(from combined: Data) -> [UInt8]? {
+        // Detect format by "v2" prefix
+        if combined.count >= 2 && combined.prefix(2) == Data("v2".utf8) {
+            let sealedBoxData = combined.dropFirst(2)
+            return decryptV2(data: Data(sealedBoxData))
+        }
+        // Legacy format (no prefix)
+        return decryptLegacy(from: combined)
+    }
+
+    private func decryptV2(data: Data) -> [UInt8]? {
+        guard let key = getKey() else { return nil }
+
+        do {
+            let sealedBox = try AES.GCM.SealedBox(combined: data)
+            let decrypted = try AES.GCM.open(sealedBox, using: key)
+            return Array(decrypted)
+        } catch {
+            logger.warning("AES-GCM decryption failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    // MARK: - Legacy Decryption (AES-CBC+HMAC, pre-v2 format)
+
+    /// Returns true if the given base64 string uses the old format (no "v2" prefix).
+    func isOldFormat(_ base64String: String) -> Bool {
+        guard let combined = Data(base64Encoded: base64String) else { return false }
+        if combined.count >= 2 && combined.prefix(2) == Data("v2".utf8) { return false }
+        // Try to decrypt as old format — if it works, it's old format
+        return decryptLegacy(from: combined) != nil
+    }
+
+    /// Migrates old-format encrypted string to new v2 format.
+    /// Returns nil if not old format or migration fails.
+    func migrateToV2(_ base64String: String) -> String? {
+        guard let combined = Data(base64Encoded: base64String) else { return nil }
+        // Already new format
+        if combined.count >= 2 && combined.prefix(2) == Data("v2".utf8) { return nil }
+        // Try decrypting as old format
+        guard let bytes = decryptLegacy(from: combined) else { return nil }
+        // Re-encrypt with new format
+        return encryptBytes(bytes).map { $0.base64EncodedString() }
+    }
+
+    /// Legacy format: 16-byte IV + ciphertext + 32-byte HMAC (minimum 49 bytes).
+    /// Returns nil if decryption fails.
+    private func decryptLegacy(from combined: Data) -> [UInt8]? {
+        guard let key = getKey() else { return nil }
+
+        // New format (v2) with HMAC: minimum 16 (IV) + 1 + 32 (HMAC) = 49 bytes
         if combined.count >= 49 {
             let hmacSize = 32
-            let iv = combined.prefix(16)
-            let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
             let storedHMAC = combined.suffix(hmacSize)
 
             // Verify HMAC over IV || ciphertext
             let ivAndCiphertext = combined.dropLast(hmacSize)
             let computedHMAC = computeHMAC(data: Data(ivAndCiphertext), key: key)
-            guard computedHMAC == storedHMAC else { return nil }
+            guard computedHMAC == storedHMAC else {
+                logger.warning("Legacy HMAC mismatch")
+                return nil
+            }
 
-            return aesDecrypt(data: Data(ciphertext), key: key, iv: Data(iv))
+            let iv = combined.prefix(16)
+            let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
+            return aesDecryptCBC(data: Data(ciphertext), key: Data(iv))
         }
 
-        // Legacy format (pre-1.2.0): IV (16) + ciphertext — no HMAC
+        // Old format without HMAC: 16-byte IV + ciphertext (pre-1.2.0)
         if combined.count > 16 {
             let iv = combined.prefix(16)
             let ciphertext = combined.dropFirst(16)
-            return aesDecrypt(data: Data(ciphertext), key: key, iv: Data(iv))
+            return aesDecryptCBC(data: Data(ciphertext), key: Data(iv))
         }
 
         return nil
     }
 
-    // MARK: - HMAC
+    // MARK: - Helpers
 
-    private func computeHMAC(data: Data, key: Data) -> Data {
-        let hash = hmacSHA256(data: data, key: key)
-        return Data(hash)
-    }
-
-    private func hmacSHA256(data: Data, key: Data) -> [UInt8] {
+    /// Computes HMAC-SHA256 using raw Data key (for legacy format migration).
+    /// Exposed for ImageStorage use.
+    static func computeLegacyHMAC(data: Data, key: Data) -> Data {
         var result = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
         key.withUnsafeBytes { keyBytes in
             data.withUnsafeBytes { dataBytes in
@@ -176,13 +210,24 @@ class CryptoService {
                 )
             }
         }
-        return result
+        return Data(result)
     }
 
-    private func aesDecrypt(data: Data, key: Data, iv: Data) -> [UInt8]? {
+    private func computeHMAC(data: Data, key: SymmetricKey) -> Data {
+        let authenticationCode = HMAC<SHA256>.authenticationCode(for: data, using: key)
+        return Data(authenticationCode)
+    }
+
+    private func aesDecryptCBC(data: Data, key: Data) -> [UInt8]? {
         let bufferSize = data.count + kCCBlockSizeAES128
         var decryptedBytes = [UInt8](repeating: 0, count: bufferSize)
         var numBytesDecrypted: size_t = 0
+
+        // Use empty IV for legacy items that have no IV stored (shouldn't happen but guard)
+        var iv = Data(count: 16)
+        if key.count >= 16 {
+            iv = key.prefix(16)
+        }
 
         let status = key.withUnsafeBytes { keyBytes in
             iv.withUnsafeBytes { ivBytes in
@@ -191,7 +236,7 @@ class CryptoService {
                         CCOperation(kCCDecrypt),
                         CCAlgorithm(kCCAlgorithmAES),
                         CCOptions(kCCOptionPKCS7Padding),
-                        keyBytes.baseAddress, key.count,
+                        keyBytes.baseAddress, 32,
                         ivBytes.baseAddress,
                         dataBytes.baseAddress, data.count,
                         &decryptedBytes, bufferSize,
