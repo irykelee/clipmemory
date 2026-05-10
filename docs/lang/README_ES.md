@@ -2,7 +2,7 @@
 
 **Gestor de portapapeles de nueva generación para macOS — Mejor interfaz, acciones más rápidas, más funciones**
 
-[English](./README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
+[English](./README_EN.md) · [简体中文](./README_ZH-HANS.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
@@ -16,10 +16,10 @@
 | **Agrupación por tiempo** | Ninguna | Hoy / Ayer / Esta semana / Este mes / Anterior, plegable |
 | **Atajo global** | Solo Cmd+Ctrl+V | Personalizable (grabar desde Ajustes) |
 | **Quick Bar** | Ninguna | Popover con 8 elementos recientes, buscar + copiar + abrir ventana |
-| **Resalte de búsqueda** | Resalte sobre texto | Posición precisa con `offsetByCharacters`, compatible con CJK |
+| **Resalte de búsqueda** | Resalte sobre texto | Coincidencia precisa, sin texto corrupto |
 | **Vista previa larga** | Ninguna | Texto → completo, sensible → revelar, imagen → ampliar (0.4s) |
-| **Disposición iconos** | Casilla + icono tipo + estrella + contenido | Casilla + contenido + estrella + eliminar (icono tipo eliminado) |
-| **Estilo ventana** | NSWindow estándar | `.fullSizeContentView` + `.ultraThinMaterial`/`.regularMaterial` efecto vidrio |
+| **Disposición iconos** | Casilla + icono tipo + estrella + contenido | Casilla + contenido + estrella + eliminar, más limpio |
+| **Estilo ventana** | Ventana estándar | Efecto vidrio, más moderno |
 | **Semáforos** | En barra de título | Barra título oculta, área de barra herramientas unificada (macOS 26 Liquid Glass) |
 | **Icono Dock** | Siempre oculto | Aparece al abrir ventana, se oculta al cerrar |
 | **Resalte hover** | Ninguno | Resalte automático al pasar el ratón |
@@ -60,10 +60,16 @@ Ajustes permite cambiar el Efecto de ventana (Sólido / Esmerilado / Ultra) y la
 - 📋 Historial del portapapeles (texto / imágenes / enlaces)
 - ⭐ Fijar elementos importantes, no se eliminan automáticamente
 - 💾 Imágenes almacenadas como archivos cifrados, supera límite de 10MB
-- 🔍 Búsqueda en tiempo real, resalte preciso en chino e inglés
+- 🔍 Búsqueda en tiempo real, resalte preciso en todos los idiomas (incl. chino, japonés, coreano)
 - ✅ Retroalimentación visual verde al copiar
 - ☑️ Selección múltiple para fijar / eliminar en lote
 - 🔒 Detección automática de información sensible (25+ reglas) + cifrado AES-256 + HMAC
+- 🔐 Pausa automática cuando el gestor de contraseñas está en primer plano, exclusión de apps personalizada
+- ⚡ Deduplicación inteligente — contenido igual actualiza marca de tiempo sin duplicar
+- 🔄 Prevención de bucle de copia — salta la captura al copiar desde la app
+- 🔒 Seguridad primero: contenido descartado si falla el cifrado, nunca se guarda como texto plano
+- 🧹 Limpieza de huérfanos — elimina imágenes no referenciadas al iniciar
+- ⚙️ Detección de conflicto de atajo en el primer inicio
 - ⌨️ Atajo global `Cmd+Ctrl+V`
 - 🌍 7 idiomas (简体中文 / 繁體中文 / English / 日本語 / 한국어 / Español / Português)
 - 📎 Ajustes → Acerca de → Enviar comentarios → GitHub Issues
@@ -77,6 +83,7 @@ Ajustes permite cambiar el Efecto de ventana (Sólido / Esmerilado / Ultra) y la
 | Abrir Quick Bar | Clic en 📋 de barra menú / `Cmd+Ctrl+V` |
 | Copiar desde Quick Bar | Clic en elemento / ↑↓ + Enter |
 | Abrir ventana completa | Quick Bar → "Abrir portapapeles" |
+| Buscar | Escribe para filtrar, coincidencias resaltadas |
 | Fijar / Desfijar | Clic ⭐, doble clic fila, o menú contextual |
 | Eliminar | Clic 🗑 o menú contextual |
 | Ver contenido sensible | Mantener 0.4s para mostrar, soltar para ocultar |
@@ -108,6 +115,7 @@ Ajustes permite cambiar el Efecto de ventana (Sólido / Esmerilado / Ultra) y la
 - Tamaño de fuente (Pequeño / Mediano / Grande)
 - Efecto de ventana (Sólido / Esmerilado / Ultra)
 - Apariencia (Claro / Oscuro / Seguir sistema)
+- Apps excluidas (apps personalizadas para excluir del monitoreo)
 
 ---
 

@@ -7,6 +7,7 @@
 "button.delete" = "刪除";
 "button.confirm" = "確認";
 "button.close" = "關閉";
+"button.done" = "完成";
 
 /* Header */
 "header.clear.history" = "清除歷史";
@@ -61,11 +62,24 @@
 "settings.section.history" = "歷史記錄";
 "settings.section.sensitive" = "敏感資訊保護";
 "settings.section.language" = "語言";
+"settings.section.hotkey" = "快捷鍵";
+"settings.hotkey.change" = "修改";
+"settings.hotkey.recording" = "請按下新的快捷鍵...";
 "settings.section.about" = "關於";
 "settings.max.items" = "最大筆記數";
 "settings.max.items.count" = "%d 筆記";
 "settings.auto.clear" = "自動清理";
 "settings.sensitive.hint" = "偵測到密碼、API金鑰等敏感內容時，自動清理前的等待時間";
+"settings.section.excluded.apps" = "排除的應用程式";
+"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
+"settings.excluded.apps.label" = "排除的應用程式";
+"settings.excluded.apps.hint" = "輸入要排除的應用程式的 Bundle ID，多個用逗號分隔。這些應用程式的複製操作不會被記錄。";
+"settings.add.excluded.app" = "新增應用程式";
+"settings.app.picker.search" = "搜尋應用程式";
+"settings.app.picker.running" = "執行中";
+"settings.app.picker.installed" = "已安裝";
+"settings.app.picker.no.results" = "找不到應用程式";
+"settings.excluded.apps.none" = "未排除任何應用程式";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 小時後";

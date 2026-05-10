@@ -7,6 +7,7 @@
 "button.delete" = "삭제";
 "button.confirm" = "확인";
 "button.close" = "닫기";
+"button.done" = "완료";
 
 /* Header */
 "header.clear.history" = "기록 비우기";
@@ -74,6 +75,12 @@
 "settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
 "settings.excluded.apps.label" = "제외 앱";
 "settings.excluded.apps.hint" = "클립보드 모니터링에서 제외할 앱의 번들 ID를 쉼표로 구분하여 입력(예: com.1password.1password, com.bitwarden.desktop). 해당 앱에서 복사하면 기록되지 않습니다.";
+"settings.add.excluded.app" = "앱 추가";
+"settings.app.picker.search" = "앱 검색";
+"settings.app.picker.running" = "실행 중";
+"settings.app.picker.installed" = "설치됨";
+"settings.app.picker.no.results" = "앱을 찾을 수 없습니다";
+"settings.excluded.apps.none" = "제외된 앱 없음";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1시간 후";

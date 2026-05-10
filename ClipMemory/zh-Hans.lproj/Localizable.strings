@@ -7,6 +7,7 @@
 "button.delete" = "删除";
 "button.confirm" = "确认";
 "button.close" = "关闭";
+"button.done" = "完成";
 
 /* Header */
 "header.clear.history" = "清空历史";
@@ -73,6 +74,12 @@
 "settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
 "settings.excluded.apps.label" = "排除的应用";
 "settings.excluded.apps.hint" = "输入要排除的应用的 Bundle ID，多个用逗号分隔。这些应用的复制操作不会被记录。";
+"settings.add.excluded.app" = "添加应用";
+"settings.app.picker.search" = "搜索应用";
+"settings.app.picker.running" = "运行中";
+"settings.app.picker.installed" = "已安装";
+"settings.app.picker.no.results" = "未找到应用";
+"settings.excluded.apps.none" = "未排除任何应用";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 小时后";

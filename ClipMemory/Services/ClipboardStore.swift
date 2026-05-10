@@ -180,9 +180,10 @@ class ClipboardStore: ObservableObject {
         guard items.count > maxItems else { return }
         let pinned = items.filter { $0.isPinned }
         var nonPinned = items.filter { !$0.isPinned }
-        let allowedNonPinned = max(0, maxItems - pinned.count)
+        let trimmedPinned = pinned.count > maxItems ? Array(pinned.prefix(maxItems)) : pinned
+        let allowedNonPinned = max(0, maxItems - trimmedPinned.count)
         nonPinned = Array(nonPinned.prefix(allowedNonPinned))
-        let trimmed = pinned + nonPinned
+        let trimmed = trimmedPinned + nonPinned
         let trimmedIds = Set(trimmed.map { $0.id })
         let removedImages = items.filter { $0.type == .image && !trimmedIds.contains($0.id) }
         for item in removedImages {

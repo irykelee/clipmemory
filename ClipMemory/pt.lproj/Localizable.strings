@@ -7,6 +7,7 @@
 "button.delete" = "Excluir";
 "button.confirm" = "Confirmar";
 "button.close" = "Fechar";
+"button.done" = "Concluído";
 
 /* Header */
 "header.clear.history" = "Limpar histórico";
@@ -74,6 +75,12 @@
 "settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
 "settings.excluded.apps.label" = "Apps Excluídas";
 "settings.excluded.apps.hint" = "IDs de pacote separados por vírgula de apps a excluir do monitoramento da área de transferência (ex. com.1password.1password, com.bitwarden.desktop). Ações de copiar dessas apps não serão gravadas.";
+"settings.add.excluded.app" = "Adicionar aplicativo";
+"settings.app.picker.search" = "Pesquisar aplicativos";
+"settings.app.picker.running" = "Em execução";
+"settings.app.picker.installed" = "Instalados";
+"settings.app.picker.no.results" = "Nenhum app encontrado";
+"settings.excluded.apps.none" = "Nenhum app excluído";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 hora";
