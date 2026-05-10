@@ -91,10 +91,7 @@ struct ContentView: View {
         switch selectedTab { case .pinned: base = store.pinnedItems; default: base = store.items }
         if let f = selectedTab.typeFilter { base = base.filter { $0.type == f } }
         if searchText.isEmpty { return base }
-        return base.filter { item in
-            guard !item.decryptionFailed else { return false }
-            return item.decryptedContent.localizedCaseInsensitiveContains(searchText)
-        }
+        return base.filter { $0.decryptedContent.localizedCaseInsensitiveContains(searchText) }
     }
 
     private enum TimeGroup: String, CaseIterable { case today, yesterday, thisWeek, thisMonth, older
@@ -146,7 +143,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                Color.clear.frame(width: 170)
+                Color.clear.frame(width: 200)
                 Divider()
                 HStack(spacing: 12) {
                     HStack(spacing: 6) {
@@ -169,7 +166,7 @@ struct ContentView: View {
                     Text(L10n.appName).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 12).padding(.vertical, 10)
                     Divider()
                     sidebar
-                }.frame(minWidth: 140, idealWidth: 170, maxWidth: 200).background(sidebarBackground)
+                }.frame(width: 200).background(sidebarBackground)
                 Divider()
                 Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyBackground)
             }
