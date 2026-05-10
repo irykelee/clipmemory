@@ -3,7 +3,7 @@ import Foundation
 import os.log
 
 class ClipboardMonitor {
-    private var timer: Timer?
+    private var timer: DispatchSourceTimer?
     private var lastChangeCount: Int = 0
     private let pasteboard = NSPasteboard.general
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
@@ -113,16 +113,18 @@ class ClipboardMonitor {
         )
         // Initialize with current frontmost app
         lastKnownSourceBundleId = frontmostAppBundleId()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+
+        let queue = DispatchQueue(label: "com.clipmemory.clipboardmonitor", qos: .userInteractive)
+        timer = DispatchSource.makeTimerSource(queue: queue)
+        timer?.schedule(deadline: .now(), repeating: 0.5)
+        timer?.setEventHandler { [weak self] in
             self?.checkClipboard()
         }
-        if let t = timer {
-            RunLoop.current.add(t, forMode: .common)
-        }
+        timer?.resume()
     }
 
     func stopMonitoring() {
-        timer?.invalidate()
+        timer?.cancel()
         timer = nil
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }

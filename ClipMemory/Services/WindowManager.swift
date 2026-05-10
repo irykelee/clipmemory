@@ -1,6 +1,13 @@
 import AppKit
 import SwiftUI
 
+private struct WindowFrame: Codable {
+    let x: CGFloat
+    let y: CGFloat
+    let w: CGFloat
+    let h: CGFloat
+}
+
 class WindowManager: NSObject, NSWindowDelegate {
     private(set) var mainWindow: NSWindow?
     private var quickBarPopover: NSPopover?
@@ -59,10 +66,10 @@ class WindowManager: NSObject, NSWindowDelegate {
         get {
             let defaultFrame = NSRect(x: 0, y: 0, width: 680, height: 500)
             guard let data = UserDefaults.standard.data(forKey: windowFrameKey),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: CGFloat],
-                  let x = dict["x"], let y = dict["y"],
-                  let w = dict["w"], let h = dict["h"] else { return defaultFrame }
-            let saved = NSRect(x: x, y: y, width: w, height: h)
+                  let frame = try? PropertyListDecoder().decode(WindowFrame.self, from: data) else {
+                return defaultFrame
+            }
+            let saved = NSRect(x: frame.x, y: frame.y, width: frame.w, height: frame.h)
             if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(saved) }) {
                 let v = NSScreen.main?.visibleFrame ?? defaultFrame
                 return NSRect(x: v.midX - 340, y: v.midY - 250, width: 680, height: 500)
@@ -70,8 +77,10 @@ class WindowManager: NSObject, NSWindowDelegate {
             return saved
         }
         set {
-            let d: [String: CGFloat] = ["x": newValue.origin.x, "y": newValue.origin.y, "w": newValue.size.width, "h": newValue.size.height]
-            if let data = try? JSONSerialization.data(withJSONObject: d) { UserDefaults.standard.set(data, forKey: windowFrameKey) }
+            let frame = WindowFrame(x: newValue.origin.x, y: newValue.origin.y, w: newValue.size.width, h: newValue.size.height)
+            if let data = try? PropertyListEncoder().encode(frame) {
+                UserDefaults.standard.set(data, forKey: windowFrameKey)
+            }
         }
     }
 

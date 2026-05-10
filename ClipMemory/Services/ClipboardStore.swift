@@ -43,10 +43,10 @@ class ClipboardStore: ObservableObject {
     private let excludedBundleIdsKey = "excludedBundleIds"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
-    private var cleanupTimer: Timer?
-    private var saveTimer: Timer?
+    private var cleanupTimer: DispatchSourceTimer?
+    private var saveTimer: DispatchSourceTimer?
     private var needsSave = false
-    private let saveDebounceInterval: TimeInterval = 0.5
+    private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
     private init() {
         let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
@@ -64,17 +64,18 @@ class ClipboardStore: ObservableObject {
         loadItems()
         updateExcludedAppsOnMonitor()
         cleanupExpiredItems()
-        cleanupTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        let queue = DispatchQueue(label: "com.clipmemory.cleanup", qos: .background)
+        cleanupTimer = DispatchSource.makeTimerSource(queue: queue)
+        cleanupTimer?.schedule(deadline: .now() + 60, repeating: 60)
+        cleanupTimer?.setEventHandler { [weak self] in
             self?.cleanupExpiredItems()
         }
-        if let t = cleanupTimer {
-            RunLoop.current.add(t, forMode: .common)
-        }
+        cleanupTimer?.resume()
     }
 
     deinit {
-        cleanupTimer?.invalidate()
-        saveTimer?.invalidate()
+        cleanupTimer?.cancel()
+        saveTimer?.cancel()
         flushSave()
     }
 
@@ -140,20 +141,21 @@ class ClipboardStore: ObservableObject {
     /// The actual write happens after `saveDebounceInterval` seconds of inactivity.
     private func scheduleSave() {
         needsSave = true
-        saveTimer?.invalidate()
-        saveTimer = Timer.scheduledTimer(withTimeInterval: saveDebounceInterval, repeats: false) { [weak self] _ in
+        saveTimer?.cancel()
+        let queue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
+        saveTimer = DispatchSource.makeTimerSource(queue: queue)
+        saveTimer?.schedule(deadline: .now() + saveDebounceInterval)
+        saveTimer?.setEventHandler { [weak self] in
             self?.flushSave()
         }
-        if let t = saveTimer {
-            RunLoop.current.add(t, forMode: .common)
-        }
+        saveTimer?.resume()
     }
 
     /// Flushes pending saves to disk immediately. Called by the debounce timer or on deinit.
     private func flushSave() {
         guard needsSave else { return }
         needsSave = false
-        saveTimer?.invalidate()
+        saveTimer?.cancel()
         saveTimer = nil
         saveItems()
     }
