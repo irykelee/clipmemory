@@ -153,6 +153,7 @@
 /* QuickBar */
 "quickbar.recent" = "%d elementos";
 "quickbar.open.full" = "Abrir ventana completa";
+"quickbar.no.results" = "Sin resultados";
 
 /* Font Size */
 "settings.font.picker" = "Establecer";

@@ -153,6 +153,7 @@
 /* QuickBar */
 "quickbar.recent" = "%d itens";
 "quickbar.open.full" = "Abrir janela completa";
+"quickbar.no.results" = "Sem resultados";
 
 /* Font Size */
 "settings.font.picker" = "Definir";

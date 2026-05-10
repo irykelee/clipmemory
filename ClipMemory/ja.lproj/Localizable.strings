@@ -153,6 +153,7 @@
 /* QuickBar */
 "quickbar.recent" = "%d 件";
 "quickbar.open.full" = "完全なウィンドウを開く";
+"quickbar.no.results" = "結果なし";
 
 /* Font Size */
 "settings.font.picker" = "設定：";
