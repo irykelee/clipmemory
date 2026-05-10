@@ -27,7 +27,10 @@ struct QuickBarView: View {
     var displayedItems: [ClipboardItem] {
         let base = searchText.isEmpty
             ? Array(store.items.prefix(maxItems))
-            : store.items.filter { $0.decryptedContent.localizedCaseInsensitiveContains(searchText) }
+            : store.items.filter { item in
+                guard !item.decryptionFailed else { return false }
+                return item.decryptedContent.localizedCaseInsensitiveContains(searchText)
+            }
         return base
     }
 
@@ -69,15 +72,19 @@ struct QuickBarView: View {
             if displayedItems.isEmpty {
                 VStack(spacing: 8) {
                     Spacer(minLength: 40)
-                    Text(L10n.emptyNoHistory)
-                        .font(.system(size: sz(12)))
-                        .foregroundColor(.secondary)
                     if searchText.isEmpty {
+                        Text(L10n.emptyNoHistory)
+                            .font(.system(size: sz(12)))
+                            .foregroundColor(.secondary)
                         Text(L10n.emptyHistoryHint)
                             .font(.system(size: sz(11)))
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 16)
+                    } else {
+                        Text(L10n.quickbarNoResults)
+                            .font(.system(size: sz(12)))
+                            .foregroundColor(.secondary)
                     }
                     Spacer(minLength: 40)
                 }

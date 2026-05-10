@@ -184,5 +184,6 @@ struct L10n {
 
     // MARK: - QuickBar
     static func quickbarRecent(_ count: Int) -> String { string("quickbar.recent", count) }
+    static var quickbarNoResults: String { string("quickbar.no.results") }
     static var quickbarOpenFull: String { string("quickbar.open.full") }
 }

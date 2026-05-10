@@ -153,6 +153,7 @@
 /* QuickBar */
 "quickbar.recent" = "%d개";
 "quickbar.open.full" = "전체 창 열기";
+"quickbar.no.results" = "결과 없음";
 
 /* Font Size */
 "settings.font.picker" = "설정：";

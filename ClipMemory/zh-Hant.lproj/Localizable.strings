@@ -152,6 +152,7 @@
 /* QuickBar */
 "quickbar.recent" = "%d 條內容";
 "quickbar.open.full" = "打開完整視窗";
+"quickbar.no.results" = "無結果";
 
 /* Font Size */
 "settings.font.picker" = "設定為";

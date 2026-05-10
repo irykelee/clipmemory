@@ -38,10 +38,15 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// Returns decrypted content. If decryption fails, returns a placeholder (not ciphertext).
     var decryptedContent: String {
         guard !isEncrypted else {
-            // Return placeholder instead of garbage ciphertext if decrypt fails
             return CryptoService.shared.decrypt(content) ?? "(decryption failed)"
         }
         return content
+    }
+
+    /// Returns true if decryption was attempted but failed (content is encrypted but could not be decrypted).
+    var decryptionFailed: Bool {
+        guard isEncrypted else { return false }
+        return CryptoService.shared.decrypt(content) == nil
     }
 
     var displayContent: String {

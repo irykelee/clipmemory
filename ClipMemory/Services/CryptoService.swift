@@ -1,5 +1,4 @@
 import Foundation
-import Security
 import CommonCrypto
 import os.log
 
@@ -39,7 +38,7 @@ class CryptoService {
     }
 
     private func getKey() -> Data? {
-        return try? Data(contentsOf: keyFileURL)
+        try? Data(contentsOf: keyFileURL)
     }
 
     /// Encrypts with AES-256-CBC + HMAC-SHA256 for authenticated encryption.
@@ -47,8 +46,7 @@ class CryptoService {
     /// HMAC is computed over IV || ciphertext to prevent bit-flipping attacks.
     func encrypt(_ string: String) -> String? {
         guard let data = string.data(using: .utf8) else { return nil }
-        guard let combined = encryptBytes(Array(data)) else { return nil }
-        return combined.base64EncodedString()
+        return encryptBytes(Array(data)).map { $0.base64EncodedString() }
     }
 
     /// Encrypts raw Data (for images).
@@ -56,30 +54,57 @@ class CryptoService {
         return encryptBytes(Array(data))
     }
 
-    /// N7: Common encryption logic — AES-256-CBC + HMAC-SHA256 over raw bytes
+    // MARK: - Encryption
+
     private func encryptBytes(_ bytes: [UInt8]) -> Data? {
-        guard let key = getKey() else { return nil }
+        guard let key = getKey(), key.count == 32 else { return nil }
 
         var iv = Data(count: 16)
-        let ivResult = iv.withUnsafeMutableBytes {
-            SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!)
+        guard iv.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }) == errSecSuccess else {
+            return nil
         }
-        guard ivResult == errSecSuccess else { return nil }
 
-        guard let encrypted = aesEncrypt(data: Data(bytes), key: key, iv: iv) else { return nil }
+        guard let ciphertext = aesEncrypt(data: Data(bytes), key: key, iv: iv) else { return nil }
 
+        // HMAC over IV || ciphertext
         var ivAndCiphertext = iv
-        ivAndCiphertext.append(encrypted)
+        ivAndCiphertext.append(ciphertext)
         let hmac = computeHMAC(data: ivAndCiphertext, key: key)
 
         var combined = iv
-        combined.append(encrypted)
+        combined.append(ciphertext)
         combined.append(hmac)
         return combined
     }
 
-    /// Decrypts and verifies HMAC before decryption.
-    /// Falls back to legacy format (no HMAC) for backwards compatibility with pre-1.2.0 data.
+    private func aesEncrypt(data: Data, key: Data, iv: Data) -> Data? {
+        let bufferSize = data.count + kCCBlockSizeAES128
+        var encryptedBytes = [UInt8](repeating: 0, count: bufferSize)
+        var numBytesEncrypted: size_t = 0
+
+        let status = key.withUnsafeBytes { keyBytes in
+            iv.withUnsafeBytes { ivBytes in
+                data.withUnsafeBytes { dataBytes in
+                    CCCrypt(
+                        CCOperation(kCCEncrypt),
+                        CCAlgorithm(kCCAlgorithmAES),
+                        CCOptions(kCCOptionPKCS7Padding),
+                        keyBytes.baseAddress, key.count,
+                        ivBytes.baseAddress,
+                        dataBytes.baseAddress, data.count,
+                        &encryptedBytes, bufferSize,
+                        &numBytesEncrypted
+                    )
+                }
+            }
+        }
+
+        guard status == kCCSuccess else { return nil }
+        return Data(encryptedBytes.prefix(numBytesEncrypted))
+    }
+
+    // MARK: - Decryption
+
     func decrypt(_ base64String: String) -> String? {
         guard let combined = Data(base64Encoded: base64String) else {
             logger.warning("Base64 decode failed for encrypted content")
@@ -96,7 +121,6 @@ class CryptoService {
         return result
     }
 
-    /// Decrypts Data (for images).
     func decryptData(_ combined: Data) -> Data? {
         guard let bytes = decryptBytes(from: combined) else {
             logger.warning("Image decryption failed — key unavailable, HMAC mismatch, or corrupted data")
@@ -105,86 +129,59 @@ class CryptoService {
         return Data(bytes)
     }
 
-    /// N7: Common decryption logic — verifies HMAC then AES-256-CBC decrypt
     private func decryptBytes(from combined: Data) -> [UInt8]? {
-        guard let key = getKey() else { return nil }
+        guard let key = getKey(), key.count == 32 else { return nil }
 
         // New format: IV (16) + ciphertext + HMAC (32) — minimum 49 bytes
         if combined.count >= 49 {
             let hmacSize = 32
-            let ivAndCiphertextLength = combined.count - hmacSize
-            let ivAndCiphertext = combined.prefix(ivAndCiphertextLength)
+            let iv = combined.prefix(16)
+            let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
             let storedHMAC = combined.suffix(hmacSize)
 
+            // Verify HMAC over IV || ciphertext
+            let ivAndCiphertext = combined.dropLast(hmacSize)
             let computedHMAC = computeHMAC(data: Data(ivAndCiphertext), key: key)
-            if computedHMAC == storedHMAC {
-                let iv = combined.prefix(16)
-                let encryptedData = combined.dropFirst(16).dropLast(hmacSize)
-                if let decrypted = aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv)) {
-                    return Array(decrypted)
-                }
-            }
-            return nil
+            guard computedHMAC == storedHMAC else { return nil }
+
+            return aesDecrypt(data: Data(ciphertext), key: key, iv: Data(iv))
         }
 
         // Legacy format (pre-1.2.0): IV (16) + ciphertext — no HMAC
         if combined.count > 16 {
             let iv = combined.prefix(16)
-            let encryptedData = combined.dropFirst(16)
-            if let decrypted = aesDecrypt(data: Data(encryptedData), key: key, iv: Data(iv)) {
-                return Array(decrypted)
-            }
+            let ciphertext = combined.dropFirst(16)
+            return aesDecrypt(data: Data(ciphertext), key: key, iv: Data(iv))
         }
 
         return nil
     }
+
+    // MARK: - HMAC
 
     private func computeHMAC(data: Data, key: Data) -> Data {
-        var hmac = Data(count: Int(CC_SHA256_DIGEST_LENGTH))
-        hmac.withUnsafeMutableBytes { hmacBytes in
+        let hash = hmacSHA256(data: data, key: key)
+        return Data(hash)
+    }
+
+    private func hmacSHA256(data: Data, key: Data) -> [UInt8] {
+        var result = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        key.withUnsafeBytes { keyBytes in
             data.withUnsafeBytes { dataBytes in
-                key.withUnsafeBytes { keyBytes in
-                    CCHmac(
-                        CCHmacAlgorithm(kCCHmacAlgSHA256),
-                        keyBytes.baseAddress, key.count,
-                        dataBytes.baseAddress, data.count,
-                        hmacBytes.baseAddress
-                    )
-                }
+                CCHmac(
+                    CCHmacAlgorithm(kCCHmacAlgSHA256),
+                    keyBytes.baseAddress, key.count,
+                    dataBytes.baseAddress, data.count,
+                    &result
+                )
             }
         }
-        return hmac
+        return result
     }
 
-    private func aesEncrypt(data: Data, key: Data, iv: Data) -> Data? {
-        var encryptedBytes = [UInt8](repeating: 0, count: data.count + kCCBlockSizeAES128)
-        var numBytesEncrypted: size_t = 0
-
-        let status = key.withUnsafeBytes { keyBytes in
-            iv.withUnsafeBytes { ivBytes in
-                data.withUnsafeBytes { dataBytes in
-                    CCCrypt(
-                        CCOperation(kCCEncrypt),
-                        CCAlgorithm(kCCAlgorithmAES),
-                        CCOptions(kCCOptionPKCS7Padding),
-                        keyBytes.baseAddress, key.count,
-                        ivBytes.baseAddress,
-                        dataBytes.baseAddress, data.count,
-                        &encryptedBytes, encryptedBytes.count,
-                        &numBytesEncrypted
-                    )
-                }
-            }
-        }
-
-        if status == kCCSuccess {
-            return Data(encryptedBytes.prefix(numBytesEncrypted))
-        }
-        return nil
-    }
-
-    private func aesDecrypt(data: Data, key: Data, iv: Data) -> Data? {
-        var decryptedBytes = [UInt8](repeating: 0, count: data.count + kCCBlockSizeAES128)
+    private func aesDecrypt(data: Data, key: Data, iv: Data) -> [UInt8]? {
+        let bufferSize = data.count + kCCBlockSizeAES128
+        var decryptedBytes = [UInt8](repeating: 0, count: bufferSize)
         var numBytesDecrypted: size_t = 0
 
         let status = key.withUnsafeBytes { keyBytes in
@@ -197,16 +194,14 @@ class CryptoService {
                         keyBytes.baseAddress, key.count,
                         ivBytes.baseAddress,
                         dataBytes.baseAddress, data.count,
-                        &decryptedBytes, decryptedBytes.count,
+                        &decryptedBytes, bufferSize,
                         &numBytesDecrypted
                     )
                 }
             }
         }
 
-        if status == kCCSuccess {
-            return Data(decryptedBytes.prefix(numBytesDecrypted))
-        }
-        return nil
+        guard status == kCCSuccess else { return nil }
+        return Array(decryptedBytes.prefix(numBytesDecrypted))
     }
 }

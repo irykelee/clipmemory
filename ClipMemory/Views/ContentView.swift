@@ -91,7 +91,10 @@ struct ContentView: View {
         switch selectedTab { case .pinned: base = store.pinnedItems; default: base = store.items }
         if let f = selectedTab.typeFilter { base = base.filter { $0.type == f } }
         if searchText.isEmpty { return base }
-        return base.filter { $0.decryptedContent.localizedCaseInsensitiveContains(searchText) }
+        return base.filter { item in
+            guard !item.decryptionFailed else { return false }
+            return item.decryptedContent.localizedCaseInsensitiveContains(searchText)
+        }
     }
 
     private enum TimeGroup: String, CaseIterable { case today, yesterday, thisWeek, thisMonth, older
