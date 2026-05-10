@@ -2,7 +2,7 @@
 
 **Gerenciador de área de transferência de nova geração para macOS — Melhor interface, ações mais rápidas, mais recursos**
 
-[English](./README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
+[English](./README_EN.md) · [简体中文](./README_ZH-HANS.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
@@ -16,10 +16,10 @@
 | **Agrupamento por tempo** | Nenhum | Hoje / Ontem / Esta semana / Este mês / Anterior, recolhível |
 | **Atalho global** | Apenas Cmd+Ctrl+V | Personalizável (gravar nas Configurações) |
 | **Quick Bar** | Nenhuma | Pop-up com 8 itens recentes, pesquisar + copiar + abrir janela |
-| **Destaque de pesquisa** | Destaque sobre texto | Posição precisa com `offsetByCharacters`, compatível com CJK |
+| **Destaque de pesquisa** | Destaque sobre texto | Correspondência precisa, sem texto corrompido |
 | **Visualização longa** | Nenhuma | Texto → completo, sensível → revelar, imagem → ampliar (0.4s) |
-| **Disposição ícones** | Caixa + ícone tipo + estrela + conteúdo | Caixa + conteúdo + estrela + excluir (ícone tipo removido) |
-| **Estilo janela** | NSWindow padrão | `.fullSizeContentView` + `.ultraThinMaterial`/`.regularMaterial` efeito vidro |
+| **Disposição ícones** | Caixa + ícone tipo + estrela + conteúdo | Caixa + conteúdo + estrela + excluir, mais limpo |
+| **Estilo janela** | Janela padrão | Efeito vidro, mais moderno |
 | **Botões de janela** | Na barra de título | Barra título oculta, área de barra ferramentas unificada (macOS 26 Liquid Glass) |
 | **Ícone Dock** | Sempre oculto | Aparece ao abrir janela, oculta ao fechar |
 | **Destaque hover** | Nenhum | Destaque automático ao passar o mouse |
@@ -60,10 +60,16 @@ Configurações permite ajustar o Efeito de janela (Sólido / Fosco / Ultra) e a
 - 📋 Histórico da área de transferência (texto / imagens / links)
 - ⭐ Fixar itens importantes, não são removidos automaticamente
 - 💾 Imagens armazenadas como arquivos criptografados, supera limite de 10MB
-- 🔍 Pesquisa em tempo real, destaque preciso em chinês e inglês
+- 🔍 Pesquisa em tempo real, destaque preciso em todos os idiomas (incl. chinês, japonês, coreano)
 - ✅ Feedback visual verde ao copiar
 - ☑️ Seleção múltipla para fixar / excluir em lote
 - 🔒 Detecção automática de informação sensível (25+ regras) + criptografia AES-256 + HMAC
+- 🔐 Pausa automática quando o gerenciador de senhas está em primeiro plano, exclusão de apps personalizada
+- ⚡ Desduplicação inteligente — mesmo conteúdo atualiza marca de tempo sem duplicar
+- 🔄 Prevenção de loop de cópia — pula captura ao copiar da própria app
+- 🔒 Segurança em primeiro lugar: conteúdo descartado se criptografia falhar, nunca salvo como texto simples
+- 🧹 Limpeza de órfãos — remove imagens não referenciadas ao iniciar
+- ⚙️ Detecção de conflito de atalho na primeira inicialização
 - ⌨️ Atalho global `Cmd+Ctrl+V`
 - 🌍 7 idiomas (简体中文 / 繁體中文 / English / 日本語 / 한국어 / Español / Português)
 - 📎 Configurações → Sobre → Enviar feedback → GitHub Issues
@@ -77,6 +83,7 @@ Configurações permite ajustar o Efeito de janela (Sólido / Fosco / Ultra) e a
 | Abrir Quick Bar | Clique no 📋 da barra de menu / `Cmd+Ctrl+V` |
 | Copiar da Quick Bar | Clique no item / ↑↓ + Enter |
 | Abrir janela completa | Quick Bar → "Abrir área de transferência" |
+| Pesquisar | Digite para filtrar, correspondências destacadas |
 | Fixar / Desfixar | Clique ⭐, clique duplo na linha, ou menu contextual |
 | Excluir | Clique 🗑 ou menu contextual |
 | Ver conteúdo sensível | Segurar 0.4s para mostrar, soltar para ocultar |
@@ -108,6 +115,7 @@ Configurações permite ajustar o Efeito de janela (Sólido / Fosco / Ultra) e a
 - Tamanho da fonte (Pequeno / Médio / Grande)
 - Efeito de janela (Sólido / Fosco / Ultra)
 - Aparência (Claro / Escuro / Seguir sistema)
+- Apps excluídas (apps personalizadas para excluir do monitoramento)
 
 ---
 

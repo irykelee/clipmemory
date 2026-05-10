@@ -2,7 +2,7 @@
 
 **新一代 macOS 剪贴板管理器 — 更好的界面、更快的操作、更多功能**
 
-[English](./docs/lang/README_EN.md) · [简体中文](./README.md) · [繁體中文](./docs/lang/README_ZH-HANT.md) · [日本語](./docs/lang/README_JA.md) · [한국어](./docs/lang/README_KO.md) · [Español](./docs/lang/README_ES.md) · [Português](./docs/lang/README_PT.md)
+[English](./README_EN.md) · [简体中文](./README_ZH-HANS.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
@@ -121,7 +121,6 @@
 - 字体大小（小 / 中 / 大）
 - 窗口效果（实心 / 毛玻璃 / 高透）
 - 外观（浅色 / 深色 / 跟随系统）
-- 排除应用（自定义不监控的 App）
 
 ---
 

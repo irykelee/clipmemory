@@ -216,8 +216,8 @@ class ClipboardMonitor {
 
         for (pattern, isRegex) in sensitivePatterns {
             if isRegex {
-                if regexIdx < sensitivePatternRegexes.count,
-                   sensitivePatternRegexes[regexIdx].firstMatch(in: content, options: [], range: range) != nil {
+                guard regexIdx < sensitivePatternRegexes.count else { return false }
+                if sensitivePatternRegexes[regexIdx].firstMatch(in: content, options: [], range: range) != nil {
                     return true
                 }
                 regexIdx += 1

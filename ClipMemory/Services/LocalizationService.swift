@@ -54,6 +54,7 @@ struct L10n {
     static var buttonCancel: String { string("button.cancel") }
     static var buttonDelete: String { string("button.delete") }
     static var buttonConfirm: String { string("button.confirm") }
+    static var buttonDone: String { string("button.done") }
 
     static var headerClearHistory: String { string("header.clear.history") }
     static var headerShowAll: String { string("header.show.all") }
@@ -107,6 +108,12 @@ struct L10n {
     static var settingsExcludedAppsPlaceholder: String { string("settings.excluded.apps.placeholder") }
     static var settingsExcludedAppsLabel: String { string("settings.excluded.apps.label") }
     static var settingsExcludedAppsHint: String { string("settings.excluded.apps.hint") }
+    static var settingsExcludedAppsNone: String { string("settings.excluded.apps.none") }
+    static var settingsAddExcludedApp: String { string("settings.add.excluded.app") }
+    static var settingsAppPickerSearch: String { string("settings.app.picker.search") }
+    static var settingsAppPickerRunning: String { string("settings.app.picker.running") }
+    static var settingsAppPickerInstalled: String { string("settings.app.picker.installed") }
+    static var settingsAppPickerNoResults: String { string("settings.app.picker.no.results") }
     static var settingsFontSize: String { string("settings.font.size") }
     static var fontSizeSmall: String { string("font.size.small") }
     static var fontSizeMedium: String { string("font.size.medium") }

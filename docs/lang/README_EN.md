@@ -2,7 +2,7 @@
 
 **Next-gen macOS Clipboard Manager — Better UI, Faster Actions, More Features**
 
-[English](./README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
+[English](./README_EN.md) · [简体中文](./README_ZH-HANS.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
@@ -11,28 +11,32 @@
 | Aspect | v1 | v2 |
 |--------|----|----|
 | **Interaction** | Menu bar click → menu → open window (3 steps) | Menu bar click → **Quick Bar popup** (1 step) |
-| **Main Window** | Fixed-width ContentView, no sidebar | **Fixed sidebar**: All / Text / Image / Link / Pinned Only / Settings |
-| **Type Filter** | Horizontal FilterChip buttons | Vertical sidebar navigation with item counts |
+| **Main Window** | Fixed-width, no sidebar | **Fixed sidebar**: All / Text / Image / Link / Pinned Only / Settings |
+| **Type Filter** | Horizontal buttons | Vertical sidebar navigation with item counts |
 | **Time Grouping** | None | Today / Yesterday / This Week / This Month / Older, collapsible |
 | **Global Hotkey** | Cmd+Ctrl+V only | Customizable (record from Settings) |
 | **Quick Bar** | None | 8 recent items in popover, search + copy + open window |
+| **Search Highlight** | Highlight on text | Accurate matching, no garbled text |
 | **Long Press Preview** | None | Text → full content, sensitive → reveal, image → enlarge (0.4s hold) |
-| **Search Highlight** | Highlight on text | Accurate `offsetByCharacters` positioning, works with CJK |
-| **Icon Layout** | Checkbox + type icon + star + content | Checkbox + content + star + delete (removed redundant type icon) |
-| **Window Style** | Standard NSWindow | `.fullSizeContentView` + `.ultraThinMaterial`/`.regularMaterial` glass effect |
-| **Traffic Lights** | In titlebar | Hidden titlebar, unified toolbar area (macOS 26 Liquid Glass) |
+| **Icon Layout** | Checkbox + type icon + star + content | Checkbox + content + star + delete, cleaner |
+| **Window Style** | Standard window | Glass effect, more modern |
+| **Window Buttons** | In titlebar | Hidden titlebar, unified toolbar area (macOS 26 Liquid Glass) |
 | **Dock Icon** | Always hidden | Appears when window opens, hides when closed |
+| **Hover Highlight** | None | Automatic highlight on hover |
 | **Font Scaling** | None | Small / Medium / Large in Settings |
 | **Launch at Login** | None (menu only) | Toggle in Settings |
+| **Settings Page** | Basic Form | Sidebar independent page, grouped and optimized |
 
 ---
 
 ## New Features
 
 ### Quick Bar
+
 Click menu bar icon → NSPopover with 8 recent items → click to copy / search / open full window
 
 ### Long Press Actions (0.4s)
+
 | Content Type | Default View | Long Press Shows |
 |-------------|-------------|------------------|
 | Regular Text | First 200 chars, 3 lines | Full content (no truncation) |
@@ -40,15 +44,19 @@ Click menu bar icon → NSPopover with 8 recent items → click to copy / search
 | Image | Thumbnail 80px | Enlarged to 300px |
 
 ### Time Grouping
+
 Items auto-grouped by creation time: Today / Yesterday / This Week / This Month / Older, collapsible sections.
 
 ### Font Scaling
+
 Settings → Font Size → Small / Medium / Large — scales all UI text.
 
 ### Customizable Hotkey
+
 Settings allows recording a new global hotkey to replace the default `Cmd+Ctrl+V`.
 
 ### Theme System
+
 Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance (Light / Dark / Follow System).
 
 ---
@@ -56,12 +64,18 @@ Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance
 ## Features
 
 - 📋 Clipboard history (text / images / links)
-- ⭐ Pin important items
-- 💾 Images stored as encrypted files
-- 🔍 Quick search with accurate CJK highlight
+- ⭐ Pin important items, never auto-cleared
+- 💾 Images stored as encrypted files, surpasses 10MB limit
+- 🔍 Real-time search with accurate multilingual highlight (including CJK characters)
 - ✅ Copy feedback (green flash)
 - ☑️ Multi-select batch pin / delete
-- 🔒 AES-256 + HMAC-SHA256 encryption
+- 🔒 Sensitive data auto-detection (25+ rules) + AES-256 encryption + HMAC authentication
+- 🔐 Auto-pause when password managers are in foreground, custom app exclusion supported
+- ⚡ Smart deduplication — same content updates timestamp without duplication
+- 🔄 Copy loop prevention — skips capture when copying from the app itself
+- 🔒 Security first: content is discarded if encryption fails, never stored as plaintext
+- 🧹 Orphan cleanup — removes unreferenced images on startup
+- ⚙️ Hotkey conflict detection on first launch
 - 🔍 25+ sensitive data detection rules
 - ⌨️ Global hotkey `Cmd+Ctrl+V`
 - 🌍 7 languages (Simplified Chinese / Traditional Chinese / English / Japanese / Korean / Spanish / Portuguese)
@@ -75,7 +89,8 @@ Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance
 |--------|-----|
 | Open Quick Bar | Click menu bar 📋 / `Cmd+Ctrl+V` |
 | Copy from Quick Bar | Click item / ↑↓ + Enter |
-| Open Full Window | Quick Bar → "Open Clipboard" |
+| Open Full Window | Quick Bar → "Open Full Window" |
+| Search | Type to filter, matches highlighted |
 | Pin / Unpin | Click ⭐, double-click row, or right-click menu |
 | Delete | Click 🗑 or right-click menu |
 | Reveal sensitive | Hold 0.4s to show, release to hide |
@@ -107,6 +122,7 @@ Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance
 - Font size (Small / Medium / Large)
 - Window Effect (Solid / Frosted / Ultra)
 - Appearance (Light / Dark / Follow System)
+- Excluded Apps (custom apps to skip clipboard monitoring)
 
 ---
 
@@ -122,9 +138,9 @@ Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance
 brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install --cask clipmemory
 ```
 
-Find the 📋 icon in the **menu bar** (top right) after launching. Click to use.
+After installing, the App is at `/Applications/ClipMemory.app`. Find the 📋 icon in the **menu bar** (top right) after launching. Click to use.
 
-Or download from [GitHub Releases](https://github.com/irykelee/clipmemory/releases).
+Or download `.tar.gz` from [GitHub Releases](https://github.com/irykelee/clipmemory/releases) and extract manually to `/Applications/`.
 
 ---
 

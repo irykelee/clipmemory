@@ -18,6 +18,23 @@ enum SidebarTab: String, CaseIterable {
 
 let appCornerRadius: CGFloat = 8
 
+private var relativeDateFormatters: [String: RelativeDateTimeFormatter] = [:]
+private func cachedRelativeDateFormatter(for languageCode: String) -> RelativeDateTimeFormatter {
+    if let cached = relativeDateFormatters[languageCode] { return cached }
+    let f = RelativeDateTimeFormatter()
+    f.unitsStyle = .abbreviated
+    f.locale = Locale(identifier: languageCode)
+    relativeDateFormatters[languageCode] = f
+    return f
+}
+
+private struct AppPickerItem {
+    let name: String
+    let bundleId: String
+    let icon: NSImage?
+    let isRunning: Bool
+}
+
 struct ContentView: View {
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
@@ -37,6 +54,10 @@ struct ContentView: View {
     }()
     @State private var isRecordingHotKey = false
     @State private var keyEventMonitor: Any?
+    @State private var showingAppPicker = false
+    @State private var appPickerSearch = ""
+    @State private var appPickerSearchDebounced = ""
+    @State private var searchDebounce: DispatchWorkItem?
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @AppStorage("windowEffect") private var windowEffect = "frosted"
     @AppStorage("themeAppearance") private var themeAppearance = "system"
@@ -145,7 +166,7 @@ struct ContentView: View {
                     Text(L10n.appName).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 12).padding(.vertical, 10)
                     Divider()
                     sidebar
-                }.frame(width: 170).background(sidebarBackground)
+                }.frame(minWidth: 140, idealWidth: 170, maxWidth: 200).background(sidebarBackground)
                 Divider()
                 Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyBackground)
             }
@@ -165,7 +186,10 @@ struct ContentView: View {
             let last = displayedItems.count - 1; if let idx = keyboardSelectedIndex, idx < last { keyboardSelectedIndex = idx + 1 } else { keyboardSelectedIndex = 0 }
         }, onReturn: {
             if let idx = keyboardSelectedIndex, idx < displayedItems.count { let item = displayedItems[idx]; lastCopiedId = item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == item.id { lastCopiedId = nil } }; copyItem(item) }
-        }, onEscape: { if selectedTab == .settings { selectedTab = .all } else if !searchText.isEmpty { searchText = "" } else { NSApp.keyWindow?.close() } }).frame(width: 0, height: 0) }
+        }, onEscape: {
+            if selectedTab == .settings { selectedTab = .all } else if !searchText.isEmpty { searchText = "" } else { NSApp.keyWindow?.close() }
+        }).frame(width: 0, height: 0) }
+        .sheet(isPresented: $showingAppPicker) { appPickerSheet.onAppear { appPickerSearchDebounced = appPickerSearch } }
     }
 
     private var sidebar: some View {
@@ -256,47 +280,220 @@ struct ContentView: View {
     private var settingsDetail: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text(L10n.settingsTitle).font(.system(size: sz(20), weight: .semibold)).padding(.leading, 24).padding(.vertical, 16)
+                Text(L10n.settingsTitle).font(.system(size: sz(20), weight: .semibold)).padding(.horizontal, 24).padding(.vertical, 16)
                 Divider()
-                Group {
-                    settingsSection(L10n.settingsSectionHistory) { Picker(L10n.settingsMaxItems, selection: $store.maxItems) { ForEach([50,100,200,500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).font(.system(size: sz(13))).tag($0) } }.id(languageManager.selectedLanguage) }
-                    settingsSection(L10n.settingsSectionSensitive) { Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).font(.system(size: sz(13))).tag($0.hours) } }.id(languageManager.selectedLanguage); Text(L10n.settingsSensitiveHint).font(.system(size: sz(11))).foregroundColor(.secondary) }
-                    settingsSection(L10n.settingsSectionLanguage) { Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) { ForEach(languageManager.availableLanguages, id: \.code) { Text($0.name).font(.system(size: sz(13))).tag($0.code) } } }
-                    settingsSection(L10n.settingsSectionTheme) {
-                        Picker(L10n.themeEffect, selection: $windowEffect) { Text(L10n.themeEffectSolid).tag("solid"); Text(L10n.themeEffectFrosted).tag("frosted"); Text(L10n.themeEffectUltra).tag("ultra") }
-                        Picker(L10n.themeAppearance, selection: Binding(get: { themeAppearance }, set: { themeAppearance = $0; applyAppearance() })) {
-                            Text(L10n.themeAppearanceSystem).tag("system"); Text(L10n.themeAppearanceLight).tag("light"); Text(L10n.themeAppearanceDark).tag("dark")
-                        }
-                    }
-                    settingsSection(L10n.launchAtLogin) {
-                        Toggle(isOn: Binding(get: { SMAppService.mainApp.status == .enabled }, set: { v in
-                            do { if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } } catch {}
-                        })) { Text(L10n.launchAtLogin).font(.system(size: sz(13))) }
-                    }
-                    if let hk = (NSApp.delegate as? AppDelegate)?.hotKeyManager {
-                        settingsSection(L10n.settingsSectionHotkey) {
-                            HStack {
-                                if isRecordingHotKey {
-                                    Text(L10n.settingsHotkeyRecording).font(.system(size: sz(13))).foregroundColor(.orange)
-                                    Spacer()
-                                    Button(L10n.buttonCancel) { isRecordingHotKey = false }.buttonStyle(.plain).font(.system(size: sz(12))).foregroundColor(.secondary)
-                                } else {
-                                    Text(hk.config.displayString).font(.system(size: sz(13), design: .monospaced))
-                                    Spacer()
-                                    Button(L10n.settingsHotkeyChange) { startRecording() }.buttonStyle(.plain).font(.system(size: sz(12))).foregroundColor(.accentColor)
-                                }
+                if let hk = (NSApp.delegate as? AppDelegate)?.hotKeyManager {
+                    settingsSection(L10n.settingsSectionHotkey) {
+                        HStack {
+                            if isRecordingHotKey {
+                                Text(L10n.settingsHotkeyRecording).font(.system(size: sz(13))).foregroundColor(.orange)
+                                Spacer()
+                                Button(L10n.buttonCancel) { isRecordingHotKey = false }.buttonStyle(.link).font(.system(size: sz(13)))
+                            } else {
+                                Text(hk.config.displayString).font(.system(size: sz(13), design: .monospaced))
+                                Spacer()
+                                Button(L10n.settingsHotkeyChange) { startRecording() }.buttonStyle(.link).font(.system(size: sz(13)))
                             }
                         }
                     }
-                    settingsSection(L10n.settingsFontSize) { Picker(L10n.string("settings.font.picker"), selection: $fontScale) { Text(L10n.fontSizeSmall).font(.system(size: sz(13))).tag(1.0); Text(L10n.fontSizeMedium).font(.system(size: sz(13))).tag(1.2); Text(L10n.fontSizeLarge).font(.system(size: sz(13))).tag(1.4) } }
-                    settingsSection(L10n.settingsSectionAbout) { Text(L10n.aboutVersion(AppVersion.current)).font(.system(size: sz(12))).foregroundColor(.secondary); Text(L10n.aboutFreeEdition).font(.system(size: sz(11))).foregroundColor(.secondary); Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.font(.system(size: sz(12))).buttonStyle(.link).foregroundColor(.accentColor) }
-                }.padding(.horizontal, 24).padding(.vertical, 16)
-}
+                    .padding(.top, 20)
+                }
+                settingsSection(L10n.settingsSectionTheme) {
+                    Picker(L10n.themeEffect, selection: $windowEffect) { Text(L10n.themeEffectSolid).tag("solid"); Text(L10n.themeEffectFrosted).tag("frosted"); Text(L10n.themeEffectUltra).tag("ultra") }
+                    Divider()
+                    Picker(L10n.themeAppearance, selection: Binding(get: { themeAppearance }, set: { themeAppearance = $0; applyAppearance() })) {
+                        Text(L10n.themeAppearanceSystem).tag("system"); Text(L10n.themeAppearanceLight).tag("light"); Text(L10n.themeAppearanceDark).tag("dark")
+                    }
+                }
+                settingsSection(L10n.settingsSectionLanguage) { Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) { ForEach(languageManager.availableLanguages, id: \.code) { Text($0.name).font(.system(size: sz(13))).tag($0.code) } } }
+                settingsSection(L10n.settingsFontSize) { Picker(L10n.string("settings.font.picker"), selection: $fontScale) { Text(L10n.fontSizeSmall).font(.system(size: sz(13))).tag(1.0); Text(L10n.fontSizeMedium).font(.system(size: sz(13))).tag(1.2); Text(L10n.fontSizeLarge).font(.system(size: sz(13))).tag(1.4) } }
+                settingsSection(L10n.settingsSectionSensitive) { Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).font(.system(size: sz(13))).tag($0.hours) } }.id(languageManager.selectedLanguage); Text(L10n.settingsSensitiveHint).font(.system(size: sz(12))).foregroundColor(.secondary) }
+                settingsSection(L10n.settingsSectionHistory) { Picker(L10n.settingsMaxItems, selection: $store.maxItems) { ForEach([50,100,200,500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).font(.system(size: sz(13))).tag($0) } }.id(languageManager.selectedLanguage) }
+                settingsSection(L10n.settingsSectionExcludedApps) {
+                    excludedAppsTags
+                    Button(action: { showingAppPicker = true }) {
+                        Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle")
+                    }
+                    .buttonStyle(.link)
+                    .font(.system(size: sz(13)))
+                }
+                settingsSection(L10n.launchAtLogin) {
+                    Toggle(isOn: Binding(get: { SMAppService.mainApp.status == .enabled }, set: { v in
+                        do { if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } } catch { NSSound.beep() }
+                    })) { Text(L10n.launchAtLogin).font(.system(size: sz(13))) }
+                }
+                settingsSection(L10n.settingsSectionAbout) { Text(L10n.aboutVersion(AppVersion.current)).font(.system(size: sz(12))).foregroundColor(.secondary); Text(L10n.aboutFreeEdition).font(.system(size: sz(12))).foregroundColor(.secondary); Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.font(.system(size: sz(13))).buttonStyle(.link) }
+            }.padding(.horizontal, 24).padding(.vertical, 16)
+        }
     }
-}
 
     private func settingsSection<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 6) { Text(title).font(.system(size: sz(11), weight: .semibold)).foregroundColor(.secondary).textCase(.uppercase); content().padding(.bottom, 4).padding(.leading, 20) }
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 4) { content() }
+                .padding(.top, 6)
+                .padding(.leading, 20)
+        }
+        .padding(.bottom, 20)
+    }
+
+    private var excludedAppsTags: some View {
+        let excludedIds = Array(Set(store.excludedBundleIdsString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }))
+        if excludedIds.isEmpty {
+            return AnyView(EmptyView())
+        }
+        let apps: [(name: String, bundleId: String)] = excludedIds.compactMap { bundleId in
+            if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleId }) {
+                return (app.localizedName ?? bundleId, bundleId)
+            }
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                return (url.deletingPathExtension().lastPathComponent, bundleId)
+            }
+            return nil
+        }
+        return AnyView(
+            FlowLayout(spacing: 6) {
+                ForEach(apps, id: \.bundleId) { app in
+                    HStack(spacing: 4) {
+                        Text(app.name).font(.system(size: sz(11)))
+                        Button(action: {
+                            let newIds = excludedIds.filter { $0 != app.bundleId }
+                            store.excludedBundleIdsString = newIds.joined(separator: ",")
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: sz(10)))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .cornerRadius(6)
+                }
+            }
+        )
+    }
+
+    private var appPickerSheet: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(L10n.settingsAddExcludedApp).font(.system(size: sz(14), weight: .semibold))
+                Spacer()
+                Button(L10n.buttonDone) { showingAppPicker = false }
+                    .buttonStyle(.plain)
+                    .font(.system(size: sz(12)))
+                    .foregroundColor(.accentColor)
+            }
+            .padding()
+            Divider()
+            TextField(L10n.settingsAppPickerSearch, text: $appPickerSearch)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .onChange(of: appPickerSearch) { newValue in
+                    searchDebounce?.cancel()
+                    let item = DispatchWorkItem { appPickerSearchDebounced = newValue }
+                    searchDebounce = item
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
+                }
+            Divider()
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    let excludedIds = Set(store.excludedBundleIdsString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+                    let allApps = Self.fetchInstalledAppsFromDisk().sorted { $0.name < $1.name }
+
+                    let search = appPickerSearchDebounced.lowercased()
+                    let filtered = allApps.filter {
+                        search.isEmpty || $0.name.lowercased().contains(search)
+                    }
+
+                    if filtered.isEmpty {
+                        Text(L10n.settingsAppPickerNoResults).font(.system(size: sz(12))).foregroundColor(.secondary).padding()
+                    } else {
+                        ForEach(filtered.indices, id: \.self) { idx in
+                            let app = filtered[idx]
+                            AppPickerRow(
+                                name: app.name,
+                                bundleId: app.bundleId,
+                                icon: app.icon,
+                                isExcluded: excludedIds.contains(app.bundleId),
+                                onToggle: {
+                                    var ids = Array(excludedIds)
+                                    if excludedIds.contains(app.bundleId) {
+                                        ids.removeAll { $0 == app.bundleId }
+                                    } else {
+                                        ids.append(app.bundleId)
+                                    }
+                                    store.excludedBundleIdsString = ids.joined(separator: ",")
+                                }
+                            )
+                            Divider().padding(.leading, 60)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(width: 400, height: 450)
+    }
+
+    private static var cachedApps: [AppPickerItem]?
+    private static func fetchInstalledAppsFromDisk() -> [AppPickerItem] {
+        if let cached = cachedApps { return cached }
+        var results: [AppPickerItem] = []
+        let fileManager = FileManager.default
+        let appDirs = ["/Applications", NSHomeDirectory() + "/Applications"]
+
+        for appDir in appDirs {
+            guard let apps = try? fileManager.contentsOfDirectory(atPath: appDir) else { continue }
+            for app in apps where app.hasSuffix(".app") {
+                let appPath = (appDir as NSString).appendingPathComponent(app)
+                let name = (app as NSString).deletingPathExtension
+                if let bundleId = Bundle(url: URL(fileURLWithPath: appPath))?.bundleIdentifier {
+                    let icon = NSWorkspace.shared.icon(forFile: appPath)
+                    results.append(AppPickerItem(name: name, bundleId: bundleId, icon: icon, isRunning: false))
+                }
+            }
+        }
+        cachedApps = results
+        return results
+    }
+
+    private struct AppPickerRow: View {
+        let name: String
+        let bundleId: String
+        let icon: NSImage?
+        let isExcluded: Bool
+        let onToggle: () -> Void
+        @AppStorage("fontScale") private var fontScale: Double = 1.0
+        @State private var isHovered = false
+        private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
+
+        var body: some View {
+            Button(action: onToggle) {
+                HStack(spacing: 12) {
+                    if let icon = icon {
+                        Image(nsImage: icon).resizable().frame(width: 32, height: 32)
+                    } else {
+                        Image(nsImage: NSImage(named: NSImage.applicationIconName) ?? NSImage()).resizable().frame(width: 32, height: 32)
+                    }
+                    VStack(alignment: .leading) {
+                        Text(name).font(.system(size: sz(13)))
+                        Text(bundleId).font(.system(size: sz(10))).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if isExcluded {
+                        Image(systemName: "checkmark.circle.fill").foregroundColor(.accentColor)
+                    }
+                }
+                .contentShape(Rectangle())
+                .background(isHovered ? Color.accentColor.opacity(0.1) : Color.clear)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .onHover { hovering in isHovered = hovering }
+        }
     }
 
     private var emptyState: some View {
@@ -342,7 +539,7 @@ struct ClipboardItemRow: View {
     }
     private var pinText: String { item.isPinned ? L10n.actionUnpin : L10n.actionPin }
     private var decryptedContent: String { item.decryptedContent }
-    private var formattedDate: String { let f = RelativeDateTimeFormatter(); f.unitsStyle = .abbreviated; f.locale = Locale(identifier: LanguageManager.shared.selectedLanguage); return f.localizedString(for: item.createdAt, relativeTo: Date()) }
+    private var formattedDate: String { cachedRelativeDateFormatter(for: LanguageManager.shared.selectedLanguage).localizedString(for: item.createdAt, relativeTo: Date()) }
 
     private func highlightedContent(_ text: String, highlight: String) -> AttributedString {
         if highlight.isEmpty { return AttributedString(String(text.prefix(200))) }
@@ -424,5 +621,55 @@ struct ClipboardItemRow: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle()).onTapGesture(count: 2) { onPin() }.onHover { isHovered = $0 }
         .contextMenu { Button(action: { onCopyWithFeedback?() }) { Label(L10n.actionCopy, systemImage: "doc.on.doc") }; if item.isSensitive { Button(action: onToggleReveal) { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") } }; Button(action: onPin) { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }; Divider(); Button(role: .destructive, action: onDelete) { Label(L10n.actionDelete, systemImage: "trash") } }
+    }
+}
+
+// MARK: - Flow Layout for wrapping tags
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        return layoutSize(sizes: sizes, proposal: proposal)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        var point = CGPoint(x: bounds.minX, y: bounds.minY)
+        var lineHeight: CGFloat = 0
+
+        for (index, subview) in subviews.enumerated() {
+            let size = sizes[index]
+            if point.x + size.width > bounds.maxX && lineHeight > 0 {
+                point.x = bounds.minX
+                point.y += lineHeight + spacing
+                lineHeight = 0
+            }
+            subview.place(at: point, proposal: .unspecified)
+            point.x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+    }
+
+    private func layoutSize(sizes: [CGSize], proposal: ProposedViewSize) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+        var lineWidth: CGFloat = 0
+        var lineHeight: CGFloat = 0
+
+        for size in sizes {
+            if lineWidth + size.width > maxWidth && lineWidth > 0 {
+                width = max(width, lineWidth - spacing)
+                height += lineHeight + spacing
+                lineWidth = 0
+                lineHeight = 0
+            }
+            lineWidth += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+        width = max(width, lineWidth - spacing)
+        height += lineHeight
+        return CGSize(width: width, height: height)
     }
 }

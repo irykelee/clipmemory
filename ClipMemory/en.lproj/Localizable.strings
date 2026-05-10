@@ -7,6 +7,7 @@
 "button.delete" = "Delete";
 "button.confirm" = "Confirm";
 "button.close" = "Close";
+"button.done" = "Done";
 
 /* Header */
 "header.clear.history" = "Clear History";
@@ -74,6 +75,12 @@
 "settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
 "settings.excluded.apps.label" = "Excluded Apps";
 "settings.excluded.apps.hint" = "Comma-separated bundle IDs of apps to exclude from clipboard monitoring (e.g. com.1password.1password, com.bitwarden.desktop). Copy actions from these apps will not be recorded.";
+"settings.add.excluded.app" = "Add Application";
+"settings.app.picker.search" = "Search applications";
+"settings.app.picker.running" = "Running";
+"settings.app.picker.installed" = "Installed";
+"settings.app.picker.no.results" = "No apps found";
+"settings.excluded.apps.none" = "No apps excluded";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 hour";

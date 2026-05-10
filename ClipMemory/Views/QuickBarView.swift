@@ -1,6 +1,12 @@
 import SwiftUI
 import AppKit
 
+private let relativeDateFormatter: RelativeDateTimeFormatter = {
+    let f = RelativeDateTimeFormatter()
+    f.unitsStyle = .abbreviated
+    return f
+}()
+
 struct QuickBarView: View {
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
@@ -9,6 +15,7 @@ struct QuickBarView: View {
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
     @State private var showFullWindow = false
+    @FocusState private var isSearchFocused: Bool
     @AppStorage("fontScale") private var fontScale: Double = 1.0
 
     let onDismiss: () -> Void
@@ -34,6 +41,7 @@ struct QuickBarView: View {
                 TextField(L10n.searchPlaceholder, text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: sz(13)))
+                    .focused($isSearchFocused)
                     .onChange(of: searchText) { _ in keyboardSelectedIndex = nil }
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }) {
@@ -46,6 +54,8 @@ struct QuickBarView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+            .background(isSearchFocused ? Color.accentColor.opacity(0.1) : Color.clear)
+            .cornerRadius(6)
 
             Divider()
 
@@ -193,6 +203,31 @@ struct MacOSMenuItem: View {
     }
 }
 
+private func highlightedText(_ text: String, highlight: String, fontSize: CGFloat) -> Text {
+    var displayText: String
+    if !highlight.isEmpty, let range = text.range(of: highlight, options: .caseInsensitive) {
+        let matchStart = text.distance(from: text.startIndex, to: range.lowerBound)
+        let start = max(0, matchStart - 20)
+        let end = min(text.count, matchStart + 80)
+        var excerpt = String(text[text.index(text.startIndex, offsetBy: start)..<text.index(text.startIndex, offsetBy: end)])
+        if start > 0 { excerpt = "…" + excerpt }
+        if end < text.count { excerpt += "…" }
+        displayText = excerpt
+    } else {
+        displayText = String(text.prefix(80))
+        if text.count > 80 { displayText += "…" }
+    }
+
+    var attr = AttributedString(displayText)
+    attr.foregroundColor = Color(nsColor: .controlTextColor)
+    attr.font = .system(size: fontSize)
+    if !highlight.isEmpty, let attrRange = attr.range(of: highlight, options: .caseInsensitive) {
+        attr[attrRange].backgroundColor = Color.yellow.opacity(0.7)
+        attr[attrRange].foregroundColor = .black
+    }
+    return Text(attr)
+}
+
 struct QuickBarRow: View {
     let item: ClipboardItem
     let isSelected: Bool
@@ -213,8 +248,7 @@ struct QuickBarRow: View {
 
     private var rowBackground: Color {
         if isCopied { return Color.green.opacity(0.3) }
-        if isSelected { return Color.accentColor.opacity(0.15) }
-        if isHovered { return Color(.selectedContentBackgroundColor).opacity(0.3) }
+        if isSelected || isHovered { return Color.accentColor.opacity(0.15) }
         return Color.clear
     }
 
@@ -242,10 +276,7 @@ struct QuickBarRow: View {
                             .lineLimit(1)
                     }
                 } else {
-                    let content = item.decryptedContent.replacingOccurrences(of: "\n", with: " ")
-                    Text(String(content.prefix(80)))
-                        .font(.system(size: sz(12)))
-                        .foregroundColor(item.isSensitive ? .orange : Color(nsColor: .controlTextColor))
+                    highlightedText(item.decryptedContent.replacingOccurrences(of: "\n", with: " "), highlight: searchText, fontSize: sz(12))
                         .lineLimit(1)
                 }
             }
@@ -266,8 +297,6 @@ struct QuickBarRow: View {
     }
 
     private var formattedDate: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: item.createdAt, relativeTo: Date())
+        relativeDateFormatter.localizedString(for: item.createdAt, relativeTo: Date())
     }
 }

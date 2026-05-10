@@ -47,18 +47,16 @@ final class KeyCaptureNSView: NSView {
     private func setupMonitor() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
+            // During IME composition, pass all keys through to IME
+            if let fr = NSApp.keyWindow?.firstResponder as? NSTextView, fr.hasMarkedText() {
+                return event
+            }
             switch event.keyCode {
             case 126: self.onUp?(); return nil
             case 125: self.onDown?(); return nil
-            case 36:
-                // Don't consume Enter if text field is focused (allow IME/input)
-                if let fr = NSApp.keyWindow?.firstResponder, fr is NSTextView {
-                    return event
-                }
-                self.onReturn?()
-                return nil
-            case 53: self.onEscape?(); return nil
-            default: return event
+            case 36:  self.onReturn?(); return nil
+            case 53:  self.onEscape?(); return nil
+            default:  return event
             }
         }
     }

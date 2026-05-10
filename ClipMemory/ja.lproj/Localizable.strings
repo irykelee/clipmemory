@@ -7,6 +7,7 @@
 "button.delete" = "削除";
 "button.confirm" = "確認";
 "button.close" = "閉じる";
+"button.done" = "完了";
 
 /* Header */
 "header.clear.history" = "履歴をクリア";
@@ -74,6 +75,12 @@
 "settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
 "settings.excluded.apps.label" = "除外アプリ";
 "settings.excluded.apps.hint" = "クリップボード監視から除外するアプリのバンドルIDをカンマ区切りで指定（例：com.1password.1password, com.bitwarden.desktop）。これら";
+"settings.add.excluded.app" = "アプリを追加";
+"settings.app.picker.search" = "アプリを検索";
+"settings.app.picker.running" = "実行中";
+"settings.app.picker.installed" = "インストール済み";
+"settings.app.picker.no.results" = "アプリが見つかりません";
+"settings.excluded.apps.none" = "除外されたアプリなし";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1時間後";
