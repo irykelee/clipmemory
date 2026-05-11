@@ -59,7 +59,6 @@ struct ContentView: View {
     @State private var appPickerSearchDebounced = ""
     @State private var searchDebounce: DispatchWorkItem?
     @AppStorage("fontScale") private var fontScale: Double = 1.0
-    @AppStorage("windowEffect") private var windowEffect = "frosted"
     @AppStorage("themeAppearance") private var themeAppearance = "system"
     private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
 
@@ -72,18 +71,10 @@ struct ContentView: View {
         }
     }
     private var bodyBackground: AnyShapeStyle {
-        switch windowEffect {
-        case "solid": AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
-        case "ultra": AnyShapeStyle(Material.ultraThinMaterial)
-        default: AnyShapeStyle(Material.regularMaterial)
-        }
+        AnyShapeStyle(Material.regularMaterial)
     }
     private var sidebarBackground: AnyShapeStyle {
-        switch windowEffect {
-        case "solid": AnyShapeStyle(Color(nsColor: .controlBackgroundColor))
-        case "ultra": AnyShapeStyle(Material.ultraThinMaterial)
-        default: AnyShapeStyle(Material.ultraThinMaterial)
-        }
+        AnyShapeStyle(Material.ultraThinMaterial)
     }
 
     var displayedItems: [ClipboardItem] {
@@ -146,24 +137,23 @@ struct ContentView: View {
                 Color.clear.frame(width: 200)
                 Divider()
                 HStack(spacing: 12) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.system(size: sz(12)))
-                        TextField(L10n.searchPlaceholder, text: $searchText)
-                            .textFieldStyle(.plain).font(.system(size: sz(13)))
-                            .frame(minWidth: 260)
-                        if !searchText.isEmpty { Button(action: { searchText = "" }) { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.system(size: sz(11))) }.buttonStyle(.plain) }
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 4).background(sidebarBackground).cornerRadius(appCornerRadius)
+                    Text(L10n.appName).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary)
+                    Spacer()
                     Button(action: { showingClearAlert = true }) { Image(systemName: "trash").font(.system(size: sz(14))).foregroundColor(.secondary) }.buttonStyle(.plain).help(L10n.tooltipClearHistory).disabled(store.items.isEmpty)
-                    Spacer(minLength: 12)
-                }.padding(.vertical, 6)
+                }.padding(.horizontal, 12).padding(.vertical, 6)
             }
             .frame(height: 42)
             .background(.clear)
             Divider()
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    Text(L10n.appName).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 12).padding(.vertical, 10)
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.system(size: sz(12)))
+                        TextField(L10n.searchPlaceholder, text: $searchText)
+                            .textFieldStyle(.plain).font(.system(size: sz(13)))
+                        if !searchText.isEmpty { Button(action: { searchText = "" }) { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.system(size: sz(11))) }.buttonStyle(.plain) }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 6).background(Color.primary.opacity(0.08)).cornerRadius(10).padding(.horizontal, 6).padding(.vertical, 8)
                     Divider()
                     sidebar
                 }.frame(width: 200).background(sidebarBackground)
@@ -215,7 +205,7 @@ struct ContentView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(groupedItems, id: \.0) { group, items in
                             Section {
-                                if !collapsedGroups.contains(group) {
+                                if !searchText.isEmpty || !collapsedGroups.contains(group) {
                                     ForEach(Array(items.enumerated()), id: \.element.id) { _, item in
                                         let gi = itemIndexMap[item.id] ?? 0
                                         ClipboardItemRow(item: item, isRevealed: revealedItems.contains(item.id),
@@ -233,7 +223,7 @@ struct ContentView: View {
                                     Text(group.label).font(.system(size: sz(11), weight: .semibold)).foregroundColor(.secondary).textCase(.uppercase)
                                         .onTapGesture { toggleGroup(group) }
                                     Spacer()
-                                    Image(systemName: collapsedGroups.contains(group) ? "chevron.right" : "chevron.down")
+                                    Image(systemName: (!collapsedGroups.contains(group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
                                         .font(.system(size: sz(10))).foregroundColor(.secondary)
                                 }
                                 .contentShape(Rectangle()).onTapGesture { toggleGroup(group) }
@@ -299,8 +289,6 @@ struct ContentView: View {
                     .padding(.top, 20)
                 }
                 settingsSection(L10n.settingsSectionTheme) {
-                    Picker(L10n.themeEffect, selection: $windowEffect) { Text(L10n.themeEffectSolid).tag("solid"); Text(L10n.themeEffectFrosted).tag("frosted"); Text(L10n.themeEffectUltra).tag("ultra") }
-                    Divider()
                     Picker(L10n.themeAppearance, selection: Binding(get: { themeAppearance }, set: { themeAppearance = $0; applyAppearance() })) {
                         Text(L10n.themeAppearanceSystem).tag("system"); Text(L10n.themeAppearanceLight).tag("light"); Text(L10n.themeAppearanceDark).tag("dark")
                     }
