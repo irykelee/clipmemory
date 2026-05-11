@@ -43,7 +43,10 @@ struct ContentView: View {
     @State private var dateFilter: DateFilter = .all
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: ClipboardItem?
-    @State private var showingClearAlert = false
+    @State private var pendingClearMode: ClearMode?
+    private enum ClearMode {
+        case today, yesterday, older, all
+    }
     @State private var revealedItems: Set<UUID> = []
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
