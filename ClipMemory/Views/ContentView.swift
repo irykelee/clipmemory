@@ -114,7 +114,7 @@ struct ContentView: View {
                 if dateFilter == .yesterday || dateFilter == .older { return false }
             }
             // search filter
-            if !searchText.isEmpty && !item.decryptedContent.localizedCaseInsensitiveContains(searchText) { return false }
+            if !searchText.isEmpty && !(store.getDecryptedContent(item) ?? "").localizedCaseInsensitiveContains(searchText) { return false }
             return true
         }
         return result
@@ -234,23 +234,41 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                Color.clear.frame(width: 200)
+                sidebar
                 Divider()
                 HStack(spacing: 12) {
-                    Text(L10n.appName).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary)
                     Spacer()
-                    Button(action: { showingClearAlert = true }) { Image(systemName: "trash").font(.system(size: sz(14))).foregroundColor(.secondary) }.buttonStyle(.plain).help(L10n.tooltipClearHistory).disabled(store.items.isEmpty)
+                    Menu {
+                        Button(action: { pendingClearMode = .today }) {
+                            Label(L10n.clearToday, systemImage: "sunrise")
+                            Spacer()
+                            Text("\(store.todayCount)")
+                        }
+                        Button(action: { pendingClearMode = .yesterday }) {
+                            Label(L10n.clearYesterday, systemImage: "sun.haze")
+                            Spacer()
+                            Text("\(store.yesterdayCount)")
+                        }
+                        Button(action: { pendingClearMode = .older }) {
+                            Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath")
+                            Spacer()
+                            Text("\(store.olderCount)")
+                        }
+                        Divider()
+                        Button(role: .destructive, action: { pendingClearMode = .all }) {
+                            Label(L10n.headerClearHistory, systemImage: "trash")
+                            Spacer()
+                            Text("\(store.items.filter { !$0.isPinned }.count)")
+                        }
+                    } label: {
+                        Image(systemName: "trash").font(.system(size: sz(14))).foregroundColor(.secondary)
+                    }.help(L10n.tooltipClearHistory).disabled(store.items.isEmpty)
                 }.padding(.horizontal, 12).padding(.vertical, 6)
             }
             .frame(height: 42)
-            .background(.clear)
+            .background(sidebarBackground)
             Divider()
             HStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    Divider()
-                    sidebar
-                }.frame(width: 200).background(sidebarBackground)
-                Divider()
                 Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyBackground)
             }
         }
@@ -276,11 +294,30 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        List(selection: $selectedTab) {
-            Section { ForEach([SidebarTab.all, .text, .image, .link], id: \.self) { tab in Label { HStack { Text(tab.label).font(.system(size: sz(13))); Spacer(); Text("(\(tabCounts[tab] ?? 0))").font(.system(size: sz(11))).foregroundColor(.secondary) } } icon: { Image(systemName: tab.icon) }.tag(tab) } }
-            Section { Label { Text(SidebarTab.pinned.label).font(.system(size: sz(13))) } icon: { Image(systemName: SidebarTab.pinned.icon) }.tag(SidebarTab.pinned) }
-            Section { Label { Text(SidebarTab.settings.label).font(.system(size: sz(13))) } icon: { Image(systemName: SidebarTab.settings.icon) }.tag(SidebarTab.settings) }
-        }.listStyle(.sidebar).onChange(of: selectedTab) { _ in keyboardSelectedIndex = nil }.environment(\.defaultMinListRowHeight, sz(32))
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach([SidebarTab.all, .text, .image, .link, .pinned], id: \.self) { tab in
+                SidebarTabRow(
+                    tab: tab,
+                    count: tabCounts[tab] ?? 0,
+                    isSelected: selectedTab == tab,
+                    fontScale: fontScale,
+                    onTap: { selectedTab = tab }
+                )
+            }
+            Spacer()
+            SidebarTabRow(
+                tab: .settings,
+                count: 0,
+                isSelected: selectedTab == .settings,
+                fontScale: fontScale,
+                onTap: { selectedTab = .settings }
+            )
+            .padding(.bottom, 8)
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .frame(width: 200, alignment: .top)
+        .onChange(of: selectedTab) { _ in keyboardSelectedIndex = nil }
     }
 
     private var mainContent: some View {
@@ -301,9 +338,9 @@ struct ContentView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(groupedItemsWithIndex, id: \.group) { section in
-                            VStack(spacing: 0) {
+                            VStack(spacing: 10) {
                                 HStack {
-                                    Text(section.group.label).font(.system(size: sz(11), weight: .semibold)).foregroundColor(.secondary).textCase(.uppercase)
+                                    Text(section.group.label).font(.system(size: sz(12), weight: .semibold)).foregroundColor(.secondary)
                                         .onTapGesture { toggleGroup(section.group) }
                                     Spacer()
                                     Image(systemName: (!collapsedGroups.contains(section.group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
@@ -313,16 +350,23 @@ struct ContentView: View {
                                 .frame(maxWidth: .infinity, minHeight: 30)
                                 .padding(.horizontal, 12).padding(.vertical, 4).background(bodyBackground)
                                 if !searchText.isEmpty || !collapsedGroups.contains(section.group) {
-                                    ForEach(section.items, id: \.item.id) { itemWithIndex in
-                                        ClipboardItemRow(item: itemWithIndex.item, isRevealed: revealedItems.contains(itemWithIndex.item.id),
-                                            isKeyboardSelected: keyboardSelectedIndex == itemWithIndex.globalIndex,
-                                            isCopied: lastCopiedId == itemWithIndex.item.id, isSelected: selectedItems.contains(itemWithIndex.item.id),
-                                            searchText: searchText,
-                                            onCopyWithFeedback: { lastCopiedId = itemWithIndex.item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == itemWithIndex.item.id { lastCopiedId = nil } }; copyItem(itemWithIndex.item) },
-                                            onPin: { store.togglePin(itemWithIndex.item) }, onDelete: { itemToDelete = itemWithIndex.item; showingDeleteAlert = true },
-                                            onSelect: { if $0 { selectedItems.insert(itemWithIndex.item.id) } else { selectedItems.remove(itemWithIndex.item.id) } },
-                                            onToggleReveal: { toggleReveal(itemWithIndex.item.id) })
+                                    VStack(spacing: 0) {
+                                        ForEach(section.items, id: \.item.id) { itemWithIndex in
+                                            ClipboardItemRow(item: itemWithIndex.item, isRevealed: revealedItems.contains(itemWithIndex.item.id),
+                                                isKeyboardSelected: keyboardSelectedIndex == itemWithIndex.globalIndex,
+                                                isCopied: lastCopiedId == itemWithIndex.item.id, isSelected: selectedItems.contains(itemWithIndex.item.id),
+                                                searchText: searchText,
+                                                onCopyWithFeedback: { lastCopiedId = itemWithIndex.item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == itemWithIndex.item.id { lastCopiedId = nil } }; copyItem(itemWithIndex.item) },
+                                                onPin: { store.togglePin(itemWithIndex.item) }, onDelete: { itemToDelete = itemWithIndex.item; showingDeleteAlert = true },
+                                                onSelect: { if $0 { selectedItems.insert(itemWithIndex.item.id) } else { selectedItems.remove(itemWithIndex.item.id) } },
+                                                onToggleReveal: { toggleReveal(itemWithIndex.item.id) })
+                                        }
                                     }
+                                    .cornerRadius(10)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                    )
                                 }
                             }
                         }
@@ -332,7 +376,38 @@ struct ContentView: View {
 }
 
         .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) { Button(L10n.buttonCancel, role: .cancel) {}; Button(L10n.buttonDelete, role: .destructive) { if let item = itemToDelete { store.deleteItem(item) } } } message: { Text(L10n.alertDeleteMessage) }
-        .alert(L10n.alertClearTitle, isPresented: $showingClearAlert) { Button(L10n.buttonCancel, role: .cancel) {}; Button(L10n.buttonClear, role: .destructive) { store.clearAllItems() } } message: { let c = store.items.filter { !$0.isPinned }.count; Text(c > 0 ? L10n.alertClearMessage(c) : L10n.alertClearNone) }
+        .alert(L10n.alertClearTitle, isPresented: Binding(
+            get: { pendingClearMode != nil },
+            set: { if !$0 { pendingClearMode = nil } }
+        )) {
+            Button(L10n.buttonCancel, role: .cancel) { pendingClearMode = nil }
+            Button(L10n.buttonClear, role: .destructive) { confirmClear() }
+        } message: {
+            Text(clearAlertText)
+        }
+    }
+
+    private var clearAlertText: String {
+        guard let mode = pendingClearMode else { return "" }
+        let count: Int
+        switch mode {
+        case .today: count = store.todayCount
+        case .yesterday: count = store.yesterdayCount
+        case .older: count = store.olderCount
+        case .all: count = store.items.filter { !$0.isPinned }.count
+        }
+        return count > 0 ? L10n.alertClearMessage(count) : L10n.alertClearNone
+    }
+
+    private func confirmClear() {
+        guard let mode = pendingClearMode else { return }
+        switch mode {
+        case .today: store.clearToday()
+        case .yesterday: store.clearYesterday()
+        case .older: store.clearOlder()
+        case .all: store.clearAllItems()
+        }
+        pendingClearMode = nil
     }
 
     private func startRecording() {
@@ -615,7 +690,6 @@ struct ClipboardItemRow: View {
     @State private var longPressing = false
     @State private var imageLongPressing = false
     @State private var showFullContent = false
-    @State private var _cachedDecryptedContent: String?
     @State private var _cachedHighlighted: [String: AttributedString] = [:]
     @State private var _cachedMaskedHighlighted: [String: AttributedString] = [:]
     @AppStorage("fontScale") private var fontScale: Double = 1.0
@@ -626,23 +700,22 @@ struct ClipboardItemRow: View {
     }
     private var pinText: String { item.isPinned ? L10n.actionUnpin : L10n.actionPin }
     private var decryptedContent: String {
-        if _cachedDecryptedContent == nil {
-            _cachedDecryptedContent = item.decryptedContent
-        }
-        return _cachedDecryptedContent!
+        ClipboardStore.shared.getDecryptedContent(item) ?? ""
     }
     private var formattedDate: String { cachedRelativeDateFormatter(for: LanguageManager.shared.selectedLanguage).localizedString(for: item.createdAt, relativeTo: Date()) }
 
     private var cachedHighlighted: AttributedString {
-        if let cached = _cachedHighlighted[searchText] { return cached }
+        let cacheKey = "\(item.id.uuidString)-\(searchText)"
+        if let cached = _cachedHighlighted[cacheKey] { return cached }
         let result = highlightedContent(decryptedContent, highlight: searchText)
-        _cachedHighlighted[searchText] = result
+        _cachedHighlighted[cacheKey] = result
         return result
     }
     private var cachedMaskedHighlighted: AttributedString {
-        if let cached = _cachedMaskedHighlighted[searchText] { return cached }
+        let cacheKey = "\(item.id.uuidString)-\(searchText)"
+        if let cached = _cachedMaskedHighlighted[cacheKey] { return cached }
         let result = maskedHighlightedContent(decryptedContent, highlight: searchText)
-        _cachedMaskedHighlighted[searchText] = result
+        _cachedMaskedHighlighted[cacheKey] = result
         return result
     }
 
@@ -729,6 +802,47 @@ struct ClipboardItemRow: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle()).onTapGesture(count: 2) { onPin() }.onHover { isHovered = $0 }
         .contextMenu { Button(action: { onCopyWithFeedback?() }) { Label(L10n.actionCopy, systemImage: "doc.on.doc") }; if item.isSensitive { Button(action: onToggleReveal) { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") } }; Button(action: onPin) { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }; Divider(); Button(role: .destructive, action: onDelete) { Label(L10n.actionDelete, systemImage: "trash") } }
+    }
+}
+
+// MARK: - Sidebar Tab Row
+private struct SidebarTabRow: View {
+    let tab: SidebarTab
+    let count: Int
+    let isSelected: Bool
+    let fontScale: Double
+    let onTap: () -> Void
+
+    @State private var isHovered = false
+
+    private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: sz(13)))
+                    .foregroundColor(.secondary)
+                    .frame(width: 28, height: 28)
+                Text(tab.label)
+                    .font(.system(size: sz(13)))
+                    .foregroundColor(isSelected ? Color(nsColor: .controlTextColor) : .secondary)
+                Spacer()
+                // swiftlint:disable:next empty_count
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: sz(11)))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.accentColor.opacity(0.15) : (isHovered ? Color.primary.opacity(0.05) : Color.clear))
+            .cornerRadius(8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
