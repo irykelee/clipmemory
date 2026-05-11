@@ -3,7 +3,6 @@
 
 # 禁用的规则（根据项目需求调整）
 disabled_rules:
-  - trailing_whitespace
   - line_length
   - function_body_length
   - file_length
@@ -13,6 +12,7 @@ disabled_rules:
   - force_cast
   - closure_spacing
   - multiline_parameters
+  - switch_case_alignment
 
 # 启用的规则
 opt_in_rules:
@@ -25,6 +25,7 @@ opt_in_rules:
   - fallthrough
   - fatal_error_message
   - unneeded_parentheses_in_closure
+  - trailing_whitespace
 
 # 排除的文件/目录
 excluded:

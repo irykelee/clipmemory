@@ -55,7 +55,7 @@ struct WelcomeView: View {
             }
             .padding()
             .background(Color(.textBackgroundColor))
-            .cornerRadius(12)
+            .cornerRadius(appCornerRadius)
 
             if hotKeyConflictDetected {
                 HStack(spacing: 8) {
@@ -67,7 +67,7 @@ struct WelcomeView: View {
                 }
                 .padding()
                 .background(Color.orange.opacity(0.1))
-                .cornerRadius(8)
+                .cornerRadius(appCornerRadius)
             }
 
             Spacer()
@@ -76,15 +76,15 @@ struct WelcomeView: View {
                 Button(action: {
                     FirstLaunchManager.markLaunched()
                     onComplete()
-                }) {
+                }, label: {
                     Text(L10n.welcomeGetStarted)
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(Color.accentColor)
                         .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
+                        .cornerRadius(appCornerRadius)
+                })
                 .buttonStyle(.plain)
             }
             .padding(.horizontal)

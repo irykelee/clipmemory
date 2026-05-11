@@ -104,6 +104,13 @@
 "group.thisWeek" = "本週";
 "group.thisMonth" = "本月";
 "group.older" = "更早";
+"date.filter.all" = "全部";
+
+/* Cleanup */
+"cleanup.today" = "清除今天";
+"cleanup.yesterday" = "清除昨天";
+"cleanup.older" = "清除更早";
+"cleanup.all" = "清除全部";
 
 /* Languages */
 "lang.zh-Hans" = "简体中文";

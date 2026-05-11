@@ -114,7 +114,7 @@ class ClipboardMonitor {
         // Initialize with current frontmost app
         lastKnownSourceBundleId = frontmostAppBundleId()
 
-        let queue = DispatchQueue(label: "com.clipmemory.clipboardmonitor", qos: .userInteractive)
+        let queue = DispatchQueue(label: "com.clipmemory.clipboardmonitor", qos: .utility)
         timer = DispatchSource.makeTimerSource(queue: queue)
         timer?.schedule(deadline: .now(), repeating: 0.5)
         timer?.setEventHandler { [weak self] in
@@ -194,8 +194,8 @@ class ClipboardMonitor {
 
     private func processImageData(_ imageData: Data) {
         let id = UUID()
-        let isSensitive = imageData.count >= 10 * 1024
-        let hours = ClipboardStore.shared.sensitiveClearHours
+        let isSensitive = imageData.count >= 50 * 1024
+        let hours = delegate?.sensitiveClearHoursForMonitor() ?? 0
         let expiresAt: Date? = isSensitive && hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
 
         ImageStorage.shared.saveImage(imageData, id: id) { [weak self] filename in

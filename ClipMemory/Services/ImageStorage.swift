@@ -11,7 +11,11 @@ class ImageStorage {
     private let fileManager = FileManager.default
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ImageStorage")
     /// Memory cache for loaded images — avoids repeated disk I/O for items visible in the list or copied shortly after
-    private let imageCache = NSCache<NSString, NSImage>()
+    private let imageCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 100
+        return cache
+    }()
 
     private lazy var imagesDirectory: URL = {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -110,49 +114,41 @@ class ImageStorage {
             let iv = combined.prefix(16)
             let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
 
-            return try aesDecryptCBC(data: Data(ciphertext), key: Data(iv))
+            return try aesDecryptCBC(data: Data(ciphertext), key: key, iv: Data(iv))
         }
 
         if combined.count > 16 {
             let iv = combined.prefix(16)
             let ciphertext = combined.dropFirst(16)
-            return try aesDecryptCBC(data: Data(ciphertext), key: Data(iv))
+            return try aesDecryptCBC(data: Data(ciphertext), key: key, iv: Data(iv))
         }
 
         return nil
     }
 
-    private func aesDecryptCBC(data: Data, key: Data) throws -> Data? {
-        var iv = Data(count: 16)
-        if key.count >= 16 {
-            iv = key.prefix(16)
-        }
-
+    private func aesDecryptCBC(data: Data, key: Data, iv: Data) throws -> Data? {
         let bufferSize = data.count + kCCBlockSizeAES128
         var decryptedBytes = [UInt8](repeating: 0, count: bufferSize)
         var numBytesDecrypted: size_t = 0
 
-        var symmetricKey = [UInt8](repeating: 0, count: 32)
-        symmetricKey.withUnsafeMutableBytes { symBytes in
-            key.withUnsafeBytes { keyBytes in
-                iv.withUnsafeBytes { ivBytes in
-                    data.withUnsafeBytes { dataBytes in
-                        CCCrypt(
-                            CCOperation(kCCDecrypt),
-                            CCAlgorithm(kCCAlgorithmAES),
-                            CCOptions(kCCOptionPKCS7Padding),
-                            keyBytes.baseAddress, 32,
-                            ivBytes.baseAddress,
-                            dataBytes.baseAddress, data.count,
-                            &decryptedBytes, bufferSize,
-                            &numBytesDecrypted
-                        )
-                    }
+        let status = key.withUnsafeBytes { keyBytes in
+            iv.withUnsafeBytes { ivBytes in
+                data.withUnsafeBytes { dataBytes in
+                    CCCrypt(
+                        CCOperation(kCCDecrypt),
+                        CCAlgorithm(kCCAlgorithmAES),
+                        CCOptions(kCCOptionPKCS7Padding),
+                        keyBytes.baseAddress, 32,
+                        ivBytes.baseAddress,
+                        dataBytes.baseAddress, data.count,
+                        &decryptedBytes, bufferSize,
+                        &numBytesDecrypted
+                    )
                 }
             }
         }
 
-        guard numBytesDecrypted > 0 else { return nil }
+        guard status == kCCSuccess, numBytesDecrypted > 0 else { return nil }
         return Data(decryptedBytes.prefix(numBytesDecrypted))
     }
 

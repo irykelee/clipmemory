@@ -1,11 +1,15 @@
 import SwiftUI
 import AppKit
 
-private let relativeDateFormatter: RelativeDateTimeFormatter = {
+private var relativeDateFormatters: [String: RelativeDateTimeFormatter] = [:]
+private func cachedRelativeDateFormatter(for languageCode: String) -> RelativeDateTimeFormatter {
+    if let cached = relativeDateFormatters[languageCode] { return cached }
     let f = RelativeDateTimeFormatter()
     f.unitsStyle = .abbreviated
+    f.locale = Locale(identifier: languageCode)
+    relativeDateFormatters[languageCode] = f
     return f
-}()
+}
 
 struct QuickBarView: View {
     @ObservedObject var store = ClipboardStore.shared
@@ -23,6 +27,10 @@ struct QuickBarView: View {
     private let maxItems = 8
 
     private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
+
+    private var quickBarBackground: AnyShapeStyle {
+        AnyShapeStyle(Material.regularMaterial)
+    }
 
     var displayedItems: [ClipboardItem] {
         let base = searchText.isEmpty
@@ -47,18 +55,18 @@ struct QuickBarView: View {
                     .focused($isSearchFocused)
                     .onChange(of: searchText) { _ in keyboardSelectedIndex = nil }
                 if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
+                    Button(action: { searchText = "" }, label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
                             .font(.system(size: sz(11)))
-                    }
+                    })
                     .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(isSearchFocused ? Color.accentColor.opacity(0.1) : Color.clear)
-            .cornerRadius(6)
+            .background(isSearchFocused ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.08))
+            .cornerRadius(appCornerRadius)
 
             Divider()
 
@@ -126,8 +134,10 @@ struct QuickBarView: View {
                     .onTapGesture { NSApp.terminate(nil) }
             }
             .padding(.vertical, 6)
-            .background(Color(.textBackgroundColor).opacity(0.3))
+            .background(Material.ultraThinMaterial)
         }
+        .background(quickBarBackground)
+        .cornerRadius(appCornerRadius)
         .frame(width: 340)
         .frame(maxHeight: 480)
         .background(
@@ -203,8 +213,8 @@ struct MacOSMenuItem: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
-        .background(isHovered ? Color.accentColor.opacity(0.18) : Color.clear)
-        .cornerRadius(4)
+        .background(isHovered ? Color.accentColor.opacity(0.15) : Color.clear)
+        .cornerRadius(appCornerRadius)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
@@ -304,6 +314,7 @@ struct QuickBarRow: View {
     }
 
     private var formattedDate: String {
-        relativeDateFormatter.localizedString(for: item.createdAt, relativeTo: Date())
+        cachedRelativeDateFormatter(for: LanguageManager.shared.selectedLanguage)
+            .localizedString(for: item.createdAt, relativeTo: Date())
     }
 }
