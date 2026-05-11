@@ -177,14 +177,16 @@ class CryptoService {
 
             let iv = combined.prefix(16)
             let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
-            return aesDecryptCBC(data: Data(ciphertext), key: Data(iv))
+            let keyData = key.withUnsafeBytes { Data($0) }
+            return aesDecryptCBC(data: Data(ciphertext), key: keyData, iv: Data(iv))
         }
 
         // Old format without HMAC: 16-byte IV + ciphertext (pre-1.2.0)
         if combined.count > 16 {
             let iv = combined.prefix(16)
             let ciphertext = combined.dropFirst(16)
-            return aesDecryptCBC(data: Data(ciphertext), key: Data(iv))
+            let keyData = key.withUnsafeBytes { Data($0) }
+            return aesDecryptCBC(data: Data(ciphertext), key: keyData, iv: Data(iv))
         }
 
         return nil
@@ -214,16 +216,10 @@ class CryptoService {
         return Data(authenticationCode)
     }
 
-    private func aesDecryptCBC(data: Data, key: Data) -> [UInt8]? {
+    private func aesDecryptCBC(data: Data, key: Data, iv: Data) -> [UInt8]? {
         let bufferSize = data.count + kCCBlockSizeAES128
         var decryptedBytes = [UInt8](repeating: 0, count: bufferSize)
         var numBytesDecrypted: size_t = 0
-
-        // Use empty IV for legacy items that have no IV stored (shouldn't happen but guard)
-        var iv = Data(count: 16)
-        if key.count >= 16 {
-            iv = key.prefix(16)
-        }
 
         let status = key.withUnsafeBytes { keyBytes in
             iv.withUnsafeBytes { ivBytes in

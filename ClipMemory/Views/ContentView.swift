@@ -40,6 +40,7 @@ struct ContentView: View {
     @ObservedObject var languageManager = LanguageManager.shared
     @State private var selectedTab: SidebarTab = .all
     @State private var searchText = "" { didSet { keyboardSelectedIndex = nil } }
+    @State private var dateFilter: DateFilter = .all
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: ClipboardItem?
     @State private var showingClearAlert = false
@@ -62,6 +63,14 @@ struct ContentView: View {
     @AppStorage("themeAppearance") private var themeAppearance = "system"
     private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
 
+    // MARK: - Cached Date Calculations
+    private var startOfToday: Date {
+        Calendar.current.startOfDay(for: Date())
+    }
+    private var startOfYesterday: Date {
+        Calendar.current.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
+    }
+
     // MARK: - Theme
     private func applyAppearance() {
         switch themeAppearance {
@@ -77,35 +86,117 @@ struct ContentView: View {
         AnyShapeStyle(Material.ultraThinMaterial)
     }
 
+    // MARK: - Optimized Item Filtering
     var displayedItems: [ClipboardItem] {
-        var base: [ClipboardItem]
-        switch selectedTab { case .pinned: base = store.pinnedItems; default: base = store.items }
-        if let f = selectedTab.typeFilter { base = base.filter { $0.type == f } }
-        if searchText.isEmpty { return base }
-        return base.filter { $0.decryptedContent.localizedCaseInsensitiveContains(searchText) }
+        var counts: [SidebarTab: Int] = [.text: 0, .image: 0, .link: 0]
+        let result = store.items.filter { item in
+            switch item.type {
+            case .text: counts[.text]! += 1
+            case .image: counts[.image]! += 1
+            case .link: counts[.link]! += 1
+            default: break
+            }
+            // tab filter
+            switch selectedTab {
+            case .pinned: if !item.isPinned { return false }
+            case .all: break
+            default: if item.type != selectedTab.typeFilter { return false }
+            }
+            // date filter
+            if item.createdAt < startOfYesterday {
+                if dateFilter == .today || dateFilter == .yesterday { return false }
+            } else if item.createdAt < startOfToday {
+                if dateFilter == .today { return false }
+            } else {
+                if dateFilter == .yesterday || dateFilter == .older { return false }
+            }
+            // search filter
+            if !searchText.isEmpty && !item.decryptedContent.localizedCaseInsensitiveContains(searchText) { return false }
+            return true
+        }
+        return result
     }
 
-    private enum TimeGroup: String, CaseIterable { case today, yesterday, thisWeek, thisMonth, older
+    private var tabCounts: [SidebarTab: Int] {
+        var counts: [SidebarTab: Int] = [.all: store.items.count, .text: 0, .image: 0, .link: 0]
+        for item in store.items {
+            switch item.type {
+            case .text: counts[.text]! += 1
+            case .image: counts[.image]! += 1
+            case .link: counts[.link]! += 1
+            default: break
+            }
+        }
+        return counts
+    }
+
+    private enum TimeGroup: String, CaseIterable { case today, yesterday, older
         var label: String {
-            switch self { case .today: L10n.groupToday; case .yesterday: L10n.groupYesterday; case .thisWeek: L10n.groupThisWeek; case .thisMonth: L10n.groupThisMonth; case .older: L10n.groupOlder }
+            switch self { case .today: L10n.groupToday; case .yesterday: L10n.groupYesterday; case .older: L10n.groupOlder }
+        }
+    }
+
+    enum DateFilter: String, CaseIterable {
+        case all, today, yesterday, older
+        var label: String {
+            switch self { case .all: return L10n.dateFilterAll; case .today: return L10n.groupToday; case .yesterday: return L10n.groupYesterday; case .older: return L10n.groupOlder }
         }
     }
     private var groupedItems: [(TimeGroup, [ClipboardItem])] {
-        let cal = Calendar.current, now = Date()
         var dict: [TimeGroup: [ClipboardItem]] = [:]
         for item in displayedItems {
             let g: TimeGroup
-            if cal.isDateInToday(item.createdAt) { g = .today }
-            else if cal.isDateInYesterday(item.createdAt) { g = .yesterday }
-            else if let week = cal.date(byAdding: .day, value: -7, to: now), item.createdAt > week { g = .thisWeek }
-            else if let month = cal.date(byAdding: .month, value: -1, to: now), item.createdAt > month { g = .thisMonth }
+            if item.createdAt >= startOfToday { g = .today }
+            else if item.createdAt >= startOfYesterday { g = .yesterday }
             else { g = .older }
             dict[g, default: []].append(item)
         }
         return TimeGroup.allCases.compactMap { guard let items = dict[$0], !items.isEmpty else { return nil }; return ($0, items) }
     }
 
-    private var flattenedItems: [(item: ClipboardItem, globalIndex: Int)] {
+    private var searchBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.system(size: sz(12)))
+            TextField(L10n.searchPlaceholder, text: $searchText)
+                .textFieldStyle(.plain).font(.system(size: sz(13)))
+            if !searchText.isEmpty { Button(action: { searchText = "" }) { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.system(size: sz(11))) }.buttonStyle(.plain) }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Color.primary.opacity(0.08))
+        .cornerRadius(8)
+    }
+
+    private var dateFilterBar: some View {
+        HStack(spacing: 6) {
+            ForEach(DateFilter.allCases, id: \.self) { filter in
+                Button(action: { dateFilter = filter }) {
+                    Text(filter.label)
+                        .font(.system(size: sz(11)))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(dateFilter == filter ? Color.accentColor.opacity(0.2) : Color.clear)
+                        .foregroundColor(dateFilter == filter ? .accentColor : .secondary)
+                        .cornerRadius(5)
+                }
+                .buttonStyle(.plain)
+                .frame(minWidth: 36, minHeight: 26)
+                .contentShape(Rectangle())
+            }
+            Spacer()
+        }
+    }
+
+    private var combinedToolbar: some View {
+        HStack(spacing: 12) {
+            searchBar
+            dateFilterBar
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    // 扁平化的显示项目
+    private var flattenedDisplayedItems: [(item: ClipboardItem, globalIndex: Int)] {
         var result: [(item: ClipboardItem, globalIndex: Int)] = []
         var idx = 0
         for section in groupedItems {
@@ -116,13 +207,19 @@ struct ContentView: View {
         return result
     }
 
-    private var itemIndexMap: [UUID: Int] {
-        Dictionary(uniqueKeysWithValues: flattenedItems.map { ($0.item.id, $0.globalIndex) })
-    }
-
-    private var tabCounts: [SidebarTab: Int] {
-        let items = store.items
-        return [.all: items.count, .text: items.filter { $0.type == .text }.count, .image: items.filter { $0.type == .image }.count, .link: items.filter { $0.type == .link }.count]
+    // 带全局索引的分组项目
+    private var groupedItemsWithIndex: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] {
+        var result: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] = []
+        var globalIdx = 0
+        for (g, items) in groupedItems {
+            var groupItems: [(item: ClipboardItem, globalIndex: Int)] = []
+            for item in items {
+                groupItems.append((item, globalIdx))
+                globalIdx += 1
+            }
+            result.append((g, groupItems))
+        }
+        return result
     }
 
     private var batchAllPinned: Bool {
@@ -147,13 +244,6 @@ struct ContentView: View {
             Divider()
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.system(size: sz(12)))
-                        TextField(L10n.searchPlaceholder, text: $searchText)
-                            .textFieldStyle(.plain).font(.system(size: sz(13)))
-                        if !searchText.isEmpty { Button(action: { searchText = "" }) { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.system(size: sz(11))) }.buttonStyle(.plain) }
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 6).background(Color.primary.opacity(0.08)).cornerRadius(10).padding(.horizontal, 6).padding(.vertical, 8)
                     Divider()
                     sidebar
                 }.frame(width: 200).background(sidebarBackground)
@@ -200,34 +290,37 @@ struct ContentView: View {
                 }.padding(.horizontal, 16).padding(.vertical, 8).background(sidebarBackground)
                 Divider()
             }
+            if selectedTab != .settings {
+                combinedToolbar
+                Divider()
+            }
             if displayedItems.isEmpty { emptyState } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(groupedItems, id: \.0) { group, items in
-                            Section {
-                                if !searchText.isEmpty || !collapsedGroups.contains(group) {
-                                    ForEach(Array(items.enumerated()), id: \.element.id) { _, item in
-                                        let gi = itemIndexMap[item.id] ?? 0
-                                        ClipboardItemRow(item: item, isRevealed: revealedItems.contains(item.id),
-                                            isKeyboardSelected: keyboardSelectedIndex == gi,
-                                            isCopied: lastCopiedId == item.id, isSelected: selectedItems.contains(item.id),
-                                            searchText: searchText,
-                                            onCopyWithFeedback: { lastCopiedId = item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == item.id { lastCopiedId = nil } }; copyItem(item) },
-                                            onPin: { store.togglePin(item) }, onDelete: { itemToDelete = item; showingDeleteAlert = true },
-                                            onSelect: { if $0 { selectedItems.insert(item.id) } else { selectedItems.remove(item.id) } },
-                                            onToggleReveal: { toggleReveal(item.id) })
-                                    }
-                                }
-                            } header: {
+                        ForEach(groupedItemsWithIndex, id: \.group) { section in
+                            VStack(spacing: 0) {
                                 HStack {
-                                    Text(group.label).font(.system(size: sz(11), weight: .semibold)).foregroundColor(.secondary).textCase(.uppercase)
-                                        .onTapGesture { toggleGroup(group) }
+                                    Text(section.group.label).font(.system(size: sz(11), weight: .semibold)).foregroundColor(.secondary).textCase(.uppercase)
+                                        .onTapGesture { toggleGroup(section.group) }
                                     Spacer()
-                                    Image(systemName: (!collapsedGroups.contains(group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
+                                    Image(systemName: (!collapsedGroups.contains(section.group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
                                         .font(.system(size: sz(10))).foregroundColor(.secondary)
                                 }
-                                .contentShape(Rectangle()).onTapGesture { toggleGroup(group) }
-                                .padding(.horizontal, 16).padding(.vertical, 4).background(bodyBackground)
+                                .contentShape(Rectangle()).onTapGesture { toggleGroup(section.group) }
+                                .frame(maxWidth: .infinity, minHeight: 30)
+                                .padding(.horizontal, 12).padding(.vertical, 4).background(bodyBackground)
+                                if !searchText.isEmpty || !collapsedGroups.contains(section.group) {
+                                    ForEach(section.items, id: \.item.id) { itemWithIndex in
+                                        ClipboardItemRow(item: itemWithIndex.item, isRevealed: revealedItems.contains(itemWithIndex.item.id),
+                                            isKeyboardSelected: keyboardSelectedIndex == itemWithIndex.globalIndex,
+                                            isCopied: lastCopiedId == itemWithIndex.item.id, isSelected: selectedItems.contains(itemWithIndex.item.id),
+                                            searchText: searchText,
+                                            onCopyWithFeedback: { lastCopiedId = itemWithIndex.item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == itemWithIndex.item.id { lastCopiedId = nil } }; copyItem(itemWithIndex.item) },
+                                            onPin: { store.togglePin(itemWithIndex.item) }, onDelete: { itemToDelete = itemWithIndex.item; showingDeleteAlert = true },
+                                            onSelect: { if $0 { selectedItems.insert(itemWithIndex.item.id) } else { selectedItems.remove(itemWithIndex.item.id) } },
+                                            onToggleReveal: { toggleReveal(itemWithIndex.item.id) })
+                                    }
+                                }
                             }
                         }
                     }.padding(.vertical, 2)
@@ -519,6 +612,9 @@ struct ClipboardItemRow: View {
     @State private var longPressing = false
     @State private var imageLongPressing = false
     @State private var showFullContent = false
+    @State private var _cachedDecryptedContent: String?
+    @State private var _cachedHighlighted: [String: AttributedString] = [:]
+    @State private var _cachedMaskedHighlighted: [String: AttributedString] = [:]
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     private var iconSize: CGFloat { fontScale * 13 }
 
@@ -526,8 +622,26 @@ struct ClipboardItemRow: View {
         if isCopied { Color.green.opacity(0.3) } else if isSelected { Color.accentColor.opacity(0.15) } else if isHovered || isKeyboardSelected { Color(.selectedContentBackgroundColor).opacity(0.3) } else { Color.clear }
     }
     private var pinText: String { item.isPinned ? L10n.actionUnpin : L10n.actionPin }
-    private var decryptedContent: String { item.decryptedContent }
+    private var decryptedContent: String {
+        if _cachedDecryptedContent == nil {
+            _cachedDecryptedContent = item.decryptedContent
+        }
+        return _cachedDecryptedContent!
+    }
     private var formattedDate: String { cachedRelativeDateFormatter(for: LanguageManager.shared.selectedLanguage).localizedString(for: item.createdAt, relativeTo: Date()) }
+
+    private var cachedHighlighted: AttributedString {
+        if let cached = _cachedHighlighted[searchText] { return cached }
+        let result = highlightedContent(decryptedContent, highlight: searchText)
+        _cachedHighlighted[searchText] = result
+        return result
+    }
+    private var cachedMaskedHighlighted: AttributedString {
+        if let cached = _cachedMaskedHighlighted[searchText] { return cached }
+        let result = maskedHighlightedContent(decryptedContent, highlight: searchText)
+        _cachedMaskedHighlighted[searchText] = result
+        return result
+    }
 
     private func highlightedContent(_ text: String, highlight: String) -> AttributedString {
         if highlight.isEmpty { return AttributedString(String(text.prefix(200))) }
@@ -543,15 +657,18 @@ struct ClipboardItemRow: View {
         let prefixLen = prefix.count
         var a = AttributedString(prefix + ds)
         let lowerDS = ds.lowercased()
-        var ss = lowerDS.startIndex
+        // Compute highlight positions relative to ds, not lt
+        let dsStartOffset = lt.distance(from: lt.startIndex, to: dsi)
+        guard let fmInDS = lowerDS.range(of: lh) else { return a }
+        var ss = fmInDS.lowerBound
         while let r = lowerDS.range(of: lh, range: ss..<lowerDS.endIndex) {
             let startOff = lowerDS.distance(from: lowerDS.startIndex, to: r.lowerBound)
             let endOff = startOff + lowerDS.distance(from: r.lowerBound, to: r.upperBound)
             if startOff < 200 {
                 let si = a.index(a.startIndex, offsetByCharacters: prefixLen + startOff)
                 let ei = a.index(a.startIndex, offsetByCharacters: min(prefixLen + endOff, prefixLen + 200))
-                a[si..<ei].backgroundColor = .yellow.opacity(0.4)
-                a[si..<ei].foregroundColor = .orange
+                a[si..<ei].backgroundColor = .cyan.opacity(0.3)
+                a[si..<ei].foregroundColor = .primary
             }
             ss = r.upperBound
         }
@@ -565,7 +682,7 @@ struct ClipboardItemRow: View {
         guard !vis.isEmpty else { return AttributedString(maskContent(content)) }; vis.sort { $0.lowerBound < $1.lowerBound }
         var merged: [Range<String.Index>] = []; for r in vis { if let last = merged.last, last.upperBound >= r.lowerBound { merged[merged.count-1] = last.lowerBound..<max(last.upperBound, r.upperBound) } else { merged.append(r) } }
         var res = AttributedString(); var ci = content.startIndex
-        for r in merged { if ci < r.lowerBound { res += AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: r.lowerBound))) }; var h = AttributedString(String(content[r])); h.backgroundColor = .yellow.opacity(0.4); h.foregroundColor = .orange; res += h; ci = r.upperBound }
+        for r in merged { if ci < r.lowerBound { res += AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: r.lowerBound))) }; var h = AttributedString(String(content[r])); h.backgroundColor = .cyan.opacity(0.3); h.foregroundColor = .primary; res += h; ci = r.upperBound }
         if ci < content.endIndex { res += AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: content.endIndex))) }
         return res
     }
@@ -588,11 +705,11 @@ struct ClipboardItemRow: View {
                         }
                         .task(id: item.content) { if let img = ImageStorage.shared.loadImageObject(filename: item.content) { loadedImage = img } }
                     } else if item.isSensitive && !isRevealed {
-                        Text(longPressing ? highlightedContent(decryptedContent, highlight: searchText) : maskedHighlightedContent(decryptedContent, highlight: searchText))
+                        Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)
                             .font(.system(size: fontScale * 13)).foregroundColor(.orange).lineLimit(3)
                             .overlay(PressableImage { pressed in longPressing = pressed })
                     } else {
-                        Text(showFullContent ? AttributedString(decryptedContent) : highlightedContent(decryptedContent, highlight: searchText))
+                        Text(showFullContent ? AttributedString(decryptedContent) : cachedHighlighted)
                             .font(.system(size: fontScale * 12)).foregroundColor(Color(nsColor: .controlTextColor))
                             .lineLimit(showFullContent ? nil : 3)
                             .overlay(PressableImage { pressed in showFullContent = pressed })

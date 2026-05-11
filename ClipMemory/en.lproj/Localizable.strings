@@ -102,9 +102,14 @@
 /* Date Groups */
 "group.today" = "Today";
 "group.yesterday" = "Yesterday";
-"group.thisWeek" = "This Week";
-"group.thisMonth" = "This Month";
 "group.older" = "Older";
+"date.filter.all" = "All";
+
+/* Cleanup */
+"cleanup.today" = "Clear Today";
+"cleanup.yesterday" = "Clear Yesterday";
+"cleanup.older" = "Clear Older";
+"cleanup.all" = "Clear All";
 
 /* Languages */
 "lang.zh-Hans" = "简体中文";

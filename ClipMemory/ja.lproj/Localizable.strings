@@ -105,6 +105,13 @@
 "group.thisWeek" = "今週";
 "group.thisMonth" = "今月";
 "group.older" = "それ以前";
+"date.filter.all" = "すべて";
+
+/* Cleanup */
+"cleanup.today" = "今日をクリア";
+"cleanup.yesterday" = "昨日をクリア";
+"cleanup.older" = "より古いものをクリア";
+"cleanup.all" = "すべてクリア";
 
 /* Languages */
 "lang.zh-Hans" = "简体中文";

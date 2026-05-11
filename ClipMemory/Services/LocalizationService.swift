@@ -178,9 +178,14 @@ struct L10n {
     // MARK: - Time Groups
     static var groupToday: String { string("group.today") }
     static var groupYesterday: String { string("group.yesterday") }
-    static var groupThisWeek: String { string("group.thisWeek") }
-    static var groupThisMonth: String { string("group.thisMonth") }
     static var groupOlder: String { string("group.older") }
+    static var dateFilterAll: String { string("date.filter.all") }
+
+    // MARK: - Cleanup
+    static var clearToday: String { string("cleanup.today") }
+    static var clearYesterday: String { string("cleanup.yesterday") }
+    static var clearOlder: String { string("cleanup.older") }
+    static var clearAll: String { string("cleanup.all") }
 
     // MARK: - QuickBar
     static func quickbarRecent(_ count: Int) -> String { string("quickbar.recent", count) }

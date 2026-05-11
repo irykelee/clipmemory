@@ -129,11 +129,9 @@ class ClipboardStore: ObservableObject {
 
     func saveItems() {
         let encoder = JSONEncoder()
-        do {
-            let data = try encoder.encode(items)
-            UserDefaults.standard.set(data, forKey: storageKey)
-        } catch {
-            logger.error("Failed to save clipboard items: \(error.localizedDescription)")
+        guard let data = try? encoder.encode(items) else { return }
+        DispatchQueue.main.async {
+            UserDefaults.standard.set(data, forKey: self.storageKey)
         }
     }
 
@@ -288,6 +286,11 @@ class ClipboardStore: ObservableObject {
         scheduleSave()
     }
 
+    func deleteItems(where predicate: (ClipboardItem) -> Bool) {
+        let toDelete = items.filter(predicate)
+        deleteItems(toDelete)
+    }
+
     func unpinAll() {
         for i in items.indices {
             items[i].isPinned = false
@@ -315,6 +318,56 @@ class ClipboardStore: ObservableObject {
         items.removeAll { !pinnedIds.contains($0.id) }
         updatePinnedItems()
         scheduleSave()
+    }
+
+    /// 删除指定日期之前的所有非置顶项目
+    func deleteItems(before date: Date) {
+        let pinnedIds = Set(pinnedItems.map { $0.id })
+        let toDelete = items.filter { $0.createdAt < date && !pinnedIds.contains($0.id) }
+        deleteItems(toDelete)
+    }
+
+    /// 删除今天之前的所有非置顶项目（保留今天和更早的置顶项）
+    func clearYesterdayAndBefore() {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        deleteItems(before: startOfToday)
+    }
+
+    /// 删除本周之前的所有非置顶项目
+    func clearThisWeekAndBefore() {
+        let calendar = Calendar.current
+        let today = Date()
+        guard let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: today)?.start else { return }
+        deleteItems(before: startOfWeek)
+    }
+
+    /// 删除今天的所有非置顶项目
+    func clearToday() {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? Date()
+        deleteItems { item in
+            !item.isPinned && item.createdAt >= startOfToday && item.createdAt < endOfToday
+        }
+    }
+
+    /// 删除昨天的所有非置顶项目
+    func clearYesterday() {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else { return }
+        deleteItems { item in
+            !item.isPinned && item.createdAt >= startOfYesterday && item.createdAt < startOfToday
+        }
+    }
+
+    /// 删除更早的所有非置顶项目（昨天之前的）
+    func clearOlder() {
+        let calendar = Calendar.current
+        let startOfYesterday = calendar.startOfDay(for: Date())
+        guard let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -1, to: startOfYesterday) else { return }
+        deleteItems(before: startOfDayBeforeYesterday)
     }
 
     func copyToClipboard(_ item: ClipboardItem) {
@@ -386,15 +439,21 @@ class ClipboardStore: ObservableObject {
     }
 
     private func cleanupExpiredItems() {
-        let beforeCount = items.count
         let expiredImages = items.filter { $0.isExpired && $0.type == .image }
         for item in expiredImages {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
-        items.removeAll { $0.isExpired }
-        if items.count != beforeCount {
-            updatePinnedItems()
-            scheduleSave()
+        let expiredIds = Set(expiredImages.map { $0.id })
+        if expiredIds.isEmpty { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let beforeCount = self.items.count
+            self.items.removeAll { $0.isExpired }
+            if self.items.count != beforeCount {
+                self.updatePinnedItems()
+                self.scheduleSave()
+            }
         }
     }
 }

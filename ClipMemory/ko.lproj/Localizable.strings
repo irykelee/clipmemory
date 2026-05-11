@@ -105,6 +105,13 @@
 "group.thisWeek" = "이번 주";
 "group.thisMonth" = "이번 달";
 "group.older" = "이전";
+"date.filter.all" = "전체";
+
+/* Cleanup */
+"cleanup.today" = "오늘 삭제";
+"cleanup.yesterday" = "어제 삭제";
+"cleanup.older" = "이전 삭제";
+"cleanup.all" = "모두 삭제";
 
 /* Languages */
 "lang.zh-Hans" = "简体中文";

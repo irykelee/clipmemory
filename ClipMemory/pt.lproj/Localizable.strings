@@ -105,6 +105,13 @@
 "group.thisWeek" = "Esta semana";
 "group.thisMonth" = "Este mês";
 "group.older" = "Anterior";
+"date.filter.all" = "Tudo";
+
+/* Cleanup */
+"cleanup.today" = "Limpar hoje";
+"cleanup.yesterday" = "Limpar ontem";
+"cleanup.older" = "Limpar anterior";
+"cleanup.all" = "Limpar tudo";
 
 /* Languages */
 "lang.zh-Hans" = "简体中文";
