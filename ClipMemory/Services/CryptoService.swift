@@ -72,14 +72,12 @@ class CryptoService {
     /// Decrypts base64 string. Automatically detects format (v2 or legacy).
     func decrypt(_ base64String: String) -> String? {
         guard let combined = Data(base64Encoded: base64String) else {
-            logger.warning("Base64 decode failed for encrypted content")
             return nil
         }
         guard let bytes = decryptBytes(from: combined) else {
             return nil
         }
         guard let result = String(bytes: bytes, encoding: .utf8) else {
-            logger.warning("Decrypted data is not valid UTF-8")
             return nil
         }
         return result
@@ -134,7 +132,6 @@ class CryptoService {
             let decrypted = try AES.GCM.open(sealedBox, using: key)
             return Array(decrypted)
         } catch {
-            logger.warning("AES-GCM decryption failed: \(error.localizedDescription)")
             return nil
         }
     }
@@ -175,7 +172,6 @@ class CryptoService {
             let ivAndCiphertext = combined.dropLast(hmacSize)
             let computedHMAC = computeHMAC(data: Data(ivAndCiphertext), key: key)
             guard computedHMAC == storedHMAC else {
-                logger.warning("Legacy HMAC mismatch")
                 return nil
             }
 
