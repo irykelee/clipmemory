@@ -16,7 +16,7 @@
 | **Agrupamento por tempo** | Nenhum | Hoje / Ontem / Esta semana / Este mês / Anterior, recolhível |
 | **Atalho global** | Apenas Cmd+Ctrl+V | Personalizável (gravar nas Configurações) |
 | **Quick Bar** | Nenhuma | Pop-up com 8 itens recentes, pesquisar + copiar + abrir janela |
-| **Destaque de pesquisa** | Destaque sobre texto | Correspondência de subcadeia não diferencia maiúsculas/minúsculas, sem caracteres corrompidos |
+| **Destaque de pesquisa** | Destaque sobre texto | Não diferencia maiúsculas/minúsculas, sem caracteres corrompidos |
 | **Visualização longa** | Nenhuma | Texto → completo, sensível → revelar, imagem → ampliar (0.4s) |
 | **Disposição ícones** | Caixa + ícone tipo + estrela + conteúdo | Caixa + conteúdo + estrela + excluir, mais limpo |
 | **Estilo janela** | Janela padrão | Efeito vidro, mais moderno |

@@ -16,7 +16,7 @@
 | **Time Grouping** | None | Today / Yesterday / Older, collapsible |
 | **Global Hotkey** | Cmd+Ctrl+V only | Customizable (record from Settings) |
 | **Quick Bar** | None | 8 recent items in popover, search + copy + open window |
-| **Search Highlight** | Highlight on text | Case-insensitive substring matching, no garbled text |
+| **Search Highlight** | Highlight on text | Case-insensitive, no garbled text |
 | **Long Press Preview** | None | Text → full content, sensitive → reveal, image → enlarge (0.4s hold) |
 | **Icon Layout** | Checkbox + type icon + star + content | Checkbox + content + star + delete, cleaner |
 | **Window Style** | Standard window | Glass effect, more modern |
