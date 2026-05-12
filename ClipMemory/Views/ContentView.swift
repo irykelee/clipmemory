@@ -211,26 +211,31 @@ struct ContentView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 190, ideal: 210)
         } detail: {
-            if selectedTab == .settings {
-                settingsDetail
-            } else {
-                mainContent
+            Group {
+                if selectedTab == .settings {
+                    settingsDetail
+                } else {
+                    mainContent
+                }
+            }
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .frame(height: 110)
+                    .mask(
+                        VStack(spacing: 0) {
+                            Color.white.frame(height: 52)
+                                .offset(y: -52)
+                            LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .bottom)
+                                .frame(height: 58)
+                                .offset(y: -52)
+                        }
+                    )
+                    .offset(y: -52)
+                    .allowsHitTesting(false)
             }
         }
         .frame(minWidth: 640, minHeight: 440)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .frame(height: 60)
-                .mask(
-                    VStack(spacing: 0) {
-                        Color.white.frame(height: 36)
-                        LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
-                    }
-                )
-                .ignoresSafeArea(edges: .top)
-                .allowsHitTesting(false)
-        }
         .toolbar {
             ToolbarItem(id: "clear") {
                 Menu {
