@@ -19,7 +19,6 @@
 | **Resalte de búsqueda** | Resalte sobre texto | Sin distinción de mayúsculas/minúsculas, sin caracteres rotos |
 | **Vista previa larga** | Ninguna | Texto → completo, sensible → revelar, imagen → ampliar (0.4s) |
 | **Disposición iconos** | Casilla + icono tipo + estrella + contenido | Casilla + contenido + estrella + eliminar, más limpio |
-| **Estilo ventana** | Ventana estándar | Efecto vidrio, más moderno |
 | **Semáforos** | En barra de título | Barra título oculta, área de barra herramientas unificada (macOS 26 Liquid Glass) |
 | **Icono Dock** | Siempre oculto | Aparece al abrir ventana, se oculta al cerrar |
 | **Resalte hover** | Ninguno | Resalte automático al pasar el ratón |
@@ -51,7 +50,7 @@ Ajustes → Tamaño fuente → Pequeño / Mediano / Grande, escala todo el texto
 Grabe un nuevo atajo global desde Ajustes para reemplazar el predeterminado `Cmd+Ctrl+V`.
 
 ### Sistema de temas
-Ajustes permite cambiar el Efecto de ventana (Sólido / Esmerilado / Ultra) y la Apariencia (Claro / Oscuro / Seguir sistema).
+Ajustes permite cambiar la Apariencia (Claro / Oscuro / Seguir sistema).
 
 ---
 
@@ -113,7 +112,6 @@ Ajustes permite cambiar el Efecto de ventana (Sólido / Esmerilado / Ultra) y la
 - Cambio de idioma (7 idiomas)
 - Grabación de atajo global
 - Tamaño de fuente (Pequeño / Mediano / Grande)
-- Efecto de ventana (Sólido / Esmerilado / Ultra)
 - Apariencia (Claro / Oscuro / Seguir sistema)
 - Apps excluidas (apps personalizadas para excluir del monitoreo)
 
