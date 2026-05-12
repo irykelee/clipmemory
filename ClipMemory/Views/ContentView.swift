@@ -40,6 +40,12 @@ struct ContentView: View {
     @ObservedObject var languageManager = LanguageManager.shared
     @State private var selectedTab: SidebarTab = .all
     @State private var searchText = "" { didSet { keyboardSelectedIndex = nil } }
+    @State private var searchTextDebounced = ""
+    @State private var searchTextDebounce: DispatchWorkItem?
+    // Cache for displayedItems to avoid recomputing on every access
+    @State private var cachedDisplayedItems: [ClipboardItem] = []
+    @State private var cachedGroupedItems: [(TimeGroup, [ClipboardItem])] = []
+    @State private var cachedGroupedItemsWithIndex: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] = []
     @State private var dateFilter: DateFilter = .all
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: ClipboardItem?
@@ -90,15 +96,8 @@ struct ContentView: View {
     }
 
     // MARK: - Optimized Item Filtering
-    var displayedItems: [ClipboardItem] {
-        var counts: [SidebarTab: Int] = [.text: 0, .image: 0, .link: 0]
-        let result = store.items.filter { item in
-            switch item.type {
-            case .text: counts[.text]! += 1
-            case .image: counts[.image]! += 1
-            case .link: counts[.link]! += 1
-            default: break
-            }
+    private func filterItems(_ items: [ClipboardItem]) -> [ClipboardItem] {
+        items.filter { item in
             // tab filter
             switch selectedTab {
             case .pinned: if !item.isPinned { return false }
@@ -114,11 +113,38 @@ struct ContentView: View {
                 if dateFilter == .yesterday || dateFilter == .older { return false }
             }
             // search filter
-            if !searchText.isEmpty && !(store.getDecryptedContent(item) ?? "").localizedCaseInsensitiveContains(searchText) { return false }
+            if !searchTextDebounced.isEmpty && !(store.getDecryptedContent(item) ?? "").localizedCaseInsensitiveContains(searchTextDebounced) { return false }
             return true
         }
-        return result
     }
+
+    private func updateDisplayedItemsCache() {
+        cachedDisplayedItems = filterItems(store.items)
+        // Update grouped items cache
+        var dict: [TimeGroup: [ClipboardItem]] = [:]
+        for item in cachedDisplayedItems {
+            let g: TimeGroup
+            if item.createdAt >= startOfToday { g = .today }
+            else if item.createdAt >= startOfYesterday { g = .yesterday }
+            else { g = .older }
+            dict[g, default: []].append(item)
+        }
+        cachedGroupedItems = TimeGroup.allCases.compactMap { guard let items = dict[$0], !items.isEmpty else { return nil }; return ($0, items) }
+        // Update groupedItemsWithIndex cache
+        var result: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] = []
+        var globalIdx = 0
+        for (g, items) in cachedGroupedItems {
+            var groupItems: [(item: ClipboardItem, globalIndex: Int)] = []
+            for item in items {
+                groupItems.append((item, globalIdx))
+                globalIdx += 1
+            }
+            result.append((g, groupItems))
+        }
+        cachedGroupedItemsWithIndex = result
+    }
+
+    var displayedItems: [ClipboardItem] { cachedDisplayedItems }
 
     private var tabCounts: [SidebarTab: Int] {
         var counts: [SidebarTab: Int] = [.all: store.items.count, .text: 0, .image: 0, .link: 0]
@@ -145,17 +171,7 @@ struct ContentView: View {
             switch self { case .all: return L10n.dateFilterAll; case .today: return L10n.groupToday; case .yesterday: return L10n.groupYesterday; case .older: return L10n.groupOlder }
         }
     }
-    private var groupedItems: [(TimeGroup, [ClipboardItem])] {
-        var dict: [TimeGroup: [ClipboardItem]] = [:]
-        for item in displayedItems {
-            let g: TimeGroup
-            if item.createdAt >= startOfToday { g = .today }
-            else if item.createdAt >= startOfYesterday { g = .yesterday }
-            else { g = .older }
-            dict[g, default: []].append(item)
-        }
-        return TimeGroup.allCases.compactMap { guard let items = dict[$0], !items.isEmpty else { return nil }; return ($0, items) }
-    }
+    private var groupedItems: [(TimeGroup, [ClipboardItem])] { cachedGroupedItems }
 
     private var searchBar: some View {
         HStack(spacing: 6) {
@@ -212,17 +228,7 @@ struct ContentView: View {
 
     // 带全局索引的分组项目
     private var groupedItemsWithIndex: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] {
-        var result: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] = []
-        var globalIdx = 0
-        for (g, items) in groupedItems {
-            var groupItems: [(item: ClipboardItem, globalIndex: Int)] = []
-            for item in items {
-                groupItems.append((item, globalIdx))
-                globalIdx += 1
-            }
-            result.append((g, groupItems))
-        }
-        return result
+        cachedGroupedItemsWithIndex
     }
 
     private var batchAllPinned: Bool {
@@ -273,7 +279,19 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(bodyBackground)
-        .onAppear { applyAppearance() }
+        .onAppear {
+            applyAppearance()
+            updateDisplayedItemsCache()
+        }
+        .onChange(of: searchText) { newValue in
+            searchTextDebounce?.cancel()
+            let work = DispatchWorkItem { searchTextDebounced = newValue }
+            searchTextDebounce = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        }
+        .onChange(of: searchTextDebounced) { _ in updateDisplayedItemsCache() }
+        .onChange(of: selectedTab) { _ in updateDisplayedItemsCache() }
+        .onChange(of: dateFilter) { _ in updateDisplayedItemsCache() }
         .onChange(of: collapsedGroups) { val in
             let arr = val.map { $0.rawValue }
             if let d = try? JSONEncoder().encode(arr), let s = String(data: d, encoding: .utf8) { UserDefaults.standard.set(s, forKey: "collapsedGroups") }
@@ -689,7 +707,7 @@ struct PressableImage: NSViewRepresentable {
     }
 }
 
-struct ClipboardItemRow: View {
+struct ClipboardItemRow: View, Equatable {
     let item: ClipboardItem; let isRevealed: Bool; var isKeyboardSelected = false; var isCopied = false; var isSelected = false; var searchText = ""
     var onCopyWithFeedback: (() -> Void)?; let onPin: () -> Void; let onDelete: () -> Void; let onSelect: ((Bool) -> Void)?; let onToggleReveal: () -> Void
     @State private var isHovered = false; @State private var loadedImage: NSImage?
@@ -697,6 +715,14 @@ struct ClipboardItemRow: View {
     @State private var imageLongPressing = false
     @State private var showFullContent = false
     @State private var _cachedHighlighted: [String: AttributedString] = [:]
+
+    static func == (lhs: ClipboardItemRow, rhs: ClipboardItemRow) -> Bool {
+        lhs.item.id == rhs.item.id &&
+        lhs.isRevealed == rhs.isRevealed &&
+        lhs.isCopied == rhs.isCopied &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.searchText == rhs.searchText
+    }
     @State private var _cachedMaskedHighlighted: [String: AttributedString] = [:]
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     private var iconSize: CGFloat { fontScale * 13 }

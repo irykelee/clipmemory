@@ -29,7 +29,7 @@ struct QuickBarView: View {
     private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
 
     private var quickBarBackground: AnyShapeStyle {
-        AnyShapeStyle(Material.regularMaterial)
+        AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
     }
 
     var displayedItems: [ClipboardItem] {
@@ -116,7 +116,8 @@ struct QuickBarView: View {
                                 }
                             )
                             if index < displayedItems.count - 1 {
-                                Divider().padding(.leading, 40)
+                                // 40 = row horizontal padding(12) + icon width(16) + icon-text spacing(8) + 4 for visual alignment
+                                Color.primary.opacity(0.06).frame(height: 1).padding(.leading, 40)
                             }
                         }
                     }
@@ -129,12 +130,12 @@ struct QuickBarView: View {
             VStack(spacing: 0) {
                 MacOSMenuItem(icon: "rectangle.expand.vertical", label: L10n.quickbarOpenFull, shortcut: "⌘⌃V", sz: sz)
                     .onTapGesture { showFullWindow = true }
-                Divider().padding(.vertical, 2)
+                Color.clear.frame(height: 1)
                 MacOSMenuItem(icon: "xmark.circle", label: L10n.quitApp, color: .secondary, shortcut: "⌘Q", sz: sz)
                     .onTapGesture { NSApp.terminate(nil) }
             }
             .padding(.vertical, 6)
-            .background(Material.ultraThinMaterial)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
         }
         .background(quickBarBackground)
         .cornerRadius(appCornerRadius)
@@ -213,7 +214,7 @@ struct MacOSMenuItem: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
-        .background(isHovered ? Color.accentColor.opacity(0.15) : Color.clear)
+        .background(isHovered ? AnyShapeStyle(Material.thin) : AnyShapeStyle(Color.clear))
         .cornerRadius(appCornerRadius)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
