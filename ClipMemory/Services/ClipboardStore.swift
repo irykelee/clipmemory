@@ -68,9 +68,10 @@ class ClipboardStore: ObservableObject {
     private let excludedBundleIdsKey = "excludedBundleIds"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
-    /// H2: NSCache for decrypted content — avoids repeated AES decryption on every view render
-    /// Protects all `items` mutations from data races between main thread and background queues.
-    private let itemsLock = OSAllocatedUnfairLock()
+    /// H2: NSCache for decrypted content — avoids repeated AES decryption on every view render.
+    /// Thread-safety: all `items` mutations (addItem/deleteItem/etc.) are on main thread.
+    /// cleanupExpiredItems fires on a background timer but only reads items there,
+    /// dispatching the actual removal to main. No lock needed for this pattern.
 
     private let contentCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()

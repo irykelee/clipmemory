@@ -35,19 +35,13 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         return Date() > expiresAt
     }
 
-    /// Returns decrypted content. If decryption fails, returns a placeholder (not ciphertext).
-    /// DEPRECATED: Use `ClipboardStore.shared.getDecryptedContent(self)` instead,
-    /// which uses contentCache to avoid repeated expensive AES decryption.
-    var decryptedContent: String {
-        guard !isEncrypted else {
-            return CryptoService.shared.decrypt(content) ?? "(decryption failed)"
-        }
-        return content
-    }
-
-    /// Returns true if decryption was attempted but failed (content is encrypted but could not be decrypted).
+    /// Returns true if decryption was attempted but failed.
+    /// Decrypts and caches the result so subsequent `getDecryptedContent` calls hit the cache.
     var decryptionFailed: Bool {
         guard isEncrypted else { return false }
-        return CryptoService.shared.decrypt(content) == nil
+        // Trigger decrypt + cache populate; NSCache stores nil-failed results implicitly
+        // by not calling setObject (since nil cannot be stored), so repeated calls re-attempt.
+        // This is acceptable since failed items are filtered out and won't be displayed.
+        return ClipboardStore.shared.getDecryptedContent(self) == nil
     }
 }
