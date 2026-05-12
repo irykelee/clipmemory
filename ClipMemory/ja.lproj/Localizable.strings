@@ -54,6 +54,7 @@
 "alert.clear.title" = "履歴をクリア";
 "alert.clear.message" = "%d件の履歴を削除しますか？\nピン留めした項目は削除されません。";
 "alert.clear.none" = "削除する履歴がありません。";
+"alert.clear.group.message" = "「%2$@」の %1$d 件を削除しますか？\nピン留めした項目は削除されません。";
 "alert.delete.title" = "項目を削除";
 "alert.delete.message" = "この項目を削除しますか？";
 
@@ -102,8 +103,6 @@
 /* Date Groups */
 "group.today" = "今日";
 "group.yesterday" = "昨日";
-"group.thisWeek" = "今週";
-"group.thisMonth" = "今月";
 "group.older" = "それ以前";
 "date.filter.all" = "すべて";
 
@@ -129,6 +128,7 @@
 "app.launch.at.login.enabled.body" = "ClipMemory はログイン時に自動的に起動します。";
 "app.launch.at.login.disabled" = "ログイン時に起動が無効";
 "app.launch.at.login.disabled.body" = "ClipMemory は自動的に起動しません。";
+"settings.launch.at.login.error.body" = "ログイン時起動設定を変更できません。システム権限を確認してください。";
 "app.error" = "エラー";
 "batch.selected" = "%d 件選択中";
 "app.send.feedback" = "フィードバック";

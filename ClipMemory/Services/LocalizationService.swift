@@ -91,6 +91,8 @@ struct L10n {
     static var alertClearNone: String { string("alert.clear.none") }
     static var alertDeleteTitle: String { string("alert.delete.title") }
     static var alertDeleteMessage: String { string("alert.delete.message") }
+    static func alertClearGroupMessage(_ count: Int, _ groupLabel: String) -> String { string("alert.clear.group.message", count, groupLabel) }
+    static var settingsLaunchAtLoginErrorBody: String { string("settings.launch.at.login.error.body") }
 
     static var settingsTitle: String { string("settings.title") }
     static var settingsSectionHistory: String { string("settings.section.history") }
@@ -111,8 +113,6 @@ struct L10n {
     static var settingsExcludedAppsNone: String { string("settings.excluded.apps.none") }
     static var settingsAddExcludedApp: String { string("settings.add.excluded.app") }
     static var settingsAppPickerSearch: String { string("settings.app.picker.search") }
-    static var settingsAppPickerRunning: String { string("settings.app.picker.running") }
-    static var settingsAppPickerInstalled: String { string("settings.app.picker.installed") }
     static var settingsAppPickerNoResults: String { string("settings.app.picker.no.results") }
     static var settingsFontSize: String { string("settings.font.size") }
     static var fontSizeSmall: String { string("font.size.small") }
@@ -127,7 +127,7 @@ struct L10n {
 
     static func aboutVersion(_ version: String) -> String { string("about.version", version) }
     static var aboutFreeEdition: String { string("about.free.edition") }
-    static var aboutPaidEdition: String { string("about.paid.edition") }
+    // L1: aboutPaidEdition — unused dead code, removed
 
     static var itemSensitive: String { string("item.sensitive") }
     static var itemImage: String { string("item.image") }

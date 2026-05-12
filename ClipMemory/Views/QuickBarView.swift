@@ -37,7 +37,7 @@ struct QuickBarView: View {
             ? Array(store.items.prefix(maxItems))
             : store.items.filter { item in
                 guard !item.decryptionFailed else { return false }
-                return item.decryptedContent.localizedCaseInsensitiveContains(searchText)
+                return (ClipboardStore.shared.getDecryptedContent(item) ?? "").localizedCaseInsensitiveContains(searchText)
             }
         return base
     }
@@ -293,7 +293,7 @@ struct QuickBarRow: View {
                             .lineLimit(1)
                     }
                 } else {
-                    highlightedText(item.decryptedContent.replacingOccurrences(of: "\n", with: " "), highlight: searchText, fontSize: sz(12))
+                    highlightedText((ClipboardStore.shared.getDecryptedContent(item) ?? "").replacingOccurrences(of: "\n", with: " "), highlight: searchText, fontSize: sz(12))
                         .lineLimit(1)
                 }
             }

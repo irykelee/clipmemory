@@ -54,6 +54,7 @@
 "alert.clear.title" = "Clear History";
 "alert.clear.message" = "Are you sure you want to clear %d items?\nPinned items will not be deleted.";
 "alert.clear.none" = "No history to clear.";
+"alert.clear.group.message" = "Are you sure you want to clear %1$d items in「%2$@」?\nPinned items will not be deleted.";
 "alert.delete.title" = "Delete Item";
 "alert.delete.message" = "Are you sure you want to delete this item?";
 
@@ -127,6 +128,7 @@
 "app.launch.at.login.enabled.body" = "ClipMemory will start automatically when you log in.";
 "app.launch.at.login.disabled" = "Launch at Login Disabled";
 "app.launch.at.login.disabled.body" = "ClipMemory will not start automatically.";
+"settings.launch.at.login.error.body" = "Unable to modify Launch at Login setting. Please check system permissions.";
 "app.error" = "Error";
 "batch.selected" = "%d selected";
 "app.send.feedback" = "Feedback";

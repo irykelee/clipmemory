@@ -6,6 +6,8 @@ class WindowManager: NSObject, NSWindowDelegate {
     private var quickBarPopover: NSPopover?
     private var statusItem: NSStatusItem?
     private let windowFrameKey = "WindowFrame"
+    /// C2 fix: keep a stable ContentView instance to preserve @State across window show/hide cycles
+    private var mainContentView: ContentView?
 
     override init() { super.init() }
 
@@ -27,7 +29,7 @@ class WindowManager: NSObject, NSWindowDelegate {
 
     func showMainWindow() {
         if mainWindow == nil {
-            let contentView = ContentView()
+            mainContentView = ContentView()
             let window = NSWindow(
                 contentRect: savedWindowFrame,
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -40,11 +42,11 @@ class WindowManager: NSObject, NSWindowDelegate {
             window.styleMask.insert(.fullSizeContentView)
             window.delegate = self
             window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: contentView)
+            window.contentView = NSHostingView(rootView: mainContentView!)
             window.makeKeyAndOrderFront(nil)
             mainWindow = window
         } else {
-            mainWindow?.contentView = NSHostingView(rootView: ContentView())
+            mainWindow?.contentView = NSHostingView(rootView: mainContentView!)
             mainWindow?.makeKeyAndOrderFront(nil)
         }
         NSApp.setActivationPolicy(.regular)

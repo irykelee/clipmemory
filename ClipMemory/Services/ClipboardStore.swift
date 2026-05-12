@@ -37,11 +37,46 @@ class ClipboardStore: ObservableObject {
         }
     }
 
+    /// 各日期分组未读（未固定）项目计数 — computed once per call from a single O(n) filter pass
+    var todayCount: Int { groupCounts.today }
+    var yesterdayCount: Int { groupCounts.yesterday }
+    var olderCount: Int { groupCounts.older }
+
+    private var groupCounts: (today: Int, yesterday: Int, older: Int) {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday),
+              let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else {
+            return (0, 0, 0)
+        }
+        var today = 0, yesterday = 0, older = 0
+        for item in items where !item.isPinned {
+            if item.createdAt >= startOfToday {
+                today += 1
+            } else if item.createdAt >= startOfYesterday {
+                yesterday += 1
+            } else {
+                older += 1
+            }
+        }
+        return (today, yesterday, older)
+    }
+
     private let storageKey = "ClipboardItems"
     private let maxItemsKey = "maxClipboardItems"
     private let sensitiveClearHoursKey = "sensitiveClearHours"
     private let excludedBundleIdsKey = "excludedBundleIds"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
+
+    /// H2: NSCache for decrypted content — avoids repeated AES decryption on every view render
+    /// Protects all `items` mutations from data races between main thread and background queues.
+    private let itemsLock = OSAllocatedUnfairLock()
+
+    private let contentCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 500
+        return cache
+    }()
 
     private var cleanupTimer: DispatchSourceTimer?
     private var saveTimer: DispatchSourceTimer?
@@ -222,12 +257,20 @@ class ClipboardStore: ObservableObject {
     }
 
     func getDecryptedContent(_ item: ClipboardItem) -> String? {
-        if item.isEncrypted {
-            // Return nil if decryption fails (e.g., key lost after reinstall).
-            // Caller must handle nil — never fall back to ciphertext (which is garbage text).
-            return CryptoService.shared.decrypt(item.content)
+        let key = item.id.uuidString as NSString
+        if let cached = contentCache.object(forKey: key) {
+            return cached as String
         }
-        return item.content
+        let result: String?
+        if item.isEncrypted {
+            result = CryptoService.shared.decrypt(item.content)
+        } else {
+            result = item.content
+        }
+        if let result = result {
+            contentCache.setObject(result as NSString, forKey: key)
+        }
+        return result
     }
 
     private func trimToMaxItems() {
@@ -239,7 +282,11 @@ class ClipboardStore: ObservableObject {
         nonPinned = Array(nonPinned.prefix(allowedNonPinned))
         let trimmed = trimmedPinned + nonPinned
         let trimmedIds = Set(trimmed.map { $0.id })
-        let removedImages = items.filter { $0.type == .image && !trimmedIds.contains($0.id) }
+        let removedItems = items.filter { !trimmedIds.contains($0.id) }
+        for item in removedItems {
+            contentCache.removeObject(forKey: item.id.uuidString as NSString)
+        }
+        let removedImages = removedItems.filter { $0.type == .image }
         for item in removedImages {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
@@ -247,6 +294,7 @@ class ClipboardStore: ObservableObject {
     }
 
     func deleteItem(_ item: ClipboardItem) {
+        contentCache.removeObject(forKey: item.id.uuidString as NSString)
         if item.type == .image {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
@@ -276,6 +324,9 @@ class ClipboardStore: ObservableObject {
     }
 
     func deleteItems(_ itemsToDelete: [ClipboardItem]) {
+        for item in itemsToDelete {
+            contentCache.removeObject(forKey: item.id.uuidString as NSString)
+        }
         let filenames = itemsToDelete.filter { $0.type == .image }.map { $0.content }
         for filename in filenames {
             ImageStorage.shared.deleteImage(filename: filename)
@@ -300,7 +351,11 @@ class ClipboardStore: ObservableObject {
     }
 
     func clearSensitiveItems() {
-        let removedImages = items.filter { $0.isSensitive && !$0.isPinned && $0.type == .image }
+        let toRemove = items.filter { $0.isSensitive && !$0.isPinned }
+        for item in toRemove {
+            contentCache.removeObject(forKey: item.id.uuidString as NSString)
+        }
+        let removedImages = toRemove.filter { $0.type == .image }
         for item in removedImages {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
@@ -311,7 +366,11 @@ class ClipboardStore: ObservableObject {
 
     func clearAllItems() {
         let pinnedIds = Set(pinnedItems.map { $0.id })
-        let removedImages = items.filter { !pinnedIds.contains($0.id) && $0.type == .image }
+        let toRemove = items.filter { !pinnedIds.contains($0.id) }
+        for item in toRemove {
+            contentCache.removeObject(forKey: item.id.uuidString as NSString)
+        }
+        let removedImages = toRemove.filter { $0.type == .image }
         for item in removedImages {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
@@ -320,29 +379,7 @@ class ClipboardStore: ObservableObject {
         scheduleSave()
     }
 
-    /// 删除指定日期之前的所有非置顶项目
-    func deleteItems(before date: Date) {
-        let pinnedIds = Set(pinnedItems.map { $0.id })
-        let toDelete = items.filter { $0.createdAt < date && !pinnedIds.contains($0.id) }
-        deleteItems(toDelete)
-    }
-
-    /// 删除今天之前的所有非置顶项目（保留今天和更早的置顶项）
-    func clearYesterdayAndBefore() {
-        let calendar = Calendar.current
-        let startOfToday = calendar.startOfDay(for: Date())
-        deleteItems(before: startOfToday)
-    }
-
-    /// 删除本周之前的所有非置顶项目
-    func clearThisWeekAndBefore() {
-        let calendar = Calendar.current
-        let today = Date()
-        guard let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: today)?.start else { return }
-        deleteItems(before: startOfWeek)
-    }
-
-    /// 删除今天的所有非置顶项目
+    /// 清除今日的所有非置顶项目
     func clearToday() {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
@@ -352,7 +389,7 @@ class ClipboardStore: ObservableObject {
         }
     }
 
-    /// 删除昨天的所有非置顶项目
+    /// 清除昨天的所有非置顶项目
     func clearYesterday() {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
@@ -362,12 +399,14 @@ class ClipboardStore: ObservableObject {
         }
     }
 
-    /// 删除更早的所有非置顶项目（昨天之前的）
+    /// 清除更早（昨天之前）的所有非置顶项目
     func clearOlder() {
         let calendar = Calendar.current
-        let startOfYesterday = calendar.startOfDay(for: Date())
-        guard let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -1, to: startOfYesterday) else { return }
-        deleteItems(before: startOfDayBeforeYesterday)
+        let startOfToday = calendar.startOfDay(for: Date())
+        guard let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else { return }
+        deleteItems { item in
+            !item.isPinned && item.createdAt < startOfDayBeforeYesterday
+        }
     }
 
     func copyToClipboard(_ item: ClipboardItem) {
@@ -439,17 +478,21 @@ class ClipboardStore: ObservableObject {
     }
 
     private func cleanupExpiredItems() {
-        let expiredImages = items.filter { $0.isExpired && $0.type == .image }
-        for item in expiredImages {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
-        let expiredIds = Set(expiredImages.map { $0.id })
-        if expiredIds.isEmpty { return }
+        // Capture IDs on background thread to avoid racing with main thread `items` access
+        let expiredImageFilenames = items.filter { $0.isExpired && $0.type == .image }.map { $0.content }
+        let expiredIds = Set(items.filter { $0.isExpired }.map { $0.id })
+        if expiredImageFilenames.isEmpty && expiredIds.isEmpty { return }
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            for filename in expiredImageFilenames {
+                ImageStorage.shared.deleteImage(filename: filename)
+            }
+            for id in expiredIds {
+                self.contentCache.removeObject(forKey: id.uuidString as NSString)
+            }
             let beforeCount = self.items.count
-            self.items.removeAll { $0.isExpired }
+            self.items.removeAll { expiredIds.contains($0.id) }
             if self.items.count != beforeCount {
                 self.updatePinnedItems()
                 self.scheduleSave()

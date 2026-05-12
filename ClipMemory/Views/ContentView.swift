@@ -234,8 +234,6 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                sidebar
-                Divider()
                 HStack(spacing: 12) {
                     Spacer()
                     Menu {
@@ -269,6 +267,8 @@ struct ContentView: View {
             .background(sidebarBackground)
             Divider()
             HStack(spacing: 0) {
+                VStack(spacing: 0) { sidebar }.background(sidebarBackground)
+                Divider()
                 Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyBackground)
             }
         }
@@ -439,61 +439,64 @@ struct ContentView: View {
     }
 
     private var settingsDetail: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(L10n.settingsTitle).font(.system(size: sz(20), weight: .semibold)).padding(.horizontal, 24).padding(.vertical, 16)
-                Divider()
-                if let hk = (NSApp.delegate as? AppDelegate)?.hotKeyManager {
-                    settingsSection(L10n.settingsSectionHotkey) {
-                        HStack {
-                            if isRecordingHotKey {
-                                Text(L10n.settingsHotkeyRecording).font(.system(size: sz(13))).foregroundColor(.orange)
-                                Spacer()
-                                Button(L10n.buttonCancel) { isRecordingHotKey = false }.buttonStyle(.link).font(.system(size: sz(13)))
-                            } else {
-                                Text(hk.config.displayString).font(.system(size: sz(13), design: .monospaced))
-                                Spacer()
-                                Button(L10n.settingsHotkeyChange) { startRecording() }.buttonStyle(.link).font(.system(size: sz(13)))
-                            }
+        Form {
+            if let hk = (NSApp.delegate as? AppDelegate)?.hotKeyManager {
+                Section {
+                    HStack {
+                        if isRecordingHotKey {
+                            Text(L10n.settingsHotkeyRecording).foregroundColor(.orange)
+                            Spacer()
+                            Button(L10n.buttonCancel) { isRecordingHotKey = false }.buttonStyle(.link)
+                        } else {
+                            Text(hk.config.displayString).fontDesign(.monospaced)
+                            Spacer()
+                            Button(L10n.settingsHotkeyChange) { startRecording() }.buttonStyle(.link)
                         }
                     }
-                    .padding(.top, 20)
+                } header: { Text(L10n.settingsSectionHotkey) }
+            }
+            Section {
+                Picker(L10n.themeAppearance, selection: Binding(get: { themeAppearance }, set: { themeAppearance = $0; applyAppearance() })) {
+                    Text(L10n.themeAppearanceSystem).tag("system"); Text(L10n.themeAppearanceLight).tag("light"); Text(L10n.themeAppearanceDark).tag("dark")
                 }
-                settingsSection(L10n.settingsSectionTheme) {
-                    Picker(L10n.themeAppearance, selection: Binding(get: { themeAppearance }, set: { themeAppearance = $0; applyAppearance() })) {
-                        Text(L10n.themeAppearanceSystem).tag("system"); Text(L10n.themeAppearanceLight).tag("light"); Text(L10n.themeAppearanceDark).tag("dark")
-                    }
-                }
-                settingsSection(L10n.settingsSectionLanguage) { Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) { ForEach(languageManager.availableLanguages, id: \.code) { Text($0.name).font(.system(size: sz(13))).tag($0.code) } } }
-                settingsSection(L10n.settingsFontSize) { Picker(L10n.string("settings.font.picker"), selection: $fontScale) { Text(L10n.fontSizeSmall).font(.system(size: sz(13))).tag(1.0); Text(L10n.fontSizeMedium).font(.system(size: sz(13))).tag(1.2); Text(L10n.fontSizeLarge).font(.system(size: sz(13))).tag(1.4) } }
-                settingsSection(L10n.settingsSectionSensitive) { Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).font(.system(size: sz(13))).tag($0.hours) } }.id(languageManager.selectedLanguage); Text(L10n.settingsSensitiveHint).font(.system(size: sz(12))).foregroundColor(.secondary) }
-                settingsSection(L10n.settingsSectionHistory) { Picker(L10n.settingsMaxItems, selection: $store.maxItems) { ForEach([50,100,200,500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).font(.system(size: sz(13))).tag($0) } }.id(languageManager.selectedLanguage) }
-                settingsSection(L10n.settingsSectionExcludedApps) {
-                    excludedAppsTags
-                    Button(action: { showingAppPicker = true }) {
-                        Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle")
-                    }
-                    .buttonStyle(.link)
-                    .font(.system(size: sz(13)))
-                }
-                settingsSection(L10n.launchAtLogin) {
-                    Toggle(isOn: Binding(get: { SMAppService.mainApp.status == .enabled }, set: { v in
-                        do { if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } } catch { NSSound.beep() }
-                    })) { Text(L10n.launchAtLogin).font(.system(size: sz(13))) }
-                }
-                settingsSection(L10n.settingsSectionAbout) { Text(L10n.aboutVersion(AppVersion.current)).font(.system(size: sz(12))).foregroundColor(.secondary); Text(L10n.aboutFreeEdition).font(.system(size: sz(12))).foregroundColor(.secondary); Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.font(.system(size: sz(13))).buttonStyle(.link) }
-            }.padding(.horizontal, 24).padding(.vertical, 16)
+            } header: { Text(L10n.settingsSectionTheme) }
+            Section {
+                Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) { ForEach(languageManager.availableLanguages, id: \.code) { Text($0.name).tag($0.code) } }
+            } header: { Text(L10n.settingsSectionLanguage) }
+            Section {
+                Picker(L10n.string("settings.font.picker"), selection: $fontScale) { Text(L10n.fontSizeSmall).tag(1.0); Text(L10n.fontSizeMedium).tag(1.2); Text(L10n.fontSizeLarge).tag(1.4) }
+            } header: { Text(L10n.settingsFontSize) }
+            Section {
+                Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).tag($0.hours) } }.id(languageManager.selectedLanguage)
+            } header: { Text(L10n.settingsSectionSensitive) } footer: { Text(L10n.settingsSensitiveHint).foregroundColor(.secondary) }
+            Section {
+                Picker(L10n.settingsMaxItems, selection: $store.maxItems) { ForEach([50,100,200,500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).tag($0) } }.id(languageManager.selectedLanguage)
+            } header: { Text(L10n.settingsSectionHistory) }
+            Section {
+                excludedAppsTags
+                Button(action: { showingAppPicker = true }) { Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle") }.buttonStyle(.link)
+            } header: { Text(L10n.settingsSectionExcludedApps) }
+            Section {
+                Toggle(L10n.launchAtLogin, isOn: Binding(get: { SMAppService.mainApp.status == .enabled }, set: { v in
+                    do { if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } } catch { showLaunchAtLoginError() }
+                }))
+            }
+            Section {
+                Text(L10n.aboutVersion(AppVersion.current)).foregroundColor(.secondary)
+                Text(L10n.aboutFreeEdition).foregroundColor(.secondary)
+                Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.buttonStyle(.link)
+            } header: { Text(L10n.settingsSectionAbout) }
         }
+        .formStyle(.grouped)
     }
 
-    private func settingsSection<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title).font(.system(size: sz(13), weight: .semibold)).foregroundColor(.secondary)
-            VStack(alignment: .leading, spacing: 4) { content() }
-                .padding(.top, 6)
-                .padding(.leading, 20)
-        }
-        .padding(.bottom, 20)
+    private func showLaunchAtLoginError() {
+        let alert = NSAlert()
+        alert.messageText = L10n.error
+        alert.informativeText = L10n.settingsLaunchAtLoginErrorBody
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.buttonConfirm)
+        alert.runModal()
     }
 
     private var excludedAppsTags: some View {

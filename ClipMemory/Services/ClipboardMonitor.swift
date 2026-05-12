@@ -4,21 +4,42 @@ import os.log
 
 class ClipboardMonitor {
     private var timer: DispatchSourceTimer?
-    private var lastChangeCount: Int = 0
     private let pasteboard = NSPasteboard.general
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
 
+    /// H9: Protects all mutable shared state (lastKnownSourceBundleId, excludedBundleIds,
+    /// skipNextCapture, lastChangeCount) from data races between main thread and timer queue.
+    private let stateLock = OSAllocatedUnfairLock()
+
+    private var _lastChangeCount: Int = 0
+    private var lastChangeCount: Int {
+        get { stateLock.withLock { _lastChangeCount } }
+        set { stateLock.withLock { _lastChangeCount = newValue } }
+    }
+
     /// Set to true when ClipboardStore writes to pasteboard, so we skip re-capturing.
-    var skipNextCapture = false
+    private var _skipNextCapture: Bool = false
+    var skipNextCapture: Bool {
+        get { stateLock.withLock { _skipNextCapture } }
+        set { stateLock.withLock { _skipNextCapture = newValue } }
+    }
 
     /// Bundle identifiers of apps to exclude from clipboard monitoring (e.g. password managers)
-    var excludedBundleIds: Set<String> = []
+    private var _excludedBundleIds: Set<String> = []
+    var excludedBundleIds: Set<String> {
+        get { stateLock.withLock { _excludedBundleIds } }
+        set { stateLock.withLock { _excludedBundleIds = newValue } }
+    }
 
     /// Delegate for accessing store configuration (breaks circular dependency)
     weak var delegate: ClipboardMonitorDelegate?
 
     /// Tracks the last known app that was frontmost before clipboard changed
-    private var lastKnownSourceBundleId: String?
+    private var _lastKnownSourceBundleId: String?
+    private var lastKnownSourceBundleId: String? {
+        get { stateLock.withLock { _lastKnownSourceBundleId } }
+        set { stateLock.withLock { _lastKnownSourceBundleId = newValue } }
+    }
 
     /// Returns the bundle ID of the frontmost app, or nil if unavailable
     private func frontmostAppBundleId() -> String? {
@@ -212,6 +233,10 @@ class ClipboardMonitor {
     }
 
     private func detectSensitive(_ content: String) -> Bool {
+        // Reject pathological inputs that could cause quadratic regex backtracking.
+        // Very long strings (> 50 KB) skip keyword/regex scanning and only check size.
+        guard content.utf8.count <= 50_000 else { return false }
+
         let lowercased = content.lowercased()
         let range = NSRange(content.startIndex..., in: content)
         var regexIdx = 0
