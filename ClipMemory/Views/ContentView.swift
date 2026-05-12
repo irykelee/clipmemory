@@ -83,10 +83,10 @@ struct ContentView: View {
         }
     }
     private var bodyBackground: AnyShapeStyle {
-        AnyShapeStyle(Material.regularMaterial)
+        AnyShapeStyle(Material.thick)
     }
     private var sidebarBackground: AnyShapeStyle {
-        AnyShapeStyle(Material.ultraThinMaterial)
+        AnyShapeStyle(Material.thin)
     }
 
     // MARK: - Optimized Item Filtering
@@ -109,7 +109,7 @@ struct ContentView: View {
             if item.createdAt < startOfYesterday {
                 if dateFilter == .today || dateFilter == .yesterday { return false }
             } else if item.createdAt < startOfToday {
-                if dateFilter == .today { return false }
+                if dateFilter == .today || dateFilter == .older { return false }
             } else {
                 if dateFilter == .yesterday || dateFilter == .older { return false }
             }
@@ -265,10 +265,10 @@ struct ContentView: View {
             }
             .frame(height: 42)
             .background(sidebarBackground)
-            Divider()
+            Color.clear.frame(height: 8)
             HStack(spacing: 0) {
                 VStack(spacing: 0) { sidebar }.background(sidebarBackground)
-                Divider()
+                Color.primary.opacity(0.06).frame(width: 1)
                 Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyBackground)
             }
         }
@@ -290,7 +290,10 @@ struct ContentView: View {
         }, onEscape: {
             if selectedTab == .settings { selectedTab = .all } else if !searchText.isEmpty { searchText = "" } else { NSApp.keyWindow?.close() }
         }).frame(width: 0, height: 0) }
-        .sheet(isPresented: $showingAppPicker) { appPickerSheet.onAppear { appPickerSearchDebounced = appPickerSearch } }
+        .sheet(isPresented: $showingAppPicker) { appPickerSheet.onAppear {
+            appPickerSearchDebounced = appPickerSearch
+            Self.cachedApps = nil  // Refresh app list each time the sheet opens
+        } }
     }
 
     private var sidebar: some View {
@@ -328,11 +331,11 @@ struct ContentView: View {
                     Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(L10n.actionDelete, systemImage: "trash").font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.red)
                     Button(action: { selectedItems.removeAll() }) { Text(L10n.buttonCancel).font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.secondary)
                 }.padding(.horizontal, 16).padding(.vertical, 8).background(sidebarBackground)
-                Divider()
+                Color.clear.frame(height: 1)
             }
             if selectedTab != .settings {
                 combinedToolbar
-                Divider()
+                Color.clear.frame(height: 6)
             }
             if displayedItems.isEmpty { emptyState } else {
                 ScrollView {
@@ -548,7 +551,7 @@ struct ContentView: View {
                     .foregroundColor(.accentColor)
             }
             .padding()
-            Divider()
+            Color.clear.frame(height: 1)
             TextField(L10n.settingsAppPickerSearch, text: $appPickerSearch)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal, 16)
@@ -559,7 +562,7 @@ struct ContentView: View {
                     searchDebounce = item
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
                 }
-            Divider()
+            Color.clear.frame(height: 1)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     let excludedIds = Set(store.excludedBundleIdsString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
@@ -699,7 +702,7 @@ struct ClipboardItemRow: View {
     private var iconSize: CGFloat { fontScale * 13 }
 
     private var rowBackground: Color {
-        if isCopied { Color.green.opacity(0.3) } else if isSelected { Color.accentColor.opacity(0.15) } else if isHovered || isKeyboardSelected { Color(.selectedContentBackgroundColor).opacity(0.3) } else { Color.clear }
+        if isCopied { Color.green.opacity(0.12) } else if isSelected { Color.accentColor.opacity(0.10) } else if isHovered || isKeyboardSelected { Color.accentColor.opacity(0.06) } else if item.isSensitive { Color.orange.opacity(0.04) } else { Color.clear }
     }
     private var pinText: String { item.isPinned ? L10n.actionUnpin : L10n.actionPin }
     private var decryptedContent: String {
@@ -755,14 +758,14 @@ struct ClipboardItemRow: View {
     }
     private func maskContent(_ c: String) -> String { c.count <= 4 ? String(repeating: "\u{2022}", count: c.count) : String(c.prefix(2)) + String(repeating: "\u{2022}", count: c.count - 4) + String(c.suffix(2)) }
     private func maskedHighlightedContent(_ content: String, highlight: String, ctx: Int = 15) -> AttributedString {
-        if highlight.isEmpty { return AttributedString(maskContent(content)) }
+        if highlight.isEmpty { var a = AttributedString(maskContent(content)); a.foregroundColor = .orange; return a }
         let lc = content.lowercased(), lh = highlight.lowercased(); var vis: [Range<String.Index>] = []; var ss = lc.startIndex
         while let r = lc.range(of: lh, range: ss..<lc.endIndex) { let cs = lc.index(r.lowerBound, offsetBy: -ctx, limitedBy: lc.startIndex) ?? lc.startIndex; let ce = lc.index(r.upperBound, offsetBy: ctx, limitedBy: lc.endIndex) ?? lc.endIndex; vis.append(cs..<ce); ss = r.upperBound }
         guard !vis.isEmpty else { return AttributedString(maskContent(content)) }; vis.sort { $0.lowerBound < $1.lowerBound }
         var merged: [Range<String.Index>] = []; for r in vis { if let last = merged.last, last.upperBound >= r.lowerBound { merged[merged.count-1] = last.lowerBound..<max(last.upperBound, r.upperBound) } else { merged.append(r) } }
         var res = AttributedString(); var ci = content.startIndex
-        for r in merged { if ci < r.lowerBound { res += AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: r.lowerBound))) }; var h = AttributedString(String(content[r])); h.backgroundColor = .cyan.opacity(0.3); h.foregroundColor = .primary; res += h; ci = r.upperBound }
-        if ci < content.endIndex { res += AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: content.endIndex))) }
+        for r in merged { if ci < r.lowerBound { var b = AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: r.lowerBound))); b.foregroundColor = .orange; res += b }; var h = AttributedString(String(content[r])); h.backgroundColor = .blue.opacity(0.15); h.foregroundColor = .primary; res += h; ci = r.upperBound }
+        if ci < content.endIndex { var t = AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: content.endIndex))); t.foregroundColor = .orange; res += t }
         return res
     }
 
@@ -785,7 +788,7 @@ struct ClipboardItemRow: View {
                         .task(id: item.content) { if let img = ImageStorage.shared.loadImageObject(filename: item.content) { loadedImage = img } }
                     } else if item.isSensitive && !isRevealed {
                         Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)
-                            .font(.system(size: fontScale * 13)).foregroundColor(.orange).lineLimit(3)
+                            .font(.system(size: fontScale * 13)).lineLimit(3)
                             .overlay(PressableImage { pressed in longPressing = pressed })
                     } else {
                         Text(showFullContent ? AttributedString(decryptedContent) : cachedHighlighted)
@@ -796,7 +799,7 @@ struct ClipboardItemRow: View {
                     Spacer()
                 }
                 .contentShape(Rectangle()).onTapGesture(count: 2) { onPin() }.onTapGesture { onCopyWithFeedback?() }
-                HStack(spacing: 8) { if item.isSensitive { Button(action: onToggleReveal) { Text(isRevealed ? L10n.actionHide : L10n.actionView).font(.system(size: fontScale * 11)).foregroundColor(.secondary) }.buttonStyle(.plain) }; Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.secondary); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) } }
+                HStack(spacing: 8) { if item.isSensitive { Button(action: onToggleReveal) { Text(isRevealed ? L10n.actionHide : L10n.actionView).font(.system(size: fontScale * 11)).foregroundColor(.secondary) }.buttonStyle(.plain) }; Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) } }
             }
             HStack(spacing: 6) {
                 Button(action: onPin) { Image(systemName: item.isPinned ? "star.fill" : "star").font(.system(size: iconSize)).foregroundColor(item.isPinned ? .orange : .secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)

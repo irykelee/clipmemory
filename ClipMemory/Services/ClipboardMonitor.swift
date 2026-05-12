@@ -106,19 +106,17 @@ class ClipboardMonitor {
         return compiled
     }()
 
-    // Pre-compiled regex patterns for sensitive pattern matching
-    private lazy var sensitivePatternRegexes: [NSRegularExpression] = {
-        let regexPatterns = sensitivePatterns.filter { $0.isRegex }.map { $0.pattern }
-        var compiled: [NSRegularExpression] = []
-        for pattern in regexPatterns {
+    // Pre-compiled regex patterns paired with their source patterns — avoids index misalignment
+    private lazy var compiledSensitivePatterns: [(regex: NSRegularExpression, keyword: String)] = {
+        sensitivePatterns.filter { $0.isRegex }.compactMap { entry in
             do {
-                let regex = try NSRegularExpression(pattern: pattern, options: .caseInsensitive)
-                compiled.append(regex)
+                let regex = try NSRegularExpression(pattern: entry.pattern, options: .caseInsensitive)
+                return (regex, entry.pattern)
             } catch {
-                logger.error("Failed to compile sensitive pattern regex: \(pattern) — \(error.localizedDescription)")
+                logger.error("Failed to compile sensitive pattern: \(entry.pattern) — \(error.localizedDescription)")
+                return nil
             }
         }
-        return compiled
     }()
 
     deinit { stopMonitoring() }
@@ -239,16 +237,17 @@ class ClipboardMonitor {
 
         let lowercased = content.lowercased()
         let range = NSRange(content.startIndex..., in: content)
-        var regexIdx = 0
 
+        // Plain keyword check (non-regex)
         for (pattern, isRegex) in sensitivePatterns {
-            if isRegex {
-                guard regexIdx < sensitivePatternRegexes.count else { return false }
-                if sensitivePatternRegexes[regexIdx].firstMatch(in: content, options: [], range: range) != nil {
-                    return true
-                }
-                regexIdx += 1
-            } else if lowercased.contains(pattern) {
+            if !isRegex && lowercased.contains(pattern) {
+                return true
+            }
+        }
+
+        // Pre-compiled regex check — paired with their source patterns to avoid index misalignment
+        for (regex, _) in compiledSensitivePatterns {
+            if regex.firstMatch(in: content, options: [], range: range) != nil {
                 return true
             }
         }

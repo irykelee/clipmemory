@@ -68,7 +68,7 @@ struct QuickBarView: View {
             .background(isSearchFocused ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.08))
             .cornerRadius(appCornerRadius)
 
-            Divider()
+            Color.clear.frame(height: 6)
 
             // Section label
             Text(L10n.quickbarRecent(displayedItems.count))
@@ -123,7 +123,7 @@ struct QuickBarView: View {
                 }
             }
 
-            Divider()
+            Color.clear.frame(height: 6)
 
             // macOS 26 menu style bottom section
             VStack(spacing: 0) {
