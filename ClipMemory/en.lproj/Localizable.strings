@@ -168,3 +168,6 @@
 "font.size.small" = "Small";
 "font.size.medium" = "Medium";
 "font.size.large" = "Large";
+"tooltip.close" = "Close";
+"tooltip.minimize" = "Minimize";
+"tooltip.zoom" = "Zoom";

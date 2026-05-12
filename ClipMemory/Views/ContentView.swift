@@ -183,47 +183,6 @@ struct ContentView: View {
     }
     private var groupedItems: [(TimeGroup, [ClipboardItem])] { cachedGroupedItems }
 
-    private var searchBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.system(size: sz(12)))
-            TextField(L10n.searchPlaceholder, text: $searchText)
-                .textFieldStyle(.plain).font(.system(size: sz(13)))
-            if !searchText.isEmpty { Button(action: { searchText = "" }) { Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.system(size: sz(11))) }.buttonStyle(.plain) }
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(Color.primary.opacity(0.08))
-        .cornerRadius(8)
-    }
-
-    private var dateFilterBar: some View {
-        HStack(spacing: 6) {
-            ForEach(DateFilter.allCases, id: \.self) { filter in
-                Button(action: { dateFilter = filter }) {
-                    Text(filter.label)
-                        .font(.system(size: sz(11)))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(dateFilter == filter ? Color.accentColor.opacity(0.2) : Color.clear)
-                        .foregroundColor(dateFilter == filter ? .accentColor : .secondary)
-                        .cornerRadius(5)
-                }
-                .buttonStyle(.plain)
-                .frame(minWidth: 36, minHeight: 26)
-                .contentShape(Rectangle())
-            }
-            Spacer()
-        }
-    }
-
-    private var combinedToolbar: some View {
-        HStack(spacing: 12) {
-            searchBar
-            dateFilterBar
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
     // 扁平化的显示项目
     private var flattenedDisplayedItems: [(item: ClipboardItem, globalIndex: Int)] {
         var result: [(item: ClipboardItem, globalIndex: Int)] = []
@@ -248,47 +207,59 @@ struct ContentView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                HStack(spacing: 12) {
-                    Spacer()
-                    Menu {
-                        Button(action: { pendingClearMode = .today }) {
-                            Label(L10n.clearToday, systemImage: "sunrise")
-                            Spacer()
-                            Text("\(store.todayCount)")
-                        }
-                        Button(action: { pendingClearMode = .yesterday }) {
-                            Label(L10n.clearYesterday, systemImage: "sun.haze")
-                            Spacer()
-                            Text("\(store.yesterdayCount)")
-                        }
-                        Button(action: { pendingClearMode = .older }) {
-                            Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath")
-                            Spacer()
-                            Text("\(store.olderCount)")
-                        }
-                        Divider()
-                        Button(role: .destructive, action: { pendingClearMode = .all }) {
-                            Label(L10n.headerClearHistory, systemImage: "trash")
-                            Spacer()
-                            Text("\(store.items.filter { !$0.isPinned }.count)")
-                        }
-                    } label: {
-                        Image(systemName: "trash").font(.system(size: sz(14))).foregroundColor(.secondary)
-                    }.help(L10n.tooltipClearHistory).disabled(store.items.isEmpty)
-                }.padding(.horizontal, 12).padding(.vertical, 6)
-            }
-            .frame(height: 42)
-            .background(sidebarBackground)
-            Color.clear.frame(height: 8)
-            HStack(spacing: 0) {
-                VStack(spacing: 0) { sidebar }.background(sidebarBackground)
-                Color.primary.opacity(0.06).frame(width: 1)
-                Group { if selectedTab == .settings { settingsDetail } else { mainContent } }.frame(minWidth: 420).background(bodyBackground)
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 190, ideal: 210)
+        } detail: {
+            if selectedTab == .settings {
+                settingsDetail
+            } else {
+                mainContent
             }
         }
-        .frame(minWidth: 640, minHeight: 440).ignoresSafeArea(edges: .top).background(bodyBackground)
+        .frame(minWidth: 640, minHeight: 440)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .frame(height: 60)
+                .mask(
+                    VStack(spacing: 0) {
+                        Color.white.frame(height: 36)
+                        LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
+                    }
+                )
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+        }
+        .toolbar {
+            ToolbarItem(id: "clear") {
+                Menu {
+                    Button(action: { pendingClearMode = .today }) { Label(L10n.clearToday, systemImage: "sunrise") }
+                    Button(action: { pendingClearMode = .yesterday }) { Label(L10n.clearYesterday, systemImage: "sun.haze") }
+                    Button(action: { pendingClearMode = .older }) { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") }
+                    Divider()
+                    Button(role: .destructive, action: { pendingClearMode = .all }) { Label(L10n.headerClearHistory, systemImage: "trash") }
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .disabled(store.items.isEmpty)
+            }
+            ToolbarItemGroup(placement: .principal) {
+                HStack(spacing: 6) {
+                    ForEach(DateFilter.allCases, id: \.self) { filter in
+                        Button(action: { dateFilter = filter }) {
+                            Text(filter.label)
+                                .font(.system(size: sz(11)))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(dateFilter == filter ? Color.accentColor.opacity(0.15) : Color.clear)
+                                .cornerRadius(5)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .searchable(text: $searchText, placement: .toolbar, prompt: L10n.searchPlaceholder)
         .onAppear {
             applyAppearance()
             updateDisplayedItemsCache()
@@ -320,34 +291,28 @@ struct ContentView: View {
         }).frame(width: 0, height: 0) }
         .sheet(isPresented: $showingAppPicker) { appPickerSheet.onAppear {
             appPickerSearchDebounced = appPickerSearch
-            Self.cachedApps = nil  // Refresh app list each time the sheet opens
+            Self.cachedApps = nil
         } }
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach([SidebarTab.all, .text, .image, .link, .pinned], id: \.self) { tab in
-                SidebarTabRow(
-                    tab: tab,
-                    count: tabCounts[tab] ?? 0,
-                    isSelected: selectedTab == tab,
-                    fontScale: fontScale,
-                    onTap: { selectedTab = tab }
-                )
+        List(selection: $selectedTab) {
+            ForEach([SidebarTab.all, .text, .image, .link], id: \.self) { tab in
+                Label(tab.label, systemImage: tab.icon)
+                    .badge(tabCounts[tab] ?? 0)
+                    .tag(tab)
             }
-            Spacer()
-            SidebarTabRow(
-                tab: .settings,
-                count: 0,
-                isSelected: selectedTab == .settings,
-                fontScale: fontScale,
-                onTap: { selectedTab = .settings }
-            )
-            .padding(.bottom, 8)
+            Section {
+                Label(SidebarTab.pinned.label, systemImage: SidebarTab.pinned.icon)
+                    .tag(SidebarTab.pinned)
+                Label(SidebarTab.settings.label, systemImage: SidebarTab.settings.icon)
+                    .tag(SidebarTab.settings)
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.top, 8)
-        .frame(width: 200, alignment: .top)
+        .listStyle(.sidebar)
+        .padding(.vertical, 8)
+        .padding(.trailing, 4)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
         .onChange(of: selectedTab) { _ in keyboardSelectedIndex = nil }
     }
 
@@ -360,10 +325,6 @@ struct ContentView: View {
                     Button(action: { selectedItems.removeAll() }) { Text(L10n.buttonCancel).font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.secondary)
                 }.padding(.horizontal, 16).padding(.vertical, 8).background(sidebarBackground)
                 Color.clear.frame(height: 1)
-            }
-            if selectedTab != .settings {
-                combinedToolbar
-                Color.clear.frame(height: 6)
             }
             if displayedItems.isEmpty { emptyState } else {
                 ScrollView {
@@ -846,47 +807,6 @@ struct ClipboardItemRow: View, Equatable {
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle()).onTapGesture(count: 2) { onPin() }.onHover { isHovered = $0 }
         .contextMenu { Button(action: { onCopyWithFeedback?() }) { Label(L10n.actionCopy, systemImage: "doc.on.doc") }; if item.isSensitive { Button(action: onToggleReveal) { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") } }; Button(action: onPin) { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }; Divider(); Button(role: .destructive, action: onDelete) { Label(L10n.actionDelete, systemImage: "trash") } }
-    }
-}
-
-// MARK: - Sidebar Tab Row
-private struct SidebarTabRow: View {
-    let tab: SidebarTab
-    let count: Int
-    let isSelected: Bool
-    let fontScale: Double
-    let onTap: () -> Void
-
-    @State private var isHovered = false
-
-    private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 10) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: sz(13)))
-                    .foregroundColor(.secondary)
-                    .frame(width: 28, height: 28)
-                Text(tab.label)
-                    .font(.system(size: sz(13)))
-                    .foregroundColor(isSelected ? Color(nsColor: .controlTextColor) : .secondary)
-                Spacer()
-                // swiftlint:disable:next empty_count
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: sz(11)))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color.accentColor.opacity(0.15) : (isHovered ? Color.primary.opacity(0.05) : Color.clear))
-            .cornerRadius(8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
     }
 }
 

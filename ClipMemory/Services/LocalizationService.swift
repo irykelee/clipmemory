@@ -85,6 +85,9 @@ struct L10n {
     static var tooltipPinnedOnly: String { string("tooltip.pinned.only") }
     static var tooltipReveal: String { string("tooltip.reveal") }
     static var tooltipHide: String { string("tooltip.hide") }
+    static var tooltipClose: String { string("tooltip.close") }
+    static var tooltipMinimize: String { string("tooltip.minimize") }
+    static var tooltipZoom: String { string("tooltip.zoom") }
 
     static var alertClearTitle: String { string("alert.clear.title") }
     static func alertClearMessage(_ count: Int) -> String { string("alert.clear.message", count) }
