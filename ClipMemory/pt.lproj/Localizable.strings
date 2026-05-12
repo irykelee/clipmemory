@@ -54,6 +54,7 @@
 "alert.clear.title" = "Limpar histórico";
 "alert.clear.message" = "Excluir %d itens?\nItens fixados serão mantidos.";
 "alert.clear.none" = "Nada para limpar.";
+"alert.clear.group.message" = "Excluir %1$d itens de「%2$@」?\nItens fixados serão mantidos.";
 "alert.delete.title" = "Excluir";
 "alert.delete.message" = "Excluir este item?";
 
@@ -102,8 +103,6 @@
 /* Date Groups */
 "group.today" = "Hoje";
 "group.yesterday" = "Ontem";
-"group.thisWeek" = "Esta semana";
-"group.thisMonth" = "Este mês";
 "group.older" = "Anterior";
 "date.filter.all" = "Tudo";
 
@@ -129,6 +128,7 @@
 "app.launch.at.login.enabled.body" = "ClipMemory será iniciado automaticamente ao fazer login.";
 "app.launch.at.login.disabled" = "Início automático desativado";
 "app.launch.at.login.disabled.body" = "ClipMemory não será iniciado automaticamente.";
+"settings.launch.at.login.error.body" = "Não é possível modificar a definição de início de sessão. Verifique as permissões do sistema.";
 "app.error" = "Erro";
 "batch.selected" = "%d selecionados";
 "app.send.feedback" = "Feedback";

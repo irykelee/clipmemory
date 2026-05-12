@@ -24,7 +24,6 @@ opt_in_rules:
   - contains_over_first_not_nil
   - fallthrough
   - fatal_error_message
-  - unneeded_parentheses_in_closure
   - trailing_whitespace
 
 # 排除的文件/目录

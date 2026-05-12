@@ -49,7 +49,14 @@ class LanguageManager: ObservableObject {
 
     func applyLanguage() {
         let defaults = UserDefaults.standard
-        defaults.set([selectedLanguage], forKey: "AppleLanguages")
+        // L8: Prepend selectedLanguage to existing AppleLanguages chain instead of
+        // replacing it entirely, preserving system language fallback behavior.
+        var languages = defaults.stringArray(forKey: "AppleLanguages") ?? ["en"]
+        if let existingIndex = languages.firstIndex(of: selectedLanguage) {
+            languages.remove(at: existingIndex)
+        }
+        languages.insert(selectedLanguage, at: 0)
+        defaults.set(languages, forKey: "AppleLanguages")
     }
 
     var availableLanguages: [(code: String, name: String)] {

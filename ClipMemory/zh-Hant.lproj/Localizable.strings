@@ -54,6 +54,7 @@
 "alert.clear.title" = "清除歷史";
 "alert.clear.message" = "確定清除 %d 筆記錄？\n釘選內容不會被刪除。";
 "alert.clear.none" = "沒有可清除的記錄。";
+"alert.clear.group.message" = "確定清除「%2$@」的 %1$d 筆記錄？\n釘選內容不會被刪除。";
 "alert.delete.title" = "刪除內容";
 "alert.delete.message" = "確定刪除該內容嗎？";
 
@@ -101,8 +102,6 @@
 /* Date Groups */
 "group.today" = "今天";
 "group.yesterday" = "昨天";
-"group.thisWeek" = "本週";
-"group.thisMonth" = "本月";
 "group.older" = "更早";
 "date.filter.all" = "全部";
 

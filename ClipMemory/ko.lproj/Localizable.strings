@@ -54,6 +54,7 @@
 "alert.clear.title" = "기록 비우기";
 "alert.clear.message" = "%d개 항목을 지울까요?\n고정된 항목은 삭제되지 않습니다.";
 "alert.clear.none" = "비울 기록이 없습니다.";
+"alert.clear.group.message" = "'%2$@'의 %1$d개 항목을 삭제할까요?\n고정된 항목은 삭제되지 않습니다.";
 "alert.delete.title" = "항목 삭제";
 "alert.delete.message" = "이 항목을 삭제할까요?";
 
@@ -102,8 +103,6 @@
 /* Date Groups */
 "group.today" = "오늘";
 "group.yesterday" = "어제";
-"group.thisWeek" = "이번 주";
-"group.thisMonth" = "이번 달";
 "group.older" = "이전";
 "date.filter.all" = "전체";
 
@@ -129,6 +128,7 @@
 "app.launch.at.login.enabled.body" = "ClipMemory가 로그인 시 자동으로 시작됩니다.";
 "app.launch.at.login.disabled" = "로그인 시 시작 비활성화됨";
 "app.launch.at.login.disabled.body" = "ClipMemory가 자동으로 시작되지 않습니다.";
+"settings.launch.at.login.error.body" = "로그인 시 시작 설정을 수정할 수 없습니다. 시스템 권한을 확인하세요.";
 "app.error" = "오류";
 "batch.selected" = "%d개 선택됨";
 "app.send.feedback" = "피드백";

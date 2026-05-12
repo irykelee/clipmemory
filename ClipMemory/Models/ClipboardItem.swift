@@ -36,6 +36,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     }
 
     /// Returns decrypted content. If decryption fails, returns a placeholder (not ciphertext).
+    /// DEPRECATED: Use `ClipboardStore.shared.getDecryptedContent(self)` instead,
+    /// which uses contentCache to avoid repeated expensive AES decryption.
     var decryptedContent: String {
         guard !isEncrypted else {
             return CryptoService.shared.decrypt(content) ?? "(decryption failed)"
@@ -47,16 +49,5 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     var decryptionFailed: Bool {
         guard isEncrypted else { return false }
         return CryptoService.shared.decrypt(content) == nil
-    }
-
-    var displayContent: String {
-        switch type {
-        case .text:
-            return String(decryptedContent.prefix(200))
-        case .link:
-            return decryptedContent
-        case .image:
-            return L10n.itemImage
-        }
     }
 }

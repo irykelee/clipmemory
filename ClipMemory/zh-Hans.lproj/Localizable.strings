@@ -54,6 +54,7 @@
 "alert.clear.title" = "清空历史";
 "alert.clear.message" = "确定清空 %d 条记录？\n收藏内容不会被删除。";
 "alert.clear.none" = "没有可清空的记录。";
+"alert.clear.group.message" = "确定清空「%2$@」的 %1$d 条记录？\n收藏内容不会被删除。";
 "alert.delete.title" = "删除内容";
 "alert.delete.message" = "确定删除该内容吗？";
 
@@ -126,6 +127,7 @@
 "app.launch.at.login.enabled.body" = "ClipMemory 将会在登录时自动启动。";
 "app.launch.at.login.disabled" = "已停用";
 "app.launch.at.login.disabled.body" = "ClipMemory 将不会在登录时启动。";
+"settings.launch.at.login.error.body" = "无法修改登录时启动设置，请检查系统权限。";
 "app.error" = "错误";
 "batch.selected" = "已选择 %d 项";
 "app.send.feedback" = "反馈";

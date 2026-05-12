@@ -19,13 +19,6 @@ class CryptoService {
         return dir.appendingPathComponent(".encryption_key")
     }
 
-    private var keyFileURL: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("ClipMemory", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent(".encryption_key")
-    }
-
     private init() {
         if getKey() == nil {
             generateKey()
@@ -39,18 +32,19 @@ class CryptoService {
         }
         guard result == errSecSuccess else {
             logger.error("Failed to generate random key bytes")
-            return
+            fatalError("Cannot continue without cryptographically secure key")
         }
         do {
-            try keyData.write(to: keyFileURL, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyFileURL.path)
+            try keyData.write(to: Self.keyFileURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.keyFileURL.path)
         } catch {
             logger.error("Failed to store encryption key: \(error.localizedDescription)")
+            fatalError("Cannot continue without encryption key: \(error.localizedDescription)")
         }
     }
 
     private func getKey() -> SymmetricKey? {
-        guard let keyData = try? Data(contentsOf: keyFileURL), keyData.count == 32 else {
+        guard let keyData = try? Data(contentsOf: Self.keyFileURL), keyData.count == 32 else {
             return nil
         }
         return SymmetricKey(data: keyData)
@@ -139,11 +133,11 @@ class CryptoService {
     // MARK: - Legacy Decryption (AES-CBC+HMAC, pre-v2 format)
 
     /// Returns true if the given base64 string uses the old format (no "v2" prefix).
+    /// Pure check — does not attempt decryption.
     func isOldFormat(_ base64String: String) -> Bool {
         guard let combined = Data(base64Encoded: base64String) else { return false }
         if combined.count >= 2 && combined.prefix(2) == Data("v2".utf8) { return false }
-        // Try to decrypt as old format — if it works, it's old format
-        return decryptLegacy(from: combined) != nil
+        return true
     }
 
     /// Migrates old-format encrypted string to new v2 format.
