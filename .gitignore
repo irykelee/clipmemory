@@ -13,3 +13,7 @@ build/
 # Binary releases — generated locally, not stored in git
 Releases/
 Homebrew/*.tar.gz
+
+# Agent config files — local per-developer, not in repo
+CLAUDE.md
+AGENTS.md
