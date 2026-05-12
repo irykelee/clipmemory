@@ -16,7 +16,7 @@
 | **Agrupación por tiempo** | Ninguna | Hoy / Ayer / Esta semana / Este mes / Anterior, plegable |
 | **Atajo global** | Solo Cmd+Ctrl+V | Personalizable (grabar desde Ajustes) |
 | **Quick Bar** | Ninguna | Popover con 8 elementos recientes, buscar + copiar + abrir ventana |
-| **Resalte de búsqueda** | Resalte sobre texto | Coincidencia de subcadena sin distinción de mayúsculas/minúsculas, sin caracteres rotos |
+| **Resalte de búsqueda** | Resalte sobre texto | Sin distinción de mayúsculas/minúsculas, sin caracteres rotos |
 | **Vista previa larga** | Ninguna | Texto → completo, sensible → revelar, imagen → ampliar (0.4s) |
 | **Disposición iconos** | Casilla + icono tipo + estrella + contenido | Casilla + contenido + estrella + eliminar, más limpio |
 | **Estilo ventana** | Ventana estándar | Efecto vidrio, más moderno |
