@@ -25,6 +25,8 @@ class WindowManager: NSObject, NSWindowDelegate {
             self?.quickBarPopover?.close()
         }))
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // Sync SwiftUI content to current NSApp.appearance so colorScheme follows app theme
+        popover.contentViewController?.view.window?.appearance = NSApp.appearance
     }
 
     func showMainWindow() {

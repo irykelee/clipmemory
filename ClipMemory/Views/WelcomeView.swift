@@ -13,6 +13,25 @@ struct WelcomeView: View {
         case conflict
     }
 
+    @ViewBuilder
+    private var getStartedButton: some View {
+        let base = Button(action: {
+            FirstLaunchManager.markLaunched()
+            onComplete()
+        }, label: {
+            Text(L10n.welcomeGetStarted)
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding()
+        })
+        .buttonStyle(.borderedProminent)
+        if #available(macOS 14.0, *) {
+            base.buttonBorderShape(.capsule)
+        } else {
+            base
+        }
+    }
+
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
@@ -73,19 +92,7 @@ struct WelcomeView: View {
             Spacer()
 
             VStack(spacing: 12) {
-                Button(action: {
-                    FirstLaunchManager.markLaunched()
-                    onComplete()
-                }, label: {
-                    Text(L10n.welcomeGetStarted)
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.accentColor)
-                        .foregroundColor(.white)
-                        .cornerRadius(appCornerRadius)
-                })
-                .buttonStyle(.plain)
+                getStartedButton
             }
             .padding(.horizontal)
         }
