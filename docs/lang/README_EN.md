@@ -13,7 +13,7 @@
 | **Interaction** | Menu bar click → menu → open window (3 steps) | Menu bar click → **Quick Bar popup** (1 step) |
 | **Main Window** | Fixed-width, no sidebar | **Fixed sidebar**: All / Text / Image / Link / Pinned Only / Settings |
 | **Type Filter** | Horizontal buttons | Vertical sidebar navigation with item counts |
-| **Time Grouping** | None | Today / Yesterday / This Week / This Month / Older, collapsible |
+| **Time Grouping** | None | Today / Yesterday / Older, collapsible |
 | **Global Hotkey** | Cmd+Ctrl+V only | Customizable (record from Settings) |
 | **Quick Bar** | None | 8 recent items in popover, search + copy + open window |
 | **Search Highlight** | Highlight on text | Accurate matching, no garbled text |
@@ -45,7 +45,7 @@ Click menu bar icon → NSPopover with 8 recent items → click to copy / search
 
 ### Time Grouping
 
-Items auto-grouped by creation time: Today / Yesterday / This Week / This Month / Older, collapsible sections.
+Items auto-grouped by creation time: Today / Yesterday / Older, collapsible sections.
 
 ### Font Scaling
 
