@@ -1,114 +1,91 @@
 # ClipMemory v2
 
-**Next-gen macOS Clipboard Manager — Better UI, Faster Actions, More Features**
+**Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
-[English](./README_EN.md) · [简体中文](./README_ZH-HANS.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
+[English](./README_EN.md) · [简体中文](./README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
-## What's New in v2 vs v1
+## v1 → v2 Key Upgrades
 
 | Aspect | v1 | v2 |
 |--------|----|----|
-| **Interaction** | Menu bar click → menu → open window (3 steps) | Menu bar click → **Quick Bar popup** (1 step) |
-| **Main Window** | Fixed-width, no sidebar | **Fixed sidebar**: All / Text / Image / Link / Pinned Only / Settings |
-| **Type Filter** | Horizontal buttons | Vertical sidebar navigation with item counts |
-| **Time Grouping** | None | Today / Yesterday / Older, collapsible |
-| **Global Hotkey** | Cmd+Ctrl+V only | Customizable (record from Settings) |
-| **Quick Bar** | None | 8 recent items in popover, search + copy + open window |
-| **Search Highlight** | Highlight on text | Case-insensitive, no garbled text |
-| **Long Press Preview** | None | Text → full content, sensitive → reveal, image → enlarge (0.4s hold) |
-| **Icon Layout** | Checkbox + type icon + star + content | Checkbox + content + star + delete, cleaner |
-| **Window Style** | Standard window | Glass effect, more modern |
-| **Window Buttons** | In titlebar | Hidden titlebar, unified toolbar area (macOS 26 Liquid Glass) |
-| **Dock Icon** | Always hidden | Appears when window opens, hides when closed |
-| **Hover Highlight** | None | Automatic highlight on hover |
-| **Font Scaling** | None | Small / Medium / Large in Settings |
-| **Launch at Login** | None (menu only) | Toggle in Settings |
-| **Settings Page** | Basic Form | Sidebar independent page, grouped and optimized |
+| **Interaction** | Menu → menu → window (3 steps) | Quick Bar popup (1 step) |
+| **Main interface** | Fixed width, no sidebar | Fixed sidebar, switch types anytime |
+| **Global hotkey** | Cmd+Ctrl+V only | Custom recording supported |
+| **Quick Bar** | None | 8 recent items popup, search & copy instantly |
+| **Search highlight** | Text overlay highlight | Case-insensitive, no garbled text |
+| **Long-press preview** | None | 0.4s reveals full text / sensitive / image |
+| **Time grouping** | None | Today / Yesterday / Older, collapsible |
 
 ---
 
-## New Features
+## Feature Highlights
 
-### Quick Bar
+### Quick Bar — One Tap Away
 
-Click menu bar icon → NSPopover with 8 recent items → click to copy / search / open full window
+Click menu bar icon → NSPopover shows 8 recent items → click to copy / search / open full window
 
-### Long Press Actions (0.4s)
+### Long Press 0.4s — Unlimited Preview
 
-| Content Type | Default View | Long Press Shows |
-|-------------|-------------|------------------|
-| Regular Text | First 200 chars, 3 lines | Full content (no truncation) |
-| Sensitive Content | Masked `ab••••••yz` | Revealed text + search highlight |
+| Content type | Default | After long press |
+|-------------|---------|-----------------|
+| Plain text | First 200 chars, 3 lines | Full text |
+| Sensitive content | Masked `ab••••••yz` | Revealed text |
 | Image | Thumbnail 80px | Enlarged to 300px |
 
-### Time Grouping
+### Smart Security — Encryption + Detection
 
-Items auto-grouped by creation time: Today / Yesterday / Older, collapsible sections.
-
-### Font Scaling
-
-Settings → Font Size → Small / Medium / Large — scales all UI text.
-
-### Customizable Hotkey
-
-Settings allows recording a new global hotkey to replace the default `Cmd+Ctrl+V`.
-
-### Theme System
-
-Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance (Light / Dark / Follow System).
+- AES-256-GCM encryption (v2), compatible with legacy AES-CBC+HMAC-SHA256
+- 25+ rules auto-detect sensitive data (passwords / API keys / ID numbers / etc.)
+- Auto-pauses when password manager is in foreground, no copying from the app itself
+- Content never saved as plaintext if encryption fails
 
 ---
 
-## Features
+## Feature List
 
 - 📋 Clipboard history (text / images / links)
-- ⭐ Pin important items, never auto-cleared
-- 💾 Images stored as encrypted files, surpasses 10MB limit
-- 🔍 Real-time search with multilingual highlight (including CJK characters)
-- ✅ Copy feedback (green flash)
+- ⭐ Pin important items, never auto-deleted
+- 💾 Encrypted image storage, bypasses 10MB limit
+- 🔍 Real-time search, all languages highlighted (CJK multibyte supported)
+- ⚡ Smart deduplication, identical content updates timestamp only
+- 🔄 Copy loop prevention, auto-skips copying from the app itself
+- 🧹 Orphan file cleanup, auto-cleans unreferenced images on launch
+- 🌍 7 languages (简体中文 / 繁體中文 / English / 日本語 / 한국어 / Español / Português)
 - ☑️ Multi-select batch pin / delete
-- 🔒 Sensitive data auto-detection (25+ rules) + AES-256-GCM encryption (v2) with legacy AES-CBC+HMAC-SHA256 compatibility
-- 🔐 Auto-pause when password managers are in foreground, custom app exclusion supported
-- ⚡ Smart deduplication — same content updates timestamp without duplication
-- 🔄 Copy loop prevention — skips capture when copying from the app itself
-- 🔒 Security first: content is discarded if encryption fails, never stored as plaintext
-- 🧹 Orphan cleanup — removes unreferenced images on startup
-- ⚙️ Hotkey conflict detection on first launch
+- ✅ Green flash feedback on successful copy
+- ⚙️ Auto-detects hotkey conflicts on first launch
 - ⌨️ Global hotkey `Cmd+Ctrl+V`
-- 🌍 7 languages (Simplified Chinese / Traditional Chinese / English / Japanese / Korean / Spanish / Portuguese)
-- 📎 Settings → About → Send Feedback → GitHub Issues
+- 🖥 Launch at login (enable in Settings)
+- 📐 Font scaling (Small / Medium / Large)
+- 🎨 Appearance (Light / Dark / Follow system)
 
 ---
 
-## Usage Guide
+## How to Use
 
 | Action | How |
 |--------|-----|
-| Open Quick Bar | Click menu bar 📋 / `Cmd+Ctrl+V` |
-| Copy from Quick Bar | Click item / ↑↓ + Enter |
-| Open Full Window | Quick Bar → "Open Full Window" |
-| Search | Type to filter, matches highlighted |
-| Pin / Unpin | Click ⭐, double-click row, or right-click menu |
+| Open Quick Bar | Left-click menu bar 📋 icon / `Cmd+Ctrl+V` |
+| Copy item | Click item / keyboard ↑↓ + Enter |
+| Open full window | Quick Bar → "Open Clipboard" |
+| Search | Type keyword, matches highlighted |
+| Pin / Unpin | Click ⭐ or double-click item |
 | Delete | Click 🗑 or right-click menu |
-| Reveal sensitive | Hold 0.4s to show, release to hide |
-| Enlarge image | Hold 0.4s to zoom, release to shrink |
-| Show full text | Hold 0.4s on any text item |
-| Multi-select | Click checkbox |
-| Batch operations | Select multiple → batch pin / delete |
-| Close window | `Esc` |
-| Clear history | Top toolbar 🗑 (pinned preserved) |
+| Preview full / sensitive / image | Hold 0.4s, release to hide |
+| Multi-select mode | Click checkbox |
+| Clear history | Top bar 🗑 (pinned items preserved) |
 
-> 💡 Pinned items are never auto-cleared. Re-copying same content updates timestamp without duplication.
+> 💡 Pinned items are never auto-deleted. Copying identical content doesn't create duplicates, only updates the timestamp.
 
 ---
 
 ## Security
 
-- **AES-256-GCM (v2) + legacy AES-CBC+HMAC-SHA256** — All text and images encrypted before disk write
-- **Smart Detection** — 25+ rules (keyword + regex) for passwords, API keys, tokens, private keys, IDs
-- **Auto-Clear** — Configurable timer (1h / 24h / 48h / 7d / never)
+- **AES-256-GCM (v2) + legacy AES-CBC+HMAC-SHA256** — All text and images encrypted before disk storage
+- **Smart detection** — 25+ rules (keywords + regex) auto-identify passwords, API keys, tokens, private keys, ID numbers, bank card numbers, etc.
+- **Auto-clear** — Sensitive content configurable to auto-delete after 1h / 24h / 48h / 7 days, or never
 
 ---
 
@@ -118,10 +95,8 @@ Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance
 - Sensitive auto-clear policy (1h / 24h / 48h / 7d / never)
 - Language (7 languages)
 - Global hotkey recording
-- Font size (Small / Medium / Large)
-- Window Effect (Solid / Frosted / Ultra)
-- Appearance (Light / Dark / Follow System)
-- Excluded Apps (custom apps to skip clipboard monitoring)
+- Appearance (Light / Dark / Follow system)
+- Excluded apps (custom apps to skip monitoring)
 
 ---
 
@@ -137,9 +112,9 @@ Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance
 brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install --cask clipmemory
 ```
 
-After installing, the App is at `/Applications/ClipMemory.app`. Find the 📋 icon in the **menu bar** (top right) after launching. Click to use.
+After install, App is at `/Applications/ClipMemory.app`. Launch and find the 📋 icon in the **menu bar** (top right corner).
 
-Or download `.tar.gz` from [GitHub Releases](https://github.com/irykelee/clipmemory/releases) and extract manually to `/Applications/`.
+Or download `.tar.gz` from [GitHub Releases](https://github.com/irykelee/clipmemory/releases) and extract to `/Applications/`.
 
 ---
 
