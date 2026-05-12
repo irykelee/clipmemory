@@ -16,7 +16,7 @@
 | **Agrupamento por tempo** | Nenhum | Hoje / Ontem / Esta semana / Este mês / Anterior, recolhível |
 | **Atalho global** | Apenas Cmd+Ctrl+V | Personalizável (gravar nas Configurações) |
 | **Quick Bar** | Nenhuma | Pop-up com 8 itens recentes, pesquisar + copiar + abrir janela |
-| **Destaque de pesquisa** | Destaque sobre texto | Correspondência precisa, sem texto corrompido |
+| **Destaque de pesquisa** | Destaque sobre texto | Correspondência de subcadeia não diferencia maiúsculas/minúsculas, sem caracteres corrompidos |
 | **Visualização longa** | Nenhuma | Texto → completo, sensível → revelar, imagem → ampliar (0.4s) |
 | **Disposição ícones** | Caixa + ícone tipo + estrela + conteúdo | Caixa + conteúdo + estrela + excluir, mais limpo |
 | **Estilo janela** | Janela padrão | Efeito vidro, mais moderno |
@@ -60,10 +60,10 @@ Configurações permite ajustar o Efeito de janela (Sólido / Fosco / Ultra) e a
 - 📋 Histórico da área de transferência (texto / imagens / links)
 - ⭐ Fixar itens importantes, não são removidos automaticamente
 - 💾 Imagens armazenadas como arquivos criptografados, supera limite de 10MB
-- 🔍 Pesquisa em tempo real, destaque preciso em todos os idiomas (incl. chinês, japonês, coreano)
+- 🔍 Pesquisa em tempo real com destaque multilíngue (incluindo caracteres CJK)
 - ✅ Feedback visual verde ao copiar
 - ☑️ Seleção múltipla para fixar / excluir em lote
-- 🔒 Detecção automática de informação sensível (25+ regras) + criptografia AES-256 + HMAC
+- 🔒 Detecção automática de informação sensível (25+ regras) + AES-256-GCM (v2) com compatibilidade legacy AES-CBC+HMAC-SHA256
 - 🔐 Pausa automática quando o gerenciador de senhas está em primeiro plano, exclusão de apps personalizada
 - ⚡ Desduplicação inteligente — mesmo conteúdo atualiza marca de tempo sem duplicar
 - 🔄 Prevenção de loop de cópia — pula captura ao copiar da própria app
@@ -100,7 +100,7 @@ Configurações permite ajustar o Efeito de janela (Sólido / Fosco / Ultra) e a
 
 ## Segurança
 
-- **Criptografia AES-256 + HMAC-SHA256** — Todo texto e imagem é criptografado automaticamente antes de salvar em disco
+- **AES-256-GCM (v2) com compatibilidade legacy AES-CBC+HMAC-SHA256** — Todo texto e imagem é criptografado automaticamente antes de salvar em disco
 - **Detecção inteligente** — 25+ regras (palavras-chave + expressões regulares) para senhas, API keys, tokens, chaves privadas, números ID, etc.
 - **Limpeza automática** — Conteúdo sensível configurável para limpar após 1h / 24h / 48h / 7d, ou nunca
 

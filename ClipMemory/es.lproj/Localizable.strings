@@ -63,6 +63,7 @@
 "settings.section.history" = "Historial";
 "settings.section.sensitive" = "Datos sensibles";
 "settings.section.language" = "Idioma";
+"settings.section.theme" = "Tema";
 "settings.section.about" = "Acerca de";
 "settings.max.items" = "Máximo de elementos";
 "settings.max.items.count" = "%d elementos";

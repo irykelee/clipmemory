@@ -16,7 +16,7 @@
 | **Time Grouping** | None | Today / Yesterday / Older, collapsible |
 | **Global Hotkey** | Cmd+Ctrl+V only | Customizable (record from Settings) |
 | **Quick Bar** | None | 8 recent items in popover, search + copy + open window |
-| **Search Highlight** | Highlight on text | Accurate matching, no garbled text |
+| **Search Highlight** | Highlight on text | Case-insensitive substring matching, no garbled text |
 | **Long Press Preview** | None | Text → full content, sensitive → reveal, image → enlarge (0.4s hold) |
 | **Icon Layout** | Checkbox + type icon + star + content | Checkbox + content + star + delete, cleaner |
 | **Window Style** | Standard window | Glass effect, more modern |
@@ -66,17 +66,16 @@ Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance
 - 📋 Clipboard history (text / images / links)
 - ⭐ Pin important items, never auto-cleared
 - 💾 Images stored as encrypted files, surpasses 10MB limit
-- 🔍 Real-time search with accurate multilingual highlight (including CJK characters)
+- 🔍 Real-time search with multilingual highlight (including CJK characters)
 - ✅ Copy feedback (green flash)
 - ☑️ Multi-select batch pin / delete
-- 🔒 Sensitive data auto-detection (25+ rules) + AES-256 encryption + HMAC authentication
+- 🔒 Sensitive data auto-detection (25+ rules) + AES-256-GCM encryption (v2) with legacy AES-CBC+HMAC-SHA256 compatibility
 - 🔐 Auto-pause when password managers are in foreground, custom app exclusion supported
 - ⚡ Smart deduplication — same content updates timestamp without duplication
 - 🔄 Copy loop prevention — skips capture when copying from the app itself
 - 🔒 Security first: content is discarded if encryption fails, never stored as plaintext
 - 🧹 Orphan cleanup — removes unreferenced images on startup
 - ⚙️ Hotkey conflict detection on first launch
-- 🔍 25+ sensitive data detection rules
 - ⌨️ Global hotkey `Cmd+Ctrl+V`
 - 🌍 7 languages (Simplified Chinese / Traditional Chinese / English / Japanese / Korean / Spanish / Portuguese)
 - 📎 Settings → About → Send Feedback → GitHub Issues
@@ -107,7 +106,7 @@ Settings allows adjusting Window Effect (Solid / Frosted / Ultra) and Appearance
 
 ## Security
 
-- **AES-256 + HMAC-SHA256** — All text and images encrypted before disk write
+- **AES-256-GCM (v2) + legacy AES-CBC+HMAC-SHA256** — All text and images encrypted before disk write
 - **Smart Detection** — 25+ rules (keyword + regex) for passwords, API keys, tokens, private keys, IDs
 - **Auto-Clear** — Configurable timer (1h / 24h / 48h / 7d / never)
 

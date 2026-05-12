@@ -63,6 +63,7 @@
 "settings.section.history" = "歷史記錄";
 "settings.section.sensitive" = "敏感資訊保護";
 "settings.section.language" = "語言";
+"settings.section.theme" = "主題";
 "settings.section.hotkey" = "快捷鍵";
 "settings.hotkey.change" = "修改";
 "settings.hotkey.recording" = "請按下新的快捷鍵...";
