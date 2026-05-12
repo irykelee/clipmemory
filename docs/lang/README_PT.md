@@ -19,7 +19,6 @@
 | **Destaque de pesquisa** | Destaque sobre texto | Não diferencia maiúsculas/minúsculas, sem caracteres corrompidos |
 | **Visualização longa** | Nenhuma | Texto → completo, sensível → revelar, imagem → ampliar (0.4s) |
 | **Disposição ícones** | Caixa + ícone tipo + estrela + conteúdo | Caixa + conteúdo + estrela + excluir, mais limpo |
-| **Estilo janela** | Janela padrão | Efeito vidro, mais moderno |
 | **Botões de janela** | Na barra de título | Barra título oculta, área de barra ferramentas unificada (macOS 26 Liquid Glass) |
 | **Ícone Dock** | Sempre oculto | Aparece ao abrir janela, oculta ao fechar |
 | **Destaque hover** | Nenhum | Destaque automático ao passar o mouse |
@@ -51,7 +50,7 @@ Configurações → Tamanho fonte → Pequeno / Médio / Grande, escala todo tex
 Grave um novo atalho global nas Configurações para substituir o padrão `Cmd+Ctrl+V`.
 
 ### Sistema de temas
-Configurações permite ajustar o Efeito de janela (Sólido / Fosco / Ultra) e a Aparência (Claro / Escuro / Seguir sistema).
+Configurações permite ajustar a Aparência (Claro / Escuro / Seguir sistema).
 
 ---
 
@@ -113,7 +112,6 @@ Configurações permite ajustar o Efeito de janela (Sólido / Fosco / Ultra) e a
 - Troca de idioma (7 idiomas)
 - Gravação de atalho global
 - Tamanho da fonte (Pequeno / Médio / Grande)
-- Efeito de janela (Sólido / Fosco / Ultra)
 - Aparência (Claro / Escuro / Seguir sistema)
 - Apps excluídas (apps personalizadas para excluir do monitoramento)
 
