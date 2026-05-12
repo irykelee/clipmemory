@@ -27,6 +27,16 @@ private func cachedRelativeDateFormatter(for languageCode: String) -> RelativeDa
     relativeDateFormatters[languageCode] = f
     return f
 }
+private var absoluteDateFormatters: [String: DateFormatter] = [:]
+private func cachedAbsoluteDateFormatter(for languageCode: String) -> DateFormatter {
+    if let cached = absoluteDateFormatters[languageCode] { return cached }
+    let f = DateFormatter()
+    f.dateStyle = .medium
+    f.timeStyle = .short
+    f.locale = Locale(identifier: languageCode)
+    absoluteDateFormatters[languageCode] = f
+    return f
+}
 
 private struct AppPickerItem {
     let name: String
@@ -734,7 +744,9 @@ struct ClipboardItemRow: View, Equatable {
     private var decryptedContent: String {
         ClipboardStore.shared.getDecryptedContent(item) ?? ""
     }
-    private var formattedDate: String { cachedRelativeDateFormatter(for: LanguageManager.shared.selectedLanguage).localizedString(for: item.createdAt, relativeTo: Date()) }
+    private var formattedDate: String {
+        cachedAbsoluteDateFormatter(for: LanguageManager.shared.selectedLanguage).string(from: item.createdAt)
+    }
 
     private var cachedHighlighted: AttributedString {
         let cacheKey = "\(item.id.uuidString)-\(searchText)"
@@ -825,7 +837,7 @@ struct ClipboardItemRow: View, Equatable {
                     Spacer()
                 }
                 .contentShape(Rectangle()).onTapGesture(count: 2) { onPin() }.onTapGesture { onCopyWithFeedback?() }
-                HStack(spacing: 8) { if item.isSensitive { Button(action: onToggleReveal) { Text(isRevealed ? L10n.actionHide : L10n.actionView).font(.system(size: fontScale * 11)).foregroundColor(.secondary) }.buttonStyle(.plain) }; Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) } }
+                HStack(spacing: 8) { Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) } }
             }
             HStack(spacing: 6) {
                 Button(action: onPin) { Image(systemName: item.isPinned ? "star.fill" : "star").font(.system(size: iconSize)).foregroundColor(item.isPinned ? .orange : .secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
