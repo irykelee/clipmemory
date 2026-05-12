@@ -168,3 +168,6 @@
 "font.size.small" = "작게";
 "font.size.medium" = "보통";
 "font.size.large" = "크게";
+"tooltip.close" = "Close";
+"tooltip.minimize" = "Minimize";
+"tooltip.zoom" = "Zoom";

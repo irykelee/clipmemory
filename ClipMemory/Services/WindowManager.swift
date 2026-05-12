@@ -34,16 +34,12 @@ class WindowManager: NSObject, NSWindowDelegate {
             mainContentView = ContentView()
             let window = NSWindow(
                 contentRect: savedWindowFrame,
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                 backing: .buffered, defer: false
             )
-            window.title = L10n.appName
-            if #available(macOS 11.4, *) {
-                window.toolbarStyle = .expanded
-            }
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            window.styleMask.insert(.fullSizeContentView)
+            window.toolbarStyle = .unified
             window.delegate = self
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: mainContentView!)
