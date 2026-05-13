@@ -1,4 +1,4 @@
-# ClipMemory v2
+# 剪忆 ClipMemory v2
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
