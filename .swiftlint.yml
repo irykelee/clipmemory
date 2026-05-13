@@ -38,6 +38,8 @@ excluded:
   - Carthage
   - Modules
   - Vendor
+  - "**/DerivedSources/"
+  - "**/XCBuildData/"
 
 # Reporter: xcode 输出到 Xcode 的 Issue Navigator
 reporter: "xcode"

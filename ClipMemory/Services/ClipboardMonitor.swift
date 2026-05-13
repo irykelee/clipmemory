@@ -47,21 +47,16 @@ class ClipboardMonitor {
         return frontApp.bundleIdentifier
     }
 
-    private let sensitivePatterns: [(pattern: String, isRegex: Bool)] = [
-        // Credentials
-        ("password", false),
+    let sensitivePatterns: [(pattern: String, isRegex: Bool)] = [
+        // Credentials — non-regex keywords (may have minor false positives on rare normal text)
         ("pwd", false),
-        ("passwd", false),
         ("passcode", false),
-        ("secret", false),
-        ("api_key", false),
-        ("apikey", false),
-        ("api-key", false),
-        ("token", false),
-        ("auth", false),
-        ("bearer", false),
-        ("sk-", false),
         ("ghp_", false),
+        ("github_pat_", false),
+        ("sk_live_", false),
+        ("sk_test_", false),
+        ("sk-", false),
+        ("bearer", false),
         ("ssh-rsa", false),
         // Private keys
         ("-----BEGIN.*PRIVATE KEY-----", true),
@@ -77,7 +72,7 @@ class ClipboardMonitor {
         ("amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", true),
         // Personal IDs
         ("\\b[1-9]\\d{5}(?:19|20)\\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{3}[\\dXx]\\b", true),  // China ID card (18-digit)
-        ("\\b[1-9]\\d{7}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{2}\\b", true),                         // China ID card (15-digit)
+        ("\\b[1-9]\\d{7}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{3}\\b", true),                         // China ID card (15-digit)
         // Bank cards (16-19 digit, basic check — may overlap with some IDs but safe to flag)
         ("\\b(?:4\\d{15}|5[1-5]\\d{14}|3[47]\\d{13}|6(?:011|5\\d{2})\\d{12}|3(?:0[0-5]|[68]\\d)\\d{11}|9\\d{15})\\b", true),
         // US SSN
@@ -87,7 +82,7 @@ class ClipboardMonitor {
     ]
 
     // Pre-compiled regex patterns for sensitive value detection (R10: compile once)
-    private lazy var sensitiveValueRegexes: [NSRegularExpression] = {
+    lazy var sensitiveValueRegexes: [NSRegularExpression] = {
         let patterns = [
             "(?i)(password|passwd|pwd)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
             "(?i)(api_key|apikey|api-key)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
@@ -107,7 +102,7 @@ class ClipboardMonitor {
     }()
 
     // Pre-compiled regex patterns paired with their source patterns — avoids index misalignment
-    private lazy var compiledSensitivePatterns: [(regex: NSRegularExpression, keyword: String)] = {
+    lazy var compiledSensitivePatterns: [(regex: NSRegularExpression, keyword: String)] = {
         sensitivePatterns.filter { $0.isRegex }.compactMap { entry in
             do {
                 let regex = try NSRegularExpression(pattern: entry.pattern, options: .caseInsensitive)
@@ -230,7 +225,7 @@ class ClipboardMonitor {
         }
     }
 
-    private func detectSensitive(_ content: String) -> Bool {
+    func detectSensitive(_ content: String) -> Bool {
         // Reject pathological inputs that could cause quadratic regex backtracking.
         // Very long strings (> 50 KB) skip keyword/regex scanning and only check size.
         guard content.utf8.count <= 50_000 else { return false }
