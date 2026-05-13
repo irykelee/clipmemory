@@ -7,17 +7,22 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		17DD4FBBF0E756DA8D26C43C /* CryptoServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */; };
 		3F86CCA09C748C2CC0687BD8 /* ClipboardMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F180418B42AA03636D90BCA9 /* ClipboardMonitor.swift */; };
+		414FB5F0ACA73DDFF4562450 /* ClipboardItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B0ED102287F5F6BAD23F2F /* ClipboardItemTests.swift */; };
+		4E3B3A3265DFB035AF5126DA /* SensitiveDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9E730F43E2C2EFDCABE2BC /* SensitiveDetectorTests.swift */; };
 		5471B4D6439F9B57C50A37BA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E8D75A92FDF0E0DE3ACCDF12 /* Assets.xcassets */; };
 		54EB58BA9A8F29C3E48C7DE6 /* ImageStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3153EAFCF0B2690D5DEB113 /* ImageStorage.swift */; };
 		62C5F5C7A987756BC54DA5A3 /* KeyCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 901900D40CAF1527A6AEE527 /* KeyCaptureView.swift */; };
 		680A6DBC49D7A6C7AADE7DBB /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84072C9393127BAA49827196 /* WindowManager.swift */; };
+		7B94EA436B48E0E9CCCA9C91 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63B98DB67D54A9850C61262 /* IntegrationTests.swift */; };
 		7F23EF5F15D0EE3F180A79E3 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AB1C7BD0454681ABF687DF9 /* main.swift */; };
 		83892A798C8F07BCB2A87488 /* LanguageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B185E481A34967FB1CC7F192 /* LanguageManager.swift */; };
 		8AE3D6EABA7C52180921E9EE /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576BC9BCA44C3479F2691F5B /* AppVersion.swift */; };
 		919909C13EFD40D730CCD15E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A060CA837242FD57B25DFFD9 /* ContentView.swift */; };
 		A9458EE0D526D8B63812E216 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C816574DD183240D08D58A64 /* AppDelegate.swift */; };
 		A9DC6DB797E74F073944C008 /* ClipboardMonitorDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0494294A654E1B59A1072CE4 /* ClipboardMonitorDelegate.swift */; };
+		B262EF7A5FC194FCDFACED79 /* StorageBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9168850C81327649C0142FD4 /* StorageBackend.swift */; };
 		B5E8195E9EA0DB0AD0C8C23D /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8736B83768848E6CBB1834EA /* WelcomeView.swift */; };
 		BF8CC00B3E0A62207FBAE413 /* ClipboardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4499CFF1A5F60ED377D402EB /* ClipboardStore.swift */; };
 		BF99838DB5542B7C90464048 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CCB6D91997FD344D04495D /* HotKeyManager.swift */; };
@@ -25,10 +30,22 @@
 		CFAB8A339B7A88AA06E4FF28 /* LocalizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1258099BA9879D8EF6A6F980 /* LocalizationService.swift */; };
 		E77E5CDEAD35A99186F367F2 /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E73A6EE834EA648971BFC98 /* ClipboardItem.swift */; };
 		EC9B8E180D5B18F679F1E86D /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F250C19E7199E18D95521A3 /* CryptoService.swift */; };
+		EDD4772BEACF49926B32ECA9 /* ConcurrencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */; };
 		F9142E898BD5660C9E087A88 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 031A31F7A3F610D547F9908B /* Localizable.strings */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		F26AF1345281B26F6E530112 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F6943602E59D97E7377BC388 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9987ADA675CFD544E6EE71FE;
+			remoteInfo = ClipMemory;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		041EF969E5FDC60DD678DFD3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0494294A654E1B59A1072CE4 /* ClipboardMonitorDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitorDelegate.swift; sourceTree = "<group>"; };
 		0C9963FD4A541FEC742939FC /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = pt.lproj/Localizable.strings; sourceTree = "<group>"; };
 		1258099BA9879D8EF6A6F980 /* LocalizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationService.swift; sourceTree = "<group>"; };
@@ -42,19 +59,27 @@
 		576BC9BCA44C3479F2691F5B /* AppVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersion.swift; sourceTree = "<group>"; };
 		57CCB6D91997FD344D04495D /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
 		5FA613C869D9CDC57944F917 /* ClipMemory.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClipMemory.entitlements; sourceTree = "<group>"; };
+		6C9E730F43E2C2EFDCABE2BC /* SensitiveDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensitiveDetectorTests.swift; sourceTree = "<group>"; };
+		814FC521762331411B0823A5 /* ClipMemoryTests.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClipMemoryTests.entitlements; sourceTree = "<group>"; };
 		84072C9393127BAA49827196 /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
 		8736B83768848E6CBB1834EA /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		8F250C19E7199E18D95521A3 /* CryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoService.swift; sourceTree = "<group>"; };
 		901900D40CAF1527A6AEE527 /* KeyCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyCaptureView.swift; sourceTree = "<group>"; };
+		9168850C81327649C0142FD4 /* StorageBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageBackend.swift; sourceTree = "<group>"; };
 		A060CA837242FD57B25DFFD9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcurrencyTests.swift; sourceTree = "<group>"; };
 		A7F26B268CA5CF8662C3C930 /* QuickBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickBarView.swift; sourceTree = "<group>"; };
 		B03BAB1E9E84361A3845CEA9 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		B185E481A34967FB1CC7F192 /* LanguageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageManager.swift; sourceTree = "<group>"; };
+		B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoServiceTests.swift; sourceTree = "<group>"; };
+		BE06FB3A83C605C9A635F08C /* ClipMemoryTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClipMemoryTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C6D2821AF8DB1B3210BC7F41 /* ClipMemory.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClipMemory.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C816574DD183240D08D58A64 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		D3153EAFCF0B2690D5DEB113 /* ImageStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStorage.swift; sourceTree = "<group>"; };
+		D4B0ED102287F5F6BAD23F2F /* ClipboardItemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItemTests.swift; sourceTree = "<group>"; };
 		E8D75A92FDF0E0DE3ACCDF12 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F180418B42AA03636D90BCA9 /* ClipboardMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitor.swift; sourceTree = "<group>"; };
+		F63B98DB67D54A9850C61262 /* IntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationTests.swift; sourceTree = "<group>"; };
 		F7519AADC0EF0620BA2EB0E9 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		FCD6D7725E44DB26E42915AE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -80,6 +105,21 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
+		3C3D976217DDAFF8067D4AB9 /* ClipMemoryTests */ = {
+			isa = PBXGroup;
+			children = (
+				D4B0ED102287F5F6BAD23F2F /* ClipboardItemTests.swift */,
+				814FC521762331411B0823A5 /* ClipMemoryTests.entitlements */,
+				A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */,
+				B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */,
+				041EF969E5FDC60DD678DFD3 /* Info.plist */,
+				F63B98DB67D54A9850C61262 /* IntegrationTests.swift */,
+				6C9E730F43E2C2EFDCABE2BC /* SensitiveDetectorTests.swift */,
+			);
+			name = ClipMemoryTests;
+			path = Tests/ClipMemoryTests;
+			sourceTree = "<group>";
+		};
 		43A096F18B00E0E9AD2E1236 /* ClipMemory */ = {
 			isa = PBXGroup;
 			children = (
@@ -100,6 +140,7 @@
 			isa = PBXGroup;
 			children = (
 				C6D2821AF8DB1B3210BC7F41 /* ClipMemory.app */,
+				BE06FB3A83C605C9A635F08C /* ClipMemoryTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -115,6 +156,7 @@
 				D3153EAFCF0B2690D5DEB113 /* ImageStorage.swift */,
 				B185E481A34967FB1CC7F192 /* LanguageManager.swift */,
 				1258099BA9879D8EF6A6F980 /* LocalizationService.swift */,
+				9168850C81327649C0142FD4 /* StorageBackend.swift */,
 				84072C9393127BAA49827196 /* WindowManager.swift */,
 			);
 			path = Services;
@@ -124,6 +166,7 @@
 			isa = PBXGroup;
 			children = (
 				43A096F18B00E0E9AD2E1236 /* ClipMemory */,
+				3C3D976217DDAFF8067D4AB9 /* ClipMemoryTests */,
 				7F50B582619BAAEAD94F0557 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -131,6 +174,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		5003435EAD025C59E8A279B4 /* ClipMemoryTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2575727B0232060395DE9303 /* Build configuration list for PBXNativeTarget "ClipMemoryTests" */;
+			buildPhases = (
+				5538671AA3B3338E2847BE44 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FB8B30309E38F1335189D3AE /* PBXTargetDependency */,
+			);
+			name = ClipMemoryTests;
+			packageProductDependencies = (
+			);
+			productName = ClipMemoryTests;
+			productReference = BE06FB3A83C605C9A635F08C /* ClipMemoryTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		9987ADA675CFD544E6EE71FE /* ClipMemory */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 9079F144064022E30BA9BB91 /* Build configuration list for PBXNativeTarget "ClipMemory" */;
@@ -159,6 +220,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
+					5003435EAD025C59E8A279B4 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
 					9987ADA675CFD544E6EE71FE = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Manual;
@@ -186,6 +251,7 @@
 			projectRoot = "";
 			targets = (
 				9987ADA675CFD544E6EE71FE /* ClipMemory */,
+				5003435EAD025C59E8A279B4 /* ClipMemoryTests */,
 			);
 		};
 /* End PBXProject section */
@@ -225,6 +291,18 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		5538671AA3B3338E2847BE44 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				414FB5F0ACA73DDFF4562450 /* ClipboardItemTests.swift in Sources */,
+				EDD4772BEACF49926B32ECA9 /* ConcurrencyTests.swift in Sources */,
+				17DD4FBBF0E756DA8D26C43C /* CryptoServiceTests.swift in Sources */,
+				7B94EA436B48E0E9CCCA9C91 /* IntegrationTests.swift in Sources */,
+				4E3B3A3265DFB035AF5126DA /* SensitiveDetectorTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D1DDC7454E05F9AB4F29A47B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -243,6 +321,7 @@
 				83892A798C8F07BCB2A87488 /* LanguageManager.swift in Sources */,
 				CFAB8A339B7A88AA06E4FF28 /* LocalizationService.swift in Sources */,
 				CA65D74CB492C0091B80457F /* QuickBarView.swift in Sources */,
+				B262EF7A5FC194FCDFACED79 /* StorageBackend.swift in Sources */,
 				B5E8195E9EA0DB0AD0C8C23D /* WelcomeView.swift in Sources */,
 				680A6DBC49D7A6C7AADE7DBB /* WindowManager.swift in Sources */,
 				7F23EF5F15D0EE3F180A79E3 /* main.swift in Sources */,
@@ -250,6 +329,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FB8B30309E38F1335189D3AE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9987ADA675CFD544E6EE71FE /* ClipMemory */;
+			targetProxy = F26AF1345281B26F6E530112 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		031A31F7A3F610D547F9908B /* Localizable.strings */ = {
@@ -269,6 +356,32 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		0944F6094C5FF680E9B149DF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_ENTITLEMENTS = Tests/ClipMemoryTests/ClipMemoryTests.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Tests/ClipMemoryTests/Info.plist;
+				INFOPLIST_KEY_CFBundleDevelopmentRegion = en;
+				INFOPLIST_KEY_CFBundleExecutable = "$(EXECUTABLE_NAME)";
+				INFOPLIST_KEY_CFBundleIdentifier = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				INFOPLIST_KEY_CFBundleInfoDictionaryVersion = 6.0;
+				INFOPLIST_KEY_CFBundleName = "$(PRODUCT_NAME)";
+				INFOPLIST_KEY_CFBundlePackageType = BNDL;
+				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
+				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.clipmemory.app.tests;
+				PRODUCT_MODULE_NAME = ClipMemoryTests;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ClipMemory.app/Contents/MacOS/ClipMemory";
+			};
+			name = Release;
+		};
 		1C0175D0C58555F7E263088D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -426,9 +539,44 @@
 			};
 			name = Release;
 		};
+		BE03C2ABB4E1514B98E8D3B3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_ENTITLEMENTS = Tests/ClipMemoryTests/ClipMemoryTests.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Tests/ClipMemoryTests/Info.plist;
+				INFOPLIST_KEY_CFBundleDevelopmentRegion = en;
+				INFOPLIST_KEY_CFBundleExecutable = "$(EXECUTABLE_NAME)";
+				INFOPLIST_KEY_CFBundleIdentifier = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				INFOPLIST_KEY_CFBundleInfoDictionaryVersion = 6.0;
+				INFOPLIST_KEY_CFBundleName = "$(PRODUCT_NAME)";
+				INFOPLIST_KEY_CFBundlePackageType = BNDL;
+				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
+				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.clipmemory.app.tests;
+				PRODUCT_MODULE_NAME = ClipMemoryTests;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ClipMemory.app/Contents/MacOS/ClipMemory";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		2575727B0232060395DE9303 /* Build configuration list for PBXNativeTarget "ClipMemoryTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BE03C2ABB4E1514B98E8D3B3 /* Debug */,
+				0944F6094C5FF680E9B149DF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		9079F144064022E30BA9BB91 /* Build configuration list for PBXNativeTarget "ClipMemory" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

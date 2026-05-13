@@ -62,11 +62,47 @@ class ClipboardStore: ObservableObject {
         return (today, yesterday, older)
     }
 
-    private let storageKey = "ClipboardItems"
     private let maxItemsKey = "maxClipboardItems"
     private let sensitiveClearHoursKey = "sensitiveClearHours"
     private let excludedBundleIdsKey = "excludedBundleIds"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
+
+    /// E.1: Pluggable storage backend (default: FileStorageBackend via UserDefaults)
+    private let backend: StorageBackend
+
+    // MARK: - Initializers
+
+    /// Default initializer — uses FileStorageBackend backed by UserDefaults.
+    convenience init() {
+        self.init(backend: FileStorageBackend())
+    }
+
+    /// E.1: Designated initializer accepting a StorageBackend for testing.
+    init(backend: StorageBackend) {
+        self.backend = backend
+
+        let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
+        maxItems = savedMaxItems > 0 ? min(savedMaxItems, 500) : 100
+
+        if UserDefaults.standard.object(forKey: sensitiveClearHoursKey) != nil {
+            sensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
+        } else {
+            sensitiveClearHours = 24
+        }
+
+        excludedBundleIdsString = UserDefaults.standard.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
+
+        loadItems()
+        updateExcludedAppsOnMonitor()
+        cleanupExpiredItems()
+        let queue = DispatchQueue(label: "com.clipmemory.cleanup", qos: .background)
+        cleanupTimer = DispatchSource.makeTimerSource(queue: queue)
+        cleanupTimer?.schedule(deadline: .now() + 60, repeating: 60)
+        cleanupTimer?.setEventHandler { [weak self] in
+            self?.cleanupExpiredItems()
+        }
+        cleanupTimer?.resume()
+    }
 
     /// H2: NSCache for decrypted content — avoids repeated AES decryption on every view render.
     /// Thread-safety: all `items` mutations (addItem/deleteItem/etc.) are on main thread.
@@ -84,30 +120,6 @@ class ClipboardStore: ObservableObject {
     private var needsSave = false
     private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
-    private init() {
-        let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
-        maxItems = savedMaxItems > 0 ? min(savedMaxItems, 500) : 100
-
-        // Use object(forKey:) to distinguish "key doesn't exist" (nil) from "user selected Never" (0)
-        if UserDefaults.standard.object(forKey: sensitiveClearHoursKey) != nil {
-            sensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
-        } else {
-            sensitiveClearHours = 24 // Default: clear after 24 hours
-        }
-
-        excludedBundleIdsString = UserDefaults.standard.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
-
-        loadItems()
-        updateExcludedAppsOnMonitor()
-        cleanupExpiredItems()
-        let queue = DispatchQueue(label: "com.clipmemory.cleanup", qos: .background)
-        cleanupTimer = DispatchSource.makeTimerSource(queue: queue)
-        cleanupTimer?.schedule(deadline: .now() + 60, repeating: 60)
-        cleanupTimer?.setEventHandler { [weak self] in
-            self?.cleanupExpiredItems()
-        }
-        cleanupTimer?.resume()
-    }
 
     deinit {
         cleanupTimer?.cancel()
@@ -125,8 +137,10 @@ class ClipboardStore: ObservableObject {
     }
 
     func loadItems() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let savedItems = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+        let savedItems: [ClipboardItem]
+        do {
+            savedItems = try backend.load()
+        } catch {
             items = []
             return
         }
@@ -164,10 +178,10 @@ class ClipboardStore: ObservableObject {
     }
 
     func saveItems() {
-        let encoder = JSONEncoder()
-        guard let data = try? encoder.encode(items) else { return }
-        DispatchQueue.main.async {
-            UserDefaults.standard.set(data, forKey: self.storageKey)
+        do {
+            try backend.save(items)
+        } catch {
+            logger.error("Failed to save items: \(error.localizedDescription)")
         }
     }
 
@@ -186,6 +200,11 @@ class ClipboardStore: ObservableObject {
     }
 
     /// Flushes pending saves to disk immediately. Called by the debounce timer or on deinit.
+    /// Exposed for testing via ClipboardStore(backend:) — tests can call this to force sync saves.
+    func flushPendingSaves() {
+        flushSave()
+    }
+
     private func flushSave() {
         guard needsSave else { return }
         needsSave = false

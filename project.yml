@@ -9,8 +9,8 @@ options:
 settings:
   base:
     PRODUCT_NAME: ClipMemory
-    MARKETING_VERSION: "2.0.6"
-    CURRENT_PROJECT_VERSION: "2.0.6"
+    MARKETING_VERSION: "2.1.0"
+    CURRENT_PROJECT_VERSION: "2.1.0"
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
     CODE_SIGN_IDENTITY: "-"
@@ -43,3 +43,52 @@ targets:
             echo "warning: SwiftLint not installed. Run: brew install swiftlint"
           fi
         basedOnDependencyAnalysis: false
+
+  ClipMemoryTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/ClipMemoryTests
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.clipmemory.app.tests
+        PRODUCT_MODULE_NAME: ClipMemoryTests
+        INFOPLIST_FILE: Tests/ClipMemoryTests/Info.plist
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks"
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: Tests/ClipMemoryTests/ClipMemoryTests.entitlements
+        SWIFT_EMIT_LOC_STRINGS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDevelopmentRegion: en
+        INFOPLIST_KEY_CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        INFOPLIST_KEY_CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        INFOPLIST_KEY_CFBundleInfoDictionaryVersion: "6.0"
+        INFOPLIST_KEY_CFBundleName: "$(PRODUCT_NAME)"
+        INFOPLIST_KEY_CFBundlePackageType: BNDL
+        INFOPLIST_KEY_CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+    dependencies:
+      - target: ClipMemory
+        embed: false
+
+schemes:
+  ClipMemory:
+    build:
+      targets:
+        ClipMemory: all
+        ClipMemoryTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - ClipMemoryTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

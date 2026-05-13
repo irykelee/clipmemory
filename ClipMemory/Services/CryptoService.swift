@@ -132,12 +132,18 @@ class CryptoService {
 
     // MARK: - Legacy Decryption (AES-CBC+HMAC, pre-v2 format)
 
-    /// Returns true if the given base64 string uses the old format (no "v2" prefix).
-    /// Pure check — does not attempt decryption.
+    /// Returns true if the given base64 string uses the old (pre-v2) format.
+    /// Uses try-decrypt approach: if v2 decrypt succeeds → false, if legacy succeeds → true.
+    /// More robust than byte-prefix inspection and avoids polluting encrypted data.
     func isOldFormat(_ base64String: String) -> Bool {
         guard let combined = Data(base64Encoded: base64String) else { return false }
-        if combined.count >= 2 && combined.prefix(2) == Data("v2".utf8) { return false }
-        return true
+        if combined.count >= 2 && combined.prefix(2) == Data("v2".utf8) {
+            // Has v2 marker — try decrypting as v2 to confirm it's valid v2
+            if decryptV2(data: Data(combined.dropFirst(2))) != nil { return false }
+            // v2 marker present but can't decrypt — treat as old format
+        }
+        // No v2 marker or v2 decrypt failed — try legacy
+        return decryptLegacy(from: combined) != nil
     }
 
     /// Migrates old-format encrypted string to new v2 format.
