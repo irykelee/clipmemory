@@ -250,18 +250,14 @@ struct ContentView: View {
                 .disabled(store.items.isEmpty)
             }
             ToolbarItemGroup(placement: .principal) {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     ForEach(DateFilter.allCases, id: \.self) { filter in
-                        Button(action: { dateFilter = filter }) {
-                            Text(filter.label)
-                                .font(.system(size: sz(11)))
-                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                .background(dateFilter == filter ? Color.accentColor.opacity(0.15) : Color.clear)
-                                .cornerRadius(5)
+                        DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
+                            dateFilter = filter
                         }
-                        .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, 4)
             }
         }
         .searchable(text: $searchText, placement: .toolbar, prompt: L10n.searchPlaceholder)
@@ -278,6 +274,7 @@ struct ContentView: View {
         .onChange(of: searchTextDebounced) { _ in updateDisplayedItemsCache() }
         .onChange(of: selectedTab) { _ in updateDisplayedItemsCache() }
         .onChange(of: dateFilter) { _ in updateDisplayedItemsCache() }
+        .onChange(of: store.items) { _ in updateDisplayedItemsCache() }
         .onChange(of: collapsedGroups) { val in
             let arr = val.map { $0.rawValue }
             if let d = try? JSONEncoder().encode(arr), let s = String(data: d, encoding: .utf8) { UserDefaults.standard.set(s, forKey: "collapsedGroups") }
@@ -667,18 +664,44 @@ struct ContentView: View {
 struct PressableImage: NSViewRepresentable {
     let onPressChanged: (Bool) -> Void
     func makeNSView(context: Context) -> NSView {
-        let v = NSView(frame: .zero)
-        let p = NSPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pressed(_:)))
-        p.minimumPressDuration = 0.4; p.buttonMask = 1 << 0; v.addGestureRecognizer(p)
+        let v = LongPressView(onPressChanged: context.coordinator.onPressChanged)
         return v
     }
-    func updateNSView(_: NSView, context: Context) { context.coordinator.onPressChanged = onPressChanged }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? LongPressView)?.onPressChanged = context.coordinator.onPressChanged
+    }
     func makeCoordinator() -> Coordinator { Coordinator(onPressChanged: onPressChanged) }
-    class Coordinator: NSObject {
+    class Coordinator {
         var onPressChanged: (Bool) -> Void
         init(onPressChanged: @escaping (Bool) -> Void) { self.onPressChanged = onPressChanged }
-        @objc func pressed(_ sender: NSPressGestureRecognizer) {
-            DispatchQueue.main.async { self.onPressChanged(sender.state == .began || sender.state == .changed) }
+    }
+}
+
+class LongPressView: NSView {
+    var onPressChanged: (Bool) -> Void
+    private var pressGesture: NSPressGestureRecognizer!
+
+    init(onPressChanged: @escaping (Bool) -> Void) {
+        self.onPressChanged = onPressChanged
+        super.init(frame: .zero)
+        pressGesture = NSPressGestureRecognizer(target: self, action: #selector(handlePress(_:)))
+        pressGesture.minimumPressDuration = 0.4
+        pressGesture.buttonMask = 0x1 // left mouse button
+        addGestureRecognizer(pressGesture)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func handlePress(_ sender: NSPressGestureRecognizer) {
+        let isPressed = sender.state == .began || sender.state == .changed
+        DispatchQueue.main.async { self.onPressChanged(isPressed) }
+    }
+
+    deinit {
+        if let gesture = pressGesture {
+            removeGestureRecognizer(gesture)
         }
     }
 }
@@ -784,7 +807,7 @@ struct ClipboardItemRow: View, Equatable {
                                 Image(nsImage: ns)
                                     .resizable().aspectRatio(contentMode: .fit)
                                     .frame(maxHeight: imageLongPressing ? 300 : 80)
-                                    .overlay(PressableImage { pressed in imageLongPressing = pressed })
+                                    .overlay(PressableImage { pressed in imageLongPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
                             } else {
                                 Text(L10n.itemImage).font(.system(size: fontScale * 13)).foregroundColor(.secondary)
                             }
@@ -793,12 +816,12 @@ struct ClipboardItemRow: View, Equatable {
                     } else if item.isSensitive && !isRevealed {
                         Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)
                             .font(.system(size: fontScale * 13)).lineLimit(3)
-                            .overlay(PressableImage { pressed in longPressing = pressed })
+                            .overlay(PressableImage { pressed in longPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
                     } else {
                         Text(showFullContent ? AttributedString(decryptedContent) : cachedHighlighted)
                             .font(.system(size: fontScale * 12)).foregroundColor(Color(nsColor: .controlTextColor))
                             .lineLimit(showFullContent ? nil : 3)
-                            .overlay(PressableImage { pressed in showFullContent = pressed })
+                            .overlay(PressableImage { pressed in showFullContent = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
                     }
                     Spacer()
                 }
@@ -862,5 +885,55 @@ struct FlowLayout: Layout {
         width = max(width, lineWidth - spacing)
         height += lineHeight
         return CGSize(width: width, height: height)
+    }
+}
+
+// MARK: - Liquid Glass Date Filter Button
+private struct DateFilterButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(foregroundColor)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(buttonBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+
+    private var foregroundColor: Color {
+        if isSelected {
+            return .primary
+        } else if isHovered {
+            return .primary.opacity(0.8)
+        } else {
+            return .secondary
+        }
+    }
+
+    @ViewBuilder
+    private var buttonBackground: some View {
+        if isSelected {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+                )
+        } else if isHovered {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.ultraThinMaterial.opacity(0.6))
+        } else {
+            Color.clear
+        }
     }
 }
