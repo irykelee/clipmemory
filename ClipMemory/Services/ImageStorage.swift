@@ -26,7 +26,89 @@ class ImageStorage {
         return dir
     }()
 
-    private init() {}
+    private let legacyImagesDirectory: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("ClipPaste/Images", isDirectory: true)
+    }()
+
+    private let migrationCompleteKey = "ImageStorageMigrationComplete"
+
+    private init() {
+        migrateFromLegacyIfNeeded()
+    }
+
+    /// Migrates unencrypted PNG images from legacy ClipPaste/Images/ to encrypted ClipMemory/Images/.
+    /// Only runs once per installation.
+    private func migrateFromLegacyIfNeeded() {
+        guard UserDefaults.standard.bool(forKey: migrationCompleteKey) == false else { return }
+        guard fileManager.fileExists(atPath: legacyImagesDirectory.path) else {
+            UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+            return
+        }
+
+        logger.info("Migrating images from legacy ClipPaste/Images/ to ClipMemory/Images/")
+
+        guard let legacyFiles = try? fileManager.contentsOfDirectory(atPath: legacyImagesDirectory.path) else {
+            UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+            return
+        }
+
+        var migratedFilenames: [String] = []
+
+        for filename in legacyFiles {
+            guard filename.hasSuffix(".png"), UUID(uuidString: String(filename.dropLast(4))) != nil else { continue }
+
+            let legacyPath = legacyImagesDirectory.appendingPathComponent(filename)
+            guard let imageData = try? Data(contentsOf: legacyPath) else { continue }
+
+            // Check if already encrypted (v2 format starts with "v2", legacy format has specific structure)
+            // Unencrypted PNG starts with signature 89 50 4E 47
+            let isUnencryptedPNG = imageData.count >= 4 &&
+                imageData[0] == 0x89 && imageData[1] == 0x50 &&
+                imageData[2] == 0x4E && imageData[3] == 0x47
+
+            if isUnencryptedPNG {
+                logger.info("Migrating unencrypted image: \(filename)")
+                // Encrypt and save to new location
+                if let encryptedData = CryptoService.shared.encryptData(imageData) {
+                    let newPath = imagesDirectory.appendingPathComponent(filename)
+                    do {
+                        try encryptedData.write(to: newPath)
+                        migratedFilenames.append(filename)
+                        logger.info("Successfully migrated: \(filename)")
+                    } catch {
+                        logger.error("Failed to write migrated image: \(error.localizedDescription)")
+                    }
+                }
+            } else {
+                // Already encrypted (or legacy format), just copy to new location
+                let newPath = imagesDirectory.appendingPathComponent(filename)
+                do {
+                    try imageData.write(to: newPath)
+                    migratedFilenames.append(filename)
+                } catch {
+                    logger.error("Failed to copy image: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        // Mark migration complete AFTER all files are migrated
+        UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+
+        // Post notification so ClipboardStore can update isEncrypted flags.
+        // Use async to ensure ClipboardStore.init() registers its observer first (avoids race condition).
+        if !migratedFilenames.isEmpty {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: Notification.Name("ImageStorageMigrationCompleted"),
+                    object: nil,
+                    userInfo: ["migratedFilenames": migratedFilenames]
+                )
+            }
+        }
+
+        logger.info("Image migration complete: \(migratedFilenames.count) files migrated")
+    }
 
     /// Validates that a filename is safe: must be a UUID string + ".png" extension.
     /// Prevents path traversal attacks where content like "../../.ssh/id_rsa" could be used.

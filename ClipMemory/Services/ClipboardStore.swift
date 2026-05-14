@@ -82,7 +82,15 @@ class ClipboardStore: ObservableObject {
         self.backend = backend
 
         let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
-        maxItems = savedMaxItems > 0 ? min(savedMaxItems, 500) : 100
+        // Clamp to valid range [50, 100, 200, 500] to handle corrupted/migrated UserDefaults
+        // Note: didSet is NOT called during init, so we must write to UserDefaults directly
+        let validMaxItems = [50, 100, 200, 500]
+        if validMaxItems.contains(savedMaxItems) {
+            maxItems = savedMaxItems
+        } else {
+            maxItems = 100
+            UserDefaults.standard.set(100, forKey: maxItemsKey)
+        }
 
         if UserDefaults.standard.object(forKey: sensitiveClearHoursKey) != nil {
             sensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
@@ -91,6 +99,14 @@ class ClipboardStore: ObservableObject {
         }
 
         excludedBundleIdsString = UserDefaults.standard.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
+
+        // Register notification observer AFTER all properties are initialized
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleImageMigrationCompleted(_:)),
+            name: Notification.Name("ImageStorageMigrationCompleted"),
+            object: nil
+        )
 
         loadItems()
         updateExcludedAppsOnMonitor()
@@ -125,6 +141,32 @@ class ClipboardStore: ObservableObject {
         cleanupTimer?.cancel()
         saveTimer?.cancel()
         flushSave()
+    }
+
+    /// Handles image migration completion — updates isEncrypted flags for migrated image items.
+    @objc private func handleImageMigrationCompleted(_ notification: Notification) {
+        guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }
+        let migratedSet = Set(migratedFilenames)
+
+        var needsSave = false
+        for (index, item) in items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
+            items[index] = ClipboardItem(
+                id: item.id,
+                content: item.content,
+                type: item.type,
+                createdAt: item.createdAt,
+                isPinned: item.isPinned,
+                isSensitive: item.isSensitive,
+                expiresAt: item.expiresAt,
+                isEncrypted: true,
+                contentHash: item.contentHash
+            )
+            needsSave = true
+        }
+
+        if needsSave {
+            flushSave()
+        }
     }
 
     /// Sync excluded bundle IDs from settings string to the clipboard monitor

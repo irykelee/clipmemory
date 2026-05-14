@@ -64,8 +64,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func sendFeedback() { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }
 
     private func setupClipboardMonitor() {
-        clipboardMonitor = ClipboardMonitor(); clipboardMonitor.delegate = ClipboardStore.shared
-        clipboardMonitor.startMonitoring(); ClipboardStore.shared.clipboardMonitor = clipboardMonitor
+        // Trigger ImageStorage migration before ClipboardStore loads items
+        _ = ImageStorage.shared
+        clipboardMonitor = ClipboardMonitor()
+        clipboardMonitor.delegate = ClipboardStore.shared
+        clipboardMonitor.startMonitoring()
+        ClipboardStore.shared.clipboardMonitor = clipboardMonitor
         ClipboardStore.shared.updateExcludedAppsOnMonitor()
     }
 
