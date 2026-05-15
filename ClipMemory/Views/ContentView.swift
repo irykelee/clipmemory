@@ -221,16 +221,16 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(id: "clear") {
                 Menu {
-                    Button(action: { pendingClearMode = .today }) { Label(L10n.clearToday, systemImage: "sunrise") }
-                    Button(action: { pendingClearMode = .yesterday }) { Label(L10n.clearYesterday, systemImage: "sun.haze") }
-                    Button(action: { pendingClearMode = .older }) { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") }
+                    Button(action: { pendingClearMode = .today }, label: { Label(L10n.clearToday, systemImage: "sunrise") })
+                    Button(action: { pendingClearMode = .yesterday }, label: { Label(L10n.clearYesterday, systemImage: "sun.haze") })
+                    Button(action: { pendingClearMode = .older }, label: { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") })
                     Divider()
-                    Button(role: .destructive, action: { pendingClearMode = .all }) { Label(L10n.headerClearHistory, systemImage: "trash") }
+                    Button(role: .destructive, action: { pendingClearMode = .all }, label: { Label(L10n.headerClearHistory, systemImage: "trash") })
                     Divider()
-                    Button(action: { store.unpinToday() }) { Label(L10n.unpinToday, systemImage: "star.slash") }
-                    Button(action: { store.unpinYesterday() }) { Label(L10n.unpinYesterday, systemImage: "star.slash") }
-                    Button(action: { store.unpinOlder() }) { Label(L10n.unpinOlder, systemImage: "star.slash") }
-                    Button(action: { store.unpinAll() }) { Label(L10n.unpinAll, systemImage: "star.slash") }
+                    Button(action: { store.unpinToday() }, label: { Label(L10n.unpinToday, systemImage: "star.slash") })
+                    Button(action: { store.unpinYesterday() }, label: { Label(L10n.unpinYesterday, systemImage: "star.slash") })
+                    Button(action: { store.unpinOlder() }, label: { Label(L10n.unpinOlder, systemImage: "star.slash") })
+                    Button(action: { store.unpinAll() }, label: { Label(L10n.unpinAll, systemImage: "star.slash") })
                 } label: {
                     Image(systemName: "trash")
                 }
@@ -316,14 +316,6 @@ struct ContentView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-            if !selectedItems.isEmpty {
-                HStack { Text(L10n.batchSelected(selectedItems.count)).font(.system(size: sz(12))).foregroundColor(.secondary); Spacer()
-                    Button(action: { store.togglePinItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(batchAllPinned ? L10n.actionUnpin : L10n.actionPin, systemImage: batchAllPinned ? "star.slash" : "star").font(.system(size: sz(12))) }.buttonStyle(.plain)
-                    Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(L10n.actionDelete, systemImage: "trash").font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.red)
-                    Button(action: { selectedItems.removeAll() }) { Text(L10n.buttonCancel).font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.secondary)
-                }.padding(.horizontal, 16).padding(.vertical, 8).background(sidebarBackground)
-                Color.clear.frame(height: 1)
-            }
             if displayedItems.isEmpty { emptyState } else {
                 List {
                     ForEach(groupedItemsWithIndex, id: \.group) { section in
@@ -356,6 +348,16 @@ struct ContentView: View {
                 }
                 .listStyle(.plain)
                 .layoutPriority(1)
+                .overlay(alignment: .top) {
+                    if !selectedItems.isEmpty {
+                        HStack { Text(L10n.batchSelected(selectedItems.count)).font(.system(size: sz(12))).foregroundColor(.secondary); Spacer()
+                            Button(action: { store.togglePinItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }, label: { Label(batchAllPinned ? L10n.actionUnpin : L10n.actionPin, systemImage: batchAllPinned ? "star.slash" : "star").font(.system(size: sz(12))) }).buttonStyle(.plain)
+                            Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }, label: { Label(L10n.actionDelete, systemImage: "trash").font(.system(size: sz(12))) }).buttonStyle(.plain).foregroundColor(.red)
+                            Button(action: { selectedItems.removeAll() }, label: { Text(L10n.buttonCancel).font(.system(size: sz(12))) }).buttonStyle(.plain).foregroundColor(.secondary)
+                        }.padding(.horizontal, 16).padding(.vertical, 8).background(.regularMaterial)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.15), value: selectedItems.isEmpty)
             }
         }
         .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) { Button(L10n.buttonCancel, role: .cancel) {}; Button(L10n.buttonDelete, role: .destructive) { if let item = itemToDelete { store.deleteItem(item) } } } message: { Text(L10n.alertDeleteMessage) }
@@ -457,7 +459,7 @@ struct ContentView: View {
             } header: { Text(L10n.settingsSectionHistory) }
             Section {
                 excludedAppsTags
-                Button(action: { showingAppPicker = true }) { Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle") }.buttonStyle(.link)
+                Button(action: { showingAppPicker = true }, label: { Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle") }).buttonStyle(.link)
             } header: { Text(L10n.settingsSectionExcludedApps) }
             Section {
                 Toggle(L10n.launchAtLogin, isOn: Binding(get: { SMAppService.mainApp.status == .enabled }, set: { v in
@@ -505,11 +507,11 @@ struct ContentView: View {
                         Button(action: {
                             let newIds = excludedIds.filter { $0 != app.bundleId }
                             store.excludedBundleIdsString = newIds.joined(separator: ",")
-                        }) {
+                        }, label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: sz(10)))
                                 .foregroundColor(.secondary)
-                        }
+                        })
                         .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 8)
@@ -790,7 +792,7 @@ struct ClipboardItemRow: View, Equatable {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Button(action: { onSelect?(!isSelected) }) { Image(systemName: isSelected ? "checkmark.circle.fill" : "circle").font(.system(size: iconSize)).foregroundColor(isSelected ? .accentColor : .secondary).frame(width: 22, height: 22) }.buttonStyle(.plain)
+            Button(action: { onSelect?(!isSelected) }, label: { Image(systemName: isSelected ? "checkmark.circle.fill" : "circle").font(.system(size: iconSize)).foregroundColor(isSelected ? .accentColor : .secondary).frame(width: 22, height: 22) }).buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .top) {
                     if item.type == .image {
@@ -821,15 +823,16 @@ struct ClipboardItemRow: View, Equatable {
                 .help(L10n.tooltipPin)
                 HStack(spacing: 8) { Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) } }
             }
+            .contentShape(Rectangle())
+            .gesture(ExclusiveGesture(TapGesture(count: 2).onEnded { onPin() }, TapGesture().onEnded { onCopyWithFeedback?() }))
             HStack(spacing: 6) {
                 Button(action: onPin) { Image(systemName: item.isPinned ? "star.fill" : "star").font(.system(size: iconSize)).foregroundColor(item.isPinned ? .orange : .secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
                 Button(action: onDelete) { Image(systemName: "trash").font(.system(size: iconSize)).foregroundColor(.secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(L10n.tooltipDelete)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle())
-        .gesture(ExclusiveGesture(TapGesture(count: 2).onEnded { onPin() }, TapGesture().onEnded { onCopyWithFeedback?() }))
         .onHover { isHovered = $0 }
-        .contextMenu { Button(action: { onCopyWithFeedback?() }) { Label(L10n.actionCopy, systemImage: "doc.on.doc") }; if item.isSensitive { Button(action: onToggleReveal) { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") } }; Button(action: onPin) { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }; Divider(); Button(role: .destructive, action: onDelete) { Label(L10n.actionDelete, systemImage: "trash") } }
+        .contextMenu { Button(action: { onCopyWithFeedback?() }, label: { Label(L10n.actionCopy, systemImage: "doc.on.doc") }); if item.isSensitive { Button(action: onToggleReveal, label: { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") }) }; Button(action: onPin, label: { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }); Divider(); Button(role: .destructive, action: onDelete, label: { Label(L10n.actionDelete, systemImage: "trash") }) }
         .task(id: item.id) {
             if loadedContent != nil { return }
             let result = await Task.detached(priority: .utility) {

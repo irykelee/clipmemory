@@ -180,3 +180,8 @@
 "welcome.step5.desc" = "0.4秒長押しで機密内容の表示、全文表示、画像の拡大ができます。";
 "welcome.step6.title" = "履歴の管理";
 "welcome.step6.desc" = "今日、昨日、それ以前のグループごとに履歴のクリアやピン解除ができます。";
+
+"unpin.today" = "今日のピン留め解除";
+"unpin.yesterday" = "昨日のピン留め解除";
+"unpin.older" = "それ以前のピン留め解除";
+"unpin.all" = "すべてピン留め解除";

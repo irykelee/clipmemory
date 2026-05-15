@@ -180,3 +180,8 @@
 "welcome.step5.desc" = "0.4초 길게 누르면 민감한 내용 보기, 전체 텍스트 보기, 이미지 확대.";
 "welcome.step6.title" = "기록 관리";
 "welcome.step6.desc" = "오늘, 어제, 이전 그룹별로 기록 삭제 또는 고정 해제.";
+
+"unpin.today" = "오늘 고정 해제";
+"unpin.yesterday" = "어제 고정 해제";
+"unpin.older" = "이전 고정 해제";
+"unpin.all" = "전체 고정 해제";

@@ -181,3 +181,8 @@
 "welcome.step5.desc" = "Mantenga 0.4s para revelar contenido sensible, ver texto completo o ampliar imágenes.";
 "welcome.step6.title" = "Gestionar historial";
 "welcome.step6.desc" = "Limpiar o desfijar por grupo: Hoy, Ayer, Anterior.";
+
+"unpin.today" = "Desfijar hoy";
+"unpin.yesterday" = "Desfijar ayer";
+"unpin.older" = "Desfijar anterior";
+"unpin.all" = "Desfijar todo";

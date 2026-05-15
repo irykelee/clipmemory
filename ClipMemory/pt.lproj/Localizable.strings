@@ -180,3 +180,8 @@
 "welcome.step5.desc" = "Segure 0.4s para revelar conteúdo sensível, ver texto completo ou ampliar imagens.";
 "welcome.step6.title" = "Gerenciar histórico";
 "welcome.step6.desc" = "Limpar ou desfixar por grupo: Hoje, Ontem, Anterior.";
+
+"unpin.today" = "Desfixar hoje";
+"unpin.yesterday" = "Desfixar ontem";
+"unpin.older" = "Desfixar anterior";
+"unpin.all" = "Desfixar tudo";

@@ -179,3 +179,8 @@
 "welcome.step5.desc" = "按住 0.4 秒可揭示敏感内容、查看全文或放大图片。";
 "welcome.step6.title" = "管理历史";
 "welcome.step6.desc" = "按时间段清理或取消收藏：今天、昨天、更早。";
+
+"unpin.today" = "取消今天的收藏";
+"unpin.yesterday" = "取消昨天的收藏";
+"unpin.older" = "取消更早的收藏";
+"unpin.all" = "取消全部收藏";

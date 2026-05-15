@@ -180,3 +180,8 @@
 "welcome.step5.desc" = "Hold 0.4s to reveal sensitive content, view full text, or enlarge images.";
 "welcome.step6.title" = "Manage History";
 "welcome.step6.desc" = "Clear or unpin items by time group: Today, Yesterday, Older.";
+
+"unpin.today" = "Unpin Today";
+"unpin.yesterday" = "Unpin Yesterday";
+"unpin.older" = "Unpin Older";
+"unpin.all" = "Unpin All";
