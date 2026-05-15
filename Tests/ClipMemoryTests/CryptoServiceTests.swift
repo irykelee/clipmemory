@@ -13,7 +13,7 @@ final class CryptoServiceTests: XCTestCase {
             "",
             "Multi\nline\ncontent",
             String(repeating: "a", count: 1000),
-            "Special chars: !@#$%^&*()_+-=[]{}|;':\",./<>?",
+            "Special chars: !@#$%^&*()_+-=[]{}|;':\",./<>?"
         ]
 
         for original in plaintexts {
@@ -50,7 +50,7 @@ final class CryptoServiceTests: XCTestCase {
         let corrupted = [
             "INVALID_BASE64!!!",
             Data([0x00, 0x01, 0x02]).base64EncodedString(),
-            "v2" + Data(repeating: 0, count: 20).base64EncodedString(),
+            "v2" + Data(repeating: 0, count: 20).base64EncodedString()
         ]
         for data in corrupted {
             let result = crypto.decrypt(data)

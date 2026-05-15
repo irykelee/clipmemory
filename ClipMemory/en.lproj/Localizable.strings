@@ -42,7 +42,7 @@
 
 /* Tooltips */
 "tooltip.unpin" = "Unpin this item";
-"tooltip.pin" = "Pin this item (won't be auto-cleared)";
+"tooltip.pin" = "Double-click to pin (won't be auto-cleared)";
 "tooltip.delete" = "Delete";
 "tooltip.clear.history" = "Clear history (pinned items preserved)";
 "tooltip.show.all" = "Show all clipboard history";

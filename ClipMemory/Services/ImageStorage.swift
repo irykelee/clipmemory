@@ -14,6 +14,7 @@ class ImageStorage {
     private let imageCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 100
+        cache.totalCostLimit = 100 * 1024 * 1024 // 100 MB memory cap
         return cache
     }()
 
@@ -141,7 +142,7 @@ class ImageStorage {
 
             // Encrypt image data before writing to disk (N2)
             guard let encryptedData = CryptoService.shared.encryptData(data) else {
-                self.logger.error("Failed to encrypt image data")
+                self.logger.error("Failed to encrypt image data — image not saved")
                 DispatchQueue.main.async { completion(nil) }
                 return
             }

@@ -89,7 +89,7 @@ final class ConcurrencyTests: XCTestCase {
             "com.example.app2",
             "com.example.app3",
             "com.passwordmanager",
-            "com.lastpass",
+            "com.lastpass"
         ]
 
         let queue = DispatchQueue(label: "test.excludedBundleIds", attributes: .concurrent)

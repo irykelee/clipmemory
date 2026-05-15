@@ -16,7 +16,7 @@ final class SensitiveDetectorTests: XCTestCase {
             "apikey: Bearer faketokenvaluestringfortest",
             "api-key: bearer fakejwttokenforexampletesting",
             "secret: extremelylongsecretvaluethatexceeds20chars",
-            "token: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+            "token: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
         ]
         for text in matching {
             let item = makeItem(content: text)
@@ -28,7 +28,7 @@ final class SensitiveDetectorTests: XCTestCase {
             "My password is not in the text",
             "api documentation",
             "Authentication required",
-            "Enter your username",
+            "Enter your username"
         ]
         for text in nonMatching {
             let item = makeItem(content: text)
@@ -41,7 +41,7 @@ final class SensitiveDetectorTests: XCTestCase {
             "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAL...",
             "-----BEGIN EC PRIVATE KEY-----\nMHQCAQEE...",
             "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
-            "-----BEGIN PRIVATE KEY-----\nMIIEv...",
+            "-----BEGIN PRIVATE KEY-----\nMIIEv..."
         ]
         for text in matching {
             let item = makeItem(content: text)
@@ -55,7 +55,7 @@ final class SensitiveDetectorTests: XCTestCase {
         // Should match AWS access key format (AKIA prefix + 16 uppercase alphanumeric chars)
         let awsKeys = [
             "AKIA0000000000000000",
-            "AKIAIOSFODNN7EXAMPLE",
+            "AKIAIOSFODNN7EXAMPLE"
         ]
         for key in awsKeys {
             let item = makeItem(content: "AWS_ACCESS_KEY=\(key)")
@@ -68,7 +68,7 @@ final class SensitiveDetectorTests: XCTestCase {
         // Test with clearly fake values that won't trigger secret scanning
         let tokens = [
             "ghp_000000000000000000000000000000000000",
-            "github_pat_0000000000000000000000000000000000000000",
+            "github_pat_0000000000000000000000000000000000000000"
         ]
         for token in tokens {
             let item = makeItem(content: token)
@@ -79,7 +79,7 @@ final class SensitiveDetectorTests: XCTestCase {
     func testJWTPatterns() {
         // JWT format: eyJ...base64...base64...signature
         let tokens = [
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
         ]
         for token in tokens {
             let item = makeItem(content: token)
@@ -100,7 +100,7 @@ final class SensitiveDetectorTests: XCTestCase {
         // 18-digit Chinese ID: region(6) + year(4) + month(2) + day(2) + seq(3) + checksum(1)
         let validIDs = [
             "110101199003074517",
-            "31011219850101231X",
+            "31011219850101231X"
         ]
         for id in validIDs {
             let item = makeItem(content: "ID: \(id)")
@@ -109,7 +109,7 @@ final class SensitiveDetectorTests: XCTestCase {
 
         // 15-digit Chinese ID: region(6) + birthdate(6) + seq(3)
         let valid15 = [
-            "110101930101123",
+            "110101930101123"
         ]
         for id in valid15 {
             let item = makeItem(content: "ID: \(id)")
@@ -120,7 +120,7 @@ final class SensitiveDetectorTests: XCTestCase {
     func testChineseIDCardNegative() {
         let invalid = [
             "123456789012345678",
-            "000000000000000000",
+            "000000000000000000"
         ]
         for id in invalid {
             let item = makeItem(content: "code: \(id)")
@@ -133,7 +133,7 @@ final class SensitiveDetectorTests: XCTestCase {
             "4532015112830366",
             "5425233430109903",
             "378282246310005",
-            "6011111111111117",
+            "6011111111111117"
         ]
         for card in cards {
             let item = makeItem(content: "card: \(card)")
@@ -144,7 +144,7 @@ final class SensitiveDetectorTests: XCTestCase {
     func testUSSSNPatterns() {
         let ssns = [
             "123-45-6789",
-            "078-05-1120",
+            "078-05-1120"
         ]
         for ssn in ssns {
             let item = makeItem(content: "SSN: \(ssn)")
@@ -156,7 +156,7 @@ final class SensitiveDetectorTests: XCTestCase {
         let invalid = [
             "9-00-0000",
             "000-00-0000",
-            "123-456-789",
+            "123-456-789"
         ]
         for ssn in invalid {
             let item = makeItem(content: "code: \(ssn)")
@@ -173,7 +173,7 @@ final class SensitiveDetectorTests: XCTestCase {
             "Meeting at 3pm tomorrow",
             "password123 is not the real password",
             "My API documentation link: api.example.com",
-            "The token expires in 24 hours",
+            "The token expires in 24 hours"
         ]
         for text in safe {
             let item = makeItem(content: text)

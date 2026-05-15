@@ -42,7 +42,7 @@
 
 /* Tooltips */
 "tooltip.unpin" = "고정 해제";
-"tooltip.pin" = "고정 (자동 삭제되지 않음)";
+"tooltip.pin" = "더블 클릭으로 고정 (자동 삭제되지 않음)";
 "tooltip.delete" = "삭제";
 "tooltip.clear.history" = "기록 비우기 (고정된 항목 제외)";
 "tooltip.show.all" = "전체 클립보드 기록 보기";

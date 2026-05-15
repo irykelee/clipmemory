@@ -42,12 +42,18 @@ class ClipboardStore: ObservableObject {
     var yesterdayCount: Int { groupCounts.yesterday }
     var olderCount: Int { groupCounts.older }
 
-    private var groupCounts: (today: Int, yesterday: Int, older: Int) {
+    private struct GroupCounts {
+        var today: Int
+        var yesterday: Int
+        var older: Int
+    }
+
+    private var groupCounts: GroupCounts {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
         guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday),
               let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else {
-            return (0, 0, 0)
+            return GroupCounts(today: 0, yesterday: 0, older: 0)
         }
         var today = 0, yesterday = 0, older = 0
         for item in items where !item.isPinned {
@@ -59,7 +65,7 @@ class ClipboardStore: ObservableObject {
                 older += 1
             }
         }
-        return (today, yesterday, older)
+        return GroupCounts(today: today, yesterday: yesterday, older: older)
     }
 
     private let maxItemsKey = "maxClipboardItems"
@@ -135,7 +141,6 @@ class ClipboardStore: ObservableObject {
     private var saveTimer: DispatchSourceTimer?
     private var needsSave = false
     private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
-
 
     deinit {
         cleanupTimer?.cancel()
