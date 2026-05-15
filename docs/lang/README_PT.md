@@ -109,7 +109,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 ## Instalação
 
 ```bash
-brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install --cask clipmemory
+brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install clipmemory
 ```
 
 Após instalar, o App está em `/Applications/ClipMemory.app`. Encontre o ícone 📋 na **barra de menu** (canto superior direito) para começar.
