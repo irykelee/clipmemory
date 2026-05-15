@@ -109,7 +109,7 @@
 ## インストール
 
 ```bash
-brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install --cask clipmemory
+brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install clipmemory
 ```
 
 インストール後、Appは `/Applications/ClipMemory.app` に配置されます。起動後、**画面右上のメニューバー**にある 📋 アイコンをクリックして使用開始。
