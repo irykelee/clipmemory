@@ -71,7 +71,7 @@ class ImageStorage {
             if isUnencryptedPNG {
                 logger.info("Migrating unencrypted image: \(filename)")
                 // Encrypt and save to new location
-                if let encryptedData = CryptoService.shared.encryptData(imageData) {
+                if let encryptedData = ServiceContainer.crypto.encryptData(imageData) {
                     let newPath = imagesDirectory.appendingPathComponent(filename)
                     do {
                         try encryptedData.write(to: newPath)
@@ -141,7 +141,7 @@ class ImageStorage {
             let fileURL = self.imagesDirectory.appendingPathComponent(filename)
 
             // Encrypt image data before writing to disk (N2)
-            guard let encryptedData = CryptoService.shared.encryptData(data) else {
+            guard let encryptedData = ServiceContainer.crypto.encryptData(data) else {
                 self.logger.error("Failed to encrypt image data — image not saved")
                 NotificationCenter.default.post(name: .encryptionFailed, object: nil)
                 DispatchQueue.main.async { completion(nil) }
@@ -164,14 +164,14 @@ class ImageStorage {
         guard let encryptedData = try? Data(contentsOf: fileURL) else { return nil }
 
         // Try new v2 format first
-        if let data = CryptoService.shared.decryptData(encryptedData) {
+        if let data = ServiceContainer.crypto.decryptData(encryptedData) {
             return data
         }
 
         // Try legacy format; if successful, re-encrypt and save with new format
         if let legacyData = try? legacyDecryptImage(encryptedData) {
             // Re-encrypt with new format and overwrite the file
-            if let newEncrypted = CryptoService.shared.encryptData(legacyData) {
+            if let newEncrypted = ServiceContainer.crypto.encryptData(legacyData) {
                 try? newEncrypted.write(to: fileURL)
             }
             return legacyData

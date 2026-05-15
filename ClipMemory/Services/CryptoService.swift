@@ -6,7 +6,7 @@ import os.log
 /// Encryption format versions:
 /// - v2 (current): "v2" prefix + AES-GCM sealed box (nonce + ciphertext + tag)
 /// - v1 (legacy): AES-CBC + HMAC-SHA256, no prefix, for backwards compatibility
-class CryptoService {
+class CryptoService: CryptoServiceProtocol {
     static let shared = CryptoService()
 
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")

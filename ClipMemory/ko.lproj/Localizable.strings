@@ -185,3 +185,7 @@
 "unpin.yesterday" = "어제 고정 해제";
 "unpin.older" = "이전 고정 해제";
 "unpin.all" = "전체 고정 해제";
+"tips.title" = "팁 및 단축키";
+"tips.actions" = "기본 작업";
+"tips.keyboard" = "키보드 조작";
+"settings.hotkey.reset" = "초기화";

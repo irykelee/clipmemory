@@ -54,6 +54,7 @@ struct L10n {
     static var buttonCancel: String { string("button.cancel") }
     static var buttonDelete: String { string("button.delete") }
     static var buttonConfirm: String { string("button.confirm") }
+    static var buttonClose: String { string("button.close") }
     static var buttonDone: String { string("button.done") }
 
     static var headerClearHistory: String { string("header.clear.history") }
@@ -110,6 +111,7 @@ struct L10n {
     static var settingsSensitiveHint: String { string("settings.sensitive.hint") }
     static var settingsHotkeyChange: String { string("settings.hotkey.change") }
     static var settingsHotkeyRecording: String { string("settings.hotkey.recording") }
+    static var settingsHotkeyReset: String { string("settings.hotkey.reset") }
     static var settingsExcludedAppsPlaceholder: String { string("settings.excluded.apps.placeholder") }
     static var settingsExcludedAppsLabel: String { string("settings.excluded.apps.label") }
     static var settingsExcludedAppsHint: String { string("settings.excluded.apps.hint") }
@@ -149,6 +151,12 @@ struct L10n {
     static var sendFeedback: String { string("app.send.feedback") }
     static var viewWelcomeGuide: String { string("app.view.welcome.guide") }
     static var alertEncryptFailed: String { string("alert.encrypt.failed") }
+
+    // MARK: - Trim Alert
+    static var alertTrimTitle: String { string("alert.trim.title") }
+    static func alertTrimMessage(_ current: Int, _ max: Int) -> String { string("alert.trim.message", current, max) }
+    static var alertTrimConfirm: String { string("alert.trim.confirm") }
+    static var alertTrimCancel: String { string("alert.trim.cancel") }
 
     // MARK: - Type Filter
     static var filterAll: String { string("filter.all") }
@@ -206,4 +214,9 @@ struct L10n {
     static func quickbarRecent(_ count: Int) -> String { string("quickbar.recent", count) }
     static var quickbarNoResults: String { string("quickbar.no.results") }
     static var quickbarOpenFull: String { string("quickbar.open.full") }
+
+    // MARK: - Tips
+    static var tipsTitle: String { string("tips.title") }
+    static var tipsActions: String { string("tips.actions") }
+    static var tipsKeyboard: String { string("tips.keyboard") }
 }

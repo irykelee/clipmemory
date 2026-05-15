@@ -303,4 +303,203 @@ final class IntegrationTests: XCTestCase {
 
         XCTAssertEqual(store2.items.count, 1, "Restarted store should still deduplicate correctly")
     }
+
+    // MARK: - G.4 Unpin operations
+
+    func testUnpinAllRemovesAllPins() {
+        let item1 = ClipboardItem(content: "A", type: .text, isPinned: true)
+        let item2 = ClipboardItem(content: "B", type: .text, isPinned: true)
+        let item3 = ClipboardItem(content: "C", type: .text, isPinned: false)
+        store.addItem(item1); store.addItem(item2); store.addItem(item3)
+        store.flushPendingSaves()
+        XCTAssertEqual(store.pinnedItems.count, 2)
+
+        store.unpinAll()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.pinnedItems.count, 0)
+        XCTAssertEqual(store.items.count, 3)
+    }
+
+    func testUnpinTodayOnlyAffectsTodayItems() throws {
+        let cal = Calendar.current
+        let now = Date()
+        let yesterday = try XCTUnwrap(cal.date(byAdding: .day, value: -1, to: now))
+        let todayItem = ClipboardItem(content: "Today pinned", type: .text, createdAt: now, isPinned: true)
+        let yesterdayItem = ClipboardItem(content: "Yesterday pinned", type: .text, createdAt: yesterday, isPinned: true)
+        store.addItem(todayItem); store.addItem(yesterdayItem)
+        store.flushPendingSaves()
+        XCTAssertEqual(store.pinnedItems.count, 2)
+
+        store.unpinToday()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.pinnedItems.count, 1)
+    }
+
+    func testUnpinYesterdayOnlyAffectsYesterdayItems() throws {
+        let cal = Calendar.current
+        let now = Date()
+        let yesterday = try XCTUnwrap(cal.date(byAdding: .day, value: -1, to: now))
+        let todayItem = ClipboardItem(content: "Today", type: .text, createdAt: now, isPinned: true)
+        let yesterdayItem = ClipboardItem(content: "Yesterday", type: .text, createdAt: yesterday, isPinned: true)
+        store.addItem(todayItem); store.addItem(yesterdayItem)
+        store.flushPendingSaves()
+
+        store.unpinYesterday()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.pinnedItems.count, 1)
+    }
+
+    func testUnpinOlderOnlyAffectsOlderItems() throws {
+        let cal = Calendar.current
+        let now = Date()
+        let twoDaysAgo = try XCTUnwrap(cal.date(byAdding: .day, value: -2, to: now))
+        let yesterday = try XCTUnwrap(cal.date(byAdding: .day, value: -1, to: now))
+        let olderItem = ClipboardItem(content: "Older", type: .text, createdAt: twoDaysAgo, isPinned: true)
+        let yesterdayItem = ClipboardItem(content: "Yesterday", type: .text, createdAt: yesterday, isPinned: true)
+        store.addItem(olderItem); store.addItem(yesterdayItem)
+        store.flushPendingSaves()
+
+        store.unpinOlder()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.pinnedItems.count, 1)
+    }
+
+    func testUnpinWithNoPinnedItemsDoesNothing() {
+        let item = ClipboardItem(content: "No pin", type: .text, isPinned: false)
+        store.addItem(item)
+        store.flushPendingSaves()
+
+        store.unpinAll()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.pinnedItems.count, 0)
+    }
+
+    // MARK: - G.5 Clear group operations
+
+    func testClearTodayRemovesNonPinnedTodayItems() throws {
+        let cal = Calendar.current
+        let now = Date()
+        let yesterday = try XCTUnwrap(cal.date(byAdding: .day, value: -1, to: now))
+        let todayItem = ClipboardItem(content: "Today", type: .text, createdAt: now)
+        let yesterdayItem = ClipboardItem(content: "Yesterday", type: .text, createdAt: yesterday)
+        store.addItem(todayItem); store.addItem(yesterdayItem)
+        store.flushPendingSaves()
+
+        store.clearToday()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.items.count, 1)
+        let d = store.getDecryptedContent(store.items[0])
+        XCTAssertEqual(d, "Yesterday")
+    }
+
+    func testClearYesterdayRemovesNonPinnedYesterdayItems() throws {
+        let cal = Calendar.current
+        let now = Date()
+        let yesterday = try XCTUnwrap(cal.date(byAdding: .day, value: -1, to: now))
+        let todayItem = ClipboardItem(content: "Today", type: .text, createdAt: now)
+        let yesterdayItem = ClipboardItem(content: "Yesterday", type: .text, createdAt: yesterday)
+        store.addItem(todayItem); store.addItem(yesterdayItem)
+        store.flushPendingSaves()
+
+        store.clearYesterday()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.items.count, 1)
+        let d = store.getDecryptedContent(store.items[0])
+        XCTAssertEqual(d, "Today")
+    }
+
+    func testClearOlderRemovesNonPinnedOlderItems() throws {
+        let cal = Calendar.current
+        let now = Date()
+        let twoDaysAgo = try XCTUnwrap(cal.date(byAdding: .day, value: -2, to: now))
+        let olderItem = ClipboardItem(content: "Old", type: .text, createdAt: twoDaysAgo)
+        let yesterdayItem = ClipboardItem(content: "Recent", type: .text, createdAt: now)
+        store.addItem(olderItem); store.addItem(yesterdayItem)
+        store.flushPendingSaves()
+
+        store.clearOlder()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.items.count, 1)
+        let d = store.getDecryptedContent(store.items[0])
+        XCTAssertEqual(d, "Recent")
+    }
+
+    func testClearGroupRespectsPinnedItems() throws {
+        let cal = Calendar.current
+        let now = Date()
+        let pinnedToday = ClipboardItem(content: "Pinned", type: .text, createdAt: now, isPinned: true)
+        let normalToday = ClipboardItem(content: "Normal", type: .text, createdAt: now, isPinned: false)
+        store.addItem(pinnedToday); store.addItem(normalToday)
+        store.flushPendingSaves()
+
+        store.clearToday()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertTrue(store.items[0].isPinned)
+    }
+
+    func testClearGroupOnEmptyStoreDoesNotCrash() {
+        store.clearToday()
+        store.clearYesterday()
+        store.clearOlder()
+        XCTAssertEqual(store.items.count, 0)
+    }
+
+    // MARK: - G.6 Edge cases: unpin after clear, clear after unpin
+
+    func testUnpinThenClearRemovesExpectedItems() throws {
+        let cal = Calendar.current
+        let now = Date()
+        let yesterday = try XCTUnwrap(cal.date(byAdding: .day, value: -1, to: now))
+        let todayItem = ClipboardItem(content: "Today", type: .text, createdAt: now, isPinned: true)
+        let yesterdayItem = ClipboardItem(content: "Yesterday", type: .text, createdAt: yesterday)
+        store.addItem(todayItem); store.addItem(yesterdayItem)
+        store.flushPendingSaves()
+
+        store.unpinToday()
+        store.flushPendingSaves()
+        store.clearToday()
+        store.flushPendingSaves()
+        XCTAssertEqual(store.items.count, 1)
+        let d = store.getDecryptedContent(store.items[0])
+        XCTAssertEqual(d, "Yesterday")
+    }
+
+    // MARK: - G.7 Excluded bundle IDs parsing
+
+    func testDefaultExcludedAppsLoaded() {
+        let defaultStr = store.excludedBundleIdsString
+        XCTAssertTrue(defaultStr.contains("com.1password.1password"))
+        XCTAssertTrue(defaultStr.contains("com.bitwarden.desktop"))
+    }
+
+    func testExcludedAppsListCanBeParsed() {
+        let ids = store.excludedBundleIdsString
+            .split(separator: ",")
+            .map(String.init)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        XCTAssertFalse(ids.isEmpty)
+        XCTAssertTrue(ids.allSatisfy { !$0.isEmpty })
+    }
+
+    // MARK: - G.8 Language switching
+
+    func testLanguageManagerAvailableLanguages() {
+        let mgr = LanguageManager.shared
+        XCTAssertFalse(mgr.availableLanguages.isEmpty)
+        XCTAssertTrue(mgr.availableLanguages.contains { $0.code == "en" })
+        XCTAssertTrue(mgr.availableLanguages.contains { $0.code == "zh-Hans" })
+    }
+
+    func testLanguageManagerCanChangeAndRevert() {
+        let mgr = LanguageManager.shared
+        let original = mgr.selectedLanguage
+
+        mgr.selectedLanguage = "en"
+        XCTAssertEqual(mgr.selectedLanguage, "en")
+
+        mgr.selectedLanguage = original
+        XCTAssertEqual(mgr.selectedLanguage, original)
+    }
 }

@@ -204,4 +204,23 @@ final class ClipboardItemTests: XCTestCase {
         XCTAssertEqual(item1, item2, "Items with same id should be equal")
         XCTAssertNotEqual(item1, item3, "Items with different id should not be equal")
     }
+
+    // MARK: - Expiry boundary
+
+    func testItemExpiryBeforeDate() {
+        let past = Date(timeIntervalSinceNow: -3600)
+        let item = ClipboardItem(content: "Expired", type: .text, expiresAt: past)
+        XCTAssertTrue(item.isExpired)
+    }
+
+    func testItemExpiryAfterDate() {
+        let future = Date(timeIntervalSinceNow: 3600)
+        let item = ClipboardItem(content: "Valid", type: .text, expiresAt: future)
+        XCTAssertFalse(item.isExpired)
+    }
+
+    func testItemWithNoExpiryNeverExpires() {
+        let item = ClipboardItem(content: "Forever", type: .text)
+        XCTAssertFalse(item.isExpired)
+    }
 }

@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import os.log
 
-class ClipboardMonitor {
+class ClipboardMonitor: SensitiveDetectorProtocol {
     private var timer: DispatchSourceTimer?
     private let pasteboard = NSPasteboard.general
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
