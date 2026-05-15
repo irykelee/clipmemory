@@ -29,11 +29,11 @@ struct QuickBarView: View {
     private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
 
     private var quickBarBackground: AnyShapeStyle {
-        AnyShapeStyle(Material.thin)
+        AnyShapeStyle(Color.clear)
     }
 
     private var menuSectionBackground: AnyShapeStyle {
-        AnyShapeStyle(Material.thin)
+        AnyShapeStyle(Color.clear)
     }
 
     var displayedItems: [ClipboardItem] {
@@ -69,7 +69,7 @@ struct QuickBarView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(isSearchFocused ? Color.accentColor.opacity(0.1) : Color.primary.opacity(0.08))
+            .background(isSearchFocused ? Color.accentColor.opacity(0.1) : Color.clear)
             .cornerRadius(appCornerRadius)
 
             Color.clear.frame(height: 6)
@@ -132,7 +132,7 @@ struct QuickBarView: View {
 
             // macOS 26 menu style bottom section
             VStack(spacing: 0) {
-                MacOSMenuItem(icon: "rectangle.expand.vertical", label: L10n.quickbarOpenFull, sz: sz)
+                MacOSMenuItem(icon: "rectangle.expand.vertical", label: L10n.quickbarOpenFull, shortcut: "⌘⌃V", sz: sz)
                     .onTapGesture { showFullWindow = true }
                 Color.clear.frame(height: 1)
                 MacOSMenuItem(icon: "xmark.circle", label: L10n.quitApp, color: .secondary, shortcut: "⌘Q", sz: sz)
@@ -142,7 +142,6 @@ struct QuickBarView: View {
             .background(menuSectionBackground)
         }
         .background(quickBarBackground)
-        .cornerRadius(appCornerRadius)
         .frame(width: 340)
         .frame(maxHeight: 480)
         .background(
@@ -219,7 +218,6 @@ struct MacOSMenuItem: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
         .background(isHovered ? AnyShapeStyle(Material.ultraThinMaterial) : AnyShapeStyle(Color.clear))
-        .cornerRadius(appCornerRadius)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }

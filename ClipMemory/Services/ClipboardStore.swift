@@ -417,6 +417,35 @@ class ClipboardStore: ObservableObject {
         scheduleSave()
     }
 
+    func unpinToday() {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? Date()
+        unpinItems { $0.createdAt >= startOfToday && $0.createdAt < endOfToday }
+    }
+
+    func unpinYesterday() {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else { return }
+        unpinItems { $0.createdAt >= startOfYesterday && $0.createdAt < startOfToday }
+    }
+
+    func unpinOlder() {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        guard let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else { return }
+        unpinItems { $0.createdAt < startOfDayBeforeYesterday }
+    }
+
+    private func unpinItems(where predicate: (ClipboardItem) -> Bool) {
+        for i in items.indices where predicate(items[i]) && items[i].isPinned {
+            items[i].isPinned = false
+        }
+        updatePinnedItems()
+        scheduleSave()
+    }
+
     func clearSensitiveItems() {
         let toRemove = items.filter { $0.isSensitive && !$0.isPinned }
         for item in toRemove {

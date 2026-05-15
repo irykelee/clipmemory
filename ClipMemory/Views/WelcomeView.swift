@@ -4,6 +4,7 @@ struct WelcomeView: View {
     let hotKeyManager: HotKeyManager
     let onComplete: () -> Void
 
+    @ObservedObject private var languageManager = LanguageManager.shared
     @State private var hotKeyConflictDetected = false
     @State private var hotKeyStatus: HotKeyStatus = .checking
 
@@ -33,74 +34,62 @@ struct WelcomeView: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        VStack(spacing: 0) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    Spacer(minLength: 16)
 
-            Image(systemName: "doc.on.clipboard.fill")
-                .font(.system(size: 64))
-                .foregroundColor(.accentColor)
+                    Image(systemName: "doc.on.clipboard.fill")
+                        .font(.system(size: 64))
+                        .foregroundColor(.accentColor)
 
-            Text(L10n.welcomeTitle)
-                .font(.title)
-                .fontWeight(.bold)
+                    Text(L10n.welcomeTitle)
+                        .font(.title)
+                        .fontWeight(.bold)
 
-            Text(L10n.welcomeSubtitle)
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+                    Text(L10n.welcomeSubtitle)
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
 
-            VStack(alignment: .leading, spacing: 16) {
-                InstructionRow(
-                    number: "1",
-                    icon: "menubar.rectangle",
-                    title: L10n.welcomeStep1Title,
-                    description: L10n.welcomeStep1Desc
-                )
+                    VStack(alignment: .leading, spacing: 16) {
+                        InstructionRow(number: "1", icon: "menubar.rectangle", title: L10n.welcomeStep1Title, description: L10n.welcomeStep1Desc)
+                        InstructionRow(number: "2", icon: "keyboard", title: L10n.welcomeStep2Title, description: L10n.welcomeStep2Desc(hotKeyManager.config.displayString))
+                        InstructionRow(number: "3", icon: "star", title: L10n.welcomeStep3Title, description: L10n.welcomeStep3Desc)
+                        InstructionRow(number: "4", icon: "cursorarrow.click.2", title: L10n.welcomeStep4Title, description: L10n.welcomeStep4Desc)
+                        InstructionRow(number: "5", icon: "hand.tap", title: L10n.welcomeStep5Title, description: L10n.welcomeStep5Desc)
+                        InstructionRow(number: "6", icon: "trash", title: L10n.welcomeStep6Title, description: L10n.welcomeStep6Desc)
+                    }
+                    .padding()
+                    .background(Color(.textBackgroundColor))
+                    .cornerRadius(appCornerRadius)
 
-                InstructionRow(
-                    number: "2",
-                    icon: "keyboard",
-                    title: L10n.welcomeStep2Title,
-                    description: L10n.welcomeStep2Desc(hotKeyManager.config.displayString)
-                )
+                    if hotKeyConflictDetected {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text(L10n.welcomeHotkeyConflict)
+                                .font(.callout)
+                                .foregroundColor(.orange)
+                        }
+                        .padding()
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(appCornerRadius)
+                    }
 
-                InstructionRow(
-                    number: "3",
-                    icon: "star",
-                    title: L10n.welcomeStep3Title,
-                    description: L10n.welcomeStep3Desc
-                )
-            }
-            .padding()
-            .background(Color(.textBackgroundColor))
-            .cornerRadius(appCornerRadius)
-
-            if hotKeyConflictDetected {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    Text(L10n.welcomeHotkeyConflict)
-                        .font(.callout)
-                        .foregroundColor(.orange)
+                    Spacer(minLength: 16)
                 }
                 .padding()
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(appCornerRadius)
             }
 
-            Spacer()
+            Divider()
 
-            VStack(spacing: 12) {
-                getStartedButton
-            }
-            .padding(.horizontal)
+            getStartedButton
+                .padding()
         }
-        .padding()
-        .frame(width: 420, height: 560)
-        .onAppear {
-            checkHotKeyConflict()
-        }
+        .frame(width: 420)
+        .onAppear { checkHotKeyConflict() }
     }
 
     private func checkHotKeyConflict() {
