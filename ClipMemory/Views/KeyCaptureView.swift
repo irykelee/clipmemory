@@ -52,10 +52,11 @@ final class KeyCaptureNSView: NSView {
                 return event
             }
             switch event.keyCode {
-            case 126: self.onUp?(); return nil
-            case 125: self.onDown?(); return nil
-            case 36:  self.onReturn?(); return nil
-            case 53:  self.onEscape?(); return nil
+            // USB HID Usage IDs — matching values used in Carbon's HIToolbox constants
+            case 126: self.onUp?(); return nil      // UpArrow
+            case 125: self.onDown?(); return nil    // DownArrow
+            case 36:  self.onReturn?(); return nil   // Return
+            case 53:  self.onEscape?(); return nil  // Escape
             default:  return event
             }
         }

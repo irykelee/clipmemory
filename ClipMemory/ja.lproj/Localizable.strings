@@ -42,7 +42,7 @@
 
 /* Tooltips */
 "tooltip.unpin" = "ピン留め解除";
-"tooltip.pin" = "ピン留め（自動削除されない）";
+"tooltip.pin" = "ダブルクリックでピン留め（自動削除されない）";
 "tooltip.delete" = "削除";
 "tooltip.clear.history" = "履歴をクリア（ピン留めは保持）";
 "tooltip.show.all" = "すべての履歴を表示";

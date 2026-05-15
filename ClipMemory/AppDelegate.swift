@@ -75,7 +75,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupHotKey() {
         hotKeyManager = HotKeyManager()
-        hotKeyManager.setShowWindowHandler { [weak self] in DispatchQueue.main.async { self?.windowManager.showQuickBar() } }
+        hotKeyManager.setShowWindowHandler { [weak self] in DispatchQueue.main.async { self?.windowManager.showMainWindow() } }
         hotKeyManager.register()
     }
 

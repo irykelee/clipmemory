@@ -241,10 +241,8 @@ class ClipboardMonitor {
         }
 
         // Pre-compiled regex check — paired with their source patterns to avoid index misalignment
-        for (regex, _) in compiledSensitivePatterns {
-            if regex.firstMatch(in: content, options: [], range: range) != nil {
-                return true
-            }
+        for (regex, _) in compiledSensitivePatterns where regex.firstMatch(in: content, options: [], range: range) != nil {
+            return true
         }
 
         // R10: use pre-compiled sensitive value regexes

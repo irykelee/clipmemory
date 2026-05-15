@@ -42,7 +42,7 @@
 
 /* Tooltips */
 "tooltip.unpin" = "取消釘選";
-"tooltip.pin" = "釘選（不会被自动清理）";
+"tooltip.pin" = "雙擊釘選（不会被自动清理）";
 "tooltip.delete" = "刪除";
 "tooltip.clear.history" = "清除歷史（已釘選的保留）";
 "tooltip.show.all" = "顯示全部記錄";

@@ -42,7 +42,7 @@
 
 /* Tooltips */
 "tooltip.unpin" = "Desfixar";
-"tooltip.pin" = "Fixar (não é excluído automaticamente)";
+"tooltip.pin" = "Duplo clique para fixar (não é excluído automaticamente)";
 "tooltip.delete" = "Excluir";
 "tooltip.clear.history" = "Limpar histórico (fixados mantidos)";
 "tooltip.show.all" = "Mostrar todo o histórico";
