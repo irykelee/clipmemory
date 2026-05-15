@@ -22,8 +22,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showWelcomeWindow() {
-        let welcome = WelcomeView(hotKeyManager: hotKeyManager) { [weak self] in self?.welcomeWindow?.close() }
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 560), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        showWelcomeView { FirstLaunchManager.markLaunched() }
+    }
+
+    @objc func showWelcomeView(onComplete: (() -> Void)? = nil) {
+        let welcome = WelcomeView(hotKeyManager: hotKeyManager) { [weak self] in
+            self?.welcomeWindow?.close()
+            onComplete?()
+        }
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 740), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = L10n.appName; win.isReleasedWhenClosed = false; win.center()
         win.contentView = NSHostingView(rootView: welcome); win.makeKeyAndOrderFront(nil)
         welcomeWindow = win; NSApp.activate(ignoringOtherApps: true)
@@ -64,7 +71,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func sendFeedback() { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }
 
     private func setupClipboardMonitor() {
-        // Trigger ImageStorage migration before ClipboardStore loads items
+        // Initialize store first so image migration observer is registered
+        _ = ClipboardStore.shared
+        // Then trigger ImageStorage migration
         _ = ImageStorage.shared
         clipboardMonitor = ClipboardMonitor()
         clipboardMonitor.delegate = ClipboardStore.shared

@@ -134,12 +134,12 @@
 "alert.encrypt.failed" = "敏感資料加密失敗，內容未儲存。";
 
 /* Welcome View */
-"welcome.title" = "歡迎使用 ClipMemory";
+"welcome.title" = "歡迎使用 剪憶 ClipMemory";
 "welcome.subtitle" = "剪貼簿歷史，隨手可得";
 "welcome.step1.title" = "找到選單列圖示";
 "welcome.step1.desc" = "ClipMemory 運行在選單列，找到剪貼簿圖示即可使用。";
 "welcome.step2.title" = "按下快捷鍵";
-"welcome.step2.desc" = "隨時按下 %@ 開啟剪貼簿歷史。";
+"welcome.step2.desc" = "隨時按下 %@ 開啟主視窗，或點擊選單列圖示快速存取。";
 "welcome.step3.title" = "釘選重要內容";
 "welcome.step3.desc" = "點選星標釘選重要內容，永久保存，不會被自動清理。";
 "welcome.hotkey.conflict" = "檢測到快捷鍵衝突，請在設定中修改。";
@@ -170,3 +170,12 @@
 "tooltip.close" = "Close";
 "tooltip.minimize" = "Minimize";
 "tooltip.zoom" = "Zoom";
+
+"app.view.welcome.guide" = "查看入門指南";
+
+"welcome.step4.title" = "單擊與雙擊";
+"welcome.step4.desc" = "單擊複製內容，雙擊收藏重要條目。";
+"welcome.step5.title" = "長按預覽";
+"welcome.step5.desc" = "按住 0.4 秒可揭示敏感內容、查看全文或放大圖片。";
+"welcome.step6.title" = "管理歷史";
+"welcome.step6.desc" = "按時間段清理或取消收藏：今天、昨天、更早。";

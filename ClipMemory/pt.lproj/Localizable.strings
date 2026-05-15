@@ -140,7 +140,7 @@
 "welcome.step1.title" = "Encontre o ícone na barra de menus";
 "welcome.step1.desc" = "O ClipMemory vive na sua barra de menus. Procure o ícone do portapapéis.";
 "welcome.step2.title" = "Pressione o atalho";
-"welcome.step2.desc" = "Pressione %@ a qualquer momento para abrir o histórico.";
+"welcome.step2.desc" = "Pressione %@ para abrir a janela principal, ou clique no ícone da barra de menus para acesso rápido.";
 "welcome.step3.title" = "Fixar itens importantes";
 "welcome.step3.desc" = "Marque com estrela os itens que deseja manter para sempre.";
 "welcome.hotkey.conflict" = "Conflito de atalho detectado. Altere nas Configurações.";
@@ -171,3 +171,12 @@
 "tooltip.close" = "Close";
 "tooltip.minimize" = "Minimize";
 "tooltip.zoom" = "Zoom";
+
+"app.view.welcome.guide" = "Ver guia de boas-vindas";
+
+"welcome.step4.title" = "Toque e duplo toque";
+"welcome.step4.desc" = "Clique para copiar, duplo clique para fixar itens importantes.";
+"welcome.step5.title" = "Pré-visualização longa";
+"welcome.step5.desc" = "Segure 0.4s para revelar conteúdo sensível, ver texto completo ou ampliar imagens.";
+"welcome.step6.title" = "Gerenciar histórico";
+"welcome.step6.desc" = "Limpar ou desfixar por grupo: Hoje, Ontem, Anterior.";

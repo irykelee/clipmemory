@@ -147,6 +147,7 @@ struct L10n {
     static var error: String { string("app.error") }
     static func batchSelected(_ count: Int) -> String { string("batch.selected", count) }
     static var sendFeedback: String { string("app.send.feedback") }
+    static var viewWelcomeGuide: String { string("app.view.welcome.guide") }
     static var alertEncryptFailed: String { string("alert.encrypt.failed") }
 
     // MARK: - Type Filter
@@ -164,6 +165,12 @@ struct L10n {
     static func welcomeStep2Desc(_ hotkey: String) -> String { string("welcome.step2.desc", hotkey) }
     static var welcomeStep3Title: String { string("welcome.step3.title") }
     static var welcomeStep3Desc: String { string("welcome.step3.desc") }
+    static var welcomeStep4Title: String { string("welcome.step4.title") }
+    static var welcomeStep4Desc: String { string("welcome.step4.desc") }
+    static var welcomeStep5Title: String { string("welcome.step5.title") }
+    static var welcomeStep5Desc: String { string("welcome.step5.desc") }
+    static var welcomeStep6Title: String { string("welcome.step6.title") }
+    static var welcomeStep6Desc: String { string("welcome.step6.desc") }
     static var welcomeHotkeyConflict: String { string("welcome.hotkey.conflict") }
     static var welcomeGetStarted: String { string("welcome.get.started") }
 
@@ -189,6 +196,11 @@ struct L10n {
     static var clearYesterday: String { string("cleanup.yesterday") }
     static var clearOlder: String { string("cleanup.older") }
     static var clearAll: String { string("cleanup.all") }
+    static var unpinToday: String { string("unpin.today") }
+    static var unpinYesterday: String { string("unpin.yesterday") }
+    static var unpinOlder: String { string("unpin.older") }
+    static var unpinAll: String { string("unpin.all") }
+    static var unpinAllButton: String { string("action.unpin") }
 
     // MARK: - QuickBar
     static func quickbarRecent(_ count: Int) -> String { string("quickbar.recent", count) }

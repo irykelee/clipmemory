@@ -140,7 +140,7 @@
 "welcome.step1.title" = "メニューバーのアイコンを見つける";
 "welcome.step1.desc" = "ClipMemory はメニューバーに常住しています。クリップボードのアイコンを探してください。";
 "welcome.step2.title" = "ショートカットを押す";
-"welcome.step2.desc" = "%@ を押すとクリップボード履歴が開きます。";
+"welcome.step2.desc" = "%@ を押すとメインウィンドウが開きます。メニューバーのアイコンからもクイックアクセスできます。";
 "welcome.step3.title" = "重要な項目をピン留め";
 "welcome.step3.desc" = "星印で重要な項目をピン留めすると、自動的に削除されなくなります。";
 "welcome.hotkey.conflict" = "ショートカットの競合が検出されました。設定で変更してください。";
@@ -171,3 +171,12 @@
 "tooltip.close" = "Close";
 "tooltip.minimize" = "Minimize";
 "tooltip.zoom" = "Zoom";
+
+"app.view.welcome.guide" = "ウェルカムガイドを見る";
+
+"welcome.step4.title" = "タップ＆ダブルタップ";
+"welcome.step4.desc" = "クリックでコピー、ダブルタップでピン留め。";
+"welcome.step5.title" = "長押しプレビュー";
+"welcome.step5.desc" = "0.4秒長押しで機密内容の表示、全文表示、画像の拡大ができます。";
+"welcome.step6.title" = "履歴の管理";
+"welcome.step6.desc" = "今日、昨日、それ以前のグループごとに履歴のクリアやピン解除ができます。";

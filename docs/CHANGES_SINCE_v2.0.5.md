@@ -170,6 +170,37 @@ This document records all functional changes from commit `1d65652` to present.
 
 ---
 
+## Commit: `<current>` — Development Workflow
+
+### Files Changed
+- `.git/hooks/pre-commit` (new)
+- `.github/workflows/ci.yml` (new)
+- `docs/DEVELOPMENT.md` (new)
+
+### Pre-commit Hook
+- Blocks commit if build or test fails
+- Auto-runs `xcodegen generate` when `project.yml` modified
+- Build: `xcodebuild -scheme ClipMemory -configuration Debug build`
+- Test: `xcodebuild -scheme ClipMemory -configuration Debug test`
+
+### GitHub Actions CI
+- Triggers on push and pull_request to main
+- Jobs: build + test on macos-26
+
+### Extended Verification Scenarios
+| Scenario | What to Verify |
+|----------|----------------|
+| 设置 → 切语言 → 回到主界面 | 语言切换触发 view rebuild |
+| 窗口关闭 → QuickBar 重新打开 | 窗口重建 @State 丢失问题 |
+| 排除应用 sheet → 搜索 → 关闭 | Sheet 生命周期正常 |
+| 字体缩放 小/中/大 各切换 | `sz()` 缓存问题 |
+| 固定/取消固定 → 检查分组 | 固定项正确移动到 today |
+| 删除分组 → 确认 → 检查计数 | 分组删除后计数正确更新 |
+| 搜索防抖 → 快速输入 | 250ms 防抖后显示正确结果 |
+| 批量选择 → 批量删除 | 多选状态正确保留 |
+
+---
+
 ## ⚠️ KNOWN ISSUES
 
 ### Frozen/Lag Issue

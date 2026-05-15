@@ -141,7 +141,7 @@
 "welcome.step1.title" = "Encuentra el icono en la barra de menú";
 "welcome.step1.desc" = "ClipMemory vive en tu barra de menú. Busca el icono del portapapeles.";
 "welcome.step2.title" = "Presiona el atajo";
-"welcome.step2.desc" = "Presiona %@ en cualquier momento para abrir el historial.";
+"welcome.step2.desc" = "Presione %@ para abrir la ventana principal, o haga clic en el icono de la barra de menú para acceso rápido.";
 "welcome.step3.title" = "Fija los elementos importantes";
 "welcome.step3.desc" = "Marca con estrella los elementos que quieras guardar para siempre.";
 "welcome.hotkey.conflict" = "Conflicto de atajo detectado. Cámbialo en Preferencias.";
@@ -172,3 +172,12 @@
 "tooltip.close" = "Close";
 "tooltip.minimize" = "Minimize";
 "tooltip.zoom" = "Zoom";
+
+"app.view.welcome.guide" = "Ver guía de bienvenida";
+
+"welcome.step4.title" = "Tocar y doble toque";
+"welcome.step4.desc" = "Clic para copiar, doble clic para fijar elementos importantes.";
+"welcome.step5.title" = "Vista previa larga";
+"welcome.step5.desc" = "Mantenga 0.4s para revelar contenido sensible, ver texto completo o ampliar imágenes.";
+"welcome.step6.title" = "Gestionar historial";
+"welcome.step6.desc" = "Limpiar o desfijar por grupo: Hoy, Ayer, Anterior.";

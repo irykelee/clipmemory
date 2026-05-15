@@ -54,6 +54,8 @@ class WindowManager: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        mainWindow = nil
+        mainContentView = nil
         NSApp.setActivationPolicy(.accessory)
     }
 

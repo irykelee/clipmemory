@@ -140,7 +140,7 @@
 "welcome.step1.title" = "메뉴 바 아이콘 찾기";
 "welcome.step1.desc" = "ClipMemory은 메뉴 바에 상주합니다. 클립보드 아이콘을 찾으세요.";
 "welcome.step2.title" = "단축키 누르기";
-"welcome.step2.desc" = "%@를 누르면 클립보드 기록이 열립니다.";
+"welcome.step2.desc" = "%@를 누르면 메인 창이 열리거나 메뉴 바 아이콘을 클릭하여 빠르게 접근할 수 있습니다.";
 "welcome.step3.title" = "중요한 항목 고정";
 "welcome.step3.desc" = "중요한 항목에 별표를 지정하면 자동으로 삭제되지 않습니다.";
 "welcome.hotkey.conflict" = "단축키 충돌이 감지되었습니다. 설정에서 변경하세요.";
@@ -171,3 +171,12 @@
 "tooltip.close" = "Close";
 "tooltip.minimize" = "Minimize";
 "tooltip.zoom" = "Zoom";
+
+"app.view.welcome.guide" = "시작 가이드 보기";
+
+"welcome.step4.title" = "클릭 & 더블클릭";
+"welcome.step4.desc" = "클릭하여 복사, 더블클릭하여 고정.";
+"welcome.step5.title" = "길게 눌러 미리보기";
+"welcome.step5.desc" = "0.4초 길게 누르면 민감한 내용 보기, 전체 텍스트 보기, 이미지 확대.";
+"welcome.step6.title" = "기록 관리";
+"welcome.step6.desc" = "오늘, 어제, 이전 그룹별로 기록 삭제 또는 고정 해제.";
