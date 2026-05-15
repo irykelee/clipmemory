@@ -136,6 +136,7 @@ struct L10n {
 
     static var itemSensitive: String { string("item.sensitive") }
     static var itemImage: String { string("item.image") }
+    static var itemRichText: String { string("item.richText") }
     static var itemUnpinAll: String { string("item.unpin.all") }
 
     static func langName(_ code: String) -> String { string("lang.\(code)") }
@@ -157,6 +158,8 @@ struct L10n {
     static func alertTrimMessage(_ current: Int, _ max: Int) -> String { string("alert.trim.message", current, max) }
     static var alertTrimConfirm: String { string("alert.trim.confirm") }
     static var alertTrimCancel: String { string("alert.trim.cancel") }
+
+    static var filterRichText: String { string("filter.richtext") }
 
     // MARK: - Type Filter
     static var filterAll: String { string("filter.all") }

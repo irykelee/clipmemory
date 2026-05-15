@@ -514,22 +514,31 @@ class ClipboardStore: ObservableObject {
         // Prepare content first, then clear + write (prevents data loss if prepare fails)
         var preparedImage: NSImage?
         var preparedText: String?
+        var preparedRtfData: Data?
 
         switch item.type {
         case .image:
-            // Use cached image load for fast access on repeated copies
             preparedImage = ImageStorage.shared.loadImageObject(filename: item.content)
+        case .richText:
+            if let base64 = getDecryptedContent(item), let data = Data(base64Encoded: base64) {
+                preparedRtfData = data
+                preparedText = (try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil))?.string
+            }
         default:
             preparedText = getDecryptedContent(item)
         }
 
-        // Only clear and write if we have content ready
-        guard (preparedImage != nil) || (preparedText != nil) else { return }
+        guard (preparedImage != nil) || (preparedText != nil) || (preparedRtfData != nil) else { return }
 
         pasteboard.clearContents()
 
         if let image = preparedImage {
             pasteboard.writeObjects([image as NSImage])
+        } else if let rtfData = preparedRtfData {
+            pasteboard.setData(rtfData, forType: .rtf)
+            if let text = preparedText {
+                pasteboard.setString(text, forType: .string)
+            }
         } else if let text = preparedText {
             pasteboard.setString(text, forType: .string)
         }

@@ -189,3 +189,5 @@
 "tips.actions" = "기본 작업";
 "tips.keyboard" = "키보드 조작";
 "settings.hotkey.reset" = "초기화";
+"filter.richtext" = "서식 있는 텍스트";
+"item.richText" = "서식 있는 텍스트";

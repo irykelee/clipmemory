@@ -4,6 +4,7 @@ enum ClipboardItemType: String, Codable {
     case text
     case image
     case link
+    case richText
 }
 
 struct ClipboardItem: Identifiable, Codable, Equatable {
@@ -43,5 +44,15 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         // by not calling setObject (since nil cannot be stored), so repeated calls re-attempt.
         // This is acceptable since failed items are filtered out and won't be displayed.
         return ClipboardStore.shared.getDecryptedContent(self) == nil
+    }
+
+    /// Extracts plain text from RTF base64 content for preview purposes.
+    var plainTextFromRTFFallback: String {
+        guard type == .richText else { return "" }
+        guard let data = Data(base64Encoded: content),
+              let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {
+            return "Rich Text"
+        }
+        return attr.string
     }
 }

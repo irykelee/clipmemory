@@ -192,3 +192,5 @@
 "alert.trim.message" = "当前有 %d 条记录，但上限为 %d。裁剪多余记录？";
 "alert.trim.confirm" = "裁剪";
 "alert.trim.cancel" = "取消，去设置调整";
+"filter.richtext" = "富文本";
+"item.richText" = "富文本";

@@ -188,3 +188,5 @@
 "tips.actions" = "基本操作";
 "tips.keyboard" = "鍵盤操作";
 "settings.hotkey.reset" = "重置";
+"filter.richtext" = "富文本";
+"item.richText" = "富文本";

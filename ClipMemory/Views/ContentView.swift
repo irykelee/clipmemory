@@ -4,15 +4,15 @@ import Carbon.HIToolbox
 import ServiceManagement
 
 enum SidebarTab: String, CaseIterable {
-    case all, text, image, link, pinned, settings
+    case all, text, image, link, richText, pinned, settings
     var icon: String {
-        switch self { case .all: "tray.full"; case .text: "doc.text"; case .image: "photo"; case .link: "link"; case .pinned: "star"; case .settings: "gear" }
+        switch self { case .all: "tray.full"; case .text: "doc.text"; case .image: "photo"; case .link: "link"; case .richText: "doc.richtext"; case .pinned: "star"; case .settings: "gear" }
     }
     var label: String {
-        switch self { case .all: L10n.filterAll; case .text: L10n.filterText; case .image: L10n.filterImage; case .link: L10n.filterLink; case .pinned: L10n.headerShowPinned; case .settings: L10n.buttonSettings }
+        switch self { case .all: L10n.filterAll; case .text: L10n.filterText; case .image: L10n.filterImage; case .link: L10n.filterLink; case .richText: L10n.filterRichText; case .pinned: L10n.headerShowPinned; case .settings: L10n.buttonSettings }
     }
     var typeFilter: ClipboardItemType? {
-        switch self { case .text: .text; case .image: .image; case .link: .link; default: nil }
+        switch self { case .text: .text; case .image: .image; case .link: .link; case .richText: .richText; default: nil }
     }
 }
 
@@ -161,14 +161,12 @@ struct ContentView: View {
 
     private var tabCounts: [SidebarTab: Int] {
         var counts: [SidebarTab: Int] = [.all: store.items.count]
-        for item in store.items {
-            switch item.type {
-            case .text: counts[.text, default: 0] += 1
-            case .image: counts[.image, default: 0] += 1
-            case .link: counts[.link, default: 0] += 1
-            default: break
-            }
-        }
+        for item in store.items { switch item.type {
+        case .text: counts[.text, default: 0] += 1
+        case .image: counts[.image, default: 0] += 1
+        case .link: counts[.link, default: 0] += 1
+        case .richText: counts[.richText, default: 0] += 1
+        } }
         return counts
     }
 
@@ -298,7 +296,7 @@ struct ContentView: View {
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
             List(selection: $selectedTab) {
-                ForEach([SidebarTab.all, .text, .image, .link], id: \.self) { tab in
+                ForEach([SidebarTab.all, .text, .image, .link, .richText], id: \.self) { tab in
                     Label(tab.label, systemImage: tab.icon)
                         .badge(tabCounts[tab] ?? 0)
                         .tag(tab)
@@ -742,6 +740,7 @@ struct ClipboardItemRow: View, Equatable {
     @State private var imageLongPressing = false
     @State private var showFullContent = false
     @State private var _cachedHighlighted: [String: AttributedString] = [:]
+    @State private var loadedRichText: AttributedString?
 
     static func == (lhs: ClipboardItemRow, rhs: ClipboardItemRow) -> Bool {
         lhs.item.id == rhs.item.id &&
@@ -852,6 +851,27 @@ struct ClipboardItemRow: View, Equatable {
                         }
                         .animation(.easeIn(duration: 0.3), value: loadedImage)
                         .task(id: item.content) { if let img = ImageStorage.shared.loadImageObject(filename: item.content) { loadedImage = img } }
+                    } else if item.type == .richText {
+                        if item.isSensitive && !isRevealed {
+                            Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)
+                                .font(.system(size: fontScale * 13)).lineLimit(3)
+                                .overlay(PressableImage { pressed in longPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
+                        } else {
+                            Group {
+                                if let rt = loadedRichText {
+                                    Text(showFullContent ? rt : rt)
+                                        .lineLimit(showFullContent ? nil : 3)
+                                        .overlay(PressableImage { pressed in showFullContent = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
+                                        .transition(.opacity)
+                                } else {
+                                    Text(plainTextFallback)
+                                        .font(.system(size: fontScale * 12)).foregroundColor(.secondary)
+                                        .lineLimit(3)
+                                }
+                            }
+                            .animation(.easeIn(duration: 0.3), value: loadedRichText)
+                            .task(id: item.content) { await loadRichText() }
+                        }
                     } else if item.isSensitive && !isRevealed {
                         Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)
                             .font(.system(size: fontScale * 13)).lineLimit(3)
@@ -879,11 +899,37 @@ struct ClipboardItemRow: View, Equatable {
         .onHover { isHovered = $0 }
         .contextMenu { Button(action: { onCopyWithFeedback?() }, label: { Label(L10n.actionCopy, systemImage: "doc.on.doc") }); if item.isSensitive { Button(action: onToggleReveal, label: { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") }) }; Button(action: onPin, label: { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }); Divider(); Button(role: .destructive, action: onDelete, label: { Label(L10n.actionDelete, systemImage: "trash") }) }
         .task(id: item.id) {
+            guard item.type != .richText else { return }
             if loadedContent != nil { return }
             let result = await Task.detached(priority: .utility) {
                 ClipboardStore.shared.getDecryptedContent(item) ?? ""
             }.value
             loadedContent = result
+        }
+    }
+
+    private var plainTextFallback: String {
+        guard item.type == .richText else { return "" }
+        guard let base64 = ClipboardStore.shared.getDecryptedContent(item),
+              let rtfData = Data(base64Encoded: base64),
+              let nsAttr = try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {
+            return L10n.itemRichText
+        }
+        return nsAttr.string
+    }
+
+    private func loadRichText() async {
+        guard item.type == .richText else { return }
+        guard let base64 = ClipboardStore.shared.getDecryptedContent(item),
+              let rtfData = Data(base64Encoded: base64),
+              let nsAttr = try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {
+            return
+        }
+        let rt = AttributedString(nsAttr)
+        let plain = nsAttr.string
+        await MainActor.run {
+            loadedRichText = rt
+            loadedContent = plain
         }
     }
 }

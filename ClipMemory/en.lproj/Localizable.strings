@@ -193,3 +193,5 @@
 "alert.trim.message" = "You have %d items but the limit is %d. Trim extra items?";
 "alert.trim.confirm" = "Trim";
 "alert.trim.cancel" = "Cancel, adjust in settings";
+"filter.richtext" = "Rich Text";
+"item.richText" = "Rich Text";

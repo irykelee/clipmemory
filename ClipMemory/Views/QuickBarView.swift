@@ -272,6 +272,7 @@ struct QuickBarRow: View {
         case .text: return "doc.text"
         case .image: return "photo"
         case .link: return "link"
+        case .richText: return "doc.richtext"
         }
     }
 
@@ -291,6 +292,11 @@ struct QuickBarRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 if item.type == .image {
                     Text(L10n.itemImage)
+                        .font(.system(size: sz(12)))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                } else if item.type == .richText {
+                    Text(item.plainTextFromRTFFallback)
                         .font(.system(size: sz(12)))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
