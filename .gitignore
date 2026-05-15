@@ -17,3 +17,4 @@ Homebrew/*.tar.gz
 # Agent config files — local per-developer, not in repo
 CLAUDE.md
 AGENTS.md
+default.profraw
