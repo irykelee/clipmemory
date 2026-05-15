@@ -223,4 +223,33 @@ final class ClipboardItemTests: XCTestCase {
         let item = ClipboardItem(content: "Forever", type: .text)
         XCTAssertFalse(item.isExpired)
     }
+
+    // MARK: - Rich Text
+
+    func testRichTextTypeRoundTrip() throws {
+        let rtfData = try XCTUnwrap("{\\rtf1\\ansi Hello \\b World\\b0}".data(using: .utf8))
+        let nsAttr = try XCTUnwrap(NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil))
+        XCTAssertEqual(nsAttr.string, "Hello World")
+    }
+
+    func testRichTextItemPlainTextFallback() {
+        let rtf = "{\\rtf1\\ansi \\b Bold\\b0  text}"
+        let item = ClipboardItem(content: Data(rtf.utf8).base64EncodedString(), type: .richText)
+        let plain = item.plainTextFromRTFFallback
+        XCTAssertTrue(plain.contains("Bold"))
+        XCTAssertTrue(plain.contains("text"))
+    }
+
+    func testRichTextNotText() {
+        let item = ClipboardItem(content: "plain", type: .text)
+        XCTAssertTrue(item.plainTextFromRTFFallback.isEmpty)
+    }
+
+    func testRichTextEncodingRoundTrip() throws {
+        let originalRTF = "{\\rtf1\\ansi \\b Bold\\b0  text}"
+        let base64 = Data(originalRTF.utf8).base64EncodedString()
+        let decoded = try XCTUnwrap(Data(base64Encoded: base64))
+        let rtf = try XCTUnwrap(String(data: decoded, encoding: .utf8))
+        XCTAssertEqual(rtf, originalRTF)
+    }
 }

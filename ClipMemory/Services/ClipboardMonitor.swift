@@ -7,28 +7,41 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
     private let pasteboard = NSPasteboard.general
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
 
-    /// H9: Protects all mutable shared state (lastKnownSourceBundleId, excludedBundleIds,
-    /// skipNextCapture, lastChangeCount) from data races between main thread and timer queue.
-    private let stateLock = OSAllocatedUnfairLock()
+    /// H9: Protects all mutable shared state from data races between main thread and timer queue.
+    /// macOS 14+: OSAllocatedUnfairLock (modern, recommended). macOS 13: NSLock fallback.
+    private let _stateLock: Any = {
+        if #available(macOS 14, *) { return OSAllocatedUnfairLock<Void>() }
+        return NSLock()
+    }()
+
+    private func withLock<T>(_ block: () throws -> T) rethrows -> T {
+        if #available(macOS 14, *), let lock = _stateLock as? OSAllocatedUnfairLock<Void> {
+            return try lock.withLock(block)
+        }
+        let lock = _stateLock as! NSLock
+        lock.lock()
+        defer { lock.unlock() }
+        return try block()
+    }
 
     private var _lastChangeCount: Int = 0
     private var lastChangeCount: Int {
-        get { stateLock.withLock { _lastChangeCount } }
-        set { stateLock.withLock { _lastChangeCount = newValue } }
+        get { withLock { _lastChangeCount } }
+        set { withLock { _lastChangeCount = newValue } }
     }
 
     /// Set to true when ClipboardStore writes to pasteboard, so we skip re-capturing.
     private var _skipNextCapture: Bool = false
     var skipNextCapture: Bool {
-        get { stateLock.withLock { _skipNextCapture } }
-        set { stateLock.withLock { _skipNextCapture = newValue } }
+        get { withLock { _skipNextCapture } }
+        set { withLock { _skipNextCapture = newValue } }
     }
 
     /// Bundle identifiers of apps to exclude from clipboard monitoring (e.g. password managers)
     private var _excludedBundleIds: Set<String> = []
     var excludedBundleIds: Set<String> {
-        get { stateLock.withLock { _excludedBundleIds } }
-        set { stateLock.withLock { _excludedBundleIds = newValue } }
+        get { withLock { _excludedBundleIds } }
+        set { withLock { _excludedBundleIds = newValue } }
     }
 
     /// Delegate for accessing store configuration (breaks circular dependency)
@@ -37,8 +50,8 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
     /// Tracks the last known app that was frontmost before clipboard changed
     private var _lastKnownSourceBundleId: String?
     private var lastKnownSourceBundleId: String? {
-        get { stateLock.withLock { _lastKnownSourceBundleId } }
-        set { stateLock.withLock { _lastKnownSourceBundleId = newValue } }
+        get { withLock { _lastKnownSourceBundleId } }
+        set { withLock { _lastKnownSourceBundleId = newValue } }
     }
 
     /// Returns the bundle ID of the frontmost app, or nil if unavailable
@@ -173,7 +186,9 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         guard currentCount != lastChangeCount else { return }
         lastChangeCount = currentCount
 
-        if let content = pasteboard.string(forType: .string), !content.isEmpty {
+        if let rtfData = pasteboard.data(forType: .rtf), !rtfData.isEmpty {
+            processRichText(rtfData)
+        } else if let content = pasteboard.string(forType: .string), !content.isEmpty {
             let itemType = detectType(content)
             let isSensitive = detectSensitive(content)
             var expiresAt: Date?
@@ -221,6 +236,27 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
                 isSensitive: isSensitive,
                 expiresAt: expiresAt
             )
+            ClipboardStore.shared.addItem(item)
+        }
+    }
+
+    private func processRichText(_ rtfData: Data) {
+        let plaintext = (try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil))?.string ?? ""
+        let isSensitive = detectSensitive(plaintext)
+        var expiresAt: Date?
+        if isSensitive {
+            let hours = delegate?.sensitiveClearHoursForMonitor() ?? 0
+            if hours > 0 {
+                expiresAt = Date().addingTimeInterval(TimeInterval(hours * 3600))
+            }
+        }
+        let item = ClipboardItem(
+            content: rtfData.base64EncodedString(),
+            type: .richText,
+            isSensitive: isSensitive,
+            expiresAt: expiresAt
+        )
+        DispatchQueue.main.async {
             ClipboardStore.shared.addItem(item)
         }
     }

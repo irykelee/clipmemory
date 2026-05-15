@@ -190,3 +190,5 @@
 "tips.actions" = "Operaciones";
 "tips.keyboard" = "Teclado";
 "settings.hotkey.reset" = "Restablecer";
+"filter.richtext" = "Texto enriquecido";
+"item.richText" = "Texto enriquecido";

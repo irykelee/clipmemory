@@ -189,3 +189,5 @@
 "tips.actions" = "基本操作";
 "tips.keyboard" = "キーボード操作";
 "settings.hotkey.reset" = "リセット";
+"filter.richtext" = "リッチテキスト";
+"item.richText" = "リッチテキスト";
