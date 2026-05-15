@@ -134,12 +134,12 @@
 "alert.encrypt.failed" = "敏感数据加密失败，内容未保存。";
 
 /* Welcome View */
-"welcome.title" = "欢迎使用 ClipMemory";
+"welcome.title" = "欢迎使用 剪忆 ClipMemory";
 "welcome.subtitle" = "剪贴板历史，随手可得";
 "welcome.step1.title" = "找到菜单栏图标";
 "welcome.step1.desc" = "ClipMemory 运行在菜单栏，找到剪贴板图标即可使用。";
 "welcome.step2.title" = "按下快捷键";
-"welcome.step2.desc" = "随时按下 %@ 打开剪贴板历史。";
+"welcome.step2.desc" = "随时按下 %@ 打开主窗口，或点击菜单栏图标快速访问。";
 "welcome.step3.title" = "收藏重要内容";
 "welcome.step3.desc" = "点击星标收藏重要内容，永久保存，不会被自动清理。";
 "welcome.hotkey.conflict" = "检测到快捷键冲突，请在设置中修改。";
@@ -170,3 +170,17 @@
 "tooltip.close" = "Close";
 "tooltip.minimize" = "Minimize";
 "tooltip.zoom" = "Zoom";
+
+"app.view.welcome.guide" = "查看入门指南";
+
+"welcome.step4.title" = "单击与双击";
+"welcome.step4.desc" = "单击复制内容，双击收藏重要条目。";
+"welcome.step5.title" = "长按预览";
+"welcome.step5.desc" = "按住 0.4 秒可揭示敏感内容、查看全文或放大图片。";
+"welcome.step6.title" = "管理历史";
+"welcome.step6.desc" = "按时间段清理或取消收藏：今天、昨天、更早。";
+
+"unpin.today" = "取消今天的收藏";
+"unpin.yesterday" = "取消昨天的收藏";
+"unpin.older" = "取消更早的收藏";
+"unpin.all" = "取消全部收藏";

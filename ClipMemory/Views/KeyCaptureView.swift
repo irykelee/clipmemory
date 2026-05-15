@@ -51,10 +51,11 @@ final class KeyCaptureNSView: NSView {
             if let fr = NSApp.keyWindow?.firstResponder as? NSTextView, fr.hasMarkedText() {
                 return event
             }
+            let isTextInput = (NSApp.keyWindow?.firstResponder as? NSText)?.isEditable == true
             switch event.keyCode {
             // USB HID Usage IDs — matching values used in Carbon's HIToolbox constants
-            case 126: self.onUp?(); return nil      // UpArrow
-            case 125: self.onDown?(); return nil    // DownArrow
+            case 126: if isTextInput { return event }; self.onUp?(); return nil      // UpArrow
+            case 125: if isTextInput { return event }; self.onDown?(); return nil    // DownArrow
             case 36:  self.onReturn?(); return nil   // Return
             case 53:  self.onEscape?(); return nil  // Escape
             default:  return event

@@ -18,23 +18,25 @@ enum SidebarTab: String, CaseIterable {
 
 let appCornerRadius: CGFloat = 8
 
-private var relativeDateFormatters: [String: RelativeDateTimeFormatter] = [:]
+private let relativeDateFormatterCache = NSCache<NSString, RelativeDateTimeFormatter>()
 private func cachedRelativeDateFormatter(for languageCode: String) -> RelativeDateTimeFormatter {
-    if let cached = relativeDateFormatters[languageCode] { return cached }
+    let key = languageCode as NSString
+    if let cached = relativeDateFormatterCache.object(forKey: key) { return cached }
     let f = RelativeDateTimeFormatter()
     f.unitsStyle = .abbreviated
     f.locale = Locale(identifier: languageCode)
-    relativeDateFormatters[languageCode] = f
+    relativeDateFormatterCache.setObject(f, forKey: key)
     return f
 }
-private var absoluteDateFormatters: [String: DateFormatter] = [:]
+private let absoluteDateFormatterCache = NSCache<NSString, DateFormatter>()
 private func cachedAbsoluteDateFormatter(for languageCode: String) -> DateFormatter {
-    if let cached = absoluteDateFormatters[languageCode] { return cached }
+    let key = languageCode as NSString
+    if let cached = absoluteDateFormatterCache.object(forKey: key) { return cached }
     let f = DateFormatter()
     f.dateStyle = .medium
     f.timeStyle = .short
     f.locale = Locale(identifier: languageCode)
-    absoluteDateFormatters[languageCode] = f
+    absoluteDateFormatterCache.setObject(f, forKey: key)
     return f
 }
 
@@ -134,9 +136,7 @@ struct ContentView: View {
         var dict: [TimeGroup: [ClipboardItem]] = [:]
         for item in cachedDisplayedItems {
             let g: TimeGroup
-            if item.createdAt >= startOfToday { g = .today }
-            else if item.createdAt >= startOfYesterday { g = .yesterday }
-            else { g = .older }
+            if item.createdAt >= startOfToday { g = .today } else if item.createdAt >= startOfYesterday { g = .yesterday } else { g = .older }
             dict[g, default: []].append(item)
         }
         cachedGroupedItems = TimeGroup.allCases.compactMap { guard let items = dict[$0], !items.isEmpty else { return nil }; return ($0, items) }
@@ -157,12 +157,12 @@ struct ContentView: View {
     var displayedItems: [ClipboardItem] { cachedDisplayedItems }
 
     private var tabCounts: [SidebarTab: Int] {
-        var counts: [SidebarTab: Int] = [.all: store.items.count, .text: 0, .image: 0, .link: 0]
+        var counts: [SidebarTab: Int] = [.all: store.items.count]
         for item in store.items {
             switch item.type {
-            case .text: counts[.text]! += 1
-            case .image: counts[.image]! += 1
-            case .link: counts[.link]! += 1
+            case .text: counts[.text, default: 0] += 1
+            case .image: counts[.image, default: 0] += 1
+            case .link: counts[.link, default: 0] += 1
             default: break
             }
         }
@@ -211,56 +211,46 @@ struct ContentView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 190, ideal: 210)
         } detail: {
-            Group {
-                if selectedTab == .settings {
-                    settingsDetail
-                } else {
-                    mainContent
-                }
-            }
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .frame(height: 110)
-                    .mask(
-                        VStack(spacing: 0) {
-                            Color.white.frame(height: 52)
-                                .offset(y: -52)
-                            LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .bottom)
-                                .frame(height: 58)
-                                .offset(y: -52)
-                        }
-                    )
-                    .offset(y: -52)
-                    .allowsHitTesting(false)
+            if selectedTab == .settings {
+                settingsDetail
+            } else {
+                mainContent
             }
         }
         .frame(minWidth: 640, minHeight: 440)
         .toolbar {
             ToolbarItem(id: "clear") {
                 Menu {
-                    Button(action: { pendingClearMode = .today }) { Label(L10n.clearToday, systemImage: "sunrise") }
-                    Button(action: { pendingClearMode = .yesterday }) { Label(L10n.clearYesterday, systemImage: "sun.haze") }
-                    Button(action: { pendingClearMode = .older }) { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") }
+                    Button(action: { pendingClearMode = .today }, label: { Label(L10n.clearToday, systemImage: "sunrise") })
+                    Button(action: { pendingClearMode = .yesterday }, label: { Label(L10n.clearYesterday, systemImage: "sun.haze") })
+                    Button(action: { pendingClearMode = .older }, label: { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") })
                     Divider()
-                    Button(role: .destructive, action: { pendingClearMode = .all }) { Label(L10n.headerClearHistory, systemImage: "trash") }
+                    Button(role: .destructive, action: { pendingClearMode = .all }, label: { Label(L10n.headerClearHistory, systemImage: "trash") })
+                    Divider()
+                    Button(action: { store.unpinToday() }, label: { Label(L10n.unpinToday, systemImage: "star.slash") })
+                    Button(action: { store.unpinYesterday() }, label: { Label(L10n.unpinYesterday, systemImage: "star.slash") })
+                    Button(action: { store.unpinOlder() }, label: { Label(L10n.unpinOlder, systemImage: "star.slash") })
+                    Button(action: { store.unpinAll() }, label: { Label(L10n.unpinAll, systemImage: "star.slash") })
                 } label: {
                     Image(systemName: "trash")
                 }
                 .disabled(store.items.isEmpty)
             }
             ToolbarItemGroup(placement: .principal) {
-                HStack(spacing: 4) {
-                    ForEach(DateFilter.allCases, id: \.self) { filter in
-                        DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
-                            dateFilter = filter
+                if selectedTab != .settings {
+                    HStack(spacing: 4) {
+                        ForEach(DateFilter.allCases, id: \.self) { filter in
+                            DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
+                                dateFilter = filter
+                            }
                         }
                     }
+                    .padding(.horizontal, 4)
                 }
-                .padding(.horizontal, 4)
             }
         }
         .searchable(text: $searchText, placement: .toolbar, prompt: L10n.searchPlaceholder)
+        .toolbarBackground(.visible, for: .windowToolbar)
         .onAppear {
             applyAppearance()
             updateDisplayedItemsCache()
@@ -291,6 +281,7 @@ struct ContentView: View {
         }, onEscape: {
             if selectedTab == .settings { selectedTab = .all } else if !searchText.isEmpty { searchText = "" } else { NSApp.keyWindow?.close() }
         }).frame(width: 0, height: 0) }
+        .onDisappear { stopKeyEventMonitor() }
         .sheet(isPresented: $showingAppPicker) { appPickerSheet.onAppear {
             appPickerSearchDebounced = appPickerSearch
             Self.cachedApps = nil
@@ -298,20 +289,25 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        List(selection: $selectedTab) {
-            ForEach([SidebarTab.all, .text, .image, .link], id: \.self) { tab in
-                Label(tab.label, systemImage: tab.icon)
-                    .badge(tabCounts[tab] ?? 0)
-                    .tag(tab)
+        VStack(spacing: 0) {
+            LogoView()
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+            List(selection: $selectedTab) {
+                ForEach([SidebarTab.all, .text, .image, .link], id: \.self) { tab in
+                    Label(tab.label, systemImage: tab.icon)
+                        .badge(tabCounts[tab] ?? 0)
+                        .tag(tab)
+                }
+                Section {
+                    Label(SidebarTab.pinned.label, systemImage: SidebarTab.pinned.icon)
+                        .tag(SidebarTab.pinned)
+                    Label(SidebarTab.settings.label, systemImage: SidebarTab.settings.icon)
+                        .tag(SidebarTab.settings)
+                }
             }
-            Section {
-                Label(SidebarTab.pinned.label, systemImage: SidebarTab.pinned.icon)
-                    .tag(SidebarTab.pinned)
-                Label(SidebarTab.settings.label, systemImage: SidebarTab.settings.icon)
-                    .tag(SidebarTab.settings)
-            }
+            .listStyle(.sidebar)
         }
-        .listStyle(.sidebar)
         .padding(.vertical, 8)
         .padding(.trailing, 4)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -320,55 +316,50 @@ struct ContentView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-            if !selectedItems.isEmpty {
-                HStack { Text(L10n.batchSelected(selectedItems.count)).font(.system(size: sz(12))).foregroundColor(.secondary); Spacer()
-                    Button(action: { store.togglePinItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(batchAllPinned ? L10n.actionUnpin : L10n.actionPin, systemImage: batchAllPinned ? "star.slash" : "star").font(.system(size: sz(12))) }.buttonStyle(.plain)
-                    Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }) { Label(L10n.actionDelete, systemImage: "trash").font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.red)
-                    Button(action: { selectedItems.removeAll() }) { Text(L10n.buttonCancel).font(.system(size: sz(12))) }.buttonStyle(.plain).foregroundColor(.secondary)
-                }.padding(.horizontal, 16).padding(.vertical, 8).background(sidebarBackground)
-                Color.clear.frame(height: 1)
-            }
             if displayedItems.isEmpty { emptyState } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(groupedItemsWithIndex, id: \.group) { section in
-                            VStack(spacing: 10) {
-                                HStack {
-                                    Text(section.group.label).font(.system(size: sz(12), weight: .semibold)).foregroundColor(.secondary)
-                                        .onTapGesture { toggleGroup(section.group) }
-                                    Spacer()
-                                    Image(systemName: (!collapsedGroups.contains(section.group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
-                                        .font(.system(size: sz(10))).foregroundColor(.secondary)
-                                }
-                                .contentShape(Rectangle()).onTapGesture { toggleGroup(section.group) }
-                                .frame(maxWidth: .infinity, minHeight: 30)
-                                .padding(.horizontal, 12).padding(.vertical, 4).background(bodyBackground)
-                                if !searchText.isEmpty || !collapsedGroups.contains(section.group) {
-                                    VStack(spacing: 0) {
-                                        ForEach(section.items, id: \.item.id) { itemWithIndex in
-                                            ClipboardItemRow(item: itemWithIndex.item, isRevealed: revealedItems.contains(itemWithIndex.item.id),
-                                                isKeyboardSelected: keyboardSelectedIndex == itemWithIndex.globalIndex,
-                                                isCopied: lastCopiedId == itemWithIndex.item.id, isSelected: selectedItems.contains(itemWithIndex.item.id),
-                                                searchText: searchText,
-                                                onCopyWithFeedback: { lastCopiedId = itemWithIndex.item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == itemWithIndex.item.id { lastCopiedId = nil } }; copyItem(itemWithIndex.item) },
-                                                onPin: { store.togglePin(itemWithIndex.item) }, onDelete: { itemToDelete = itemWithIndex.item; showingDeleteAlert = true },
-                                                onSelect: { if $0 { selectedItems.insert(itemWithIndex.item.id) } else { selectedItems.remove(itemWithIndex.item.id) } },
-                                                onToggleReveal: { toggleReveal(itemWithIndex.item.id) })
-                                        }
-                                    }
-                                    .cornerRadius(10)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                    )
+                List {
+                    ForEach(groupedItemsWithIndex, id: \.group) { section in
+                        Section {
+                            if !searchText.isEmpty || !collapsedGroups.contains(section.group) {
+                                ForEach(section.items, id: \.item.id) { itemWithIndex in
+                                    ClipboardItemRow(item: itemWithIndex.item, isRevealed: revealedItems.contains(itemWithIndex.item.id),
+                                        isKeyboardSelected: keyboardSelectedIndex == itemWithIndex.globalIndex,
+                                        isCopied: lastCopiedId == itemWithIndex.item.id, isSelected: selectedItems.contains(itemWithIndex.item.id),
+                                        searchText: searchText,
+                                        onCopyWithFeedback: { lastCopiedId = itemWithIndex.item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == itemWithIndex.item.id { lastCopiedId = nil } }; copyItem(itemWithIndex.item) },
+                                        onPin: { store.togglePin(itemWithIndex.item) }, onDelete: { itemToDelete = itemWithIndex.item; showingDeleteAlert = true },
+                                        onSelect: { if $0 { selectedItems.insert(itemWithIndex.item.id) } else { selectedItems.remove(itemWithIndex.item.id) } },
+                                        onToggleReveal: { toggleReveal(itemWithIndex.item.id) })
+                                        .listRowInsets(EdgeInsets())
+                                        .listRowSeparator(.hidden)
                                 }
                             }
+                        } header: {
+                            HStack {
+                                Text(section.group.label).font(.system(size: sz(12), weight: .semibold)).foregroundColor(.secondary)
+                                Spacer()
+                                Image(systemName: (!collapsedGroups.contains(section.group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: sz(10))).foregroundColor(.secondary)
+                            }
+                            .contentShape(Rectangle()).onTapGesture { toggleGroup(section.group) }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                    }.padding(.vertical, 2)
-}
-    }
-}
-
+                    }
+                }
+                .listStyle(.plain)
+                .layoutPriority(1)
+                .overlay(alignment: .top) {
+                    if !selectedItems.isEmpty {
+                        HStack { Text(L10n.batchSelected(selectedItems.count)).font(.system(size: sz(12))).foregroundColor(.secondary); Spacer()
+                            Button(action: { store.togglePinItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }, label: { Label(batchAllPinned ? L10n.actionUnpin : L10n.actionPin, systemImage: batchAllPinned ? "star.slash" : "star").font(.system(size: sz(12))) }).buttonStyle(.plain)
+                            Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }, label: { Label(L10n.actionDelete, systemImage: "trash").font(.system(size: sz(12))) }).buttonStyle(.plain).foregroundColor(.red)
+                            Button(action: { selectedItems.removeAll() }, label: { Text(L10n.buttonCancel).font(.system(size: sz(12))) }).buttonStyle(.plain).foregroundColor(.secondary)
+                        }.padding(.horizontal, 16).padding(.vertical, 8).background(.regularMaterial)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.15), value: selectedItems.isEmpty)
+            }
+        }
         .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) { Button(L10n.buttonCancel, role: .cancel) {}; Button(L10n.buttonDelete, role: .destructive) { if let item = itemToDelete { store.deleteItem(item) } } } message: { Text(L10n.alertDeleteMessage) }
         .alert(L10n.alertClearTitle, isPresented: Binding(
             get: { pendingClearMode != nil },
@@ -464,11 +455,11 @@ struct ContentView: View {
                 Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).tag($0.hours) } }.id(languageManager.selectedLanguage)
             } header: { Text(L10n.settingsSectionSensitive) } footer: { Text(L10n.settingsSensitiveHint).foregroundColor(.secondary) }
             Section {
-                Picker(L10n.settingsMaxItems, selection: $store.maxItems) { ForEach([50,100,200,500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).tag($0) } }.id(languageManager.selectedLanguage)
+                Picker(L10n.settingsMaxItems, selection: $store.maxItems) { ForEach([50, 100, 200, 500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).tag($0) } }.id(languageManager.selectedLanguage)
             } header: { Text(L10n.settingsSectionHistory) }
             Section {
                 excludedAppsTags
-                Button(action: { showingAppPicker = true }) { Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle") }.buttonStyle(.link)
+                Button(action: { showingAppPicker = true }, label: { Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle") }).buttonStyle(.link)
             } header: { Text(L10n.settingsSectionExcludedApps) }
             Section {
                 Toggle(L10n.launchAtLogin, isOn: Binding(get: { SMAppService.mainApp.status == .enabled }, set: { v in
@@ -479,6 +470,7 @@ struct ContentView: View {
                 Text(L10n.aboutVersion(AppVersion.current)).foregroundColor(.secondary)
                 Text(L10n.aboutFreeEdition).foregroundColor(.secondary)
                 Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.buttonStyle(.link)
+                Button(L10n.viewWelcomeGuide) { (NSApp.delegate as? AppDelegate)?.showWelcomeView() }.buttonStyle(.link)
             } header: { Text(L10n.settingsSectionAbout) }
         }
         .formStyle(.grouped)
@@ -515,11 +507,11 @@ struct ContentView: View {
                         Button(action: {
                             let newIds = excludedIds.filter { $0 != app.bundleId }
                             store.excludedBundleIdsString = newIds.joined(separator: ",")
-                        }) {
+                        }, label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: sz(10)))
                                 .foregroundColor(.secondary)
-                        }
+                        })
                         .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 8)
@@ -631,7 +623,7 @@ struct ContentView: View {
                     if let icon = icon {
                         Image(nsImage: icon).resizable().frame(width: 32, height: 32)
                     } else {
-                        Image(nsImage: NSImage(named: NSImage.applicationIconName) ?? NSImage()).resizable().frame(width: 32, height: 32)
+                        Image(nsImage: NSImage(systemSymbolName: "app.badge.questionmark", accessibilityDescription: nil) ?? NSImage()).resizable().frame(width: 32, height: 32)
                     }
                     VStack(alignment: .leading) {
                         Text(name).font(.system(size: sz(13)))
@@ -709,7 +701,7 @@ class LongPressView: NSView {
 struct ClipboardItemRow: View, Equatable {
     let item: ClipboardItem; let isRevealed: Bool; var isKeyboardSelected = false; var isCopied = false; var isSelected = false; var searchText = ""
     var onCopyWithFeedback: (() -> Void)?; let onPin: () -> Void; let onDelete: () -> Void; let onSelect: ((Bool) -> Void)?; let onToggleReveal: () -> Void
-    @State private var isHovered = false; @State private var loadedImage: NSImage?
+    @State private var isHovered = false; @State private var loadedImage: NSImage?; @State private var loadedContent: String?
     @State private var longPressing = false
     @State private var imageLongPressing = false
     @State private var showFullContent = false
@@ -720,7 +712,9 @@ struct ClipboardItemRow: View, Equatable {
         lhs.isRevealed == rhs.isRevealed &&
         lhs.isCopied == rhs.isCopied &&
         lhs.isSelected == rhs.isSelected &&
-        lhs.searchText == rhs.searchText
+        lhs.isKeyboardSelected == rhs.isKeyboardSelected &&
+        lhs.searchText == rhs.searchText &&
+        lhs.item.isPinned == rhs.item.isPinned
     }
     @State private var _cachedMaskedHighlighted: [String: AttributedString] = [:]
     @AppStorage("fontScale") private var fontScale: Double = 1.0
@@ -731,7 +725,7 @@ struct ClipboardItemRow: View, Equatable {
     }
     private var pinText: String { item.isPinned ? L10n.actionUnpin : L10n.actionPin }
     private var decryptedContent: String {
-        ClipboardStore.shared.getDecryptedContent(item) ?? ""
+        loadedContent ?? ClipboardStore.shared.getDecryptedContent(item) ?? ""
     }
     private var formattedDate: String {
         cachedAbsoluteDateFormatter(for: LanguageManager.shared.selectedLanguage).string(from: item.createdAt)
@@ -798,7 +792,7 @@ struct ClipboardItemRow: View, Equatable {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Button(action: { onSelect?(!isSelected) }) { Image(systemName: isSelected ? "checkmark.circle.fill" : "circle").font(.system(size: iconSize)).foregroundColor(isSelected ? .accentColor : .secondary).frame(width: 22, height: 22) }.buttonStyle(.plain)
+            Button(action: { onSelect?(!isSelected) }, label: { Image(systemName: isSelected ? "checkmark.circle.fill" : "circle").font(.system(size: iconSize)).foregroundColor(isSelected ? .accentColor : .secondary).frame(width: 22, height: 22) }).buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .top) {
                     if item.type == .image {
@@ -825,16 +819,70 @@ struct ClipboardItemRow: View, Equatable {
                     }
                     Spacer()
                 }
-                .contentShape(Rectangle()).onTapGesture(count: 2) { onPin() }.onTapGesture { onCopyWithFeedback?() }
+                .contentShape(Rectangle())
+                .help(L10n.tooltipPin)
                 HStack(spacing: 8) { Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) } }
             }
+            .contentShape(Rectangle())
+            .gesture(ExclusiveGesture(TapGesture(count: 2).onEnded { onPin() }, TapGesture().onEnded { onCopyWithFeedback?() }))
             HStack(spacing: 6) {
                 Button(action: onPin) { Image(systemName: item.isPinned ? "star.fill" : "star").font(.system(size: iconSize)).foregroundColor(item.isPinned ? .orange : .secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
                 Button(action: onDelete) { Image(systemName: "trash").font(.system(size: iconSize)).foregroundColor(.secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(L10n.tooltipDelete)
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle()).onTapGesture(count: 2) { onPin() }.onHover { isHovered = $0 }
-        .contextMenu { Button(action: { onCopyWithFeedback?() }) { Label(L10n.actionCopy, systemImage: "doc.on.doc") }; if item.isSensitive { Button(action: onToggleReveal) { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") } }; Button(action: onPin) { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }; Divider(); Button(role: .destructive, action: onDelete) { Label(L10n.actionDelete, systemImage: "trash") } }
+        .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .contextMenu { Button(action: { onCopyWithFeedback?() }, label: { Label(L10n.actionCopy, systemImage: "doc.on.doc") }); if item.isSensitive { Button(action: onToggleReveal, label: { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") }) }; Button(action: onPin, label: { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }); Divider(); Button(role: .destructive, action: onDelete, label: { Label(L10n.actionDelete, systemImage: "trash") }) }
+        .task(id: item.id) {
+            if loadedContent != nil { return }
+            let result = await Task.detached(priority: .utility) {
+                ClipboardStore.shared.getDecryptedContent(item) ?? ""
+            }.value
+            loadedContent = result
+        }
+    }
+}
+
+// MARK: - Brand Logo
+private struct LogoView: View {
+    @ObservedObject private var languageManager = LanguageManager.shared
+
+    /// True when appName contains both Chinese and English (zh-Hans / zh-Hant)
+    private var isBilingual: Bool {
+        let name = L10n.appName
+        return name.contains(" ClipMemory") && !name.hasPrefix("ClipMemory")
+    }
+
+    /// Chinese name extracted from appName (e.g. "剪忆" from "剪忆 ClipMemory")
+    private var chineseName: String {
+        let full = L10n.appName
+        if let range = full.range(of: " ClipMemory") {
+            return String(full[..<range.lowerBound])
+        }
+        return full
+    }
+
+    var body: some View {
+        if isBilingual {
+            // Chinese + English on one line: "剪忆 ClipMemory"
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(chineseName)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text("ClipMemory")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+        } else {
+            // Single name (English, Japanese, Korean, etc.)
+            Text(L10n.appName)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+        }
     }
 }
 

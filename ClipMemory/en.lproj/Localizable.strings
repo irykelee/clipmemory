@@ -140,7 +140,7 @@
 "welcome.step1.title" = "Find the menu bar icon";
 "welcome.step1.desc" = "ClipMemory lives in your menu bar. Look for the clipboard icon.";
 "welcome.step2.title" = "Press the shortcut";
-"welcome.step2.desc" = "Press %@ anytime to open clipboard history.";
+"welcome.step2.desc" = "Press %@ anytime to open the main window, or click the menu bar icon for quick access.";
 "welcome.step3.title" = "Pin important items";
 "welcome.step3.desc" = "Star items you want to keep forever. They'll never be auto-deleted.";
 "welcome.hotkey.conflict" = "Shortcut conflict detected. Please change it in Settings.";
@@ -171,3 +171,17 @@
 "tooltip.close" = "Close";
 "tooltip.minimize" = "Minimize";
 "tooltip.zoom" = "Zoom";
+
+"app.view.welcome.guide" = "View Welcome Guide";
+
+"welcome.step4.title" = "Tap & Double-Tap";
+"welcome.step4.desc" = "Click to copy, double-tap to pin important items.";
+"welcome.step5.title" = "Long Press Preview";
+"welcome.step5.desc" = "Hold 0.4s to reveal sensitive content, view full text, or enlarge images.";
+"welcome.step6.title" = "Manage History";
+"welcome.step6.desc" = "Clear or unpin items by time group: Today, Yesterday, Older.";
+
+"unpin.today" = "Unpin Today";
+"unpin.yesterday" = "Unpin Yesterday";
+"unpin.older" = "Unpin Older";
+"unpin.all" = "Unpin All";
