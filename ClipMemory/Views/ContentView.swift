@@ -75,8 +75,11 @@ struct ContentView: View {
         return Set(arr.compactMap { TimeGroup(rawValue: $0) })
     }()
     @State private var isRecordingHotKey = false
+    @State private var hotkeyRefresh = false
     @State private var keyEventMonitor: Any?
     @State private var showingAppPicker = false
+    @State private var showingTips = false
+    @State private var pendingMaxItemsReduction: (old: Int, new: Int)?
     @State private var appPickerSearch = ""
     @State private var appPickerSearchDebounced = ""
     @State private var searchDebounce: DispatchWorkItem?
@@ -286,6 +289,7 @@ struct ContentView: View {
             appPickerSearchDebounced = appPickerSearch
             Self.cachedApps = nil
         } }
+        .sheet(isPresented: $showingTips) { TipsView(onClose: { showingTips = false }) }
     }
 
     private var sidebar: some View {
@@ -370,6 +374,27 @@ struct ContentView: View {
         } message: {
             Text(clearAlertText)
         }
+        .alert(L10n.alertTrimTitle, isPresented: Binding(
+            get: { pendingMaxItemsReduction != nil },
+            set: { if !$0 { pendingMaxItemsReduction = nil } }
+        )) {
+            Button(L10n.alertTrimCancel, role: .cancel) {
+                store.maxItems = pendingMaxItemsReduction!.old
+                pendingMaxItemsReduction = nil
+                selectedTab = .settings
+            }
+            Button(L10n.alertTrimConfirm) {
+                let pair = pendingMaxItemsReduction!
+                pendingMaxItemsReduction = nil
+                store.maxItems = pair.new
+                store.trimToMaxItems()
+                store.flushPendingSaves()
+            }
+        } message: {
+            if let pair = pendingMaxItemsReduction {
+                Text(L10n.alertTrimMessage(store.items.count, pair.new))
+            }
+        }
     }
 
     private var clearAlertText: String {
@@ -433,11 +458,15 @@ struct ContentView: View {
                             Spacer()
                             Button(L10n.buttonCancel) { isRecordingHotKey = false }.buttonStyle(.link)
                         } else {
-                            Text(hk.config.displayString).fontDesign(.monospaced)
+                            Text(hk.config.displayString).fontDesign(.monospaced).id(hotkeyRefresh)
                             Spacer()
                             Button(L10n.settingsHotkeyChange) { startRecording() }.buttonStyle(.link)
                         }
                     }
+                    Button(L10n.settingsHotkeyReset) {
+                        hk.updateHotKey(keyCode: HotKeyConfig.defaultConfig.keyCode, modifiers: HotKeyConfig.defaultConfig.modifiers)
+                        hotkeyRefresh.toggle()
+                    }.buttonStyle(.plain).foregroundColor(.accentColor)
                 } header: { Text(L10n.settingsSectionHotkey) }
             }
             Section {
@@ -455,7 +484,13 @@ struct ContentView: View {
                 Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).tag($0.hours) } }.id(languageManager.selectedLanguage)
             } header: { Text(L10n.settingsSectionSensitive) } footer: { Text(L10n.settingsSensitiveHint).foregroundColor(.secondary) }
             Section {
-                Picker(L10n.settingsMaxItems, selection: $store.maxItems) { ForEach([50, 100, 200, 500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).tag($0) } }.id(languageManager.selectedLanguage)
+                Picker(L10n.settingsMaxItems, selection: Binding(get: { store.maxItems }, set: { newValue in
+                    if newValue < store.maxItems, store.items.count > newValue {
+                        pendingMaxItemsReduction = (old: store.maxItems, new: newValue)
+                    } else {
+                        store.maxItems = newValue
+                    }
+                })) { ForEach([50, 100, 200, 500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).tag($0) } }.id(languageManager.selectedLanguage)
             } header: { Text(L10n.settingsSectionHistory) }
             Section {
                 excludedAppsTags
@@ -471,6 +506,7 @@ struct ContentView: View {
                 Text(L10n.aboutFreeEdition).foregroundColor(.secondary)
                 Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.buttonStyle(.link)
                 Button(L10n.viewWelcomeGuide) { (NSApp.delegate as? AppDelegate)?.showWelcomeView() }.buttonStyle(.link)
+                Button(L10n.tipsTitle) { showingTips = true }.buttonStyle(.link)
             } header: { Text(L10n.settingsSectionAbout) }
         }
         .formStyle(.grouped)
@@ -802,10 +838,19 @@ struct ClipboardItemRow: View, Equatable {
                                     .resizable().aspectRatio(contentMode: .fit)
                                     .frame(maxHeight: imageLongPressing ? 300 : 80)
                                     .overlay(PressableImage { pressed in imageLongPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
+                                    .transition(.opacity)
                             } else {
-                                Text(L10n.itemImage).font(.system(size: fontScale * 13)).foregroundColor(.secondary)
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 6).fill(.ultraThinMaterial)
+                                    VStack(spacing: 4) {
+                                        Image(systemName: "photo").font(.system(size: 24)).foregroundColor(.secondary)
+                                        ProgressView().scaleEffect(0.5).frame(height: 8)
+                                    }
+                                }
+                                .frame(width: 120, height: 80)
                             }
                         }
+                        .animation(.easeIn(duration: 0.3), value: loadedImage)
                         .task(id: item.content) { if let img = ImageStorage.shared.loadImageObject(filename: item.content) { loadedImage = img } }
                     } else if item.isSensitive && !isRevealed {
                         Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)

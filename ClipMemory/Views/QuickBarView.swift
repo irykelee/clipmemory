@@ -217,9 +217,18 @@ struct MacOSMenuItem: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
-        .background(isHovered ? AnyShapeStyle(Material.ultraThinMaterial) : AnyShapeStyle(Color.clear))
+        .background(hoverBackground.cornerRadius(appCornerRadius))
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+    }
+
+    @ViewBuilder
+    private var hoverBackground: some View {
+        if isHovered {
+            Color.accentColor.opacity(0.15)
+        } else {
+            Color.clear
+        }
     }
 }
 

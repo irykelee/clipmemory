@@ -185,3 +185,7 @@
 "unpin.yesterday" = "昨日のピン留め解除";
 "unpin.older" = "それ以前のピン留め解除";
 "unpin.all" = "すべてピン留め解除";
+"tips.title" = "ヒント";
+"tips.actions" = "基本操作";
+"tips.keyboard" = "キーボード操作";
+"settings.hotkey.reset" = "リセット";

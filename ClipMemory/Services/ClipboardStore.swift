@@ -197,8 +197,8 @@ class ClipboardStore: ObservableObject {
         var migratedItems = loadedItems
         var needsMigrationSave = false
         for (index, item) in migratedItems.enumerated() where item.isEncrypted && item.type != .image {
-            if CryptoService.shared.isOldFormat(item.content),
-               let newContent = CryptoService.shared.migrateToV2(item.content) {
+            if ServiceContainer.crypto.isOldFormat(item.content),
+               let newContent = ServiceContainer.crypto.migrateToV2(item.content) {
                 migratedItems[index] = ClipboardItem(
                     id: item.id,
                     content: newContent,
@@ -216,7 +216,8 @@ class ClipboardStore: ObservableObject {
 
         items = migratedItems
         updatePinnedItems()
-        ImageStorage.shared.cleanupOrphanedImages(keptItems: migratedItems)
+        trimToMaxItems()
+        ImageStorage.shared.cleanupOrphanedImages(keptItems: items)
 
         // Save migrated items immediately after load
         if needsMigrationSave {
@@ -267,7 +268,7 @@ class ClipboardStore: ObservableObject {
 
         // M3: Always encrypt text and link content (images are encrypted by ImageStorage)
         if item.type != .image {
-            if let encrypted = CryptoService.shared.encrypt(item.content) {
+            if let encrypted = ServiceContainer.crypto.encrypt(item.content) {
                 newHash = sha256(plaintextContent)
                 newItem = ClipboardItem(
                     id: item.id,
@@ -298,7 +299,7 @@ class ClipboardStore: ObservableObject {
                 return true
             }
             // Fall back to decrypt-and-compare for items without contentHash
-            let existingPlaintext = existing.isEncrypted ? (CryptoService.shared.decrypt(existing.content) ?? existing.content) : existing.content
+            let existingPlaintext = existing.isEncrypted ? (ServiceContainer.crypto.decrypt(existing.content) ?? existing.content) : existing.content
             return existingPlaintext == plaintextContent
         }) {
             var existing = items.remove(at: existingIndex)
@@ -330,7 +331,7 @@ class ClipboardStore: ObservableObject {
         }
         let result: String?
         if item.isEncrypted {
-            result = CryptoService.shared.decrypt(item.content)
+            result = ServiceContainer.crypto.decrypt(item.content)
         } else {
             result = item.content
         }
@@ -340,7 +341,7 @@ class ClipboardStore: ObservableObject {
         return result
     }
 
-    private func trimToMaxItems() {
+    func trimToMaxItems() {
         guard items.count > maxItems else { return }
         let pinned = items.filter { $0.isPinned }
         var nonPinned = items.filter { !$0.isPinned }
@@ -358,6 +359,8 @@ class ClipboardStore: ObservableObject {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
         items = trimmed
+        updatePinnedItems()
+        scheduleSave()
     }
 
     func deleteItem(_ item: ClipboardItem) {

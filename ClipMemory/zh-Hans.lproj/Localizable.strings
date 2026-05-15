@@ -184,3 +184,11 @@
 "unpin.yesterday" = "取消昨天的收藏";
 "unpin.older" = "取消更早的收藏";
 "unpin.all" = "取消全部收藏";
+"tips.title" = "使用技巧";
+"tips.actions" = "基本操作";
+"tips.keyboard" = "键盘操作";
+"settings.hotkey.reset" = "重置";
+"alert.trim.title" = "裁剪历史记录";
+"alert.trim.message" = "当前有 %d 条记录，但上限为 %d。裁剪多余记录？";
+"alert.trim.confirm" = "裁剪";
+"alert.trim.cancel" = "取消，去设置调整";

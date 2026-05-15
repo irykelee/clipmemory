@@ -184,3 +184,7 @@
 "unpin.yesterday" = "取消昨天的收藏";
 "unpin.older" = "取消更早的收藏";
 "unpin.all" = "取消全部收藏";
+"tips.title" = "使用技巧";
+"tips.actions" = "基本操作";
+"tips.keyboard" = "鍵盤操作";
+"settings.hotkey.reset" = "重置";

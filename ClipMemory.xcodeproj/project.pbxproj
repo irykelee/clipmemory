@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		05B522BBFEF4D65D6406CD6B /* ServiceProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50DFCD74156527865D80F825 /* ServiceProtocols.swift */; };
 		17DD4FBBF0E756DA8D26C43C /* CryptoServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */; };
+		31703362387388224F14C74C /* TipsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43B0B34746697091DC83794 /* TipsView.swift */; };
 		3F86CCA09C748C2CC0687BD8 /* ClipboardMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F180418B42AA03636D90BCA9 /* ClipboardMonitor.swift */; };
 		414FB5F0ACA73DDFF4562450 /* ClipboardItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B0ED102287F5F6BAD23F2F /* ClipboardItemTests.swift */; };
 		4E3B3A3265DFB035AF5126DA /* SensitiveDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9E730F43E2C2EFDCABE2BC /* SensitiveDetectorTests.swift */; };
@@ -31,6 +33,7 @@
 		E77E5CDEAD35A99186F367F2 /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E73A6EE834EA648971BFC98 /* ClipboardItem.swift */; };
 		EC9B8E180D5B18F679F1E86D /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F250C19E7199E18D95521A3 /* CryptoService.swift */; };
 		EDD4772BEACF49926B32ECA9 /* ConcurrencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */; };
+		F2C51A37BD55B72461DB2935 /* MockCryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F8781AC6EAB85F7C5271CBD /* MockCryptoService.swift */; };
 		F9142E898BD5660C9E087A88 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 031A31F7A3F610D547F9908B /* Localizable.strings */; };
 /* End PBXBuildFile section */
 
@@ -51,11 +54,13 @@
 		1258099BA9879D8EF6A6F980 /* LocalizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationService.swift; sourceTree = "<group>"; };
 		1A8ED97CA49FF8F747A96CBF /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		1E73A6EE834EA648971BFC98 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
+		1F8781AC6EAB85F7C5271CBD /* MockCryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockCryptoService.swift; sourceTree = "<group>"; };
 		2AB1C7BD0454681ABF687DF9 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		328C384747141E7DB4D8F7C3 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		39A66E3A5ABC7317320C7A62 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		443EB217154D9B586C055F7D /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
 		4499CFF1A5F60ED377D402EB /* ClipboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStore.swift; sourceTree = "<group>"; };
+		50DFCD74156527865D80F825 /* ServiceProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceProtocols.swift; sourceTree = "<group>"; };
 		576BC9BCA44C3479F2691F5B /* AppVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersion.swift; sourceTree = "<group>"; };
 		57CCB6D91997FD344D04495D /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
 		5FA613C869D9CDC57944F917 /* ClipMemory.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClipMemory.entitlements; sourceTree = "<group>"; };
@@ -77,6 +82,7 @@
 		C816574DD183240D08D58A64 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		D3153EAFCF0B2690D5DEB113 /* ImageStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStorage.swift; sourceTree = "<group>"; };
 		D4B0ED102287F5F6BAD23F2F /* ClipboardItemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItemTests.swift; sourceTree = "<group>"; };
+		E43B0B34746697091DC83794 /* TipsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipsView.swift; sourceTree = "<group>"; };
 		E8D75A92FDF0E0DE3ACCDF12 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F180418B42AA03636D90BCA9 /* ClipboardMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitor.swift; sourceTree = "<group>"; };
 		F63B98DB67D54A9850C61262 /* IntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationTests.swift; sourceTree = "<group>"; };
@@ -91,6 +97,7 @@
 				A060CA837242FD57B25DFFD9 /* ContentView.swift */,
 				901900D40CAF1527A6AEE527 /* KeyCaptureView.swift */,
 				A7F26B268CA5CF8662C3C930 /* QuickBarView.swift */,
+				E43B0B34746697091DC83794 /* TipsView.swift */,
 				8736B83768848E6CBB1834EA /* WelcomeView.swift */,
 			);
 			path = Views;
@@ -114,6 +121,7 @@
 				B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */,
 				041EF969E5FDC60DD678DFD3 /* Info.plist */,
 				F63B98DB67D54A9850C61262 /* IntegrationTests.swift */,
+				1F8781AC6EAB85F7C5271CBD /* MockCryptoService.swift */,
 				6C9E730F43E2C2EFDCABE2BC /* SensitiveDetectorTests.swift */,
 			);
 			name = ClipMemoryTests;
@@ -156,6 +164,7 @@
 				D3153EAFCF0B2690D5DEB113 /* ImageStorage.swift */,
 				B185E481A34967FB1CC7F192 /* LanguageManager.swift */,
 				1258099BA9879D8EF6A6F980 /* LocalizationService.swift */,
+				50DFCD74156527865D80F825 /* ServiceProtocols.swift */,
 				9168850C81327649C0142FD4 /* StorageBackend.swift */,
 				84072C9393127BAA49827196 /* WindowManager.swift */,
 			);
@@ -299,6 +308,7 @@
 				EDD4772BEACF49926B32ECA9 /* ConcurrencyTests.swift in Sources */,
 				17DD4FBBF0E756DA8D26C43C /* CryptoServiceTests.swift in Sources */,
 				7B94EA436B48E0E9CCCA9C91 /* IntegrationTests.swift in Sources */,
+				F2C51A37BD55B72461DB2935 /* MockCryptoService.swift in Sources */,
 				4E3B3A3265DFB035AF5126DA /* SensitiveDetectorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -321,7 +331,9 @@
 				83892A798C8F07BCB2A87488 /* LanguageManager.swift in Sources */,
 				CFAB8A339B7A88AA06E4FF28 /* LocalizationService.swift in Sources */,
 				CA65D74CB492C0091B80457F /* QuickBarView.swift in Sources */,
+				05B522BBFEF4D65D6406CD6B /* ServiceProtocols.swift in Sources */,
 				B262EF7A5FC194FCDFACED79 /* StorageBackend.swift in Sources */,
+				31703362387388224F14C74C /* TipsView.swift in Sources */,
 				B5E8195E9EA0DB0AD0C8C23D /* WelcomeView.swift in Sources */,
 				680A6DBC49D7A6C7AADE7DBB /* WindowManager.swift in Sources */,
 				7F23EF5F15D0EE3F180A79E3 /* main.swift in Sources */,
@@ -432,7 +444,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 2.1.0;
+				MARKETING_VERSION = 2.1.5;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = ClipMemory;
@@ -513,7 +525,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 2.1.0;
+				MARKETING_VERSION = 2.1.5;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

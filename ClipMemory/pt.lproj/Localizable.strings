@@ -185,3 +185,7 @@
 "unpin.yesterday" = "Desfixar ontem";
 "unpin.older" = "Desfixar anterior";
 "unpin.all" = "Desfixar tudo";
+"tips.title" = "Dicas";
+"tips.actions" = "Operações";
+"tips.keyboard" = "Teclado";
+"settings.hotkey.reset" = "Redefinir";
