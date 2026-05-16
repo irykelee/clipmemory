@@ -1,4 +1,4 @@
-# ClipMemory v2
+# ClipMemory v2.2.0
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -17,6 +17,34 @@
 | **Search highlight** | Text overlay highlight | Case-insensitive, no garbled text |
 | **Long-press preview** | None | 0.4s reveals full text / sensitive / image |
 | **Time grouping** | None | Today / Yesterday / Older, collapsible |
+
+---
+
+## 📋 Changelog
+
+### v2.2.0 (2026-05-15) — Rich Text Support
+
+- **RTF Clipboard Capture** — Automatically recognizes and saves rich text content
+- **Rich Text Rendering** — NSAttributedString → AttributedString conversion
+- **Copy Back** — Writes both .rtf and .string pasteboard types
+- **Sidebar Tab** — New "Rich Text" category with icon, count badge, and type filter
+- **Quick Bar Display** — Rich text icon + plain text preview
+- **Sensitive Masking** — Rich text items support sensitive content masking
+- **85 Tests** — Including 4 rich text round-trip tests
+- **Search Fix** — Fixed rich text search functionality
+
+### v2.1.5 (2026-05-11) — Protocol Abstraction & UX
+
+- **Protocol Abstraction** — StorageBackend protocol + MemoryStorageBackend test backend
+- **81 Tests** — Complete test infrastructure
+- **Max Trim Dialog** — Confirmation dialog when history exceeds limit
+- **Image Placeholder** — Elegant placeholder on load failure
+- **Group Operations** — Unpin/clear at group level
+
+### v2.1.0 (2026-05-09) — Liquid Glass UI
+
+- Liquid Glass design — NavigationSplitView sidebar + QuickBar frosted glass popup
+- Keyboard navigation fixes — Scroll and search box arrow key handling
 
 ---
 
@@ -45,7 +73,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 
 ## Feature List
 
-- 📋 Clipboard history (text / images / links)
+- 📋 Clipboard history (text / images / links / **rich text RTF**)
 - ⭐ Pin important items, never auto-deleted
 - 💾 Encrypted image storage, bypasses 10MB limit
 - 🔍 Real-time search, all languages highlighted (CJK multibyte supported)
@@ -60,6 +88,8 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 - 🖥 Launch at login (enable in Settings)
 - 📐 Font scaling (Small / Medium / Large)
 - 🎨 Appearance (Light / Dark / Follow system)
+- 🗂️ Type filters (All / Text / Image / Link / Rich Text)
+- ⌨️ Keyboard navigation (arrow key scroll, search box focus handling)
 
 ---
 
@@ -76,6 +106,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 | Preview full / sensitive / image | Hold 0.4s, release to hide |
 | Multi-select mode | Click checkbox |
 | Clear history | Top bar 🗑 (pinned items preserved) |
+| Switch type filter | Click "Text/Image/Link/Rich Text" in sidebar |
 
 > 💡 Pinned items are never auto-deleted. Copying identical content doesn't create duplicates, only updates the timestamp.
 
@@ -97,6 +128,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 - Global hotkey recording
 - Appearance (Light / Dark / Follow system)
 - Excluded apps (custom apps to skip monitoring)
+- Rich text capture toggle
 
 ---
 
