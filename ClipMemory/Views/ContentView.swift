@@ -68,6 +68,7 @@ struct ContentView: View {
     @State private var revealedItems: Set<UUID> = []
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
+    @State private var scrollAnchor: UUID?
     @State private var selectedItems: Set<UUID> = []
     @State private var collapsedGroups: Set<TimeGroup> = {
         guard let data = UserDefaults.standard.string(forKey: "collapsedGroups")?.data(using: .utf8),
@@ -276,12 +277,14 @@ struct ContentView: View {
             if let d = try? JSONEncoder().encode(arr), let s = String(data: d, encoding: .utf8) { UserDefaults.standard.set(s, forKey: "collapsedGroups") }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
-        .overlay(alignment: .top) { KeyCaptureView(onUp: {
+        .overlay(alignment: .top) { KeyCaptureView(searchText: searchText, onUp: {
             guard !displayedItems.isEmpty else { return }
             if let idx = keyboardSelectedIndex, idx > 0 { keyboardSelectedIndex = idx - 1 } else { keyboardSelectedIndex = displayedItems.count - 1 }
+            if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
         }, onDown: {
             guard !displayedItems.isEmpty else { return }
             let last = displayedItems.count - 1; if let idx = keyboardSelectedIndex, idx < last { keyboardSelectedIndex = idx + 1 } else { keyboardSelectedIndex = 0 }
+            if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
         }, onReturn: {
             if let idx = keyboardSelectedIndex, idx < displayedItems.count { let item = displayedItems[idx]; lastCopiedId = item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == item.id { lastCopiedId = nil } }; copyItem(item) }
         }, onEscape: {
@@ -324,37 +327,45 @@ struct ContentView: View {
     private var mainContent: some View {
         VStack(spacing: 0) {
             if displayedItems.isEmpty { emptyState } else {
-                List {
-                    ForEach(groupedItemsWithIndex, id: \.group) { section in
-                        Section {
-                            if !searchText.isEmpty || !collapsedGroups.contains(section.group) {
-                                ForEach(section.items, id: \.item.id) { itemWithIndex in
-                                    ClipboardItemRow(item: itemWithIndex.item, isRevealed: revealedItems.contains(itemWithIndex.item.id),
-                                        isKeyboardSelected: keyboardSelectedIndex == itemWithIndex.globalIndex,
-                                        isCopied: lastCopiedId == itemWithIndex.item.id, isSelected: selectedItems.contains(itemWithIndex.item.id),
-                                        searchText: searchText,
-                                        onCopyWithFeedback: { lastCopiedId = itemWithIndex.item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == itemWithIndex.item.id { lastCopiedId = nil } }; copyItem(itemWithIndex.item) },
-                                        onPin: { store.togglePin(itemWithIndex.item) }, onDelete: { itemToDelete = itemWithIndex.item; showingDeleteAlert = true },
-                                        onSelect: { if $0 { selectedItems.insert(itemWithIndex.item.id) } else { selectedItems.remove(itemWithIndex.item.id) } },
-                                        onToggleReveal: { toggleReveal(itemWithIndex.item.id) })
-                                        .listRowInsets(EdgeInsets())
-                                        .listRowSeparator(.hidden)
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(groupedItemsWithIndex, id: \.group) { section in
+                            Section {
+                                if !searchText.isEmpty || !collapsedGroups.contains(section.group) {
+                                    ForEach(section.items, id: \.item.id) { itemWithIndex in
+                                        ClipboardItemRow(item: itemWithIndex.item, isRevealed: revealedItems.contains(itemWithIndex.item.id),
+                                            isKeyboardSelected: keyboardSelectedIndex == itemWithIndex.globalIndex,
+                                            isCopied: lastCopiedId == itemWithIndex.item.id, isSelected: selectedItems.contains(itemWithIndex.item.id),
+                                            searchText: searchText,
+                                            onCopyWithFeedback: { lastCopiedId = itemWithIndex.item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == itemWithIndex.item.id { lastCopiedId = nil } }; copyItem(itemWithIndex.item) },
+                                            onPin: { store.togglePin(itemWithIndex.item) }, onDelete: { itemToDelete = itemWithIndex.item; showingDeleteAlert = true },
+                                            onSelect: { if $0 { selectedItems.insert(itemWithIndex.item.id) } else { selectedItems.remove(itemWithIndex.item.id) } },
+                                            onToggleReveal: { toggleReveal(itemWithIndex.item.id) })
+                                            .listRowInsets(EdgeInsets())
+                                            .listRowSeparator(.hidden)
+                                            .id(itemWithIndex.item.id)
+                                    }
                                 }
+                            } header: {
+                                HStack {
+                                    Text(section.group.label).font(.system(size: sz(12), weight: .semibold)).foregroundColor(.secondary)
+                                    Spacer()
+                                    Image(systemName: (!collapsedGroups.contains(section.group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
+                                        .font(.system(size: sz(10))).foregroundColor(.secondary)
+                                }
+                                .contentShape(Rectangle()).onTapGesture { toggleGroup(section.group) }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                        } header: {
-                            HStack {
-                                Text(section.group.label).font(.system(size: sz(12), weight: .semibold)).foregroundColor(.secondary)
-                                Spacer()
-                                Image(systemName: (!collapsedGroups.contains(section.group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
-                                    .font(.system(size: sz(10))).foregroundColor(.secondary)
-                            }
-                            .contentShape(Rectangle()).onTapGesture { toggleGroup(section.group) }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .layoutPriority(1)
+                    .task(id: scrollAnchor) {
+                        if let anchor = scrollAnchor {
+                            proxy.scrollTo(anchor, anchor: .center)
                         }
                     }
                 }
-                .listStyle(.plain)
-                .layoutPriority(1)
                 .overlay(alignment: .top) {
                     if !selectedItems.isEmpty {
                         HStack { Text(L10n.batchSelected(selectedItems.count)).font(.system(size: sz(12))).foregroundColor(.secondary); Spacer()

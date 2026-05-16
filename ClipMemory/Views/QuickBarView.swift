@@ -19,6 +19,7 @@ struct QuickBarView: View {
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
     @State private var showFullWindow = false
+    @State private var scrollAnchor: UUID?
     @FocusState private var isSearchFocused: Bool
     @AppStorage("fontScale") private var fontScale: Double = 1.0
 
@@ -104,27 +105,37 @@ struct QuickBarView: View {
                     Spacer(minLength: 40)
                 }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
-                            QuickBarRow(
-                                item: item,
-                                isSelected: keyboardSelectedIndex == index,
-                                isCopied: lastCopiedId == item.id,
-                                searchText: searchText,
-                                sz: sz,
-                                onTap: {
-                                    lastCopiedId = item.id
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                        if lastCopiedId == item.id { lastCopiedId = nil }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
+                                QuickBarRow(
+                                    item: item,
+                                    isSelected: keyboardSelectedIndex == index,
+                                    isCopied: lastCopiedId == item.id,
+                                    searchText: searchText,
+                                    sz: sz,
+                                    onTap: {
+                                        lastCopiedId = item.id
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                            if lastCopiedId == item.id { lastCopiedId = nil }
+                                        }
+                                        store.copyToClipboard(item)
+                                        onDismiss()
                                     }
-                                    store.copyToClipboard(item)
-                                    onDismiss()
+                                )
+                                .id(item.id)
+                                if index < displayedItems.count - 1 {
+                                    // 40 = row horizontal padding(12) + icon width(16) + icon-text spacing(8) + 4 for visual alignment
+                                    Color.primary.opacity(0.06).frame(height: 1).padding(.leading, 40)
                                 }
-                            )
-                            if index < displayedItems.count - 1 {
-                                // 40 = row horizontal padding(12) + icon width(16) + icon-text spacing(8) + 4 for visual alignment
-                                Color.primary.opacity(0.06).frame(height: 1).padding(.leading, 40)
+                            }
+                        }
+                    }
+                    .onChange(of: scrollAnchor) { newAnchor in
+                        if let anchor = newAnchor {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                proxy.scrollTo(anchor, anchor: .center)
                             }
                         }
                     }
@@ -149,6 +160,7 @@ struct QuickBarView: View {
         .frame(maxHeight: 480)
         .background(
             KeyCaptureView(
+                searchText: searchText,
                 onUp: {
                     guard !displayedItems.isEmpty else { return }
                     if let idx = keyboardSelectedIndex, idx > 0 {
@@ -156,6 +168,7 @@ struct QuickBarView: View {
                     } else {
                         keyboardSelectedIndex = displayedItems.count - 1
                     }
+                    if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
                 },
                 onDown: {
                     guard !displayedItems.isEmpty else { return }
@@ -165,6 +178,7 @@ struct QuickBarView: View {
                     } else {
                         keyboardSelectedIndex = 0
                     }
+                    if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
                 },
                 onReturn: {
                     if let idx = keyboardSelectedIndex, idx < displayedItems.count {

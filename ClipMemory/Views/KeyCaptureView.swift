@@ -4,6 +4,7 @@ import AppKit
 /// Invisible NSViewRepresentable that captures global keyboard events.
 /// Used by QuickBar and main window for keyboard navigation.
 struct KeyCaptureView: NSViewRepresentable {
+    var searchText: String = ""
     var onUp: () -> Void
     var onDown: () -> Void
     var onReturn: () -> Void
@@ -11,6 +12,7 @@ struct KeyCaptureView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> KeyCaptureNSView {
         let view = KeyCaptureNSView()
+        view.searchText = searchText
         view.onUp = onUp
         view.onDown = onDown
         view.onReturn = onReturn
@@ -19,6 +21,7 @@ struct KeyCaptureView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: KeyCaptureNSView, context: Context) {
+        nsView.searchText = searchText
         nsView.onUp = onUp
         nsView.onDown = onDown
         nsView.onReturn = onReturn
@@ -27,6 +30,7 @@ struct KeyCaptureView: NSViewRepresentable {
 }
 
 final class KeyCaptureNSView: NSView {
+    var searchText: String = ""
     var onUp: (() -> Void)?
     var onDown: (() -> Void)?
     var onReturn: (() -> Void)?
@@ -52,10 +56,11 @@ final class KeyCaptureNSView: NSView {
                 return event
             }
             let isTextInput = (NSApp.keyWindow?.firstResponder as? NSText)?.isEditable == true
+            // When search text is empty, arrow keys should navigate list not move cursor
+            let shouldCaptureArrows = !isTextInput || self.searchText.isEmpty
             switch event.keyCode {
-            // USB HID Usage IDs — matching values used in Carbon's HIToolbox constants
-            case 126: if isTextInput { return event }; self.onUp?(); return nil      // UpArrow
-            case 125: if isTextInput { return event }; self.onDown?(); return nil    // DownArrow
+            case 126: if shouldCaptureArrows { self.onUp?(); return nil }; return event      // UpArrow
+            case 125: if shouldCaptureArrows { self.onDown?(); return nil }; return event    // DownArrow
             case 36:  self.onReturn?(); return nil   // Return
             case 53:  self.onEscape?(); return nil  // Escape
             default:  return event
