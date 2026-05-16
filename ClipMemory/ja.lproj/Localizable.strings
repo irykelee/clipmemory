@@ -191,3 +191,5 @@
 "settings.hotkey.reset" = "リセット";
 "filter.richtext" = "リッチテキスト";
 "item.richText" = "リッチテキスト";
+"settings.capture.richtext" = "リッチテキストを取得";
+"settings.capture.richtext.hint" = "有効にすると書式（太字、斜体、色）が保持されます。無効にするとプレーンテキストのみを取得します。";

@@ -192,3 +192,5 @@
 "settings.hotkey.reset" = "Restablecer";
 "filter.richtext" = "Texto enriquecido";
 "item.richText" = "Texto enriquecido";
+"settings.capture.richtext" = "Capturar texto enriquecido";
+"settings.capture.richtext.hint" = "Cuando está activado, el texto formateado (negrita, cursiva, colores) se conserva. Desactívelo para capturar solo texto plano.";

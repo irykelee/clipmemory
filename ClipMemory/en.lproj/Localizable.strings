@@ -195,3 +195,5 @@
 "alert.trim.cancel" = "Cancel, adjust in settings";
 "filter.richtext" = "Rich Text";
 "item.richText" = "Rich Text";
+"settings.capture.richtext" = "Capture Rich Text";
+"settings.capture.richtext.hint" = "When enabled, formatted text (bold, italic, colors) is preserved. Disable to capture only plain text.";

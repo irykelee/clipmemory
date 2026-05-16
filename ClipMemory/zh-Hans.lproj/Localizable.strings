@@ -194,3 +194,5 @@
 "alert.trim.cancel" = "取消，去设置调整";
 "filter.richtext" = "富文本";
 "item.richText" = "富文本";
+"settings.capture.richtext" = "捕获富文本";
+"settings.capture.richtext.hint" = "开启后保留格式（粗体、斜体、颜色）。关闭则只捕获纯文本。";

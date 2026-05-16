@@ -191,3 +191,5 @@
 "settings.hotkey.reset" = "초기화";
 "filter.richtext" = "서식 있는 텍스트";
 "item.richText" = "서식 있는 텍스트";
+"settings.capture.richtext" = "서식 있는 텍스트 캡처";
+"settings.capture.richtext.hint" = "활성화하면 서식(굵게, 기울임, 색상)이 유지됩니다. 비활성화하면 일반 텍스트만 캡처합니다.";

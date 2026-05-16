@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import os.log
+import Combine
 
 class ClipboardMonitor: SensitiveDetectorProtocol {
     private var timer: DispatchSourceTimer?
@@ -30,6 +31,13 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         set { withLock { _lastChangeCount = newValue } }
     }
 
+    /// Captured on main thread before timer fires; safe to read from timer queue.
+    private var _captureRichText: Bool = true
+    private var captureRichText: Bool {
+        get { withLock { _captureRichText } }
+        set { withLock { _captureRichText = newValue } }
+    }
+
     /// Set to true when ClipboardStore writes to pasteboard, so we skip re-capturing.
     private var _skipNextCapture: Bool = false
     var skipNextCapture: Bool {
@@ -46,6 +54,9 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
 
     /// Delegate for accessing store configuration (breaks circular dependency)
     weak var delegate: ClipboardMonitorDelegate?
+
+    /// Cancellable for observing ClipboardStore settings changes
+    private var settingsCancellable: AnyCancellable?
 
     /// Tracks the last known app that was frontmost before clipboard changed
     private var _lastKnownSourceBundleId: String?
@@ -131,6 +142,14 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
 
     func startMonitoring() {
         lastChangeCount = pasteboard.changeCount
+        // Capture settings on main thread before timer fires
+        captureRichText = ClipboardStore.shared.captureRichText
+        // Observe future setting changes on main thread
+        settingsCancellable = ClipboardStore.shared.$captureRichText
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newValue in
+                self?.captureRichText = newValue
+            }
         // Track frontmost app changes via notification
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -153,6 +172,8 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
     func stopMonitoring() {
         timer?.cancel()
         timer = nil
+        settingsCancellable?.cancel()
+        settingsCancellable = nil
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
@@ -186,7 +207,7 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         guard currentCount != lastChangeCount else { return }
         lastChangeCount = currentCount
 
-        if let rtfData = pasteboard.data(forType: .rtf), !rtfData.isEmpty {
+        if let rtfData = pasteboard.data(forType: .rtf), !rtfData.isEmpty, self.captureRichText {
             processRichText(rtfData)
         } else if let content = pasteboard.string(forType: .string), !content.isEmpty {
             let itemType = detectType(content)

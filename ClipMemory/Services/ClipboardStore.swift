@@ -29,6 +29,10 @@ class ClipboardStore: ObservableObject {
         didSet { UserDefaults.standard.set(sensitiveClearHours, forKey: sensitiveClearHoursKey) }
     }
 
+    @Published var captureRichText: Bool = true {
+        didSet { UserDefaults.standard.set(captureRichText, forKey: captureRichTextKey) }
+    }
+
     /// Comma-separated bundle IDs of apps excluded from clipboard monitoring
     @Published var excludedBundleIdsString: String {
         didSet {
@@ -70,6 +74,7 @@ class ClipboardStore: ObservableObject {
 
     private let maxItemsKey = "maxClipboardItems"
     private let sensitiveClearHoursKey = "sensitiveClearHours"
+    private let captureRichTextKey = "captureRichText"
     private let excludedBundleIdsKey = "excludedBundleIds"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
