@@ -1,4 +1,4 @@
-# ClipMemory v2
+# ClipMemory v2.2.0
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -17,6 +17,34 @@
 | **Destaque de pesquisa** | Destaque sobre texto | Não diferencia maiúsculas/minúsculas, sem caracteres corrompidos |
 | **Visualização longa** | Nenhuma | 0.4s revela texto completo / sensível / imagem |
 | **Agrupamento por tempo** | Nenhum | Hoje / Ontem / Anterior, recolhível |
+
+---
+
+## 📋 Registro de alterações
+
+### v2.2.0 (2026-05-15) — Suporte Rich Text
+
+- **Captura de Área de Transferência RTF** — Reconhece e salva automaticamente conteúdo Rich Text
+- **Renderização Rich Text** — Conversão NSAttributedString → AttributedString
+- **Copiar e Colar** — Escreve ambos os tipos de área de transferência .rtf e .string
+- **Aba da Barra Lateral** — Nova categoria "Rich Text" com ícone, emblema de contagem e filtro de tipo
+- **Exibição Quick Bar** — Ícone Rich Text + Visualização de texto simples
+- **Mascaramento de Conteúdo Sensível** — Itens Rich Text também suportam mascaramento
+- **85 Testes** — Incluindo 4 testes de ida e volta Rich Text
+- **Pesquisa Corrigida** — Funcionalidade de pesquisa Rich Text corrigida
+
+### v2.1.5 (2026-05-11) — Abstracción de Protocolo e Melhorias UX
+
+- **Abstração de Protocolo** — Protocolo StorageBackend + Backend de teste MemoryStorageBackend
+- **81 Testes** — Infraestrutura de testes completa
+- **Diálogo de Corte Máximo** — Confirmação quando o histórico excede o limite
+- **Marcador de Posição de Imagem** — Marcador elegante em falha de carregamento
+- **Operações de Grupo** — Desafixar/limpar no nível de grupo
+
+### v2.1.0 (2026-05-09) — Liquid Glass UI
+
+- Linguagem de design Liquid Glass — Barra lateral NavigationSplitView + Pop-up QuickBar
+- Correções de navegação de teclado — Tratamento de teclas de seta de rolagem e pesquisa
 
 ---
 
@@ -45,7 +73,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 
 ## Lista de funções
 
-- 📋 Histórico da área de transferência (texto / imagens / links)
+- 📋 Histórico da área de transferência (texto / imagens / links /**Rich Text RTF**)
 - ⭐ Fixar itens importantes, não são removidos automaticamente
 - 💾 Imagens armazenadas como arquivos criptografados, supera limite de 10MB
 - 🔍 Pesquisa em tempo real com destaque multilíngüe (incluindo caracteres CJK)
@@ -60,6 +88,8 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 - 🖥 Iniciar na sessão (ativar nas Configurações)
 - 📐 Tamanho da fonte (Pequeno / Médio / Grande)
 - 🎨 Aparência (Claro / Escuro / Seguir sistema)
+- 🗂️ Filtros de tipo (Tudo / Texto / Imagem / Link / Rich Text)
+- ⌨️ Navegação de teclado (rolagem com teclas de seta, tratamento de foco de pesquisa)
 
 ---
 
@@ -76,6 +106,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 | Ver completo / sensível / imagem | Segurar 0.4s, soltar para ocultar |
 | Modo de seleção múltipla | Clique na caixa de seleção |
 | Limpar histórico | Barra superior 🗑 (fixados são preservados) |
+| Alternar filtro de tipo | Clique em "Texto/Imagem/Link/Rich Text" na barra lateral |
 
 > 💡 Itens fixados nunca são removidos automaticamente. Copiar o mesmo conteúdo não cria duplicatas, apenas atualiza o timestamp.
 
@@ -97,6 +128,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 - Gravação de atalho global
 - Aparência (Claro / Escuro / Seguir sistema)
 - Apps excluídas (apps personalizadas para excluir do monitoramento)
+- Alternância de captura Rich Text
 
 ---
 

@@ -1,4 +1,4 @@
-# ClipMemory v2
+# ClipMemory v2.2.0
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -17,6 +17,34 @@
 | **Resalte de búsqueda** | Resalte sobre texto | Sin distinción de mayúsculas/minúsculas, sin caracteres rotos |
 | **Vista previa larga** | Ninguna | 0.4s revela texto completo / sensible / imagen |
 | **Agrupación por tiempo** | Ninguna | Hoy / Ayer / Anterior, plegable |
+
+---
+
+## 📋 Registro de cambios
+
+### v2.2.0 (2026-05-15) — Soporte Rich Text
+
+- **Captura de Portapapeles RTF** — Reconoce y guarda automáticamente contenido Rich Text
+- **Renderizado Rich Text** — Conversión NSAttributedString → AttributedString
+- **Copiar y Pegar** — Escribe ambos tipos de portapapeles .rtf y .string
+- **Pestaña de Barra Lateral** — Nueva categoría "Rich Text" con icono, insignia de contador y filtro de tipo
+- **Pantalla Quick Bar** — Icono Rich Text + Vista previa de texto plano
+- **Enmascaramiento de Contenido Sensible** — Los elementos Rich Text también soportan enmascaramiento
+- **85 Pruebas** — Incluyendo 4 pruebas de ida y vuelta Rich Text
+- **Búsqueda Mejorada** — Funcionalidad de búsqueda Rich Text corregida
+
+### v2.1.5 (2026-05-11) — Abstracción de Protocolo y Mejoras UX
+
+- **Abstracción de Protocolo** — Protocolo StorageBackend + Backend de prueba MemoryStorageBackend
+- **81 Pruebas** — Infraestructura de pruebas completa
+- **Diálogo de Recorte Máximo** — Confirmación cuando el historial excede el límite
+- **Marcador de Posición de Imagen** — Marcador elegante en fallo de carga
+- **Operaciones de Grupo** — Desfijar/limpiar a nivel de grupo
+
+### v2.1.0 (2026-05-09) — Liquid Glass UI
+
+- Lenguaje de diseño Liquid Glass — Barra lateral NavigationSplitView + Pop-up QuickBar
+- Correcciones de navegación de teclado — Manejo de teclas de flecha de desplazamiento y búsqueda
 
 ---
 
@@ -45,7 +73,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 
 ## Lista de funciones
 
-- 📋 Historial del portapapeles (texto / imágenes / enlaces)
+- 📋 Historial del portapapeles (texto / imágenes / enlaces /**Rich Text RTF**)
 - ⭐ Fijar elementos importantes, no se eliminan automáticamente
 - 💾 Imágenes almacenadas como archivos cifrados, supera límite de 10MB
 - 🔍 Búsqueda en tiempo real con resalte multilingüe (incluidos caracteres CJK)
@@ -60,6 +88,8 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 - 🖥 Iniciar con la sesión (activar en Ajustes)
 - 📐 Tamaño de fuente (Pequeño / Mediano / Grande)
 - 🎨 Apariencia (Claro / Oscuro / Seguir sistema)
+- 🗂️ Filtros de tipo (Todo / Texto / Imagen / Enlace / Rich Text)
+- ⌨️ Navegación de teclado (desplazamiento con teclas de flecha, manejo de foco de búsqueda)
 
 ---
 
@@ -76,6 +106,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 | Vista previa completa / sensible / imagen | Mantener 0.4s, soltar para ocultar |
 | Modo de selección múltiple | Clic en casilla |
 | Limpiar historial | Barra superior 🗑 (fijados se conservan) |
+| Cambiar filtro de tipo | Clic en "Texto/Imagen/Enlace/Rich Text" en barra lateral |
 
 > 💡 Los elementos fijados nunca se eliminan automáticamente. Copiar el mismo contenido no crea duplicados, solo actualiza la marca de tiempo.
 
@@ -97,6 +128,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 - Grabación de atajo global
 - Apariencia (Claro / Oscuro / Seguir sistema)
 - Apps excluidas (apps personalizadas para excluir del monitoreo)
+- Alternancia de captura Rich Text
 
 ---
 
