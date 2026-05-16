@@ -128,7 +128,12 @@ struct ContentView: View {
                 if dateFilter == .yesterday || dateFilter == .older { return false }
             }
             // search filter
-            if !searchTextDebounced.isEmpty && !(store.getDecryptedContent(item) ?? "").localizedCaseInsensitiveContains(searchTextDebounced) { return false }
+            if !searchTextDebounced.isEmpty {
+                let searchableText = item.type == .richText
+                    ? item.plainTextFromRTFFallback
+                    : (store.getDecryptedContent(item) ?? "")
+                if !searchableText.localizedCaseInsensitiveContains(searchTextDebounced) { return false }
+            }
             return true
         }
     }
@@ -464,7 +469,7 @@ struct ContentView: View {
                     Button(L10n.settingsHotkeyReset) {
                         hk.updateHotKey(keyCode: HotKeyConfig.defaultConfig.keyCode, modifiers: HotKeyConfig.defaultConfig.modifiers)
                         hotkeyRefresh.toggle()
-                    }.buttonStyle(.plain).foregroundColor(.accentColor)
+                    }.buttonStyle(.link)
                 } header: { Text(L10n.settingsSectionHotkey) }
             }
             Section {
@@ -490,6 +495,9 @@ struct ContentView: View {
                     }
                 })) { ForEach([50, 100, 200, 500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).tag($0) } }.id(languageManager.selectedLanguage)
             } header: { Text(L10n.settingsSectionHistory) }
+            Section {
+                Toggle(L10n.settingsCaptureRichText, isOn: $store.captureRichText)
+            } footer: { Text(L10n.settingsCaptureRichTextHint).foregroundColor(.secondary) }
             Section {
                 excludedAppsTags
                 Button(action: { showingAppPicker = true }, label: { Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle") }).buttonStyle(.link)

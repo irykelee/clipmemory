@@ -108,6 +108,8 @@ struct L10n {
     static var settingsMaxItems: String { string("settings.max.items") }
     static func settingsMaxItemsCount(_ count: Int) -> String { string("settings.max.items.count", count) }
     static var settingsAutoClear: String { string("settings.auto.clear") }
+    static var settingsCaptureRichText: String { string("settings.capture.richtext") }
+    static var settingsCaptureRichTextHint: String { string("settings.capture.richtext.hint") }
     static var settingsSensitiveHint: String { string("settings.sensitive.hint") }
     static var settingsHotkeyChange: String { string("settings.hotkey.change") }
     static var settingsHotkeyRecording: String { string("settings.hotkey.recording") }

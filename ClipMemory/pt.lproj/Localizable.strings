@@ -191,3 +191,5 @@
 "settings.hotkey.reset" = "Redefinir";
 "filter.richtext" = "Texto rico";
 "item.richText" = "Texto rico";
+"settings.capture.richtext" = "Capturar texto rico";
+"settings.capture.richtext.hint" = "Quando ativado, o texto formatado (negrito, itálico, cores) é preservado. Desative para capturar apenas texto simples.";

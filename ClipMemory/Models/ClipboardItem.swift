@@ -46,10 +46,15 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         return ClipboardStore.shared.getDecryptedContent(self) == nil
     }
 
-    /// Extracts plain text from RTF base64 content for preview purposes.
+    /// Extracts plain text from RTF content for preview and search purposes.
+    /// Handles both encrypted (v2:) and plaintext base64 RTF.
     var plainTextFromRTFFallback: String {
         guard type == .richText else { return "" }
-        guard let data = Data(base64Encoded: content),
+        // Decrypt if needed to get raw base64 RTF
+        let base64RTF = isEncrypted
+            ? (ClipboardStore.shared.getDecryptedContent(self) ?? content)
+            : content
+        guard let data = Data(base64Encoded: base64RTF),
               let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {
             return "Rich Text"
         }

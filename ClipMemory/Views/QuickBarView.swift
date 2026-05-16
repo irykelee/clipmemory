@@ -41,7 +41,10 @@ struct QuickBarView: View {
             ? Array(store.items.prefix(maxItems))
             : store.items.filter { item in
                 guard !item.decryptionFailed else { return false }
-                return (ClipboardStore.shared.getDecryptedContent(item) ?? "").localizedCaseInsensitiveContains(searchText)
+                let searchableText = item.type == .richText
+                    ? item.plainTextFromRTFFallback
+                    : (ClipboardStore.shared.getDecryptedContent(item) ?? "")
+                return searchableText.localizedCaseInsensitiveContains(searchText)
             }
         return base
     }
