@@ -191,7 +191,8 @@ struct QuickBarView: View {
                         onDismiss()
                     }
                 },
-                onEscape: { onDismiss() }
+                onEscape: { onDismiss() },
+                onCommandF: { isSearchFocused = true }
             )
             .frame(width: 0, height: 0)
         )

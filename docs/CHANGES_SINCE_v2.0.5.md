@@ -201,17 +201,13 @@ This document records all functional changes from commit `1d65652` to present.
 
 ---
 
-## ⚠️ KNOWN ISSUES
+## ⚠️ KNOWN ISSUES (已修复)
+
+以下问题已在 v2.1.0+ 中解决：
 
 ### Frozen/Lag Issue
-- Appears in commits after `69d1af2` (Liquid Glass versions)
-- Symptoms: scrolling freezes, double-click causes hang
-- Root cause: **TBD** — suspected duplicate `onTapGesture(count: 2)` handlers in ContentView
-- Stable version: `1d65652` (pre-Liquid Glass)
+- Root cause: duplicate `onTapGesture(count: 2)` handlers in ContentView
+- **Fixed in v2.1.0**: replaced with `ExclusiveGesture(TapGesture(count: 2), TapGesture())`
 
 ### Double-Click Behavior
-- Current: both `onPin()` and `onCopyWithFeedback()` fire on double-click
-- SwiftUI limitation: cannot prevent single-tap handler from firing on double-click
-- Solutions attempted:
-  1. `didDoubleTap` boolean → doesn't work (SwiftUI @State resets on re-render)
-  2. `DispatchWorkItem` delay → causes freeze in certain configurations
+- **Fixed in v2.1.0**: `ExclusiveGesture` prevents single-tap from firing on double-click
