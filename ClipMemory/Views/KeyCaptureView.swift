@@ -9,6 +9,7 @@ struct KeyCaptureView: NSViewRepresentable {
     var onDown: () -> Void
     var onReturn: () -> Void
     var onEscape: () -> Void
+    var onCommandF: (() -> Void)?
 
     func makeNSView(context: Context) -> KeyCaptureNSView {
         let view = KeyCaptureNSView()
@@ -17,6 +18,7 @@ struct KeyCaptureView: NSViewRepresentable {
         view.onDown = onDown
         view.onReturn = onReturn
         view.onEscape = onEscape
+        view.onCommandF = onCommandF
         return view
     }
 
@@ -26,6 +28,7 @@ struct KeyCaptureView: NSViewRepresentable {
         nsView.onDown = onDown
         nsView.onReturn = onReturn
         nsView.onEscape = onEscape
+        nsView.onCommandF = onCommandF
     }
 }
 
@@ -35,6 +38,7 @@ final class KeyCaptureNSView: NSView {
     var onDown: (() -> Void)?
     var onReturn: (() -> Void)?
     var onEscape: (() -> Void)?
+    var onCommandF: (() -> Void)?
 
     private var eventMonitor: Any?
 
@@ -54,6 +58,12 @@ final class KeyCaptureNSView: NSView {
             // During IME composition, pass all keys through to IME
             if let fr = NSApp.keyWindow?.firstResponder as? NSTextView, fr.hasMarkedText() {
                 return event
+            }
+            // Cmd+F — menu key equivalent is consumed before local monitor sees it,
+            // so we rely on `.onCommand` in ContentView instead.
+            if event.modifierFlags.contains(.command) && event.keyCode == 3 {
+                self.onCommandF?()
+                return nil
             }
             let isTextInput = (NSApp.keyWindow?.firstResponder as? NSText)?.isEditable == true
             // When search text is empty, arrow keys should navigate list not move cursor

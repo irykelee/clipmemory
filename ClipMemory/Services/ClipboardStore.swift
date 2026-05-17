@@ -6,6 +6,7 @@ import os.log
 extension Notification.Name {
     static let encryptionFailed = Notification.Name("ClipboardStore.encryptionFailed")
     static let showSettingsTab = Notification.Name("ClipMemory.showSettingsTab")
+    static let cmdFFindAction = Notification.Name("ClipMemory.cmdFFindAction")
 }
 
 extension ClipboardStore: ClipboardMonitorDelegate {

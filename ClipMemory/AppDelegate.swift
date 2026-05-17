@@ -21,6 +21,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
     }
 
+    @objc func disableFindMenuShortcut() {
+        let findSel = Selector(("performFindPanelAction:"))
+        for menu in NSApp.mainMenu?.items ?? [] {
+            walkMenu(menu.submenu) { item in
+                if item.action == findSel {
+                    item.target = self
+                    item.action = #selector(handleFindAction)
+                    item.keyEquivalent = ""  // Remove Cmd+F keyboard shortcut
+                }
+            }
+        }
+    }
+
+    private func walkMenu(_ menu: NSMenu?, visit: (NSMenuItem) -> Void) {
+        guard let menu else { return }
+        for item in menu.items {
+            visit(item)
+            walkMenu(item.submenu, visit: visit)
+        }
+    }
+
+    @objc private func handleFindAction() {
+        NotificationCenter.default.post(name: .cmdFFindAction, object: nil)
+    }
+
     private func showWelcomeWindow() {
         showWelcomeView { FirstLaunchManager.markLaunched() }
     }

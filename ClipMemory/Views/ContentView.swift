@@ -52,6 +52,7 @@ struct ContentView: View {
     @ObservedObject var languageManager = LanguageManager.shared
     @State private var selectedTab: SidebarTab = .all
     @State private var searchText = "" { didSet { keyboardSelectedIndex = nil } }
+    @FocusState private var isSearchFocused: Bool
     @State private var searchTextDebounced = ""
     @State private var searchTextDebounce: DispatchWorkItem?
     // Cache for displayedItems to avoid recomputing on every access
@@ -94,6 +95,79 @@ struct ContentView: View {
     }
     private var startOfYesterday: Date {
         Calendar.current.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
+    }
+
+    // MARK: - Keyboard Handlers
+    private func handleKeyUp() {
+        guard !displayedItems.isEmpty else { return }
+        if let idx = keyboardSelectedIndex, idx > 0 {
+            keyboardSelectedIndex = idx - 1
+        } else {
+            keyboardSelectedIndex = displayedItems.count - 1
+        }
+        if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
+    }
+
+    private func handleKeyDown() {
+        guard !displayedItems.isEmpty else { return }
+        let last = displayedItems.count - 1
+        if let idx = keyboardSelectedIndex, idx < last {
+            keyboardSelectedIndex = idx + 1
+        } else {
+            keyboardSelectedIndex = 0
+        }
+        if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
+    }
+
+    private func handleKeyReturn() {
+        guard let idx = keyboardSelectedIndex, idx < displayedItems.count else { return }
+        let item = displayedItems[idx]
+        lastCopiedId = item.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            if self.lastCopiedId == item.id { self.lastCopiedId = nil }
+        }
+        copyItem(item)
+    }
+
+    private func handleKeyEscape() {
+        if selectedTab == .settings {
+            selectedTab = .all
+        } else if !searchText.isEmpty {
+            searchText = ""
+        } else {
+            NSApp.keyWindow?.close()
+        }
+    }
+
+    private func focusSearchField() {
+        isSearchFocused = true
+    }
+
+    private func saveCollapsedGroups(_ groups: Set<TimeGroup>) {
+        let arr = groups.map { $0.rawValue }
+        guard let data = try? JSONEncoder().encode(arr) else { return }
+        guard let str = String(data: data, encoding: .utf8) else { return }
+        UserDefaults.standard.set(str, forKey: "collapsedGroups")
+    }
+
+    @ViewBuilder private var appPickerSheetContent: some View {
+        appPickerSheet.onAppear {
+            appPickerSearchDebounced = appPickerSearch
+            Self.cachedApps = nil
+        }
+    }
+
+    @ViewBuilder private var tipsSheet: some View {
+        TipsView(onClose: { showingTips = false })
+    }
+
+    private func debounceSearch(_ text: String) {
+        searchTextDebounce?.cancel()
+        let work = DispatchWorkItem { [self] in
+            self.searchTextDebounced = text
+        }
+        searchTextDebounce = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
     // MARK: - Theme
@@ -214,7 +288,47 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        withKeyAndSheets(splitViewWithLifecycle)
+    }
+
+    private func withKeyAndSheets<V: View>(_ v: V) -> some View {
+        v
+            .overlay(alignment: .top) { KeyCaptureView(
+                searchText: searchText,
+                onUp: { self.handleKeyUp() },
+                onDown: { self.handleKeyDown() },
+                onReturn: { self.handleKeyReturn() },
+                onEscape: { self.handleKeyEscape() },
+                onCommandF: { self.focusSearchField() }
+            ).frame(width: 0, height: 0) }
+            .onDisappear { stopKeyEventMonitor() }
+            .sheet(isPresented: $showingAppPicker) { self.appPickerSheetContent }
+            .sheet(isPresented: $showingTips) { self.tipsSheet }
+    }
+
+    private func attachLifecycle<V: View>(_ v: V) -> some View {
+        v
+            .onAppear {
+                (NSApp.delegate as? AppDelegate)?.disableFindMenuShortcut()
+                applyAppearance()
+                updateDisplayedItemsCache()
+            }
+            .onChange(of: searchText) { newValue in
+                self.debounceSearch(newValue)
+            }
+            .onChange(of: searchTextDebounced) { _ in updateDisplayedItemsCache() }
+            .onChange(of: selectedTab) { _ in updateDisplayedItemsCache() }
+            .onChange(of: dateFilter) { _ in updateDisplayedItemsCache() }
+            .onChange(of: store.items) { _ in updateDisplayedItemsCache() }
+            .onChange(of: collapsedGroups) { val in
+                self.saveCollapsedGroups(val)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
+            .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in self.focusSearchField() }
+    }
+
+    private var splitViewWithLifecycle: some View {
+        attachLifecycle(NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 190, ideal: 210)
         } detail: {
@@ -225,77 +339,59 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 640, minHeight: 440)
-        .toolbar {
-            ToolbarItem(id: "clear") {
-                Menu {
-                    Button(action: { pendingClearMode = .today }, label: { Label(L10n.clearToday, systemImage: "sunrise") })
-                    Button(action: { pendingClearMode = .yesterday }, label: { Label(L10n.clearYesterday, systemImage: "sun.haze") })
-                    Button(action: { pendingClearMode = .older }, label: { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") })
-                    Divider()
-                    Button(role: .destructive, action: { pendingClearMode = .all }, label: { Label(L10n.headerClearHistory, systemImage: "trash") })
-                    Divider()
-                    Button(action: { store.unpinToday() }, label: { Label(L10n.unpinToday, systemImage: "star.slash") })
-                    Button(action: { store.unpinYesterday() }, label: { Label(L10n.unpinYesterday, systemImage: "star.slash") })
-                    Button(action: { store.unpinOlder() }, label: { Label(L10n.unpinOlder, systemImage: "star.slash") })
-                    Button(action: { store.unpinAll() }, label: { Label(L10n.unpinAll, systemImage: "star.slash") })
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .disabled(store.items.isEmpty)
+        .toolbar { self.toolbarContent }
+        .toolbarBackground(.visible, for: .windowToolbar))
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        // swiftlint:disable identifier_name
+        ToolbarItem(id: "search") {
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: sz(11)))
+                TextField(L10n.searchPlaceholder, text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: sz(12)))
+                    .focused($isSearchFocused)
+                    .frame(width: 180)
             }
-            ToolbarItemGroup(placement: .principal) {
-                if selectedTab != .settings {
-                    HStack(spacing: 4) {
-                        ForEach(DateFilter.allCases, id: \.self) { filter in
-                            DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
-                                dateFilter = filter
-                            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+            .cornerRadius(6)
+        }
+        ToolbarItem(id: "clear") {
+            Menu {
+                Button(action: { pendingClearMode = .today }, label: { Label(L10n.clearToday, systemImage: "sunrise") })
+                Button(action: { pendingClearMode = .yesterday }, label: { Label(L10n.clearYesterday, systemImage: "sun.haze") })
+                Button(action: { pendingClearMode = .older }, label: { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") })
+                Divider()
+                Button(role: .destructive, action: { pendingClearMode = .all }, label: { Label(L10n.headerClearHistory, systemImage: "trash") })
+                Divider()
+                Button(action: { store.unpinToday() }, label: { Label(L10n.unpinToday, systemImage: "star.slash") })
+                Button(action: { store.unpinYesterday() }, label: { Label(L10n.unpinYesterday, systemImage: "star.slash") })
+                Button(action: { store.unpinOlder() }, label: { Label(L10n.unpinOlder, systemImage: "star.slash") })
+                Button(action: { store.unpinAll() }, label: { Label(L10n.unpinAll, systemImage: "star.slash") })
+            } label: {
+                Image(systemName: "trash")
+            }
+            .disabled(store.items.isEmpty)
+        }
+        ToolbarItemGroup(placement: .principal) {
+            if selectedTab != .settings {
+                HStack(spacing: 4) {
+                    ForEach(DateFilter.allCases, id: \.self) { filter in
+                        DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
+                            dateFilter = filter
                         }
                     }
-                    .padding(.horizontal, 4)
                 }
+                .padding(.horizontal, 4)
             }
         }
-        .searchable(text: $searchText, placement: .toolbar, prompt: L10n.searchPlaceholder)
-        .toolbarBackground(.visible, for: .windowToolbar)
-        .onAppear {
-            applyAppearance()
-            updateDisplayedItemsCache()
-        }
-        .onChange(of: searchText) { newValue in
-            searchTextDebounce?.cancel()
-            let work = DispatchWorkItem { searchTextDebounced = newValue }
-            searchTextDebounce = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
-        }
-        .onChange(of: searchTextDebounced) { _ in updateDisplayedItemsCache() }
-        .onChange(of: selectedTab) { _ in updateDisplayedItemsCache() }
-        .onChange(of: dateFilter) { _ in updateDisplayedItemsCache() }
-        .onChange(of: store.items) { _ in updateDisplayedItemsCache() }
-        .onChange(of: collapsedGroups) { val in
-            let arr = val.map { $0.rawValue }
-            if let d = try? JSONEncoder().encode(arr), let s = String(data: d, encoding: .utf8) { UserDefaults.standard.set(s, forKey: "collapsedGroups") }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
-        .overlay(alignment: .top) { KeyCaptureView(searchText: searchText, onUp: {
-            guard !displayedItems.isEmpty else { return }
-            if let idx = keyboardSelectedIndex, idx > 0 { keyboardSelectedIndex = idx - 1 } else { keyboardSelectedIndex = displayedItems.count - 1 }
-            if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
-        }, onDown: {
-            guard !displayedItems.isEmpty else { return }
-            let last = displayedItems.count - 1; if let idx = keyboardSelectedIndex, idx < last { keyboardSelectedIndex = idx + 1 } else { keyboardSelectedIndex = 0 }
-            if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
-        }, onReturn: {
-            if let idx = keyboardSelectedIndex, idx < displayedItems.count { let item = displayedItems[idx]; lastCopiedId = item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == item.id { lastCopiedId = nil } }; copyItem(item) }
-        }, onEscape: {
-            if selectedTab == .settings { selectedTab = .all } else if !searchText.isEmpty { searchText = "" } else { NSApp.keyWindow?.close() }
-        }).frame(width: 0, height: 0) }
-        .onDisappear { stopKeyEventMonitor() }
-        .sheet(isPresented: $showingAppPicker) { appPickerSheet.onAppear {
-            appPickerSearchDebounced = appPickerSearch
-            Self.cachedApps = nil
-        } }
-        .sheet(isPresented: $showingTips) { TipsView(onClose: { showingTips = false }) }
+        // swiftlint:enable identifier_name
     }
 
     private var sidebar: some View {
