@@ -1,4 +1,4 @@
-# ClipMemory v2.2.0
+# ClipMemory v2.2.1
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Changelog
+
+### v2.2.1 (2026-05-19) — Image Sensitivity Fix
+
+- **Image sensitivity fix** — Images no longer auto-marked sensitive by size (50KB threshold removed), storage controlled by maxItems and manual clearing
+- **Component extraction** — ContentView split into FlowLayout, LogoView, DateFilterButton, AppPickerRow, ClipboardItemRow
+- **Shared utilities** — Extracted FontScaling.swift (sz()) and DateHelpers.swift (date formatters)
+- **NSCache memory pressure** — Added system memory warning observer to clear cache on pressure
 
 ### v2.2.0 (2026-05-15) — Rich Text Support
 

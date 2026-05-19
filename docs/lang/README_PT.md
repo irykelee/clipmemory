@@ -1,4 +1,4 @@
-# ClipMemory v2.2.0
+# ClipMemory v2.2.1
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.2.1 (2026-05-19) — Correção de Sensibilidade de Imagem
+
+- **Correção de sensibilidade de imagem** — Imagens não são mais marcadas automaticamente por tamanho (limite de 50KB removido), armazenamento controlado por maxItems e limpeza manual
+- **Extração de componentes** — ContentView dividido em FlowLayout, LogoView, DateFilterButton, AppPickerRow, ClipboardItemRow
+- **Utilitários compartilhados** — Extraídos FontScaling.swift (sz()) e DateHelpers.swift (formatadores de data)
+- **Tratamento de pressão de memória NSCache** — Adicionado observador de aviso de memória do sistema para limpar cache sob pressão
 
 ### v2.2.0 (2026-05-15) — Suporte Rich Text
 
