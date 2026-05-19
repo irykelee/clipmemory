@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.2.0
+# 剪忆 ClipMemory v2.2.1
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 更新日志
+
+### v2.2.1 (2026-05-19) — 图片敏感逻辑修复
+
+- **图片敏感判断修复** — 图片不再按大小（50KB）自动标记敏感，存储由 maxItems 和手动清理控制
+- **组件拆分重构** — ContentView 拆分为 FlowLayout、LogoView、DateFilterButton、AppPickerRow、ClipboardItemRow
+- **共享工具类** — 提取 FontScaling.swift（sz()）和 DateHelpers.swift（日期格式化）
+- **NSCache 内存压力处理** — 添加系统内存警告监听，触发缓存清理
 
 ### v2.2.0 (2026-05-15) — 富文本支持
 

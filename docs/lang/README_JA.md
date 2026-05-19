@@ -1,4 +1,4 @@
-# ClipMemory v2.2.0
+# ClipMemory v2.2.1
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.2.1 (2026-05-19) — 画像敏感ロジック修正
+
+- **画像敏感判断修正** — 画像がサイズ（50KB）で自動マークされることを防止、存储はmaxItemsと手動清理で制御
+- **コンポーネント抽出** — ContentViewをFlowLayout、LogoView、DateFilterButton、AppPickerRow、ClipboardItemRowに分割
+- **共有ユーティリティ** — FontScaling.swift（sz()）とDateHelpers.swift（日付フォーマット）を抽出
+- **NSCacheメモリ圧力を処理** — システムメモリ警告オブザーバーを追加、圧力時にキャッシュをクリア
 
 ### v2.2.0 (2026-05-15) — リッチテキスト対応
 

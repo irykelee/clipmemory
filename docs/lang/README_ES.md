@@ -1,4 +1,4 @@
-# ClipMemory v2.2.0
+# ClipMemory v2.2.1
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.2.1 (2026-05-19) — Corrección de Sensibilidad de Imagen
+
+- **Corrección de sensibilidad de imagen** — Las imágenes ya no se marcan automáticamente por tamaño (umbral de 50KB eliminado), almacenamiento controlado por maxItems y limpieza manual
+- **Extracción de componentes** — ContentView dividido en FlowLayout, LogoView, DateFilterButton, AppPickerRow, ClipboardItemRow
+- **Utilidades compartidas** — Extraídos FontScaling.swift (sz()) y DateHelpers.swift (formatos de fecha)
+- **Manejo de presión de memoria NSCache** — Añadido observador de advertencia de memoria del sistema para borrar caché bajo presión
 
 ### v2.2.0 (2026-05-15) — Soporte Rich Text
 
