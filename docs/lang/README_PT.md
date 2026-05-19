@@ -145,6 +145,14 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 
 ---
 
+## Migração de dados
+
+O histórico (incluindo a chave de criptografia) é armazenado em `~/Library/Application Support/ClipMemory/`.
+Faça backup deste diretório antes de reinstalar — ele pode ser restaurado no mesmo Mac ou em um novo Mac para continuar lendo seu histórico.
+Antes de remover o app, clique no botão 🗑 na barra de ferramentas superior para limpar o histórico.
+
+---
+
 ## Instalação
 
 ```bash

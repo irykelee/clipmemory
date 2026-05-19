@@ -145,6 +145,14 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 
 ---
 
+## Migración de datos
+
+El historial (incluida la clave de cifrado) se almacena en `~/Library/Application Support/ClipMemory/`.
+Haz una copia de seguridad de este directorio antes de reinstalar. Se puede restaurar en el mismo Mac o en uno nuevo para seguir leyendo tu historial.
+Antes de eliminar la app, haz clic en el botón 🗑 de la barra de herramientas superior para borrar el historial.
+
+---
+
 ## Instalación
 
 ```bash

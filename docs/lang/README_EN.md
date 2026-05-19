@@ -145,6 +145,14 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 
 ---
 
+## Data Migration
+
+History (including encryption key) is stored at `~/Library/Application Support/ClipMemory/`.
+Back up this directory before reinstalling — it can be restored on the same Mac or a new Mac to continue reading your history.
+Before removing the app, click the 🗑 button in the top toolbar to clear history.
+
+---
+
 ## Installation
 
 ```bash
