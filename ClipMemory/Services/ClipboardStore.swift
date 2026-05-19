@@ -120,6 +120,14 @@ class ClipboardStore: ObservableObject {
             object: nil
         )
 
+        // Register memory warning handler to clear sensitive content cache under pressure
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMemoryPressure(_:)),
+            name: NSNotification.Name("NSMemoryWarningThread"),
+            object: nil
+        )
+
         loadItems()
         updateExcludedAppsOnMonitor()
         cleanupExpiredItems()
@@ -136,12 +144,20 @@ class ClipboardStore: ObservableObject {
     /// Thread-safety: all `items` mutations (addItem/deleteItem/etc.) are on main thread.
     /// cleanupExpiredItems fires on a background timer but only reads items there,
     /// dispatching the actual removal to main. No lock needed for this pattern.
+    /// Memory pressure handling: cache evicts entries under memory pressure via NSCache's built-in behavior.
+    /// Additionally, totalCostLimit caps memory at ~10MB (500 items × ~20KB each).
 
     private let contentCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
         cache.countLimit = 500
+        cache.totalCostLimit = 10 * 1024 * 1024 // 10MB limit
         return cache
     }()
+
+    @objc private func handleMemoryPressure(_ notification: Notification) {
+        // Clear all cached decrypted content under memory pressure
+        contentCache.removeAllObjects()
+    }
 
     private var cleanupTimer: DispatchSourceTimer?
     private var saveTimer: DispatchSourceTimer?

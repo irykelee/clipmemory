@@ -37,8 +37,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     }
 
     /// Returns true if decryption was attempted but failed.
-    /// Decrypts and caches the result so subsequent `getDecryptedContent` calls hit the cache.
-    var decryptionFailed: Bool {
+    /// Triggers decryption and caches the result so subsequent `getDecryptedContent` calls hit the cache.
+    var isDecryptionFailed: Bool {
         guard isEncrypted else { return false }
         // Trigger decrypt + cache populate; NSCache stores nil-failed results implicitly
         // by not calling setObject (since nil cannot be stored), so repeated calls re-attempt.

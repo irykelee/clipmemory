@@ -1,16 +1,6 @@
 import SwiftUI
 import AppKit
 
-private var relativeDateFormatters: [String: RelativeDateTimeFormatter] = [:]
-private func cachedRelativeDateFormatter(for languageCode: String) -> RelativeDateTimeFormatter {
-    if let cached = relativeDateFormatters[languageCode] { return cached }
-    let f = RelativeDateTimeFormatter()
-    f.unitsStyle = .abbreviated
-    f.locale = Locale(identifier: languageCode)
-    relativeDateFormatters[languageCode] = f
-    return f
-}
-
 struct QuickBarView: View {
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
@@ -27,8 +17,6 @@ struct QuickBarView: View {
 
     private let maxItems = 8
 
-    private func sz(_ base: CGFloat) -> CGFloat { base * fontScale }
-
     private var quickBarBackground: AnyShapeStyle {
         AnyShapeStyle(Color.clear)
     }
@@ -41,7 +29,7 @@ struct QuickBarView: View {
         let base = searchText.isEmpty
             ? Array(store.items.prefix(maxItems))
             : store.items.filter { item in
-                guard !item.decryptionFailed else { return false }
+                guard !item.isDecryptionFailed else { return false }
                 let searchableText = item.type == .richText
                     ? item.plainTextFromRTFFallback
                     : (ClipboardStore.shared.getDecryptedContent(item) ?? "")
