@@ -244,9 +244,10 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
 
     private func processImageData(_ imageData: Data) {
         let id = UUID()
-        let isSensitive = imageData.count >= 50 * 1024
-        let hours = delegate?.sensitiveClearHoursForMonitor() ?? 0
-        let expiresAt: Date? = isSensitive && hours > 0 ? Date().addingTimeInterval(TimeInterval(hours * 3600)) : nil
+        // Image size does not determine sensitivity — only content detection does.
+        // Images are not auto-expired by size; storage is controlled by maxItems and manual clearing.
+        let isSensitive = false
+        let expiresAt: Date? = nil
 
         ImageStorage.shared.saveImage(imageData, id: id) { [weak self] filename in
             guard let filename = filename else { return }
