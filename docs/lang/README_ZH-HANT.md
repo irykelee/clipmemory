@@ -145,6 +145,14 @@
 
 ---
 
+## 數據遷移
+
+歷史記錄（含加密密鑰）位於 ~/Library/Application Support/ClipMemory/。
+重裝前備份此目錄即可遷移，重裝 macOS 或更換 Mac 後恢復即可繼續讀取。
+刪除 App 前，可點擊主視窗頂欄 🗑 按鈕清除歷史記錄。
+
+---
+
 ## 安裝
 
 ```bash
