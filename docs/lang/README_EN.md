@@ -72,7 +72,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 ### Smart Security — Encryption + Detection
 
 - AES-256-GCM encryption (v2), compatible with legacy AES-CBC+HMAC-SHA256
-- 25+ rules auto-detect sensitive data (passwords / API keys / ID numbers / etc.)
+- 26 rules auto-detect sensitive data (passwords / API keys / Slack/Discord/OpenAI tokens / ID numbers / etc.)
 - Auto-pauses when password manager is in foreground, no copying from the app itself
 - Content never saved as plaintext if encryption fails
 
@@ -122,7 +122,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 ## Security
 
 - **AES-256-GCM (v2) + legacy AES-CBC+HMAC-SHA256** — All text and images encrypted before disk storage
-- **Smart detection** — 25+ rules (keywords + regex) auto-identify passwords, API keys, tokens, private keys, ID numbers, bank card numbers, etc.
+- **Smart detection** — 26 rules (keywords + regex) auto-identify passwords, API keys, Slack/Discord/OpenAI tokens, private keys, ID numbers, bank card numbers, etc.
 - **Auto-clear** — Sensitive content configurable to auto-delete after 1h / 24h / 48h / 7 days, or never
 
 ---

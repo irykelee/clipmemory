@@ -94,6 +94,29 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         ("sq0csp-[0-9A-Za-z_-]{43}", true),
         ("sq0atp-[0-9A-Za-z_-]{22}", true),
         ("amzn\\.mws\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", true),
+        // Slack token
+        ("xox[baprs]-[0-9a-zA-Z-]{10,}", true),
+        // Discord bot token
+        ("mfa\\.[\\w-]{84}", true),
+        // OpenAI API key
+        ("sk-[A-Za-z0-9]{48}", true),
+        // Twilio API key
+        ("SK[0-9a-fA-F]{32}", true),
+        // SendGrid API key
+        ("SG\\.[\\w-]{22}\\.[\\w-]{43}", true),
+        // GitHub OAuth token
+        ("gho_[0-9a-zA-Z]{36}", true),
+        // npm access token
+        ("npm_[A-Za-z0-9]{36}", true),
+        // Heroku API key
+        ("hbc_[0-9a-f]{48}", true),
+        // Mailgun API key
+        ("key-[0-9a-zA-Z]{32}", true),
+        // PagerDuty API key
+        ("[A-Za-z0-9]{20}", true),
+        // Stripe keys
+        ("sk_live_[0-9a-zA-Z]{24,}", true),
+        ("rk_live_[0-9a-zA-Z]{24,}", true),
         // Personal IDs
         ("\\b[1-9]\\d{5}(?:19|20)\\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{3}[\\dXx]\\b", true),  // China ID card (18-digit)
         ("\\b[1-9]\\d{7}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{3}\\b", true),                         // China ID card (15-digit)
@@ -102,7 +125,7 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         // US SSN
         ("\\b\\d{3}-\\d{2}-\\d{4}\\b", true),
         // JWT
-        ("eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}", true)
+        ("eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}", true)
     ]
 
     // Pre-compiled regex patterns for sensitive value detection (R10: compile once)
@@ -111,7 +134,9 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
             "(?i)(password|passwd|pwd)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
             "(?i)(api_key|apikey|api-key)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
             "(?i)(token|bearer)\\s*[=:]\\s*['\"]?[a-zA-Z0-9_-]{20,}",
-            "(?i)(sk|secret)\\s*[=:]\\s*['\"]?[^'\"\\s]{20,}"
+            "(?i)(sk|secret)\\s*[=:]\\s*['\"]?[^'\"\\s]{20,}",
+            "(?i)(access_token|accesstoken)\\s*[=:]\\s*['\"]?[a-zA-Z0-9_-]{20,}",
+            "(?i)(private.?key)\\s*[=:]\\s*['\"]?[A-Za-z0-9_-]{20,}"
         ]
         var compiled: [NSRegularExpression] = []
         for pattern in patterns {

@@ -72,7 +72,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 ### Segurança inteligente — Criptografia + Deteção
 
 - Criptografia AES-256-GCM (v2), compatível com legacy AES-CBC+HMAC-SHA256
-- 25+ regras de detecção automática de dados sensíveis (senhas / chaves de API / números de identificação etc.)
+- 26 regras de detecção automática de dados sensíveis (senhas / chaves de API / tokens Slack/Discord/OpenAI / números de identificação etc.)
 - Pausa automática quando o gestor de palavras-passe está em primeiro plano, sem copiar da App
 - Conteúdo nunca guardado em texto simples se a criptografia falhar
 
@@ -122,7 +122,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 ## Segurança
 
 - **AES-256-GCM (v2) + compatibilidade legacy AES-CBC+HMAC-SHA256** — Todo texto e imagem é criptografado automaticamente antes de salvar em disco
-- **Detecção inteligente** — 25+ regras (palavras-chave + expressões regulares) para senhas, chaves de API, tokens, chaves privadas, números de identificação, etc.
+- **Detecção inteligente** — 26 regras (palavras-chave + expressões regulares) para senhas, chaves de API, tokens Slack/Discord/OpenAI, chaves privadas, números de identificação, etc.
 - **Limpeza automática** — Conteúdo sensível configurável para limpar após 1h / 24h / 48h / 7d, ou nunca
 
 ---
