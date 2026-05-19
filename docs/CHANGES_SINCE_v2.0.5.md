@@ -170,34 +170,101 @@ This document records all functional changes from commit `1d65652` to present.
 
 ---
 
-## Commit: `<current>` — Development Workflow
+## Commit: `ccbde24` — Fix Image Sensitivity from Size Heuristic
 
 ### Files Changed
-- `.git/hooks/pre-commit` (new)
-- `.github/workflows/ci.yml` (new)
-- `docs/DEVELOPMENT.md` (new)
+- `ClipMemory/Services/ClipboardMonitor.swift`
+- `docs/roadmap.md`
 
-### Pre-commit Hook
-- Blocks commit if build or test fails
-- Auto-runs `xcodegen generate` when `project.yml` modified
-- Build: `xcodebuild -scheme ClipMemory -configuration Debug build`
-- Test: `xcodebuild -scheme ClipMemory -configuration Debug test`
+### ClipboardMonitor Changes
+- Images are no longer auto-marked sensitive based on size (50KB threshold removed)
+- `processImageData()` now sets `isSensitive = false` unconditionally
+- Storage controlled by maxItems and manual clearing only
 
-### GitHub Actions CI
-- Triggers on push and pull_request to main
-- Jobs: build + test on macos-26
+---
 
-### Extended Verification Scenarios
-| Scenario | What to Verify |
-|----------|----------------|
-| 设置 → 切语言 → 回到主界面 | 语言切换触发 view rebuild |
-| 窗口关闭 → QuickBar 重新打开 | 窗口重建 @State 丢失问题 |
-| 排除应用 sheet → 搜索 → 关闭 | Sheet 生命周期正常 |
-| 字体缩放 小/中/大 各切换 | `sz()` 缓存问题 |
-| 固定/取消固定 → 检查分组 | 固定项正确移动到 today |
-| 删除分组 → 确认 → 检查计数 | 分组删除后计数正确更新 |
-| 搜索防抖 → 快速输入 | 250ms 防抖后显示正确结果 |
-| 批量选择 → 批量删除 | 多选状态正确保留 |
+## Commit: `9ef5ed0` — Extract Components + Shared Utils + NSCache Memory Pressure
+
+### Files Changed
+- `ClipMemory.xcodeproj/project.pbxproj`
+- `ClipMemory/Models/ClipboardItem.swift`
+- `ClipMemory/Services/ClipboardStore.swift`
+- `ClipMemory/Utils/DateHelpers.swift` (new)
+- `ClipMemory/Utils/FontScaling.swift` (new)
+- `ClipMemory/Views/Components/AppPickerRow.swift` (new)
+- `ClipMemory/Views/Components/ClipboardItemRow.swift` (new)
+- `ClipMemory/Views/Components/DateFilterButton.swift` (new)
+- `ClipMemory/Views/Components/FlowLayout.swift` (new)
+- `ClipMemory/Views/Components/LogoView.swift` (new)
+- `ClipMemory/Views/ContentView.swift`
+- `ClipMemory/Views/QuickBarView.swift`
+- `docs/roadmap.md`
+
+### ContentView Refactoring (1192 → 759 lines)
+- Extracted: FlowLayout, LogoView, DateFilterButton, AppPickerRow, ClipboardItemRow
+- Extracted shared utilities: FontScaling.swift (sz()), DateHelpers.swift (date formatters)
+- Added NSCache memory pressure handling via `NSMemoryWarningThread`
+
+### ClipboardStore Changes
+- Added `handleMemoryPressure()` to clear contentCache on system memory warning
+- `totalCostLimit = 10 * 1024 * 1024` (10MB) to bound cache size
+
+### ClipboardItem Changes
+- Renamed `decryptionFailed` → `isDecryptionFailed` for clarity
+
+---
+
+## Commit: `7f1bb69` — Docs Sync: CLAUDE.md + Roadmap + README Links + CHANGES
+
+### Files Changed
+- `ClipMemory/AppDelegate.swift`
+- `ClipMemory/Services/ClipboardStore.swift`
+- `ClipMemory/Views/ContentView.swift`
+- `ClipMemory/Views/KeyCaptureView.swift`
+- `ClipMemory/Views/QuickBarView.swift`
+- `README.md`
+- `docs/CHANGES_SINCE_v2.0.5.md`
+- `docs/roadmap.md`
+
+### ContentView Changes
+- Added keyboard navigation: ↑↓ arrows scroll through list, Enter copies
+- Added `⌘F` to focus search field from QuickBar
+- Added `collapsedIds` for remembering collapsed groups across sessions
+- Added app picker "Excluded Apps" section with FlowLayout tags
+- Fixed `sz()` to read from `@AppStorage` reactively instead of static UserDefaults
+- Fixed date formatting with language-aware formatters
+
+### Roadmap Redefined
+- v2.3 redefined: 8 points for specific test coverage tasks (T1-T4)
+- v2.4 added: 6 points for OCR image sensitive detection (O1-O5)
+
+---
+
+## Commit: `93bb675` — Update All 8 Language READMEs to v2.2.0
+
+### Files Changed
+- `README.md`
+- `docs/lang/README_EN.md`
+- `docs/lang/README_ES.md`
+- `docs/lang/README_JA.md`
+- `docs/lang/README_KO.md`
+- `docs/lang/README_PT.md`
+- `docs/lang/README_ZH-HANS.md`
+- `docs/lang/README_ZH-HANT.md`
+
+### Content
+- Updated all 8 language READMEs to reflect v2.2.0 feature set
+- Synced version numbers, feature descriptions, and installation instructions
+
+---
+
+## Commit: `331b598` — Chore: Update Cask SHA256 for v2.2.0
+
+### Files Changed
+- `Casks/clipmemory.rb`
+
+### Content
+- Updated SHA256 checksum for v2.2.0 Homebrew cask
 
 ---
 
