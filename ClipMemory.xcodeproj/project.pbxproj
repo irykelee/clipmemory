@@ -11,6 +11,7 @@
 		17DD4FBBF0E756DA8D26C43C /* CryptoServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */; };
 		282BB5C167E6660EE11B9A26 /* ClipboardItemRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C18FA6F2B01EF7E6E43F72 /* ClipboardItemRow.swift */; };
 		31703362387388224F14C74C /* TipsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43B0B34746697091DC83794 /* TipsView.swift */; };
+		327D4E28765DDBA110807CBC /* ClipboardMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 162510951570AB9FC4207B0F /* ClipboardMonitorTests.swift */; };
 		3F86CCA09C748C2CC0687BD8 /* ClipboardMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F180418B42AA03636D90BCA9 /* ClipboardMonitor.swift */; };
 		414FB5F0ACA73DDFF4562450 /* ClipboardItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B0ED102287F5F6BAD23F2F /* ClipboardItemTests.swift */; };
 		4D21B894BBC408664F1CF2D4 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF83CE3799A1C6382C0CF3D /* FlowLayout.swift */; };
@@ -61,6 +62,7 @@
 		0C9963FD4A541FEC742939FC /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = pt.lproj/Localizable.strings; sourceTree = "<group>"; };
 		1258099BA9879D8EF6A6F980 /* LocalizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationService.swift; sourceTree = "<group>"; };
 		12B9F675BF991916E52B8FE2 /* DateFilterButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateFilterButton.swift; sourceTree = "<group>"; };
+		162510951570AB9FC4207B0F /* ClipboardMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitorTests.swift; sourceTree = "<group>"; };
 		1A8ED97CA49FF8F747A96CBF /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		1E73A6EE834EA648971BFC98 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
 		1F8781AC6EAB85F7C5271CBD /* MockCryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockCryptoService.swift; sourceTree = "<group>"; };
@@ -131,6 +133,7 @@
 			isa = PBXGroup;
 			children = (
 				D4B0ED102287F5F6BAD23F2F /* ClipboardItemTests.swift */,
+				162510951570AB9FC4207B0F /* ClipboardMonitorTests.swift */,
 				814FC521762331411B0823A5 /* ClipMemoryTests.entitlements */,
 				A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */,
 				B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */,
@@ -342,6 +345,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				414FB5F0ACA73DDFF4562450 /* ClipboardItemTests.swift in Sources */,
+				327D4E28765DDBA110807CBC /* ClipboardMonitorTests.swift in Sources */,
 				EDD4772BEACF49926B32ECA9 /* ConcurrencyTests.swift in Sources */,
 				17DD4FBBF0E756DA8D26C43C /* CryptoServiceTests.swift in Sources */,
 				7B94EA436B48E0E9CCCA9C91 /* IntegrationTests.swift in Sources */,
