@@ -572,4 +572,61 @@ final class IntegrationTests: XCTestCase {
         store.clearSensitiveItems()
         XCTAssertEqual(store.items.count, 0)
     }
+
+    // MARK: - G.11 isDecryptionFailed memoization (performance regression guard)
+
+    func testIsDecryptionFailedSetsFlagOnFirstFailure() {
+        // G.11.1: When getDecryptedContent returns nil for an encrypted item,
+        // the item stored in the store must get decryptionFailed = true so
+        // subsequent isDecryptionFailed reads are O(1) (no re-decryption).
+        // Setup: backend pre-populated with a corrupt encrypted item
+        let corrupt = ClipboardItem(
+            id: UUID(),
+            content: "v2-not-a-real-encrypted-blob-AAAAAAAAAAAAAAAAAAAA",
+            type: .text,
+            isEncrypted: true
+        )
+        let backendWithCorrupt = MemoryStorageBackend(items: [corrupt])
+        let storeWithCorrupt = ClipboardStore(backend: backendWithCorrupt)
+        storeWithCorrupt.loadItems()
+
+        // Sanity: corrupt item loaded
+        XCTAssertEqual(storeWithCorrupt.items.count, 1)
+        XCTAssertFalse(storeWithCorrupt.items[0].isDecryptionFailed,
+                      "Sanity: flag is false before any decrypt attempt")
+
+        // First (and only) decrypt attempt should fail
+        let result = storeWithCorrupt.getDecryptedContent(corrupt)
+        XCTAssertNil(result, "Corrupt blob must fail decryption")
+
+        // The flag must be set on the in-store copy of the item
+        let storedItem = storeWithCorrupt.items.first(where: { $0.id == corrupt.id })
+        XCTAssertNotNil(storedItem)
+        XCTAssertTrue(storedItem?.isDecryptionFailed == true,
+                     "After getDecryptedContent returns nil, the stored item must have decryptionFailed = true")
+    }
+
+    func testIsDecryptionFailedIsFalseForUnencryptedItems() {
+        // G.11.2: Unencrypted items are not "decryption failed" — the field
+        // applies only to items that were encrypted and cannot be decrypted.
+        let plaintext = ClipboardItem(
+            content: "not-encrypted",
+            type: .text,
+            isEncrypted: false
+        )
+        XCTAssertFalse(plaintext.isDecryptionFailed)
+    }
+
+    func testIsDecryptionFailedIsFalseForValidlyEncryptedItems() {
+        // G.11.3: A successfully-decryptable item must NOT have the flag set.
+        // (Verifies the flag is only set on actual failure, not on success.)
+        let item = ClipboardItem(content: "valid", type: .text)
+        store.addItem(item)
+        store.flushPendingSaves()
+
+        let stored = store.items[0]
+        _ = store.getDecryptedContent(stored)
+        XCTAssertFalse(stored.isDecryptionFailed,
+                      "Successfully-decrypted items must not be flagged as failed")
+    }
 }

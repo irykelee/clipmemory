@@ -346,6 +346,12 @@ class ClipboardStore: ObservableObject {
         }
         if let result = result {
             contentCache.setObject(result as NSString, forKey: key)
+        } else if item.isEncrypted {
+            // Mark the in-store copy so subsequent `isDecryptionFailed` reads
+            // are O(1) instead of re-triggering AES decrypt on every access.
+            if let index = items.firstIndex(where: { $0.id == item.id }) {
+                items[index].decryptionFailed = true
+            }
         }
         return result
     }

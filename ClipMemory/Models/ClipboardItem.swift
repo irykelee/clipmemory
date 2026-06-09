@@ -18,8 +18,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     var isEncrypted: Bool = false
     /// SHA256 hash of plaintext content for fast search pre-filtering
     var contentHash: String?
+    /// Set by ClipboardStore.getDecryptedContent on first decrypt failure.
+    /// Replaces the prior computed-property pattern that re-decrypted on every access.
+    var decryptionFailed: Bool = false
 
-    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil) {
+    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false) {
         self.id = id
         self.content = content
         self.type = type
@@ -29,6 +32,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.expiresAt = expiresAt
         self.isEncrypted = isEncrypted
         self.contentHash = contentHash
+        self.decryptionFailed = decryptionFailed
     }
 
     var isExpired: Bool {
@@ -36,14 +40,10 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         return Date() > expiresAt
     }
 
-    /// Returns true if decryption was attempted but failed.
-    /// Triggers decryption and caches the result so subsequent `getDecryptedContent` calls hit the cache.
+    /// O(1) read of the memoized decryption outcome. Set by ClipboardStore
+    /// on first decrypt attempt; not re-computed.
     var isDecryptionFailed: Bool {
-        guard isEncrypted else { return false }
-        // Trigger decrypt + cache populate; NSCache stores nil-failed results implicitly
-        // by not calling setObject (since nil cannot be stored), so repeated calls re-attempt.
-        // This is acceptable since failed items are filtered out and won't be displayed.
-        return ClipboardStore.shared.getDecryptedContent(self) == nil
+        decryptionFailed
     }
 
     /// Extracts plain text from RTF content for preview and search purposes.
