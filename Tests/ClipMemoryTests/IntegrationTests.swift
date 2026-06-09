@@ -502,4 +502,74 @@ final class IntegrationTests: XCTestCase {
         mgr.selectedLanguage = original
         XCTAssertEqual(mgr.selectedLanguage, original)
     }
+
+    // MARK: - G.9 Group counts (todayCount / yesterdayCount / olderCount)
+
+    func testGroupCountsClassifyItemsByCreatedAt() {
+        // G.9.1: All three buckets populated; pinned items excluded from counts.
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let now = Date()
+        let yesterdayMid = startOfToday.addingTimeInterval(-3600)         // 1h into yesterday
+        let olderMid = startOfToday.addingTimeInterval(-2 * 24 * 3600)     // 2 days ago
+
+        let todayItem = ClipboardItem(content: "today-text", type: .text, createdAt: now)
+        let yesterdayItem = ClipboardItem(content: "yest-text", type: .text, createdAt: yesterdayMid)
+        let olderItem = ClipboardItem(content: "older-text", type: .text, createdAt: olderMid)
+        let pinnedToday = ClipboardItem(content: "pinned-today", type: .text, createdAt: now, isPinned: true)
+
+        store.addItem(todayItem)
+        store.addItem(yesterdayItem)
+        store.addItem(olderItem)
+        store.addItem(pinnedToday)
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.todayCount, 1, "Only non-pinned 'today' should count")
+        XCTAssertEqual(store.yesterdayCount, 1, "Only 'yesterday' window should count")
+        XCTAssertEqual(store.olderCount, 1, "Items older than yesterday go here")
+        XCTAssertEqual(store.pinnedItems.count, 1, "Pinned item should still appear in pinnedItems")
+        XCTAssertEqual(store.items.count, 4, "All items still in store (groupCounts is a view, not a filter)")
+    }
+
+    func testGroupCountsAreZeroForEmptyStore() {
+        // G.9.2: Edge case — no items means all counts are 0 (regression guard for nil-deref).
+        XCTAssertEqual(store.todayCount, 0)
+        XCTAssertEqual(store.yesterdayCount, 0)
+        XCTAssertEqual(store.olderCount, 0)
+    }
+
+    // MARK: - G.10 clearSensitiveItems
+
+    func testClearSensitiveItemsRemovesOnlyNonPinnedSensitive() {
+        // G.10.1: clearSensitiveItems must:
+        //   - Remove non-pinned sensitive items
+        //   - Preserve pinned sensitive items
+        //   - Preserve non-sensitive items (regardless of pinned status)
+        let sensitiveNormal = ClipboardItem(content: "secret-token", type: .text, isPinned: false, isSensitive: true)
+        let sensitivePinned = ClipboardItem(content: "pinned-secret", type: .text, isPinned: true, isSensitive: true)
+        let normalText = ClipboardItem(content: "harmless", type: .text, isPinned: false, isSensitive: false)
+
+        store.addItem(sensitiveNormal)
+        store.addItem(sensitivePinned)
+        store.addItem(normalText)
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items.count, 3)
+
+        store.clearSensitiveItems()
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items.count, 2, "Only the non-pinned sensitive item should be removed")
+        let remainingIds = Set(store.items.map { $0.id })
+        XCTAssertTrue(remainingIds.contains(sensitivePinned.id), "Pinned sensitive should be kept")
+        XCTAssertTrue(remainingIds.contains(normalText.id), "Non-sensitive should be kept")
+        XCTAssertFalse(remainingIds.contains(sensitiveNormal.id), "Non-pinned sensitive should be removed")
+        XCTAssertEqual(store.pinnedItems.count, 1)
+    }
+
+    func testClearSensitiveItemsOnEmptyStoreIsNoOp() {
+        // G.10.2: Edge case — no items means nothing to clear, no crash.
+        store.clearSensitiveItems()
+        XCTAssertEqual(store.items.count, 0)
+    }
 }
