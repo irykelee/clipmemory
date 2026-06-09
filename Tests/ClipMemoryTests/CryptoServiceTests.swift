@@ -74,13 +74,6 @@ final class CryptoServiceTests: XCTestCase {
 
     // MARK: - C.3 Legacy AES-CBC Compatibility
 
-    // NOTE: isOldFormat has a known bug - it checks hasPrefix("v2") on the base64
-    // string, but v2 is in the binary data before base64 encoding, so it always
-    // returns true for any non-empty input. This is a pre-existing bug tracked
-    // separately. The migration logic in ClipboardStore.loadItems works around
-    // this by only calling isOldFormat for known encrypted items, and the
-    // actual security guarantee comes from successful decrypt, not isOldFormat.
-
     func testIsOldFormatDetection() {
         // Encrypt something to get real v2 format output
         guard let v2Ciphertext = crypto.encrypt("test") else {
