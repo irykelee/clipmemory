@@ -22,6 +22,15 @@ class CryptoService: CryptoServiceProtocol {
     private init() {
         if getKey() == nil {
             generateKey()
+        } else {
+            // Defense in depth: ensure existing key file has 0o600 perms.
+            // The previous write-then-chmod pattern could leave the file at
+            // default umask (0o644) if a prior launch crashed between the
+            // write and chmod, or if a system tool reset the perms.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: Self.keyFileURL.path
+            )
         }
     }
 
@@ -34,11 +43,18 @@ class CryptoService: CryptoServiceProtocol {
             logger.error("Failed to generate random key bytes")
             fatalError("Cannot continue without cryptographically secure key")
         }
+        // Write to a temp file with secure perms, then atomically rename.
+        // The previous "write then chmod" pattern left the key file briefly
+        // world-readable before the chmod syscall landed.
+        let keyURL = Self.keyFileURL
+        let tempURL = keyURL.appendingPathExtension("tmp")
         do {
-            try keyData.write(to: Self.keyFileURL, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.keyFileURL.path)
+            try keyData.write(to: tempURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tempURL.path)
+            try FileManager.default.moveItem(at: tempURL, to: keyURL)
         } catch {
             logger.error("Failed to store encryption key: \(error.localizedDescription)")
+            try? FileManager.default.removeItem(at: tempURL)
             fatalError("Cannot continue without encryption key: \(error.localizedDescription)")
         }
     }
@@ -168,10 +184,11 @@ class CryptoService: CryptoServiceProtocol {
             let hmacSize = 32
             let storedHMAC = combined.suffix(hmacSize)
 
-            // Verify HMAC over IV || ciphertext
+            // Verify HMAC over IV || ciphertext (constant-time to prevent
+            // timing side-channel forgery of the auth tag)
             let ivAndCiphertext = combined.dropLast(hmacSize)
             let computedHMAC = computeHMAC(data: Data(ivAndCiphertext), key: key)
-            guard computedHMAC == storedHMAC else {
+            guard Self.constantTimeCompare(computedHMAC, storedHMAC) else {
                 return nil
             }
 
@@ -214,6 +231,18 @@ class CryptoService: CryptoServiceProtocol {
     private func computeHMAC(data: Data, key: SymmetricKey) -> Data {
         let authenticationCode = HMAC<SHA256>.authenticationCode(for: data, using: key)
         return Data(authenticationCode)
+    }
+
+    /// Constant-time byte comparison. Defends HMAC tag verification against
+    /// timing side channels — `Data ==` short-circuits on first mismatch and
+    /// leaks information about the stored tag.
+    static func constantTimeCompare(_ a: Data, _ b: Data) -> Bool {
+        guard a.count == b.count else { return false }
+        var result: UInt8 = 0
+        for i in 0..<a.count {
+            result |= a[i] ^ b[i]
+        }
+        return result == 0
     }
 
     private func aesDecryptCBC(data: Data, key: Data, iv: Data) -> [UInt8]? {
