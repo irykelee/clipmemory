@@ -193,7 +193,13 @@ class ImageStorage {
             let ivAndCiphertext = combined.dropLast(hmacSize)
 
             let computedHMAC = CryptoService.computeLegacyHMAC(data: Data(ivAndCiphertext), key: key)
-            guard computedHMAC == storedHMAC else { return nil }
+            // C1 fix (a00da7c follow-up): use constant-time compare. The previous
+            // `==` short-circuits on first byte mismatch, leaking the position of
+            // the first differing byte to a local timing oracle. CryptoService's
+            // decryptLegacy path was migrated in a00da7c; ImageStorage's
+            // legacyDecryptImage was missed and is the second HMAC verification
+            // site that has the same risk.
+            guard CryptoService.constantTimeCompare(computedHMAC, storedHMAC) else { return nil }
 
             let iv = combined.prefix(16)
             let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
