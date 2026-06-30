@@ -321,7 +321,11 @@ class ClipboardStore: ObservableObject {
                 isSensitive: existing.isSensitive,
                 expiresAt: existing.expiresAt,
                 isEncrypted: existing.isEncrypted,
-                contentHash: existing.contentHash
+                contentHash: existing.contentHash,
+                // HIGH-1 fix (a00da7c follow-up): preserve decryptionFailed flag
+                // through dedup rebuild — otherwise the a00da7c perf fix is
+                // silently undone every time the same corrupt content is re-copied.
+                decryptionFailed: existing.decryptionFailed
             )
             items.insert(existing, at: 0)
         } else {

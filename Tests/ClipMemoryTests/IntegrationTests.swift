@@ -629,4 +629,48 @@ final class IntegrationTests: XCTestCase {
         XCTAssertFalse(stored.isDecryptionFailed,
                       "Successfully-decrypted items must not be flagged as failed")
     }
+
+    // MARK: - G.12 dedup must not reset decryptionFailed flag (HIGH-1 regression)
+
+    func testDedupDoesNotResetDecryptionFailedFlag() {
+        // G.12.1: When addItem triggers a dedup hit on an item that already has
+        // decryptionFailed = true (corrupt blob), the rebuild at ClipboardStore.swift
+        // line 315-325 must preserve the flag. Otherwise the a00da7c perf fix is
+        // silently undone every time the same content is re-copied.
+        //
+        // Setup: pre-populated backend with a corrupt encrypted item
+        let corrupt = ClipboardItem(
+            id: UUID(),
+            content: "v2-not-a-real-encrypted-blob-AAAAAAAAAAAAAAAAAAAA",
+            type: .text,
+            isEncrypted: true
+        )
+        let backend = MemoryStorageBackend(items: [corrupt])
+        let dedupStore = ClipboardStore(backend: backend)
+        dedupStore.loadItems()
+
+        // Sanity: corrupt item loaded, flag is initially false
+        XCTAssertEqual(dedupStore.items.count, 1)
+        XCTAssertFalse(dedupStore.items[0].isDecryptionFailed,
+                      "Sanity: flag is false before any decrypt attempt")
+
+        // Trigger getDecryptedContent which sets decryptionFailed = true
+        XCTAssertNil(dedupStore.getDecryptedContent(corrupt))
+        XCTAssertTrue(dedupStore.items[0].decryptionFailed,
+                     "Sanity: flag must be set after getDecryptedContent returns nil")
+
+        // Re-add same plaintext — should hit dedup path (line 313)
+        let newItem = ClipboardItem(
+            content: "v2-not-a-real-encrypted-blob-AAAAAAAAAAAAAAAAAAAA",
+            type: .text
+        )
+        dedupStore.addItem(newItem)
+        dedupStore.flushPendingSaves()
+
+        // The flag must SURVIVE the dedup rebuild
+        let storedAfter = dedupStore.items.first(where: { $0.id == corrupt.id })
+        XCTAssertNotNil(storedAfter, "Original corrupt item must still exist (dedup, not new insert)")
+        XCTAssertTrue(storedAfter?.decryptionFailed == true,
+                     "decryptionFailed flag must NOT be reset on dedup rebuild (regression: HIGH-1)")
+    }
 }
