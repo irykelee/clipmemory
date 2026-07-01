@@ -83,7 +83,6 @@
 - `CryptoServiceProtocol` + `SensitiveDetectorProtocol` 定义
 - `StorageBackend` 协议（`FileStorageBackend` + `MemoryStorageBackend`）
 - `ServiceContainer` 轻量 DI 容器
-- `MockCryptoService` 测试实现
 
 ### v2.2c — 体验优化
 
