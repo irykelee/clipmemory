@@ -20,9 +20,17 @@ struct HotKeyConfig: Codable, Equatable {
     static func load() -> HotKeyConfig {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: keyCodeKey) != nil {
+            let modifiers = UInt32(defaults.integer(forKey: modifiersKey))
+            // RS-3.4: a persisted modifiers=0 would re-register a bare key
+            // (e.g. just "V") as the global hotkey. Fall back to defaultConfig
+            // instead — same defense as updateHotKey's modifiers!=0 guard,
+            // but on the read path so legacy/corrupted UserDefaults can't
+            // bypass it. Covers both saved-modifiers=0 and partial-save
+            // (keyCodeKey present, modifiersKey missing → defaults.integer=0).
+            guard modifiers != 0 else { return .defaultConfig }
             return HotKeyConfig(
                 keyCode: UInt32(defaults.integer(forKey: keyCodeKey)),
-                modifiers: UInt32(defaults.integer(forKey: modifiersKey))
+                modifiers: modifiers
             )
         }
         return .defaultConfig

@@ -128,20 +128,6 @@ final class HotKeyManagerTests: XCTestCase {
         XCTAssertEqual(loaded.modifiers, UInt32(cmdKey | shiftKey))
     }
 
-    func testLoadReturnsPartialConfigWhenOnlyKeyCodeSaved() {
-        // H.2.3: Document current behavior — load() gates only on keyCodeKey.
-        // If only keyCode is saved (e.g., process crash mid-save), the
-        // returned config has modifiers=0 (a hotkey with no modifier is
-        // registered as the bare key, which is bad UX but the current
-        // contract). Defensive recovery (clear + default) would be a
-        // separate design decision.
-        UserDefaults.standard.set(Int(kVK_ANSI_X), forKey: keyCodeKey)
-        // modifiersKey intentionally not set
-        let loaded = HotKeyConfig.load()
-        XCTAssertEqual(loaded.keyCode, UInt32(kVK_ANSI_X))
-        XCTAssertEqual(loaded.modifiers, 0, "Partial save: modifiers falls back to 0")
-    }
-
     // MARK: - H.3 HotKeyManager config flow
 
     func testManagerInitialConfigMatchesDefaults() {
@@ -242,5 +228,31 @@ final class HotKeyManagerTests: XCTestCase {
         let persisted = HotKeyConfig.load()
         XCTAssertEqual(persisted.modifiers, UInt32(cmdKey | shiftKey),
                        "Rejected update must not write zero to UserDefaults")
+    }
+
+    // MARK: - RS-3.4: load() rejects persisted modifiers=0
+
+    func testLoadReturnsDefaultWhenSavedModifiersIsZero() {
+        // RS-3.4 hardening: a persisted config with modifiers=0 would
+        // re-register a bare key (e.g. just "V") as the global hotkey.
+        // load() must fall back to defaultConfig in this case — same
+        // defense as updateHotKey's modifiers!=0 guard, but on the
+        // read path so legacy/corrupted UserDefaults can't bypass it.
+        UserDefaults.standard.set(Int(kVK_ANSI_V), forKey: keyCodeKey)
+        UserDefaults.standard.set(0, forKey: modifiersKey)
+        let loaded = HotKeyConfig.load()
+        XCTAssertEqual(loaded, .defaultConfig,
+                       "load() must reject modifiers=0 and return defaultConfig")
+    }
+
+    func testLoadReturnsDefaultWhenOnlyKeyCodeSaved() {
+        // RS-3.4 hardening: partial save (keyCodeKey set, modifiersKey
+        // missing → modifiers defaults to 0 via UserDefaults.integer)
+        // is also invalid. Falls back to defaultConfig.
+        UserDefaults.standard.set(Int(kVK_ANSI_X), forKey: keyCodeKey)
+        // modifiersKey intentionally not set
+        let loaded = HotKeyConfig.load()
+        XCTAssertEqual(loaded, .defaultConfig,
+                       "Partial save with missing modifiers must fall back to defaultConfig")
     }
 }
