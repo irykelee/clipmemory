@@ -21,6 +21,11 @@ class ClipboardStore: ObservableObject {
     @Published var items: [ClipboardItem] = []
     @Published var pinnedItems: [ClipboardItem] = []
 
+    /// User-defined tags keyed by UUID. Source of truth for tag definitions;
+    /// ClipboardItem.tagIds holds only the IDs (Set<UUID>) for O(1) filter checks.
+    /// Persistence is handled separately — see TODO(loadTags/saveTags).
+    @Published var tags: [UUID: Tag] = [:]
+
     // @Published with didSet for automatic UserDefaults persistence
     @Published var maxItems: Int {
         didSet { UserDefaults.standard.set(maxItems, forKey: maxItemsKey) }
@@ -268,6 +273,12 @@ class ClipboardStore: ObservableObject {
         saveTimer?.cancel()
         saveTimer = nil
         saveItems()
+    }
+
+    /// Insert or replace a tag by its UUID. Tags with the same id overwrite
+    /// (idempotent rename/recolor). Persistence is handled by saveTags().
+    func addTag(_ tag: Tag) {
+        tags[tag.id] = tag
     }
 
     func addItem(_ item: ClipboardItem) {
