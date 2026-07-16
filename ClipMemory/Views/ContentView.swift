@@ -360,7 +360,6 @@ struct ContentView: View {
                 .padding(.horizontal, 4)
             }
         }
-        // swiftlint:enable identifier_name
     }
 
     private var sidebar: some View {
