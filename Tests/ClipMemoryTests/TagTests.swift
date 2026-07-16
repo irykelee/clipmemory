@@ -106,3 +106,60 @@ final class ClipboardStoreTagTests: XCTestCase {
         XCTAssertTrue(store.items[0].tagIds.contains(b.id), "Other tags should be untouched")
     }
 }
+
+// MARK: - TagSuggestion heuristic engine
+
+final class TagSuggestionTests: XCTestCase {
+
+    /// Empty content has no signals — empty suggestions.
+    func testEmptyContentReturnsEmpty() {
+        XCTAssertTrue(TagSuggestion.suggest(for: .text, content: "").isEmpty)
+    }
+
+    /// Pure whitespace has no signals either.
+    func testWhitespaceOnlyContentReturnsEmpty() {
+        XCTAssertTrue(TagSuggestion.suggest(for: .text, content: "   \n\t  ").isEmpty)
+    }
+
+    /// A snippet with code markers ({, ;, =>, func, def) suggests "代码".
+    func testCodeSnippetSuggestsCode() {
+        let suggestions = TagSuggestion.suggest(for: .text, content: "func greet() { print(\"hi\") }")
+        XCTAssertTrue(suggestions.contains("代码"), "Should detect code markers: \(suggestions)")
+    }
+
+    /// An email address triggers "邮箱".
+    func testEmailContentSuggestsMail() {
+        let suggestions = TagSuggestion.suggest(for: .text, content: "alice@example.com")
+        XCTAssertTrue(suggestions.contains("邮箱"), "Should detect email: \(suggestions)")
+    }
+
+    /// Email embedded in surrounding text also triggers.
+    func testEmailWithPrefix() {
+        let s = TagSuggestion.suggest(for: .text, content: "at alice@example.com")
+        XCTAssertTrue(s.contains("邮箱"), "prefix email failed: \(s)")
+    }
+
+    /// A long alphanumeric token (API key shape) suggests "账号".
+    func testLongAlphanumericTokenSuggestsAccount() {
+        let suggestions = TagSuggestion.suggest(for: .text, content: "token=abcdef1234567890ABCDEF")
+        XCTAssertTrue(suggestions.contains("账号"), "Should detect account-like token: \(suggestions)")
+    }
+
+    /// Content with sensitive keywords (密码/密钥/token/password) suggests "敏感".
+    func testSensitiveKeywordsSuggestSensitive() {
+        let suggestions = TagSuggestion.suggest(for: .text, content: "我的密码是 123456")
+        XCTAssertTrue(suggestions.contains("敏感"), "Should detect sensitive keywords: \(suggestions)")
+    }
+
+    /// Mixed CJK content suggests "中文".
+    func testCJKContentSuggestsChinese() {
+        let suggestions = TagSuggestion.suggest(for: .text, content: "你好世界")
+        XCTAssertTrue(suggestions.contains("中文"), "Should detect CJK: \(suggestions)")
+    }
+
+    /// Latin word content suggests "English".
+    func testLatinContentSuggestsEnglish() {
+        let suggestions = TagSuggestion.suggest(for: .text, content: "The quick brown fox")
+        XCTAssertTrue(suggestions.contains("English"), "Should detect Latin: \(suggestions)")
+    }
+}
