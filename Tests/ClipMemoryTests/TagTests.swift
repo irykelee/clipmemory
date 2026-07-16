@@ -105,6 +105,104 @@ final class ClipboardStoreTagTests: XCTestCase {
         XCTAssertFalse(store.items[0].tagIds.contains(a.id))
         XCTAssertTrue(store.items[0].tagIds.contains(b.id), "Other tags should be untouched")
     }
+
+    /// Deleting a tag removes it from the dictionary.
+    func testDeleteTagRemovesFromDictionary() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let tag = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        store.deleteTag(id: tag.id)
+        XCTAssertNil(store.tags[tag.id], "Tag should be removed from dictionary")
+    }
+
+    /// Deleting a tag also strips its id from every attached item — no dangling UUIDs.
+    /// Two items: one with the deleted tag and one without. After deleteTag, only
+    /// the first should have its tagIds set shrunk.
+    func testDeleteTagStripsFromAllItems() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let itemA = ClipboardItem(content: "alpha", type: .text)
+        let itemB = ClipboardItem(content: "beta", type: .text)
+        store.items.append(itemA)
+        store.items.append(itemB)
+        let doomed = Tag(name: "工作", colorHex: "#4ECDC4")
+        let kept = Tag(name: "学习", colorHex: "#FF6B6B")
+        store.addTag(doomed)
+        store.addTag(kept)
+        store.addTag(to: itemA.id, tagId: doomed.id)
+        store.addTag(to: itemA.id, tagId: kept.id)
+        store.addTag(to: itemB.id, tagId: doomed.id)
+        store.deleteTag(id: doomed.id)
+        XCTAssertFalse(store.items.first { $0.id == itemA.id }!.tagIds.contains(doomed.id),
+                       "Doomed tag should be stripped from itemA")
+        XCTAssertTrue(store.items.first { $0.id == itemA.id }!.tagIds.contains(kept.id),
+                      "Other tags should be untouched")
+        XCTAssertFalse(store.items.first { $0.id == itemB.id }!.tagIds.contains(doomed.id),
+                       "Doomed tag should be stripped from itemB")
+    }
+
+    /// Deleting a tag that doesn't exist is a no-op (no crash, no spurious changes).
+    func testDeleteNonexistentTagIsNoOp() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let item = ClipboardItem(content: "alpha", type: .text)
+        store.items.append(item)
+        let real = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(real)
+        store.addTag(to: item.id, tagId: real.id)
+        store.deleteTag(id: UUID())
+        XCTAssertEqual(store.tags.count, 1, "Real tag should be untouched")
+        XCTAssertTrue(store.items[0].tagIds.contains(real.id), "Item should be untouched")
+    }
+
+    // MARK: - Persistence (loadTags / saveTags via UserDefaults key "ClipMemoryTags")
+
+    /// Save tags via the store, then read the raw UserDefaults blob and verify
+    /// it's a valid JSON array of Tags. We don't yet round-trip through a fresh
+    /// store (which would require injecting a UserDefaults suite); we verify the
+    /// write half, which is the side that can lose data if broken.
+    func testSaveTagsPersistsJSONToUserDefaults() throws {
+        // Use a real FileStorageBackend but isolate tag storage to a dedicated key
+        // via a fresh FileStorageBackend(storageKey:) — proves the key parameter works.
+        let tagBackend = FileStorageBackend(storageKey: "ClipMemoryTagsTest_SaveTags")
+        let store = ClipboardStore(backend: MemoryStorageBackend(),
+                                   tagBackend: tagBackend)
+        let tag = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        store.saveTags()
+
+        // The FileStorageBackend dispatches to main async; spin runloop once.
+        let exp = expectation(description: "wait for main queue")
+        DispatchQueue.main.async { exp.fulfill() }
+        wait(for: [exp], timeout: 1.0)
+
+        let raw = UserDefaults.standard.data(forKey: "ClipMemoryTagsTest_SaveTags")
+        XCTAssertNotNil(raw, "saveTags should write to UserDefaults")
+        let decoded = try JSONDecoder().decode([Tag].self, from: raw!)
+        XCTAssertEqual(decoded.count, 1)
+        XCTAssertEqual(decoded[0].id, tag.id)
+        XCTAssertEqual(decoded[0].name, "工作")
+        XCTAssertEqual(decoded[0].colorHex, "#4ECDC4")
+
+        // Cleanup so we don't pollute real UserDefaults.
+        UserDefaults.standard.removeObject(forKey: "ClipMemoryTagsTest_SaveTags")
+    }
+
+    /// loadTags reads from UserDefaults on init and populates `tags` dictionary.
+    /// Pre-populate the key, then construct a fresh store and verify it sees the tags.
+    func testLoadTagsReadsFromUserDefaultsOnInit() throws {
+        let key = "ClipMemoryTagsTest_LoadTags"
+        let tag = Tag(name: "学习", colorHex: "#FF6B6B")
+        let data = try JSONEncoder().encode([tag])
+        UserDefaults.standard.set(data, forKey: key)
+
+        let store = ClipboardStore(backend: MemoryStorageBackend(),
+                                   tagBackend: FileStorageBackend(storageKey: key))
+        XCTAssertEqual(store.tags.count, 1)
+        XCTAssertEqual(store.tags[tag.id]?.name, "学习")
+        XCTAssertEqual(store.tags[tag.id]?.colorHex, "#FF6B6B")
+
+        // Cleanup
+        UserDefaults.standard.removeObject(forKey: key)
+    }
 }
 
 // MARK: - TagSuggestion heuristic engine

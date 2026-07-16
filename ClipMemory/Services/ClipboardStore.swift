@@ -84,19 +84,33 @@ class ClipboardStore: ObservableObject {
     private let excludedBundleIdsKey = "excludedBundleIds"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
+    /// UserDefaults key for persisted tags. Public so tests can pre-populate or clean up.
+    static let tagStorageKey = "ClipMemoryTags"
+
     /// E.1: Pluggable storage backend (default: FileStorageBackend via UserDefaults)
     private let backend: StorageBackend
 
+    /// Separate storage backend for the tag dictionary. Defaults to an in-memory
+    /// backend in tests; production wires a FileStorageBackend keyed by `tagStorageKey`.
+    /// Keeping tags independent of items means clearing items doesn't lose tag
+    /// definitions, and the item backend stays unaware of the tag schema.
+    private let tagBackend: StorageBackend
+
     // MARK: - Initializers
 
-    /// Default initializer — uses FileStorageBackend backed by UserDefaults.
+    /// Default initializer — uses FileStorageBackend backed by UserDefaults for
+    /// both items and tags (separate UserDefaults keys).
     convenience init() {
-        self.init(backend: FileStorageBackend())
+        self.init(backend: FileStorageBackend(),
+                  tagBackend: FileStorageBackend(storageKey: ClipboardStore.tagStorageKey))
     }
 
     /// E.1: Designated initializer accepting a StorageBackend for testing.
-    init(backend: StorageBackend) {
+    /// `tagBackend` defaults to a fresh in-memory backend so existing tests that
+    /// only care about items don't accidentally hit UserDefaults.
+    init(backend: StorageBackend, tagBackend: StorageBackend = MemoryStorageBackend()) {
         self.backend = backend
+        self.tagBackend = tagBackend
 
         let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
         // Clamp to valid range [50, 100, 200, 500] to handle corrupted/migrated UserDefaults
@@ -126,6 +140,7 @@ class ClipboardStore: ObservableObject {
         )
 
         loadItems()
+        loadTags()
         updateExcludedAppsOnMonitor()
         cleanupExpiredItems()
         let queue = DispatchQueue(label: "com.clipmemory.cleanup", qos: .background)
@@ -276,13 +291,15 @@ class ClipboardStore: ObservableObject {
     }
 
     /// Insert or replace a tag by its UUID. Tags with the same id overwrite
-    /// (idempotent rename/recolor). Persistence is handled by saveTags().
+    /// (idempotent rename/recolor). Triggers a debounced tag save.
     func addTag(_ tag: Tag) {
         tags[tag.id] = tag
+        scheduleTagSave()
     }
 
     /// Attach an existing tag (by id) to an item. Idempotent — adding the same
-    /// tag twice is a no-op since tagIds is a Set.
+    /// tag twice is a no-op since tagIds is a Set. Item save is scheduled by
+    /// the underlying item mutation path (no separate save needed here).
     func addTag(to itemId: UUID, tagId: UUID) {
         guard let index = items.firstIndex(where: { $0.id == itemId }) else { return }
         items[index].tagIds.insert(tagId)
@@ -293,6 +310,67 @@ class ClipboardStore: ObservableObject {
     func removeTag(from itemId: UUID, tagId: UUID) {
         guard let index = items.firstIndex(where: { $0.id == itemId }) else { return }
         items[index].tagIds.remove(tagId)
+    }
+
+    /// Delete a tag definition AND strip its id from every item's tagIds set.
+    /// This prevents dangling UUIDs (tag references that no longer resolve).
+    /// Safe to call with an unknown id — no-op in that case. Triggers a
+    /// debounced tag save.
+    func deleteTag(id tagId: UUID) {
+        guard tags.removeValue(forKey: tagId) != nil else { return }
+        for index in items.indices where items[index].tagIds.contains(tagId) {
+            items[index].tagIds.remove(tagId)
+        }
+        scheduleTagSave()
+    }
+
+    // MARK: - Tag persistence
+
+    /// Load the tag dictionary from the tag backend. Called once during init.
+    /// Corrupted data is logged and treated as empty — better to lose tag defs
+    /// than to crash on startup.
+    func loadTags() {
+        do {
+            let loaded = try tagBackend.loadTags()
+            tags = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
+        } catch {
+            logger.error("Failed to load tags: \(error.localizedDescription)")
+            tags = [:]
+        }
+    }
+
+    /// Synchronously write the current tag dictionary to the tag backend.
+    /// Usually called via the debounced `scheduleTagSave()`; expose for tests.
+    func saveTags() {
+        do {
+            try tagBackend.saveTags(Array(tags.values))
+        } catch {
+            logger.error("Failed to save tags: \(error.localizedDescription)")
+        }
+    }
+
+    /// Debounced tag save — coalesces rapid mutations (addTag/deleteTag) into
+    /// one write, mirroring the existing scheduleSave() pattern for items.
+    private var tagSaveTimer: DispatchSourceTimer?
+    private var tagNeedsSave = false
+    private func scheduleTagSave() {
+        tagNeedsSave = true
+        tagSaveTimer?.cancel()
+        let queue = DispatchQueue(label: "com.clipmemory.tagsave", qos: .utility)
+        tagSaveTimer = DispatchSource.makeTimerSource(queue: queue)
+        tagSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
+        tagSaveTimer?.setEventHandler { [weak self] in
+            self?.flushTagSave()
+        }
+        tagSaveTimer?.resume()
+    }
+
+    private func flushTagSave() {
+        guard tagNeedsSave else { return }
+        tagNeedsSave = false
+        tagSaveTimer?.cancel()
+        tagSaveTimer = nil
+        saveTags()
     }
 
     func addItem(_ item: ClipboardItem) {
