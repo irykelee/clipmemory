@@ -79,7 +79,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 ### Seguridad inteligente — Cifrado + Detección
 
 - Cifrado AES-256-GCM (v2), compatible con AES-CBC+HMAC-SHA256 heredado
-- 26 reglas de detección automática de datos sensibles (contraseñas / claves API / tokens Slack/Discord/OpenAI / números de identificación etc.)
+- 35 reglas de detección automática de datos sensibles (contraseñas / claves API / tokens Slack/Discord/OpenAI / números de identificación etc.)
 - Pausa automática cuando el gestor de contraseñas está en primer plano, sin copiar desde la App
 - Contenido nunca guardado en texto plano si falla el cifrado
 
@@ -111,9 +111,9 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 
 | Acción | Cómo |
 |--------|------|
-| Abrir Quick Bar | Clic en 📋 de barra menú / `Cmd+Ctrl+V` |
+| Abrir Quick Bar | Clic en 📋 de barra menú |
 | Copiar elemento | Clic en elemento / ↑↓ + Enter |
-| Abrir ventana completa | Quick Bar → "Abrir portapapeles" |
+| Abrir ventana completa | `Cmd+Ctrl+V` (atajo global) / Quick Bar → "Abrir portapapeles" |
 | Buscar | Escribir para filtrar, coincidencias resaltadas |
 | Fijar / Desfijar | Clic ⭐ o doble clic en fila |
 | Eliminar | Clic 🗑 o menú contextual |
@@ -129,7 +129,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 ## Seguridad
 
 - **AES-256-GCM (v2) + compatibilidad heredada AES-CBC+HMAC-SHA256** — Todo texto e imagen se cifra automáticamente antes de guardar en disco
-- **Detección inteligente** — 26 reglas (palabras clave + expresiones regulares) para contraseñas, claves API, tokens Slack/Discord/OpenAI, claves privadas, números de identificación, etc.
+- **Detección inteligente** — 35 reglas (palabras clave + expresiones regulares) para contraseñas, claves API, tokens Slack/Discord/OpenAI, claves privadas, números de identificación, etc.
 - **Borrado automático** — Contenido sensible configurable para borrar tras 1h / 24h / 48h / 7d, o nunca
 
 ---

@@ -79,7 +79,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 ### Segurança inteligente — Criptografia + Deteção
 
 - Criptografia AES-256-GCM (v2), compatível com legacy AES-CBC+HMAC-SHA256
-- 26 regras de detecção automática de dados sensíveis (senhas / chaves de API / tokens Slack/Discord/OpenAI / números de identificação etc.)
+- 35 regras de detecção automática de dados sensíveis (senhas / chaves de API / tokens Slack/Discord/OpenAI / números de identificação etc.)
 - Pausa automática quando o gestor de palavras-passe está em primeiro plano, sem copiar da App
 - Conteúdo nunca guardado em texto simples se a criptografia falhar
 
@@ -111,9 +111,9 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 
 | Ação | Como |
 |------|------|
-| Abrir Quick Bar | Clique no 📋 da barra de menu / `Cmd+Ctrl+V` |
+| Abrir Quick Bar | Clique no 📋 da barra de menu |
 | Copiar item | Clique no item / ↑↓ + Enter |
-| Abrir janela completa | Quick Bar → "Abrir área de transferência" |
+| Abrir janela completa | `Cmd+Ctrl+V` (atalho global) / Quick Bar → "Abrir área de transferência" |
 | Pesquisar | Digite para filtrar, correspondências destacadas |
 | Fixar / Desfixar | Clique ⭐ ou clique duplo na linha |
 | Excluir | Clique 🗑 ou menu contextual |
@@ -129,7 +129,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 ## Segurança
 
 - **AES-256-GCM (v2) + compatibilidade legacy AES-CBC+HMAC-SHA256** — Todo texto e imagem é criptografado automaticamente antes de salvar em disco
-- **Detecção inteligente** — 26 regras (palavras-chave + expressões regulares) para senhas, chaves de API, tokens Slack/Discord/OpenAI, chaves privadas, números de identificação, etc.
+- **Detecção inteligente** — 35 regras (palavras-chave + expressões regulares) para senhas, chaves de API, tokens Slack/Discord/OpenAI, chaves privadas, números de identificação, etc.
 - **Limpeza automática** — Conteúdo sensível configurável para limpar após 1h / 24h / 48h / 7d, ou nunca
 
 ---

@@ -187,6 +187,22 @@ final class SensitiveDetectorTests: XCTestCase {
         XCTAssertFalse(item.isSensitive, "Long content without patterns should not be flagged")
     }
 
+    func testPureAlphanumericNotFlagged() {
+        // Audit fix: PagerDuty pattern `[A-Za-z0-9]{20}` matched every 20+ char
+        // alphanumeric string (URL params, base64 chunks, JSON keys, hash IDs).
+        // Pattern removed; pure alphanumeric should never trigger detection.
+        let safe = [
+            "abcdefghijklmnopqrst",                              // exactly 20 chars
+            "thisIsAVeryLongAlphanumericString1234567890",        // 41 chars mixed
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",               // 36 chars uppercase+digits
+            "https://example.com/abc123def456ghi789jkl012mno345"  // URL with 20+ char paths
+        ]
+        for text in safe {
+            let item = makeItem(content: text)
+            XCTAssertFalse(item.isSensitive, "Should NOT detect pure alphanumeric: \(text.prefix(40))")
+        }
+    }
+
     // MARK: - Helper
 
     private func makeItem(content: String) -> ClipboardItem {

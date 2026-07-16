@@ -128,7 +128,13 @@ class HotKeyManager {
     }
 
     /// Update hotkey and re-register. Saves to UserDefaults.
+/// RS-3.4: rejects modifiers=0 — registering a bare key as global hotkey
+/// is a terrible UX (every "V" keypress would fire it).
     func updateHotKey(keyCode: UInt32, modifiers: UInt32) {
+        guard modifiers != 0 else {
+            logger.error("Hotkey update rejected: modifiers must not be 0 (would register a bare key)")
+            return
+        }
         config = HotKeyConfig(keyCode: keyCode, modifiers: modifiers)
         config.save()
         register()
