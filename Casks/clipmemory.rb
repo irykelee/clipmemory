@@ -1,8 +1,6 @@
 	cask "clipmemory" do
  	version "2.2.4"
-	  # SHA256 placeholder — recomputed in Task 7 after `Scripts/package.sh`
-	  # produces `Releases/ClipMemory.tar.gz` for v2.2.4. Do not hand-fabricate.
-	  sha256 "PLACEHOLDER_RECOMPUTED_BY_TASK_7"
+	  sha256 "34a39e40a0b3374c74c6d0532f061bd2f2571c405e0e7b28d9434b3ed40af89c"
 
 	  url "https://github.com/irykelee/clipmemory/releases/download/v#{version}/ClipMemory.tar.gz"
 	  name "ClipMemory"
