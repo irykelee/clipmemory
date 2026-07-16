@@ -31,6 +31,7 @@ tar -czvf "${OUTPUT_DIR}/${APP_NAME}.tar.gz" "${APP_NAME}.app"
 SHA256=$(shasum -a 256 "${OUTPUT_DIR}/${APP_NAME}.tar.gz" | awk "{print \$1}")
 echo "SHA256: $SHA256"
 
+mkdir -p "${PROJECT_DIR}/Homebrew"
 cp "${OUTPUT_DIR}/${APP_NAME}.tar.gz" "${PROJECT_DIR}/Homebrew/"
 
 echo ""
