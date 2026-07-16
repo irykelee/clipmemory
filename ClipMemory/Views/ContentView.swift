@@ -57,6 +57,8 @@ struct ContentView: View {
     @State private var appPickerSearchDebounced = ""
     @State private var searchDebounce: DispatchWorkItem?
     @State private var tagPickerItem: ClipboardItem?
+    @State private var selectedTagIds: Set<UUID> = []
+    @State private var showNewTagSheet: Bool = false
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @AppStorage("themeAppearance") private var themeAppearance = "system"
 
@@ -158,13 +160,17 @@ struct ContentView: View {
 
     // MARK: - Optimized Item Filtering
     private func filterItems(_ items: [ClipboardItem]) -> [ClipboardItem] {
-        items.filter { item in
-            // tab filter
-            switch selectedTab {
-            case .pinned: if !item.isPinned { return false }
-            case .all: break
-            default: if item.type != selectedTab.typeFilter { return false }
-            }
+        // Sidebar dimensions (type/pinned + tag section) are pure — delegate
+        // to SidebarTagFilter so we can unit-test them. Date + search stay
+        // here because they need view-scoped state (startOfToday, debounced
+        // search text).
+        let sidebarFiltered = SidebarTagFilter.apply(
+            items: items,
+            typeFilter: selectedTab == .pinned ? nil : selectedTab.typeFilter,
+            pinnedOnly: selectedTab == .pinned,
+            selectedTagIds: selectedTagIds
+        )
+        return sidebarFiltered.filter { item in
             // date filter
             if item.createdAt < startOfYesterday {
                 if dateFilter == .today || dateFilter == .yesterday { return false }
@@ -219,6 +225,34 @@ struct ContentView: View {
         case .richText: counts[.richText, default: 0] += 1
         } }
         return counts
+    }
+
+    /// Per-tag usage count over ALL items (independent of current sidebar
+    /// selection). Users see "this tag is attached to N items" without
+    /// filtering the count itself by what they've already selected.
+    private var tagCounts: [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        for item in store.items {
+            for tagId in item.tagIds {
+                counts[tagId, default: 0] += 1
+            }
+        }
+        return counts
+    }
+
+    /// Tags sorted newest-first, matching the TagPickerSheet ordering.
+    private var sortedTags: [Tag] {
+        store.tags.values.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// Toggle a tag in/out of the sidebar selection. Empty selection means
+    /// "no tag filter applied"; multiple selected means "OR within section".
+    private func toggleTag(_ id: UUID) {
+        if selectedTagIds.contains(id) {
+            selectedTagIds.remove(id)
+        } else {
+            selectedTagIds.insert(id)
+        }
     }
 
     private enum TimeGroup: String, CaseIterable { case today, yesterday, older
@@ -278,6 +312,11 @@ struct ContentView: View {
             .sheet(item: $tagPickerItem) { item in
                 TagPickerSheet(item: item, store: store)
             }
+            .sheet(isPresented: $showNewTagSheet) {
+                NewTagSheet(store: store) { newId in
+                    selectedTagIds.insert(newId)
+                }
+            }
     }
 
     private func attachLifecycle<V: View>(_ v: V) -> some View {
@@ -293,7 +332,17 @@ struct ContentView: View {
             .onChange(of: searchTextDebounced) { _ in updateDisplayedItemsCache() }
             .onChange(of: selectedTab) { _ in updateDisplayedItemsCache() }
             .onChange(of: dateFilter) { _ in updateDisplayedItemsCache() }
+            .onChange(of: selectedTagIds) { _ in updateDisplayedItemsCache() }
             .onChange(of: store.items) { _ in updateDisplayedItemsCache() }
+            .onChange(of: store.tags) { _ in
+                // Strip orphan UUIDs (tag deleted from store while selected)
+                // before re-rendering so we don't show a stale empty filter.
+                let valid = Set(store.tags.keys)
+                if !selectedTagIds.isSubset(of: valid) {
+                    selectedTagIds.formIntersection(valid)
+                }
+                updateDisplayedItemsCache()
+            }
             .onChange(of: collapsedGroups) { val in
                 self.saveCollapsedGroups(val)
             }
@@ -382,6 +431,28 @@ struct ContentView: View {
                         .tag(SidebarTab.pinned)
                     Label(SidebarTab.settings.label, systemImage: SidebarTab.settings.icon)
                         .tag(SidebarTab.settings)
+                }
+                Section(L10n.sidebarSectionTags) {
+                    if store.tags.isEmpty {
+                        Text(L10n.sidebarTagsEmpty)
+                            .font(.system(size: sz(11)))
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(sortedTags, id: \.id) { tag in
+                            SidebarTagRow(
+                                tag: tag,
+                                count: tagCounts[tag.id] ?? 0,
+                                isSelected: selectedTagIds.contains(tag.id),
+                                onTap: { toggleTag(tag.id) }
+                            )
+                        }
+                    }
+                    Button(action: { showNewTagSheet = true }) {
+                        Label(L10n.sidebarNewTag, systemImage: "plus.circle")
+                            .font(.system(size: sz(12)))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.accentColor)
                 }
             }
             .listStyle(.sidebar)

@@ -204,3 +204,8 @@
 "tagPicker.deleteConfirm.title" = "Eliminar etiqueta?";
 "tagPicker.deleteConfirm.message" = "A etiqueta \"%@\" será removida de %d itens";
 "tagPicker.deleteConfirm.confirm" = "Eliminar";
+"sidebar.section.tags" = "Etiquetas";
+"sidebar.tags.empty" = "Ainda não há etiquetas";
+"sidebar.newTag" = "Nova etiqueta";
+"newTag.title" = "Nova etiqueta";
+"newTag.create" = "Criar";

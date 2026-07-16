@@ -208,3 +208,8 @@
 "tagPicker.deleteConfirm.title" = "Delete Tag?";
 "tagPicker.deleteConfirm.message" = "Tag \"%@\" will be removed from %d items";
 "tagPicker.deleteConfirm.confirm" = "Delete";
+"sidebar.section.tags" = "Tags";
+"sidebar.tags.empty" = "No tags yet";
+"sidebar.newTag" = "New Tag";
+"newTag.title" = "New Tag";
+"newTag.create" = "Create";

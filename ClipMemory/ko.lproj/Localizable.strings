@@ -204,3 +204,8 @@
 "tagPicker.deleteConfirm.title" = "태그를 삭제하시겠습니까?";
 "tagPicker.deleteConfirm.message" = "태그 \"%@\"을(를) %d개 항목에서 제거합니다";
 "tagPicker.deleteConfirm.confirm" = "삭제";
+"sidebar.section.tags" = "태그";
+"sidebar.tags.empty" = "태그가 아직 없습니다";
+"sidebar.newTag" = "새 태그";
+"newTag.title" = "새 태그";
+"newTag.create" = "만들기";
