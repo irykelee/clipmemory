@@ -1,7 +1,7 @@
 # ClipMemory 开发规划
 
-**版本**: v2.2.0
-**更新**: 2026-05-19
+**版本**: v2.2.4
+**更新**: 2026-07-16
 **状态**: v2.2 完成 → v2.3 待启动（8 点）→ v2.4 规划中（6 点）
 
 ---
@@ -104,6 +104,21 @@
 | ClipboardItem (B.1-B.5) | 16 | 构造、Codable、Expiry、Equatable、contentHash、富文本往返 |
 | Concurrency (E.1-E.3) | 10 | skipNextCapture/recordOwnWrite/excludedBundleIds 并发 |
 | Integration (G.1-G.6) | 35 | CRUD、去重、过期清理、pin/upin、分组清除、语言切换、排除应用 |
+
+---
+
+## v2.2.4 — 发布卫生修复（2026-07-16）
+
+**目标**: 修正 v2.2.3 切标签但未同步版本号导致的发布一致性缺陷，同时清理文档误导性快捷键描述
+
+### 修复内容
+- **版本号同步** — `project.yml` 的 `MARKETING_VERSION` 与 `CURRENT_PROJECT_VERSION` 升级到 `2.2.4`，重新生成 `project.pbxproj`。审计报告 F-1。
+- **打包脚本默认读取 project.yml** — `Scripts/package.sh` 默认版本号改为 awk 解析 `MARKETING_VERSION`，含读取失败的非零退出保护。审计报告 F-3。
+- **Quick Bar 误导标签移除** — 删除 `ClipMemory/Views/QuickBarView.swift:137` 上的 `shortcut: "⌘⌃V"`。审计报告 S-3。
+- **8 语言 README 快捷键描述重写** — `Cmd+Ctrl+V` 描述明确为「打开主窗口」，Quick Bar 由菜单栏图标左键打开。审计报告 S-3。
+
+### v2.2.3 教训（F-5）
+v2.2.3 提交 `a57cdff` 标题写「fix: address 3 v2.2.2 review findings (C1 + HIGH-1 + version)」，但实际未触碰 `project.yml` / `project.pbxproj` 中的版本号字段，导致 release 标签与产物 stamp 错位（下游 cask 会拿到 `CFBundleShortVersionString = 2.2.2`，与 `v2.2.3` tag 不一致）。v2.2.4 提交流程已加 commit message 强制说明 + regression test `testF1_projectYml_marksV224` / `testF1_projectPbxproj_allFourSectionsAreV224` 拦截同类错误。
 
 ---
 
