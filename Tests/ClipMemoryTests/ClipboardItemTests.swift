@@ -252,4 +252,13 @@ final class ClipboardItemTests: XCTestCase {
         let rtf = try XCTUnwrap(String(data: decoded, encoding: .utf8))
         XCTAssertEqual(rtf, originalRTF)
     }
+
+    // MARK: - Tag integration
+
+    /// Tag IDs are stored as a Set<UUID> on each item so an item can carry multiple
+    /// labels (and we get O(1) membership checks when filtering by tag).
+    func testTagIdsDefaultsToEmpty() {
+        let item = ClipboardItem(content: "hello", type: .text)
+        XCTAssertTrue(item.tagIds.isEmpty, "New items should have no tags attached")
+    }
 }
