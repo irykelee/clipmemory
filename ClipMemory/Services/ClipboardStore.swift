@@ -281,6 +281,20 @@ class ClipboardStore: ObservableObject {
         tags[tag.id] = tag
     }
 
+    /// Attach an existing tag (by id) to an item. Idempotent — adding the same
+    /// tag twice is a no-op since tagIds is a Set.
+    func addTag(to itemId: UUID, tagId: UUID) {
+        guard let index = items.firstIndex(where: { $0.id == itemId }) else { return }
+        items[index].tagIds.insert(tagId)
+    }
+
+    /// Detach a tag from an item. Does not delete the tag itself; for that use
+    /// deleteTag(id:). Safe to call when the tag isn't attached (no-op).
+    func removeTag(from itemId: UUID, tagId: UUID) {
+        guard let index = items.firstIndex(where: { $0.id == itemId }) else { return }
+        items[index].tagIds.remove(tagId)
+    }
+
     func addItem(_ item: ClipboardItem) {
         var newItem = item
         let plaintextContent = item.content
