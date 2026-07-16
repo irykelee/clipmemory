@@ -24,7 +24,9 @@ if [ -z "$APP_PATH" ]; then
     exit 1
 fi
 
-cp -r "$APP_PATH" "/tmp/${APP_NAME}.app"
+rm -rf "/tmp/${APP_NAME}.app"
+mkdir -p "/tmp/${APP_NAME}.app"
+cp -r "${APP_PATH}/." "/tmp/${APP_NAME}.app/"
 cd /tmp
 tar -czvf "${OUTPUT_DIR}/${APP_NAME}.tar.gz" "${APP_NAME}.app"
 
