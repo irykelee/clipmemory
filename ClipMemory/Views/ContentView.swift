@@ -315,7 +315,6 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // swiftlint:disable identifier_name
         ToolbarItem(id: "search") {
             HStack(spacing: 4) {
                 Image(systemName: "magnifyingglass")

@@ -227,7 +227,7 @@ final class ClipboardItemTests: XCTestCase {
     // MARK: - Rich Text
 
     func testRichTextTypeRoundTrip() throws {
-        let rtfData = try XCTUnwrap("{\\rtf1\\ansi Hello \\b World\\b0}".data(using: .utf8))
+        let rtfData = Data("{\\rtf1\\ansi Hello \\b World\\b0}".utf8)
         let nsAttr = try XCTUnwrap(NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil))
         XCTAssertEqual(nsAttr.string, "Hello World")
     }
