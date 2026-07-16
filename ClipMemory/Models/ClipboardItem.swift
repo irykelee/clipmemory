@@ -21,8 +21,12 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// Set by ClipboardStore.getDecryptedContent on first decrypt failure.
     /// Replaces the prior computed-property pattern that re-decrypted on every access.
     var decryptionFailed: Bool = false
+    /// Tag IDs attached to this item. Empty means untagged. Stored as a Set
+    /// for O(1) membership checks when filtering by tag in the sidebar.
+    /// Tags themselves live in ClipboardStore.tags; this field only stores IDs.
+    var tagIds: Set<UUID> = []
 
-    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false) {
+    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false, tagIds: Set<UUID> = []) {
         self.id = id
         self.content = content
         self.type = type
@@ -33,6 +37,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.isEncrypted = isEncrypted
         self.contentHash = contentHash
         self.decryptionFailed = decryptionFailed
+        self.tagIds = tagIds
     }
 
     var isExpired: Bool {
