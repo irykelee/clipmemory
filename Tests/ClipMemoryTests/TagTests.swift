@@ -77,4 +77,32 @@ final class ClipboardStoreTagTests: XCTestCase {
         store.addTag(tag)
         XCTAssertEqual(store.tags[tag.id], tag)
     }
+
+    /// Attaching a tag id to an item mutates the item's tagIds set so the
+    /// sidebar filter can match by tag in O(1).
+    func testAttachTagToItemAppendsTagId() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.items.append(item)
+        let tag = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        store.addTag(to: item.id, tagId: tag.id)
+        XCTAssertTrue(store.items[0].tagIds.contains(tag.id))
+    }
+
+    /// Removing a tag id strips it from the item's tagIds set without
+    /// touching other tags on the same item.
+    func testRemoveTagFromItemStripsTagId() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.items.append(item)
+        let a = Tag(name: "工作", colorHex: "#4ECDC4")
+        let b = Tag(name: "学习", colorHex: "#FF6B6B")
+        store.addTag(a); store.addTag(b)
+        store.addTag(to: item.id, tagId: a.id)
+        store.addTag(to: item.id, tagId: b.id)
+        store.removeTag(from: item.id, tagId: a.id)
+        XCTAssertFalse(store.items[0].tagIds.contains(a.id))
+        XCTAssertTrue(store.items[0].tagIds.contains(b.id), "Other tags should be untouched")
+    }
 }
