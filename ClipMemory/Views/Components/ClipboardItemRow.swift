@@ -59,6 +59,7 @@ struct ClipboardItemRow: View, Equatable {
     let onDelete: () -> Void
     let onSelect: ((Bool) -> Void)?
     let onToggleReveal: () -> Void
+    var onEditTags: () -> Void = { }
     @State private var isHovered = false
     @State private var loadedImage: NSImage?
     @State private var loadedContent: String?
@@ -75,11 +76,42 @@ struct ClipboardItemRow: View, Equatable {
         lhs.isSelected == rhs.isSelected &&
         lhs.isKeyboardSelected == rhs.isKeyboardSelected &&
         lhs.searchText == rhs.searchText &&
-        lhs.item.isPinned == rhs.item.isPinned
+        lhs.item.isPinned == rhs.item.isPinned &&
+        lhs.item.tagIds == rhs.item.tagIds
     }
     @State private var _cachedMaskedHighlighted: [String: AttributedString] = [:]
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     private var iconSize: CGFloat { fontScale * 13 }
+
+    /// Explicit memberwise initializer so callers (ContentView) can name
+    /// every prop including `onEditTags`. Kept identical to Swift's auto
+    /// memberwise init; just declared here for clarity and to avoid
+    /// @ViewBuilder inferring a no-arg init when used inline.
+    init(item: ClipboardItem,
+         isRevealed: Bool,
+         isKeyboardSelected: Bool = false,
+         isCopied: Bool = false,
+         isSelected: Bool = false,
+         searchText: String = "",
+         onCopyWithFeedback: (() -> Void)? = nil,
+         onPin: @escaping () -> Void,
+         onDelete: @escaping () -> Void,
+         onSelect: ((Bool) -> Void)? = nil,
+         onToggleReveal: @escaping () -> Void,
+         onEditTags: @escaping () -> Void = {}) {
+        self.item = item
+        self.isRevealed = isRevealed
+        self.isKeyboardSelected = isKeyboardSelected
+        self.isCopied = isCopied
+        self.isSelected = isSelected
+        self.searchText = searchText
+        self.onCopyWithFeedback = onCopyWithFeedback
+        self.onPin = onPin
+        self.onDelete = onDelete
+        self.onSelect = onSelect
+        self.onToggleReveal = onToggleReveal
+        self.onEditTags = onEditTags
+    }
 
     private var rowBackground: Color {
         if isCopied { Color.green.opacity(0.12) } else if isSelected { Color.accentColor.opacity(0.10) } else if isHovered || isKeyboardSelected { Color.accentColor.opacity(0.06) } else if item.isSensitive { Color.orange.opacity(0.04) } else { Color.clear }
@@ -212,18 +244,37 @@ struct ClipboardItemRow: View, Equatable {
                 }
                 .contentShape(Rectangle())
                 .help(L10n.tooltipPin)
-                HStack(spacing: 8) { Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) } }
+                HStack(spacing: 8) { Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) }; if !item.tagIds.isEmpty { TagChipStack(tagIds: item.tagIds, store: ClipboardStore.shared) } }
             }
             .contentShape(Rectangle())
             .gesture(ExclusiveGesture(TapGesture(count: 2).onEnded { onPin() }, TapGesture().onEnded { onCopyWithFeedback?() }))
             HStack(spacing: 6) {
+                Button(action: onEditTags) {
+                    Image(systemName: "tag")
+                        .font(.system(size: iconSize))
+                        .foregroundColor(item.tagIds.isEmpty ? .secondary : .accentColor)
+                        .frame(width: 24, height: 24)
+                        .overlay(alignment: .topTrailing) {
+                            if !item.tagIds.isEmpty {
+                                Text("\(item.tagIds.count)")
+                                    .font(.system(size: 8))
+                                    .padding(2)
+                                    .background(Color.accentColor, in: Circle())
+                                    .foregroundColor(.white)
+                                    .offset(x: 4, y: -4)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .help(L10n.tooltipEditTags)
+                .accessibilityLabel(L10n.tooltipEditTags)
                 Button(action: onPin) { Image(systemName: item.isPinned ? "star.fill" : "star").font(.system(size: iconSize)).foregroundColor(item.isPinned ? .orange : .secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
                 Button(action: onDelete) { Image(systemName: "trash").font(.system(size: iconSize)).foregroundColor(.secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(L10n.tooltipDelete)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .contextMenu { Button(action: { onCopyWithFeedback?() }, label: { Label(L10n.actionCopy, systemImage: "doc.on.doc") }); if item.isSensitive { Button(action: onToggleReveal, label: { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") }) }; Button(action: onPin, label: { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }); Divider(); Button(role: .destructive, action: onDelete, label: { Label(L10n.actionDelete, systemImage: "trash") }) }
+        .contextMenu { Button(action: { onCopyWithFeedback?() }, label: { Label(L10n.actionCopy, systemImage: "doc.on.doc") }); if item.isSensitive { Button(action: onToggleReveal, label: { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") }) }; Button(action: onPin, label: { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }); Divider(); Button(action: onEditTags, label: { Label(L10n.tooltipEditTags, systemImage: "tag") }); Divider(); Button(role: .destructive, action: onDelete, label: { Label(L10n.actionDelete, systemImage: "trash") }) }
         .task(id: item.id) {
             guard item.type != .richText else { return }
             if loadedContent != nil { return }

@@ -196,3 +196,14 @@
 "item.richText" = "富文本";
 "settings.capture.richtext" = "捕获富文本";
 "settings.capture.richtext.hint" = "开启后保留格式（粗体、斜体、颜色）。关闭则只捕获纯文本。";
+"tooltip.editTags" = "编辑标签";
+"tagPicker.title" = "编辑标签";
+"tagPicker.section.suggestions" = "建议";
+"tagPicker.section.allTags" = "所有标签";
+"tagPicker.create" = "新建标签";
+"tagPicker.create.button" = "创建";
+"tagPicker.useExisting" = "使用现有";
+"tagPicker.nameConflict" = "标签「%@」已存在，将使用现有";
+"tagPicker.deleteConfirm.title" = "删除标签？";
+"tagPicker.deleteConfirm.message" = "标签「%@」将从 %d 个项目移除";
+"tagPicker.deleteConfirm.confirm" = "删除";

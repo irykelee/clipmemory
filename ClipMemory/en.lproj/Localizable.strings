@@ -197,3 +197,14 @@
 "item.richText" = "Rich Text";
 "settings.capture.richtext" = "Capture Rich Text";
 "settings.capture.richtext.hint" = "When enabled, formatted text (bold, italic, colors) is preserved. Disable to capture only plain text.";
+"tooltip.editTags" = "Edit Tags";
+"tagPicker.title" = "Edit Tags";
+"tagPicker.section.suggestions" = "Suggestions";
+"tagPicker.section.allTags" = "All Tags";
+"tagPicker.create" = "New Tag";
+"tagPicker.create.button" = "Create";
+"tagPicker.useExisting" = "Use Existing";
+"tagPicker.nameConflict" = "Tag \"%@\" already exists, will use existing";
+"tagPicker.deleteConfirm.title" = "Delete Tag?";
+"tagPicker.deleteConfirm.message" = "Tag \"%@\" will be removed from %d items";
+"tagPicker.deleteConfirm.confirm" = "Delete";

@@ -89,6 +89,19 @@ struct L10n {
     static var tooltipClose: String { string("tooltip.close") }
     static var tooltipMinimize: String { string("tooltip.minimize") }
     static var tooltipZoom: String { string("tooltip.zoom") }
+    static var tooltipEditTags: String { string("tooltip.editTags") }
+
+    // MARK: - Tag picker sheet (Task #16)
+    static var tagPickerTitle: String { string("tagPicker.title") }
+    static var tagPickerSectionSuggestions: String { string("tagPicker.section.suggestions") }
+    static var tagPickerSectionAllTags: String { string("tagPicker.section.allTags") }
+    static var tagPickerCreate: String { string("tagPicker.create") }
+    static var tagPickerCreateButton: String { string("tagPicker.create.button") }
+    static var tagPickerUseExisting: String { string("tagPicker.useExisting") }
+    static func tagPickerNameConflict(_ name: String) -> String { string("tagPicker.nameConflict", name) }
+    static var tagPickerDeleteConfirmTitle: String { string("tagPicker.deleteConfirm.title") }
+    static func tagPickerDeleteConfirmMessage(_ name: String, _ count: Int) -> String { string("tagPicker.deleteConfirm.message", name, count) }
+    static var tagPickerDeleteConfirmConfirm: String { string("tagPicker.deleteConfirm.confirm") }
 
     static var alertClearTitle: String { string("alert.clear.title") }
     static func alertClearMessage(_ count: Int) -> String { string("alert.clear.message", count) }

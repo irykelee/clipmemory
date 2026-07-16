@@ -193,3 +193,14 @@
 "item.richText" = "リッチテキスト";
 "settings.capture.richtext" = "リッチテキストを取得";
 "settings.capture.richtext.hint" = "有効にすると書式（太字、斜体、色）が保持されます。無効にするとプレーンテキストのみを取得します。";
+"tooltip.editTags" = "タグを編集";
+"tagPicker.title" = "タグを編集";
+"tagPicker.section.suggestions" = "提案";
+"tagPicker.section.allTags" = "すべてのタグ";
+"tagPicker.create" = "新しいタグ";
+"tagPicker.create.button" = "作成";
+"tagPicker.useExisting" = "既存を使用";
+"tagPicker.nameConflict" = "タグ「%@」は既に存在します。既存のものを使用します";
+"tagPicker.deleteConfirm.title" = "タグを削除しますか？";
+"tagPicker.deleteConfirm.message" = "タグ「%@」を %d 件のアイテムから削除します";
+"tagPicker.deleteConfirm.confirm" = "削除";

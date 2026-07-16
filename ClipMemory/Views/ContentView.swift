@@ -56,6 +56,7 @@ struct ContentView: View {
     @State private var appPickerSearch = ""
     @State private var appPickerSearchDebounced = ""
     @State private var searchDebounce: DispatchWorkItem?
+    @State private var tagPickerItem: ClipboardItem?
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @AppStorage("themeAppearance") private var themeAppearance = "system"
 
@@ -274,6 +275,9 @@ struct ContentView: View {
             .onDisappear { stopKeyEventMonitor() }
             .sheet(isPresented: $showingAppPicker) { self.appPickerSheetContent }
             .sheet(isPresented: $showingTips) { self.tipsSheet }
+            .sheet(item: $tagPickerItem) { item in
+                TagPickerSheet(item: item, store: store)
+            }
     }
 
     private func attachLifecycle<V: View>(_ v: V) -> some View {
@@ -397,14 +401,7 @@ struct ContentView: View {
                             Section {
                                 if !searchText.isEmpty || !collapsedGroups.contains(section.group) {
                                     ForEach(section.items, id: \.item.id) { itemWithIndex in
-                                        ClipboardItemRow(item: itemWithIndex.item, isRevealed: revealedItems.contains(itemWithIndex.item.id),
-                                            isKeyboardSelected: keyboardSelectedIndex == itemWithIndex.globalIndex,
-                                            isCopied: lastCopiedId == itemWithIndex.item.id, isSelected: selectedItems.contains(itemWithIndex.item.id),
-                                            searchText: searchText,
-                                            onCopyWithFeedback: { lastCopiedId = itemWithIndex.item.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if lastCopiedId == itemWithIndex.item.id { lastCopiedId = nil } }; copyItem(itemWithIndex.item) },
-                                            onPin: { store.togglePin(itemWithIndex.item) }, onDelete: { itemToDelete = itemWithIndex.item; showingDeleteAlert = true },
-                                            onSelect: { if $0 { selectedItems.insert(itemWithIndex.item.id) } else { selectedItems.remove(itemWithIndex.item.id) } },
-                                            onToggleReveal: { toggleReveal(itemWithIndex.item.id) })
+                                        self.buildItemRow(itemWithIndex: itemWithIndex)
                                             .listRowInsets(EdgeInsets())
                                             .listRowSeparator(.hidden)
                                             .id(itemWithIndex.item.id)
@@ -731,4 +728,47 @@ struct ContentView: View {
 
     private func copyItem(_ item: ClipboardItem) { store.copyToClipboard(item) }
     private func toggleReveal(_ id: UUID) { if revealedItems.contains(id) { revealedItems.remove(id) } else { revealedItems.insert(id) } }
+
+    /// Builds a single ClipboardItemRow. Extracted from the ForEach body to
+    /// keep Swift's type-checker happy — the row init has 12 named parameters
+    /// and SwiftUI's @ViewBuilder blows the solver budget when inlined inside
+    /// a deeply nested Section/ForEach.
+    @ViewBuilder
+    private func buildItemRow(itemWithIndex: (item: ClipboardItem, globalIndex: Int)) -> some View {
+        let item: ClipboardItem = itemWithIndex.item
+        let itemId: UUID = item.id
+        let revealed: Bool = revealedItems.contains(itemId)
+        let kbSelected: Bool = keyboardSelectedIndex == itemWithIndex.globalIndex
+        let copied: Bool = lastCopiedId == itemId
+        let selected: Bool = selectedItems.contains(itemId)
+        let copyAction: () -> Void = {
+            self.lastCopiedId = itemId
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                if self.lastCopiedId == itemId { self.lastCopiedId = nil }
+            }
+            self.copyItem(item)
+        }
+        let pinAction: () -> Void = { self.store.togglePin(item) }
+        let deleteAction: () -> Void = {
+            self.itemToDelete = item
+            self.showingDeleteAlert = true
+        }
+        let selectAction: (Bool) -> Void = { isOn in
+            if isOn { self.selectedItems.insert(itemId) } else { self.selectedItems.remove(itemId) }
+        }
+        let revealAction: () -> Void = { self.toggleReveal(itemId) }
+        let editTagsAction: () -> Void = { self.tagPickerItem = item }
+        ClipboardItemRow(item: item,
+            isRevealed: revealed,
+            isKeyboardSelected: kbSelected,
+            isCopied: copied,
+            isSelected: selected,
+            searchText: searchText,
+            onCopyWithFeedback: copyAction,
+            onPin: pinAction,
+            onDelete: deleteAction,
+            onSelect: selectAction,
+            onToggleReveal: revealAction,
+            onEditTags: editTagsAction)
+    }
 }
