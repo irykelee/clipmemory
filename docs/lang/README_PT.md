@@ -22,12 +22,12 @@
 
 ## 📋 Registro de alterações
 
-### v2.2.4 (2026-07-16) — Higiene de Lançamento
+### v2.2.4 (2026-07-16) — Higiene de Release
 
-- **Sincronização de versão com tag de lançamento** — `MARKETING_VERSION` e `CURRENT_PROJECT_VERSION` atualizados para `2.2.4` em `project.yml` e `project.pbxproj` regenerado. Corrige a lição do v2.2.3 onde a tag foi cortada sem atualizar estes campos
-- **Correção de rótulo no Quick Bar** — Removido o rótulo de atalho `⌘⌃V` enganoso do item "Abrir janela completa" do Quick Bar. O atalho global abre a janela principal; o Quick Bar é aberto com clique esquerdo no ícone 📋 da barra de menu
-- **Correção de documentação de atalhos** — A linha `Cmd+Ctrl+V` em 8 READMEs de idiomas foi reescrita para esclarecer que abre a janela principal, não o Quick Bar
-- **Segurança do script de empacotamento** — O valor padrão de versão do `Scripts/package.sh` agora lê `MARKETING_VERSION` do `project.yml` (com guarda se a leitura falhar), evitando o risco pré-v2.2.4 de empacotar silenciosamente um tarball com versão obsoleta
+- **Versão sincronizada com a tag de release** — `MARKETING_VERSION` e `CURRENT_PROJECT_VERSION` atualizadas para `2.2.4` em `project.yml` e `project.pbxproj` regenerado. Resolve a lição da v2.2.3 onde a tag foi cortada sem incrementar a versão.
+- **Correção de rótulo na Quick Bar** — Removido o atalho enganoso `⌘⌃V` do item "abrir janela completa" na Quick Bar. O atalho global abre a janela principal completa; a Quick Bar é aberta com clique esquerdo no ícone 📋 da barra de menus.
+- **Correção da documentação sobre atalhos** — A linha de `Cmd+Ctrl+V` em 8 READMEs reescrita para esclarecer que abre a janela principal, não a Quick Bar.
+- **Segurança do script de empacotamento** — `Scripts/package.sh` agora lê a versão padrão do `MARKETING_VERSION` em `project.yml` (com proteção se a leitura falhar), evitando o problema de empacotar um tarball com versão antiga quando invoked sem argumento.
 
 ### v2.2.1 (2026-05-19) — Correção de Sensibilidade de Imagem
 
@@ -111,9 +111,9 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 
 | Ação | Como |
 |------|------|
-| Abrir Quick Bar | Clique no 📋 da barra de menu |
+| Abrir Quick Bar | Clique no 📋 da barra de menu / `Cmd+Ctrl+V` |
 | Copiar item | Clique no item / ↑↓ + Enter |
-| Abrir janela completa | `Cmd+Ctrl+V` (atalho global) / Quick Bar → "Abrir área de transferência" |
+| Abrir janela completa | Quick Bar → "Abrir área de transferência" |
 | Pesquisar | Digite para filtrar, correspondências destacadas |
 | Fixar / Desfixar | Clique ⭐ ou clique duplo na linha |
 | Excluir | Clique 🗑 ou menu contextual |

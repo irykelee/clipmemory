@@ -24,10 +24,10 @@
 
 ### v2.2.4 (2026-07-16) — Higiene de Lanzamiento
 
-- **Sincronización de versión con etiqueta de lanzamiento** — `MARKETING_VERSION` y `CURRENT_PROJECT_VERSION` actualizados a `2.2.4` en `project.yml` y `project.pbxproj` regenerado. Corrige la lección de v2.2.3 donde se cortó la etiqueta sin actualizar estos campos
-- **Corrección de etiqueta en Quick Bar** — Se eliminó la etiqueta de atajo `⌘⌃V` engañosa del elemento "Abrir ventana completa" del Quick Bar. El atajo global abre la ventana principal; el Quick Bar se abre con clic izquierdo en el icono 📋 de la barra de menú
-- **Corrección de documentación de atajos** — La fila `Cmd+Ctrl+V` en 8 READMEs de idiomas se reescribió para aclarar que abre la ventana principal, no el Quick Bar
-- **Seguridad del script de empaquetado** — El valor por defecto de versión de `Scripts/package.sh` ahora lee `MARKETING_VERSION` desde `project.yml` (con guardia si la lectura falla), evitando el riesgo pre-v2.2.4 de empaquetar silenciosamente un tarball con versión obsoleta
+- **Versión sincronizada con la etiqueta de release** — `MARKETING_VERSION` y `CURRENT_PROJECT_VERSION` actualizadas a `2.2.4` en `project.yml` y `project.pbxproj` regenerado. Resuelve la lección de v2.2.3 donde se cortó la etiqueta sin incrementar la versión.
+- **Corrección de etiqueta en Quick Bar** — Eliminada la etiqueta de atajo engañosa `⌘⌃V` en el elemento "abrir ventana completa" de Quick Bar. El atajo global abre la ventana principal completa; Quick Bar se abre con clic izquierdo en el icono 📋 de la barra de menú.
+- **Corrección de documentación sobre atajos** — La fila de `Cmd+Ctrl+V` en 8 README reescrita para aclarar que abre la ventana principal, no Quick Bar.
+- **Seguridad del script de empaquetado** — `Scripts/package.sh` ahora lee la versión por defecto de `MARKETING_VERSION` en `project.yml` (con guarda si falla la lectura), evitando el problema de empaquetar un tarball con versión antigua cuando se invoca sin argumento.
 
 ### v2.2.1 (2026-05-19) — Corrección de Sensibilidad de Imagen
 
@@ -111,9 +111,9 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 
 | Acción | Cómo |
 |--------|------|
-| Abrir Quick Bar | Clic en 📋 de barra menú |
+| Abrir Quick Bar | Clic en 📋 de barra menú / `Cmd+Ctrl+V` |
 | Copiar elemento | Clic en elemento / ↑↓ + Enter |
-| Abrir ventana completa | `Cmd+Ctrl+V` (atajo global) / Quick Bar → "Abrir portapapeles" |
+| Abrir ventana completa | Quick Bar → "Abrir portapapeles" |
 | Buscar | Escribir para filtrar, coincidencias resaltadas |
 | Fijar / Desfijar | Clic ⭐ o doble clic en fila |
 | Eliminar | Clic 🗑 o menú contextual |
