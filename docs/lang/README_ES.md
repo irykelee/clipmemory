@@ -1,4 +1,4 @@
-# ClipMemory v2.2.1
+# ClipMemory v2.2.4
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.2.4 (2026-07-16) — Higiene de Lanzamiento
+
+- **Sincronización de versión con etiqueta de lanzamiento** — `MARKETING_VERSION` y `CURRENT_PROJECT_VERSION` actualizados a `2.2.4` en `project.yml` y `project.pbxproj` regenerado. Corrige la lección de v2.2.3 donde se cortó la etiqueta sin actualizar estos campos
+- **Corrección de etiqueta en Quick Bar** — Se eliminó la etiqueta de atajo `⌘⌃V` engañosa del elemento "Abrir ventana completa" del Quick Bar. El atajo global abre la ventana principal; el Quick Bar se abre con clic izquierdo en el icono 📋 de la barra de menú
+- **Corrección de documentación de atajos** — La fila `Cmd+Ctrl+V` en 8 READMEs de idiomas se reescribió para aclarar que abre la ventana principal, no el Quick Bar
+- **Seguridad del script de empaquetado** — El valor por defecto de versión de `Scripts/package.sh` ahora lee `MARKETING_VERSION` desde `project.yml` (con guardia si la lectura falla), evitando el riesgo pre-v2.2.4 de empaquetar silenciosamente un tarball con versión obsoleta
 
 ### v2.2.1 (2026-05-19) — Corrección de Sensibilidad de Imagen
 
@@ -104,9 +111,9 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 
 | Acción | Cómo |
 |--------|------|
-| Abrir Quick Bar | Clic en 📋 de barra menú / `Cmd+Ctrl+V` |
+| Abrir Quick Bar | Clic en 📋 de barra menú |
 | Copiar elemento | Clic en elemento / ↑↓ + Enter |
-| Abrir ventana completa | Quick Bar → "Abrir portapapeles" |
+| Abrir ventana completa | `Cmd+Ctrl+V` (atajo global) / Quick Bar → "Abrir portapapeles" |
 | Buscar | Escribir para filtrar, coincidencias resaltadas |
 | Fijar / Desfijar | Clic ⭐ o doble clic en fila |
 | Eliminar | Clic 🗑 o menú contextual |

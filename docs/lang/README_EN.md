@@ -1,4 +1,4 @@
-# ClipMemory v2.2.1
+# ClipMemory v2.2.4
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Changelog
+
+### v2.2.4 (2026-07-16) — Release Hygiene
+
+- **Version stamp synced with release tag** — `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` bumped to `2.2.4` in `project.yml` and regenerated `project.pbxproj`. Resolves the v2.2.3 lesson where the tag was cut without bumping these fields.
+- **Quick Bar label fix** — Removed misleading `⌘⌃V` shortcut label on the Quick Bar "open full window" item. The global hotkey opens the full main window; the Quick Bar is opened via left-click on the menu-bar 📋 icon.
+- **Documentation hotkey correction** — The `Cmd+Ctrl+V` row in 8 language READMEs rewritten to clarify it opens the main window, not the Quick Bar.
+- **Packaging safety** — `Scripts/package.sh` default version now reads `MARKETING_VERSION` from `project.yml` (with a guard if reading fails), preventing the pre-v2.2.4 footgun of packaging a stale-stamped tarball when invoked without an explicit version argument.
 
 ### v2.2.1 (2026-05-19) — Image Sensitivity Fix
 
@@ -104,9 +111,9 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 
 | Action | How |
 |--------|-----|
-| Open Quick Bar | Left-click menu bar 📋 icon / `Cmd+Ctrl+V` |
+| Open Quick Bar | Left-click menu bar 📋 icon |
 | Copy item | Click item / keyboard ↑↓ + Enter |
-| Open full window | Quick Bar → "Open Clipboard" |
+| Open full window | `Cmd+Ctrl+V` (global hotkey) / Quick Bar → "Open Clipboard" |
 | Search | Type keyword, matches highlighted |
 | Pin / Unpin | Click ⭐ or double-click item |
 | Delete | Click 🗑 or right-click menu |

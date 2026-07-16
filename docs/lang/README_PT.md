@@ -1,4 +1,4 @@
-# ClipMemory v2.2.1
+# ClipMemory v2.2.4
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.2.4 (2026-07-16) — Higiene de Lançamento
+
+- **Sincronização de versão com tag de lançamento** — `MARKETING_VERSION` e `CURRENT_PROJECT_VERSION` atualizados para `2.2.4` em `project.yml` e `project.pbxproj` regenerado. Corrige a lição do v2.2.3 onde a tag foi cortada sem atualizar estes campos
+- **Correção de rótulo no Quick Bar** — Removido o rótulo de atalho `⌘⌃V` enganoso do item "Abrir janela completa" do Quick Bar. O atalho global abre a janela principal; o Quick Bar é aberto com clique esquerdo no ícone 📋 da barra de menu
+- **Correção de documentação de atalhos** — A linha `Cmd+Ctrl+V` em 8 READMEs de idiomas foi reescrita para esclarecer que abre a janela principal, não o Quick Bar
+- **Segurança do script de empacotamento** — O valor padrão de versão do `Scripts/package.sh` agora lê `MARKETING_VERSION` do `project.yml` (com guarda se a leitura falhar), evitando o risco pré-v2.2.4 de empacotar silenciosamente um tarball com versão obsoleta
 
 ### v2.2.1 (2026-05-19) — Correção de Sensibilidade de Imagem
 
@@ -104,9 +111,9 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 
 | Ação | Como |
 |------|------|
-| Abrir Quick Bar | Clique no 📋 da barra de menu / `Cmd+Ctrl+V` |
+| Abrir Quick Bar | Clique no 📋 da barra de menu |
 | Copiar item | Clique no item / ↑↓ + Enter |
-| Abrir janela completa | Quick Bar → "Abrir área de transferência" |
+| Abrir janela completa | `Cmd+Ctrl+V` (atalho global) / Quick Bar → "Abrir área de transferência" |
 | Pesquisar | Digite para filtrar, correspondências destacadas |
 | Fixar / Desfixar | Clique ⭐ ou clique duplo na linha |
 | Excluir | Clique 🗑 ou menu contextual |
