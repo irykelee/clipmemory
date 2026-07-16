@@ -134,7 +134,7 @@ struct QuickBarView: View {
 
             // macOS 26 menu style bottom section
             VStack(spacing: 0) {
-                MacOSMenuItem(icon: "rectangle.expand.vertical", label: L10n.quickbarOpenFull, shortcut: "⌘⌃V", sz: sz)
+                MacOSMenuItem(icon: "rectangle.expand.vertical", label: L10n.quickbarOpenFull, sz: sz)
                     .onTapGesture { showFullWindow = true }
                 Color.clear.frame(height: 1)
                 MacOSMenuItem(icon: "xmark.circle", label: L10n.quitApp, color: .secondary, shortcut: "⌘Q", sz: sz)
