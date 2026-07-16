@@ -192,3 +192,14 @@
 "item.richText" = "富文本";
 "settings.capture.richtext" = "捕獲富文本";
 "settings.capture.richtext.hint" = "開啟後保留格式（粗體、斜體、顏色）。關閉則只捕獲純文本。";
+"tooltip.editTags" = "編輯標籤";
+"tagPicker.title" = "編輯標籤";
+"tagPicker.section.suggestions" = "建議";
+"tagPicker.section.allTags" = "所有標籤";
+"tagPicker.create" = "新建標籤";
+"tagPicker.create.button" = "建立";
+"tagPicker.useExisting" = "使用現有";
+"tagPicker.nameConflict" = "標籤「%@」已存在，將使用現有";
+"tagPicker.deleteConfirm.title" = "刪除標籤？";
+"tagPicker.deleteConfirm.message" = "標籤「%@」將從 %d 個項目移除";
+"tagPicker.deleteConfirm.confirm" = "刪除";

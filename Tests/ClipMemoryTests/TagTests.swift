@@ -25,8 +25,13 @@ final class TagTests: XCTestCase {
 
     func testHashable() {
         let id = UUID()
-        let a = Tag(id: id, name: "X", colorHex: "#000000")
-        let b = Tag(id: id, name: "X", colorHex: "#000000")
+        // Pin a single Date instance so both tags share its hash exactly.
+        // Swift Date's `==` uses a tolerance but `hashValue` does not, so
+        // two separate Date() calls in close succession can compare equal
+        // yet hash differently — making the test flaky on slow runners.
+        let ts = Date(timeIntervalSince1970: 1_700_000_000)
+        let a = Tag(id: id, name: "X", colorHex: "#000000", createdAt: ts)
+        let b = Tag(id: id, name: "X", colorHex: "#000000", createdAt: ts)
         var set = Set<Tag>()
         set.insert(a)
         set.insert(b)

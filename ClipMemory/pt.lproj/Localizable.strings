@@ -193,3 +193,14 @@
 "item.richText" = "Texto rico";
 "settings.capture.richtext" = "Capturar texto rico";
 "settings.capture.richtext.hint" = "Quando ativado, o texto formatado (negrito, itálico, cores) é preservado. Desative para capturar apenas texto simples.";
+"tooltip.editTags" = "Editar etiquetas";
+"tagPicker.title" = "Editar etiquetas";
+"tagPicker.section.suggestions" = "Sugestões";
+"tagPicker.section.allTags" = "Todas as etiquetas";
+"tagPicker.create" = "Nova etiqueta";
+"tagPicker.create.button" = "Criar";
+"tagPicker.useExisting" = "Usar existente";
+"tagPicker.nameConflict" = "A etiqueta \"%@\" já existe, será usada a existente";
+"tagPicker.deleteConfirm.title" = "Eliminar etiqueta?";
+"tagPicker.deleteConfirm.message" = "A etiqueta \"%@\" será removida de %d itens";
+"tagPicker.deleteConfirm.confirm" = "Eliminar";
