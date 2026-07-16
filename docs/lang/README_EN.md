@@ -163,7 +163,9 @@ Before removing the app, click the 🗑 button in the top toolbar to clear histo
 ## Installation
 
 ```bash
-brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install clipmemory
+brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory
+brew trust irykelee/clipmemory
+brew install --cask clipmemory
 ```
 
 After install, App is at `/Applications/ClipMemory.app`. Launch and find the 📋 icon in the **menu bar** (top right corner).

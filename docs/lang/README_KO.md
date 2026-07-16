@@ -163,7 +163,9 @@
 ## 설치
 
 ```bash
-brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory && brew install clipmemory
+brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory
+brew trust irykelee/clipmemory
+brew install --cask clipmemory
 ```
 
 설치 후 App은 `/Applications/ClipMemory.app`에 위치합니다. 실행 후 **화면 오른쪽 상단 메뉴바**의 📋 아이콘을 클릭하여 사용하세요.
