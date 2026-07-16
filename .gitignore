@@ -21,3 +21,9 @@ default.profraw
 
 # gstack tool runtime — generated locally, not in repo
 .gstack/
+
+# Subagent SDD work products + internal planning — not for public repo
+.superpowers/
+docs/superpowers/
+docs/roadmap.md
+docs/DEVELOPMENT.md
