@@ -58,3 +58,23 @@ final class TagTests: XCTestCase {
         }
     }
 }
+
+// MARK: - ClipboardStore tag dictionary API
+
+final class ClipboardStoreTagTests: XCTestCase {
+
+    /// Each ClipboardStore instance gets its own in-memory tag dictionary.
+    /// Tags are keyed by UUID for O(1) lookup; the store is the source of truth.
+    func testTagsDictionaryStartsEmpty() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        XCTAssertTrue(store.tags.isEmpty, "Fresh store should have zero tags")
+    }
+
+    /// addTag inserts the tag keyed by its id; querying by id returns the same instance.
+    func testAddTagStoresTagById() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let tag = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        XCTAssertEqual(store.tags[tag.id], tag)
+    }
+}
