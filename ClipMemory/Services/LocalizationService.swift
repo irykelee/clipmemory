@@ -103,6 +103,13 @@ struct L10n {
     static func tagPickerDeleteConfirmMessage(_ name: String, _ count: Int) -> String { string("tagPicker.deleteConfirm.message", name, count) }
     static var tagPickerDeleteConfirmConfirm: String { string("tagPicker.deleteConfirm.confirm") }
 
+    // MARK: - Sidebar tag section (Task #17)
+    static var sidebarSectionTags: String { string("sidebar.section.tags") }
+    static var sidebarTagsEmpty: String { string("sidebar.tags.empty") }
+    static var sidebarNewTag: String { string("sidebar.newTag") }
+    static var newTagTitle: String { string("newTag.title") }
+    static var newTagCreate: String { string("newTag.create") }
+
     static var alertClearTitle: String { string("alert.clear.title") }
     static func alertClearMessage(_ count: Int) -> String { string("alert.clear.message", count) }
     static var alertClearNone: String { string("alert.clear.none") }

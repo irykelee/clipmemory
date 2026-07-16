@@ -204,3 +204,8 @@
 "tagPicker.deleteConfirm.title" = "タグを削除しますか？";
 "tagPicker.deleteConfirm.message" = "タグ「%@」を %d 件のアイテムから削除します";
 "tagPicker.deleteConfirm.confirm" = "削除";
+"sidebar.section.tags" = "タグ";
+"sidebar.tags.empty" = "タグがまだありません";
+"sidebar.newTag" = "新しいタグ";
+"newTag.title" = "新しいタグ";
+"newTag.create" = "作成";

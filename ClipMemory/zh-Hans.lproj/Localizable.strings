@@ -207,3 +207,8 @@
 "tagPicker.deleteConfirm.title" = "删除标签？";
 "tagPicker.deleteConfirm.message" = "标签「%@」将从 %d 个项目移除";
 "tagPicker.deleteConfirm.confirm" = "删除";
+"sidebar.section.tags" = "标签";
+"sidebar.tags.empty" = "尚未创建标签";
+"sidebar.newTag" = "新建标签";
+"newTag.title" = "新建标签";
+"newTag.create" = "创建";

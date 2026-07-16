@@ -203,3 +203,8 @@
 "tagPicker.deleteConfirm.title" = "刪除標籤？";
 "tagPicker.deleteConfirm.message" = "標籤「%@」將從 %d 個項目移除";
 "tagPicker.deleteConfirm.confirm" = "刪除";
+"sidebar.section.tags" = "標籤";
+"sidebar.tags.empty" = "尚未建立標籤";
+"sidebar.newTag" = "新建標籤";
+"newTag.title" = "新建標籤";
+"newTag.create" = "建立";
