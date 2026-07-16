@@ -214,4 +214,33 @@ final class HotKeyManagerTests: XCTestCase {
         // No assertion needed — reaching this line is the test
         manager.unregister()
     }
+
+    // MARK: - RS-3.4: Reject modifiers=0
+
+    func testUpdateHotKeyRejectsZeroModifiers() {
+        // RS-3.4: A bare key (modifiers=0) would register a single-letter
+        // global hotkey — extremely annoying UX. Must reject silently.
+        let manager = HotKeyManager()
+        let originalConfig = manager.config
+
+        manager.updateHotKey(keyCode: UInt32(kVK_ANSI_A), modifiers: 0)
+
+        XCTAssertEqual(manager.config, originalConfig,
+                       "modifiers=0 must not change the registered hotkey")
+    }
+
+    func testUpdateHotKeyRejectsZeroModifiersDoesNotPersist() {
+        // RS-3.4 follow-up: rejection must not corrupt UserDefaults either.
+        UserDefaults.standard.removeObject(forKey: modifiersKey)
+        let manager = HotKeyManager()
+        // Re-seed UserDefaults with a known good value first
+        manager.updateHotKey(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(cmdKey | shiftKey))
+        XCTAssertEqual(manager.config.modifiers, UInt32(cmdKey | shiftKey))
+
+        // Now attempt the bad call — config and UserDefaults must stay put
+        manager.updateHotKey(keyCode: UInt32(kVK_ANSI_A), modifiers: 0)
+        let persisted = HotKeyConfig.load()
+        XCTAssertEqual(persisted.modifiers, UInt32(cmdKey | shiftKey),
+                       "Rejected update must not write zero to UserDefaults")
+    }
 }

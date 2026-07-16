@@ -112,8 +112,6 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         ("hbc_[0-9a-f]{48}", true),
         // Mailgun API key
         ("key-[0-9a-zA-Z]{32}", true),
-        // PagerDuty API key
-        ("[A-Za-z0-9]{20}", true),
         // Stripe keys
         ("sk_live_[0-9a-zA-Z]{24,}", true),
         ("rk_live_[0-9a-zA-Z]{24,}", true),
