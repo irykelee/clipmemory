@@ -24,10 +24,10 @@
 
 ### v2.2.4 (2026-07-16) — 發布衛生修復
 
-- **版本號與發布標籤同步** — `project.yml` 的 `MARKETING_VERSION` 與 `CURRENT_PROJECT_VERSION` 升級到 `2.2.4`，重新生成 `project.pbxproj`。修正 v2.2.3 切標籤但未同步版本號導致下游 cask 拿到舊版本的問題
-- **Quick Bar 標籤修正** — 移除 Quick Bar「開啟完整視窗」項上誤導性的 `⌘⌃V` 快捷鍵標籤。全域快捷鍵開啟的是完整主視窗，Quick Bar 由選單列 📋 圖示左鍵開啟
-- **文件快捷鍵說明更正** — 8 種語言 README 中關於 `Cmd+Ctrl+V` 的描述重寫，明確該快捷鍵開啟主視窗而非 Quick Bar
-- **打包腳本安全加固** — `Scripts/package.sh` 預設版本號改為從 `project.yml` 讀取 `MARKETING_VERSION`（含讀取失敗的防護），避免在不帶參數呼叫時靜默打包一個舊版本號的 tarball
+- **版本號與發布標籤同步** — `project.yml` 的 `MARKETING_VERSION` 與 `CURRENT_PROJECT_VERSION` 升級到 `2.2.4`，重新生成 `project.pbxproj`。修正 v2.2.3 切標籤但未同步版本號導致下遊 cask 拿到舊版本的問題
+- **Quick Bar 標籤修正** — 移除 Quick Bar「打開完整窗口」項上誤導性的 `⌘⌃V` 快捷鍵標籤。全域快捷鍵打開的是完整主窗口，Quick Bar 由菜單欄 📋 圖標左鍵打開
+- **文檔快捷鍵說明更正** — 8 種語言 README 中關於 `Cmd+Ctrl+V` 的描述重寫，明確該快捷鍵打開主窗口而非 Quick Bar
+- **打包腳本安全加固** — `Scripts/package.sh` 默認版本號改為從 `project.yml` 讀取 `MARKETING_VERSION`（含讀取失敗的防護），避免在不帶參數調用時靜默打包一個舊版本號的 tarball
 
 ### v2.2.1 (2026-05-19) — 圖片敏感邏輯修復
 
@@ -111,9 +111,9 @@
 
 | 操作 | 方式 |
 |------|------|
-| 彈出 Quick Bar | 左鍵點擊選單列 📋 圖示 |
+| 彈出 Quick Bar | 左鍵點擊選單列 📋 圖示 / `Cmd+Ctrl+V` |
 | 複製條目 | 點擊條目 / 鍵盤 ↑↓ + Enter |
-| 開啟完整視窗 | `Cmd+Ctrl+V`（全域快捷鍵）/ Quick Bar → "開啟完整視窗" |
+| 開啟完整視窗 | Quick Bar → "開啟完整視窗" |
 | 搜尋 | 輸入關鍵詞，匹配處高亮 |
 | 釘選 / 取消釘選 | 點擊 ⭐ 或雙擊條目 |
 | 刪除 | 點擊 🗑 或右鍵選單 |
