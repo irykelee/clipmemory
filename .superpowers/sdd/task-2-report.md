@@ -97,3 +97,39 @@ The Task 1 baseline audit file was copied verbatim from `agent-a6de2f2dcc4ce10f0
 1. Commit the audit + this report (single conventional commit, scope `docs`, files: `docs/superpowers/audits/2026-07-16-v2.2.4-audit.md`, `.superpowers/sdd/task-2-report.md`).
 2. No CLI release, packaging, or version bump is performed by this task (those remain F-1..F-5 in §Release blockers remaining).
 3. Pre-existing blocker list unchanged. Task 2 introduces no new blockers.
+
+---
+
+## Coordinator follow-up: minor documentation defect fixes (2026-07-16 post-review)
+
+The coordinator's spec/task-quality review identified four Minor documentation defects in the audit file produced by this task. All four corrections were applied to `docs/superpowers/audits/2026-07-16-v2.2.4-audit.md`. No product, test, or package-metadata files were modified. The Task 1 baseline wording (through `## Release blockers remaining`) and the `## Self-containment check` section remain unchanged.
+
+### Corrections applied
+
+| # | Defect | Before | After | Verified line range(s) |
+|---|---|---|---|---|
+| 1 | Failed-encryption forward pointer mis-pointed | Line 407: `... (see RS-5) ...` | Line 407: `... (see RS-4) ...` | `ClipboardStore.swift:280-299` is the `addItem` encryption-failure path, which is RS-4's subject. RS-5 is about `migrateFromLegacyIfNeeded`, unrelated. |
+| 2 | Legacy AES-CBC/HMAC forward pointer mis-pointed | Line 409: `... (see RS-7 below) ...` | Line 409: `... (see RS-6 below) ...` | Pre-v2 decrypt round-trip gap is RS-6's subject. RS-7 is about `cfprefsd` UserDefaults flush on quit. |
+| 3 | Encrypted-at-rest citation under-cited | Line 419: `` `saveImage` calls `crypto.encryptData` before `write` (151-153) `` | Line 419: `` `saveImage` calls `ServiceContainer.crypto.encryptData(data)` at line 144 (`guard let encryptedData = ... else { return }`), then `do { try encryptedData.write(to: fileURL); ... } catch { ... }` at lines 151-153 `` | `ImageStorage.swift:144` is the `ServiceContainer.crypto.encryptData(data)` line; `ImageStorage.swift:151-153` is the `do { try ...write... ... }` block. Both verified by reading the file. |
+| 4 | RS-5 cited directory-listing `try?` line 53 as per-file body | Line 443: `... each per-file body uses 'try?' and 'do/catch' (lines 53, 63, 76-83, 87-92) ...` | Line 443: `... the directory listing uses 'try? fileManager.contentsOfDirectory' (line 52) once at the top of 'migrateFromLegacyIfNeeded' — NOT inside the per-file loop. Inside the per-file loop body, the actual defenses are: (a) ... line 63, and (b) two 'do { ...write(...) ... } catch { ... }' blocks at lines 76-82 (encrypt-then-write unencrypted PNG branch) and lines 87-92 (copy-already-encrypted branch) ...` | Read `ImageStorage.swift:43-94`: line 52 is the directory listing (`try? fileManager.contentsOfDirectory`); line 63 is the per-file `try? Data(contentsOf:)`; lines 76-82 (do-catch for unencrypted PNG branch wrapping try/write/append/logger.info/log on 77-79, then 80 catch, 81 logger.error, 82 close); lines 87-92 (do-catch for already-encrypted copy branch wrapping try/append on 88-89, then 90 catch, 91 logger.error, 92 close). Confirmed correct. |
+
+### Focused verification
+
+| Check | Command | Result |
+|---|---|---|
+| Self-containment marker scan (post-correction) | `grep -nE 'TBD\|TODO\|FIXME\|待补\|以后再' docs/superpowers/audits/2026-07-16-v2.2.4-audit.md` | Zero output lines (exit code 1, no matches). The four corrections added no marker tokens. |
+| All RS-pointer references remain internally consistent | `grep -nE 'RS-[0-9]' docs/superpowers/audits/2026-07-16-v2.2.4-audit.md` | Each RS-N defined in the rejected-suspicions list (RS-1..RS-7 lines 439-445) and referenced from net-delta (line 449) and from the verified-checks tables (RS-3 on line 421, RS-4 on line 407, RS-6 on line 409). Cross-reference is internally consistent. |
+| No stale `line 53` reference to directory-listing remains | `grep -nE 'line 53\|lines 53' docs/superpowers/audits/2026-07-16-v2.2.4-audit.md` | Zero output lines. |
+| Diff scope limited to the four corrections | `git -C ... diff HEAD -- docs/superpowers/audits/2026-07-16-v2.2.4-audit.md` | 4 changed hunks, 4 changed lines, all surgical. No collateral drift in Task 1 wording or other rows. |
+| Cited line numbers in `ImageStorage.swift` re-verified by reading | Read `ImageStorage.swift:50-94` | Line 52 is `guard let legacyFiles = try? fileManager.contentsOfDirectory(...)`; line 63 is `try? Data(contentsOf: legacyPath)`; lines 76-82 wrap the encrypt-write do-catch; lines 87-92 wrap the copy-do-catch. Line 144 is `ServiceContainer.crypto.encryptData(data)`; lines 151-153 are the `do { try encryptedData.write(to: fileURL); ... } catch { ... }` block. All citations match. |
+| Product / test / package-metadata files unchanged | `git status --short` (excluding `.superpowers/` and `docs/superpowers/audits/`) | No paths reported — only audit docs touched. |
+| Task 1 baseline preserved verbatim | Manual reading of `docs/superpowers/audits/2026-07-16-v2.2.4-audit.md` lines 1-384 | Unchanged from the copy made at the start of this task. `## Self-containment check` and §Release blockers remaining wording is untouched. |
+
+### Net delta to commit
+
+One file changed, four surgical edits:
+
+- `docs/superpowers/audits/2026-07-16-v2.2.4-audit.md` — corrections 1-4 above.
+- `.superpowers/sdd/task-2-report.md` — this section appended.
+
+No product, test, package-metadata, or release files changed. No package metadata (`project.yml`, `Casks/clipmemory.rb`, `Scripts/package.sh`) was modified. No release was performed.
