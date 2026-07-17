@@ -58,8 +58,8 @@
 "alert.clear.message" = "Are you sure you want to clear %d items?\nPinned items will not be deleted.";
 "alert.clear.none" = "No history to clear.";
 "alert.clear.group.message" = "Are you sure you want to clear %1$d items in「%2$@」?\nPinned items will not be deleted.";
-"alert.delete.title" = "Delete Item";
-"alert.delete.message" = "Are you sure you want to delete this item?";
+"alert.delete.title" = "Move to Recycle Bin";
+"alert.delete.message" = "Move this item to the Recycle Bin?";
 
 /* Settings */
 "settings.title" = "Settings";
@@ -231,3 +231,14 @@
 
 /* Image fallback */
 "image.decryptionFailed" = "Unable to decrypt image";
+
+/* Recycle Bin */
+"trash.title" = "Recycle Bin";
+"trash.empty" = "Recycle Bin is empty";
+"trash.deletedAt" = "Deleted %@";
+"trash.restore" = "Restore";
+"trash.deletePermanently" = "Delete Permanently";
+"trash.emptyConfirm.title" = "Empty Recycle Bin";
+"trash.emptyConfirm.message" = "%d items will be permanently deleted. This action cannot be undone.";
+"trash.retentionDays" = "Recycle Bin retention days";
+"trash.moveToTrash" = "Move to Recycle Bin";

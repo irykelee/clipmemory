@@ -58,8 +58,8 @@
 "alert.clear.message" = "Excluir %d itens?\nItens fixados serão mantidos.";
 "alert.clear.none" = "Nada para limpar.";
 "alert.clear.group.message" = "Excluir %1$d itens de「%2$@」?\nItens fixados serão mantidos.";
-"alert.delete.title" = "Excluir";
-"alert.delete.message" = "Excluir este item?";
+"alert.delete.title" = "Mover para a lixeira";
+"alert.delete.message" = "Mover este item para a lixeira?";
 
 /* Settings */
 "settings.title" = "Configurações";
@@ -233,3 +233,14 @@
 "alert.trim.message" = "Tem %d itens mas o limite é %d. Aparar itens extras?";
 "alert.trim.confirm" = "Aparar";
 "alert.trim.cancel" = "Cancelar, ajustar nas definições";
+
+/* Recycle Bin */
+"trash.title" = "Lixeira";
+"trash.empty" = "A lixeira está vazia";
+"trash.deletedAt" = "Apagado %@";
+"trash.restore" = "Restaurar";
+"trash.deletePermanently" = "Apagar permanentemente";
+"trash.emptyConfirm.title" = "Esvaziar lixeira";
+"trash.emptyConfirm.message" = "%d itens serão apagados permanentemente. Esta ação não pode ser desfeita.";
+"trash.retentionDays" = "Dias de retenção da lixeira";
+"trash.moveToTrash" = "Mover para a lixeira";

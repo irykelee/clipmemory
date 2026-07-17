@@ -58,8 +58,8 @@
 "alert.clear.message" = "確定清除 %d 筆記錄？\n釘選內容不會被刪除。";
 "alert.clear.none" = "沒有可清除的記錄。";
 "alert.clear.group.message" = "確定清除「%2$@」的 %1$d 筆記錄？\n釘選內容不會被刪除。";
-"alert.delete.title" = "刪除內容";
-"alert.delete.message" = "確定刪除該內容嗎？";
+"alert.delete.title" = "移至資源回收筒";
+"alert.delete.message" = "確定將該內容移至資源回收筒嗎？";
 
 /* Settings */
 "settings.title" = "偏好設定";
@@ -235,3 +235,14 @@
 
 /* Launch at login error */
 "settings.launch.at.login.error.body" = "無法修改登入時啟動設定，請檢查系統權限。";
+
+/* Recycle Bin */
+"trash.title" = "資源回收筒";
+"trash.empty" = "資源回收筒是空的";
+"trash.deletedAt" = "刪除於 %@";
+"trash.restore" = "復原";
+"trash.deletePermanently" = "徹底刪除";
+"trash.emptyConfirm.title" = "清空資源回收筒";
+"trash.emptyConfirm.message" = "%d 個條目將被永久刪除，此操作不可撤銷。";
+"trash.retentionDays" = "資源回收筒保留天數";
+"trash.moveToTrash" = "移至資源回收筒";

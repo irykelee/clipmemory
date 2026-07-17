@@ -58,8 +58,8 @@
 "alert.clear.message" = "确定清空 %d 条记录？\n收藏内容不会被删除。";
 "alert.clear.none" = "没有可清空的记录。";
 "alert.clear.group.message" = "确定清空「%2$@」的 %1$d 条记录？\n收藏内容不会被删除。";
-"alert.delete.title" = "删除内容";
-"alert.delete.message" = "确定删除该内容吗？";
+"alert.delete.title" = "移至回收站";
+"alert.delete.message" = "确定将该内容移至回收站吗？";
 
 /* Settings */
 "settings.title" = "偏好设置";
@@ -230,3 +230,14 @@
 
 /* Image fallback */
 "image.decryptionFailed" = "无法解密图片";
+
+/* Recycle Bin */
+"trash.title" = "回收站";
+"trash.empty" = "回收站是空的";
+"trash.deletedAt" = "删除于 %@";
+"trash.restore" = "恢复";
+"trash.deletePermanently" = "彻底删除";
+"trash.emptyConfirm.title" = "清空回收站";
+"trash.emptyConfirm.message" = "%d 个条目将被永久删除，此操作不可撤销。";
+"trash.retentionDays" = "回收站保留天数";
+"trash.moveToTrash" = "移至回收站";

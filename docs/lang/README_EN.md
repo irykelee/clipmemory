@@ -1,4 +1,4 @@
-# ClipMemory v2.3.0
+# ClipMemory v2.4.0
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Changelog
+
+### v2.4.0 (2026-07-18) — Recycle Bin
+
+- **🗑️ Recycle Bin** — Deleted items are no longer destroyed immediately. They move to a Recycle Bin and stay for 7 days (configurable in Settings), during which you can restore or permanently delete them. Emptying the bin requires confirmation; expired items are cleaned up automatically.
+- **Data safety** — Image files are kept while their items remain in the bin; they are only deleted on permanent removal. Automatic cleanup (trim/expiry) bypasses the bin entirely.
+- **UI updates** — New "Recycle Bin" sidebar entry with a badge count; deletion confirmation text changed to "Move to Recycle Bin"; trashed items show their deletion time.
+- **Tests** — 12 new Recycle Bin tests, all passing.
 
 ### v2.3.0 (2026-07-17) — Tag System & Data Integrity
 

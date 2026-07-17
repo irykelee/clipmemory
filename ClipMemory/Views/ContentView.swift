@@ -4,12 +4,12 @@ import Carbon.HIToolbox
 import ServiceManagement
 
 enum SidebarTab: String, CaseIterable {
-    case all, text, image, link, richText, pinned, settings
+    case all, text, image, link, richText, pinned, trash, settings
     var icon: String {
-        switch self { case .all: "tray.full"; case .text: "doc.text"; case .image: "photo"; case .link: "link"; case .richText: "doc.richtext"; case .pinned: "star"; case .settings: "gear" }
+        switch self { case .all: "tray.full"; case .text: "doc.text"; case .image: "photo"; case .link: "link"; case .richText: "doc.richtext"; case .pinned: "star"; case .trash: "trash"; case .settings: "gear" }
     }
     var label: String {
-        switch self { case .all: L10n.filterAll; case .text: L10n.filterText; case .image: L10n.filterImage; case .link: L10n.filterLink; case .richText: L10n.filterRichText; case .pinned: L10n.headerShowPinned; case .settings: L10n.buttonSettings }
+        switch self { case .all: L10n.filterAll; case .text: L10n.filterText; case .image: L10n.filterImage; case .link: L10n.filterLink; case .richText: L10n.filterRichText; case .pinned: L10n.headerShowPinned; case .trash: L10n.trashTitle; case .settings: L10n.buttonSettings }
     }
     var typeFilter: ClipboardItemType? {
         switch self { case .text: .text; case .image: .image; case .link: .link; case .richText: .richText; default: nil }
@@ -47,6 +47,7 @@ struct ContentView: View {
     @State private var dateFilter: DateFilter = .all
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: ClipboardItem?
+    @State private var showingEmptyTrashAlert = false
     @State private var pendingClearMode: ClearMode?
     private enum ClearMode {
         case today, yesterday, older, all
@@ -430,21 +431,28 @@ struct ContentView: View {
             .cornerRadius(6)
         }
         ToolbarItem(id: "clear") {
-            Menu {
-                Button(action: { pendingClearMode = .today }, label: { Label(L10n.clearToday, systemImage: "sunrise") })
-                Button(action: { pendingClearMode = .yesterday }, label: { Label(L10n.clearYesterday, systemImage: "sun.haze") })
-                Button(action: { pendingClearMode = .older }, label: { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") })
-                Divider()
-                Button(role: .destructive, action: { pendingClearMode = .all }, label: { Label(L10n.headerClearHistory, systemImage: "trash") })
-                Divider()
-                Button(action: { store.unpinToday() }, label: { Label(L10n.unpinToday, systemImage: "star.slash") })
-                Button(action: { store.unpinYesterday() }, label: { Label(L10n.unpinYesterday, systemImage: "star.slash") })
-                Button(action: { store.unpinOlder() }, label: { Label(L10n.unpinOlder, systemImage: "star.slash") })
-                Button(action: { store.unpinAll() }, label: { Label(L10n.unpinAll, systemImage: "star.slash") })
-            } label: {
-                Image(systemName: "trash")
+            if selectedTab == .trash {
+                Button(role: .destructive, action: { showingEmptyTrashAlert = true }, label: {
+                    Label(L10n.trashEmptyConfirmTitle, systemImage: "trash")
+                })
+                .disabled(store.trashedItems.isEmpty)
+            } else {
+                Menu {
+                    Button(action: { pendingClearMode = .today }, label: { Label(L10n.clearToday, systemImage: "sunrise") })
+                    Button(action: { pendingClearMode = .yesterday }, label: { Label(L10n.clearYesterday, systemImage: "sun.haze") })
+                    Button(action: { pendingClearMode = .older }, label: { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") })
+                    Divider()
+                    Button(role: .destructive, action: { pendingClearMode = .all }, label: { Label(L10n.headerClearHistory, systemImage: "trash") })
+                    Divider()
+                    Button(action: { store.unpinToday() }, label: { Label(L10n.unpinToday, systemImage: "star.slash") })
+                    Button(action: { store.unpinYesterday() }, label: { Label(L10n.unpinYesterday, systemImage: "star.slash") })
+                    Button(action: { store.unpinOlder() }, label: { Label(L10n.unpinOlder, systemImage: "star.slash") })
+                    Button(action: { store.unpinAll() }, label: { Label(L10n.unpinAll, systemImage: "star.slash") })
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .disabled(store.items.isEmpty)
             }
-            .disabled(store.items.isEmpty)
         }
         ToolbarItemGroup(placement: .principal) {
             if selectedTab != .settings {
@@ -474,6 +482,9 @@ struct ContentView: View {
                 Section {
                     Label(SidebarTab.pinned.label, systemImage: SidebarTab.pinned.icon)
                         .tag(SidebarTab.pinned)
+                    Label(SidebarTab.trash.label, systemImage: SidebarTab.trash.icon)
+                        .badge(store.trashedItems.count)
+                        .tag(SidebarTab.trash)
                     Label(SidebarTab.settings.label, systemImage: SidebarTab.settings.icon)
                         .tag(SidebarTab.settings)
                 }
@@ -511,7 +522,9 @@ struct ContentView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-            if displayedItems.isEmpty { emptyState } else {
+            if selectedTab == .trash {
+                trashView
+            } else if displayedItems.isEmpty { emptyState } else {
                 ScrollViewReader { proxy in
                     List {
                         ForEach(groupedItemsWithIndex, id: \.group) { section in
@@ -566,6 +579,15 @@ struct ContentView: View {
         } message: {
             Text(clearAlertText)
         }
+        .alert(L10n.trashEmptyConfirmTitle, isPresented: $showingEmptyTrashAlert) {
+            Button(L10n.buttonCancel, role: .cancel) { showingEmptyTrashAlert = false }
+            Button(L10n.buttonClear, role: .destructive) {
+                store.emptyTrash()
+                showingEmptyTrashAlert = false
+            }
+        } message: {
+            Text(L10n.trashEmptyConfirmMessage(store.trashedItems.count))
+        }
         .alert(L10n.alertTrimTitle, isPresented: Binding(
             get: { pendingMaxItemsReduction != nil },
             set: { if !$0 { pendingMaxItemsReduction = nil } }
@@ -611,6 +633,36 @@ struct ContentView: View {
         case .all: store.clearAllItems()
         }
         pendingClearMode = nil
+    }
+
+    private var trashView: some View {
+        VStack(spacing: 0) {
+            if store.trashedItems.isEmpty {
+                Spacer()
+                VStack(spacing: 12) {
+                    Image(systemName: "trash")
+                        .font(.system(size: sz(36)))
+                        .foregroundColor(.secondary)
+                    Text(L10n.trashEmpty)
+                        .font(.system(size: sz(14)))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            } else {
+                List {
+                    ForEach(store.trashedItems) { item in
+                        TrashItemRow(
+                            item: item,
+                            onRestore: { store.restoreFromTrash(item) },
+                            onDeletePermanently: { store.deletePermanently(item) }
+                        )
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                    }
+                }
+                .listStyle(.plain)
+            }
+        }
     }
 
     private func startRecording() {
@@ -692,6 +744,9 @@ struct ContentView: View {
                     }
                 })) { ForEach([50, 100, 200, 500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).tag($0) } }.id(languageManager.selectedLanguage)
             } header: { Text(L10n.settingsSectionHistory) }
+            Section {
+                Picker(L10n.trashRetentionDays, selection: $store.trashRetentionDays) { ForEach([3, 7, 14, 30], id: \.self) { Text("\($0)").tag($0) } }
+            }
             Section {
                 Toggle(L10n.settingsCaptureRichText, isOn: $store.captureRichText)
             } footer: { Text(L10n.settingsCaptureRichTextHint).foregroundColor(.secondary) }

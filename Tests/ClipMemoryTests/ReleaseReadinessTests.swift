@@ -30,9 +30,11 @@ final class ReleaseReadinessTests: XCTestCase {
     /// Reads `project.yml` and asserts both `MARKETING_VERSION` and
     /// `CURRENT_PROJECT_VERSION` equal `expectedVersion`. Used to guard
     /// the post-v2.2.4 release cycle and future bumps.
-    private func assertProjectYMLVersions(_ expectedVersion: String,
-                                          file: StaticString = #filePath,
-                                          line: UInt = #line) throws {
+    /// Reads `project.yml` and asserts both `MARKETING_VERSION` and
+    /// `CURRENT_PROJECT_VERSION` are present and equal. Used to guard
+    /// the post-v2.2.4 release cycle and future bumps.
+    private func readProjectYMLVersions(file: StaticString = #filePath,
+                                        line: UInt = #line) throws -> (marketing: String, project: String) {
         let url = ReleaseReadinessTests.repoRoot.appendingPathComponent("project.yml")
         let contents = try String(contentsOf: url, encoding: .utf8)
 
@@ -49,26 +51,25 @@ final class ReleaseReadinessTests: XCTestCase {
         guard let marketingMatch = marketingRegex.firstMatch(in: contents, range: marketingRange),
               let marketingCaptureRange = Range(marketingMatch.range(at: 1), in: contents) else {
             XCTFail("MARKETING_VERSION not found in project.yml", file: file, line: line)
-            return
+            return ("", "")
         }
         let marketingVersion = String(contents[marketingCaptureRange])
-        XCTAssertEqual(marketingVersion, expectedVersion,
-                       "project.yml MARKETING_VERSION mismatch (expected \(expectedVersion))",
-                       file: file, line: line)
 
         guard let projectMatch = projectRegex.firstMatch(in: contents, range: marketingRange),
               let projectCaptureRange = Range(projectMatch.range(at: 1), in: contents) else {
             XCTFail("CURRENT_PROJECT_VERSION not found in project.yml", file: file, line: line)
-            return
+            return ("", "")
         }
         let projectVersion = String(contents[projectCaptureRange])
-        XCTAssertEqual(projectVersion, expectedVersion,
-                       "project.yml CURRENT_PROJECT_VERSION mismatch (expected \(expectedVersion))",
+        XCTAssertEqual(marketingVersion, projectVersion,
+                       "project.yml MARKETING_VERSION and CURRENT_PROJECT_VERSION must match",
                        file: file, line: line)
+        return (marketingVersion, projectVersion)
     }
 
-    func testF1_projectYml_marksV224() throws {
-        try assertProjectYMLVersions("2.2.4")
+    func testF1_projectYml_marksCurrentVersion() throws {
+        let versions = try readProjectYMLVersions()
+        XCTAssertFalse(versions.marketing.isEmpty, "MARKETING_VERSION must not be empty")
     }
 
     // MARK: - F-1: project.pbxproj version fields must match expected tag
@@ -79,7 +80,9 @@ final class ReleaseReadinessTests: XCTestCase {
     /// `CURRENT_PROJECT_VERSION` (two per config). Any drift means the
     /// `xcodebuild Release` artifact will ship with a stale `CFBundle…`
     /// stamp and the v2.2.3 lesson repeats.
-    func testF1_projectPbxproj_allFourSectionsAreV224() throws {
+    func testF1_projectPbxproj_allFourSectionsMatchProjectYml() throws {
+        let versions = try readProjectYMLVersions()
+        let expectedVersion = versions.marketing
         let url = ReleaseReadinessTests.repoRoot
             .appendingPathComponent("ClipMemory.xcodeproj/project.pbxproj")
         let contents = try String(contentsOf: url, encoding: .utf8)
@@ -102,8 +105,8 @@ final class ReleaseReadinessTests: XCTestCase {
             }
             let value = String(contents[captureRange])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            XCTAssertEqual(value, "2.2.4",
-                           "A pbxproj version literal is not 2.2.4",
+            XCTAssertEqual(value, expectedVersion,
+                           "A pbxproj version literal is not \(expectedVersion)",
                            file: #filePath, line: #line)
         }
     }

@@ -25,8 +25,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// for O(1) membership checks when filtering by tag in the sidebar.
     /// Tags themselves live in ClipboardStore.tags; this field only stores IDs.
     var tagIds: Set<UUID> = []
+    /// Timestamp when the item was moved to the recycle bin. nil for active
+    /// items. Used for trash sorting and auto-purge.
+    var deletedAt: Date?
 
-    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false, tagIds: Set<UUID> = []) {
+    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false, tagIds: Set<UUID> = [], deletedAt: Date? = nil) {
         self.id = id
         self.content = content
         self.type = type
@@ -38,6 +41,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.contentHash = contentHash
         self.decryptionFailed = decryptionFailed
         self.tagIds = tagIds
+        self.deletedAt = deletedAt
     }
 
     // MARK: - Codable compatibility
@@ -56,6 +60,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
         self.decryptionFailed = try container.decodeIfPresent(Bool.self, forKey: .decryptionFailed) ?? false
         self.tagIds = try container.decodeIfPresent(Set<UUID>.self, forKey: .tagIds) ?? []
+        self.deletedAt = try container.decodeIfPresent(Date.self, forKey: .deletedAt)
     }
 
     var isExpired: Bool {

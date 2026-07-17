@@ -46,6 +46,15 @@ class ClipboardStore: ObservableObject {
         }
     }
 
+    /// Items moved to the recycle bin. Persisted separately from `items`.
+    /// Deleted automatically after `trashRetentionDays` days.
+    @Published var trashedItems: [ClipboardItem] = []
+
+    /// Number of days trashed items are kept before automatic permanent deletion.
+    @Published var trashRetentionDays: Int {
+        didSet { UserDefaults.standard.set(trashRetentionDays, forKey: trashRetentionDaysKey) }
+    }
+
     /// 各日期分组未读（未固定）项目计数 — computed once per call from a single O(n) filter pass
     var todayCount: Int { groupCounts.today }
     var yesterdayCount: Int { groupCounts.yesterday }
@@ -81,6 +90,9 @@ class ClipboardStore: ObservableObject {
     private let sensitiveClearHoursKey = "sensitiveClearHours"
     private let captureRichTextKey = "captureRichText"
     private let excludedBundleIdsKey = "excludedBundleIds"
+    private let trashRetentionDaysKey = "trashRetentionDays"
+    /// UserDefaults key for persisted trashed items.
+    static let trashedItemsStorageKey = "ClipboardTrashedItems"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
     /// UserDefaults key for persisted tags. Public so tests can pre-populate or clean up.
@@ -95,21 +107,30 @@ class ClipboardStore: ObservableObject {
     /// definitions, and the item backend stays unaware of the tag schema.
     private let tagBackend: StorageBackend
 
+    /// Separate storage backend for trashed items. Keeping trash independent of
+    /// the active item backend means restoring an item is just a load-and-move
+    /// operation, and clearing active items doesn't accidentally wipe trash.
+    private let trashBackend: StorageBackend
+
     // MARK: - Initializers
 
     /// Default initializer — uses FileStorageBackend backed by UserDefaults for
-    /// both items and tags (separate UserDefaults keys).
+    /// items, tags, and trash (separate UserDefaults keys).
     convenience init() {
         self.init(backend: FileStorageBackend(),
-                  tagBackend: FileStorageBackend(storageKey: ClipboardStore.tagStorageKey))
+                  tagBackend: FileStorageBackend(storageKey: ClipboardStore.tagStorageKey),
+                  trashBackend: FileStorageBackend(storageKey: ClipboardStore.trashedItemsStorageKey))
     }
 
     /// E.1: Designated initializer accepting a StorageBackend for testing.
-    /// `tagBackend` defaults to a fresh in-memory backend so existing tests that
-    /// only care about items don't accidentally hit UserDefaults.
-    init(backend: StorageBackend, tagBackend: StorageBackend = MemoryStorageBackend()) {
+    /// `tagBackend` and `trashBackend` default to fresh in-memory backends so
+    /// existing tests that only care about items don't accidentally hit UserDefaults.
+    init(backend: StorageBackend,
+         tagBackend: StorageBackend = MemoryStorageBackend(),
+         trashBackend: StorageBackend = MemoryStorageBackend()) {
         self.backend = backend
         self.tagBackend = tagBackend
+        self.trashBackend = trashBackend
 
         let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
         // Clamp to valid range [50, 100, 200, 500] to handle corrupted/migrated UserDefaults
@@ -130,6 +151,15 @@ class ClipboardStore: ObservableObject {
 
         excludedBundleIdsString = UserDefaults.standard.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
 
+        let savedTrashRetentionDays = UserDefaults.standard.integer(forKey: trashRetentionDaysKey)
+        let validTrashRetentionDays = [3, 7, 14, 30]
+        if validTrashRetentionDays.contains(savedTrashRetentionDays) {
+            trashRetentionDays = savedTrashRetentionDays
+        } else {
+            trashRetentionDays = 7
+            UserDefaults.standard.set(7, forKey: trashRetentionDaysKey)
+        }
+
         // Register notification observer AFTER all properties are initialized
         NotificationCenter.default.addObserver(
             self,
@@ -140,6 +170,8 @@ class ClipboardStore: ObservableObject {
 
         loadItems()
         loadTags()
+        loadTrashedItems()
+        purgeExpiredTrash()
         updateExcludedAppsOnMonitor()
         cleanupExpiredItems()
         let queue = DispatchQueue(label: "com.clipmemory.cleanup", qos: .background)
@@ -205,7 +237,8 @@ class ClipboardStore: ObservableObject {
                 isEncrypted: true,
                 contentHash: item.contentHash,
                 decryptionFailed: item.decryptionFailed,
-                tagIds: item.tagIds
+                tagIds: item.tagIds,
+                deletedAt: item.deletedAt
             )
             didMigrateAny = true
         }
@@ -253,7 +286,8 @@ class ClipboardStore: ObservableObject {
                     isEncrypted: true,
                     contentHash: item.contentHash,
                     decryptionFailed: item.decryptionFailed,
-                    tagIds: item.tagIds
+                    tagIds: item.tagIds,
+                    deletedAt: item.deletedAt
                 )
                 needsMigrationSave = true
             }
@@ -276,7 +310,8 @@ class ClipboardStore: ObservableObject {
                     isEncrypted: false,
                     contentHash: item.contentHash,
                     decryptionFailed: false,
-                    tagIds: item.tagIds
+                    tagIds: item.tagIds,
+                    deletedAt: item.deletedAt
                 )
                 repairedImages = true
             }
@@ -301,7 +336,8 @@ class ClipboardStore: ObservableObject {
                     isEncrypted: item.isEncrypted,
                     contentHash: hash,
                     decryptionFailed: item.decryptionFailed,
-                    tagIds: item.tagIds
+                    tagIds: item.tagIds,
+                    deletedAt: item.deletedAt
                 )
                 backfilledHashes = true
             }
@@ -310,7 +346,7 @@ class ClipboardStore: ObservableObject {
         items = migratedItems
         updatePinnedItems()
         trimToMaxItems()
-        ImageStorage.shared.cleanupOrphanedImages(keptItems: items)
+        ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
 
         // Save migrated items immediately after load
         if needsMigrationSave || repairedImages || backfilledHashes {
@@ -343,11 +379,12 @@ class ClipboardStore: ObservableObject {
         saveTimer?.resume()
     }
 
-    /// Flushes pending item and tag saves to disk immediately. Called by the debounce timer,
+    /// Flushes pending item, tag, and trash saves to disk immediately. Called by the debounce timer,
     /// on deinit, or from AppDelegate.applicationWillTerminate to prevent data loss on quit.
     func flushPendingSaves() {
         flushSave()
         flushTagSave()
+        flushTrashSave()
     }
 
     private func flushSave() {
@@ -561,7 +598,8 @@ class ClipboardStore: ObservableObject {
                     isSensitive: item.isSensitive,
                     expiresAt: item.expiresAt,
                     isEncrypted: true,
-                    contentHash: newHash
+                    contentHash: newHash,
+                    deletedAt: item.deletedAt
                 )
             } else {
                 // N2: Encrypt failed — do NOT store as plaintext (security violation)
@@ -602,7 +640,8 @@ class ClipboardStore: ObservableObject {
                 // through dedup rebuild — otherwise the a00da7c perf fix is
                 // silently undone every time the same corrupt content is re-copied.
                 decryptionFailed: existing.decryptionFailed,
-                tagIds: existing.tagIds
+                tagIds: existing.tagIds,
+                deletedAt: existing.deletedAt
             )
             items.insert(existing, at: 0)
         } else {
@@ -672,6 +711,127 @@ class ClipboardStore: ObservableObject {
         return result
     }
 
+    // MARK: - Recycle Bin (Trash)
+
+    /// Load trashed items from the trash backend.
+    func loadTrashedItems() {
+        do {
+            trashedItems = try trashBackend.load()
+        } catch {
+            logger.error("Failed to load trashed items: \(error.localizedDescription)")
+            trashedItems = []
+        }
+    }
+
+    /// Persist trashed items to the trash backend.
+    func saveTrashedItems() {
+        do {
+            try trashBackend.save(trashedItems)
+        } catch {
+            logger.error("Failed to save trashed items: \(error.localizedDescription)")
+        }
+    }
+
+    /// Move a single item to the recycle bin. The item is removed from the
+    /// active list but its image file is kept until permanent deletion.
+    func moveToTrash(_ item: ClipboardItem) {
+        contentCache.removeObject(forKey: item.id.uuidString as NSString)
+        rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
+        var trashed = item
+        trashed.deletedAt = Date()
+        trashedItems.insert(trashed, at: 0)
+        items.removeAll { $0.id == item.id }
+        updatePinnedItems()
+        scheduleSave()
+        scheduleTrashSave()
+    }
+
+    /// Move multiple items to the recycle bin.
+    func moveToTrash(_ itemsToMove: [ClipboardItem]) {
+        for item in itemsToMove {
+            contentCache.removeObject(forKey: item.id.uuidString as NSString)
+            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
+            var trashed = item
+            trashed.deletedAt = Date()
+            trashedItems.insert(trashed, at: 0)
+        }
+        let idsToMove = Set(itemsToMove.map { $0.id })
+        items.removeAll { idsToMove.contains($0.id) }
+        updatePinnedItems()
+        scheduleSave()
+        scheduleTrashSave()
+    }
+
+    /// Restore an item from the recycle bin to the top of the active list.
+    func restoreFromTrash(_ item: ClipboardItem) {
+        guard let index = trashedItems.firstIndex(where: { $0.id == item.id }) else { return }
+        var restored = trashedItems.remove(at: index)
+        restored.deletedAt = nil
+        items.insert(restored, at: 0)
+        updatePinnedItems()
+        scheduleSave()
+        scheduleTrashSave()
+    }
+
+    /// Permanently delete a trashed item and its image file.
+    func deletePermanently(_ item: ClipboardItem) {
+        if item.type == .image {
+            ImageStorage.shared.deleteImage(filename: item.content)
+        }
+        trashedItems.removeAll { $0.id == item.id }
+        scheduleTrashSave()
+    }
+
+    /// Empty the entire recycle bin, deleting all trashed items and images.
+    func emptyTrash() {
+        for item in trashedItems where item.type == .image {
+            ImageStorage.shared.deleteImage(filename: item.content)
+        }
+        trashedItems.removeAll()
+        scheduleTrashSave()
+    }
+
+    /// Remove trashed items older than `trashRetentionDays` days.
+    /// Called on startup and periodically to keep the recycle bin bounded.
+    func purgeExpiredTrash() {
+        let cutoff = Date().addingTimeInterval(-TimeInterval(trashRetentionDays * 24 * 60 * 60))
+        let expired = trashedItems.filter { item in
+            guard let deletedAt = item.deletedAt else { return false }
+            return deletedAt < cutoff
+        }
+        guard !expired.isEmpty else { return }
+        for item in expired where item.type == .image {
+            ImageStorage.shared.deleteImage(filename: item.content)
+        }
+        let expiredIds = Set(expired.map { $0.id })
+        trashedItems.removeAll { expiredIds.contains($0.id) }
+        scheduleTrashSave()
+    }
+
+    // MARK: - Trash persistence debounce
+
+    private var trashSaveTimer: DispatchSourceTimer?
+    private var trashNeedsSave = false
+    private func scheduleTrashSave() {
+        trashNeedsSave = true
+        trashSaveTimer?.cancel()
+        let queue = DispatchQueue(label: "com.clipmemory.trashsave", qos: .utility)
+        trashSaveTimer = DispatchSource.makeTimerSource(queue: queue)
+        trashSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
+        trashSaveTimer?.setEventHandler { [weak self] in
+            DispatchQueue.main.async { self?.flushTrashSave() }
+        }
+        trashSaveTimer?.resume()
+    }
+
+    private func flushTrashSave() {
+        guard trashNeedsSave else { return }
+        trashNeedsSave = false
+        trashSaveTimer?.cancel()
+        trashSaveTimer = nil
+        saveTrashedItems()
+    }
+
     func trimToMaxItems() {
         guard items.count > maxItems else { return }
         let pinned = items.filter { $0.isPinned }
@@ -696,14 +856,7 @@ class ClipboardStore: ObservableObject {
     }
 
     func deleteItem(_ item: ClipboardItem) {
-        contentCache.removeObject(forKey: item.id.uuidString as NSString)
-        rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
-        if item.type == .image {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
-        items.removeAll { $0.id == item.id }
-        updatePinnedItems()
-        scheduleSave()
+        moveToTrash(item)
     }
 
     func togglePin(_ item: ClipboardItem) {
@@ -727,18 +880,7 @@ class ClipboardStore: ObservableObject {
     }
 
     func deleteItems(_ itemsToDelete: [ClipboardItem]) {
-        for item in itemsToDelete {
-            contentCache.removeObject(forKey: item.id.uuidString as NSString)
-            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
-        }
-        let filenames = itemsToDelete.filter { $0.type == .image }.map { $0.content }
-        for filename in filenames {
-            ImageStorage.shared.deleteImage(filename: filename)
-        }
-        let idsToDelete = Set(itemsToDelete.map { $0.id })
-        items.removeAll { idsToDelete.contains($0.id) }
-        updatePinnedItems()
-        scheduleSave()
+        moveToTrash(itemsToDelete)
     }
 
     func deleteItems(where predicate: (ClipboardItem) -> Bool) {
@@ -785,33 +927,13 @@ class ClipboardStore: ObservableObject {
 
     func clearSensitiveItems() {
         let toRemove = items.filter { $0.isSensitive && !$0.isPinned }
-        for item in toRemove {
-            contentCache.removeObject(forKey: item.id.uuidString as NSString)
-            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
-        }
-        let removedImages = toRemove.filter { $0.type == .image }
-        for item in removedImages {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
-        items.removeAll { $0.isSensitive && !$0.isPinned }
-        updatePinnedItems()
-        scheduleSave()
+        moveToTrash(toRemove)
     }
 
     func clearAllItems() {
         let pinnedIds = Set(pinnedItems.map { $0.id })
         let toRemove = items.filter { !pinnedIds.contains($0.id) }
-        for item in toRemove {
-            contentCache.removeObject(forKey: item.id.uuidString as NSString)
-            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
-        }
-        let removedImages = toRemove.filter { $0.type == .image }
-        for item in removedImages {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
-        items.removeAll { !pinnedIds.contains($0.id) }
-        updatePinnedItems()
-        scheduleSave()
+        moveToTrash(toRemove)
     }
 
     /// 清除今日的所有非置顶项目
@@ -904,7 +1026,8 @@ class ClipboardStore: ObservableObject {
             isEncrypted: moved.isEncrypted,
             contentHash: moved.contentHash,
             decryptionFailed: moved.decryptionFailed,
-            tagIds: moved.tagIds
+            tagIds: moved.tagIds,
+            deletedAt: moved.deletedAt
         )
         items.insert(moved, at: 0)
         scheduleSave()
