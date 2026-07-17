@@ -1,5 +1,7 @@
 import XCTest
 import AppKit
+import CommonCrypto
+import Security
 @testable import ClipMemory
 
 /// I.1-I.8: ImageStorage round-trip + format + cache + bulk-delete tests.
@@ -362,5 +364,128 @@ final class ImageStorageTests: XCTestCase {
                        "Referenced image should survive cleanup")
         XCTAssertNil(storage.loadImage(filename: "\(drop.uuidString).png"),
                     "Orphan image (not in keptItems) should be deleted")
+    }
+
+    // MARK: - RS-6: legacyDecryptImage round-trip via loadImage
+    //
+    // Synthesizes v1-format encrypted blobs (AES-CBC + HMAC-SHA256) and writes
+    // them directly to ImageStorage's imagesDirectory, then calls loadImage().
+    // loadImage() must:
+    //   1. Fail the v2 decrypt attempt (no "v2" prefix in our blob)
+    //   2. Fall through to legacyDecryptImage and succeed
+    //   3. Re-encrypt to v2 and overwrite the file (migrate-on-read contract)
+    //   4. Return the original plaintext bytes
+    //
+    // Mirrors the CryptoService.decryptLegacy tests but exercises the separate
+    // ImageStorage.legacyDecryptImage code path (constantTimeCompare migration
+    // in commit a00da7c follow-up + loadImage's try-decrypt chain).
+
+    func testLoadImageMigratesLegacyV1FormatToV2() throws {
+        // RS-6: synthesized v1-format blob → loadImage decrypts via
+        // legacyDecryptImage fallback and re-encrypts to v2 on disk.
+        // Uses newTestUUID() + .png extension to satisfy ImageStorage's
+        // isValidFilename guard (UUID stem + .png suffix required);
+        // tearDown auto-cleans via deleteImage.
+        let uuid = newTestUUID()
+        let filename = "\(uuid.uuidString).png"
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+
+        let plaintext = Data((0..<1024).map { UInt8($0 & 0xFF) })
+        let key = try Data(contentsOf: CryptoService.keyFileURL)
+        XCTAssertEqual(key.count, 32, "Test fixture: key file must have 32 bytes")
+
+        let legacyBlob = makeLegacyV1Blob(plaintext: plaintext, key: key)
+        try legacyBlob.write(to: fileURL)
+
+        // Pre-condition: file is NOT in v2 format (we just wrote legacy bytes)
+        let preBytes = try Data(contentsOf: fileURL)
+        XCTAssertFalse(preBytes.starts(with: Data("v2".utf8)),
+                     "Pre-condition: written blob must not be v2 format")
+
+        // loadImage triggers legacyDecryptImage fallback path
+        let loaded = storage.loadImage(filename: filename)
+        XCTAssertEqual(loaded, plaintext,
+            "Legacy v1 image must load via legacyDecryptImage path")
+
+        // Post-condition: file is now in v2 format (migrate-on-read)
+        let migratedBytes = try Data(contentsOf: fileURL)
+        XCTAssertTrue(migratedBytes.starts(with: Data("v2".utf8)),
+            "Legacy image must be re-encrypted to v2 on load (migrate-on-read contract)")
+
+        // Subsequent load uses the v2 path (no re-decrypt needed)
+        let loadedAgain = storage.loadImage(filename: filename)
+        XCTAssertEqual(loadedAgain, plaintext,
+            "Re-loading the now-migrated v2 file must still return original bytes")
+    }
+
+    func testLoadImageRejectsTamperedLegacyHMAC() throws {
+        // RS-6: legacyDecryptImage must reject blobs with mutated HMAC.
+        // loadImage returns nil (no exception), so this guards the
+        // constantTimeCompare path inside ImageStorage. Uses UUID+.png
+        // filename to pass isValidFilename (otherwise loadImage returns
+        // nil for the wrong reason — filename validation, not HMAC tamper).
+        let uuid = newTestUUID()
+        let filename = "\(uuid.uuidString).png"
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+
+        let plaintext = Data("Image bytes for tamper test".utf8)
+        let key = try Data(contentsOf: CryptoService.keyFileURL)
+        var blob = makeLegacyV1Blob(plaintext: plaintext, key: key)
+
+        // Flip a byte in the HMAC region (last 32 bytes)
+        blob[blob.count - 32] ^= 0x01
+        try blob.write(to: fileURL)
+
+        let loaded = storage.loadImage(filename: filename)
+        XCTAssertNil(loaded, "Tampered legacy HMAC must cause loadImage to fail")
+    }
+
+    // MARK: - RS-6 Helpers (duplicate of CryptoServiceTests synthesis — kept
+    // local to avoid cross-file test helpers + project.pbxproj churn)
+
+    private func makeLegacyV1Blob(plaintext: Data, key: Data) -> Data {
+        let iv = rs6RandomBytes(count: 16)
+        let ciphertext = rs6AesEncryptCBC(plaintext: plaintext, key: key, iv: iv)
+        let hmac = CryptoService.computeLegacyHMAC(data: iv + ciphertext, key: key)
+        return iv + ciphertext + hmac
+    }
+
+    private func rs6AesEncryptCBC(plaintext: Data, key: Data, iv: Data) -> Data {
+        let bufferSize = plaintext.count + kCCBlockSizeAES128
+        var encryptedBytes = [UInt8](repeating: 0, count: bufferSize)
+        var numBytesEncrypted: size_t = 0
+
+        let status = key.withUnsafeBytes { keyBytes in
+            iv.withUnsafeBytes { ivBytes in
+                plaintext.withUnsafeBytes { dataBytes in
+                    CCCrypt(
+                        CCOperation(kCCEncrypt),
+                        CCAlgorithm(kCCAlgorithmAES),
+                        CCOptions(kCCOptionPKCS7Padding),
+                        keyBytes.baseAddress, 32,
+                        ivBytes.baseAddress,
+                        dataBytes.baseAddress, plaintext.count,
+                        &encryptedBytes, bufferSize,
+                        &numBytesEncrypted
+                    )
+                }
+            }
+        }
+
+        guard status == kCCSuccess else {
+            fatalError("rs6AesEncryptCBC failed with status \(status)")
+        }
+        return Data(encryptedBytes.prefix(numBytesEncrypted))
+    }
+
+    private func rs6RandomBytes(count: Int) -> Data {
+        var data = Data(count: count)
+        let result = data.withUnsafeMutableBytes {
+            SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!)
+        }
+        guard result == errSecSuccess else {
+            fatalError("SecRandomCopyBytes failed with status \(result)")
+        }
+        return data
     }
 }
