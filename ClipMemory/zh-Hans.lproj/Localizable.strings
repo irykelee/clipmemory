@@ -44,6 +44,9 @@
 "tooltip.unpin" = "取消收藏";
 "tooltip.pin" = "双击收藏（不会被自动清理）";
 "tooltip.delete" = "删除";
+
+/* Image fallback */
+"image.missing" = "图片文件已丢失";
 "tooltip.clear.history" = "清空历史（已收藏的保留）";
 "tooltip.show.all" = "显示全部记录";
 "tooltip.pinned.only" = "只看收藏内容";
@@ -207,6 +210,8 @@
 "tagPicker.deleteConfirm.title" = "删除标签？";
 "tagPicker.deleteConfirm.message" = "标签「%@」将从 %d 个项目移除";
 "tagPicker.deleteConfirm.confirm" = "删除";
+"tagPicker.section.suggestedNames" = "检测到的名称";
+"tagPicker.nameSuggestions.toggle" = "显示检测到的名称";
 "sidebar.section.tags" = "标签";
 "sidebar.tags.empty" = "尚未创建标签";
 "sidebar.newTag" = "新建标签";

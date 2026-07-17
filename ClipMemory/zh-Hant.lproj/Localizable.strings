@@ -44,6 +44,9 @@
 "tooltip.unpin" = "取消釘選";
 "tooltip.pin" = "雙擊釘選（不会被自动清理）";
 "tooltip.delete" = "刪除";
+
+/* Image fallback */
+"image.missing" = "圖片檔案已遺失";
 "tooltip.clear.history" = "清除歷史（已釘選的保留）";
 "tooltip.show.all" = "顯示全部記錄";
 "tooltip.pinned.only" = "只看釘選內容";
@@ -203,6 +206,8 @@
 "tagPicker.deleteConfirm.title" = "刪除標籤？";
 "tagPicker.deleteConfirm.message" = "標籤「%@」將從 %d 個項目移除";
 "tagPicker.deleteConfirm.confirm" = "刪除";
+"tagPicker.section.suggestedNames" = "偵測到的名稱";
+"tagPicker.nameSuggestions.toggle" = "顯示偵測到的名稱";
 "sidebar.section.tags" = "標籤";
 "sidebar.tags.empty" = "尚未建立標籤";
 "sidebar.newTag" = "新建標籤";

@@ -81,6 +81,7 @@ struct L10n {
     static var tooltipUnpin: String { string("tooltip.unpin") }
     static var tooltipPin: String { string("tooltip.pin") }
     static var tooltipDelete: String { string("tooltip.delete") }
+    static var imageMissing: String { string("image.missing") }
     static var tooltipClearHistory: String { string("tooltip.clear.history") }
     static var tooltipShowAll: String { string("tooltip.show.all") }
     static var tooltipPinnedOnly: String { string("tooltip.pinned.only") }
@@ -95,6 +96,7 @@ struct L10n {
     static var tagPickerTitle: String { string("tagPicker.title") }
     static var tagPickerSectionSuggestions: String { string("tagPicker.section.suggestions") }
     static var tagPickerSectionAllTags: String { string("tagPicker.section.allTags") }
+    static var tagPickerSectionSuggestedNames: String { string("tagPicker.section.suggestedNames") }
     static var tagPickerCreate: String { string("tagPicker.create") }
     static var tagPickerCreateButton: String { string("tagPicker.create.button") }
     static var tagPickerUseExisting: String { string("tagPicker.useExisting") }
@@ -102,6 +104,7 @@ struct L10n {
     static var tagPickerDeleteConfirmTitle: String { string("tagPicker.deleteConfirm.title") }
     static func tagPickerDeleteConfirmMessage(_ name: String, _ count: Int) -> String { string("tagPicker.deleteConfirm.message", name, count) }
     static var tagPickerDeleteConfirmConfirm: String { string("tagPicker.deleteConfirm.confirm") }
+    static var tagPickerNameSuggestionsToggle: String { string("tagPicker.nameSuggestions.toggle") }
 
     // MARK: - Sidebar tag section (Task #17)
     static var sidebarSectionTags: String { string("sidebar.section.tags") }
