@@ -68,10 +68,11 @@ struct ClipboardItemRow: View, Equatable {
     @State private var showFullContent = false
     @State private var _cachedHighlighted: [String: AttributedString] = [:]
     @State private var loadedRichText: AttributedString?
-    /// True after the .task attempted to load the image and got nil — the
-    /// on-disk file is missing (deleted or never written). Used to render a
-    /// "missing" badge + one-click delete in the placeholder.
+    /// True after the .task attempted to load the image and got nil.
+    /// The companion `imageLoadStatus` tells us whether the file is missing
+    /// or decryption failed, so we only offer one-click delete for true orphans.
     @State private var imageLoadFailed = false
+    @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
 
     static func == (lhs: ClipboardItemRow, rhs: ClipboardItemRow) -> Bool {
         lhs.item.id == rhs.item.id &&
@@ -204,25 +205,28 @@ struct ClipboardItemRow: View, Equatable {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 6).fill(.ultraThinMaterial)
                                     if imageLoadFailed {
+                                        let status = imageLoadStatus ?? .fileMissing
                                         VStack(spacing: 4) {
-                                            Image(systemName: "exclamationmark.triangle")
+                                            Image(systemName: status == .decryptionFailed ? "lock.slash" : "exclamationmark.triangle")
                                                 .font(.system(size: 22))
-                                                .foregroundColor(.orange)
-                                            Text(L10n.imageMissing)
+                                                .foregroundColor(status == .decryptionFailed ? .secondary : .orange)
+                                            Text(status == .decryptionFailed ? L10n.imageDecryptionFailed : L10n.imageMissing)
                                                 .font(.system(size: fontScale * 11))
                                                 .foregroundColor(.secondary)
                                         }
-                                        // One-click delete overlay (top-trailing)
-                                        Button(action: onDelete) {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .font(.system(size: 18))
-                                                .foregroundColor(.secondary)
-                                                .background(Circle().fill(.regularMaterial))
+                                        // One-click delete only for genuinely missing files.
+                                        if status == .fileMissing {
+                                            Button(action: onDelete) {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 18))
+                                                    .foregroundColor(.secondary)
+                                                    .background(Circle().fill(.regularMaterial))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .help(L10n.tooltipDelete)
+                                            .accessibilityLabel(L10n.tooltipDelete)
+                                            .offset(x: 50, y: -30)
                                         }
-                                        .buttonStyle(.plain)
-                                        .help(L10n.tooltipDelete)
-                                        .accessibilityLabel(L10n.tooltipDelete)
-                                        .offset(x: 50, y: -30)
                                     } else {
                                         VStack(spacing: 4) {
                                             Image(systemName: "photo").font(.system(size: 24)).foregroundColor(.secondary)
@@ -236,10 +240,12 @@ struct ClipboardItemRow: View, Equatable {
                         .animation(.easeIn(duration: 0.3), value: loadedImage)
                         .task(id: item.content) {
                             imageLoadFailed = false
+                            imageLoadStatus = nil
                             if let img = ImageStorage.shared.loadImageObject(filename: item.content) {
                                 loadedImage = img
                             } else {
                                 imageLoadFailed = true
+                                imageLoadStatus = ImageStorage.shared.imageStatus(for: item.content)
                             }
                         }
                     } else if item.type == .richText {

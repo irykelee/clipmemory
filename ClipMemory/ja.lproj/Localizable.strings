@@ -214,3 +214,18 @@
 "sidebar.newTag" = "新しいタグ";
 "newTag.title" = "新しいタグ";
 "newTag.create" = "作成";
+
+/* Tag Suggestions */
+"tagSuggestion.kind.code" = "コード";
+"tagSuggestion.kind.email" = "メール";
+"tagSuggestion.kind.credential" = "アカウント";
+"tagSuggestion.kind.sensitive" = "機密";
+
+/* Image fallback */
+"image.decryptionFailed" = "画像を復号できません";
+
+/* Trim Alert */
+"alert.trim.title" = "履歴を整理";
+"alert.trim.message" = "項目が %d 件ありますが、上限は %d 件です。超過分を整理しますか？";
+"alert.trim.confirm" = "整理";
+"alert.trim.cancel" = "キャンセル（設定で調整）";

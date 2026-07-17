@@ -34,6 +34,12 @@ class ImageStorage {
 
     private let migrationCompleteKey = "ImageStorageMigrationComplete"
 
+    enum ImageLoadStatus: Equatable {
+        case available(Data)
+        case fileMissing
+        case decryptionFailed
+    }
+
     private init() {
         migrateFromLegacyIfNeeded()
     }
@@ -74,7 +80,8 @@ class ImageStorage {
                 if let encryptedData = ServiceContainer.crypto.encryptData(imageData) {
                     let newPath = imagesDirectory.appendingPathComponent(filename)
                     do {
-                        try encryptedData.write(to: newPath)
+                        try encryptedData.write(to: newPath, options: .atomic)
+                        try fileManager.removeItem(at: legacyPath)
                         migratedFilenames.append(filename)
                         logger.info("Successfully migrated: \(filename)")
                     } catch {
@@ -85,7 +92,8 @@ class ImageStorage {
                 // Already encrypted (or legacy format), just copy to new location
                 let newPath = imagesDirectory.appendingPathComponent(filename)
                 do {
-                    try imageData.write(to: newPath)
+                    try imageData.write(to: newPath, options: .atomic)
+                    try fileManager.removeItem(at: legacyPath)
                     migratedFilenames.append(filename)
                 } catch {
                     logger.error("Failed to copy image: \(error.localizedDescription)")
@@ -149,7 +157,7 @@ class ImageStorage {
             }
 
             do {
-                try encryptedData.write(to: fileURL)
+                try encryptedData.write(to: fileURL, options: .atomic)
                 DispatchQueue.main.async { completion(filename) }
             } catch {
                 self.logger.error("Failed to save encrypted image: \(error.localizedDescription)")
@@ -159,9 +167,22 @@ class ImageStorage {
     }
 
     func loadImage(filename: String) -> Data? {
-        guard isValidFilename(filename) else { return nil }
+        guard case .available(let data) = imageStatus(for: filename) else {
+            return nil
+        }
+        return data
+    }
+
+    /// Returns the availability status of an image file without caching.
+    /// Used by the UI to distinguish "file missing" from "decryption failed"
+    /// so users are not prompted to delete entries whose key has been corrupted.
+    func imageStatus(for filename: String) -> ImageLoadStatus {
+        guard isValidFilename(filename) else { return .fileMissing }
         let fileURL = imagesDirectory.appendingPathComponent(filename)
-        guard let encryptedData = try? Data(contentsOf: fileURL) else { return nil }
+        guard fileManager.fileExists(atPath: fileURL.path),
+              let encryptedData = try? Data(contentsOf: fileURL) else {
+            return .fileMissing
+        }
 
         // Detect format by prefix BEFORE calling decryptData — otherwise the
         // v2 path's internal legacy fallback silently succeeds on legacy
@@ -170,16 +191,16 @@ class ImageStorage {
 
         // Try new v2 format directly (no legacy fallback needed)
         if isV2, let data = ServiceContainer.crypto.decryptData(encryptedData) {
-            return data
+            return .available(data)
         }
 
         // Try legacy format; if successful, re-encrypt and save with new format
         if let legacyData = try? legacyDecryptImage(encryptedData) {
-            // Re-encrypt with new format and overwrite the file
+            // Re-encrypt with new format and atomically overwrite the file
             if let newEncrypted = ServiceContainer.crypto.encryptData(legacyData) {
-                try? newEncrypted.write(to: fileURL)
+                try? newEncrypted.write(to: fileURL, options: .atomic)
             }
-            return legacyData
+            return .available(legacyData)
         }
 
         // Last resort: raw/unencrypted PNG on disk (pre-encryption history).
@@ -189,12 +210,12 @@ class ImageStorage {
             encryptedData[0] == 0x89 && encryptedData[1] == 0x50 &&
             encryptedData[2] == 0x4E && encryptedData[3] == 0x47 {
             if let newEncrypted = ServiceContainer.crypto.encryptData(encryptedData) {
-                try? newEncrypted.write(to: fileURL)
+                try? newEncrypted.write(to: fileURL, options: .atomic)
             }
-            return encryptedData
+            return .available(encryptedData)
         }
 
-        return nil
+        return .decryptionFailed
     }
 
     /// Decrypts image data using legacy AES-CBC+HMAC format (pre-v2).

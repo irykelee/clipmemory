@@ -114,4 +114,36 @@ final class TagPickerLogicTests: XCTestCase {
         let result = TagPickerLogic.toggleAttachment(currentlyAttached: [tagId], tapping: tagId)
         XCTAssertTrue(result.isEmpty)
     }
+
+    // MARK: - autocompleteCandidates
+
+    /// Empty prefix → empty candidates. The autocomplete is opt-in; calling
+    /// it with an empty string should not return the full dictionary.
+    func testAutocompleteCandidatesEmptyPrefixReturnsEmpty() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        store.addTag(Tag(name: "工作", colorHex: "#4ECDC4"))
+        let cands = TagPickerLogic.autocompleteCandidates(prefix: "", store: store)
+        XCTAssertTrue(cands.isEmpty)
+    }
+
+    /// Case-insensitive prefix match.
+    func testAutocompleteCandidatesCaseInsensitive() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        store.addTag(Tag(name: "保险业务", colorHex: "#4ECDC4"))
+        let lower = TagPickerLogic.autocompleteCandidates(prefix: "保", store: store)
+        let upper = TagPickerLogic.autocompleteCandidates(prefix: "保", store: store)
+        XCTAssertEqual(lower.count, 1)
+        XCTAssertEqual(upper.count, 1)
+        XCTAssertEqual(lower.first?.name, "保险业务")
+    }
+
+    /// Limit caps result count, default is 5.
+    func testAutocompleteCandidatesRespectsLimit() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        for i in 0..<8 {
+            store.addTag(Tag(name: "保险-\(i)", colorHex: "#4ECDC4"))
+        }
+        let cands = TagPickerLogic.autocompleteCandidates(prefix: "保险", limit: 3, store: store)
+        XCTAssertEqual(cands.count, 3)
+    }
 }

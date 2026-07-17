@@ -87,10 +87,17 @@ struct L10n {
     static var tooltipPinnedOnly: String { string("tooltip.pinned.only") }
     static var tooltipReveal: String { string("tooltip.reveal") }
     static var tooltipHide: String { string("tooltip.hide") }
+    static var imageDecryptionFailed: String { string("image.decryptionFailed") }
     static var tooltipClose: String { string("tooltip.close") }
     static var tooltipMinimize: String { string("tooltip.minimize") }
     static var tooltipZoom: String { string("tooltip.zoom") }
     static var tooltipEditTags: String { string("tooltip.editTags") }
+
+    // MARK: - Tag suggestions
+    static var tagSuggestionKindCode: String { string("tagSuggestion.kind.code") }
+    static var tagSuggestionKindEmail: String { string("tagSuggestion.kind.email") }
+    static var tagSuggestionKindCredential: String { string("tagSuggestion.kind.credential") }
+    static var tagSuggestionKindSensitive: String { string("tagSuggestion.kind.sensitive") }
 
     // MARK: - Tag picker sheet (Task #16)
     static var tagPickerTitle: String { string("tagPicker.title") }

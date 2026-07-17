@@ -101,6 +101,18 @@ class CryptoService: CryptoServiceProtocol {
         return Data(bytes)
     }
 
+    /// Computes a deterministic HMAC-SHA256 hex digest of `string` using the
+    /// app's symmetric key. Used for content deduplication; replaces the prior
+    /// unsalted SHA256 which acted as an offline dictionary oracle for short
+    /// secrets stored in UserDefaults alongside the ciphertext.
+    func hmacHex(for string: String) -> String? {
+        guard let key = getKey(), let data = string.data(using: .utf8) else {
+            return nil
+        }
+        let code = HMAC<SHA256>.authenticationCode(for: data, using: key)
+        return code.map { String(format: "%02x", $0) }.joined()
+    }
+
     // MARK: - Encryption (v2: AES-GCM)
 
     private func encryptBytes(_ bytes: [UInt8]) -> Data? {

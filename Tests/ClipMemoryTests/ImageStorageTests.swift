@@ -215,6 +215,29 @@ final class ImageStorageTests: XCTestCase {
         XCTAssertNil(loaded)
     }
 
+    // MARK: - Image status
+
+    /// imageStatus distinguishes a genuinely missing file from a decryption
+    /// failure so the UI doesn't prompt the user to delete data that could be
+    /// recoverable with the right key.
+    func testImageStatusReportsMissingVsDecryptionFailed() {
+        let uuid = newTestUUID()
+        let original = makePNGData()
+        let filename = saveAndWait(original, uuid: uuid) ?? ""
+
+        // Existing valid file → available
+        XCTAssertEqual(storage.imageStatus(for: filename), .available(original))
+
+        // Missing file → fileMissing
+        let missing = "\(UUID().uuidString).png"
+        XCTAssertEqual(storage.imageStatus(for: missing), .fileMissing)
+
+        // Corrupted file → decryptionFailed
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+        try? Data([0x00, 0x01, 0x02, 0x03]).write(to: fileURL, options: .atomic)
+        XCTAssertEqual(storage.imageStatus(for: filename), .decryptionFailed)
+    }
+
     // MARK: - I.4 Filename validation (path-traversal guard)
 
     func testLoadImageRejectsPathTraversalAttempts() {

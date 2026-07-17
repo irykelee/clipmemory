@@ -447,10 +447,10 @@ struct ContentView: View {
                             )
                         }
                     }
-                    Button(action: { showNewTagSheet = true }) {
+                    Button(action: { showNewTagSheet = true }, label: {
                         Label(L10n.sidebarNewTag, systemImage: "plus.circle")
                             .font(.system(size: sz(12)))
-                    }
+                    })
                     .buttonStyle(.plain)
                     .foregroundColor(.accentColor)
                 }

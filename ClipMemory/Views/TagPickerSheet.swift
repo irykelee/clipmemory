@@ -13,6 +13,8 @@ struct TagPickerSheet: View {
     @ObservedObject var store: ClipboardStore
     @Environment(\.dismiss) private var dismiss
     @State private var suggestionsToCreate: [String] = []
+    @State private var suggestedNames: [String] = []
+    @State private var showNameSuggestions = false
     @State private var isCreating = false
     @State private var newName = ""
     @State private var newColor: String = Tag.presetColors.first ?? "#4ECDC4"
@@ -20,6 +22,13 @@ struct TagPickerSheet: View {
 
     private var allTagsSorted: [Tag] {
         store.tags.values.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// The item snapshot passed into the sheet can become stale after store
+    /// mutations. Always read the live store item so toggles reflect current
+    /// attachments.
+    private func currentItem() -> ClipboardItem {
+        store.items.first(where: { $0.id == item.id }) ?? item
     }
 
     var body: some View {
@@ -30,6 +39,7 @@ struct TagPickerSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     previewBlock
                     if !suggestionsToCreate.isEmpty { suggestionsBlock }
+                    if showNameSuggestions && !suggestedNames.isEmpty { suggestedNamesBlock }
                     allTagsBlock
                     createBlock
                 }
@@ -62,6 +72,10 @@ struct TagPickerSheet: View {
         HStack {
             Text(L10n.tagPickerTitle).font(.system(size: sz(14), weight: .semibold))
             Spacer()
+            Toggle(L10n.tagPickerNameSuggestionsToggle, isOn: $showNameSuggestions)
+                .toggleStyle(.checkbox)
+                .font(.system(size: sz(11)))
+                .disabled(suggestedNames.isEmpty)
             Button(L10n.buttonDone) { dismiss() }
                 .buttonStyle(.plain)
                 .font(.system(size: sz(12)))
@@ -75,7 +89,12 @@ struct TagPickerSheet: View {
     // MARK: - Preview
 
     private var previewBlock: some View {
-        let preview = store.getDecryptedContent(item) ?? item.content
+        let preview: String
+        if item.isSensitive {
+            preview = L10n.itemSensitive
+        } else {
+            preview = store.getDecryptedContent(item) ?? item.content
+        }
         return HStack(spacing: 8) {
             Image(systemName: "doc.text").foregroundColor(.secondary)
             Text(String(preview.prefix(60)))
@@ -118,6 +137,35 @@ struct TagPickerSheet: View {
         }
     }
 
+    // MARK: - Suggested names (person/org/place)
+
+    private var suggestedNamesBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.tagPickerSectionSuggestedNames)
+                .font(.system(size: sz(11), weight: .semibold))
+                .foregroundColor(.secondary)
+            FlowLayout(spacing: 6) {
+                ForEach(suggestedNames, id: \.self) { name in
+                    Button {
+                        let tag = TagPickerLogic.makeTag(from: .create(name), colorHex: newColor)
+                        store.addTag(tag)
+                        store.addTag(to: item.id, tagId: tag.id)
+                        suggestedNames.removeAll { $0 == name }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "person").font(.system(size: 9))
+                            Text(name).font(.system(size: sz(11)))
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.accentColor.opacity(0.12))
+                        .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     // MARK: - All tags
 
     private var allTagsBlock: some View {
@@ -135,7 +183,7 @@ struct TagPickerSheet: View {
     }
 
     private func tagRow(_ tag: Tag) -> some View {
-        let isAttached = item.tagIds.contains(tag.id)
+        let isAttached = currentItem().tagIds.contains(tag.id)
         return HStack(spacing: 8) {
             // Tap anywhere on row = toggle attachment
             Button(action: { toggleAttachment(tag: tag) }, label: {
@@ -157,7 +205,7 @@ struct TagPickerSheet: View {
     }
 
     private func toggleAttachment(tag: Tag) {
-        if item.tagIds.contains(tag.id) {
+        if currentItem().tagIds.contains(tag.id) {
             store.removeTag(from: item.id, tagId: tag.id)
         } else {
             store.addTag(to: item.id, tagId: tag.id)
@@ -188,12 +236,41 @@ struct TagPickerSheet: View {
     private var nameConflict: Tag? {
         store.tags.values.first { $0.name == trimmedName }
     }
+    /// Vocabulary autocomplete chips: existing tags whose name starts with the
+    /// typed prefix, excluding the exact match (handled by `nameConflict`).
+    private var autocompleteCandidates: [Tag]? {
+        guard !trimmedName.isEmpty, nameConflict == nil else { return nil }
+        let cands = TagPickerLogic.autocompleteCandidates(prefix: trimmedName, limit: 5, store: store)
+        return cands.isEmpty ? nil : cands
+    }
 
     private var createForm: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextField(L10n.tagPickerCreate, text: $newName)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: sz(12)))
+
+            if let candidates = autocompleteCandidates, !candidates.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(candidates, id: \.id) { tag in
+                        Button {
+                            newName = tag.name
+                            newColor = tag.colorHex
+                        } label: {
+                            Text(tag.name)
+                                .font(.system(size: sz(11)))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color(hex: tag.colorHex).opacity(0.15))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(Color(hex: tag.colorHex).opacity(0.5), lineWidth: 0.5)
+                                )
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
 
             if let conflict = nameConflict {
                 Text(L10n.tagPickerNameConflict(conflict.name))
@@ -253,8 +330,10 @@ struct TagPickerSheet: View {
 
     private func loadSuggestions() {
         let content = store.getDecryptedContent(item) ?? item.content
-        let names = TagSuggestion.suggest(for: item.type, content: content)
+        let facets = TagSuggestion.detect(for: item.type, content: content)
         let existing = Array(store.tags.values)
+        // kind-derived tag names from the suggest(...) shim — same source as before
+        let names = TagSuggestion.suggest(for: item.type, content: content)
         // Auto-attach suggestions that already exist (by name) but aren't attached yet.
         for name in names {
             if let hit = existing.first(where: { $0.name == name }),
@@ -266,6 +345,9 @@ struct TagPickerSheet: View {
         suggestionsToCreate = names.filter { name in
             !existing.contains(where: { $0.name == name })
         }
+        // Name suggestions (person/org/place) from NLTagger — never auto-created;
+        // the user opts in via the showNameSuggestions toggle.
+        suggestedNames = facets.names
     }
 }
 

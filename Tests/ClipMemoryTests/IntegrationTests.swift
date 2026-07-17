@@ -673,4 +673,29 @@ final class IntegrationTests: XCTestCase {
         XCTAssertTrue(storedAfter?.decryptionFailed == true,
                      "decryptionFailed flag must NOT be reset on dedup rebuild (regression: HIGH-1)")
     }
+
+    // MARK: - Copy-to-clipboard preserves tagIds
+
+    /// Copying an already-tagged item back to the clipboard calls moveToTop,
+    /// which previously rebuilt the ClipboardItem without tagIds. The moved
+    /// item must retain its tags (and the decryptionFailed flag).
+    func testCopyToClipboardPreservesTagIds() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let tag = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        store.addItem(ClipboardItem(content: "copy me", type: .text))
+        guard let item = store.items.first else {
+            XCTFail("Item should exist after addItem")
+            return
+        }
+        store.addTag(to: item.id, tagId: tag.id)
+        store.flushPendingSaves()
+
+        store.copyToClipboard(item)
+        store.flushPendingSaves()
+
+        let moved = store.items.first { $0.id == item.id }
+        XCTAssertNotNil(moved, "Original item should still exist after copy/moveToTop")
+        XCTAssertEqual(moved?.tagIds, [tag.id], "tagIds must survive moveToTop")
+    }
 }

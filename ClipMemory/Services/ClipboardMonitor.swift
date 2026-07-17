@@ -222,7 +222,8 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         }
 
         // Skip if the source app is in the exclusion list (e.g. password managers)
-        if let sourceApp = lastKnownSourceBundleId, excludedBundleIds.contains(sourceApp) {
+        if let sourceApp = lastKnownSourceBundleId,
+           excludedBundleIds.contains(sourceApp.lowercased()) {
             lastChangeCount = pasteboard.changeCount
             return
         }
