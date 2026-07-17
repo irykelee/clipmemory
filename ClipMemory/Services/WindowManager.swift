@@ -7,7 +7,7 @@ class WindowManager: NSObject, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private let windowFrameKey = "WindowFrame"
     /// C2 fix: keep a stable ContentView instance to preserve @State across window show/hide cycles
-    private var mainContentView: ContentView?
+    private(set) var mainContentView: ContentView?
 
     override init() { super.init() }
 
@@ -30,8 +30,12 @@ class WindowManager: NSObject, NSWindowDelegate {
     }
 
     func showMainWindow() {
-        if mainWindow == nil {
-            mainContentView = ContentView()
+        if let window = mainWindow {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            if mainContentView == nil {
+                mainContentView = ContentView()
+            }
             let window = NSWindow(
                 contentRect: savedWindowFrame,
                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -45,18 +49,31 @@ class WindowManager: NSObject, NSWindowDelegate {
             window.contentView = NSHostingView(rootView: mainContentView!)
             window.makeKeyAndOrderFront(nil)
             mainWindow = window
-        } else {
-            mainWindow?.contentView = NSHostingView(rootView: mainContentView!)
-            mainWindow?.makeKeyAndOrderFront(nil)
         }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    private var saveFrameWorkItem: DispatchWorkItem?
+
     func windowWillClose(_ notification: Notification) {
-        mainWindow = nil
-        mainContentView = nil
+        // Persist the final frame immediately before hiding so a later quit
+        // or crash does not lose the user's last window position.
+        saveFrameWorkItem?.cancel()
+        if let w = mainWindow { savedWindowFrame = w.frame }
+        // Keep mainWindow and mainContentView alive so @State survives close/reopen.
+        // isReleasedWhenClosed=false already prevents the window from deallocating.
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func saveWindowFrameDebounced() {
+        saveFrameWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self, let window = self.mainWindow else { return }
+            self.savedWindowFrame = window.frame
+        }
+        saveFrameWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
     }
 
     private var savedWindowFrame: NSRect {
@@ -79,6 +96,6 @@ class WindowManager: NSObject, NSWindowDelegate {
         }
     }
 
-    func windowDidMove(_ n: Notification) { if let w = mainWindow { savedWindowFrame = w.frame } }
-    func windowDidResize(_ n: Notification) { if let w = mainWindow { savedWindowFrame = w.frame } }
+    func windowDidMove(_ n: Notification) { saveWindowFrameDebounced() }
+    func windowDidResize(_ n: Notification) { saveWindowFrameDebounced() }
 }
