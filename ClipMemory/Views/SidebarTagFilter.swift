@@ -37,4 +37,30 @@ enum SidebarTagFilter {
             return true
         }
     }
+
+    /// Filter items whose `TimeGroup` is not in `collapsedGroups`. Used by
+    /// keyboard navigation in ContentView so ↑/↓ walk only what the user
+    /// actually sees — without this, the selection index would advance
+    /// through hidden rows and the visual highlight would appear to skip.
+    ///
+    /// Caller passes `today` and `yesterday` (typically the view's cached
+    /// startOfToday / startOfYesterday) so the grouping is deterministic
+    /// and testable without a live `Date()`.
+    static func visibleItems(items: [ClipboardItem],
+                             collapsedGroups: Set<TimeGroup>,
+                             today: Date,
+                             yesterday: Date) -> [ClipboardItem] {
+        items.filter { item in
+            !collapsedGroups.contains(group(for: item, today: today, yesterday: yesterday))
+        }
+    }
+
+    /// Map an item to its `TimeGroup` given the same date anchors used by
+    /// ContentView.updateDisplayedItemsCache. Extracted so the visible-items
+    /// filter and the cache stay in lockstep.
+    static func group(for item: ClipboardItem, today: Date, yesterday: Date) -> TimeGroup {
+        if item.createdAt >= today { return .today }
+        if item.createdAt >= yesterday { return .yesterday }
+        return .older
+    }
 }
