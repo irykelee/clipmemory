@@ -208,7 +208,7 @@ struct ClipboardItemRow: View, Equatable {
                                         let status = imageLoadStatus ?? .fileMissing
                                         VStack(spacing: 4) {
                                             Image(systemName: status == .decryptionFailed ? "lock.slash" : "exclamationmark.triangle")
-                                                .font(.system(size: 22))
+                                                .font(.system(size: fontScale * 22))
                                                 .foregroundColor(status == .decryptionFailed ? .secondary : .orange)
                                             Text(status == .decryptionFailed ? L10n.imageDecryptionFailed : L10n.imageMissing)
                                                 .font(.system(size: fontScale * 11))
@@ -218,9 +218,10 @@ struct ClipboardItemRow: View, Equatable {
                                         if status == .fileMissing {
                                             Button(action: onDelete) {
                                                 Image(systemName: "xmark.circle.fill")
-                                                    .font(.system(size: 18))
+                                                    .font(.system(size: fontScale * 18))
                                                     .foregroundColor(.secondary)
                                                     .background(Circle().fill(.regularMaterial))
+                                                    .padding(6) // expand hit target ~18pt → ~30pt (macOS HIG min 24pt)
                                             }
                                             .buttonStyle(.plain)
                                             .help(L10n.tooltipDelete)
@@ -229,7 +230,7 @@ struct ClipboardItemRow: View, Equatable {
                                         }
                                     } else {
                                         VStack(spacing: 4) {
-                                            Image(systemName: "photo").font(.system(size: 24)).foregroundColor(.secondary)
+                                            Image(systemName: "photo").font(.system(size: fontScale * 24)).foregroundColor(.secondary)
                                             ProgressView().scaleEffect(0.5).frame(height: 8)
                                         }
                                     }
@@ -296,7 +297,7 @@ struct ClipboardItemRow: View, Equatable {
                         .overlay(alignment: .topTrailing) {
                             if !item.tagIds.isEmpty {
                                 Text("\(item.tagIds.count)")
-                                    .font(.system(size: 8))
+                                    .font(.system(size: fontScale * 8))
                                     .padding(2)
                                     .background(Color.accentColor, in: Circle())
                                     .foregroundColor(.white)
