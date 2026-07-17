@@ -33,6 +33,9 @@ class ImageStorage {
     }()
 
     private let migrationCompleteKey = "ImageStorageMigrationComplete"
+    /// Tracks individual filenames that have already been migrated so a
+    /// partially-failed migration can resume without re-copying successes.
+    private let migratedFilenamesKey = "ImageStorageMigratedFilenames"
 
     enum ImageLoadStatus: Equatable {
         case available(Data)
@@ -45,7 +48,9 @@ class ImageStorage {
     }
 
     /// Migrates unencrypted PNG images from legacy ClipPaste/Images/ to encrypted ClipMemory/Images/.
-    /// Only runs once per installation.
+    /// Tracks migrated filenames so a partially-failed run can resume on the
+    /// next launch without re-copying successes. The global completion flag is
+    /// only set once every eligible file has been processed successfully.
     private func migrateFromLegacyIfNeeded() {
         guard UserDefaults.standard.bool(forKey: migrationCompleteKey) == false else { return }
         guard fileManager.fileExists(atPath: legacyImagesDirectory.path) else {
@@ -56,17 +61,24 @@ class ImageStorage {
         logger.info("Migrating images from legacy ClipPaste/Images/ to ClipMemory/Images/")
 
         guard let legacyFiles = try? fileManager.contentsOfDirectory(atPath: legacyImagesDirectory.path) else {
-            UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+            // Directory exists but could not be read; leave flag false so the
+            // next launch retries instead of silently dropping images.
             return
         }
 
         var migratedFilenames: [String] = []
+        var migratedSet = Set(UserDefaults.standard.stringArray(forKey: migratedFilenamesKey) ?? [])
+        var hadFailure = false
 
         for filename in legacyFiles {
             guard filename.hasSuffix(".png"), UUID(uuidString: String(filename.dropLast(4))) != nil else { continue }
+            guard !migratedSet.contains(filename) else { continue }
 
             let legacyPath = legacyImagesDirectory.appendingPathComponent(filename)
-            guard let imageData = try? Data(contentsOf: legacyPath) else { continue }
+            guard let imageData = try? Data(contentsOf: legacyPath) else {
+                hadFailure = true
+                continue
+            }
 
             // Check if already encrypted (v2 format starts with "v2", legacy format has specific structure)
             // Unencrypted PNG starts with signature 89 50 4E 47
@@ -74,6 +86,7 @@ class ImageStorage {
                 imageData[0] == 0x89 && imageData[1] == 0x50 &&
                 imageData[2] == 0x4E && imageData[3] == 0x47
 
+            var success = false
             if isUnencryptedPNG {
                 logger.info("Migrating unencrypted image: \(filename)")
                 // Encrypt and save to new location
@@ -82,7 +95,7 @@ class ImageStorage {
                     do {
                         try encryptedData.write(to: newPath, options: .atomic)
                         try fileManager.removeItem(at: legacyPath)
-                        migratedFilenames.append(filename)
+                        success = true
                         logger.info("Successfully migrated: \(filename)")
                     } catch {
                         logger.error("Failed to write migrated image: \(error.localizedDescription)")
@@ -94,15 +107,26 @@ class ImageStorage {
                 do {
                     try imageData.write(to: newPath, options: .atomic)
                     try fileManager.removeItem(at: legacyPath)
-                    migratedFilenames.append(filename)
+                    success = true
                 } catch {
                     logger.error("Failed to copy image: \(error.localizedDescription)")
                 }
             }
+
+            if success {
+                migratedFilenames.append(filename)
+                migratedSet.insert(filename)
+                UserDefaults.standard.set(Array(migratedSet), forKey: migratedFilenamesKey)
+            } else {
+                hadFailure = true
+            }
         }
 
-        // Mark migration complete AFTER all files are migrated
-        UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+        // Only mark migration complete when every eligible file has been
+        // processed. If anything failed, the next launch will retry the rest.
+        if !hadFailure {
+            UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+        }
 
         // Post notification so ClipboardStore can update isEncrypted flags.
         // Use async to ensure ClipboardStore.init() registers its observer first (avoids race condition).
@@ -116,7 +140,7 @@ class ImageStorage {
             }
         }
 
-        logger.info("Image migration complete: \(migratedFilenames.count) files migrated")
+        logger.info("Image migration complete: \(migratedFilenames.count) files migrated, hadFailure=\(hadFailure)")
     }
 
     /// Validates that a filename is safe: must be a UUID string + ".png" extension.

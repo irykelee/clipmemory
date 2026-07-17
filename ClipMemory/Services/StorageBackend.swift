@@ -20,7 +20,8 @@ protocol StorageBackend {
 // MARK: - File Storage (UserDefaults)
 
 /// Production backend backed by UserDefaults.
-/// UserDefaults writes are dispatched to main thread to match the original behavior.
+/// Writes are synchronous so `flushPendingSaves()` can guarantee data hits disk
+/// before the app terminates.
 final class FileStorageBackend: StorageBackend {
     private let storageKey: String
 
@@ -37,9 +38,7 @@ final class FileStorageBackend: StorageBackend {
 
     func save(_ items: [ClipboardItem]) throws {
         let data = try JSONEncoder().encode(items)
-        DispatchQueue.main.async {
-            UserDefaults.standard.set(data, forKey: self.storageKey)
-        }
+        UserDefaults.standard.set(data, forKey: storageKey)
     }
 
     func loadTags() throws -> [Tag] {
@@ -56,9 +55,7 @@ final class FileStorageBackend: StorageBackend {
 
     func saveTags(_ tags: [Tag]) throws {
         let data = try JSONEncoder().encode(tags)
-        DispatchQueue.main.async {
-            UserDefaults.standard.set(data, forKey: self.storageKey)
-        }
+        UserDefaults.standard.set(data, forKey: storageKey)
     }
 }
 
