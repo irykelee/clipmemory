@@ -167,6 +167,15 @@ class ClipboardStore: ObservableObject {
         return cache
     }()
 
+    /// Cache for parsed RTF plaintext — avoids re-parsing RTF on every access
+    /// in search/filter paths where `plainTextFromRTFFallback` is hit repeatedly.
+    private let rtfPlaintextCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 500
+        cache.totalCostLimit = 10 * 1024 * 1024 // 10MB limit
+        return cache
+    }()
+
     private var cleanupTimer: DispatchSourceTimer?
     private var saveTimer: DispatchSourceTimer?
     private var needsSave = false
@@ -250,13 +259,61 @@ class ClipboardStore: ObservableObject {
             }
         }
 
+        // Repair legacy image items incorrectly flagged by the old
+        // getDecryptedContent path: image content is a filename, never encrypted,
+        // so isEncrypted/decryptionFailed should never be true for .image items.
+        var repairedImages = false
+        for (index, item) in migratedItems.enumerated() where item.type == .image {
+            if item.isEncrypted || item.decryptionFailed {
+                migratedItems[index] = ClipboardItem(
+                    id: item.id,
+                    content: item.content,
+                    type: item.type,
+                    createdAt: item.createdAt,
+                    isPinned: item.isPinned,
+                    isSensitive: item.isSensitive,
+                    expiresAt: item.expiresAt,
+                    isEncrypted: false,
+                    contentHash: item.contentHash,
+                    decryptionFailed: false,
+                    tagIds: item.tagIds
+                )
+                repairedImages = true
+            }
+        }
+
+        // Backfill contentHash for legacy items that predate HMAC-based dedup.
+        // Without this, every addItem does O(n) decrypt-and-compare against them.
+        var backfilledHashes = false
+        for (index, item) in migratedItems.enumerated() where item.type != .image && item.contentHash == nil {
+            let plaintext = item.isEncrypted
+                ? (ServiceContainer.crypto.decrypt(item.content) ?? item.content)
+                : item.content
+            if let hash = ServiceContainer.crypto.hmacHex(for: plaintext) {
+                migratedItems[index] = ClipboardItem(
+                    id: item.id,
+                    content: item.content,
+                    type: item.type,
+                    createdAt: item.createdAt,
+                    isPinned: item.isPinned,
+                    isSensitive: item.isSensitive,
+                    expiresAt: item.expiresAt,
+                    isEncrypted: item.isEncrypted,
+                    contentHash: hash,
+                    decryptionFailed: item.decryptionFailed,
+                    tagIds: item.tagIds
+                )
+                backfilledHashes = true
+            }
+        }
+
         items = migratedItems
         updatePinnedItems()
         trimToMaxItems()
         ImageStorage.shared.cleanupOrphanedImages(keptItems: items)
 
         // Save migrated items immediately after load
-        if needsMigrationSave {
+        if needsMigrationSave || repairedImages || backfilledHashes {
             scheduleSave()
         }
     }
@@ -278,15 +335,19 @@ class ClipboardStore: ObservableObject {
         saveTimer = DispatchSource.makeTimerSource(queue: queue)
         saveTimer?.schedule(deadline: .now() + saveDebounceInterval)
         saveTimer?.setEventHandler { [weak self] in
-            self?.flushSave()
+            // Hop to main before touching @Published `items` — the timer fires on a
+            // utility queue, and encoding the array from there races with main-thread
+            // mutations (insert/remove) and is UB.
+            DispatchQueue.main.async { self?.flushSave() }
         }
         saveTimer?.resume()
     }
 
-    /// Flushes pending saves to disk immediately. Called by the debounce timer or on deinit.
-    /// Exposed for testing via ClipboardStore(backend:) — tests can call this to force sync saves.
+    /// Flushes pending item and tag saves to disk immediately. Called by the debounce timer,
+    /// on deinit, or from AppDelegate.applicationWillTerminate to prevent data loss on quit.
     func flushPendingSaves() {
         flushSave()
+        flushTagSave()
     }
 
     private func flushSave() {
@@ -381,12 +442,40 @@ class ClipboardStore: ObservableObject {
     /// so "v2:" is unambiguous with encoded ciphertext.
     private static let encryptedNamePrefix = "v2:"
 
+    /// Placeholder shown when a tag name cannot be decrypted.
+    private static let lockedPlaceholder = "[locked]"
+
+    /// Backs up the original encrypted name when decryption fails so a later
+    /// `saveTags()` doesn't overwrite the on-disk ciphertext with the placeholder.
+    private var encryptedTagNamesBackup: [UUID: String] = [:]
+
     /// Encrypt tag names for disk storage. Already-encrypted names are skipped
-    /// to avoid double-encryption if a save is called twice in a row.
+    /// to avoid double-encryption if a save is called twice in a row.  A name
+    /// that merely *looks* encrypted (it starts with the marker prefix) but
+    /// fails to decrypt is treated as plaintext and encrypted, so user-created
+    /// names such as "v2:work" do not become permanently locked.
     private func encryptTagNames(_ tags: [Tag]) -> [Tag] {
         tags.map { tag in
-            guard !tag.name.hasPrefix(Self.encryptedNamePrefix),
-                  let encryptedName = ServiceContainer.crypto.encrypt(tag.name) else {
+            // Restore original ciphertext for tags whose names failed to decrypt.
+            if tag.name == Self.lockedPlaceholder,
+               let backup = encryptedTagNamesBackup[tag.id] {
+                return Tag(
+                    id: tag.id,
+                    name: backup,
+                    colorHex: tag.colorHex,
+                    isAutoSuggested: tag.isAutoSuggested,
+                    createdAt: tag.createdAt
+                )
+            }
+            // If the name already carries the marker, verify it is real ciphertext.
+            if tag.name.hasPrefix(Self.encryptedNamePrefix) {
+                let ciphertext = String(tag.name.dropFirst(Self.encryptedNamePrefix.count))
+                if ServiceContainer.crypto.decrypt(ciphertext) != nil {
+                    return tag
+                }
+                // Prefix is accidental (e.g. user-named "v2:..."); fall through to encrypt.
+            }
+            guard let encryptedName = ServiceContainer.crypto.encrypt(tag.name) else {
                 return tag
             }
             return Tag(
@@ -409,9 +498,10 @@ class ClipboardStore: ObservableObject {
             let ciphertext = String(tag.name.dropFirst(Self.encryptedNamePrefix.count))
             guard let decrypted = ServiceContainer.crypto.decrypt(ciphertext) else {
                 logger.error("Failed to decrypt tag name for \(tag.id); using placeholder")
+                encryptedTagNamesBackup[tag.id] = tag.name
                 return Tag(
                     id: tag.id,
-                    name: "[locked]",
+                    name: Self.lockedPlaceholder,
                     colorHex: tag.colorHex,
                     isAutoSuggested: tag.isAutoSuggested,
                     createdAt: tag.createdAt
@@ -438,7 +528,9 @@ class ClipboardStore: ObservableObject {
         tagSaveTimer = DispatchSource.makeTimerSource(queue: queue)
         tagSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
         tagSaveTimer?.setEventHandler { [weak self] in
-            self?.flushTagSave()
+            // Same main-queue hop as scheduleSave — @Published `tags` must not be
+            // encoded from a background queue while the main thread mutates it.
+            DispatchQueue.main.async { self?.flushTagSave() }
         }
         tagSaveTimer?.resume()
     }
@@ -493,6 +585,9 @@ class ClipboardStore: ObservableObject {
             return existingPlaintext == plaintextContent
         }) {
             var existing = items.remove(at: existingIndex)
+            // Backfill contentHash on legacy items that lack it, so future
+            // dedup checks take the fast hash-compare path instead of O(n) decrypts.
+            let backfilledHash = existing.contentHash ?? newHash
             existing = ClipboardItem(
                 id: existing.id,
                 content: existing.content,
@@ -502,7 +597,7 @@ class ClipboardStore: ObservableObject {
                 isSensitive: existing.isSensitive,
                 expiresAt: existing.expiresAt,
                 isEncrypted: existing.isEncrypted,
-                contentHash: existing.contentHash,
+                contentHash: backfilledHash,
                 // HIGH-1 fix (a00da7c follow-up): preserve decryptionFailed flag
                 // through dedup rebuild — otherwise the a00da7c perf fix is
                 // silently undone every time the same corrupt content is re-copied.
@@ -520,6 +615,11 @@ class ClipboardStore: ObservableObject {
     }
 
     func getDecryptedContent(_ item: ClipboardItem) -> String? {
+        // Image items store a filename (UUID.png), not encrypted text. Decrypting
+        // a filename always fails and would incorrectly mark the item as
+        // decryptionFailed. ImageStorage handles image-file encryption separately.
+        guard item.type != .image else { return item.content }
+
         let key = item.id.uuidString as NSString
         if let cached = contentCache.object(forKey: key) {
             return cached as String
@@ -552,6 +652,26 @@ class ClipboardStore: ObservableObject {
         return result
     }
 
+    /// Returns cached RTF plaintext for an item, parsing and caching on first access.
+    /// Avoids repeated NSAttributedString RTF parsing in search/filter paths.
+    func getRTFPlaintext(_ item: ClipboardItem) -> String {
+        guard item.type == .richText else { return "" }
+        let key = item.id.uuidString as NSString
+        if let cached = rtfPlaintextCache.object(forKey: key) {
+            return cached as String
+        }
+        let base64RTF = getDecryptedContent(item) ?? item.content
+        let result: String
+        if let data = Data(base64Encoded: base64RTF),
+           let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+            result = attr.string
+        } else {
+            result = L10n.itemRichText
+        }
+        rtfPlaintextCache.setObject(result as NSString, forKey: key)
+        return result
+    }
+
     func trimToMaxItems() {
         guard items.count > maxItems else { return }
         let pinned = items.filter { $0.isPinned }
@@ -564,6 +684,7 @@ class ClipboardStore: ObservableObject {
         let removedItems = items.filter { !trimmedIds.contains($0.id) }
         for item in removedItems {
             contentCache.removeObject(forKey: item.id.uuidString as NSString)
+            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
         }
         let removedImages = removedItems.filter { $0.type == .image }
         for item in removedImages {
@@ -576,6 +697,7 @@ class ClipboardStore: ObservableObject {
 
     func deleteItem(_ item: ClipboardItem) {
         contentCache.removeObject(forKey: item.id.uuidString as NSString)
+        rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
         if item.type == .image {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
@@ -607,6 +729,7 @@ class ClipboardStore: ObservableObject {
     func deleteItems(_ itemsToDelete: [ClipboardItem]) {
         for item in itemsToDelete {
             contentCache.removeObject(forKey: item.id.uuidString as NSString)
+            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
         }
         let filenames = itemsToDelete.filter { $0.type == .image }.map { $0.content }
         for filename in filenames {
@@ -664,6 +787,7 @@ class ClipboardStore: ObservableObject {
         let toRemove = items.filter { $0.isSensitive && !$0.isPinned }
         for item in toRemove {
             contentCache.removeObject(forKey: item.id.uuidString as NSString)
+            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
         }
         let removedImages = toRemove.filter { $0.type == .image }
         for item in removedImages {
@@ -679,6 +803,7 @@ class ClipboardStore: ObservableObject {
         let toRemove = items.filter { !pinnedIds.contains($0.id) }
         for item in toRemove {
             contentCache.removeObject(forKey: item.id.uuidString as NSString)
+            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
         }
         let removedImages = toRemove.filter { $0.type == .image }
         for item in removedImages {
@@ -799,6 +924,7 @@ class ClipboardStore: ObservableObject {
         }
         for id in expiredIds {
             contentCache.removeObject(forKey: id.uuidString as NSString)
+            rtfPlaintextCache.removeObject(forKey: id.uuidString as NSString)
         }
         let beforeCount = items.count
         items.removeAll { expiredIds.contains($0.id) }
