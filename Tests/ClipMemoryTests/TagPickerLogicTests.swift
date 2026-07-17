@@ -146,4 +146,55 @@ final class TagPickerLogicTests: XCTestCase {
         let cands = TagPickerLogic.autocompleteCandidates(prefix: "保险", limit: 3, store: store)
         XCTAssertEqual(cands.count, 3)
     }
+
+    // MARK: - attachOrCreateTag
+
+    /// When a tag with the same name already exists, attachOrCreateTag must
+    /// reuse it and NOT create a duplicate. Regression guard for the sheet's
+    /// suggestion chips racing with external tag creation.
+    func testAttachOrCreateTagReusesExistingByName() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let existing = Tag(name: "代码", colorHex: "#4ECDC4")
+        store.addTag(existing)
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.addItem(item)
+
+        TagPickerLogic.attachOrCreateTag(name: "代码", colorHex: "#FF6B6B", to: item.id, store: store)
+
+        XCTAssertEqual(store.tags.count, 1, "Should not create a duplicate tag")
+        XCTAssertEqual(store.tags.values.first?.id, existing.id)
+        XCTAssertTrue(store.items.first(where: { $0.id == item.id })?.tagIds.contains(existing.id) ?? false)
+    }
+
+    /// Name matching is case-insensitive so the autocomplete (which is already
+    /// case-insensitive) and the duplicate guard agree.
+    func testAttachOrCreateTagReusesExistingByNameCaseInsensitive() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let existing = Tag(name: "Work", colorHex: "#4ECDC4")
+        store.addTag(existing)
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.addItem(item)
+
+        TagPickerLogic.attachOrCreateTag(name: "work", colorHex: "#FF6B6B", to: item.id, store: store)
+
+        XCTAssertEqual(store.tags.count, 1, "Should reuse existing tag regardless of case")
+        XCTAssertEqual(store.tags.values.first?.id, existing.id)
+        XCTAssertTrue(store.items.first(where: { $0.id == item.id })?.tagIds.contains(existing.id) ?? false)
+    }
+
+    /// Fresh name → creates a new auto-suggested tag and attaches it.
+    func testAttachOrCreateTagCreatesWhenMissing() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.addItem(item)
+
+        TagPickerLogic.attachOrCreateTag(name: "新标签", colorHex: "#FF6B6B", to: item.id, store: store)
+
+        XCTAssertEqual(store.tags.count, 1)
+        let created = store.tags.values.first
+        XCTAssertEqual(created?.name, "新标签")
+        XCTAssertEqual(created?.colorHex, "#FF6B6B")
+        XCTAssertTrue(created?.isAutoSuggested ?? false)
+        XCTAssertTrue(store.items.first(where: { $0.id == item.id })?.tagIds.contains(created?.id ?? UUID()) ?? false)
+    }
 }

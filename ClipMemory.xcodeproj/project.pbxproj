@@ -30,6 +30,7 @@
 		62C5F5C7A987756BC54DA5A3 /* KeyCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 901900D40CAF1527A6AEE527 /* KeyCaptureView.swift */; };
 		680A6DBC49D7A6C7AADE7DBB /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84072C9393127BAA49827196 /* WindowManager.swift */; };
 		68A5470D43D3DC52FC731B8A /* LogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AEF14CE6FF2688FFE2407F /* LogoView.swift */; };
+		8B3F2A1C9D4E5B6A7C8D9E0F /* WindowManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A2B3C4D5E6F7A8B9C0D1E2F /* WindowManagerTests.swift */; };
 		6AC71D8A8F44EA37B7F7F486 /* TagPickerLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72273B00BF3BBC48397B157 /* TagPickerLogic.swift */; };
 		75B8EB8E40E9E24D5A74C858 /* SidebarTagFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C34BF23E51FBB908BA8B075 /* SidebarTagFilter.swift */; };
 		7ABA4BDB3BC1036DA760C3D1 /* AppPickerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB976C62E716CABD3A02505F /* AppPickerRow.swift */; };
@@ -103,6 +104,7 @@
 		7027A04305067DB8A8656FC9 /* FontScaling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontScaling.swift; sourceTree = "<group>"; };
 		814FC521762331411B0823A5 /* ClipMemoryTests.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClipMemoryTests.entitlements; sourceTree = "<group>"; };
 		84072C9393127BAA49827196 /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
+		7A2B3C4D5E6F7A8B9C0D1E2F /* WindowManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManagerTests.swift; sourceTree = "<group>"; };
 		8736B83768848E6CBB1834EA /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		8F250C19E7199E18D95521A3 /* CryptoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoService.swift; sourceTree = "<group>"; };
 		901900D40CAF1527A6AEE527 /* KeyCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyCaptureView.swift; sourceTree = "<group>"; };
@@ -192,6 +194,7 @@
 				09A31D744B299F2270708CBD /* TagChipStackTests.swift */,
 				D3AD63BCFD147D053894F30A /* TagPickerLogicTests.swift */,
 				C732B2DADEA223B75739B44E /* TagTests.swift */,
+				7A2B3C4D5E6F7A8B9C0D1E2F /* WindowManagerTests.swift */,
 			);
 			name = ClipMemoryTests;
 			path = Tests/ClipMemoryTests;
@@ -412,6 +415,7 @@
 				055A727AD6959252460C8B34 /* TagChipStackTests.swift in Sources */,
 				138C340D07ADB674B5C48BE0 /* TagPickerLogicTests.swift in Sources */,
 				269F1A9BFA88C2439590FF02 /* TagTests.swift in Sources */,
+				8B3F2A1C9D4E5B6A7C8D9E0F /* WindowManagerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

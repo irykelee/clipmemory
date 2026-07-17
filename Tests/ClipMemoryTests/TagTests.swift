@@ -70,6 +70,27 @@ final class TagTests: XCTestCase {
         XCTAssertEqual(Color(hex: "not-a-color"), .black, "Non-hex string should fall back to black")
         XCTAssertEqual(Color(hex: "#GGG"), .black, "Invalid characters should fall back to black")
     }
+
+    // MARK: - Color.toHex()
+
+    func testColorToHexRoundTripPreservesRGB() {
+        let cases = ["#FF6B6B", "#4ECDC4", "#000000", "#FFFFFF", "#123456"]
+        for hex in cases {
+            XCTAssertEqual(Color(hex: hex).toHex(), hex, "Round-trip failed for \(hex)")
+        }
+    }
+
+    func testColorToHexIgnoresAlpha() {
+        let c = Color(red: 1.0, green: 0.5, blue: 0.0, opacity: 0.3)
+        XCTAssertEqual(c.toHex(), "#FF8000")
+    }
+
+    func testColorToHexClampsToDeviceRGB() {
+        // A color that NSColor can't represent in deviceRGB should fall back to black.
+        // We can't easily construct one in SwiftUI, but the method should never crash.
+        let c = Color(hex: "#4ECDC4")
+        XCTAssertFalse(c.toHex().isEmpty)
+    }
 }
 
 // MARK: - ClipboardStore tag dictionary API
@@ -203,6 +224,30 @@ final class ClipboardStoreTagTests: XCTestCase {
 
         // Cleanup so we don't pollute real UserDefaults.
         UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    /// A tag whose name coincidentally starts with the encrypted marker prefix
+    /// must survive a save/load round-trip instead of being mistaken for
+    /// ciphertext and replaced with the [locked] placeholder.
+    func testTagNameStartingWithEncryptionPrefixSurvivesRoundTrip() throws {
+        let key = "ClipMemoryTagsTest_V2PrefixRoundTrip"
+        UserDefaults.standard.removeObject(forKey: key)
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        let tagBackend = FileStorageBackend(storageKey: key)
+        let store = ClipboardStore(backend: MemoryStorageBackend(),
+                                   tagBackend: tagBackend)
+        let tag = Tag(name: "v2:work", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        store.saveTags()
+
+        let exp = expectation(description: "wait for main queue")
+        DispatchQueue.main.async { exp.fulfill() }
+        wait(for: [exp], timeout: 1.0)
+
+        let freshStore = ClipboardStore(backend: MemoryStorageBackend(),
+                                        tagBackend: FileStorageBackend(storageKey: key))
+        XCTAssertEqual(freshStore.tags[tag.id]?.name, "v2:work",
+                       "Names that look encrypted but are plaintext must not become locked")
     }
 
     /// loadTags reads from UserDefaults on init and populates `tags` dictionary.
