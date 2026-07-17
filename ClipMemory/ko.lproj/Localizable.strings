@@ -58,8 +58,8 @@
 "alert.clear.message" = "%d개 항목을 지울까요?\n고정된 항목은 삭제되지 않습니다.";
 "alert.clear.none" = "비울 기록이 없습니다.";
 "alert.clear.group.message" = "'%2$@'의 %1$d개 항목을 삭제할까요?\n고정된 항목은 삭제되지 않습니다.";
-"alert.delete.title" = "항목 삭제";
-"alert.delete.message" = "이 항목을 삭제할까요?";
+"alert.delete.title" = "휴지통으로 이동";
+"alert.delete.message" = "이 항목을 휴지통으로 이동하시겠습니까?";
 
 /* Settings */
 "settings.title" = "환경설정";
@@ -233,3 +233,14 @@
 "alert.trim.message" = "현재 %d개 항목이지만 제한은 %d개입니다. 초과 항목을 정리할까요?";
 "alert.trim.confirm" = "정리";
 "alert.trim.cancel" = "취소, 설정에서 조정";
+
+/* Recycle Bin */
+"trash.title" = "휴지통";
+"trash.empty" = "휴지통이 비어 있습니다";
+"trash.deletedAt" = "%@에 삭제됨";
+"trash.restore" = "복원";
+"trash.deletePermanently" = "완전히 삭제";
+"trash.emptyConfirm.title" = "휴지통 비우기";
+"trash.emptyConfirm.message" = "%d개 항목이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.";
+"trash.retentionDays" = "휴지통 보관 일수";
+"trash.moveToTrash" = "휴지통으로 이동";

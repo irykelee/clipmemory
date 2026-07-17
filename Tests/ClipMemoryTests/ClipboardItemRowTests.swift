@@ -20,10 +20,23 @@ final class ClipboardItemRowTests: XCTestCase {
             isPinned: false,
             isSensitive: false
         )
-        var differentDate = base
-        differentDate.createdAt = Date(timeIntervalSince1970: 2000)
-        var differentDecryption = base
-        differentDecryption.decryptionFailed = true
+        let differentDate = ClipboardItem(
+            id: id,
+            content: "hello",
+            type: .text,
+            createdAt: Date(timeIntervalSince1970: 2000),
+            isPinned: false,
+            isSensitive: false
+        )
+        let differentDecryption = ClipboardItem(
+            id: id,
+            content: "hello",
+            type: .text,
+            createdAt: Date(timeIntervalSince1970: 1000),
+            isPinned: false,
+            isSensitive: false,
+            decryptionFailed: true
+        )
 
         let rowA = ClipboardItemRow(
             item: base,

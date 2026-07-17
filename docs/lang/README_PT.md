@@ -1,4 +1,4 @@
-# ClipMemory v2.3.0
+# ClipMemory v2.4.0
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.4.0 (2026-07-18) — Lixeira
+
+- **🗑️ Lixeira (Recycle Bin)** — Itens apagados não são destruídos imediatamente. Eles vão para a Lixeira e ficam guardados por 7 dias (configurável em Ajustes), período durante o qual podem ser restaurados ou apagados permanentemente. Esvaziar a lixeira requer confirmação; itens expirados são limpos automaticamente.
+- **Segurança dos dados** — Arquivos de imagem são mantidos enquanto o item estiver na lixeira; só são removidos ao apagar permanentemente. A limpeza automática (trim/expiração) não passa pela lixeira.
+- **Atualizações de interface** — Nova entrada «Lixeira» na barra lateral com contador; texto de confirmação de exclusão alterado para «Mover para a lixeira»; itens na lixeira mostram a data de exclusão.
+- **Testes** — 12 novos testes para a Lixeira, todos passando.
 
 ### v2.3.0 (2026-07-17) — Sistema de Etiquetas e Integridade de Dados
 

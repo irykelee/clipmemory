@@ -141,6 +141,18 @@ struct L10n {
     static func alertClearGroupMessage(_ count: Int, _ groupLabel: String) -> String { string("alert.clear.group.message", count, groupLabel) }
     static var settingsLaunchAtLoginErrorBody: String { string("settings.launch.at.login.error.body") }
 
+    // MARK: - Recycle Bin (Trash)
+
+    static var trashTitle: String { string("trash.title") }
+    static var trashEmpty: String { string("trash.empty") }
+    static var trashDeletedAt: String { string("trash.deletedAt") }
+    static var trashRestore: String { string("trash.restore") }
+    static var trashDeletePermanently: String { string("trash.deletePermanently") }
+    static var trashEmptyConfirmTitle: String { string("trash.emptyConfirm.title") }
+    static func trashEmptyConfirmMessage(_ count: Int) -> String { string("trash.emptyConfirm.message", count) }
+    static var trashRetentionDays: String { string("trash.retentionDays") }
+    static var trashMoveToTrash: String { string("trash.moveToTrash") }
+
     static var settingsTitle: String { string("settings.title") }
     static var settingsSectionHistory: String { string("settings.section.history") }
     static var settingsSectionSensitive: String { string("settings.section.sensitive") }
