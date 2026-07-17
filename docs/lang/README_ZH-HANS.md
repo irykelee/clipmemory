@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.2.4
+# 剪忆 ClipMemory v2.3.0
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 更新日志
+
+### v2.3.0 (2026-07-17) — 标签系统与数据完整性
+
+- **🏷️ 标签系统（Tag System）** — 完整标签生命周期：创建 / 删除 / 自定义颜色；侧边栏 tag section + 跨 section AND / in-section OR 过滤；智能 tag 建议（基于 NLTagger：代码 / 邮箱 / 凭据 / 敏感）；TagPicker sheet（行内 chips + 长按弹选择器）；删除确认对话框
+- **6 个数据完整性严重修复** — saveTimer 线程竞争 UB；FileStorageBackend 同步落盘；flushPendingSaves 同步 flush tag；legacy image items 错误加密标记修复；contentHash backfill；ImageStorage 部分失败 recovery
+- **UI 改进** — Welcome window dedupe；Esc 取消 hotkey recording（返回 event 给 responder）；跨午夜自动刷新 currentDate；Search 模式 force-expand groups（键盘导航同步）；pendingMaxItemsReduction typo 修复
+- **重构 + 性能** — RTF NSCache；L10n bundle cache；WindowManager 状态稳定化（@State 跨 close/reopen 保持）；windowDidMove/Resize debounce 0.5s；+9 net new tests（241 → 250）
 
 ### v2.2.4 (2026-07-16) — 发布卫生修复
 
