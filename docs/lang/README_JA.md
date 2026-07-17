@@ -170,8 +170,7 @@
 ## インストール
 
 ```bash
-brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory
-brew trust irykelee/clipmemory
+brew tap irykelee/clipmemory
 brew install --cask clipmemory
 ```
 
