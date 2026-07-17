@@ -261,4 +261,32 @@ final class ClipboardItemTests: XCTestCase {
         let item = ClipboardItem(content: "hello", type: .text)
         XCTAssertTrue(item.tagIds.isEmpty, "New items should have no tags attached")
     }
+
+    // MARK: - Backwards-compatible decoding
+
+    /// Old persisted data lacks `tagIds`, `decryptionFailed`, and `isEncrypted`.
+    /// The custom decoder must fall back to defaults instead of throwing.
+    func testDecodeItemMissingNewerFields() throws {
+        let jsonString = """
+        {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "content": "legacy content",
+            "type": "text",
+            "createdAt": 1000000,
+            "isPinned": false,
+            "isSensitive": false
+        }
+        """
+        let json = Data(jsonString.utf8)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let item = try decoder.decode(ClipboardItem.self, from: json)
+
+        XCTAssertEqual(item.content, "legacy content")
+        XCTAssertEqual(item.tagIds, [])
+        XCTAssertFalse(item.decryptionFailed)
+        XCTAssertFalse(item.isEncrypted)
+        XCTAssertNil(item.contentHash)
+    }
 }

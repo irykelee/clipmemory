@@ -48,6 +48,22 @@ final class CryptoServiceTests: XCTestCase {
         XCTAssertNotEqual(e1, e2)
     }
 
+    // MARK: - HMAC content hash
+
+    /// HMAC produces deterministic, equal-length digests for deduplication
+    /// without exposing an offline dictionary oracle for short secrets.
+    func testHMACIsDeterministicAndSensitiveToInput() {
+        let h1 = crypto.hmacHex(for: "hello")
+        let h2 = crypto.hmacHex(for: "hello")
+        let h3 = crypto.hmacHex(for: "Hello")
+        XCTAssertNotNil(h1)
+        XCTAssertNotNil(h2)
+        XCTAssertNotNil(h3)
+        XCTAssertEqual(h1, h2, "Same input must produce same HMAC")
+        XCTAssertNotEqual(h1, h3, "Case change must change HMAC")
+        XCTAssertEqual(h1?.count, 64, "HMAC-SHA256 hex output is 64 chars")
+    }
+
     func testDecryptCorruptedDataReturnsNil() {
         let corrupted = [
             "INVALID_BASE64!!!",

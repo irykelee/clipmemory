@@ -50,12 +50,14 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     mkdir -p "${OUTPUT_DIR}"
 
     cd "${PROJECT_DIR}"
-    xcodebuild -project ClipMemory.xcodeproj -scheme ClipMemory -configuration Release build -quiet
+    DERIVED_DATA_PATH="${PROJECT_DIR}/.build/DerivedData"
+    xcodebuild -project ClipMemory.xcodeproj -scheme ClipMemory -configuration Release \
+        -derivedDataPath "${DERIVED_DATA_PATH}" build -quiet
 
-    APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData/ClipMemory-*/Build/Products/Release -name "ClipMemory.app" | head -1)
+    APP_PATH="${DERIVED_DATA_PATH}/Build/Products/Release/ClipMemory.app"
 
-    if [ -z "$APP_PATH" ]; then
-        echo "Error: Build artifact not found"
+    if [ ! -d "$APP_PATH" ]; then
+        echo "Error: Build artifact not found at ${APP_PATH}"
         exit 1
     fi
 

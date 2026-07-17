@@ -1,6 +1,5 @@
 import Foundation
 import AppKit
-import CommonCrypto
 import os.log
 
 extension Notification.Name {
@@ -23,7 +22,7 @@ class ClipboardStore: ObservableObject {
 
     /// User-defined tags keyed by UUID. Source of truth for tag definitions;
     /// ClipboardItem.tagIds holds only the IDs (Set<UUID>) for O(1) filter checks.
-    /// Persistence is handled separately — see TODO(loadTags/saveTags).
+    /// Persistence is handled by `loadTags()` / `saveTags()`.
     @Published var tags: [UUID: Tag] = [:]
 
     // @Published with didSet for automatic UserDefaults persistence
@@ -147,15 +146,17 @@ class ClipboardStore: ObservableObject {
         cleanupTimer = DispatchSource.makeTimerSource(queue: queue)
         cleanupTimer?.schedule(deadline: .now() + 60, repeating: 60)
         cleanupTimer?.setEventHandler { [weak self] in
-            self?.cleanupExpiredItems()
+            DispatchQueue.main.async { [weak self] in
+                self?.cleanupExpiredItems()
+            }
         }
         cleanupTimer?.resume()
     }
 
     /// H2: NSCache for decrypted content — avoids repeated AES decryption on every view render.
     /// Thread-safety: all `items` mutations (addItem/deleteItem/etc.) are on main thread.
-    /// cleanupExpiredItems fires on a background timer but only reads items there,
-    /// dispatching the actual removal to main. No lock needed for this pattern.
+    /// cleanupExpiredItems is dispatched to the main thread from its timer so all
+    /// reads and writes of `items` stay on the same queue.
     /// Memory pressure handling: cache evicts entries under memory pressure via NSCache's built-in behavior.
     /// Additionally, totalCostLimit caps memory at ~10MB (500 items × ~20KB each).
 
@@ -182,7 +183,7 @@ class ClipboardStore: ObservableObject {
         guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }
         let migratedSet = Set(migratedFilenames)
 
-        var needsSave = false
+        var didMigrateAny = false
         for (index, item) in items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
             items[index] = ClipboardItem(
                 id: item.id,
@@ -193,21 +194,25 @@ class ClipboardStore: ObservableObject {
                 isSensitive: item.isSensitive,
                 expiresAt: item.expiresAt,
                 isEncrypted: true,
-                contentHash: item.contentHash
+                contentHash: item.contentHash,
+                decryptionFailed: item.decryptionFailed,
+                tagIds: item.tagIds
             )
-            needsSave = true
+            didMigrateAny = true
         }
 
-        if needsSave {
-            flushSave()
+        if didMigrateAny {
+            scheduleSave()
         }
     }
 
-    /// Sync excluded bundle IDs from settings string to the clipboard monitor
+    /// Sync excluded bundle IDs from settings string to the clipboard monitor.
+    /// Comparisons are case-insensitive because macOS bundle IDs are technically
+    /// case-sensitive, but users frequently mis-type capitalization.
     func updateExcludedAppsOnMonitor() {
         let ids = Set(excludedBundleIdsString
             .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
             .filter { !$0.isEmpty })
         clipboardMonitor?.excludedBundleIds = ids
     }
@@ -237,7 +242,9 @@ class ClipboardStore: ObservableObject {
                     isSensitive: item.isSensitive,
                     expiresAt: item.expiresAt,
                     isEncrypted: true,
-                    contentHash: item.contentHash
+                    contentHash: item.contentHash,
+                    decryptionFailed: item.decryptionFailed,
+                    tagIds: item.tagIds
                 )
                 needsMigrationSave = true
             }
@@ -250,7 +257,7 @@ class ClipboardStore: ObservableObject {
 
         // Save migrated items immediately after load
         if needsMigrationSave {
-            flushSave()
+            scheduleSave()
         }
     }
 
@@ -298,11 +305,12 @@ class ClipboardStore: ObservableObject {
     }
 
     /// Attach an existing tag (by id) to an item. Idempotent — adding the same
-    /// tag twice is a no-op since tagIds is a Set. Item save is scheduled by
-    /// the underlying item mutation path (no separate save needed here).
+    /// tag twice is a no-op since tagIds is a Set. Schedules both item and tag
+    /// persistence so the attachment survives app restarts.
     func addTag(to itemId: UUID, tagId: UUID) {
         guard let index = items.firstIndex(where: { $0.id == itemId }) else { return }
         items[index].tagIds.insert(tagId)
+        scheduleSave()
     }
 
     /// Detach a tag from an item. Does not delete the tag itself; for that use
@@ -310,18 +318,34 @@ class ClipboardStore: ObservableObject {
     func removeTag(from itemId: UUID, tagId: UUID) {
         guard let index = items.firstIndex(where: { $0.id == itemId }) else { return }
         items[index].tagIds.remove(tagId)
+        scheduleSave()
     }
 
     /// Delete a tag definition AND strip its id from every item's tagIds set.
     /// This prevents dangling UUIDs (tag references that no longer resolve).
     /// Safe to call with an unknown id — no-op in that case. Triggers a
-    /// debounced tag save.
+    /// debounced save for both tags and items.
     func deleteTag(id tagId: UUID) {
         guard tags.removeValue(forKey: tagId) != nil else { return }
         for index in items.indices where items[index].tagIds.contains(tagId) {
             items[index].tagIds.remove(tagId)
         }
         scheduleTagSave()
+        scheduleSave()
+    }
+
+    /// Case-insensitive prefix search over tag names. Returns up to `limit`
+    /// tags ordered by `createdAt` descending (most recent first), so the
+    /// caller's autocomplete surfaces the user's own latest tag first.
+    /// Empty prefix → empty result (autocomplete is opt-in).
+    func tags(matchingPrefix prefix: String, limit: Int = 8) -> [Tag] {
+        guard !prefix.isEmpty, limit > 0 else { return [] }
+        let needle = prefix.lowercased()
+        return tags.values
+            .filter { $0.name.lowercased().hasPrefix(needle) }
+            .sorted { $0.createdAt > $1.createdAt }
+            .prefix(limit)
+            .map { $0 }
     }
 
     // MARK: - Tag persistence
@@ -331,8 +355,8 @@ class ClipboardStore: ObservableObject {
     /// than to crash on startup.
     func loadTags() {
         do {
-            let loaded = try tagBackend.loadTags()
-            tags = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
+            let loaded = decryptTagNames(try tagBackend.loadTags())
+            tags = Dictionary(loaded.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         } catch {
             logger.error("Failed to load tags: \(error.localizedDescription)")
             tags = [:]
@@ -340,12 +364,66 @@ class ClipboardStore: ObservableObject {
     }
 
     /// Synchronously write the current tag dictionary to the tag backend.
-    /// Usually called via the debounced `scheduleTagSave()`; expose for tests.
+    /// Names are encrypted at the persistence boundary while the in-memory
+    /// `tags` dictionary stays plaintext for UI use.
     func saveTags() {
         do {
-            try tagBackend.saveTags(Array(tags.values))
+            try tagBackend.saveTags(encryptTagNames(Array(tags.values)))
         } catch {
             logger.error("Failed to save tags: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Tag name encryption helpers
+
+    /// Marker prefixed to encrypted tag names so `decryptTagNames` can tell
+    /// them apart from plaintext names. Base64 itself never contains a colon,
+    /// so "v2:" is unambiguous with encoded ciphertext.
+    private static let encryptedNamePrefix = "v2:"
+
+    /// Encrypt tag names for disk storage. Already-encrypted names are skipped
+    /// to avoid double-encryption if a save is called twice in a row.
+    private func encryptTagNames(_ tags: [Tag]) -> [Tag] {
+        tags.map { tag in
+            guard !tag.name.hasPrefix(Self.encryptedNamePrefix),
+                  let encryptedName = ServiceContainer.crypto.encrypt(tag.name) else {
+                return tag
+            }
+            return Tag(
+                id: tag.id,
+                name: Self.encryptedNamePrefix + encryptedName,
+                colorHex: tag.colorHex,
+                isAutoSuggested: tag.isAutoSuggested,
+                createdAt: tag.createdAt
+            )
+        }
+    }
+
+    /// Decrypt tag names loaded from disk. Plaintext names (legacy or tests)
+    /// are returned unchanged.
+    private func decryptTagNames(_ tags: [Tag]) -> [Tag] {
+        tags.map { tag in
+            guard tag.name.hasPrefix(Self.encryptedNamePrefix) else {
+                return tag
+            }
+            let ciphertext = String(tag.name.dropFirst(Self.encryptedNamePrefix.count))
+            guard let decrypted = ServiceContainer.crypto.decrypt(ciphertext) else {
+                logger.error("Failed to decrypt tag name for \(tag.id); using placeholder")
+                return Tag(
+                    id: tag.id,
+                    name: "[locked]",
+                    colorHex: tag.colorHex,
+                    isAutoSuggested: tag.isAutoSuggested,
+                    createdAt: tag.createdAt
+                )
+            }
+            return Tag(
+                id: tag.id,
+                name: decrypted,
+                colorHex: tag.colorHex,
+                isAutoSuggested: tag.isAutoSuggested,
+                createdAt: tag.createdAt
+            )
         }
     }
 
@@ -381,7 +459,7 @@ class ClipboardStore: ObservableObject {
         // M3: Always encrypt text and link content (images are encrypted by ImageStorage)
         if item.type != .image {
             if let encrypted = ServiceContainer.crypto.encrypt(item.content) {
-                newHash = sha256(plaintextContent)
+                newHash = ServiceContainer.crypto.hmacHex(for: plaintextContent) ?? ""
                 newItem = ClipboardItem(
                     id: item.id,
                     content: encrypted,
@@ -428,7 +506,8 @@ class ClipboardStore: ObservableObject {
                 // HIGH-1 fix (a00da7c follow-up): preserve decryptionFailed flag
                 // through dedup rebuild — otherwise the a00da7c perf fix is
                 // silently undone every time the same corrupt content is re-copied.
-                decryptionFailed: existing.decryptionFailed
+                decryptionFailed: existing.decryptionFailed,
+                tagIds: existing.tagIds
             )
             items.insert(existing, at: 0)
         } else {
@@ -456,8 +535,18 @@ class ClipboardStore: ObservableObject {
         } else if item.isEncrypted {
             // Mark the in-store copy so subsequent `isDecryptionFailed` reads
             // are O(1) instead of re-triggering AES decrypt on every access.
-            if let index = items.firstIndex(where: { $0.id == item.id }) {
-                items[index].decryptionFailed = true
+            // Must publish on the main thread because `items` is @Published.
+            let markFailed = { [weak self] in
+                guard let self = self else { return }
+                if let index = self.items.firstIndex(where: { $0.id == item.id }) {
+                    self.items[index].decryptionFailed = true
+                    self.scheduleSave()
+                }
+            }
+            if Thread.isMainThread {
+                markFailed()
+            } else {
+                DispatchQueue.main.async(execute: markFailed)
             }
         }
         return result
@@ -688,7 +777,9 @@ class ClipboardStore: ObservableObject {
             isSensitive: moved.isSensitive,
             expiresAt: moved.expiresAt,
             isEncrypted: moved.isEncrypted,
-            contentHash: moved.contentHash
+            contentHash: moved.contentHash,
+            decryptionFailed: moved.decryptionFailed,
+            tagIds: moved.tagIds
         )
         items.insert(moved, at: 0)
         scheduleSave()
@@ -698,35 +789,22 @@ class ClipboardStore: ObservableObject {
         pinnedItems = items.filter { $0.isPinned }
     }
 
-    private func sha256(_ string: String) -> String {
-        guard let data = string.data(using: .utf8), !data.isEmpty else { return "" }
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        data.withUnsafeBytes { bytes in
-            _ = CC_SHA256(bytes.baseAddress, CC_LONG(data.count), &hash)
-        }
-        return hash.map { String(format: "%02x", $0) }.joined()
-    }
-
     private func cleanupExpiredItems() {
-        // Capture IDs on background thread to avoid racing with main thread `items` access
         let expiredImageFilenames = items.filter { $0.isExpired && $0.type == .image }.map { $0.content }
         let expiredIds = Set(items.filter { $0.isExpired }.map { $0.id })
         if expiredImageFilenames.isEmpty && expiredIds.isEmpty { return }
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            for filename in expiredImageFilenames {
-                ImageStorage.shared.deleteImage(filename: filename)
-            }
-            for id in expiredIds {
-                self.contentCache.removeObject(forKey: id.uuidString as NSString)
-            }
-            let beforeCount = self.items.count
-            self.items.removeAll { expiredIds.contains($0.id) }
-            if self.items.count != beforeCount {
-                self.updatePinnedItems()
-                self.scheduleSave()
-            }
+        for filename in expiredImageFilenames {
+            ImageStorage.shared.deleteImage(filename: filename)
+        }
+        for id in expiredIds {
+            contentCache.removeObject(forKey: id.uuidString as NSString)
+        }
+        let beforeCount = items.count
+        items.removeAll { expiredIds.contains($0.id) }
+        if items.count != beforeCount {
+            updatePinnedItems()
+            scheduleSave()
         }
     }
 }

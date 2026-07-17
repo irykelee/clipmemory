@@ -218,3 +218,12 @@
 "sidebar.newTag" = "New Tag";
 "newTag.title" = "New Tag";
 "newTag.create" = "Create";
+
+/* Tag Suggestions */
+"tagSuggestion.kind.code" = "Code";
+"tagSuggestion.kind.email" = "Email";
+"tagSuggestion.kind.credential" = "Account";
+"tagSuggestion.kind.sensitive" = "Sensitive";
+
+/* Image fallback */
+"image.decryptionFailed" = "Unable to decrypt image";

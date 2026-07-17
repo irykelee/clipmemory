@@ -9,6 +9,7 @@ protocol CryptoServiceProtocol {
     func decryptData(_ combined: Data) -> Data?
     func isOldFormat(_ base64String: String) -> Bool
     func migrateToV2(_ base64String: String) -> String?
+    func hmacHex(for string: String) -> String?
 }
 
 // MARK: - Sensitive Detection

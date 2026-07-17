@@ -72,4 +72,12 @@ enum TagPickerLogic {
         }
         return next
     }
+
+    /// Compute vocabulary autocomplete candidates for a user-typed prefix.
+    /// Pure helper delegating to `ClipboardStore.tags(matchingPrefix:limit:)`
+    /// so we can unit-test the prefix/limit/empty behavior without rendering
+    /// SwiftUI. Returns at most `limit` tags ordered by createdAt desc.
+    static func autocompleteCandidates(prefix: String, limit: Int = 5, store: ClipboardStore) -> [Tag] {
+        store.tags(matchingPrefix: prefix, limit: limit)
+    }
 }

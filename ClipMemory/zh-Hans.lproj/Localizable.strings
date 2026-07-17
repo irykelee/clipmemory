@@ -217,3 +217,12 @@
 "sidebar.newTag" = "新建标签";
 "newTag.title" = "新建标签";
 "newTag.create" = "创建";
+
+/* Tag Suggestions */
+"tagSuggestion.kind.code" = "代码";
+"tagSuggestion.kind.email" = "邮箱";
+"tagSuggestion.kind.credential" = "账号";
+"tagSuggestion.kind.sensitive" = "敏感";
+
+/* Image fallback */
+"image.decryptionFailed" = "无法解密图片";

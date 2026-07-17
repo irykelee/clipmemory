@@ -255,4 +255,23 @@ final class HotKeyManagerTests: XCTestCase {
         XCTAssertEqual(loaded, .defaultConfig,
                        "Partial save with missing modifiers must fall back to defaultConfig")
     }
+
+    /// Corrupted UserDefaults (negative integers saved via raw plist edits)
+    /// must not trap on UInt32 conversion.
+    func testLoadReturnsDefaultWhenPersistedValuesAreNegative() {
+        UserDefaults.standard.set(-1, forKey: keyCodeKey)
+        UserDefaults.standard.set(-1, forKey: modifiersKey)
+        let loaded = HotKeyConfig.load()
+        XCTAssertEqual(loaded, .defaultConfig,
+                       "Negative persisted values must fall back to defaultConfig")
+    }
+
+    /// Persisted keyCode outside the Carbon virtual-key range is invalid.
+    func testLoadReturnsDefaultWhenKeyCodeIsOutOfRange() {
+        UserDefaults.standard.set(999, forKey: keyCodeKey)
+        UserDefaults.standard.set(Int(cmdKey | controlKey), forKey: modifiersKey)
+        let loaded = HotKeyConfig.load()
+        XCTAssertEqual(loaded, .defaultConfig,
+                       "Out-of-range keyCode must fall back to defaultConfig")
+    }
 }

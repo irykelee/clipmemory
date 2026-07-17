@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import ClipMemory
 
 final class TagTests: XCTestCase {
@@ -61,6 +62,13 @@ final class TagTests: XCTestCase {
             XCTAssertTrue(color.unicodeScalars.allSatisfy { hex.contains($0) },
                           "Color must be valid hex: \(color)")
         }
+    }
+
+    func testColorHexRejectsInvalidLengths() {
+        XCTAssertEqual(Color(hex: "#FFF"), .black, "3-digit hex should fall back to black")
+        XCTAssertEqual(Color(hex: "#FF00FF00"), .black, "8-digit hex should fall back to black")
+        XCTAssertEqual(Color(hex: "not-a-color"), .black, "Non-hex string should fall back to black")
+        XCTAssertEqual(Color(hex: "#GGG"), .black, "Invalid characters should fall back to black")
     }
 }
 
@@ -161,13 +169,13 @@ final class ClipboardStoreTagTests: XCTestCase {
     // MARK: - Persistence (loadTags / saveTags via UserDefaults key "ClipMemoryTags")
 
     /// Save tags via the store, then read the raw UserDefaults blob and verify
-    /// it's a valid JSON array of Tags. We don't yet round-trip through a fresh
-    /// store (which would require injecting a UserDefaults suite); we verify the
-    /// write half, which is the side that can lose data if broken.
-    func testSaveTagsPersistsJSONToUserDefaults() throws {
+    /// tag names are encrypted at rest (v2 prefix) while a fresh store load
+    /// decrypts them back to plaintext.
+    func testSaveTagsPersistsEncryptedNamesToUserDefaults() throws {
         // Use a real FileStorageBackend but isolate tag storage to a dedicated key
         // via a fresh FileStorageBackend(storageKey:) — proves the key parameter works.
-        let tagBackend = FileStorageBackend(storageKey: "ClipMemoryTagsTest_SaveTags")
+        let key = "ClipMemoryTagsTest_SaveTags"
+        let tagBackend = FileStorageBackend(storageKey: key)
         let store = ClipboardStore(backend: MemoryStorageBackend(),
                                    tagBackend: tagBackend)
         let tag = Tag(name: "工作", colorHex: "#4ECDC4")
@@ -179,16 +187,22 @@ final class ClipboardStoreTagTests: XCTestCase {
         DispatchQueue.main.async { exp.fulfill() }
         wait(for: [exp], timeout: 1.0)
 
-        let raw = UserDefaults.standard.data(forKey: "ClipMemoryTagsTest_SaveTags")
+        let raw = UserDefaults.standard.data(forKey: key)
         XCTAssertNotNil(raw, "saveTags should write to UserDefaults")
         let decoded = try JSONDecoder().decode([Tag].self, from: raw!)
         XCTAssertEqual(decoded.count, 1)
         XCTAssertEqual(decoded[0].id, tag.id)
-        XCTAssertEqual(decoded[0].name, "工作")
+        XCTAssertTrue(decoded[0].name.hasPrefix("v2:"), "Tag name should be encrypted on disk")
+        XCTAssertNotEqual(decoded[0].name, "工作", "Tag name should not be plaintext")
         XCTAssertEqual(decoded[0].colorHex, "#4ECDC4")
 
+        // Fresh store with the same backend decrypts the name back to plaintext.
+        let freshStore = ClipboardStore(backend: MemoryStorageBackend(),
+                                        tagBackend: FileStorageBackend(storageKey: key))
+        XCTAssertEqual(freshStore.tags[tag.id]?.name, "工作")
+
         // Cleanup so we don't pollute real UserDefaults.
-        UserDefaults.standard.removeObject(forKey: "ClipMemoryTagsTest_SaveTags")
+        UserDefaults.standard.removeObject(forKey: key)
     }
 
     /// loadTags reads from UserDefaults on init and populates `tags` dictionary.
@@ -208,61 +222,257 @@ final class ClipboardStoreTagTests: XCTestCase {
         // Cleanup
         UserDefaults.standard.removeObject(forKey: key)
     }
+
+    // MARK: - Item tag attachment persistence
+
+    /// Attaching a tag must schedule an item save so the attachment survives
+    /// a simulated restart (new store instance over the same backend).
+    func testAddTagToItemPersistsAcrossRestart() {
+        let backend = MemoryStorageBackend()
+        let store = ClipboardStore(backend: backend)
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.items.append(item)
+        let tag = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        store.addTag(to: item.id, tagId: tag.id)
+        store.flushPendingSaves()
+
+        let restarted = ClipboardStore(backend: backend)
+        XCTAssertTrue(restarted.items.first?.tagIds.contains(tag.id) == true,
+                      "Tag attachment must survive restart")
+    }
+
+    /// Detaching a tag must also persist item state across restart.
+    func testRemoveTagFromItemPersistsAcrossRestart() {
+        let backend = MemoryStorageBackend()
+        let store = ClipboardStore(backend: backend)
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.items.append(item)
+        let tag = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        store.addTag(to: item.id, tagId: tag.id)
+        store.flushPendingSaves()
+
+        store.removeTag(from: item.id, tagId: tag.id)
+        store.flushPendingSaves()
+
+        let restarted = ClipboardStore(backend: backend)
+        XCTAssertFalse(restarted.items.first?.tagIds.contains(tag.id) == true,
+                       "Tag detachment must survive restart")
+    }
+
+    /// Deleting a tag strips it from items and persists both tag and item state.
+    func testDeleteTagPersistsAcrossRestart() {
+        let backend = MemoryStorageBackend()
+        let store = ClipboardStore(backend: backend)
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.items.append(item)
+        let tag = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        store.addTag(to: item.id, tagId: tag.id)
+        store.flushPendingSaves()
+
+        store.deleteTag(id: tag.id)
+        store.flushPendingSaves()
+
+        let restarted = ClipboardStore(backend: backend)
+        XCTAssertNil(restarted.tags[tag.id], "Tag definition should be gone")
+        XCTAssertTrue(restarted.items.first?.tagIds.isEmpty == true,
+                      "Dangling tag id should be removed from item")
+    }
+
+    // MARK: - Dedup preserves tagIds
+
+    /// When addItem hits the dedup path, the existing item's tagIds must be
+    /// preserved rather than reset to empty.
+    func testDedupPreservesTagIds() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let tag = Tag(name: "工作", colorHex: "#4ECDC4")
+        store.addTag(tag)
+        store.addItem(ClipboardItem(content: "hello", type: .text))
+        let firstItem = store.items[0]
+        store.addTag(to: firstItem.id, tagId: tag.id)
+        store.flushPendingSaves()
+
+        store.addItem(ClipboardItem(content: "hello", type: .text))
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items[0].tagIds, [tag.id],
+                       "Dedup rebuild must preserve tagIds")
+    }
 }
 
 // MARK: - TagSuggestion heuristic engine
 
 final class TagSuggestionTests: XCTestCase {
 
-    /// Empty content has no signals — empty suggestions.
-    func testEmptyContentReturnsEmpty() {
-        XCTAssertTrue(TagSuggestion.suggest(for: .text, content: "").isEmpty)
+    // MARK: - detect(...) — new facet-based API
+
+    /// Empty content: kind == .plain, language == .other, no names.
+    func testDetectEmptyContentReturnsPlainOtherAndNoNames() {
+        let f = TagSuggestion.detect(for: .text, content: "")
+        XCTAssertEqual(f.kind, .plain)
+        XCTAssertEqual(f.language, .other)
+        XCTAssertTrue(f.names.isEmpty)
+        XCTAssertEqual(f.rawText, "")
     }
 
-    /// Pure whitespace has no signals either.
-    func testWhitespaceOnlyContentReturnsEmpty() {
-        XCTAssertTrue(TagSuggestion.suggest(for: .text, content: "   \n\t  ").isEmpty)
+    /// Pure whitespace: same — no signals.
+    func testDetectWhitespaceOnlyReturnsPlainOther() {
+        let f = TagSuggestion.detect(for: .text, content: "   \n\t  ")
+        XCTAssertEqual(f.kind, .plain)
+        XCTAssertEqual(f.language, .other)
+        XCTAssertTrue(f.names.isEmpty)
     }
 
-    /// A snippet with code markers ({, ;, =>, func, def) suggests "代码".
-    func testCodeSnippetSuggestsCode() {
-        let suggestions = TagSuggestion.suggest(for: .text, content: "func greet() { print(\"hi\") }")
-        XCTAssertTrue(suggestions.contains("代码"), "Should detect code markers: \(suggestions)")
+    /// Code snippet → kind == .code.
+    func testDetectCodeSnippetIsKindCode() {
+        let f = TagSuggestion.detect(for: .text, content: "func greet() { print(\"hi\") }")
+        XCTAssertEqual(f.kind, .code)
     }
 
-    /// An email address triggers "邮箱".
-    func testEmailContentSuggestsMail() {
-        let suggestions = TagSuggestion.suggest(for: .text, content: "alice@example.com")
-        XCTAssertTrue(suggestions.contains("邮箱"), "Should detect email: \(suggestions)")
+    /// Email → kind == .email.
+    func testDetectEmailIsKindEmail() {
+        let f = TagSuggestion.detect(for: .text, content: "alice@example.com")
+        XCTAssertEqual(f.kind, .email)
     }
 
-    /// Email embedded in surrounding text also triggers.
-    func testEmailWithPrefix() {
-        let s = TagSuggestion.suggest(for: .text, content: "at alice@example.com")
-        XCTAssertTrue(s.contains("邮箱"), "prefix email failed: \(s)")
+    /// Email embedded in surrounding text still triggers (priority chain).
+    func testDetectEmailWithPrefixIsKindEmail() {
+        let f = TagSuggestion.detect(for: .text, content: "at alice@example.com")
+        XCTAssertEqual(f.kind, .email)
     }
 
-    /// A long alphanumeric token (API key shape) suggests "账号".
-    func testLongAlphanumericTokenSuggestsAccount() {
-        let suggestions = TagSuggestion.suggest(for: .text, content: "token=abcdef1234567890ABCDEF")
-        XCTAssertTrue(suggestions.contains("账号"), "Should detect account-like token: \(suggestions)")
+    /// 16+ char alphanumeric token (API-key shape) without a sensitive keyword
+    /// → kind == .credential. The content deliberately omits the word "token"
+    /// which would otherwise trigger the sensitive path first.
+    func testDetectLongAlphanumericTokenIsKindCredential() {
+        let f = TagSuggestion.detect(for: .text, content: "ABCDEFGHIJKLMNOPabcdef1234")
+        XCTAssertEqual(f.kind, .credential)
     }
 
-    /// Content with sensitive keywords (密码/密钥/token/password) suggests "敏感".
-    func testSensitiveKeywordsSuggestSensitive() {
-        let suggestions = TagSuggestion.suggest(for: .text, content: "我的密码是 123456")
-        XCTAssertTrue(suggestions.contains("敏感"), "Should detect sensitive keywords: \(suggestions)")
+    /// Sensitive keyword wins over credential (priority: sensitive > credential).
+    func testDetectSensitiveKeywordWinsOverCredential() {
+        let f = TagSuggestion.detect(for: .text, content: "我的密码是 123456")
+        XCTAssertEqual(f.kind, .sensitive)
     }
 
-    /// Mixed CJK content suggests "中文".
-    func testCJKContentSuggestsChinese() {
-        let suggestions = TagSuggestion.suggest(for: .text, content: "你好世界")
-        XCTAssertTrue(suggestions.contains("中文"), "Should detect CJK: \(suggestions)")
+    /// CJK content: language detection via NLTagger or fallback to CJK heuristic.
+    /// We don't assert the exact case (NLTagger CJK coverage has historical
+    /// gaps on macOS 13) — only that it lands in a CJK-adjacent bucket.
+    func testDetectCJKLanguageIsChineseVariant() {
+        let f = TagSuggestion.detect(for: .text, content: "你好世界")
+        XCTAssertTrue([.simplifiedChinese, .traditionalChinese].contains(f.language),
+                      "CJK content should map to a Chinese language facet, got: \(f.language)")
     }
 
-    /// Latin word content suggests "English".
-    func testLatinContentSuggestsEnglish() {
-        let suggestions = TagSuggestion.suggest(for: .text, content: "The quick brown fox")
-        XCTAssertTrue(suggestions.contains("English"), "Should detect Latin: \(suggestions)")
+    /// Latin content → language == .english (NLTagger is reliable here).
+    func testDetectLatinLanguageIsEnglish() {
+        let f = TagSuggestion.detect(for: .text, content: "The quick brown fox")
+        XCTAssertEqual(f.language, .english)
+    }
+
+    // MARK: - suggest(...) shim — backwards compat + language-tag removal
+
+    /// Shim still maps kind → tag name. Re-verifies the legacy expectations
+    /// that *survived* the refactor (kind → tag mappings).
+    func testSuggestShimReturnsKindTagForCode() {
+        let s = TagSuggestion.suggest(for: .text, content: "func greet() { print(\"hi\") }")
+        XCTAssertTrue(s.contains("代码"))
+    }
+
+    func testSuggestShimReturnsKindTagForEmail() {
+        let s = TagSuggestion.suggest(for: .text, content: "alice@example.com")
+        XCTAssertTrue(s.contains("邮箱"))
+    }
+
+    func testSuggestShimReturnsKindTagForCredential() {
+        let s = TagSuggestion.suggest(for: .text, content: "ABCDEFGHIJKLMNOPabcdef1234")
+        XCTAssertTrue(s.contains("账号"))
+    }
+
+    func testSuggestShimReturnsKindTagForSensitive() {
+        let s = TagSuggestion.suggest(for: .text, content: "我的密码是 123456")
+        XCTAssertTrue(s.contains("敏感"))
+    }
+
+    /// Plain content → empty suggestions (no kind-derived tag to attach).
+    func testSuggestShimPlainContentReturnsEmpty() {
+        let s = TagSuggestion.suggest(for: .text, content: "hello world")
+        XCTAssertTrue(s.isEmpty)
+    }
+
+    /// Lock the language-tag removal: the shim must NEVER emit "中文" / "English"
+    /// / "人名" — those were language labels miscast as topical tags, removed
+    /// in the refactor. If any of these reappear, the refactor regressed.
+    func testSuggestShimDoesNotEmitLanguageOrPersonTags() {
+        let cases = [
+            "你好世界",          // CJK
+            "The quick brown fox", // Latin
+            "明天 3pm 张总",      // mixed + person name
+            "func greet() {}",    // code
+            "alice@example.com",  // email
+            "token=abcdef1234567890ABCDEF", // credential
+            "我的密码是 123456"   // sensitive
+        ]
+        for content in cases {
+            let s = TagSuggestion.suggest(for: .text, content: content)
+            XCTAssertFalse(s.contains("中文"), "中文 leaked for: \(content) → \(s)")
+            XCTAssertFalse(s.contains("English"), "English leaked for: \(content) → \(s)")
+            XCTAssertFalse(s.contains("人名"), "人名 leaked for: \(content) → \(s)")
+        }
+    }
+}
+
+// MARK: - ClipboardStore.tags(matchingPrefix:) autocomplete API
+
+final class ClipboardStoreAutocompleteTests: XCTestCase {
+
+    /// Empty prefix → empty result. Autocomplete is opt-in; empty input
+    /// shouldn't dump the entire tag dictionary into the UI.
+    func testTagsMatchingPrefixEmptyReturnsEmpty() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        store.addTag(Tag(name: "工作", colorHex: "#4ECDC4"))
+        XCTAssertTrue(store.tags(matchingPrefix: "").isEmpty)
+    }
+
+    /// Case-insensitive: "INS" / "ins" / "Ins" all match "Insurance".
+    func testTagsMatchingPrefixIsCaseInsensitive() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        store.addTag(Tag(name: "Insurance", colorHex: "#FF6B6B"))
+        XCTAssertEqual(store.tags(matchingPrefix: "INS").count, 1, "uppercase prefix")
+        XCTAssertEqual(store.tags(matchingPrefix: "ins").count, 1, "lowercase prefix")
+        XCTAssertEqual(store.tags(matchingPrefix: "Ins").count, 1, "mixed-case prefix")
+    }
+
+    /// Limit caps result count; ordering is createdAt desc (most recent first).
+    func testTagsMatchingPrefixRespectsLimitAndOrder() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let older = Tag(id: UUID(), name: "保险-老", colorHex: "#4ECDC4",
+                        createdAt: Date(timeIntervalSince1970: 1_000))
+        let newer = Tag(id: UUID(), name: "保险-新", colorHex: "#FF6B6B",
+                        createdAt: Date(timeIntervalSince1970: 2_000))
+        let other = Tag(id: UUID(), name: "开发", colorHex: "#45B7D1",
+                        createdAt: Date(timeIntervalSince1970: 3_000))
+        store.addTag(older)
+        store.addTag(newer)
+        store.addTag(other)
+        let hits = store.tags(matchingPrefix: "保险", limit: 5)
+        XCTAssertEqual(hits.count, 2)
+        XCTAssertEqual(hits.first?.name, "保险-新", "Most recent first")
+    }
+
+    /// Non-matching prefix → empty (not nil, not crash).
+    func testTagsMatchingPrefixNoMatchReturnsEmpty() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        store.addTag(Tag(name: "工作", colorHex: "#4ECDC4"))
+        XCTAssertTrue(store.tags(matchingPrefix: "xyz").isEmpty)
+    }
+
+    /// Limit 0 returns empty (defensive — caller might pass 0 by mistake).
+    func testTagsMatchingPrefixLimitZeroReturnsEmpty() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        store.addTag(Tag(name: "工作", colorHex: "#4ECDC4"))
+        XCTAssertTrue(store.tags(matchingPrefix: "工", limit: 0).isEmpty)
     }
 }

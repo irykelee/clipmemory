@@ -213,3 +213,21 @@
 "sidebar.newTag" = "新建標籤";
 "newTag.title" = "新建標籤";
 "newTag.create" = "建立";
+
+/* Tag Suggestions */
+"tagSuggestion.kind.code" = "程式碼";
+"tagSuggestion.kind.email" = "郵件";
+"tagSuggestion.kind.credential" = "帳號";
+"tagSuggestion.kind.sensitive" = "敏感";
+
+/* Image fallback */
+"image.decryptionFailed" = "無法解密圖片";
+
+/* Trim Alert */
+"alert.trim.title" = "裁剪紀錄";
+"alert.trim.message" = "目前有 %d 筆記錄，但上限是 %d 筆。要裁剪多餘記錄嗎？";
+"alert.trim.confirm" = "裁剪";
+"alert.trim.cancel" = "取消，至設定調整";
+
+/* Launch at login error */
+"settings.launch.at.login.error.body" = "無法修改登入時啟動設定，請檢查系統權限。";

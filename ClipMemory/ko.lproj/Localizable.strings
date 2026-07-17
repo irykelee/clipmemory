@@ -214,3 +214,18 @@
 "sidebar.newTag" = "새 태그";
 "newTag.title" = "새 태그";
 "newTag.create" = "만들기";
+
+/* Tag Suggestions */
+"tagSuggestion.kind.code" = "코드";
+"tagSuggestion.kind.email" = "이메일";
+"tagSuggestion.kind.credential" = "계정";
+"tagSuggestion.kind.sensitive" = "민감";
+
+/* Image fallback */
+"image.decryptionFailed" = "이미지를 해독할 수 없습니다";
+
+/* Trim Alert */
+"alert.trim.title" = "기록 정리";
+"alert.trim.message" = "현재 %d개 항목이지만 제한은 %d개입니다. 초과 항목을 정리할까요?";
+"alert.trim.confirm" = "정리";
+"alert.trim.cancel" = "취소, 설정에서 조정";

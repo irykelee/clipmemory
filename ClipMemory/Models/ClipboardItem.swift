@@ -40,6 +40,24 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.tagIds = tagIds
     }
 
+    // MARK: - Codable compatibility
+    // Synthesized Codable ignores property defaults, so old persisted data
+    // missing newer fields would throw keyNotFound and wipe the history.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.content = try container.decode(String.self, forKey: .content)
+        self.type = try container.decode(ClipboardItemType.self, forKey: .type)
+        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.isPinned = try container.decode(Bool.self, forKey: .isPinned)
+        self.isSensitive = try container.decode(Bool.self, forKey: .isSensitive)
+        self.expiresAt = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
+        self.isEncrypted = try container.decodeIfPresent(Bool.self, forKey: .isEncrypted) ?? false
+        self.contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
+        self.decryptionFailed = try container.decodeIfPresent(Bool.self, forKey: .decryptionFailed) ?? false
+        self.tagIds = try container.decodeIfPresent(Set<UUID>.self, forKey: .tagIds) ?? []
+    }
+
     var isExpired: Bool {
         guard let expiresAt = expiresAt else { return false }
         return Date() > expiresAt
@@ -61,7 +79,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
             : content
         guard let data = Data(base64Encoded: base64RTF),
               let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {
-            return "Rich Text"
+            return L10n.itemRichText
         }
         return attr.string
     }

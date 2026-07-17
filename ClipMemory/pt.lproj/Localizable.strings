@@ -214,3 +214,18 @@
 "sidebar.newTag" = "Nova etiqueta";
 "newTag.title" = "Nova etiqueta";
 "newTag.create" = "Criar";
+
+/* Tag Suggestions */
+"tagSuggestion.kind.code" = "Código";
+"tagSuggestion.kind.email" = "Email";
+"tagSuggestion.kind.credential" = "Conta";
+"tagSuggestion.kind.sensitive" = "Sensível";
+
+/* Image fallback */
+"image.decryptionFailed" = "Não foi possível desencriptar a imagem";
+
+/* Trim Alert */
+"alert.trim.title" = "Aparar histórico";
+"alert.trim.message" = "Tem %d itens mas o limite é %d. Aparar itens extras?";
+"alert.trim.confirm" = "Aparar";
+"alert.trim.cancel" = "Cancelar, ajustar nas definições";

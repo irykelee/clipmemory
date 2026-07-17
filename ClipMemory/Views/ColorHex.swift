@@ -7,9 +7,13 @@ extension Color {
     init(hex: String) {
         let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        guard body.count == 6 else {
+            self = .black
+            return
+        }
         let scanner = Scanner(string: body)
         var hexNumber: UInt64 = 0
-        guard scanner.scanHexInt64(&hexNumber) else {
+        guard scanner.scanHexInt64(&hexNumber), scanner.isAtEnd else {
             self = .black
             return
         }
