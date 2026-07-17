@@ -25,7 +25,7 @@ struct NewTagSheet: View {
     }
     private var nameConflict: Tag? {
         guard !trimmedName.isEmpty else { return nil }
-        return store.tags.values.first { $0.name == trimmedName }
+        return store.tags.values.first { $0.name.lowercased() == trimmedName.lowercased() }
     }
 
     var body: some View {
@@ -59,6 +59,11 @@ struct NewTagSheet: View {
                             .buttonStyle(.plain)
                         }
                     }
+                    ColorPicker(L10n.newTagCustomColor, selection: Binding(
+                        get: { Color(hex: color) },
+                        set: { color = $0.toHex() }
+                    ))
+                    .font(.system(size: sz(12)))
                 }
 
                 HStack {

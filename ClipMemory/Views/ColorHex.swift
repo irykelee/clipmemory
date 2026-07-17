@@ -22,4 +22,16 @@ extension Color {
         let b = Double(hexNumber & 0x0000FF) / 255.0
         self.init(red: r, green: g, blue: b)
     }
+
+    /// Convert to "#RRGGBB" for storage in Tag.colorHex. Alpha is ignored —
+    /// tags are rendered as small opaque chips.
+    func toHex() -> String {
+        guard let components = NSColor(self).usingColorSpace(.deviceRGB) else {
+            return "#000000"
+        }
+        let r = Int(round(components.redComponent * 255))
+        let g = Int(round(components.greenComponent * 255))
+        let b = Int(round(components.blueComponent * 255))
+        return String(format: "#%02X%02X%02X", r, g, b)
+    }
 }

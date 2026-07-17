@@ -21,6 +21,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        ClipboardStore.shared.flushPendingSaves()
+    }
+
     @objc func disableFindMenuShortcut() {
         let findSel = Selector(("performFindPanelAction:"))
         for menu in NSApp.mainMenu?.items ?? [] {
@@ -51,6 +55,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showWelcomeView(onComplete: (() -> Void)? = nil) {
+        // Close any existing welcome window before opening a new one so repeated
+        // "view welcome" actions don't stack windows and leak the old reference.
+        welcomeWindow?.close()
+        welcomeWindow = nil
+
         let welcome = WelcomeView(hotKeyManager: hotKeyManager) { [weak self] in
             self?.welcomeWindow?.close()
             onComplete?()

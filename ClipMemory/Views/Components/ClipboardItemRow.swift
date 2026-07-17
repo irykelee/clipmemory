@@ -82,7 +82,9 @@ struct ClipboardItemRow: View, Equatable {
         lhs.isKeyboardSelected == rhs.isKeyboardSelected &&
         lhs.searchText == rhs.searchText &&
         lhs.item.isPinned == rhs.item.isPinned &&
-        lhs.item.tagIds == rhs.item.tagIds
+        lhs.item.tagIds == rhs.item.tagIds &&
+        lhs.item.createdAt == rhs.item.createdAt &&
+        lhs.item.decryptionFailed == rhs.item.decryptionFailed
     }
     @State private var _cachedMaskedHighlighted: [String: AttributedString] = [:]
     @AppStorage("fontScale") private var fontScale: Double = 1.0
@@ -232,11 +234,18 @@ struct ClipboardItemRow: View, Equatable {
                         .task(id: item.content) {
                             imageLoadFailed = false
                             imageLoadStatus = nil
-                            if let img = ImageStorage.shared.loadImageObject(filename: item.content) {
+                            let filename = item.content
+                            let result: (NSImage?, ImageStorage.ImageLoadStatus?) = await Task.detached(priority: .userInitiated) {
+                                if let img = ImageStorage.shared.loadImageObject(filename: filename) {
+                                    return (img, nil)
+                                }
+                                return (nil, ImageStorage.shared.imageStatus(for: filename))
+                            }.value
+                            if let img = result.0 {
                                 loadedImage = img
                             } else {
                                 imageLoadFailed = true
-                                imageLoadStatus = ImageStorage.shared.imageStatus(for: item.content)
+                                imageLoadStatus = result.1
                             }
                         }
                     } else if item.type == .richText {
@@ -247,7 +256,7 @@ struct ClipboardItemRow: View, Equatable {
                         } else {
                             Group {
                                 if let rt = loadedRichText {
-                                    Text(showFullContent ? rt : rt)
+                                    Text(rt)
                                         .lineLimit(showFullContent ? nil : 3)
                                         .overlay(PressableImage { pressed in showFullContent = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
                                         .transition(.opacity)
@@ -273,7 +282,6 @@ struct ClipboardItemRow: View, Equatable {
                     Spacer()
                 }
                 .contentShape(Rectangle())
-                .help(L10n.tooltipPin)
                 HStack(spacing: 8) { Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) }; if !item.tagIds.isEmpty { TagChipStack(tagIds: item.tagIds, store: ClipboardStore.shared) } }
             }
             .contentShape(Rectangle())
@@ -306,7 +314,7 @@ struct ClipboardItemRow: View, Equatable {
         .onHover { isHovered = $0 }
         .contextMenu { Button(action: { onCopyWithFeedback?() }, label: { Label(L10n.actionCopy, systemImage: "doc.on.doc") }); if item.isSensitive { Button(action: onToggleReveal, label: { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") }) }; Button(action: onPin, label: { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }); Divider(); Button(action: onEditTags, label: { Label(L10n.tooltipEditTags, systemImage: "tag") }); Divider(); Button(role: .destructive, action: onDelete, label: { Label(L10n.actionDelete, systemImage: "trash") }) }
         .task(id: item.id) {
-            guard item.type != .richText else { return }
+            guard item.type != .richText, item.type != .image else { return }
             if loadedContent != nil { return }
             let result = await Task.detached(priority: .utility) {
                 ClipboardStore.shared.getDecryptedContent(item) ?? ""

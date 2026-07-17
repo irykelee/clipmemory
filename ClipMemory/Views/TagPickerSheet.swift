@@ -118,13 +118,11 @@ struct TagPickerSheet: View {
             FlowLayout(spacing: 6) {
                 ForEach(suggestionsToCreate, id: \.self) { name in
                     Button {
-                        let tag = TagPickerLogic.makeTag(from: .create(name), colorHex: newColor)
-                        store.addTag(tag)
-                        store.addTag(to: item.id, tagId: tag.id)
+                        TagPickerLogic.attachOrCreateTag(name: name, colorHex: newColor, to: item.id, store: store)
                         suggestionsToCreate.removeAll { $0 == name }
                     } label: {
                         HStack(spacing: 3) {
-                            Image(systemName: "plus").font(.system(size: 9))
+                            Image(systemName: "plus").font(.system(size: sz(9)))
                             Text(name).font(.system(size: sz(11)))
                         }
                         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -147,13 +145,11 @@ struct TagPickerSheet: View {
             FlowLayout(spacing: 6) {
                 ForEach(suggestedNames, id: \.self) { name in
                     Button {
-                        let tag = TagPickerLogic.makeTag(from: .create(name), colorHex: newColor)
-                        store.addTag(tag)
-                        store.addTag(to: item.id, tagId: tag.id)
+                        TagPickerLogic.attachOrCreateTag(name: name, colorHex: newColor, to: item.id, store: store)
                         suggestedNames.removeAll { $0 == name }
                     } label: {
                         HStack(spacing: 3) {
-                            Image(systemName: "person").font(.system(size: 9))
+                            Image(systemName: "person").font(.system(size: sz(9)))
                             Text(name).font(.system(size: sz(11)))
                         }
                         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -190,7 +186,7 @@ struct TagPickerSheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: isAttached ? "checkmark.circle.fill" : "circle")
                         .foregroundColor(isAttached ? .accentColor : .secondary)
-                        .font(.system(size: 14))
+                        .font(.system(size: sz(14)))
                     TagChip(tag: tag)
                     Spacer()
                 }
@@ -234,7 +230,7 @@ struct TagPickerSheet: View {
     }
 
     private var nameConflict: Tag? {
-        store.tags.values.first { $0.name == trimmedName }
+        store.tags.values.first { $0.name.lowercased() == trimmedName.lowercased() }
     }
     /// Vocabulary autocomplete chips: existing tags whose name starts with the
     /// typed prefix, excluding the exact match (handled by `nameConflict`).
@@ -291,6 +287,11 @@ struct TagPickerSheet: View {
                         .buttonStyle(.plain)
                     }
                 }
+                ColorPicker(L10n.newTagCustomColor, selection: Binding(
+                    get: { Color(hex: newColor) },
+                    set: { newColor = $0.toHex() }
+                ))
+                .font(.system(size: sz(12)))
             }
 
             HStack {

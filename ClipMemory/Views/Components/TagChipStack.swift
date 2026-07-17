@@ -15,12 +15,12 @@ struct TagChipStack: View {
     /// Changing this number changes visible density — covered by a unit test.
     static let maxChipsVisible = 4
 
-    /// Pure helper exposed for testing. Drops orphans, preserves tag order
-    /// from `ClipboardStore.tags.values` (which itself is unordered on
-    /// `[UUID: Tag]`, so callers see insertion-by-key — acceptable for chips).
+    /// Pure helper exposed for testing. Drops orphans and sorts by tag name
+    /// so the visible chips are deterministic across launches and rows.
     static func visibleTags(from tagIds: Set<UUID>, store: ClipboardStore) -> [Tag] {
         tagIds
             .compactMap { store.tags[$0] }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             .prefix(maxChipsVisible)
             .map { $0 }
     }

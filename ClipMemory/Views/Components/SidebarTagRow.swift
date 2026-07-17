@@ -12,13 +12,14 @@ struct SidebarTagRow: View {
     let count: Int
     let isSelected: Bool
     let onTap: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 6) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundColor(isSelected ? .accentColor : .secondary)
-                    .font(.system(size: 12))
+                    .font(.system(size: sz(12)))
                 Circle()
                     .fill(Color(hex: tag.colorHex))
                     .frame(width: 8, height: 8)
@@ -33,6 +34,11 @@ struct SidebarTagRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive, action: onDelete) {
+                Label(L10n.sidebarDeleteTag, systemImage: "trash")
+            }
+        }
         .accessibilityLabel(Text("\(tag.name), \(count)"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
