@@ -171,6 +171,7 @@ Before removing the app, click the 🗑 button in the top toolbar to clear histo
 
 ```bash
 brew tap irykelee/clipmemory
+brew trust irykelee/clipmemory
 brew install --cask clipmemory
 ```
 

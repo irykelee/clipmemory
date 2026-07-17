@@ -164,6 +164,7 @@
 
 ```bash
 brew tap irykelee/clipmemory
+brew trust irykelee/clipmemory
 brew install --cask clipmemory
 ```
 
