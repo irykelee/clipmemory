@@ -62,7 +62,7 @@ jobs:
             desc "Clipboard history manager for macOS with encryption and Quick Bar"
             homepage "https://github.com/irykelee/clipmemory"
 
-            depends_on macos: ">= :ventura"
+            depends_on macos: :ventura
 
             app "ClipMemory.app"
 
