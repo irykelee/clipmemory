@@ -214,20 +214,10 @@ struct ClipboardItemRow: View, Equatable {
                                                 .font(.system(size: fontScale * 11))
                                                 .foregroundColor(.secondary)
                                         }
-                                        // One-click delete only for genuinely missing files.
-                                        if status == .fileMissing {
-                                            Button(action: onDelete) {
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .font(.system(size: fontScale * 18))
-                                                    .foregroundColor(.secondary)
-                                                    .background(Circle().fill(.regularMaterial))
-                                                    .padding(6) // expand hit target ~18pt → ~30pt (macOS HIG min 24pt)
-                                            }
-                                            .buttonStyle(.plain)
-                                            .help(L10n.tooltipDelete)
-                                            .accessibilityLabel(L10n.tooltipDelete)
-                                            .offset(x: 50, y: -30)
-                                        }
+                                        // (delete button removed — the per-row trash icon at the end of
+                                        //  each row already provides this action; the contextual x in the
+                                        //  badge had unreliable hit testing due to its position outside the
+                                        //  120×80 badge frame)
                                     } else {
                                         VStack(spacing: 4) {
                                             Image(systemName: "photo").font(.system(size: fontScale * 24)).foregroundColor(.secondary)
