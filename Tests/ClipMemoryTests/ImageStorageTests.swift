@@ -440,6 +440,43 @@ final class ImageStorageTests: XCTestCase {
         XCTAssertNil(loaded, "Tampered legacy HMAC must cause loadImage to fail")
     }
 
+    // MARK: - Raw PNG fallback (pre-encryption history)
+
+    /// loadImage must accept raw unencrypted PNG bytes (e.g., from a user's
+    /// earlier version that didn't encrypt images) and return the plaintext,
+    /// then opportunistically re-encrypt to v2 so subsequent loads take the
+    /// fast v2 path. Pre-fix this scenario returned nil because the file
+    /// didn't match v2 prefix or legacy V1+AES-CBC+HMAC structure.
+    func testLoadImageHandlesRawUnencryptedPNG() throws {
+        let uuid = newTestUUID()
+        let filename = "\(uuid.uuidString).png"
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+
+        let pngBytes = makePNGData()
+        XCTAssertTrue(pngBytes.starts(with: Data([0x89, 0x50, 0x4E, 0x47])),
+                     "Test fixture: PNG bytes must start with PNG magic")
+        try pngBytes.write(to: fileURL)
+
+        // Pre-condition: file is raw PNG, not v2
+        let preBytes = try Data(contentsOf: fileURL)
+        XCTAssertFalse(preBytes.starts(with: Data("v2".utf8)),
+                     "Pre-condition: raw PNG must not start with v2 prefix")
+
+        let loaded = storage.loadImage(filename: filename)
+        XCTAssertEqual(loaded, pngBytes,
+            "Raw PNG must load via fallback path")
+
+        // Post-condition: file is now in v2 format (opportunistic re-encryption)
+        let migratedBytes = try Data(contentsOf: fileURL)
+        XCTAssertTrue(migratedBytes.starts(with: Data("v2".utf8)),
+            "Raw PNG must be re-encrypted to v2 after load (opportunistic migration)")
+
+        // Subsequent load uses the v2 path (no re-decrypt needed)
+        let loadedAgain = storage.loadImage(filename: filename)
+        XCTAssertEqual(loadedAgain, pngBytes,
+            "Re-loading the now-migrated v2 file must still return original bytes")
+    }
+
     // MARK: - RS-6 Helpers (duplicate of CryptoServiceTests synthesis — kept
     // local to avoid cross-file test helpers + project.pbxproj churn)
 

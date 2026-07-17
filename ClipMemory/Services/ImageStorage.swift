@@ -182,6 +182,18 @@ class ImageStorage {
             return legacyData
         }
 
+        // Last resort: raw/unencrypted PNG on disk (pre-encryption history).
+        // Detected by PNG magic bytes 89 50 4E 47. Re-encrypt opportunistically
+        // so subsequent loads take the v2 fast path.
+        if encryptedData.count >= 4 &&
+            encryptedData[0] == 0x89 && encryptedData[1] == 0x50 &&
+            encryptedData[2] == 0x4E && encryptedData[3] == 0x47 {
+            if let newEncrypted = ServiceContainer.crypto.encryptData(encryptedData) {
+                try? newEncrypted.write(to: fileURL)
+            }
+            return encryptedData
+        }
+
         return nil
     }
 
