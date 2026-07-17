@@ -27,15 +27,6 @@ struct NewTagSheet: View {
         guard !trimmedName.isEmpty else { return nil }
         return store.tags.values.first { $0.name == trimmedName }
     }
-    /// Autocomplete candidates: existing tags whose name starts with the typed
-    /// prefix, but excluding the exact match (that case is handled by
-    /// `nameConflict` and shown separately as "tag already exists"). Returns
-    /// nil (hidden) when the typed name is empty or already exactly matches.
-    private var autocompleteCandidates: [Tag]? {
-        guard !trimmedName.isEmpty, nameConflict == nil else { return nil }
-        let cands = TagPickerLogic.autocompleteCandidates(prefix: trimmedName, limit: 5, store: store)
-        return cands.isEmpty ? nil : cands
-    }
 
     var body: some View {
         VStack(spacing: 0) {

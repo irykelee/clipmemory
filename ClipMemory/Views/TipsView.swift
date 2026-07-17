@@ -1,8 +1,17 @@
 import SwiftUI
+import AppKit
 
 struct TipsView: View {
     let onClose: () -> Void
     @ObservedObject private var languageManager = LanguageManager.shared
+
+    /// Reads the live hotkey from AppDelegate's HotKeyManager so the tip
+    /// stays in sync if the user rebinds it in settings. Falls back to the
+    /// static default if AppDelegate isn't ready yet (e.g. on first launch).
+    private var liveHotkeyDisplay: String {
+        (NSApp.delegate as? AppDelegate)?.hotKeyManager.config.displayString
+            ?? HotKeyConfig.defaultConfig.displayString
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,7 +28,7 @@ struct TipsView: View {
                     Group {
                         // Quick Access
                         section(L10n.welcomeStep2Title) {
-                            row(L10n.welcomeStep2Desc("⌘⌃V"))
+                            row(L10n.welcomeStep2Desc(liveHotkeyDisplay))
                             row("🖱 \(L10n.welcomeStep1Desc)")
                         }
                         // Item Operations

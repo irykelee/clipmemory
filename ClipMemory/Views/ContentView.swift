@@ -187,12 +187,6 @@ struct ContentView: View {
         default: NSApp.appearance = nil
         }
     }
-    private var bodyBackground: AnyShapeStyle {
-        AnyShapeStyle(Material.thick)
-    }
-    private var sidebarBackground: AnyShapeStyle {
-        AnyShapeStyle(Material.thin)
-    }
 
     // MARK: - Optimized Item Filtering
     private func filterItems(_ items: [ClipboardItem]) -> [ClipboardItem] {
@@ -297,21 +291,6 @@ struct ContentView: View {
             switch self { case .all: return L10n.dateFilterAll; case .today: return L10n.groupToday; case .yesterday: return L10n.groupYesterday; case .older: return L10n.groupOlder }
         }
     }
-    private var groupedItems: [(TimeGroup, [ClipboardItem])] { cachedGroupedItems }
-
-    // 扁平化的显示项目
-    private var flattenedDisplayedItems: [(item: ClipboardItem, globalIndex: Int)] {
-        var result: [(item: ClipboardItem, globalIndex: Int)] = []
-        var idx = 0
-        for section in groupedItems {
-            for item in section.1 {
-                result.append((item, idx)); idx += 1
-            }
-        }
-        return result
-    }
-
-    // 带全局索引的分组项目
     private var groupedItemsWithIndex: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] {
         cachedGroupedItemsWithIndex
     }
