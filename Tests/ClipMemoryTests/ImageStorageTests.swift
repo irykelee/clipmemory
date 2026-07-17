@@ -389,6 +389,27 @@ final class ImageStorageTests: XCTestCase {
                     "Orphan image (not in keptItems) should be deleted")
     }
 
+    /// Regression: the startup guard must be set on the first call regardless
+    /// of whether the keep set is empty. Without this, a transient empty-store
+    /// launch (e.g. right after the user clears history) leaves the guard
+    /// permanently unarmed; a later launch with a partially-loaded store could
+    /// then delete images that are still in store.items but whose files are
+    /// briefly missing from the keep set's view.
+    func testCleanupOrphanedImagesFirstCallSetsStartupFlagEvenWhenKeepSetIsEmpty() {
+        // Clear the flag so the next call is "first".
+        UserDefaults.standard.removeObject(forKey: startupCleanupKey)
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: startupCleanupKey),
+                       "Test fixture: startup flag must be cleared before call")
+
+        // First call with NO images in store — must still mark the flag.
+        storage.cleanupOrphanedImages(keptItems: [])
+
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: startupCleanupKey),
+                     "Startup flag must be set on the very first call, " +
+                     "even with an empty keep set, so the guard is armed " +
+                     "for subsequent launches.")
+    }
+
     // MARK: - RS-6: legacyDecryptImage round-trip via loadImage
     //
     // Synthesizes v1-format encrypted blobs (AES-CBC + HMAC-SHA256) and writes

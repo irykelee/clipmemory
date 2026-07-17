@@ -317,15 +317,19 @@ class ImageStorage {
     }
 
     func cleanupOrphanedImages(keptItems: [ClipboardItem]) {
-        let keptFilenames = Set(keptItems.filter { $0.type == .image }.map { $0.content })
-        guard !keptFilenames.isEmpty else { return }
         // Skip cleanup on first call (startup) to avoid deleting freshly migrated images
-        // that haven't been added to store.items yet
+        // that haven't been added to store.items yet. The flag is set on EVERY first
+        // call — even when there are no images in store — so a transient empty-store
+        // launch (e.g., right after the user clears their history) doesn't leave the
+        // guard permanently unarmed, which would risk deleting images on a later launch
+        // when items have been re-added but cleanupOrphanedImages runs with a stale
+        // view of the world.
         let startupCleanupKey = "ImageStorageStartupCleanupRan"
         if !UserDefaults.standard.bool(forKey: startupCleanupKey) {
             UserDefaults.standard.set(true, forKey: startupCleanupKey)
             return
         }
+        let keptFilenames = Set(keptItems.filter { $0.type == .image }.map { $0.content })
         deleteAllExcept(filenames: keptFilenames)
     }
 }
