@@ -141,4 +141,92 @@ final class SidebarTagFilterTests: XCTestCase {
                                             selectedTagIds: [])
         XCTAssertEqual(result.count, 2)
     }
+
+    // MARK: - visibleItems (collapse-aware filter)
+
+    /// No groups collapsed → all items pass through unchanged.
+    /// Regression: this is the "nothing collapsed" baseline; if it ever
+    /// drops items, every other test in this section is meaningless.
+    func testVisibleItemsEmptyCollapsedSetReturnsAll() {
+        let now = Date()
+        let today = Calendar.current.startOfDay(for: now)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+        let items = [
+            makeItemAt(today),
+            makeItemAt(yesterday),
+            makeItemAt(yesterday.addingTimeInterval(-86_400))
+        ]
+        let result = SidebarTagFilter.visibleItems(items: items,
+                                                   collapsedGroups: [],
+                                                   today: today,
+                                                   yesterday: yesterday)
+        XCTAssertEqual(result.count, 3)
+    }
+
+    /// Collapsing `.today` hides only today's items; yesterday/older remain.
+    /// This is the regression target for the keyboard-nav-with-collapse bug:
+    /// handleKeyUp/Down walk this filtered list, so its membership is what
+    /// the user actually navigates.
+    func testVisibleItemsCollapsedTodayHidesTodayOnly() {
+        let now = Date()
+        let today = Calendar.current.startOfDay(for: now)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+        let items = [
+            makeItemAt(today.addingTimeInterval(3600)),     // today
+            makeItemAt(today.addingTimeInterval(7200)),     // today
+            makeItemAt(yesterday),                          // yesterday
+            makeItemAt(yesterday.addingTimeInterval(-86_400)) // older
+        ]
+        let result = SidebarTagFilter.visibleItems(items: items,
+                                                   collapsedGroups: [.today],
+                                                   today: today,
+                                                   yesterday: yesterday)
+        XCTAssertEqual(result.count, 2)
+        let groups = Set(result.map { SidebarTagFilter.group(for: $0, today: today, yesterday: yesterday) })
+        XCTAssertFalse(groups.contains(.today))
+        XCTAssertTrue(groups.contains(.yesterday))
+        XCTAssertTrue(groups.contains(.older))
+    }
+
+    /// All groups collapsed → empty result (nothing visible to navigate).
+    /// Edge case: keyboard handlers should early-return when this happens.
+    func testVisibleItemsAllCollapsedReturnsEmpty() {
+        let now = Date()
+        let today = Calendar.current.startOfDay(for: now)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+        let items = [
+            makeItemAt(today),
+            makeItemAt(yesterday)
+        ]
+        let result = SidebarTagFilter.visibleItems(items: items,
+                                                   collapsedGroups: [.today, .yesterday, .older],
+                                                   today: today,
+                                                   yesterday: yesterday)
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    /// Boundary: an item at exactly `today` belongs to `.today` (>=), not `.yesterday`.
+    /// Guards against an off-by-one when the visible-list filter disagrees with
+    /// the cache (updateDisplayedItemsCache uses the same predicate).
+    func testVisibleItemsBoundaryAtTodayBelongsToToday() {
+        let today = Date(timeIntervalSince1970: 1_700_000_000)
+        let yesterday = today.addingTimeInterval(-86_400)
+        let item = makeItemAt(today)
+        let collapsed = SidebarTagFilter.visibleItems(items: [item],
+                                                     collapsedGroups: [.yesterday],
+                                                     today: today,
+                                                     yesterday: yesterday)
+        // today is not collapsed, so item survives even though yesterday is collapsed
+        XCTAssertEqual(collapsed.count, 1)
+        // and if today IS collapsed, it disappears
+        let collapsedToday = SidebarTagFilter.visibleItems(items: [item],
+                                                            collapsedGroups: [.today],
+                                                            today: today,
+                                                            yesterday: yesterday)
+        XCTAssertTrue(collapsedToday.isEmpty)
+    }
+
+    private func makeItemAt(_ date: Date) -> ClipboardItem {
+        ClipboardItem(content: UUID().uuidString, type: .text, createdAt: date)
+    }
 }

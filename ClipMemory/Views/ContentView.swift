@@ -18,6 +18,20 @@ enum SidebarTab: String, CaseIterable {
 
 let appCornerRadius: CGFloat = 8
 
+/// Time-based grouping used by ContentView's list sections. Defined at
+/// module scope (not nested in ContentView) so SidebarTagFilter helpers
+/// can reference it without going through ContentView.Type.
+enum TimeGroup: String, CaseIterable {
+    case today, yesterday, older
+    var label: String {
+        switch self {
+        case .today: L10n.groupToday
+        case .yesterday: L10n.groupYesterday
+        case .older: L10n.groupOlder
+        }
+    }
+}
+
 struct ContentView: View {
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
@@ -71,30 +85,52 @@ struct ContentView: View {
     }
 
     // MARK: - Keyboard Handlers
-    private func handleKeyUp() {
-        guard !displayedItems.isEmpty else { return }
-        if let idx = keyboardSelectedIndex, idx > 0 {
-            keyboardSelectedIndex = idx - 1
-        } else {
-            keyboardSelectedIndex = displayedItems.count - 1
+    /// Global indices (into `cachedDisplayedItems`) of items whose group is
+    /// not collapsed. Used as the navigation sequence for ↑/↓/Return so the
+    /// highlight doesn't skip through hidden rows.
+    private var visibleGlobalIndices: [Int] {
+        SidebarTagFilter.visibleItems(
+            items: cachedDisplayedItems,
+            collapsedGroups: collapsedGroups,
+            today: startOfToday,
+            yesterday: startOfYesterday
+        ).enumerated().compactMap { visibleIdx, item in
+            cachedDisplayedItems.firstIndex(where: { $0.id == item.id })
         }
-        if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
+    }
+
+    private func handleKeyUp() {
+        let visibleIdx = visibleGlobalIndices
+        guard !visibleIdx.isEmpty else { return }
+        if let current = keyboardSelectedIndex,
+           let pos = visibleIdx.firstIndex(of: current),
+           pos > 0 {
+            keyboardSelectedIndex = visibleIdx[pos - 1]
+        } else {
+            // No selection, or selection hidden — wrap to last visible.
+            keyboardSelectedIndex = visibleIdx.last!
+        }
+        if let idx = keyboardSelectedIndex { scrollAnchor = cachedDisplayedItems[idx].id }
     }
 
     private func handleKeyDown() {
-        guard !displayedItems.isEmpty else { return }
-        let last = displayedItems.count - 1
-        if let idx = keyboardSelectedIndex, idx < last {
-            keyboardSelectedIndex = idx + 1
+        let visibleIdx = visibleGlobalIndices
+        guard !visibleIdx.isEmpty else { return }
+        if let current = keyboardSelectedIndex,
+           let pos = visibleIdx.firstIndex(of: current),
+           pos < visibleIdx.count - 1 {
+            keyboardSelectedIndex = visibleIdx[pos + 1]
         } else {
-            keyboardSelectedIndex = 0
+            // No selection, selection hidden, or at end — wrap to first visible.
+            keyboardSelectedIndex = visibleIdx.first!
         }
-        if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
+        if let idx = keyboardSelectedIndex { scrollAnchor = cachedDisplayedItems[idx].id }
     }
 
     private func handleKeyReturn() {
-        guard let idx = keyboardSelectedIndex, idx < displayedItems.count else { return }
-        let item = displayedItems[idx]
+        let visibleIdx = visibleGlobalIndices
+        guard let idx = keyboardSelectedIndex, visibleIdx.contains(idx) else { return }
+        let item = cachedDisplayedItems[idx]
         lastCopiedId = item.id
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             if self.lastCopiedId == item.id { self.lastCopiedId = nil }
@@ -252,12 +288,6 @@ struct ContentView: View {
             selectedTagIds.remove(id)
         } else {
             selectedTagIds.insert(id)
-        }
-    }
-
-    private enum TimeGroup: String, CaseIterable { case today, yesterday, older
-        var label: String {
-            switch self { case .today: L10n.groupToday; case .yesterday: L10n.groupYesterday; case .older: L10n.groupOlder }
         }
     }
 
