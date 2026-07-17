@@ -698,4 +698,120 @@ final class IntegrationTests: XCTestCase {
         XCTAssertNotNil(moved, "Original item should still exist after copy/moveToTop")
         XCTAssertEqual(moved?.tagIds, [tag.id], "tagIds must survive moveToTop")
     }
+
+    // MARK: - FileStorageBackend synchronous save
+
+    /// Regression test for the rebuild-data-loss bug: FileStorageBackend.save
+    /// must write UserDefaults synchronously so data survives an immediate
+    /// process termination (e.g. Xcode rebuild). The previous async main-queue
+    /// dispatch could lose the write if the app was killed before the block ran.
+    func testFileStorageBackendSaveIsSynchronous() throws {
+        let key = "ClipboardItems.sync.test.\(UUID().uuidString)"
+        let backend = FileStorageBackend(storageKey: key)
+        let item = ClipboardItem(content: "sync test", type: .text)
+
+        try backend.save([item])
+
+        // No run-loop spinning — the write must already be visible.
+        let loaded = try backend.load()
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.content, "sync test")
+
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    func testFileStorageBackendSaveTagsIsSynchronous() throws {
+        let key = "ClipboardTags.sync.test.\(UUID().uuidString)"
+        let backend = FileStorageBackend(storageKey: key)
+        let tag = Tag(name: "sync", colorHex: "#FF6B6B")
+
+        try backend.saveTags([tag])
+
+        let loaded = try backend.loadTags()
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.name, "sync")
+
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    // MARK: - Image items must not be marked decryptionFailed
+
+    /// Regression guard for H1: image items store a filename (UUID.png), not
+    /// encrypted text. The old getDecryptedContent path would attempt AES decrypt
+    /// on the filename, fail, and persist decryptionFailed = true — poisoning
+    /// migrated history and hiding images from QuickBar search.
+    func testGetDecryptedContentDoesNotMarkImageItemsAsFailed() {
+        let imageItem = ClipboardItem(
+            id: UUID(),
+            content: "\(UUID().uuidString).png",
+            type: .image,
+            isEncrypted: true  // legacy migration incorrectly set this
+        )
+        let backend = MemoryStorageBackend(items: [imageItem])
+        let imageStore = ClipboardStore(backend: backend)
+        imageStore.loadItems()
+
+        // loadItems repair should have normalized the flags
+        XCTAssertFalse(imageStore.items[0].isEncrypted,
+                      "Image items must not be marked isEncrypted after load")
+        XCTAssertFalse(imageStore.items[0].decryptionFailed,
+                      "Image items must not be marked decryptionFailed after load")
+
+        // Direct call should return the filename without touching the flag
+        let result = imageStore.getDecryptedContent(imageStore.items[0])
+        XCTAssertEqual(result, imageItem.content)
+        XCTAssertFalse(imageStore.items[0].decryptionFailed,
+                      "getDecryptedContent must never mark image items as failed")
+    }
+
+    // MARK: - Tag name decryption failure must not overwrite original ciphertext
+
+    /// Regression guard for M3: when a tag name fails to decrypt, the in-memory
+    /// placeholder "[locked]" must not be persisted back to disk — the original
+    /// ciphertext should be preserved so a future successful decrypt can recover it.
+    func testSaveTagsPreservesOriginalCiphertextWhenDecryptionFails() throws {
+        let tagId = UUID()
+        let originalCiphertext = "v2:invalid-base64-not-real-ciphertext"
+        let corruptTag = Tag(id: tagId, name: originalCiphertext, colorHex: "#FF6B6B")
+        let tagBackend = MemoryStorageBackend()
+        tagBackend.tags = [corruptTag]
+
+        let store = ClipboardStore(backend: MemoryStorageBackend(), tagBackend: tagBackend)
+        store.loadTags()
+
+        // Sanity: decryption failed, placeholder is shown
+        XCTAssertEqual(store.tags[tagId]?.name, "[locked]")
+
+        // Trigger save (any tag mutation would do this in production)
+        store.saveTags()
+
+        // The saved tag must still carry the original ciphertext, not "[locked]"
+        let saved = tagBackend.tags.first { $0.id == tagId }
+        XCTAssertEqual(saved?.name, originalCiphertext,
+                      "saveTags must not overwrite the original ciphertext with the placeholder")
+    }
+
+    // MARK: - contentHash backfill for legacy items
+
+    /// Regression guard for M7: items persisted before HMAC-based dedup have
+    /// contentHash == nil. loadItems must backfill them so addItem's fast
+    /// hash-compare path applies instead of O(n) decrypt-and-compare.
+    func testLoadItemsBackfillsContentHashForLegacyItems() {
+        let legacy = ClipboardItem(
+            content: "legacy plaintext",
+            type: .text,
+            isEncrypted: false,
+            contentHash: nil
+        )
+        let backend = MemoryStorageBackend(items: [legacy])
+        let legacyStore = ClipboardStore(backend: backend)
+        legacyStore.loadItems()
+
+        XCTAssertEqual(legacyStore.items.count, 1)
+        XCTAssertNotNil(legacyStore.items[0].contentHash,
+                       "loadItems must backfill contentHash for legacy items")
+        XCTAssertEqual(legacyStore.items[0].contentHash,
+                       ServiceContainer.crypto.hmacHex(for: "legacy plaintext"))
+    }
+
 }

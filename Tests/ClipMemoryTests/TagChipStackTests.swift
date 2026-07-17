@@ -52,4 +52,20 @@ final class TagChipStackTests: XCTestCase {
     func testMaxChipsVisibleIsFixed() {
         XCTAssertEqual(TagChipStack.maxChipsVisible, 4)
     }
+
+    /// visibleTags must be deterministic: sorted by localized tag name so the
+    /// same set of ids always renders in the same order.
+    func testVisibleTagsAreSortedByName() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let zebra = Tag(name: "zebra", colorHex: "#FF6B6B")
+        let apple = Tag(name: "apple", colorHex: "#4ECDC4")
+        let mango = Tag(name: "mango", colorHex: "#45B7D1")
+        store.addTag(zebra)
+        store.addTag(apple)
+        store.addTag(mango)
+
+        let visible = TagChipStack.visibleTags(from: [zebra.id, apple.id, mango.id], store: store)
+
+        XCTAssertEqual(visible.map(\.name), ["apple", "mango", "zebra"])
+    }
 }
