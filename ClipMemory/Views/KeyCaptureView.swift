@@ -68,11 +68,18 @@ final class KeyCaptureNSView: NSView {
             let isTextInput = (NSApp.keyWindow?.firstResponder as? NSText)?.isEditable == true
             // When search text is empty, arrow keys should navigate list not move cursor
             let shouldCaptureArrows = !isTextInput || self.searchText.isEmpty
+            // When typing in any editable text field (search bar, tag name input,
+            // hotkey capture), Return / Esc belong to the field — let them
+            // propagate so .onSubmit fires and Esc clears the field. The list-level
+            // handlers (onReturn copy / onEscape close) only apply when no text
+            // field has focus. Without this guard, pressing Esc while editing a
+            // tag name would silently close the main window.
+            let shouldCaptureEnterEsc = !isTextInput
             switch event.keyCode {
             case 126: if shouldCaptureArrows { self.onUp?(); return nil }; return event      // UpArrow
             case 125: if shouldCaptureArrows { self.onDown?(); return nil }; return event    // DownArrow
-            case 36:  self.onReturn?(); return nil   // Return
-            case 53:  self.onEscape?(); return nil  // Escape
+            case 36:  if shouldCaptureEnterEsc { self.onReturn?(); return nil }; return event // Return
+            case 53:  if shouldCaptureEnterEsc { self.onEscape?(); return nil }; return event // Escape
             default:  return event
             }
         }
