@@ -89,13 +89,14 @@ struct ContentView: View {
     /// not collapsed. Used as the navigation sequence for ↑/↓/Return so the
     /// highlight doesn't skip through hidden rows.
     private var visibleGlobalIndices: [Int] {
-        SidebarTagFilter.visibleItems(
+        let visibleIds = Set(SidebarTagFilter.visibleItems(
             items: cachedDisplayedItems,
             collapsedGroups: collapsedGroups,
             today: startOfToday,
             yesterday: startOfYesterday
-        ).enumerated().compactMap { visibleIdx, item in
-            cachedDisplayedItems.firstIndex(where: { $0.id == item.id })
+        ).map(\.id))
+        return cachedDisplayedItems.indices.filter {
+            visibleIds.contains(cachedDisplayedItems[$0].id)
         }
     }
 
