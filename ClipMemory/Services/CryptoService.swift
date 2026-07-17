@@ -182,7 +182,11 @@ class CryptoService: CryptoServiceProtocol {
         // New format (v2) with HMAC: minimum 16 (IV) + 1 + 32 (HMAC) = 49 bytes
         if combined.count >= 49 {
             let hmacSize = 32
-            let storedHMAC = combined.suffix(hmacSize)
+            // Wrap slice with Data(...) so constantTimeCompare's 0-based loop
+            // works. `combined.suffix(_:)` returns Slice<Data> with
+            // startIndex = combined.count - hmacSize, not 0 — passing the raw
+            // slice causes out-of-bounds subscript trap.
+            let storedHMAC = Data(combined.suffix(hmacSize))
 
             // Verify HMAC over IV || ciphertext (constant-time to prevent
             // timing side-channel forgery of the auth tag)

@@ -189,7 +189,10 @@ class ImageStorage {
 
         if combined.count >= 49 {
             let hmacSize = 32
-            let storedHMAC = combined.suffix(hmacSize)
+            // Wrap slice with Data(...) — same fix as CryptoService.decryptLegacy:
+            // `combined.suffix(_:)` returns Slice<Data> with non-zero startIndex;
+            // constantTimeCompare's 0-based loop would trap on the raw slice.
+            let storedHMAC = Data(combined.suffix(hmacSize))
             let ivAndCiphertext = combined.dropLast(hmacSize)
 
             let computedHMAC = CryptoService.computeLegacyHMAC(data: Data(ivAndCiphertext), key: key)
