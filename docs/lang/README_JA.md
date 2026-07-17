@@ -1,4 +1,4 @@
-# ClipMemory v2.2.4
+# ClipMemory v2.3.0
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.3.0 (2026-07-17) — タグシステムとデータ整合性
+
+- **🏷️ タグシステム（Tag System）** — 完全なタグライフサイクル：作成 / 削除 / カスタムカラー；サイドバー tag section + セクション間 AND / セクション内 OR フィルタリング；スマートタグ提案（NLTagger ベース：コード / メール / 認証情報 / 機密）；TagPicker sheet（インライン chips + 長押しピッカー）；削除確認ダイアログ
+- **6 件のデータ整合性重大修正** — saveTimer スレッド競合 UB；FileStorageBackend 同期書き込み；flushPendingSaves のタグ同期フラッシュ；legacy image items 誤暗号化フラグ修正；contentHash backfill；ImageStorage 部分失敗リカバリ
+- **UI 改善** — Welcome window dedupe；Esc による hotkey recording キャンセル（responder に event 返却）；日付を跨ぐ currentDate 自動更新；Search モードでのグループ強制展開（キーボードナビゲーション同期）；pendingMaxItemsReduction typo 修正
+- **リファクタ + パフォーマンス** — RTF NSCache；L10n bundle cache；WindowManager 状態安定化（@State が close/reopen 間で保持）；windowDidMove/Resize debounce 0.5s；+9 net new tests（241 → 250）
 
 ### v2.2.4 (2026-07-16) — リリース衛生管理
 

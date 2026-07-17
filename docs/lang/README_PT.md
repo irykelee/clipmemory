@@ -1,4 +1,4 @@
-# ClipMemory v2.2.4
+# ClipMemory v2.3.0
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.3.0 (2026-07-17) — Sistema de Etiquetas e Integridade de Dados
+
+- **🏷️ Sistema de Etiquetas (Tag System)** — Ciclo de vida completo de etiquetas: criar / excluir / cores personalizadas; seção de etiquetas na barra lateral com filtragem AND entre seções / OR dentro da seção; sugestões inteligentes (baseado em NLTagger: código / email / credencial / sensível); folha TagPicker (chips inline + seletor de pressão longa); diálogo de confirmação de exclusão
+- **6 correções críticas de integridade de dados** — corrida de thread do saveTimer (UB); escritas síncronas do FileStorageBackend; flushPendingSaves agora também flushea etiquetas; reparo de marca de criptografia incorreta em image items legados; backfill de contentHash; recuperação de falha parcial do ImageStorage
+- **Melhorias de UI** — Dedupe da janela de boas-vindas; Esc cancela gravação de hotkey (evento devolvido ao responder); atualização automática de currentDate ao cruzar meia-noite; expansão forçada de grupos no modo busca (sincronização de navegação por teclado); correção de typo em pendingMaxItemsReduction
+- **Refatoração + desempenho** — RTF NSCache; cache de bundle L10n; estabilização de estado do WindowManager (@State preservado entre fechar/reabrir); windowDidMove/Resize com debounce 0.5s; +9 net new tests (241 → 250)
 
 ### v2.2.4 (2026-07-16) — Higiene de Release
 

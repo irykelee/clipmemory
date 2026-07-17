@@ -1,4 +1,4 @@
-# ClipMemory v2.2.4
+# ClipMemory v2.3.0
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -21,6 +21,13 @@
 ---
 
 ## 📋 Changelog
+
+### v2.3.0 (2026-07-17) — Tag System & Data Integrity
+
+- **🏷️ Tag System** — Complete tag lifecycle: create / delete / custom colors; sidebar tag section with cross-section AND / in-section OR filtering; smart tag suggestions (NLTagger-based: code / email / credential / sensitive); TagPicker sheet (inline chips + long-press picker); deletion confirmation dialog
+- **6 critical data-integrity fixes** — saveTimer thread-safety race (UB); FileStorageBackend synchronous writes; flushPendingSaves now also flushes tags; legacy image items incorrectly-flagged-as-encrypted repair; contentHash backfill; ImageStorage partial-failure recovery
+- **UI improvements** — Welcome window dedupe; Esc cancels hotkey recording (event returned to responder); cross-midnight currentDate refresh; search-mode force-expand groups (keyboard nav sync); pendingMaxItemsReduction variable typo fix
+- **Refactor + performance** — RTF NSCache; L10n bundle cache; WindowManager state stability (@State preserved across close/reopen); windowDidMove/Resize debounced 0.5s; +9 net new tests (241 → 250)
 
 ### v2.2.4 (2026-07-16) — Release Hygiene
 
