@@ -68,6 +68,10 @@ struct ClipboardItemRow: View, Equatable {
     @State private var showFullContent = false
     @State private var _cachedHighlighted: [String: AttributedString] = [:]
     @State private var loadedRichText: AttributedString?
+    /// True after the .task attempted to load the image and got nil — the
+    /// on-disk file is missing (deleted or never written). Used to render a
+    /// "missing" badge + one-click delete in the placeholder.
+    @State private var imageLoadFailed = false
 
     static func == (lhs: ClipboardItemRow, rhs: ClipboardItemRow) -> Bool {
         lhs.item.id == rhs.item.id &&
@@ -199,16 +203,45 @@ struct ClipboardItemRow: View, Equatable {
                             } else {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 6).fill(.ultraThinMaterial)
-                                    VStack(spacing: 4) {
-                                        Image(systemName: "photo").font(.system(size: 24)).foregroundColor(.secondary)
-                                        ProgressView().scaleEffect(0.5).frame(height: 8)
+                                    if imageLoadFailed {
+                                        VStack(spacing: 4) {
+                                            Image(systemName: "exclamationmark.triangle")
+                                                .font(.system(size: 22))
+                                                .foregroundColor(.orange)
+                                            Text(L10n.imageMissing)
+                                                .font(.system(size: fontScale * 11))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        // One-click delete overlay (top-trailing)
+                                        Button(action: onDelete) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 18))
+                                                .foregroundColor(.secondary)
+                                                .background(Circle().fill(.regularMaterial))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help(L10n.tooltipDelete)
+                                        .accessibilityLabel(L10n.tooltipDelete)
+                                        .offset(x: 50, y: -30)
+                                    } else {
+                                        VStack(spacing: 4) {
+                                            Image(systemName: "photo").font(.system(size: 24)).foregroundColor(.secondary)
+                                            ProgressView().scaleEffect(0.5).frame(height: 8)
+                                        }
                                     }
                                 }
                                 .frame(width: 120, height: 80)
                             }
                         }
                         .animation(.easeIn(duration: 0.3), value: loadedImage)
-                        .task(id: item.content) { if let img = ImageStorage.shared.loadImageObject(filename: item.content) { loadedImage = img } }
+                        .task(id: item.content) {
+                            imageLoadFailed = false
+                            if let img = ImageStorage.shared.loadImageObject(filename: item.content) {
+                                loadedImage = img
+                            } else {
+                                imageLoadFailed = true
+                            }
+                        }
                     } else if item.type == .richText {
                         if item.isSensitive && !isRevealed {
                             Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)

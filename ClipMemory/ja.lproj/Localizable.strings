@@ -44,6 +44,9 @@
 "tooltip.unpin" = "ピン留め解除";
 "tooltip.pin" = "ダブルクリックでピン留め（自動削除されない）";
 "tooltip.delete" = "削除";
+
+/* Image fallback */
+"image.missing" = "画像ファイルが見つかりません";
 "tooltip.clear.history" = "履歴をクリア（ピン留めは保持）";
 "tooltip.show.all" = "すべての履歴を表示";
 "tooltip.pinned.only" = "ピン留めのみ表示";
@@ -204,6 +207,8 @@
 "tagPicker.deleteConfirm.title" = "タグを削除しますか？";
 "tagPicker.deleteConfirm.message" = "タグ「%@」を %d 件のアイテムから削除します";
 "tagPicker.deleteConfirm.confirm" = "削除";
+"tagPicker.section.suggestedNames" = "検出された名前";
+"tagPicker.nameSuggestions.toggle" = "検出された名前を表示";
 "sidebar.section.tags" = "タグ";
 "sidebar.tags.empty" = "タグがまだありません";
 "sidebar.newTag" = "新しいタグ";

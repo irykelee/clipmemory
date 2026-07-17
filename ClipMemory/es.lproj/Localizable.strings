@@ -44,6 +44,9 @@
 "tooltip.unpin" = "Desfijar";
 "tooltip.pin" = "Doble clic para fijar (no se elimina automáticamente)";
 "tooltip.delete" = "Eliminar";
+
+/* Image fallback */
+"image.missing" = "Archivo de imagen perdido";
 "tooltip.clear.history" = "Vaciar historial (favoritos conservados)";
 "tooltip.show.all" = "Ver todo el historial";
 "tooltip.pinned.only" = "Ver solo favoritos";
@@ -205,6 +208,8 @@
 "tagPicker.deleteConfirm.title" = "¿Eliminar etiqueta?";
 "tagPicker.deleteConfirm.message" = "La etiqueta \"%@\" se eliminará de %d elementos";
 "tagPicker.deleteConfirm.confirm" = "Eliminar";
+"tagPicker.section.suggestedNames" = "Nombres detectados";
+"tagPicker.nameSuggestions.toggle" = "Mostrar nombres detectados";
 "sidebar.section.tags" = "Etiquetas";
 "sidebar.tags.empty" = "Aún no hay etiquetas";
 "sidebar.newTag" = "Nueva etiqueta";

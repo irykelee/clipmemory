@@ -44,6 +44,9 @@
 "tooltip.unpin" = "고정 해제";
 "tooltip.pin" = "더블 클릭으로 고정 (자동 삭제되지 않음)";
 "tooltip.delete" = "삭제";
+
+/* Image fallback */
+"image.missing" = "이미지 파일 없음";
 "tooltip.clear.history" = "기록 비우기 (고정된 항목 제외)";
 "tooltip.show.all" = "전체 클립보드 기록 보기";
 "tooltip.pinned.only" = "고정된 항목만 보기";
@@ -204,6 +207,8 @@
 "tagPicker.deleteConfirm.title" = "태그를 삭제하시겠습니까?";
 "tagPicker.deleteConfirm.message" = "태그 \"%@\"을(를) %d개 항목에서 제거합니다";
 "tagPicker.deleteConfirm.confirm" = "삭제";
+"tagPicker.section.suggestedNames" = "감지된 이름";
+"tagPicker.nameSuggestions.toggle" = "감지된 이름 표시";
 "sidebar.section.tags" = "태그";
 "sidebar.tags.empty" = "태그가 아직 없습니다";
 "sidebar.newTag" = "새 태그";
