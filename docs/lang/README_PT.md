@@ -170,8 +170,7 @@ Antes de remover o app, clique no botão 🗑 na barra de ferramentas superior p
 ## Instalação
 
 ```bash
-brew tap irykelee/clipmemory https://github.com/irykelee/clipmemory
-brew trust irykelee/clipmemory
+brew tap irykelee/clipmemory
 brew install --cask clipmemory
 ```
 

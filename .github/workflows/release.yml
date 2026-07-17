@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Verify Xcode
+        run: xcodebuild -version
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build Release
+        run: xcodebuild -scheme ClipMemory -configuration Release build
+
+      - name: Package and update local Cask
+        run: ./Scripts/package.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Releases/ClipMemory.tar.gz
+          generate_release_notes: true
+
+      - name: Update Homebrew tap
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARBALL="Releases/ClipMemory.tar.gz"
+          SHA256=$(shasum -a 256 "$TARBALL" | awk '{print $1}')
+
+          echo "Updating tap to ClipMemory v${VERSION} (sha256: ${SHA256})"
+
+          # Clone the tap repository using a dedicated token that can write to it.
+          git clone "https://${TAP_GITHUB_TOKEN}@github.com/irykelee/homebrew-clipmemory.git" tap-repo
+          mkdir -p tap-repo/Casks
+
+          cat > tap-repo/Casks/clipmemory.rb <<CASK
+          cask "clipmemory" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+
+            url "https://github.com/irykelee/clipmemory/releases/download/v\#{version}/ClipMemory.tar.gz"
+            name "ClipMemory"
+            desc "Clipboard history manager for macOS with encryption and Quick Bar"
+            homepage "https://github.com/irykelee/clipmemory"
+
+            depends_on macos: ">= :ventura"
+
+            app "ClipMemory.app"
+
+            zap trash: [
+              "~/Library/Application Support/ClipMemory",
+              "~/Library/Preferences/com.clipmemory.app.plist",
+            ]
+          end
+          CASK
+
+          cd tap-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/clipmemory.rb
+          git diff --cached --quiet || git commit -m "chore: update clipmemory to v${VERSION}"
+          git push origin main
