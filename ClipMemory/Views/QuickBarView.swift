@@ -6,6 +6,8 @@ struct QuickBarView: View {
     @ObservedObject var languageManager = LanguageManager.shared
 
     @State private var searchText = ""
+    @State private var searchTextDebounced = ""
+    @State private var searchDebounce: DispatchWorkItem?
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
     @State private var showFullWindow = false
@@ -26,14 +28,14 @@ struct QuickBarView: View {
     }
 
     var displayedItems: [ClipboardItem] {
-        let base = searchText.isEmpty
+        let base = searchTextDebounced.isEmpty
             ? Array(store.items.prefix(maxItems))
             : store.items.filter { item in
                 guard !item.isDecryptionFailed else { return false }
                 let searchableText = item.type == .richText
                     ? item.plainTextFromRTFFallback
                     : (ClipboardStore.shared.getDecryptedContent(item) ?? "")
-                return searchableText.localizedCaseInsensitiveContains(searchText)
+                return searchableText.localizedCaseInsensitiveContains(searchTextDebounced)
             }
         return base
     }
@@ -49,7 +51,13 @@ struct QuickBarView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: sz(13)))
                     .focused($isSearchFocused)
-                    .onChange(of: searchText) { _ in keyboardSelectedIndex = nil }
+                    .onChange(of: searchText) { newValue in
+                        keyboardSelectedIndex = nil
+                        searchDebounce?.cancel()
+                        let item = DispatchWorkItem { searchTextDebounced = newValue }
+                        searchDebounce = item
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
+                    }
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }, label: {
                         Image(systemName: "xmark.circle.fill")

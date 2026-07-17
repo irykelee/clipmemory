@@ -212,8 +212,12 @@
 "sidebar.section.tags" = "タグ";
 "sidebar.tags.empty" = "タグがまだありません";
 "sidebar.newTag" = "新しいタグ";
+"sidebar.deleteTag" = "タグを削除";
+"sidebar.deleteTag.confirm.title" = "タグを削除しますか？";
+"sidebar.deleteTag.confirm.message" = "タグ「%@」は %d 件の項目から削除されます";
 "newTag.title" = "新しいタグ";
 "newTag.create" = "作成";
+"newTag.customColor" = "カスタムカラー";
 
 /* Tag Suggestions */
 "tagSuggestion.kind.code" = "コード";

@@ -61,6 +61,9 @@ struct ContentView: View {
               let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
         return Set(arr.compactMap { TimeGroup(rawValue: $0) })
     }()
+    /// Anchor used for "today"/"yesterday" grouping.  Updated by a timer so
+    /// items move to the correct section if the app stays open across midnight.
+    @State private var currentDate = Date()
     @State private var isRecordingHotKey = false
     @State private var hotkeyRefresh = false
     @State private var keyEventMonitor: Any?
@@ -70,15 +73,18 @@ struct ContentView: View {
     @State private var appPickerSearch = ""
     @State private var appPickerSearchDebounced = ""
     @State private var searchDebounce: DispatchWorkItem?
+    @State private var installedApps: [AppPickerItem] = []
+    @State private var isLoadingApps = false
     @State private var tagPickerItem: ClipboardItem?
     @State private var selectedTagIds: Set<UUID> = []
     @State private var showNewTagSheet: Bool = false
+    @State private var tagPendingDelete: Tag?
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @AppStorage("themeAppearance") private var themeAppearance = "system"
 
     // MARK: - Cached Date Calculations
     private var startOfToday: Date {
-        Calendar.current.startOfDay(for: Date())
+        Calendar.current.startOfDay(for: currentDate)
     }
     private var startOfYesterday: Date {
         Calendar.current.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
@@ -88,10 +94,13 @@ struct ContentView: View {
     /// Global indices (into `cachedDisplayedItems`) of items whose group is
     /// not collapsed. Used as the navigation sequence for ↑/↓/Return so the
     /// highlight doesn't skip through hidden rows.
+    /// When search is active the UI force-expands all groups, so keyboard nav
+    /// must treat every item as visible to stay in sync with what the user sees.
     private var visibleGlobalIndices: [Int] {
+        let effectiveCollapsed: Set<TimeGroup> = searchText.isEmpty ? collapsedGroups : []
         let visibleIds = Set(SidebarTagFilter.visibleItems(
             items: cachedDisplayedItems,
-            collapsedGroups: collapsedGroups,
+            collapsedGroups: effectiveCollapsed,
             today: startOfToday,
             yesterday: startOfYesterday
         ).map(\.id))
@@ -163,7 +172,7 @@ struct ContentView: View {
     @ViewBuilder private var appPickerSheetContent: some View {
         appPickerSheet.onAppear {
             appPickerSearchDebounced = appPickerSearch
-            Self.cachedApps = nil
+            loadInstalledAppsIfNeeded()
         }
     }
 
@@ -327,6 +336,23 @@ struct ContentView: View {
                     selectedTagIds.insert(newId)
                 }
             }
+            .alert(L10n.sidebarDeleteTagConfirmTitle,
+                   isPresented: Binding(get: { tagPendingDelete != nil },
+                                        set: { if !$0 { tagPendingDelete = nil } })) {
+                Button(L10n.buttonCancel, role: .cancel) { tagPendingDelete = nil }
+                Button(L10n.tagPickerDeleteConfirmConfirm, role: .destructive) {
+                    if let tag = tagPendingDelete {
+                        store.deleteTag(id: tag.id)
+                        selectedTagIds.remove(tag.id)
+                    }
+                    tagPendingDelete = nil
+                }
+            } message: {
+                if let tag = tagPendingDelete {
+                    let count = store.items.filter { $0.tagIds.contains(tag.id) }.count
+                    Text(L10n.sidebarDeleteTagConfirmMessage(tag.name, count))
+                }
+            }
     }
 
     private func attachLifecycle<V: View>(_ v: V) -> some View {
@@ -358,6 +384,15 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
             .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in self.focusSearchField() }
+            .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+                let calendar = Calendar.current
+                let nowStart = calendar.startOfDay(for: Date())
+                let cachedStart = calendar.startOfDay(for: currentDate)
+                if nowStart != cachedStart {
+                    currentDate = Date()
+                    updateDisplayedItemsCache()
+                }
+            }
     }
 
     private var splitViewWithLifecycle: some View {
@@ -453,7 +488,8 @@ struct ContentView: View {
                                 tag: tag,
                                 count: tagCounts[tag.id] ?? 0,
                                 isSelected: selectedTagIds.contains(tag.id),
-                                onTap: { toggleTag(tag.id) }
+                                onTap: { toggleTag(tag.id) },
+                                onDelete: { tagPendingDelete = tag }
                             )
                         }
                     }
@@ -537,7 +573,7 @@ struct ContentView: View {
             Button(L10n.alertTrimCancel, role: .cancel) {
                 guard let pair = pendingMaxItemsReduction else { return }
                 store.maxItems = pair.old
-                pendingClearMode = nil
+                pendingMaxItemsReduction = nil
                 selectedTab = .settings
             }
             Button(L10n.alertTrimConfirm) {
@@ -582,6 +618,13 @@ struct ContentView: View {
         stopKeyEventMonitor()
         keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
             guard isRecordingHotKey else { return event }
+            // Esc cancels recording and is returned to the responder chain so the
+            // user can dismiss the sheet / settings panel as expected.
+            if event.keyCode == 53 {
+                isRecordingHotKey = false
+                stopKeyEventMonitor()
+                return event
+            }
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             guard !mods.isEmpty else { return nil }
             let keyCode = UInt32(event.keyCode)
@@ -682,7 +725,12 @@ struct ContentView: View {
     }
 
     private var excludedAppsTags: some View {
-        let excludedIds = Array(Set(store.excludedBundleIdsString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }))
+        let rawIds = store.excludedBundleIdsString
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var seen = Set<String>()
+        let excludedIds = rawIds.filter { seen.insert($0).inserted }
         if excludedIds.isEmpty {
             return AnyView(EmptyView())
         }
@@ -745,14 +793,21 @@ struct ContentView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     let excludedIds = Set(store.excludedBundleIdsString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
-                    let allApps = Self.fetchInstalledAppsFromDisk().sorted { $0.name < $1.name }
+                    let allApps = installedApps.sorted { $0.name < $1.name }
 
                     let search = appPickerSearchDebounced.lowercased()
                     let filtered = allApps.filter {
                         search.isEmpty || $0.name.lowercased().contains(search)
                     }
 
-                    if filtered.isEmpty {
+                    if isLoadingApps {
+                        HStack {
+                            Spacer()
+                            ProgressView().scaleEffect(0.8)
+                            Spacer()
+                        }
+                        .padding()
+                    } else if filtered.isEmpty {
                         Text(L10n.settingsAppPickerNoResults).font(.system(size: sz(12))).foregroundColor(.secondary).padding()
                     } else {
                         ForEach(filtered.indices, id: \.self) { idx in
@@ -782,25 +837,38 @@ struct ContentView: View {
     }
 
     private static var cachedApps: [AppPickerItem]?
-    private static func fetchInstalledAppsFromDisk() -> [AppPickerItem] {
-        if let cached = cachedApps { return cached }
-        var results: [AppPickerItem] = []
-        let fileManager = FileManager.default
-        let appDirs = ["/Applications", NSHomeDirectory() + "/Applications"]
 
-        for appDir in appDirs {
-            guard let apps = try? fileManager.contentsOfDirectory(atPath: appDir) else { continue }
-            for app in apps where app.hasSuffix(".app") {
-                let appPath = (appDir as NSString).appendingPathComponent(app)
-                let name = (app as NSString).deletingPathExtension
-                if let bundleId = Bundle(url: URL(fileURLWithPath: appPath))?.bundleIdentifier {
-                    let icon = NSWorkspace.shared.icon(forFile: appPath)
-                    results.append(AppPickerItem(name: name, bundleId: bundleId, icon: icon, isRunning: false))
+    /// Kick off a background fetch of installed applications. Icons are loaded
+    /// lazily by AppPickerRow via NSImage, so only the directory scan and bundle
+    /// ID lookup run on the background queue. Results are cached statically.
+    private func loadInstalledAppsIfNeeded() {
+        guard installedApps.isEmpty, !isLoadingApps else { return }
+        if let cached = Self.cachedApps {
+            installedApps = cached
+            return
+        }
+        isLoadingApps = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            var results: [AppPickerItem] = []
+            let fileManager = FileManager.default
+            let appDirs = ["/Applications", NSHomeDirectory() + "/Applications"]
+
+            for appDir in appDirs {
+                guard let apps = try? fileManager.contentsOfDirectory(atPath: appDir) else { continue }
+                for app in apps where app.hasSuffix(".app") {
+                    let appPath = (appDir as NSString).appendingPathComponent(app)
+                    let name = (app as NSString).deletingPathExtension
+                    if let bundleId = Bundle(url: URL(fileURLWithPath: appPath))?.bundleIdentifier {
+                        results.append(AppPickerItem(name: name, bundleId: bundleId, icon: nil, isRunning: false))
+                    }
                 }
             }
+            DispatchQueue.main.async {
+                Self.cachedApps = results
+                self.installedApps = results
+                self.isLoadingApps = false
+            }
         }
-        cachedApps = results
-        return results
     }
 
     private var emptyState: some View {

@@ -212,8 +212,12 @@
 "sidebar.section.tags" = "태그";
 "sidebar.tags.empty" = "태그가 아직 없습니다";
 "sidebar.newTag" = "새 태그";
+"sidebar.deleteTag" = "태그 삭제";
+"sidebar.deleteTag.confirm.title" = "태그를 삭제하시겠습니까?";
+"sidebar.deleteTag.confirm.message" = "태그「%@」이(가) %d개 항목에서 제거됩니다";
 "newTag.title" = "새 태그";
 "newTag.create" = "만들기";
+"newTag.customColor" = "사용자 지정 색상";
 
 /* Tag Suggestions */
 "tagSuggestion.kind.code" = "코드";

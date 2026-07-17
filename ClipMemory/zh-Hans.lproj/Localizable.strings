@@ -215,8 +215,12 @@
 "sidebar.section.tags" = "标签";
 "sidebar.tags.empty" = "尚未创建标签";
 "sidebar.newTag" = "新建标签";
+"sidebar.deleteTag" = "删除标签";
+"sidebar.deleteTag.confirm.title" = "删除标签？";
+"sidebar.deleteTag.confirm.message" = "标签「%@」将从 %d 个项目移除";
 "newTag.title" = "新建标签";
 "newTag.create" = "创建";
+"newTag.customColor" = "自定义颜色";
 
 /* Tag Suggestions */
 "tagSuggestion.kind.code" = "代码";

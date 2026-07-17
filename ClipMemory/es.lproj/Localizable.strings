@@ -213,8 +213,12 @@
 "sidebar.section.tags" = "Etiquetas";
 "sidebar.tags.empty" = "Aún no hay etiquetas";
 "sidebar.newTag" = "Nueva etiqueta";
+"sidebar.deleteTag" = "Eliminar etiqueta";
+"sidebar.deleteTag.confirm.title" = "¿Eliminar etiqueta?";
+"sidebar.deleteTag.confirm.message" = "La etiqueta «%@» se eliminará de %d elementos";
 "newTag.title" = "Nueva etiqueta";
 "newTag.create" = "Crear";
+"newTag.customColor" = "Color personalizado";
 
 /* Tag Suggestions */
 "tagSuggestion.kind.code" = "Código";

@@ -216,8 +216,12 @@
 "sidebar.section.tags" = "Tags";
 "sidebar.tags.empty" = "No tags yet";
 "sidebar.newTag" = "New Tag";
+"sidebar.deleteTag" = "Delete Tag";
+"sidebar.deleteTag.confirm.title" = "Delete Tag?";
+"sidebar.deleteTag.confirm.message" = "Tag \"%@\" will be removed from %d items";
 "newTag.title" = "New Tag";
 "newTag.create" = "Create";
+"newTag.customColor" = "Custom Color";
 
 /* Tag Suggestions */
 "tagSuggestion.kind.code" = "Code";

@@ -40,7 +40,7 @@ struct WelcomeView: View {
                     Spacer(minLength: 16)
 
                     Image(systemName: "doc.on.clipboard.fill")
-                        .font(.system(size: 64))
+                        .font(.system(size: sz(64)))
                         .foregroundColor(.accentColor)
 
                     Text(L10n.welcomeTitle)
