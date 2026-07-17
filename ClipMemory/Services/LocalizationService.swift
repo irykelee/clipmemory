@@ -28,10 +28,19 @@ struct L10n {
 
     // MARK: - Private
 
+    private static var cachedLanguage: String?
+    private static var cachedBundle: Bundle?
+
     private static var currentBundle: Bundle {
         let lang = LanguageManager.shared.selectedLanguage
-        return Bundle.main.path(forResource: lang, ofType: "lproj")
+        if let bundle = cachedBundle, cachedLanguage == lang {
+            return bundle
+        }
+        let bundle = Bundle.main.path(forResource: lang, ofType: "lproj")
             .flatMap { Bundle(path: $0) } ?? Bundle.main
+        cachedLanguage = lang
+        cachedBundle = bundle
+        return bundle
     }
 
     private static var englishBundle: Bundle {
@@ -117,8 +126,12 @@ struct L10n {
     static var sidebarSectionTags: String { string("sidebar.section.tags") }
     static var sidebarTagsEmpty: String { string("sidebar.tags.empty") }
     static var sidebarNewTag: String { string("sidebar.newTag") }
+    static var sidebarDeleteTag: String { string("sidebar.deleteTag") }
+    static var sidebarDeleteTagConfirmTitle: String { string("sidebar.deleteTag.confirm.title") }
+    static func sidebarDeleteTagConfirmMessage(_ name: String, _ count: Int) -> String { string("sidebar.deleteTag.confirm.message", name, count) }
     static var newTagTitle: String { string("newTag.title") }
     static var newTagCreate: String { string("newTag.create") }
+    static var newTagCustomColor: String { string("newTag.customColor") }
 
     static var alertClearTitle: String { string("alert.clear.title") }
     static func alertClearMessage(_ count: Int) -> String { string("alert.clear.message", count) }
