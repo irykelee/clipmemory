@@ -1,4 +1,6 @@
 import XCTest
+import CommonCrypto
+import Security
 @testable import ClipMemory
 
 final class CryptoServiceTests: XCTestCase {
@@ -210,5 +212,149 @@ final class CryptoServiceTests: XCTestCase {
         let perms = (attrs?[.posixPermissions] as? NSNumber)?.intValue
         XCTAssertEqual(perms, 0o600,
                       "Encryption key file must have 0o600 permissions (regression: world-readable key)")
+    }
+
+    // MARK: - RS-6: decryptLegacy round-trip with synthesized v1 format
+    //
+    // Tests use synthesized v1-format blobs (AES-CBC + HMAC-SHA256, pre-v2) to
+    // exercise CryptoService.decryptLegacy without depending on archived data.
+    // Helpers below mirror the algorithm decryptLegacy expects: random 16-byte
+    // IV, AES-CBC with PKCS7 padding, HMAC-SHA256 over (IV || ciphertext).
+    // If decryptLegacy's behavior changes (e.g. drops HMAC verification, swaps
+    // padding mode), these tests will fail and force a deliberate update.
+
+    func testDecryptDataHandlesLegacyV1FormatWithHMAC() throws {
+        // RS-6: decryptData() must accept v1-format (AES-CBC + HMAC) and
+        // return the original plaintext bytes.
+        let payload = Data((0..<512).map { UInt8($0 & 0xFF) })
+        let key = try Data(contentsOf: CryptoService.keyFileURL)
+        XCTAssertEqual(key.count, 32, "Test fixture: key file must have 32 bytes")
+
+        let legacyBlob = makeLegacyV1Blob(plaintext: payload, key: key)
+        XCTAssertGreaterThanOrEqual(legacyBlob.count, 49,
+            "v1+HMAC format must be at least 16(IV) + 1(ciphertext) + 32(HMAC)")
+
+        let decrypted = crypto.decryptData(legacyBlob)
+        XCTAssertEqual(decrypted, payload,
+            "decryptData() must round-trip v1-format bytes through decryptLegacy")
+    }
+
+    func testDecryptStringHandlesLegacyV1FormatWithHMAC() throws {
+        // RS-6: decrypt() (text path) must also accept v1-format and
+        // return the original UTF-8 string.
+        let plaintext = "Hello legacy v1 你好世界 🌍"
+        let key = try Data(contentsOf: CryptoService.keyFileURL)
+        let plaintextData = Data(plaintext.utf8)
+        let legacyBlob = makeLegacyV1Blob(plaintext: plaintextData, key: key)
+
+        let decrypted = crypto.decrypt(legacyBlob.base64EncodedString())
+        XCTAssertEqual(decrypted, plaintext,
+            "decrypt() must round-trip v1-format text through decryptLegacy")
+    }
+
+    func testDecryptDataHandlesLegacyV1FormatNoHMAC() throws {
+        // RS-6: pre-1.2.0 format was [IV || ciphertext] without HMAC.
+        // decryptLegacy still supports it for historical data — verify it.
+        let payload = Data("Pre-1.2.0 no HMAC test payload".utf8)
+        let key = try Data(contentsOf: CryptoService.keyFileURL)
+        let legacyBlob = makeLegacyV1BlobNoHMAC(plaintext: payload, key: key)
+        XCTAssertEqual(legacyBlob.count, 16 + ((payload.count / 16 + 1) * 16),
+            "No-HMAC format must be exactly 16(IV) + padded ciphertext")
+
+        let decrypted = crypto.decryptData(legacyBlob)
+        XCTAssertEqual(decrypted, payload,
+            "decryptData() must round-trip pre-1.2.0 no-HMAC format")
+    }
+
+    func testDecryptLegacyRejectsTamperedHMAC() throws {
+        // RS-6: flipping a byte in the HMAC must cause decryption to fail
+        // (constant-time compare → nil). Regression guard for the
+        // constantTimeCompare fix in CryptoService.
+        let plaintext = Data("Integrity matters".utf8)
+        let key = try Data(contentsOf: CryptoService.keyFileURL)
+        var blob = makeLegacyV1Blob(plaintext: plaintext, key: key)
+
+        let hmacStart = blob.count - 32
+        blob[hmacStart] ^= 0x01
+
+        let decrypted = crypto.decrypt(blob.base64EncodedString())
+        XCTAssertNil(decrypted, "Tampered HMAC must cause decryption to fail")
+    }
+
+    func testDecryptLegacyRejectsTamperedCiphertext() throws {
+        // RS-6: flipping a byte in the ciphertext must also fail — HMAC
+        // is computed over IV || ciphertext, so any ciphertext mutation
+        // invalidates the HMAC and rejects the blob.
+        let plaintext = Data("Ciphertext tampering test".utf8)
+        let key = try Data(contentsOf: CryptoService.keyFileURL)
+        var blob = makeLegacyV1Blob(plaintext: plaintext, key: key)
+
+        // Byte 20 is inside the ciphertext region (IV ends at 16, HMAC at count-32)
+        blob[20] ^= 0x01
+
+        let decrypted = crypto.decrypt(blob.base64EncodedString())
+        XCTAssertNil(decrypted, "Tampered ciphertext must fail HMAC verification")
+    }
+
+    // MARK: - RS-6 Helpers
+
+    /// Encrypt plaintext as v1-format: random 16-byte IV + AES-CBC ciphertext
+    /// + 32-byte HMAC-SHA256(IV || ciphertext). Mirrors what decryptLegacy expects.
+    private func makeLegacyV1Blob(plaintext: Data, key: Data) -> Data {
+        let iv = randomBytes(count: 16)
+        let ciphertext = aesEncryptCBC(plaintext: plaintext, key: key, iv: iv)
+        let hmac = CryptoService.computeLegacyHMAC(data: iv + ciphertext, key: key)
+        return iv + ciphertext + hmac
+    }
+
+    /// Pre-1.2.0 format: just [IV || ciphertext], no HMAC.
+    private func makeLegacyV1BlobNoHMAC(plaintext: Data, key: Data) -> Data {
+        let iv = randomBytes(count: 16)
+        let ciphertext = aesEncryptCBC(plaintext: plaintext, key: key, iv: iv)
+        return iv + ciphertext
+    }
+
+    /// AES-CBC encrypt with PKCS7 padding — symmetric to aesDecryptCBC in
+    /// CryptoService.swift. Required because CryptoService only exposes
+    /// the decrypt direction publicly; the encrypt counterpart only exists
+    /// here for v1-format synthesis.
+    private func aesEncryptCBC(plaintext: Data, key: Data, iv: Data) -> Data {
+        let bufferSize = plaintext.count + kCCBlockSizeAES128
+        var encryptedBytes = [UInt8](repeating: 0, count: bufferSize)
+        var numBytesEncrypted: size_t = 0
+
+        let status = key.withUnsafeBytes { keyBytes in
+            iv.withUnsafeBytes { ivBytes in
+                plaintext.withUnsafeBytes { dataBytes in
+                    CCCrypt(
+                        CCOperation(kCCEncrypt),
+                        CCAlgorithm(kCCAlgorithmAES),
+                        CCOptions(kCCOptionPKCS7Padding),
+                        keyBytes.baseAddress, 32,
+                        ivBytes.baseAddress,
+                        dataBytes.baseAddress, plaintext.count,
+                        &encryptedBytes, bufferSize,
+                        &numBytesEncrypted
+                    )
+                }
+            }
+        }
+
+        guard status == kCCSuccess else {
+            fatalError("aesEncryptCBC failed with status \(status)")
+        }
+        return Data(encryptedBytes.prefix(numBytesEncrypted))
+    }
+
+    /// Cryptographically-random bytes via SecRandomCopyBytes.
+    private func randomBytes(count: Int) -> Data {
+        var data = Data(count: count)
+        let result = data.withUnsafeMutableBytes {
+            SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!)
+        }
+        guard result == errSecSuccess else {
+            fatalError("SecRandomCopyBytes failed with status \(result)")
+        }
+        return data
     }
 }
