@@ -163,8 +163,13 @@ class ImageStorage {
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         guard let encryptedData = try? Data(contentsOf: fileURL) else { return nil }
 
-        // Try new v2 format first
-        if let data = ServiceContainer.crypto.decryptData(encryptedData) {
+        // Detect format by prefix BEFORE calling decryptData — otherwise the
+        // v2 path's internal legacy fallback silently succeeds on legacy
+        // blobs, masking them from the migration branch below.
+        let isV2 = encryptedData.count >= 2 && encryptedData.prefix(2) == Data("v2".utf8)
+
+        // Try new v2 format directly (no legacy fallback needed)
+        if isV2, let data = ServiceContainer.crypto.decryptData(encryptedData) {
             return data
         }
 
