@@ -17,6 +17,10 @@
 | **Destaque de pesquisa** | Destaque sobre texto | Não diferencia maiúsculas/minúsculas, sem caracteres corrompidos |
 | **Visualização longa** | Nenhuma | 0.4s revela texto completo / sensível / imagem |
 | **Agrupamento por tempo** | Nenhum | Hoje / Ontem / Anterior, recolhível |
+| **Etiquetas** | Nenhum | Criar / apagar / cores personalizadas, filtragem na barra lateral + sugestões inteligentes |
+| **Lixeira** | Apagado para sempre | Lixeira recuperável com retenção configurável |
+| **Atualização automática** | Downloads manuais | Verificação em segundo plano, instalação e reinício com um clique |
+| **Cópia local** | Nenhum | Cópias diárias automáticas + exportação / importação criptografada |
 
 ---
 

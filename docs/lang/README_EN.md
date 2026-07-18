@@ -17,6 +17,10 @@
 | **Search highlight** | Text overlay highlight | Case-insensitive, no garbled text |
 | **Long-press preview** | None | 0.4s reveals full text / sensitive / image |
 | **Time grouping** | None | Today / Yesterday / Older, collapsible |
+| **Tags** | None | Create / delete / custom colors, sidebar filtering + smart suggestions |
+| **Recycle Bin** | Deleted forever | Restorable recycle bin with configurable retention |
+| **Auto-update** | Manual downloads | Background checks, one-click install & relaunch |
+| **Local backup** | None | Daily auto-backups + encrypted export / import |
 
 ---
 

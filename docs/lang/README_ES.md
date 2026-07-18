@@ -17,6 +17,10 @@
 | **Resalte de búsqueda** | Resalte sobre texto | Sin distinción de mayúsculas/minúsculas, sin caracteres rotos |
 | **Vista previa larga** | Ninguna | 0.4s revela texto completo / sensible / imagen |
 | **Agrupación por tiempo** | Ninguna | Hoy / Ayer / Anterior, plegable |
+| **Etiquetas** | Ninguna | Crear / eliminar / colores personalizados, filtrado en barra lateral + sugerencias inteligentes |
+| **Papelera** | Eliminado para siempre | Papelera recuperable con retención configurable |
+| **Actualización automática** | Descargas manuales | Comprobación en segundo plano, instalación y reinicio con un clic |
+| **Copia local** | Ninguna | Copias diarias automáticas + exportación / importación cifrada |
 
 ---
 
