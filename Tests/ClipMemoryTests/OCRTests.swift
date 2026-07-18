@@ -101,6 +101,66 @@ final class OCRTests: XCTestCase {
         wait(for: [expectation], timeout: 30)
     }
 
+    // MARK: - Backfill self-healing
+
+    /// Mock recognizer: returns fixed text for any image data.
+    private struct MockOCR: OCRServiceProtocol {
+        var result: String?
+        func recognizeText(in imageData: Data, completion: @escaping (String?) -> Void) {
+            completion(result)
+        }
+    }
+
+    private func seedImageFile() -> String {
+        let name = "\(UUID().uuidString).png"
+        let url = ImageStorage.shared.imagesDirectoryURL.appendingPathComponent(name)
+        let image = Self.renderTextImage("BACKFILL")
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let pngData = rep.representation(using: .png, properties: [:]) else {
+            return name
+        }
+        try? pngData.write(to: url)
+        return name
+    }
+
+    func testBackfillIsSelfHealingAndIdempotent() {
+        let filename = seedImageFile()
+        let item = ClipboardItem(content: filename, type: .image)
+        store.addItem(item)
+
+        // First pass: attaches text + marks attempted
+        store.backfillOCRIfNeeded(using: MockOCR(result: "回填文字"), imageStorage: .shared)
+        let exp1 = expectation(description: "backfill attach")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { exp1.fulfill() }
+        wait(for: [exp1], timeout: 10)
+
+        let after = store.items.first(where: { $0.id == item.id })
+        XCTAssertEqual(after?.ocrAttempted, true)
+        XCTAssertEqual(after.flatMap { store.getDecryptedOcrText($0) }, "回填文字")
+
+        // Second pass must be a no-op (already attempted)
+        store.backfillOCRIfNeeded(using: MockOCR(result: "不应覆盖"), imageStorage: .shared)
+        let exp2 = expectation(description: "second pass")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp2.fulfill() }
+        wait(for: [exp2], timeout: 10)
+        XCTAssertEqual(after.flatMap { store.getDecryptedOcrText($0) }, "回填文字")
+    }
+
+    func testBackfillDoesNotMarkMissingFiles() {
+        let item = ClipboardItem(content: "\(UUID().uuidString).png", type: .image)
+        store.addItem(item) // 无对应文件
+
+        store.backfillOCRIfNeeded(using: MockOCR(result: "x"), imageStorage: .shared)
+        let exp = expectation(description: "wait")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp.fulfill() }
+        wait(for: [exp], timeout: 10)
+
+        let after = store.items.first(where: { $0.id == item.id })
+        XCTAssertEqual(after?.ocrAttempted, false,
+                       "file-missing items must stay un-attempted so a later launch can retry")
+    }
+
     private static func renderTextImage(_ text: String) -> NSImage {
         let size = NSSize(width: 400, height: 120)
         let image = NSImage(size: size)

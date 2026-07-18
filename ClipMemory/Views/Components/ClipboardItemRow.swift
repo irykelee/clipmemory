@@ -320,7 +320,9 @@ struct ClipboardItemRow: View, Equatable {
                 Button(action: copyOcrText, label: {
                     Label(L10n.itemOcrCopy, systemImage: "text.viewfinder")
                 })
-                .disabled(item.ocrText == nil)
+                // Live lookup: the row's captured item struct can be stale when
+                // OCR finished after the list rendered (bug: menu looked dead).
+                .disabled(liveOcrText == nil)
             }
             if item.isSensitive {
                 Button(action: onToggleReveal, label: {
@@ -360,6 +362,14 @@ struct ClipboardItemRow: View, Equatable {
         return nsAttr.string
     }
 
+    /// The item as it currently exists in the store (the captured row struct
+    /// can be stale right after OCR attaches text in the background).
+    private var liveItem: ClipboardItem {
+        ClipboardStore.shared.items.first(where: { $0.id == item.id }) ?? item
+    }
+
+    private var liveOcrText: String? { liveItem.ocrText }
+
     private func loadRichText() async {
         guard item.type == .richText else { return }
         guard let base64 = ClipboardStore.shared.getDecryptedContent(item),
@@ -379,7 +389,7 @@ struct ClipboardItemRow: View, Equatable {
     /// The app's own copy-loop interception means this won't create a new
     /// history entry.
     private func copyOcrText() {
-        guard let text = ClipboardStore.shared.getDecryptedOcrText(item), !text.isEmpty else { return }
+        guard let text = ClipboardStore.shared.getDecryptedOcrText(liveItem), !text.isEmpty else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
