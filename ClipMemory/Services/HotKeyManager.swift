@@ -104,34 +104,52 @@ class HotKeyManager {
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "HotKeyManager")
 
     private(set) var config: HotKeyConfig = .load()
+    /// Whether a registration attempt was made this launch (lets UI read the
+    /// outcome without triggering a re-register).
+    private(set) var registerAttempted = false
 
     init() {}
 
     func register() {
-        unregister()
+        // Idempotent: callers (e.g. WelcomeView's conflict check in the past)
+        // may invoke register() repeatedly. Each call used to unregister +
+        // reinstall the handler + re-register, and every failed attempt
+        // (another app/instance holding the hotkey, -9878) logged an error —
+        // that was the log spam. Re-registering is only needed after an
+        // explicit unregister() or a config change via updateHotKey().
+        guard hotKeyRef == nil else { return }
+        registerAttempted = true
 
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        // Install the keyboard event handler once — a retry after a failed
+        // RegisterEventHotKey must not stack duplicate handlers.
+        if eventHandler == nil {
+            var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
 
-        let handler: EventHandlerUPP = { _, _, userData -> OSStatus in
-            guard let userData = userData else { return OSStatus(eventNotHandledErr) }
-            let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
-            DispatchQueue.main.async {
-                manager.showWindowHandler?()
+            let handler: EventHandlerUPP = { _, _, userData -> OSStatus in
+                guard let userData = userData else { return OSStatus(eventNotHandledErr) }
+                let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
+                DispatchQueue.main.async {
+                    manager.showWindowHandler?()
+                }
+                return noErr
             }
-            return noErr
-        }
 
-        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
-        let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), handler, 1, &eventType, selfPtr, &eventHandler)
-        if handlerStatus != noErr {
-            logger.error("Failed to install keyboard event handler: \(handlerStatus)")
-            return
+            let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+            let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), handler, 1, &eventType, selfPtr, &eventHandler)
+            if handlerStatus != noErr {
+                logger.error("Failed to install keyboard event handler: \(handlerStatus)")
+                return
+            }
         }
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x434C5050), id: 1)
         let hotKeyStatus = RegisterEventHotKey(config.keyCode, config.modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
         if hotKeyStatus != noErr {
-            logger.error("Failed to register hotkey \(self.config.displayString): \(hotKeyStatus)")
+            if hotKeyStatus == eventHotKeyExistsErr {
+                logger.error("Hotkey \(self.config.displayString) is already registered by another app or ClipMemory instance — global hotkey inactive")
+            } else {
+                logger.error("Failed to register hotkey \(self.config.displayString): \(hotKeyStatus)")
+            }
         } else {
             logger.info("Hotkey registered: \(self.config.displayString)")
         }
@@ -147,6 +165,7 @@ class HotKeyManager {
         }
         config = HotKeyConfig(keyCode: keyCode, modifiers: modifiers)
         config.save()
+        unregister()
         register()
     }
 

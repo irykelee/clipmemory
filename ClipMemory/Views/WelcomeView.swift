@@ -94,14 +94,18 @@ struct WelcomeView: View {
 
     private func checkHotKeyConflict() {
         hotKeyStatus = .checking
-        // Register hotkey and check if it succeeded
-        hotKeyManager.register()
-        if hotKeyManager.hotKeyRef == nil {
+        // Read-only status check: AppDelegate already attempted registration at
+        // launch. Calling register() here re-registered (and logged an error)
+        // on every onAppear — that was the -9878 log spam.
+        if hotKeyManager.hotKeyRef != nil {
+            hotKeyConflictDetected = false
+            hotKeyStatus = .success
+        } else if hotKeyManager.registerAttempted {
             hotKeyConflictDetected = true
             hotKeyStatus = .conflict
         } else {
+            // No attempt yet (shouldn't happen in practice) — treat as checking.
             hotKeyConflictDetected = false
-            hotKeyStatus = .success
         }
     }
 }

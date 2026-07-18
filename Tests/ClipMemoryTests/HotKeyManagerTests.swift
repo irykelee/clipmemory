@@ -201,6 +201,20 @@ final class HotKeyManagerTests: XCTestCase {
         manager.unregister()
     }
 
+    func testRegisterIsIdempotent() {
+        // H.4.5: A second register() call while already registered must be a
+        // no-op (keeps the same hotKeyRef, no re-install). Previously each
+        // call unregistered + re-registered, and WelcomeView's conflict check
+        // triggered it on every onAppear — the -9878 log spam.
+        let manager = HotKeyManager()
+        manager.register()
+        let firstRef = manager.hotKeyRef
+        manager.register()
+        XCTAssertTrue(manager.hotKeyRef == firstRef,
+                      "second register() must not replace the existing hotKeyRef")
+        manager.unregister()
+    }
+
     // MARK: - RS-3.4: Reject modifiers=0
 
     func testUpdateHotKeyRejectsZeroModifiers() {
