@@ -1,18 +1,16 @@
 # SwiftLint Configuration for ClipMemory
 # https://realm.github.io/SwiftLint/
 
-# 禁用的规则（根据项目需求调整）
+# 规范统一策略（ratchet）：warning 按 AGENTS.md 规范值（文件≤800 行 / 函数≤50 行），
+# error 按现状封顶（防继续增长）。拆分存量大文件后逐步把 error 降到规范值。
+# 现状基线（2026-07-18）：最长文件 1181 行、最长函数 350 行、最长行 628 字符、最大圈复杂度 42。
 disabled_rules:
-  - line_length
-  - function_body_length
-  - file_length
-  - type_body_length
-  - cyclomatic_complexity
   - function_parameter_count
   - force_cast
   - closure_spacing
   - multiline_parameters
   - switch_case_alignment
+  - type_body_length  # 与 file_length 重复，保留禁用（大类型由 file_length 兜底）
 
 # 启用的规则
 opt_in_rules:
@@ -45,6 +43,19 @@ excluded:
 reporter: "xcode"
 
 # 规则参数
+file_length:
+  warning: 800
+  error: 1250
+function_body_length:
+  warning: 50
+  error: 400
+line_length:
+  warning: 150
+  error: 700
+cyclomatic_complexity:
+  warning: 10
+  error: 45
+
 identifier_name:
   min_length:
     warning: 1
