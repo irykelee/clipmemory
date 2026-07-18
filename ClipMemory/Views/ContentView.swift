@@ -760,6 +760,17 @@ struct ContentView: View {
                 }))
             }
             Section {
+                Toggle(L10n.settingsUpdateAuto, isOn: Binding(
+                    get: { UpdateService.shared.automaticallyChecksForUpdates },
+                    set: { UpdateService.shared.automaticallyChecksForUpdates = $0 }
+                ))
+                Button(L10n.settingsUpdateCheckNow) { UpdateService.shared.checkNow() }.buttonStyle(.link)
+            } header: { Text(L10n.settingsSectionUpdate) } footer: {
+                if let lastCheck = UpdateService.shared.lastUpdateCheckDate {
+                    Text(L10n.settingsUpdateLastCheck(lastCheck.formatted(date: .abbreviated, time: .shortened))).foregroundColor(.secondary)
+                }
+            }
+            Section {
                 Text(L10n.aboutVersion(AppVersion.current)).foregroundColor(.secondary)
                 Text(L10n.aboutFreeEdition).foregroundColor(.secondary)
                 Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.buttonStyle(.link)

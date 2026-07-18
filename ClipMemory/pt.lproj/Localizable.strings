@@ -80,6 +80,10 @@
 "settings.excluded.apps.label" = "Apps Excluídas";
 "settings.excluded.apps.hint" = "IDs de pacote separados por vírgula de apps a excluir do monitoramento da área de transferência (ex. com.1password.1password, com.bitwarden.desktop). Ações de copiar dessas apps não serão gravadas.";
 "settings.add.excluded.app" = "Adicionar aplicativo";
+"settings.section.update" = "Atualizações";
+"settings.update.auto" = "Verificar atualizações automaticamente";
+"settings.update.check.now" = "Verificar agora…";
+"settings.update.last.check" = "Última verificação: %@";
 "settings.app.picker.search" = "Pesquisar aplicativos";
 "settings.app.picker.running" = "Em execução";
 "settings.app.picker.installed" = "Instalados";

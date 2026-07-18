@@ -174,6 +174,10 @@ struct L10n {
     static var settingsExcludedAppsHint: String { string("settings.excluded.apps.hint") }
     static var settingsExcludedAppsNone: String { string("settings.excluded.apps.none") }
     static var settingsAddExcludedApp: String { string("settings.add.excluded.app") }
+    static var settingsSectionUpdate: String { string("settings.section.update") }
+    static var settingsUpdateAuto: String { string("settings.update.auto") }
+    static var settingsUpdateCheckNow: String { string("settings.update.check.now") }
+    static func settingsUpdateLastCheck(_ date: String) -> String { string("settings.update.last.check", date) }
     static var settingsAppPickerSearch: String { string("settings.app.picker.search") }
     static var settingsAppPickerNoResults: String { string("settings.app.picker.no.results") }
     static var settingsFontSize: String { string("settings.font.size") }

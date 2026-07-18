@@ -81,6 +81,10 @@
 "settings.excluded.apps.label" = "Apps excluidas";
 "settings.excluded.apps.hint" = "IDs de paquete separados por comas de apps a excluir del monitoreo del portapapeles (ej. com.1password.1password, com.bitwarden.desktop). Las acciones de copiar de estas apps no se registrarán.";
 "settings.add.excluded.app" = "Añadir aplicación";
+"settings.section.update" = "Actualización";
+"settings.update.auto" = "Buscar actualizaciones automáticamente";
+"settings.update.check.now" = "Buscar actualizaciones…";
+"settings.update.last.check" = "Última comprobación: %@";
 "settings.app.picker.search" = "Buscar aplicaciones";
 "settings.app.picker.running" = "En ejecución";
 "settings.app.picker.installed" = "Instaladas";
