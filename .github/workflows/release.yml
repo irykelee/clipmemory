@@ -59,6 +59,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add appcast.xml
           git diff --cached --quiet || git commit -m "chore: appcast item for v${VERSION} [skip ci]"
+          # main may have moved since the tag (e.g. a hotfix pushed while the
+          # build ran) — rebase the appcast commit on top of it before pushing.
+          git pull --rebase origin main
           git push origin HEAD:main
 
           # Best-effort: refresh the jsDelivr mirror of the fallback feed
