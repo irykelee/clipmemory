@@ -61,6 +61,9 @@ jobs:
           git diff --cached --quiet || git commit -m "chore: appcast item for v${VERSION} [skip ci]"
           # main may have moved since the tag (e.g. a hotfix pushed while the
           # build ran) — rebase the appcast commit on top of it before pushing.
+          # xcodegen-regenerated project files are reproducible; drop them so
+          # the rebase has a clean tree to work with.
+          git checkout -- .
           git pull --rebase origin main
           git push origin HEAD:main
 
