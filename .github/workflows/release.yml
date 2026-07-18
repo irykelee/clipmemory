@@ -35,15 +35,16 @@ jobs:
       - name: Sign tarball and update appcast
         env:
           SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
 
-          # Resolve the latest Sparkle release and fetch its signing tools
-          SPARKLE_TAG=$(curl -s https://api.github.com/repos/sparkle-project/Sparkle/releases/latest | sed -nE 's/.*"tag_name": "([^"]+)".*/\1/p')
-          curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_TAG}/Sparkle-${SPARKLE_TAG}.tar.xz" -o /tmp/sparkle.tar.xz
+          # Fetch the latest Sparkle signing tools via gh (authenticated —
+          # anonymous api.github.com calls are rate-limited on CI runners)
+          gh release download --repo sparkle-project/Sparkle --pattern 'Sparkle-*.tar.xz' --dir /tmp/sparkle-dl --clobber
           mkdir -p /tmp/sparkle
-          tar -xf /tmp/sparkle.tar.xz -C /tmp/sparkle
+          tar -xf /tmp/sparkle-dl/Sparkle-*.tar.xz -C /tmp/sparkle
 
           # EdDSA-sign the tarball with the private key from repo secrets
           KEY_FILE=$(mktemp)
