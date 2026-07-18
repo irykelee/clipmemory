@@ -61,6 +61,9 @@ jobs:
           git diff --cached --quiet || git commit -m "chore: appcast item for v${VERSION} [skip ci]"
           git push origin HEAD:main
 
+          # Best-effort: refresh the jsDelivr mirror of the fallback feed
+          curl -sf "https://purge.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml" || true
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
