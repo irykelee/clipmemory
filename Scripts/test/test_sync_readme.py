@@ -53,5 +53,27 @@ class TestGlossary(unittest.TestCase):
         self.assertIn("回收站 → Recycle Bin", block)
 
 
+class TestLlmConfig(unittest.TestCase):
+    def tearDown(self):
+        for var in ("README_SYNC_BASE_URL", "README_SYNC_MODEL", "README_SYNC_API_KEY"):
+            os.environ.pop(var, None)
+
+    def test_defaults_to_deepseek(self):
+        for var in ("README_SYNC_BASE_URL", "README_SYNC_MODEL", "README_SYNC_API_KEY"):
+            os.environ.pop(var, None)
+        base, model, _ = sync_readme.llm_config()
+        self.assertIn("deepseek", base)
+        self.assertEqual(model, "deepseek-chat")
+
+    def test_env_overrides(self):
+        os.environ["README_SYNC_BASE_URL"] = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+        os.environ["README_SYNC_MODEL"] = "qwen-plus"
+        os.environ["README_SYNC_API_KEY"] = "test-key"
+        base, model, key = sync_readme.llm_config()
+        self.assertIn("dashscope", base)
+        self.assertEqual(model, "qwen-plus")
+        self.assertEqual(key, "test-key")
+
+
 if __name__ == "__main__":
     unittest.main()
