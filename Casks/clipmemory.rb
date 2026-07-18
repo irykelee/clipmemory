@@ -9,6 +9,8 @@
 
 	  depends_on macos: :ventura
 
+	  auto_updates true
+
 	  app "ClipMemory.app"
 
 	  zap trash: [

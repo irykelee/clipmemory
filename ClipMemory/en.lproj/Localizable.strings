@@ -80,6 +80,10 @@
 "settings.excluded.apps.label" = "Excluded Apps";
 "settings.excluded.apps.hint" = "Comma-separated bundle IDs of apps to exclude from clipboard monitoring (e.g. com.1password.1password, com.bitwarden.desktop). Copy actions from these apps will not be recorded.";
 "settings.add.excluded.app" = "Add Application";
+"settings.section.update" = "Update";
+"settings.update.auto" = "Automatically check for updates";
+"settings.update.check.now" = "Check for Updates…";
+"settings.update.last.check" = "Last checked: %@";
 "settings.app.picker.search" = "Search applications";
 "settings.app.picker.running" = "Running";
 "settings.app.picker.installed" = "Installed";

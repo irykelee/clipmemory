@@ -80,6 +80,10 @@
 "settings.excluded.apps.label" = "제외 앱";
 "settings.excluded.apps.hint" = "클립보드 모니터링에서 제외할 앱의 번들 ID를 쉼표로 구분하여 입력(예: com.1password.1password, com.bitwarden.desktop). 해당 앱에서 복사하면 기록되지 않습니다.";
 "settings.add.excluded.app" = "앱 추가";
+"settings.section.update" = "업데이트";
+"settings.update.auto" = "자동으로 업데이트 확인";
+"settings.update.check.now" = "지금 확인…";
+"settings.update.last.check" = "마지막 확인: %@";
 "settings.app.picker.search" = "앱 검색";
 "settings.app.picker.running" = "실행 중";
 "settings.app.picker.installed" = "설치됨";

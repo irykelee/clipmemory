@@ -80,6 +80,10 @@
 "settings.excluded.apps.label" = "排除的應用程式";
 "settings.excluded.apps.hint" = "輸入要排除的應用程式的 Bundle ID，多個用逗號分隔。這些應用程式的複製操作不會被記錄。";
 "settings.add.excluded.app" = "新增應用程式";
+"settings.section.update" = "更新";
+"settings.update.auto" = "自動檢查更新";
+"settings.update.check.now" = "立即檢查更新…";
+"settings.update.last.check" = "上次檢查：%@";
 "settings.app.picker.search" = "搜尋應用程式";
 "settings.app.picker.running" = "執行中";
 "settings.app.picker.installed" = "已安裝";

@@ -19,6 +19,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupLanguageObserver()
         NSApp.setActivationPolicy(.accessory)
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
+        // Start Sparkle: daily background check per SUEnableAutomaticChecks.
+        _ = UpdateService.shared
     }
 
     func applicationWillTerminate(_ notification: Notification) {
