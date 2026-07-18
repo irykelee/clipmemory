@@ -29,3 +29,6 @@ jobs:
 
       - name: Test
         run: xcodebuild -scheme ClipMemory -configuration Debug test
+
+      - name: Test (zh-Hans locale)
+        run: xcodebuild -scheme ClipMemory -configuration Debug test -testLanguage zh-Hans
