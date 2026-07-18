@@ -741,6 +741,13 @@ class ClipboardStore: ObservableObject {
         // decryptionFailed. ImageStorage handles image-file encryption separately.
         guard item.type != .image else { return item.content }
 
+        // Already-known-corrupt items: bail out WITHOUT re-decrypting or
+        // re-marking. Rendering an encrypted-but-undecryptable row used to
+        // re-mark on EVERY body evaluation, publishing during view update in
+        // an endless loop that pinned the main thread at 100% CPU (the
+        // "open full window freezes" bug).
+        if item.decryptionFailed { return nil }
+
         let key = item.id.uuidString as NSString
         if let cached = contentCache.object(forKey: key) {
             return cached as String
@@ -759,7 +766,8 @@ class ClipboardStore: ObservableObject {
             // Must publish on the main thread because `items` is @Published.
             let markFailed = { [weak self] in
                 guard let self = self else { return }
-                if let index = self.items.firstIndex(where: { $0.id == item.id }) {
+                if let index = self.items.firstIndex(where: { $0.id == item.id }),
+                   !self.items[index].decryptionFailed {
                     self.items[index].decryptionFailed = true
                     self.scheduleSave()
                 }
