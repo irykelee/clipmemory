@@ -35,5 +35,15 @@
                  type="application/octet-stream"
                  sparkle:edSignature="JFZNNTVH4A9g1tIw3d9FmnjJdtiJ7C5Xuzdh5Vm7PSKXNj9kw0V3KalFrB0I6qC/BoGN5qo7G0VlYNeC4bewDg==" />
     </item>
+    <item>
+      <title>Version 2.5.0</title>
+      <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
+      <sparkle:version>2.5.0</sparkle:version>
+      <pubDate>Sat, 18 Jul 2026 06:26:33 +0000</pubDate>
+      <enclosure url="https://github.com/irykelee/clipmemory/releases/download/v2.5.0/ClipMemory.tar.gz"
+                 length="6520507"
+                 type="application/octet-stream"
+                 sparkle:edSignature="KlB6tRT29xJIKOdmm2Ajjj0Iuln0L6AzocsVvzRGE1UeTM1IZAXCaS3jKXe4XkNaJpo/7727DMDaHwXtPYRGCQ==" />
+    </item>
   </channel>
 </rss>
