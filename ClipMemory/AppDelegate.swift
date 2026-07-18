@@ -21,6 +21,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
         // Start Sparkle: daily background check per SUEnableAutomaticChecks.
         _ = UpdateService.shared
+        // Daily local backup (throttled internally to once per 24h).
+        BackupService.shared.performBackupIfNeeded()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

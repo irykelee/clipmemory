@@ -178,6 +178,19 @@ struct L10n {
     static var settingsUpdateAuto: String { string("settings.update.auto") }
     static var settingsUpdateCheckNow: String { string("settings.update.check.now") }
     static func settingsUpdateLastCheck(_ date: String) -> String { string("settings.update.last.check", date) }
+    static var settingsSectionBackup: String { string("settings.section.backup") }
+    static var settingsBackupAuto: String { string("settings.backup.auto") }
+    static var settingsBackupKeep: String { string("settings.backup.keep") }
+    static var settingsBackupNow: String { string("settings.backup.now") }
+    static var settingsBackupOpen: String { string("settings.backup.open") }
+    static var settingsBackupExport: String { string("settings.backup.export") }
+    static var settingsBackupImport: String { string("settings.backup.import") }
+    static var settingsBackupPassword: String { string("settings.backup.passphrase") }
+    static var settingsBackupPasswordWrong: String { string("settings.backup.passphrase.wrong") }
+    static var settingsBackupError: String { string("settings.backup.error") }
+    static var settingsBackupExportDone: String { string("settings.backup.export.done") }
+    static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, images) }
+    static func settingsBackupLast(_ date: String) -> String { string("settings.backup.last", date) }
     static var settingsAppPickerSearch: String { string("settings.app.picker.search") }
     static var settingsAppPickerNoResults: String { string("settings.app.picker.no.results") }
     static var settingsFontSize: String { string("settings.font.size") }

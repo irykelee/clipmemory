@@ -35,6 +35,9 @@ class ImageStorage {
         return dir
     }()
 
+    /// Exposed for backup/export code that needs the real (or test-sandboxed) path.
+    var imagesDirectoryURL: URL { imagesDirectory }
+
     private let legacyImagesDirectory: URL = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("ClipPaste/Images", isDirectory: true)

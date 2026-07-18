@@ -662,6 +662,60 @@ class ClipboardStore: ObservableObject {
         saveImmediately()
     }
 
+    /// Merges imported backup items into the store. Items arrive already
+    /// re-encrypted with the local key (BackupPackage does the re-keying).
+    /// Dedupe order: id first, then contentHash (catches same content under a
+    /// new id from another machine). Trashed items merge into the recycle bin
+    /// unless they collide with active/trashed entries.
+    /// Returns (imported, skipped).
+    @discardableResult
+    func importBackupItems(_ newItems: [ClipboardItem], trashedItems newTrashed: [ClipboardItem]) -> (imported: Int, skipped: Int) {
+        var imported = 0
+        var skipped = 0
+        let existingIds = Set(items.map { $0.id } + trashedItems.map { $0.id })
+        let existingHashes = Set(items.compactMap { $0.contentHash } + trashedItems.compactMap { $0.contentHash })
+
+        for item in newItems {
+            let hashDuplicate = item.contentHash != nil && existingHashes.contains(item.contentHash!)
+            if existingIds.contains(item.id) || hashDuplicate {
+                skipped += 1
+                continue
+            }
+            items.append(item)
+            imported += 1
+        }
+
+        var trashAdded = false
+        for item in newTrashed {
+            let hashDuplicate = item.contentHash != nil && existingHashes.contains(item.contentHash!)
+            if existingIds.contains(item.id) || hashDuplicate { continue }
+            trashedItems.append(item)
+            trashAdded = true
+        }
+
+        if imported > 0 {
+            items.sort { $0.createdAt > $1.createdAt }
+            trimToMaxItems()
+            updatePinnedItems()
+            saveImmediately()
+        }
+        if trashAdded { scheduleTrashSave() }
+        return (imported, skipped)
+    }
+
+    /// Merges imported backup tags by id (existing ids win). Returns count added.
+    @discardableResult
+    func importBackupTags(_ newTags: [Tag]) -> Int {
+        let existingIds = Set(tags.keys)
+        var added = 0
+        for tag in newTags where !existingIds.contains(tag.id) {
+            tags[tag.id] = tag
+            added += 1
+        }
+        if added > 0 { scheduleTagSave() }
+        return added
+    }
+
     func getDecryptedContent(_ item: ClipboardItem) -> String? {
         // Image items store a filename (UUID.png), not encrypted text. Decrypting
         // a filename always fails and would incorrectly mark the item as

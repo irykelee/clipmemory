@@ -771,6 +771,30 @@ struct ContentView: View {
                 }))
             }
             Section {
+                Toggle(L10n.settingsBackupAuto, isOn: Binding(
+                    get: { backupService.isEnabled },
+                    set: { backupService.isEnabled = $0 }
+                ))
+                Picker(L10n.settingsBackupKeep, selection: Binding(
+                    get: { backupService.keepCount },
+                    set: { backupService.keepCount = $0 }
+                )) { ForEach([3, 7, 14, 30], id: \.self) { Text("\($0)").tag($0) } }
+                Button(L10n.settingsBackupNow) {
+                    backupService.backupNow()
+                    backupRefresh.toggle()
+                }.buttonStyle(.link)
+                Button(L10n.settingsBackupOpen) {
+                    NSWorkspace.shared.open(backupService.backupsDirectoryURL)
+                }.buttonStyle(.link)
+                Button(L10n.settingsBackupExport) { exportBackup() }.buttonStyle(.link)
+                Button(L10n.settingsBackupImport) { importBackup() }.buttonStyle(.link)
+            } header: { Text(L10n.settingsSectionBackup) } footer: {
+                if let last = backupService.lastBackupDate {
+                    Text(L10n.settingsBackupLast(last.formatted(date: .abbreviated, time: .shortened))).foregroundColor(.secondary)
+                        .id(backupRefresh)
+                }
+            }
+            Section {
                 Toggle(L10n.settingsUpdateAuto, isOn: Binding(
                     get: { UpdateService.shared.automaticallyChecksForUpdates },
                     set: { UpdateService.shared.automaticallyChecksForUpdates = $0 }
@@ -799,6 +823,79 @@ struct ContentView: View {
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.buttonConfirm)
         alert.runModal()
+    }
+
+    // MARK: - Backup / Export / Import
+
+    private let backupService = BackupService.shared
+    @State private var backupRefresh = false
+
+    private func showBackupInfo(_ text: String) {
+        let alert = NSAlert()
+        alert.messageText = text
+        alert.addButton(withTitle: L10n.buttonConfirm)
+        alert.runModal()
+    }
+
+    /// Prompts for the backup passphrase (min 6 chars). Returns nil on cancel/too short.
+    private func promptBackupPassword() -> String? {
+        let alert = NSAlert()
+        alert.messageText = L10n.settingsBackupPassword
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: L10n.buttonConfirm)
+        alert.addButton(withTitle: L10n.buttonCancel)
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let value = field.stringValue
+        return value.count >= 6 ? value : nil
+    }
+
+    private func exportBackup() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "ClipMemory-backup.clipmemory"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let passphrase = promptBackupPassword() else { return }
+        guard let keyData = CryptoService.loadKeyData() else {
+            showBackupInfo(L10n.settingsBackupError)
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try BackupPackage.exportPackage(
+                    to: url,
+                    passphrase: passphrase,
+                    imagesDirectory: ImageStorage.shared.imagesDirectoryURL,
+                    keyData: keyData
+                )
+                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupExportDone) }
+            } catch {
+                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
+            }
+        }
+    }
+
+    private func importBackup() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "clipmemory")].compactMap { $0 }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let passphrase = promptBackupPassword() else { return }
+        // Safety net: snapshot current data before mutating, then merge on main
+        // thread (store publishes must stay on main).
+        backupService.backupNow()
+        do {
+            let result = try BackupPackage.importPackage(
+                from: url,
+                passphrase: passphrase,
+                store: ClipboardStore.shared,
+                localCrypto: ServiceContainer.crypto,
+                imagesDirectory: ImageStorage.shared.imagesDirectoryURL
+            )
+            showBackupInfo(L10n.settingsBackupImportResult(result.itemsImported, result.itemsSkipped, result.imagesImported))
+        } catch BackupPackageError.wrongPassword {
+            showBackupInfo(L10n.settingsBackupPasswordWrong)
+        } catch {
+            showBackupInfo(L10n.settingsBackupError)
+        }
     }
 
     private var excludedAppsTags: some View {
