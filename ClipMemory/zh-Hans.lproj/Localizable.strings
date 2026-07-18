@@ -2,7 +2,6 @@
 "app.name" = "剪忆 ClipMemory";
 "button.clear" = "清空";
 "button.settings" = "偏好设置";
-"button.back" = "返回";
 "button.cancel" = "取消";
 "button.delete" = "删除";
 "button.confirm" = "确认";
@@ -11,9 +10,7 @@
 
 /* Header */
 "header.clear.history" = "清空历史";
-"header.show.all" = "全部";
 "header.show.pinned" = "已收藏";
-"header.pin.all" = "取消全部收藏";
 
 /* Search */
 "search.placeholder" = "搜索剪贴板...";
@@ -35,8 +32,6 @@
 "action.unpin" = "取消收藏";
 "action.delete" = "删除";
 "action.copy" = "复制";
-"action.view" = "查看";
-"action.hide" = "收起";
 "action.show.content" = "显示内容";
 "action.hide.content" = "收起内容";
 
@@ -47,22 +42,15 @@
 
 /* Image fallback */
 "image.missing" = "图片文件已丢失";
-"tooltip.clear.history" = "清空历史（已收藏的保留）";
-"tooltip.show.all" = "显示全部记录";
-"tooltip.pinned.only" = "只看收藏内容";
-"tooltip.reveal" = "显示内容";
-"tooltip.hide" = "隐藏内容";
 
 /* Alerts */
 "alert.clear.title" = "清空历史";
 "alert.clear.message" = "确定清空 %d 条记录？\n收藏内容不会被删除。";
 "alert.clear.none" = "没有可清空的记录。";
-"alert.clear.group.message" = "确定清空「%2$@」的 %1$d 条记录？\n收藏内容不会被删除。";
 "alert.delete.title" = "移至回收站";
 "alert.delete.message" = "确定将该内容移至回收站吗？";
 
 /* Settings */
-"settings.title" = "偏好设置";
 "settings.section.history" = "历史记录";
 "settings.section.sensitive" = "敏感信息保护";
 "settings.section.language" = "语言";
@@ -75,9 +63,6 @@
 "settings.sensitive.hint" = "检测到密码、API密钥等敏感内容时，自动清理前的等待时间";
 "settings.hotkey.change" = "修改";
 "settings.hotkey.recording" = "请按下新的快捷键...";
-"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
-"settings.excluded.apps.label" = "排除的应用";
-"settings.excluded.apps.hint" = "输入要排除的应用的 Bundle ID，多个用逗号分隔。这些应用的复制操作不会被记录。";
 "settings.add.excluded.app" = "添加应用";
 "settings.section.update" = "更新";
 "settings.update.auto" = "自动检查更新";
@@ -106,10 +91,7 @@
 "tag.delete.onlytag" = "仅删除标签";
 "tag.delete.withcontent" = "删除标签和内容";
 "settings.app.picker.search" = "搜索应用";
-"settings.app.picker.running" = "运行中";
-"settings.app.picker.installed" = "已安装";
 "settings.app.picker.no.results" = "未找到应用";
-"settings.excluded.apps.none" = "未排除任何应用";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 小时后";
@@ -121,12 +103,10 @@
 /* About */
 "about.version" = "ClipMemory 剪忆 v%@";
 "about.free.edition" = "免费版 · 本地剪贴板管理器";
-"about.paid.edition" = "专业版";
 
 /* Item Labels */
 "item.sensitive" = "敏感";
 "item.image" = "[图片]";
-"item.unpin.all" = "取消全部收藏";
 
 /* Date Groups */
 "group.today" = "今天";
@@ -138,24 +118,12 @@
 "cleanup.today" = "清除今天";
 "cleanup.yesterday" = "清除昨天";
 "cleanup.older" = "清除更早";
-"cleanup.all" = "清除全部";
 
 /* Languages */
-"lang.zh-Hans" = "简体中文";
-"lang.zh-Hant" = "繁體中文";
-"lang.en" = "English";
-"lang.ja" = "日本語";
-"lang.ko" = "한국어";
-"lang.es" = "Español";
-"lang.pt" = "Português";
 
 /* App Delegate */
 "app.quit" = "退出 ClipMemory";
 "app.launch.at.login" = "登录时启动";
-"app.launch.at.login.enabled" = "已启用";
-"app.launch.at.login.enabled.body" = "ClipMemory 将会在登录时自动启动。";
-"app.launch.at.login.disabled" = "已停用";
-"app.launch.at.login.disabled.body" = "ClipMemory 将不会在登录时启动。";
 "settings.launch.at.login.error.body" = "无法修改登录时启动设置，请检查系统权限。";
 "app.error" = "错误";
 "batch.selected" = "已选择 %d 项";
@@ -176,10 +144,6 @@
 
 /* Theme */
 "settings.section.theme" = "主题";
-"theme.effect" = "窗口效果";
-"theme.effect.solid" = "实心";
-"theme.effect.frosted" = "毛玻璃";
-"theme.effect.ultra" = "高透";
 "theme.appearance" = "外观";
 "theme.appearance.system" = "跟随系统";
 "theme.appearance.light" = "浅色";
@@ -196,9 +160,6 @@
 "font.size.small" = "小";
 "font.size.medium" = "中";
 "font.size.large" = "大";
-"tooltip.close" = "Close";
-"tooltip.minimize" = "Minimize";
-"tooltip.zoom" = "Zoom";
 
 "app.view.welcome.guide" = "查看入门指南";
 
@@ -260,10 +221,7 @@
 /* Recycle Bin */
 "trash.title" = "回收站";
 "trash.empty" = "回收站是空的";
-"trash.deletedAt" = "删除于 %@";
 "trash.restore" = "恢复";
-"trash.deletePermanently" = "彻底删除";
 "trash.emptyConfirm.title" = "清空回收站";
 "trash.emptyConfirm.message" = "%d 个条目将被永久删除，此操作不可撤销。";
 "trash.retentionDays" = "回收站保留天数";
-"trash.moveToTrash" = "移至回收站";

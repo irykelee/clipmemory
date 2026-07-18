@@ -2,7 +2,6 @@
 "app.name" = "ClipMemory";
 "button.clear" = "Limpar";
 "button.settings" = "Configurações";
-"button.back" = "Voltar";
 "button.cancel" = "Cancelar";
 "button.delete" = "Excluir";
 "button.confirm" = "Confirmar";
@@ -11,9 +10,7 @@
 
 /* Header */
 "header.clear.history" = "Limpar histórico";
-"header.show.all" = "Todos";
 "header.show.pinned" = "Fixados";
-"header.pin.all" = "Desfixar tudo";
 
 /* Search */
 "search.placeholder" = "Pesquisar na área de transferência...";
@@ -35,8 +32,6 @@
 "action.unpin" = "Desfixar";
 "action.delete" = "Excluir";
 "action.copy" = "Copiar";
-"action.view" = "Ver";
-"action.hide" = "Ocultar";
 "action.show.content" = "Mostrar conteúdo";
 "action.hide.content" = "Ocultar conteúdo";
 
@@ -47,22 +42,15 @@
 
 /* Image fallback */
 "image.missing" = "Arquivo de imagem ausente";
-"tooltip.clear.history" = "Limpar histórico (fixados mantidos)";
-"tooltip.show.all" = "Mostrar todo o histórico";
-"tooltip.pinned.only" = "Mostrar só os fixados";
-"tooltip.reveal" = "Mostrar conteúdo";
-"tooltip.hide" = "Ocultar conteúdo";
 
 /* Alerts */
 "alert.clear.title" = "Limpar histórico";
 "alert.clear.message" = "Excluir %d itens?\nItens fixados serão mantidos.";
 "alert.clear.none" = "Nada para limpar.";
-"alert.clear.group.message" = "Excluir %1$d itens de「%2$@」?\nItens fixados serão mantidos.";
 "alert.delete.title" = "Mover para a lixeira";
 "alert.delete.message" = "Mover este item para a lixeira?";
 
 /* Settings */
-"settings.title" = "Configurações";
 "settings.section.history" = "Histórico";
 "settings.section.sensitive" = "Dados sensíveis";
 "settings.section.language" = "Idioma";
@@ -75,10 +63,6 @@
 "settings.section.excluded.apps" = "Apps Excluídas";
 "settings.hotkey.change" = "Alterar";
 "settings.hotkey.recording" = "Pressione uma combinação de teclas...";
-"settings.excluded.apps" = "Apps Excluídas";
-"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
-"settings.excluded.apps.label" = "Apps Excluídas";
-"settings.excluded.apps.hint" = "IDs de pacote separados por vírgula de apps a excluir do monitoramento da área de transferência (ex. com.1password.1password, com.bitwarden.desktop). Ações de copiar dessas apps não serão gravadas.";
 "settings.add.excluded.app" = "Adicionar aplicativo";
 "settings.section.update" = "Atualizações";
 "settings.update.auto" = "Verificar atualizações automaticamente";
@@ -107,10 +91,7 @@
 "tag.delete.onlytag" = "Apagar só etiqueta";
 "tag.delete.withcontent" = "Apagar etiqueta e conteúdo";
 "settings.app.picker.search" = "Pesquisar aplicativos";
-"settings.app.picker.running" = "Em execução";
-"settings.app.picker.installed" = "Instalados";
 "settings.app.picker.no.results" = "Nenhum app encontrado";
-"settings.excluded.apps.none" = "Nenhum app excluído";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 hora";
@@ -122,12 +103,10 @@
 /* About */
 "about.version" = "ClipMemory v%@";
 "about.free.edition" = "Versão gratuita · Gerenciador local de área de transferência";
-"about.paid.edition" = "Versão profissional";
 
 /* Item Labels */
 "item.sensitive" = "Sensível";
 "item.image" = "[Imagem]";
-"item.unpin.all" = "Desfixar tudo";
 
 /* Date Groups */
 "group.today" = "Hoje";
@@ -139,24 +118,12 @@
 "cleanup.today" = "Limpar hoje";
 "cleanup.yesterday" = "Limpar ontem";
 "cleanup.older" = "Limpar anterior";
-"cleanup.all" = "Limpar tudo";
 
 /* Languages */
-"lang.zh-Hans" = "简体中文";
-"lang.zh-Hant" = "繁體中文";
-"lang.en" = "English";
-"lang.ja" = "日本語";
-"lang.ko" = "한국어";
-"lang.es" = "Español";
-"lang.pt" = "Português";
 
 /* App Delegate */
 "app.quit" = "Sair do ClipMemory";
 "app.launch.at.login" = "Iniciar ao iniciar sessão";
-"app.launch.at.login.enabled" = "Início automático ativado";
-"app.launch.at.login.enabled.body" = "ClipMemory será iniciado automaticamente ao fazer login.";
-"app.launch.at.login.disabled" = "Início automático desativado";
-"app.launch.at.login.disabled.body" = "ClipMemory não será iniciado automaticamente.";
 "settings.launch.at.login.error.body" = "Não é possível modificar a definição de início de sessão. Verifique as permissões do sistema.";
 "app.error" = "Erro";
 "batch.selected" = "%d selecionados";
@@ -177,10 +144,6 @@
 
 /* Theme */
 "settings.section.theme" = "Tema";
-"theme.effect" = "Efeito de janela";
-"theme.effect.solid" = "Sólido";
-"theme.effect.frosted" = "Fosco";
-"theme.effect.ultra" = "Ultra";
 "theme.appearance" = "Aparência";
 "theme.appearance.system" = "Sistema";
 "theme.appearance.light" = "Claro";
@@ -197,9 +160,6 @@
 "font.size.small" = "Pequeno";
 "font.size.medium" = "Médio";
 "font.size.large" = "Grande";
-"tooltip.close" = "Close";
-"tooltip.minimize" = "Minimize";
-"tooltip.zoom" = "Zoom";
 
 "app.view.welcome.guide" = "Ver guia de boas-vindas";
 
@@ -263,10 +223,7 @@
 /* Recycle Bin */
 "trash.title" = "Lixeira";
 "trash.empty" = "A lixeira está vazia";
-"trash.deletedAt" = "Apagado %@";
 "trash.restore" = "Restaurar";
-"trash.deletePermanently" = "Apagar permanentemente";
 "trash.emptyConfirm.title" = "Esvaziar lixeira";
 "trash.emptyConfirm.message" = "%d itens serão apagados permanentemente. Esta ação não pode ser desfeita.";
 "trash.retentionDays" = "Dias de retenção da lixeira";
-"trash.moveToTrash" = "Mover para a lixeira";

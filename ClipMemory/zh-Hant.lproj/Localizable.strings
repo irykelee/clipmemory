@@ -2,7 +2,6 @@
 "app.name" = "剪憶 ClipMemory";
 "button.clear" = "清除";
 "button.settings" = "偏好設定";
-"button.back" = "返回";
 "button.cancel" = "取消";
 "button.delete" = "刪除";
 "button.confirm" = "確認";
@@ -11,9 +10,7 @@
 
 /* Header */
 "header.clear.history" = "清除歷史";
-"header.show.all" = "全部";
 "header.show.pinned" = "已釘選";
-"header.pin.all" = "取消全部釘選";
 
 /* Search */
 "search.placeholder" = "搜尋剪貼簿...";
@@ -35,34 +32,25 @@
 "action.unpin" = "取消釘選";
 "action.delete" = "刪除";
 "action.copy" = "複製";
-"action.view" = "檢視";
-"action.hide" = "收合";
 "action.show.content" = "顯示內容";
 "action.hide.content" = "收合內容";
 
 /* Tooltips */
 "tooltip.unpin" = "取消釘選";
-"tooltip.pin" = "雙擊釘選（不会被自动清理）";
+"tooltip.pin" = "雙擊釘選（不會被自動清理）";
 "tooltip.delete" = "刪除";
 
 /* Image fallback */
 "image.missing" = "圖片檔案已遺失";
-"tooltip.clear.history" = "清除歷史（已釘選的保留）";
-"tooltip.show.all" = "顯示全部記錄";
-"tooltip.pinned.only" = "只看釘選內容";
-"tooltip.reveal" = "顯示內容";
-"tooltip.hide" = "隱藏內容";
 
 /* Alerts */
 "alert.clear.title" = "清除歷史";
 "alert.clear.message" = "確定清除 %d 筆記錄？\n釘選內容不會被刪除。";
 "alert.clear.none" = "沒有可清除的記錄。";
-"alert.clear.group.message" = "確定清除「%2$@」的 %1$d 筆記錄？\n釘選內容不會被刪除。";
 "alert.delete.title" = "移至資源回收筒";
 "alert.delete.message" = "確定將該內容移至資源回收筒嗎？";
 
 /* Settings */
-"settings.title" = "偏好設定";
 "settings.section.history" = "歷史記錄";
 "settings.section.sensitive" = "敏感資訊保護";
 "settings.section.language" = "語言";
@@ -76,9 +64,6 @@
 "settings.auto.clear" = "自動清理";
 "settings.sensitive.hint" = "偵測到密碼、API金鑰等敏感內容時，自動清理前的等待時間";
 "settings.section.excluded.apps" = "排除的應用程式";
-"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
-"settings.excluded.apps.label" = "排除的應用程式";
-"settings.excluded.apps.hint" = "輸入要排除的應用程式的 Bundle ID，多個用逗號分隔。這些應用程式的複製操作不會被記錄。";
 "settings.add.excluded.app" = "新增應用程式";
 "settings.section.update" = "更新";
 "settings.update.auto" = "自動檢查更新";
@@ -107,10 +92,7 @@
 "tag.delete.onlytag" = "僅刪除標籤";
 "tag.delete.withcontent" = "刪除標籤與內容";
 "settings.app.picker.search" = "搜尋應用程式";
-"settings.app.picker.running" = "執行中";
-"settings.app.picker.installed" = "已安裝";
 "settings.app.picker.no.results" = "找不到應用程式";
-"settings.excluded.apps.none" = "未排除任何應用程式";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 小時後";
@@ -122,12 +104,10 @@
 /* About */
 "about.version" = "ClipMemory 剪憶 v%@";
 "about.free.edition" = "免費版 · 本地剪貼簿管理器";
-"about.paid.edition" = "專業版";
 
 /* Item Labels */
 "item.sensitive" = "敏感";
 "item.image" = "[圖片]";
-"item.unpin.all" = "取消全部釘選";
 
 /* Date Groups */
 "group.today" = "今天";
@@ -139,24 +119,12 @@
 "cleanup.today" = "清除今天";
 "cleanup.yesterday" = "清除昨天";
 "cleanup.older" = "清除更早";
-"cleanup.all" = "清除全部";
 
 /* Languages */
-"lang.zh-Hans" = "简体中文";
-"lang.zh-Hant" = "繁體中文";
-"lang.en" = "English";
-"lang.ja" = "日本語";
-"lang.ko" = "한국어";
-"lang.es" = "Español";
-"lang.pt" = "Português";
 
 /* App Delegate */
 "app.quit" = "退出 ClipMemory";
 "app.launch.at.login" = "登入時啟動";
-"app.launch.at.login.enabled" = "已啟用";
-"app.launch.at.login.enabled.body" = "ClipMemory 將會在登入時自動啟動。";
-"app.launch.at.login.disabled" = "已停用";
-"app.launch.at.login.disabled.body" = "ClipMemory 將不會在登入時啟動。";
 "app.error" = "錯誤";
 "batch.selected" = "已選擇 %d 項";
 "app.send.feedback" = "回饋";
@@ -175,11 +143,6 @@
 "welcome.get.started" = "開始使用";
 
 /* Theme */
-"settings.section.theme" = "主題";
-"theme.effect" = "視窗效果";
-"theme.effect.solid" = "實心";
-"theme.effect.frosted" = "毛玻璃";
-"theme.effect.ultra" = "高透";
 "theme.appearance" = "外觀";
 "theme.appearance.system" = "跟隨系統";
 "theme.appearance.light" = "淺色";
@@ -196,9 +159,6 @@
 "font.size.small" = "小";
 "font.size.medium" = "中";
 "font.size.large" = "大";
-"tooltip.close" = "Close";
-"tooltip.minimize" = "Minimize";
-"tooltip.zoom" = "Zoom";
 
 "app.view.welcome.guide" = "查看入門指南";
 
@@ -209,10 +169,10 @@
 "welcome.step6.title" = "管理歷史";
 "welcome.step6.desc" = "按時間段清理或取消收藏：今天、昨天、更早。";
 
-"unpin.today" = "取消今天的收藏";
-"unpin.yesterday" = "取消昨天的收藏";
-"unpin.older" = "取消更早的收藏";
-"unpin.all" = "取消全部收藏";
+"unpin.today" = "取消今天的釘選";
+"unpin.yesterday" = "取消昨天的釘選";
+"unpin.older" = "取消更早的釘選";
+"unpin.all" = "取消全部釘選";
 "tips.title" = "使用技巧";
 "tips.actions" = "基本操作";
 "tips.keyboard" = "鍵盤操作";
@@ -265,10 +225,7 @@
 /* Recycle Bin */
 "trash.title" = "資源回收筒";
 "trash.empty" = "資源回收筒是空的";
-"trash.deletedAt" = "刪除於 %@";
 "trash.restore" = "復原";
-"trash.deletePermanently" = "徹底刪除";
 "trash.emptyConfirm.title" = "清空資源回收筒";
 "trash.emptyConfirm.message" = "%d 個條目將被永久刪除，此操作不可撤銷。";
 "trash.retentionDays" = "資源回收筒保留天數";
-"trash.moveToTrash" = "移至資源回收筒";

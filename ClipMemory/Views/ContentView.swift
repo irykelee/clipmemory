@@ -900,9 +900,9 @@ struct ContentView: View {
     }
 
     /// Prompts for the backup passphrase (min 6 chars). Returns nil on cancel/too short.
-    private func promptBackupPassword() -> String? {
+    private func promptBackupPassphrase() -> String? {
         let alert = NSAlert()
-        alert.messageText = L10n.settingsBackupPassword
+        alert.messageText = L10n.settingsBackupPassphrase
         let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         alert.accessoryView = field
         alert.addButton(withTitle: L10n.buttonConfirm)
@@ -917,7 +917,7 @@ struct ContentView: View {
         panel.allowedContentTypes = [.init(filenameExtension: "clipmemory")].compactMap { $0 }
         panel.nameFieldStringValue = "ClipMemory-backup.clipmemory"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let passphrase = promptBackupPassword() else { return }
+        guard let passphrase = promptBackupPassphrase() else { return }
         guard let keyData = CryptoService.loadKeyData() else {
             showBackupInfo(L10n.settingsBackupError)
             return
@@ -943,7 +943,7 @@ struct ContentView: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.init(filenameExtension: "clipmemory")].compactMap { $0 }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let passphrase = promptBackupPassword() else { return }
+        guard let passphrase = promptBackupPassphrase() else { return }
         // Flush + safety snapshot of current data before mutating.
         ClipboardStore.shared.flushPendingSaves()
         // Heavy work (unzip, re-keying, image copies) off the main thread;
@@ -962,7 +962,7 @@ struct ContentView: View {
                     showBackupInfo(L10n.settingsBackupImportResult(result.itemsImported, result.itemsSkipped, result.imagesImported))
                 }
             } catch BackupPackageError.wrongPassword {
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPasswordWrong) }
+                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPassphraseWrong) }
             } catch {
                 DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
             }

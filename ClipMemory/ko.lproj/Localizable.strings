@@ -2,7 +2,6 @@
 "app.name" = "ClipMemory";
 "button.clear" = "비우기";
 "button.settings" = "환경설정";
-"button.back" = "뒤로";
 "button.cancel" = "취소";
 "button.delete" = "삭제";
 "button.confirm" = "확인";
@@ -11,9 +10,7 @@
 
 /* Header */
 "header.clear.history" = "기록 비우기";
-"header.show.all" = "전체";
 "header.show.pinned" = "고정됨";
-"header.pin.all" = "전체 고정 해제";
 
 /* Search */
 "search.placeholder" = "클립보드 검색...";
@@ -35,8 +32,6 @@
 "action.unpin" = "고정 해제";
 "action.delete" = "삭제";
 "action.copy" = "복사";
-"action.view" = "보기";
-"action.hide" = "숨기기";
 "action.show.content" = "내용 보기";
 "action.hide.content" = "내용 숨기기";
 
@@ -47,22 +42,15 @@
 
 /* Image fallback */
 "image.missing" = "이미지 파일 없음";
-"tooltip.clear.history" = "기록 비우기 (고정된 항목 제외)";
-"tooltip.show.all" = "전체 클립보드 기록 보기";
-"tooltip.pinned.only" = "고정된 항목만 보기";
-"tooltip.reveal" = "내용 보기";
-"tooltip.hide" = "내용 숨기기";
 
 /* Alerts */
 "alert.clear.title" = "기록 비우기";
 "alert.clear.message" = "%d개 항목을 지울까요?\n고정된 항목은 삭제되지 않습니다.";
 "alert.clear.none" = "비울 기록이 없습니다.";
-"alert.clear.group.message" = "'%2$@'의 %1$d개 항목을 삭제할까요?\n고정된 항목은 삭제되지 않습니다.";
 "alert.delete.title" = "휴지통으로 이동";
 "alert.delete.message" = "이 항목을 휴지통으로 이동하시겠습니까?";
 
 /* Settings */
-"settings.title" = "환경설정";
 "settings.section.history" = "기록";
 "settings.section.sensitive" = "민감정보";
 "settings.section.language" = "언어";
@@ -75,10 +63,6 @@
 "settings.section.excluded.apps" = "제외 앱";
 "settings.hotkey.change" = "변경";
 "settings.hotkey.recording" = "키 조합을 누르세요...";
-"settings.excluded.apps" = "제외 앱";
-"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
-"settings.excluded.apps.label" = "제외 앱";
-"settings.excluded.apps.hint" = "클립보드 모니터링에서 제외할 앱의 번들 ID를 쉼표로 구분하여 입력(예: com.1password.1password, com.bitwarden.desktop). 해당 앱에서 복사하면 기록되지 않습니다.";
 "settings.add.excluded.app" = "앱 추가";
 "settings.section.update" = "업데이트";
 "settings.update.auto" = "자동으로 업데이트 확인";
@@ -107,10 +91,7 @@
 "tag.delete.onlytag" = "태그만 삭제";
 "tag.delete.withcontent" = "태그 및 내용 삭제";
 "settings.app.picker.search" = "앱 검색";
-"settings.app.picker.running" = "실행 중";
-"settings.app.picker.installed" = "설치됨";
 "settings.app.picker.no.results" = "앱을 찾을 수 없습니다";
-"settings.excluded.apps.none" = "제외된 앱 없음";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1시간 후";
@@ -122,12 +103,10 @@
 /* About */
 "about.version" = "ClipMemory v%@";
 "about.free.edition" = "무료 버전 · 로컬 클립보드 관리";
-"about.paid.edition" = "프로 버전";
 
 /* Item Labels */
 "item.sensitive" = "민감";
 "item.image" = "[이미지]";
-"item.unpin.all" = "전체 고정 해제";
 
 /* Date Groups */
 "group.today" = "오늘";
@@ -139,24 +118,12 @@
 "cleanup.today" = "오늘 삭제";
 "cleanup.yesterday" = "어제 삭제";
 "cleanup.older" = "이전 삭제";
-"cleanup.all" = "모두 삭제";
 
 /* Languages */
-"lang.zh-Hans" = "简体中文";
-"lang.zh-Hant" = "繁體中文";
-"lang.en" = "English";
-"lang.ja" = "日本語";
-"lang.ko" = "한국어";
-"lang.es" = "Español";
-"lang.pt" = "Português";
 
 /* App Delegate */
 "app.quit" = "ClipMemory 종료";
 "app.launch.at.login" = "로그인 시 시작";
-"app.launch.at.login.enabled" = "로그인 시 시작 활성화됨";
-"app.launch.at.login.enabled.body" = "ClipMemory가 로그인 시 자동으로 시작됩니다.";
-"app.launch.at.login.disabled" = "로그인 시 시작 비활성화됨";
-"app.launch.at.login.disabled.body" = "ClipMemory가 자동으로 시작되지 않습니다.";
 "settings.launch.at.login.error.body" = "로그인 시 시작 설정을 수정할 수 없습니다. 시스템 권한을 확인하세요.";
 "app.error" = "오류";
 "batch.selected" = "%d개 선택됨";
@@ -177,10 +144,6 @@
 
 /* Theme */
 "settings.section.theme" = "테마";
-"theme.effect" = "창 효과";
-"theme.effect.solid" = "단색";
-"theme.effect.frosted" = "유리";
-"theme.effect.ultra" = "고투명";
 "theme.appearance" = "외관";
 "theme.appearance.system" = "시스템 따라가기";
 "theme.appearance.light" = "라이트";
@@ -197,9 +160,6 @@
 "font.size.small" = "작게";
 "font.size.medium" = "보통";
 "font.size.large" = "크게";
-"tooltip.close" = "Close";
-"tooltip.minimize" = "Minimize";
-"tooltip.zoom" = "Zoom";
 
 "app.view.welcome.guide" = "시작 가이드 보기";
 
@@ -263,10 +223,7 @@
 /* Recycle Bin */
 "trash.title" = "휴지통";
 "trash.empty" = "휴지통이 비어 있습니다";
-"trash.deletedAt" = "%@에 삭제됨";
 "trash.restore" = "복원";
-"trash.deletePermanently" = "완전히 삭제";
 "trash.emptyConfirm.title" = "휴지통 비우기";
 "trash.emptyConfirm.message" = "%d개 항목이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.";
 "trash.retentionDays" = "휴지통 보관 일수";
-"trash.moveToTrash" = "휴지통으로 이동";

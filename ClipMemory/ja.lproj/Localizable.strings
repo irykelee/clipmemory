@@ -2,7 +2,6 @@
 "app.name" = "ClipMemory";
 "button.clear" = "クリア";
 "button.settings" = "環境設定";
-"button.back" = "戻る";
 "button.cancel" = "キャンセル";
 "button.delete" = "削除";
 "button.confirm" = "確認";
@@ -11,9 +10,7 @@
 
 /* Header */
 "header.clear.history" = "履歴をクリア";
-"header.show.all" = "すべて";
 "header.show.pinned" = "ピン留め";
-"header.pin.all" = "ピン留め解除";
 
 /* Search */
 "search.placeholder" = "クリップボードを検索...";
@@ -35,8 +32,6 @@
 "action.unpin" = "ピン留め解除";
 "action.delete" = "削除";
 "action.copy" = "コピー";
-"action.view" = "表示";
-"action.hide" = "非表示";
 "action.show.content" = "内容を表示";
 "action.hide.content" = "内容を非表示";
 
@@ -47,22 +42,15 @@
 
 /* Image fallback */
 "image.missing" = "画像ファイルが見つかりません";
-"tooltip.clear.history" = "履歴をクリア（ピン留めは保持）";
-"tooltip.show.all" = "すべての履歴を表示";
-"tooltip.pinned.only" = "ピン留めのみ表示";
-"tooltip.reveal" = "内容を表示";
-"tooltip.hide" = "内容を非表示";
 
 /* Alerts */
 "alert.clear.title" = "履歴をクリア";
 "alert.clear.message" = "%d件の履歴を削除しますか？\nピン留めした項目は削除されません。";
 "alert.clear.none" = "削除する履歴がありません。";
-"alert.clear.group.message" = "「%2$@」の %1$d 件を削除しますか？\nピン留めした項目は削除されません。";
 "alert.delete.title" = "ごみ箱に移動";
 "alert.delete.message" = "この項目をごみ箱に移動しますか？";
 
 /* Settings */
-"settings.title" = "環境設定";
 "settings.section.history" = "履歴";
 "settings.section.sensitive" = "プライバシー保護";
 "settings.section.language" = "言語";
@@ -75,10 +63,6 @@
 "settings.section.excluded.apps" = "除外アプリ";
 "settings.hotkey.change" = "変更";
 "settings.hotkey.recording" = "キーの組み合わせを押してください...";
-"settings.excluded.apps" = "除外アプリ";
-"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
-"settings.excluded.apps.label" = "除外アプリ";
-"settings.excluded.apps.hint" = "クリップボード監視から除外するアプリのバンドルIDをカンマ区切りで指定（例：com.1password.1password, com.bitwarden.desktop）。これら";
 "settings.add.excluded.app" = "アプリを追加";
 "settings.section.update" = "アップデート";
 "settings.update.auto" = "アップデートを自動で確認";
@@ -107,10 +91,7 @@
 "tag.delete.onlytag" = "タグのみ削除";
 "tag.delete.withcontent" = "タグと内容を削除";
 "settings.app.picker.search" = "アプリを検索";
-"settings.app.picker.running" = "実行中";
-"settings.app.picker.installed" = "インストール済み";
 "settings.app.picker.no.results" = "アプリが見つかりません";
-"settings.excluded.apps.none" = "除外されたアプリなし";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1時間後";
@@ -122,12 +103,10 @@
 /* About */
 "about.version" = "ClipMemory v%@";
 "about.free.edition" = "無料版 · ローカルクリップボード管理";
-"about.paid.edition" = "プロ版";
 
 /* Item Labels */
 "item.sensitive" = "重要";
 "item.image" = "[画像]";
-"item.unpin.all" = "すべてピン留め解除";
 
 /* Date Groups */
 "group.today" = "今日";
@@ -139,24 +118,12 @@
 "cleanup.today" = "今日をクリア";
 "cleanup.yesterday" = "昨日をクリア";
 "cleanup.older" = "より古いものをクリア";
-"cleanup.all" = "すべてクリア";
 
 /* Languages */
-"lang.zh-Hans" = "简体中文";
-"lang.zh-Hant" = "繁體中文";
-"lang.en" = "English";
-"lang.ja" = "日本語";
-"lang.ko" = "한국어";
-"lang.es" = "Español";
-"lang.pt" = "Português";
 
 /* App Delegate */
 "app.quit" = "ClipMemory を終了";
 "app.launch.at.login" = "ログイン時に起動";
-"app.launch.at.login.enabled" = "ログイン時に起動が有効";
-"app.launch.at.login.enabled.body" = "ClipMemory はログイン時に自動的に起動します。";
-"app.launch.at.login.disabled" = "ログイン時に起動が無効";
-"app.launch.at.login.disabled.body" = "ClipMemory は自動的に起動しません。";
 "settings.launch.at.login.error.body" = "ログイン時起動設定を変更できません。システム権限を確認してください。";
 "app.error" = "エラー";
 "batch.selected" = "%d 件選択中";
@@ -177,10 +144,6 @@
 
 /* Theme */
 "settings.section.theme" = "テーマ";
-"theme.effect" = "ウィンドウ効果";
-"theme.effect.solid" = "ソリッド";
-"theme.effect.frosted" = "すりガラス";
-"theme.effect.ultra" = "高透過";
 "theme.appearance" = "外観";
 "theme.appearance.system" = "システムに合わせる";
 "theme.appearance.light" = "ライト";
@@ -197,9 +160,6 @@
 "font.size.small" = "小";
 "font.size.medium" = "中";
 "font.size.large" = "大";
-"tooltip.close" = "Close";
-"tooltip.minimize" = "Minimize";
-"tooltip.zoom" = "Zoom";
 
 "app.view.welcome.guide" = "ウェルカムガイドを見る";
 
@@ -263,10 +223,7 @@
 /* Recycle Bin */
 "trash.title" = "ごみ箱";
 "trash.empty" = "ごみ箱は空です";
-"trash.deletedAt" = "%@ に削除";
 "trash.restore" = "復元";
-"trash.deletePermanently" = "完全に削除";
 "trash.emptyConfirm.title" = "ごみ箱を空にする";
 "trash.emptyConfirm.message" = "%d 件のアイテムが完全に削除されます。この操作は元に戻せません。";
 "trash.retentionDays" = "ごみ箱の保持日数";
-"trash.moveToTrash" = "ごみ箱に移動";
