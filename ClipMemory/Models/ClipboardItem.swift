@@ -31,8 +31,12 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// OCR-recognized text of an image item, encrypted at rest (v2 ciphertext).
     /// nil when OCR has not run or found no text. Never set for non-image items.
     var ocrText: String?
+    /// Whether OCR has been attempted for this item (true even when no text was
+    /// found). Lets the backfill skip already-tried items instead of relying on
+    /// a global one-shot flag that a test-host or mid-run quit can poison.
+    var ocrAttempted: Bool = false
 
-    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false, tagIds: Set<UUID> = [], deletedAt: Date? = nil, ocrText: String? = nil) {
+    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false, tagIds: Set<UUID> = [], deletedAt: Date? = nil, ocrText: String? = nil, ocrAttempted: Bool = false) {
         self.id = id
         self.content = content
         self.type = type
@@ -46,6 +50,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.tagIds = tagIds
         self.deletedAt = deletedAt
         self.ocrText = ocrText
+        self.ocrAttempted = ocrAttempted
     }
 
     // MARK: - Codable compatibility
@@ -66,6 +71,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.tagIds = try container.decodeIfPresent(Set<UUID>.self, forKey: .tagIds) ?? []
         self.deletedAt = try container.decodeIfPresent(Date.self, forKey: .deletedAt)
         self.ocrText = try container.decodeIfPresent(String.self, forKey: .ocrText)
+        self.ocrAttempted = try container.decodeIfPresent(Bool.self, forKey: .ocrAttempted) ?? false
     }
 
     var isExpired: Bool {

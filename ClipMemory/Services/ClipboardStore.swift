@@ -192,7 +192,7 @@ class ClipboardStore: ObservableObject {
     /// Memory pressure handling: cache evicts entries under memory pressure via NSCache's built-in behavior.
     /// Additionally, totalCostLimit caps memory at ~10MB (500 items × ~20KB each).
 
-    private let contentCache: NSCache<NSString, NSString> = {
+    let contentCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
         cache.countLimit = 500
         cache.totalCostLimit = 10 * 1024 * 1024 // 10MB limit
@@ -364,7 +364,7 @@ class ClipboardStore: ObservableObject {
 
     /// Schedules a debounced save — coalesces multiple rapid mutations into a single disk write.
     /// The actual write happens after `saveDebounceInterval` seconds of inactivity.
-    private func scheduleSave() {
+    func scheduleSave() {
         needsSave = true
         saveTimer?.cancel()
         let queue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
@@ -383,7 +383,7 @@ class ClipboardStore: ObservableObject {
     /// thing the user cannot re-create, and a kill -9 / power loss inside the
     /// 500ms debounce window would silently lose it — bypass the debounce here.
     /// Metadata mutations (pin/tag/delete/trash) keep the debounced path.
-    private func saveImmediately() {
+    func saveImmediately() {
         needsSave = true
         flushSave()
     }
@@ -771,61 +771,6 @@ class ClipboardStore: ObservableObject {
             }
         }
         return result
-    }
-
-    // MARK: - OCR text
-
-    private static let ocrEnabledKey = "ocrEnabled"
-    private static let ocrBackfillCompletedKey = "ocrBackfillCompleted"
-
-    /// Whether on-device OCR runs for newly captured images. Default on.
-    var ocrEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: Self.ocrEnabledKey) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: Self.ocrEnabledKey) }
-    }
-
-    /// Attaches OCR-recognized plaintext (encrypted at rest) to an image item.
-    /// Called from background OCR pipelines; hops to main for the @Published write.
-    func attachOCRText(to itemId: UUID, text: String) {
-        let apply = { [weak self] in
-            guard let self = self,
-                  let encrypted = ServiceContainer.crypto.encrypt(text),
-                  let index = self.items.firstIndex(where: { $0.id == itemId }) else { return }
-            self.items[index].ocrText = encrypted
-            self.saveImmediately()
-        }
-        if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }
-    }
-
-    /// Decrypts the stored OCR text of an image item (nil when not recognized).
-    func getDecryptedOcrText(_ item: ClipboardItem) -> String? {
-        guard item.type == .image, let ciphertext = item.ocrText else { return nil }
-        let key = (item.id.uuidString + ".ocr") as NSString
-        if let cached = contentCache.object(forKey: key) {
-            return cached as String
-        }
-        guard let plaintext = ServiceContainer.crypto.decrypt(ciphertext) else { return nil }
-        contentCache.setObject(plaintext as NSString, forKey: key)
-        return plaintext
-    }
-
-    /// One-time backfill: OCR every image item that has no ocrText yet.
-    /// Serial background queue; the completion flag prevents re-running.
-    func backfillOCRIfNeeded(using ocr: OCRServiceProtocol = VisionOCRService.shared, imageStorage: ImageStorage = .shared) {
-        guard ocrEnabled else { return }
-        guard !UserDefaults.standard.bool(forKey: Self.ocrBackfillCompletedKey) else { return }
-        UserDefaults.standard.set(true, forKey: Self.ocrBackfillCompletedKey)
-        let candidates = items.filter { $0.type == .image && $0.ocrText == nil }
-        guard !candidates.isEmpty else { return }
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            for item in candidates {
-                guard let data = imageStorage.loadImage(filename: item.content) else { continue }
-                ocr.recognizeText(in: data) { [weak self] text in
-                    guard let text = text, !text.isEmpty else { return }
-                    self?.attachOCRText(to: item.id, text: text)
-                }
-            }
-        }
     }
 
     /// Returns cached RTF plaintext for an item, parsing and caching on first access.
