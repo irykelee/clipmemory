@@ -97,6 +97,15 @@
 "settings.backup.export.done" = "Exportação concluída";
 "settings.backup.import.result" = "Importação concluída: %1$d itens adicionados, %2$d duplicados ignorados, %3$d imagens";
 "settings.backup.last" = "Última cópia: %@";
+"clear.type.action" = "Apagar todos os %@";
+"clear.type.confirm" = "%2$d itens de \"%1$@\" serão apagados (fixados mantidos, para a Lixeira)";
+"clear.conditional.action" = "Apagar por condição…";
+"clear.conditional.title" = "Apagar por condição";
+"clear.conditional.type" = "Tipo";
+"clear.conditional.range" = "Período";
+"clear.conditional.confirm" = "%d itens serão apagados (fixados mantidos, para a Lixeira)";
+"tag.delete.onlytag" = "Apagar só etiqueta";
+"tag.delete.withcontent" = "Apagar etiqueta e conteúdo";
 "settings.app.picker.search" = "Pesquisar aplicativos";
 "settings.app.picker.running" = "Em execução";
 "settings.app.picker.installed" = "Instalados";

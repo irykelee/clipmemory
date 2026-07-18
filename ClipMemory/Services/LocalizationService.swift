@@ -191,6 +191,15 @@ struct L10n {
     static var settingsBackupExportDone: String { string("settings.backup.export.done") }
     static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, images) }
     static func settingsBackupLast(_ date: String) -> String { string("settings.backup.last", date) }
+    static func clearTypeAction(_ typeName: String) -> String { string("clear.type.action", typeName) }
+    static func clearTypeConfirm(_ typeName: String, _ count: Int) -> String { string("clear.type.confirm", typeName, count) }
+    static var clearConditionalAction: String { string("clear.conditional.action") }
+    static var clearConditionalTitle: String { string("clear.conditional.title") }
+    static var clearConditionalType: String { string("clear.conditional.type") }
+    static var clearConditionalRange: String { string("clear.conditional.range") }
+    static func clearConditionalConfirm(_ count: Int) -> String { string("clear.conditional.confirm", count) }
+    static var tagDeleteOnlyTag: String { string("tag.delete.onlytag") }
+    static var tagDeleteWithContent: String { string("tag.delete.withcontent") }
     static var settingsAppPickerSearch: String { string("settings.app.picker.search") }
     static var settingsAppPickerNoResults: String { string("settings.app.picker.no.results") }
     static var settingsFontSize: String { string("settings.font.size") }

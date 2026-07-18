@@ -97,6 +97,15 @@
 "settings.backup.export.done" = "書き出しが完了しました";
 "settings.backup.import.result" = "読み込み完了：%1$d 件追加、%2$d 件の重複をスキップ、画像 %3$d 件";
 "settings.backup.last" = "前回のバックアップ：%@";
+"clear.type.action" = "%@をすべて削除";
+"clear.type.confirm" = "%1$@ %2$d 件を削除します（ピン留めは保持、ごみ箱へ移動）";
+"clear.conditional.action" = "条件で削除…";
+"clear.conditional.title" = "条件で削除";
+"clear.conditional.type" = "タイプ";
+"clear.conditional.range" = "期間";
+"clear.conditional.confirm" = "%d 件を削除します（ピン留めは保持、ごみ箱へ移動）";
+"tag.delete.onlytag" = "タグのみ削除";
+"tag.delete.withcontent" = "タグと内容を削除";
 "settings.app.picker.search" = "アプリを検索";
 "settings.app.picker.running" = "実行中";
 "settings.app.picker.installed" = "インストール済み";

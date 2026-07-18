@@ -155,6 +155,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 | Vista previa completa / sensible / imagen | Mantener 0.4s, soltar para ocultar |
 | Modo de selección múltiple | Clic en casilla |
 | Limpiar historial | Barra superior 🗑 (fijados se conservan) |
+| Eliminar por condición | Barra superior 🗑 → «Eliminar por condición» (tipo × periodo); clic derecho en la pestaña de tipo para eliminar todo ese tipo |
 | Cambiar filtro de tipo | Clic en "Texto/Imagen/Enlace/Rich Text" en barra lateral |
 
 > 💡 Los elementos fijados nunca se eliminan automáticamente. Copiar el mismo contenido no crea duplicados, solo actualiza la marca de tiempo.

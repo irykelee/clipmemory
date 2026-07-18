@@ -97,6 +97,15 @@
 "settings.backup.export.done" = "Export complete";
 "settings.backup.import.result" = "Import complete: %1$d items added, %2$d duplicates skipped, %3$d images";
 "settings.backup.last" = "Last backup: %@";
+"clear.type.action" = "Delete all %@";
+"clear.type.confirm" = "%2$d \"%1$@\" items will be deleted (pinned kept, moved to Recycle Bin)";
+"clear.conditional.action" = "Clear by Condition…";
+"clear.conditional.title" = "Clear by Condition";
+"clear.conditional.type" = "Type";
+"clear.conditional.range" = "Time Range";
+"clear.conditional.confirm" = "%d items will be deleted (pinned kept, moved to Recycle Bin)";
+"tag.delete.onlytag" = "Delete Tag Only";
+"tag.delete.withcontent" = "Delete Tag & Items";
 "settings.app.picker.search" = "Search applications";
 "settings.app.picker.running" = "Running";
 "settings.app.picker.installed" = "Installed";

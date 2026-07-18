@@ -96,6 +96,15 @@
 "settings.backup.export.done" = "导出完成";
 "settings.backup.import.result" = "导入完成：新增 %1$d 条，跳过重复 %2$d 条，图片 %3$d 张";
 "settings.backup.last" = "上次备份：%@";
+"clear.type.action" = "删除全部%@";
+"clear.type.confirm" = "将删除 %2$d 个%1$@条目（不含收藏，进回收站）";
+"clear.conditional.action" = "按条件删除…";
+"clear.conditional.title" = "按条件删除";
+"clear.conditional.type" = "类型";
+"clear.conditional.range" = "时间范围";
+"clear.conditional.confirm" = "将删除 %d 个条目（不含收藏，进回收站）";
+"tag.delete.onlytag" = "仅删除标签";
+"tag.delete.withcontent" = "删除标签和内容";
 "settings.app.picker.search" = "搜索应用";
 "settings.app.picker.running" = "运行中";
 "settings.app.picker.installed" = "已安装";

@@ -98,6 +98,15 @@
 "settings.backup.export.done" = "Exportación completada";
 "settings.backup.import.result" = "Importación completa: %1$d elementos añadidos, %2$d duplicados omitidos, %3$d imágenes";
 "settings.backup.last" = "Última copia: %@";
+"clear.type.action" = "Eliminar todos los %@";
+"clear.type.confirm" = "Se eliminarán %2$d elementos de «%1$@» (fijados conservados, a la Papelera)";
+"clear.conditional.action" = "Eliminar por condición…";
+"clear.conditional.title" = "Eliminar por condición";
+"clear.conditional.type" = "Tipo";
+"clear.conditional.range" = "Periodo";
+"clear.conditional.confirm" = "Se eliminarán %d elementos (fijados conservados, a la Papelera)";
+"tag.delete.onlytag" = "Eliminar solo etiqueta";
+"tag.delete.withcontent" = "Eliminar etiqueta y contenido";
 "settings.app.picker.search" = "Buscar aplicaciones";
 "settings.app.picker.running" = "En ejecución";
 "settings.app.picker.installed" = "Instaladas";

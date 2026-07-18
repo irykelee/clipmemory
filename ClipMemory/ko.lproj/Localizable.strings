@@ -97,6 +97,15 @@
 "settings.backup.export.done" = "내보내기 완료";
 "settings.backup.import.result" = "가져오기 완료: 항목 %1$d개 추가, 중복 %2$d개 건너뜀, 이미지 %3$d개";
 "settings.backup.last" = "마지막 백업: %@";
+"clear.type.action" = "%@ 모두 삭제";
+"clear.type.confirm" = "%1$@ %2$d개 항목을 삭제합니다(고정은 유지, 휴지통으로 이동)";
+"clear.conditional.action" = "조건별 삭제…";
+"clear.conditional.title" = "조건별 삭제";
+"clear.conditional.type" = "유형";
+"clear.conditional.range" = "기간";
+"clear.conditional.confirm" = "%d개 항목을 삭제합니다(고정은 유지, 휴지통으로 이동)";
+"tag.delete.onlytag" = "태그만 삭제";
+"tag.delete.withcontent" = "태그 및 내용 삭제";
 "settings.app.picker.search" = "앱 검색";
 "settings.app.picker.running" = "실행 중";
 "settings.app.picker.installed" = "설치됨";
