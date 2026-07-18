@@ -64,7 +64,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: Releases/ClipMemory.tar.gz
+          files: |
+            Releases/ClipMemory.tar.gz
+            appcast.xml
           generate_release_notes: true
 
       - name: Update Homebrew tap

@@ -1,4 +1,4 @@
-# ClipMemory v2.4.0
+# ClipMemory v2.4.1
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -21,6 +21,10 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.4.1 (2026-07-18) — Correção do feed de atualização
+
+- **🌐 Corrigido o "erro de atualização"** — o feed appcast migrou de raw.githubusercontent.com (inalcançável em algumas redes) para um ativo do GitHub Release; a verificação responde na hora. Se a v2.4.0 mostrar erro, baixe a v2.4.1 manualmente uma vez; a atualização automática volta a funcionar depois
 
 ### v2.4.0 (2026-07-18) — Lixeira
 
