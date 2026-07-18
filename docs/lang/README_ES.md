@@ -1,4 +1,4 @@
-# ClipMemory v2.4.2
+# ClipMemory v2.5.0
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -21,6 +21,12 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.5.0 (2026-07-18) — Copia local + exportar/importar
+
+- **💾 Copias locales automáticas** — el historial del portapapeles (incluidas etiquetas, papelera e imágenes) se respalda a diario al primer inicio en una carpeta local de copias, conservando 7 por defecto (3/7/14/30 configurable): un seguro contra la pérdida de datos
+- **📦 Exportar / Importar** — exporta con un clic un paquete .clipmemory cifrado (protegido con contraseña); restaura tras cambiar de Mac o reinstalar. La importación fusiona y elimina duplicados con los datos existentes sin sobrescribirlos
+- **⚙️ Nueva sección «Copia de seguridad» en Ajustes** — interruptor de copia automática, cantidad a conservar, Copiar ahora, abrir carpeta, exportar/importar
 
 ### v2.4.2 (2026-07-18) — Correcciones de estabilidad + canales duales de actualización
 
