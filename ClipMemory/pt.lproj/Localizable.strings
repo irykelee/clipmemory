@@ -227,3 +227,6 @@
 "trash.emptyConfirm.title" = "Esvaziar lixeira";
 "trash.emptyConfirm.message" = "%d itens serão apagados permanentemente. Esta ação não pode ser desfeita.";
 "trash.retentionDays" = "Dias de retenção da lixeira";
+"item.ocr.copy" = "Copiar texto da imagem";
+"settings.ocr.enabled" = "Reconhecimento de texto em imagens (OCR)";
+"settings.ocr.hint" = "Processado no dispositivo, sem rede. Aplica-se automaticamente a novas capturas.";

@@ -225,3 +225,6 @@
 "trash.emptyConfirm.title" = "清空回收站";
 "trash.emptyConfirm.message" = "%d 个条目将被永久删除，此操作不可撤销。";
 "trash.retentionDays" = "回收站保留天数";
+"item.ocr.copy" = "复制图中文字";
+"settings.ocr.enabled" = "图片文字识别（OCR）";
+"settings.ocr.hint" = "本地识别，不联网。新截图自动生效。";

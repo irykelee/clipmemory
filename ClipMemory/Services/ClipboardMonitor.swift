@@ -283,6 +283,13 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
                 expiresAt: expiresAt
             )
             ClipboardStore.shared.addItem(item)
+            // On-device OCR for search + text extraction (non-blocking).
+            if ClipboardStore.shared.ocrEnabled {
+                VisionOCRService.shared.recognizeText(in: imageData) { text in
+                    guard let text = text, !text.isEmpty else { return }
+                    ClipboardStore.shared.attachOCRText(to: id, text: text)
+                }
+            }
         }
     }
 

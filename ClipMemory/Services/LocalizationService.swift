@@ -198,6 +198,9 @@ struct L10n {
     static var itemSensitive: String { string("item.sensitive") }
     static var itemImage: String { string("item.image") }
     static var itemRichText: String { string("item.richText") }
+    static var itemOcrCopy: String { string("item.ocr.copy") }
+    static var settingsOcrEnabled: String { string("settings.ocr.enabled") }
+    static var settingsOcrHint: String { string("settings.ocr.hint") }
 
 
     static var quitApp: String { string("app.quit") }
