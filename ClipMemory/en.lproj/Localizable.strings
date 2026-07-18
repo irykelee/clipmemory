@@ -47,8 +47,8 @@
 "alert.clear.title" = "Clear History";
 "alert.clear.message" = "Are you sure you want to clear %d items?\nPinned items will not be deleted.";
 "alert.clear.none" = "No history to clear.";
-"alert.delete.title" = "Move to Recycle Bin";
-"alert.delete.message" = "Move this item to the Recycle Bin?";
+"alert.delete.title" = "Move to Trash";
+"alert.delete.message" = "Move this item to the Trash?";
 
 /* Settings */
 "settings.section.history" = "History";
@@ -82,12 +82,12 @@
 "settings.backup.import.result" = "Import complete: %1$d items added, %2$d duplicates skipped, %3$d images";
 "settings.backup.last" = "Last backup: %@";
 "clear.type.action" = "Delete all %@";
-"clear.type.confirm" = "%2$d \"%1$@\" items will be deleted (pinned kept, moved to Recycle Bin)";
+"clear.type.confirm" = "%2$d \"%1$@\" items will be deleted (pinned kept, moved to the Trash)";
 "clear.conditional.action" = "Clear by Condition…";
 "clear.conditional.title" = "Clear by Condition";
 "clear.conditional.type" = "Type";
 "clear.conditional.range" = "Time Range";
-"clear.conditional.confirm" = "%d items will be deleted (pinned kept, moved to Recycle Bin)";
+"clear.conditional.confirm" = "%d items will be deleted (pinned kept, moved to the Trash)";
 "tag.delete.onlytag" = "Delete Tag Only";
 "tag.delete.withcontent" = "Delete Tag & Items";
 "settings.app.picker.search" = "Search applications";
@@ -218,10 +218,10 @@
 /* Image fallback */
 "image.decryptionFailed" = "Unable to decrypt image";
 
-/* Recycle Bin */
-"trash.title" = "Recycle Bin";
-"trash.empty" = "Recycle Bin is empty";
+/* Trash */
+"trash.title" = "Trash";
+"trash.empty" = "Trash is empty";
 "trash.restore" = "Restore";
-"trash.emptyConfirm.title" = "Empty Recycle Bin";
+"trash.emptyConfirm.title" = "Empty Trash";
 "trash.emptyConfirm.message" = "%d items will be permanently deleted. This action cannot be undone.";
-"trash.retentionDays" = "Recycle Bin retention days";
+"trash.retentionDays" = "Trash retention days";
