@@ -90,7 +90,20 @@ def glossary_block(lang):
     return "\n".join(f"- {zh} → {targets[lang]}" for zh, targets in GLOSSARY.items())
 
 
-def translate(source, lang, style_ref, deepseek_key):
+def llm_config():
+    """Resolve the OpenAI-compatible endpoint/model/key from the environment.
+
+    Defaults to DeepSeek; override for any compatible provider, e.g. Alibaba
+    DashScope: README_SYNC_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+    README_SYNC_MODEL=qwen-plus README_SYNC_API_KEY=$BAILIAN_KEY
+    """
+    base_url = os.environ.get("README_SYNC_BASE_URL", "https://api.deepseek.com/chat/completions")
+    model = os.environ.get("README_SYNC_MODEL", "deepseek-chat")
+    key = os.environ.get("README_SYNC_API_KEY") or os.environ.get("DEEPSEEK_API_KEY", "")
+    return base_url, model, key
+
+
+def translate(source, lang, style_ref, base_url, model, deepseek_key):
     prompt = f"""你是专业软件本地化译者。把下面的 Markdown 更新日志从简体中文翻译成{LANG_NAMES[lang]}。
 
 要求：
@@ -111,12 +124,12 @@ def translate(source, lang, style_ref, deepseek_key):
 只输出翻译后的 Markdown，不要输出任何解释。"""
 
     body = json.dumps({
-        "model": "deepseek-chat",
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
     }).encode("utf-8")
     request = urllib.request.Request(
-        "https://api.deepseek.com/chat/completions",
+        base_url,
         data=body,
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {deepseek_key}"},
         method="POST",
@@ -138,9 +151,9 @@ def main():
     if not SECTION_RE.match(source):
         sys.exit("changelog file must start with a '### vX.Y.Z' heading")
 
-    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    base_url, model, deepseek_key = llm_config()
     if not deepseek_key and not args.dry_run:
-        sys.exit("DEEPSEEK_API_KEY not set (see config convention: deepseek_key_env)")
+        sys.exit("README_SYNC_API_KEY (or DEEPSEEK_API_KEY) not set — see llm_config() for provider env vars")
 
     outputs = {"zh-Hans": source}
     for lang in FILES:
@@ -153,7 +166,7 @@ def main():
             outputs[lang] = f"[dry-run 无 API key，跳过翻译] 词汇表 {len(GLOSSARY)} 条，风格参照 {len(style_ref)} 字符"
         else:
             print(f"翻译 {lang} ...", file=sys.stderr)
-            outputs[lang] = translate(source, lang, style_ref, deepseek_key)
+            outputs[lang] = translate(source, lang, style_ref, base_url, model, deepseek_key)
 
     if args.dry_run:
         for lang, section in outputs.items():
