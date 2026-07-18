@@ -18,7 +18,7 @@
 | **Long-press preview** | None | 0.4s reveals full text / sensitive / image |
 | **Time grouping** | None | Today / Yesterday / Older, collapsible |
 | **Tags** | None | Create / delete / custom colors, sidebar filtering + smart suggestions |
-| **Recycle Bin** | Deleted forever | Restorable recycle bin with configurable retention |
+| **Trash** | Deleted forever | Restorable trash with configurable retention |
 | **Auto-update** | Manual downloads | Background checks, one-click install & relaunch |
 | **Local backup** | None | Daily auto-backups + encrypted export / import |
 
@@ -29,12 +29,12 @@
 ### v2.5.5 (2026-07-18) — Conditional clear + hardening
 
 - **🗑 Clear by condition** — new "Clear by Condition" in the toolbar 🗑 menu: type × time range (e.g. delete only older images, keep today's); right-click a type tab to delete all of that type; new per-group trash buttons on time-group headers
-- **🏷️ Tag deletion options** — deleting a tag now offers "Delete tag only" or "Delete tag & items (to Recycle Bin)"
+- **🏷️ Tag deletion options** — deleting a tag now offers "Delete tag only" or "Delete tag & items (to Trash)"
 - **🔧 Import hardening** — tag names decrypt correctly on cross-machine import (no more garbled text); fixed duplicate imports from one package, unreadable entries imported on decrypt failure, UI freeze on large imports, and backup pruning touching stray files
 
 ### v2.5.0 (2026-07-18) — Local backup + export/import
 
-- **💾 Local automatic backups** — clipboard history (including tags, recycle bin, images) is backed up daily on first launch to a local Backups folder, keeping 7 copies by default (3/7/14/30 configurable) — a safety net against data loss
+- **💾 Local automatic backups** — clipboard history (including tags, trash, images) is backed up daily on first launch to a local Backups folder, keeping 7 copies by default (3/7/14/30 configurable) — a safety net against data loss
 - **📦 Export / Import** — one-click export to a passphrase-protected .clipmemory package; restore after moving to a new Mac or reinstalling. Import merges and dedupes with existing data instead of overwriting it
 - **⚙️ New Backup section in Settings** — auto-backup toggle, retention, Back Up Now, open folder, export/import
 
