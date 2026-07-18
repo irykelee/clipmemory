@@ -914,6 +914,7 @@ struct ContentView: View {
 
     private func exportBackup() {
         let panel = NSSavePanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "clipmemory")].compactMap { $0 }
         panel.nameFieldStringValue = "ClipMemory-backup.clipmemory"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard let passphrase = promptBackupPassword() else { return }
@@ -921,6 +922,8 @@ struct ContentView: View {
             showBackupInfo(L10n.settingsBackupError)
             return
         }
+        // Flush the 500ms debounce so the package includes the very latest items.
+        ClipboardStore.shared.flushPendingSaves()
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try BackupPackage.exportPackage(
@@ -941,22 +944,28 @@ struct ContentView: View {
         panel.allowedContentTypes = [.init(filenameExtension: "clipmemory")].compactMap { $0 }
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard let passphrase = promptBackupPassword() else { return }
-        // Safety net: snapshot current data before mutating, then merge on main
-        // thread (store publishes must stay on main).
-        backupService.backupNow()
-        do {
-            let result = try BackupPackage.importPackage(
-                from: url,
-                passphrase: passphrase,
-                store: ClipboardStore.shared,
-                localCrypto: ServiceContainer.crypto,
-                imagesDirectory: ImageStorage.shared.imagesDirectoryURL
-            )
-            showBackupInfo(L10n.settingsBackupImportResult(result.itemsImported, result.itemsSkipped, result.imagesImported))
-        } catch BackupPackageError.wrongPassword {
-            showBackupInfo(L10n.settingsBackupPasswordWrong)
-        } catch {
-            showBackupInfo(L10n.settingsBackupError)
+        // Flush + safety snapshot of current data before mutating.
+        ClipboardStore.shared.flushPendingSaves()
+        // Heavy work (unzip, re-keying, image copies) off the main thread;
+        // BackupPackage hops to main for the @Published merges itself.
+        DispatchQueue.global(qos: .userInitiated).async {
+            backupService.backupNow()
+            do {
+                let result = try BackupPackage.importPackage(
+                    from: url,
+                    passphrase: passphrase,
+                    store: ClipboardStore.shared,
+                    localCrypto: ServiceContainer.crypto,
+                    imagesDirectory: ImageStorage.shared.imagesDirectoryURL
+                )
+                DispatchQueue.main.async {
+                    showBackupInfo(L10n.settingsBackupImportResult(result.itemsImported, result.itemsSkipped, result.imagesImported))
+                }
+            } catch BackupPackageError.wrongPassword {
+                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPasswordWrong) }
+            } catch {
+                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
+            }
         }
     }
 

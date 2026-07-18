@@ -55,7 +55,12 @@ final class ImportExportTests: XCTestCase {
             contentHash: hash
         )
         defaults.set(try JSONEncoder().encode([item]), forKey: "ClipboardItems")
-        defaults.set(try JSONEncoder().encode([Tag(name: "工作", colorHex: "#FF6B6B")]), forKey: "ClipMemoryTags")
+
+        // Tag names persist as "v2:<ciphertext>" under the machine key — seed in
+        // the production-encrypted form, not plaintext (H1 regression coverage).
+        let encryptedName = try XCTUnwrap(crypto.encrypt("工作"))
+        let persistedTag = Tag(name: "v2:" + encryptedName, colorHex: "#FF6B6B")
+        defaults.set(try JSONEncoder().encode([persistedTag]), forKey: "ClipMemoryTags")
 
         let imageBytes = Data("fake-png-bytes".utf8)
         let encryptedImage = try XCTUnwrap(crypto.encryptData(imageBytes))
@@ -89,6 +94,39 @@ final class ImportExportTests: XCTestCase {
         XCTAssertEqual(result.tagsImported, 1)
         XCTAssertEqual(store.items.count, 1)
         XCTAssertEqual(store.getDecryptedContent(store.items[0]), "hello backup")
+        // H1 regression: the persisted tag name ("v2:<ciphertext>") must be
+        // decrypted with the package key, not stored as garbage text.
+        XCTAssertEqual(store.tags.values.first?.name, "工作")
+    }
+
+    func testImportDeduplicatesWithinSamePackage() throws {
+        // Two entries with different ids but identical content/hash in one
+        // package — the second must be skipped (M3 regression coverage).
+        let encrypted = try XCTUnwrap(localCrypto.encrypt("dup content"))
+        let hash = try XCTUnwrap(localCrypto.hmacHex(for: "dup content"))
+        let makeDup = { ClipboardItem(content: encrypted, type: .text, isEncrypted: true, contentHash: hash) }
+        defaults.set(try JSONEncoder().encode([makeDup(), makeDup()]), forKey: "ClipboardItems")
+        defaults.set(try JSONEncoder().encode([Tag]()), forKey: "ClipMemoryTags")
+
+        let packageURL = tempRoot.appendingPathComponent("dup.clipmemory")
+        try BackupPackage.exportPackage(
+            to: packageURL,
+            passphrase: "secret123",
+            defaults: defaults,
+            imagesDirectory: imagesDir,
+            keyData: localKeyData
+        )
+        let result = try BackupPackage.importPackage(
+            from: packageURL,
+            passphrase: "secret123",
+            store: store,
+            localCrypto: localCrypto,
+            imagesDirectory: imagesDir
+        )
+
+        XCTAssertEqual(result.itemsImported, 1, "first copy imported")
+        XCTAssertEqual(result.itemsSkipped, 1, "duplicate within the same package skipped")
+        XCTAssertEqual(store.items.count, 1)
     }
 
     func testImportWithWrongPasswordFailsAndWritesNothing() throws {

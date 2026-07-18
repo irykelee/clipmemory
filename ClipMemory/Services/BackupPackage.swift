@@ -73,6 +73,13 @@ final class BackupPackage {
         guard process.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
     }
 
+    /// Runs `work` synchronously on the main thread when the caller is
+    /// elsewhere — store mutations (@Published) require main.
+    private static func onMain<T>(_ work: () throws -> T) rethrows -> T {
+        if Thread.isMainThread { return try work() }
+        return try DispatchQueue.main.sync(execute: work)
+    }
+
     // MARK: - Export
 
     /// Writes a `.clipmemory` package for the current store contents.
@@ -179,13 +186,19 @@ final class BackupPackage {
         let packageTrash = decodeItems(from: staging, name: "trash.json")
         let reencryptedItems = packageItems.compactMap { reencrypt(item: $0, from: packageCrypto, to: localCrypto) }
         let reencryptedTrash = packageTrash.compactMap { reencrypt(item: $0, from: packageCrypto, to: localCrypto) }
-        let merge = store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash)
+        // Store mutations (@Published) must run on main even when the caller
+        // invoked us from a background queue for a large package (M2 fix).
+        let merge = onMain { store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash) }
         result.itemsImported = merge.imported
         result.itemsSkipped = merge.skipped
 
-        // Tags: merge by id (re-encrypt nothing — tag names are plaintext).
+        // Tags: names are encrypted at the persistence boundary ("v2:" prefix
+        // + ciphertext under the SOURCE machine's key) — decrypt them with the
+        // package key so the local store holds plaintext (re-encrypted with
+        // the local key on the next saveTags).
         let packageTags = decodeTags(from: staging, name: "tags.json")
-        result.tagsImported = store.importBackupTags(packageTags)
+        let localizedTags = packageTags.map { reencryptTagName($0, from: packageCrypto) }
+        result.tagsImported = onMain { store.importBackupTags(localizedTags) }
 
         // Images: decrypt with package key, re-encrypt with local key.
         let packageImages = staging.appendingPathComponent("Images", isDirectory: true)
@@ -236,7 +249,11 @@ final class BackupPackage {
 
         var newContent = item.content
         var newHash = item.contentHash
-        if item.isEncrypted, let plaintext = packageCrypto.decrypt(item.content) {
+        if item.isEncrypted {
+            // An encrypted entry that won't decrypt under the package key is
+            // corrupt — skip it instead of importing ciphertext the local
+            // machine can never read (M1 review finding).
+            guard let plaintext = packageCrypto.decrypt(item.content) else { return nil }
             guard let encrypted = localCrypto.encrypt(plaintext) else { return nil }
             newContent = encrypted
             newHash = localCrypto.hmacHex(for: plaintext)
@@ -254,6 +271,23 @@ final class BackupPackage {
             decryptionFailed: item.decryptionFailed,
             tagIds: item.tagIds,
             deletedAt: item.deletedAt
+        )
+    }
+
+    /// Tag names persist as "v2:<ciphertext>" under the source machine's key.
+    /// Decrypt with the package key so the in-memory store holds plaintext;
+    /// names that are already plaintext (legacy packages) pass through.
+    private static func reencryptTagName(_ tag: Tag, from packageCrypto: CryptoServiceProtocol) -> Tag {
+        let prefix = "v2:"
+        guard tag.name.hasPrefix(prefix) else { return tag }
+        let ciphertext = String(tag.name.dropFirst(prefix.count))
+        guard let plaintext = packageCrypto.decrypt(ciphertext) else { return tag }
+        return Tag(
+            id: tag.id,
+            name: plaintext,
+            colorHex: tag.colorHex,
+            isAutoSuggested: tag.isAutoSuggested,
+            createdAt: tag.createdAt
         )
     }
 
