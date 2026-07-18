@@ -213,6 +213,15 @@ class ClipboardStore: ObservableObject {
     private var needsSave = false
     private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
+    /// C5: IDs whose decryption already failed, pending batched write-back into
+    /// `items`. The read path (getDecryptedContent) never mutates @Published
+    /// synchronously — marking hops to the main queue asynchronously so it can
+    /// never land inside a SwiftUI view-body update (the "open full window
+    /// freezes" bug class). The set also short-circuits repeat decrypt attempts
+    /// in the gap before the merge lands.
+    private var pendingFailedIDs = Set<UUID>()
+    private let pendingFailedIDsLock = NSLock()
+
     deinit {
         cleanupTimer?.cancel()
         saveTimer?.cancel()
@@ -269,37 +278,15 @@ class ClipboardStore: ObservableObject {
         }
         let loadedItems = savedItems.filter { !$0.isExpired }
 
-        // Migrate old-format encrypted items to v2 (AES-GCM)
-        var migratedItems = loadedItems
-        var needsMigrationSave = false
-        for (index, item) in migratedItems.enumerated() where item.isEncrypted && item.type != .image {
-            if ServiceContainer.crypto.isOldFormat(item.content),
-               let newContent = ServiceContainer.crypto.migrateToV2(item.content) {
-                migratedItems[index] = ClipboardItem(
-                    id: item.id,
-                    content: newContent,
-                    type: item.type,
-                    createdAt: item.createdAt,
-                    isPinned: item.isPinned,
-                    isSensitive: item.isSensitive,
-                    expiresAt: item.expiresAt,
-                    isEncrypted: true,
-                    contentHash: item.contentHash,
-                    decryptionFailed: item.decryptionFailed,
-                    tagIds: item.tagIds,
-                    deletedAt: item.deletedAt
-                )
-                needsMigrationSave = true
-            }
-        }
-
         // Repair legacy image items incorrectly flagged by the old
         // getDecryptedContent path: image content is a filename, never encrypted,
         // so isEncrypted/decryptionFailed should never be true for .image items.
+        // (No crypto involved — cheap enough to stay on the load path.)
+        var repairedItems = loadedItems
         var repairedImages = false
-        for (index, item) in migratedItems.enumerated() where item.type == .image {
+        for (index, item) in repairedItems.enumerated() where item.type == .image {
             if item.isEncrypted || item.decryptionFailed {
-                migratedItems[index] = ClipboardItem(
+                repairedItems[index] = ClipboardItem(
                     id: item.id,
                     content: item.content,
                     type: item.type,
@@ -317,40 +304,82 @@ class ClipboardStore: ObservableObject {
             }
         }
 
-        // Backfill contentHash for legacy items that predate HMAC-based dedup.
-        // Without this, every addItem does O(n) decrypt-and-compare against them.
-        var backfilledHashes = false
-        for (index, item) in migratedItems.enumerated() where item.type != .image && item.contentHash == nil {
-            let plaintext = item.isEncrypted
-                ? (ServiceContainer.crypto.decrypt(item.content) ?? item.content)
-                : item.content
-            if let hash = ServiceContainer.crypto.hmacHex(for: plaintext) {
-                migratedItems[index] = ClipboardItem(
-                    id: item.id,
-                    content: item.content,
-                    type: item.type,
-                    createdAt: item.createdAt,
-                    isPinned: item.isPinned,
-                    isSensitive: item.isSensitive,
-                    expiresAt: item.expiresAt,
-                    isEncrypted: item.isEncrypted,
-                    contentHash: hash,
-                    decryptionFailed: item.decryptionFailed,
-                    tagIds: item.tagIds,
-                    deletedAt: item.deletedAt
-                )
-                backfilledHashes = true
-            }
-        }
-
-        items = migratedItems
+        items = repairedItems
         updatePinnedItems()
         trimToMaxItems()
         ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
 
-        // Save migrated items immediately after load
-        if needsMigrationSave || repairedImages || backfilledHashes {
+        if repairedImages {
             scheduleSave()
+        }
+
+        // C6: crypto-heavy migrations run OFF the startup path. Both the v1→v2
+        // re-encryption and the contentHash backfill decrypt per legacy item —
+        // hundreds of legacy items on the thread that first touched the store
+        // (main, at app launch) froze startup for seconds. Detection is cheap
+        // (isOldFormat is a byte-prefix check since C4); only the crypto moves
+        // to a utility queue, and results merge back on main by id. Legacy
+        // content stays readable in the gap via the HMAC-verified legacy path.
+        var migrationCandidates: [(id: UUID, content: String)] = []
+        var backfillCandidates: [(id: UUID, content: String, isEncrypted: Bool)] = []
+        for item in items where item.type != .image {
+            if item.isEncrypted && ServiceContainer.crypto.isOldFormat(item.content) {
+                migrationCandidates.append((item.id, item.content))
+            }
+            if item.contentHash == nil {
+                backfillCandidates.append((item.id, item.content, item.isEncrypted))
+            }
+        }
+        guard !migrationCandidates.isEmpty || !backfillCandidates.isEmpty else { return }
+
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var migratedContents: [UUID: String] = [:]
+            for candidate in migrationCandidates {
+                if let newContent = ServiceContainer.crypto.migrateToV2(candidate.content) {
+                    migratedContents[candidate.id] = newContent
+                }
+            }
+            // Backfill contentHash for legacy items that predate HMAC-based dedup.
+            // Without this, every addItem does O(n) decrypt-and-compare against them.
+            var hashes: [UUID: String] = [:]
+            for candidate in backfillCandidates {
+                let plaintext = candidate.isEncrypted
+                    ? (ServiceContainer.crypto.decrypt(candidate.content) ?? candidate.content)
+                    : candidate.content
+                if let hash = ServiceContainer.crypto.hmacHex(for: plaintext) {
+                    hashes[candidate.id] = hash
+                }
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                var changed = false
+                for (id, newContent) in migratedContents {
+                    guard let index = self.items.firstIndex(where: { $0.id == id }) else { continue }
+                    let item = self.items[index]
+                    self.items[index] = ClipboardItem(
+                        id: item.id,
+                        content: newContent,
+                        type: item.type,
+                        createdAt: item.createdAt,
+                        isPinned: item.isPinned,
+                        isSensitive: item.isSensitive,
+                        expiresAt: item.expiresAt,
+                        isEncrypted: true,
+                        contentHash: item.contentHash,
+                        decryptionFailed: item.decryptionFailed,
+                        tagIds: item.tagIds,
+                        deletedAt: item.deletedAt
+                    )
+                    changed = true
+                }
+                for (id, hash) in hashes {
+                    guard let index = self.items.firstIndex(where: { $0.id == id }),
+                          self.items[index].contentHash == nil else { continue }
+                    self.items[index].contentHash = hash
+                    changed = true
+                }
+                if changed { self.scheduleSave() }
+            }
         }
     }
 
@@ -747,6 +776,9 @@ class ClipboardStore: ObservableObject {
         // an endless loop that pinned the main thread at 100% CPU (the
         // "open full window freezes" bug).
         if item.decryptionFailed { return nil }
+        // C5: also bail for failures whose write-back is still pending, so the
+        // gap between first failure and the async merge doesn't re-run AES.
+        if isDecryptionPendingFailed(item.id) { return nil }
 
         let key = item.id.uuidString as NSString
         if let cached = contentCache.object(forKey: key) {
@@ -761,24 +793,48 @@ class ClipboardStore: ObservableObject {
         if let result = result {
             contentCache.setObject(result as NSString, forKey: key)
         } else if item.isEncrypted {
-            // Mark the in-store copy so subsequent `isDecryptionFailed` reads
-            // are O(1) instead of re-triggering AES decrypt on every access.
-            // Must publish on the main thread because `items` is @Published.
-            let markFailed = { [weak self] in
-                guard let self = self else { return }
-                if let index = self.items.firstIndex(where: { $0.id == item.id }),
-                   !self.items[index].decryptionFailed {
-                    self.items[index].decryptionFailed = true
-                    self.scheduleSave()
-                }
-            }
-            if Thread.isMainThread {
-                markFailed()
-            } else {
-                DispatchQueue.main.async(execute: markFailed)
-            }
+            // C5: never mutate @Published `items` from here — this method is
+            // called from SwiftUI view bodies, and a synchronous publish lands
+            // inside the view update. Buffer the id and merge asynchronously
+            // on the main queue instead.
+            scheduleDecryptionFailedMark(item.id)
         }
         return result
+    }
+
+    /// C5: lock-guarded check so any thread can cheaply bail on pending failures.
+    private func isDecryptionPendingFailed(_ id: UUID) -> Bool {
+        pendingFailedIDsLock.lock()
+        defer { pendingFailedIDsLock.unlock() }
+        return pendingFailedIDs.contains(id)
+    }
+
+    /// C5: buffer a failed id and schedule exactly one async merge per new id.
+    private func scheduleDecryptionFailedMark(_ id: UUID) {
+        pendingFailedIDsLock.lock()
+        let inserted = pendingFailedIDs.insert(id).inserted
+        pendingFailedIDsLock.unlock()
+        guard inserted else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.mergePendingDecryptionFailures()
+        }
+    }
+
+    /// C5: applies buffered failure marks to `items` in one batch. Runs on the
+    /// main queue, guaranteed outside any view-body evaluation by the async hop.
+    private func mergePendingDecryptionFailures() {
+        pendingFailedIDsLock.lock()
+        let ids = pendingFailedIDs
+        pendingFailedIDsLock.unlock()
+        var changed = false
+        for id in ids {
+            if let index = items.firstIndex(where: { $0.id == id }),
+               !items[index].decryptionFailed {
+                items[index].decryptionFailed = true
+                changed = true
+            }
+        }
+        if changed { scheduleSave() }
     }
 
     /// Returns cached RTF plaintext for an item, parsing and caching on first access.

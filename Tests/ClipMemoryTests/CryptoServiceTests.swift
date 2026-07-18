@@ -92,7 +92,7 @@ final class CryptoServiceTests: XCTestCase {
 
     // MARK: - C.3 Legacy AES-CBC Compatibility
 
-    func testIsOldFormatDetection() {
+    func testIsOldFormatDetection() throws {
         // Encrypt something to get real v2 format output
         guard let v2Ciphertext = crypto.encrypt("test") else {
             XCTFail("Could not create v2 format sample")
@@ -101,6 +101,20 @@ final class CryptoServiceTests: XCTestCase {
         // Decryption confirms v2 format works (the real security guarantee)
         XCTAssertNotNil(crypto.decrypt(v2Ciphertext))
         XCTAssertEqual(crypto.decrypt(v2Ciphertext), "test")
+        XCTAssertFalse(crypto.isOldFormat(v2Ciphertext), "v2 output must not be old format")
+
+        // C4: classification is a strict "v2" byte-prefix check, independent of
+        // whether the payload actually decrypts — decrypt-success must never be
+        // used as a classifier (it gave a UserDefaults writer a format oracle).
+        let corruptV2 = "v2" + Data(repeating: 0, count: 20).base64EncodedString()
+        XCTAssertFalse(crypto.isOldFormat(corruptV2),
+                      "Corrupt v2-prefixed payload is still v2, not migratable legacy")
+
+        // Legacy v1+HMAC blob (no "v2" prefix) → old format
+        let key = try Data(contentsOf: CryptoService.keyFileURL)
+        let legacyBlob = makeLegacyV1Blob(plaintext: Data("legacy".utf8), key: key)
+        XCTAssertTrue(crypto.isOldFormat(legacyBlob.base64EncodedString()),
+                     "v1 blob without v2 prefix must be classified as old format")
     }
 
     func testMigrateToV2ReturnsNilForV2Format() {
@@ -268,18 +282,18 @@ final class CryptoServiceTests: XCTestCase {
             "decrypt() must round-trip v1-format text through decryptLegacy")
     }
 
-    func testDecryptDataHandlesLegacyV1FormatNoHMAC() throws {
-        // RS-6: pre-1.2.0 format was [IV || ciphertext] without HMAC.
-        // decryptLegacy still supports it for historical data — verify it.
+    func testDecryptDataRejectsLegacyV1FormatNoHMAC() throws {
+        // C4: the pre-1.2.0 [IV || ciphertext] no-HMAC branch was removed —
+        // unauthenticated CBC is a padding-oracle / tampering hole for anyone
+        // who can write UserDefaults. decryptLegacy must REJECT such blobs.
         let payload = Data("Pre-1.2.0 no HMAC test payload".utf8)
         let key = try Data(contentsOf: CryptoService.keyFileURL)
         let legacyBlob = makeLegacyV1BlobNoHMAC(plaintext: payload, key: key)
         XCTAssertEqual(legacyBlob.count, 16 + ((payload.count / 16 + 1) * 16),
             "No-HMAC format must be exactly 16(IV) + padded ciphertext")
 
-        let decrypted = crypto.decryptData(legacyBlob)
-        XCTAssertEqual(decrypted, payload,
-            "decryptData() must round-trip pre-1.2.0 no-HMAC format")
+        XCTAssertNil(crypto.decryptData(legacyBlob),
+            "decryptData() must reject pre-1.2.0 no-HMAC blobs (C4: padding oracle removed)")
     }
 
     func testDecryptLegacyRejectsTamperedHMAC() throws {
