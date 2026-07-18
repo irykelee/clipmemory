@@ -421,24 +421,26 @@ final class TagSuggestionTests: XCTestCase {
 
     /// Shim still maps kind → tag name. Re-verifies the legacy expectations
     /// that *survived* the refactor (kind → tag mappings).
+    /// Assertions reference L10n rather than hardcoded zh-Hans strings so the
+    /// suite passes regardless of the host's system language (CI runs en-US).
     func testSuggestShimReturnsKindTagForCode() {
         let s = TagSuggestion.suggest(for: .text, content: "func greet() { print(\"hi\") }")
-        XCTAssertTrue(s.contains("代码"))
+        XCTAssertTrue(s.contains(L10n.tagSuggestionKindCode))
     }
 
     func testSuggestShimReturnsKindTagForEmail() {
         let s = TagSuggestion.suggest(for: .text, content: "alice@example.com")
-        XCTAssertTrue(s.contains("邮箱"))
+        XCTAssertTrue(s.contains(L10n.tagSuggestionKindEmail))
     }
 
     func testSuggestShimReturnsKindTagForCredential() {
         let s = TagSuggestion.suggest(for: .text, content: "ABCDEFGHIJKLMNOPabcdef1234")
-        XCTAssertTrue(s.contains("账号"))
+        XCTAssertTrue(s.contains(L10n.tagSuggestionKindCredential))
     }
 
     func testSuggestShimReturnsKindTagForSensitive() {
         let s = TagSuggestion.suggest(for: .text, content: "我的密码是 123456")
-        XCTAssertTrue(s.contains("敏感"))
+        XCTAssertTrue(s.contains(L10n.tagSuggestionKindSensitive))
     }
 
     /// Plain content → empty suggestions (no kind-derived tag to attach).

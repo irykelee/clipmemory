@@ -379,6 +379,15 @@ class ClipboardStore: ObservableObject {
         saveTimer?.resume()
     }
 
+    /// Write-through for clipboard ingestion. New clipboard content is the one
+    /// thing the user cannot re-create, and a kill -9 / power loss inside the
+    /// 500ms debounce window would silently lose it — bypass the debounce here.
+    /// Metadata mutations (pin/tag/delete/trash) keep the debounced path.
+    private func saveImmediately() {
+        needsSave = true
+        flushSave()
+    }
+
     /// Flushes pending item, tag, and trash saves to disk immediately. Called by the debounce timer,
     /// on deinit, or from AppDelegate.applicationWillTerminate to prevent data loss on quit.
     func flushPendingSaves() {
@@ -650,7 +659,7 @@ class ClipboardStore: ObservableObject {
 
         trimToMaxItems()
         updatePinnedItems()
-        scheduleSave()
+        saveImmediately()
     }
 
     func getDecryptedContent(_ item: ClipboardItem) -> String? {

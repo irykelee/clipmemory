@@ -46,6 +46,19 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(decrypted, "Secret text")
     }
 
+    /// Kill -9 / power-loss protection: ingestion must write through to the
+    /// backend synchronously, without waiting for the 500ms debounce timer
+    /// or an explicit flushPendingSaves() call.
+    func testAddItemPersistsImmediatelyWithoutFlush() {
+        let item = ClipboardItem(content: "Write-through", type: .text)
+        store.addItem(item)
+
+        // No flushPendingSaves(), no waiting — the backend must already hold it.
+        let persisted = (try? backend.load()) ?? []
+        XCTAssertEqual(persisted.count, 1)
+        XCTAssertEqual(persisted.first?.type, .text)
+    }
+
     // MARK: - G.1.2 Restart and Recover
 
     func testRestartRecoversItemsFromBackend() {

@@ -356,6 +356,13 @@ struct ContentView: View {
             }
     }
 
+    /// Defer cache rebuilds out of the current view-update cycle. Writing
+    /// @State synchronously inside onChange/onReceive triggers SwiftUI's
+    /// "Modifying state during view update" runtime warning.
+    private func refreshDisplayedItemsCacheSoon() {
+        DispatchQueue.main.async { updateDisplayedItemsCache() }
+    }
+
     private func attachLifecycle<V: View>(_ v: V) -> some View {
         v
             .onAppear {
@@ -364,21 +371,23 @@ struct ContentView: View {
                 updateDisplayedItemsCache()
             }
             .onChange(of: searchText) { newValue in
-                self.debounceSearch(newValue)
+                DispatchQueue.main.async { self.debounceSearch(newValue) }
             }
-            .onChange(of: searchTextDebounced) { _ in updateDisplayedItemsCache() }
-            .onChange(of: selectedTab) { _ in updateDisplayedItemsCache() }
-            .onChange(of: dateFilter) { _ in updateDisplayedItemsCache() }
-            .onChange(of: selectedTagIds) { _ in updateDisplayedItemsCache() }
-            .onChange(of: store.items) { _ in updateDisplayedItemsCache() }
+            .onChange(of: searchTextDebounced) { _ in refreshDisplayedItemsCacheSoon() }
+            .onChange(of: selectedTab) { _ in refreshDisplayedItemsCacheSoon() }
+            .onChange(of: dateFilter) { _ in refreshDisplayedItemsCacheSoon() }
+            .onChange(of: selectedTagIds) { _ in refreshDisplayedItemsCacheSoon() }
+            .onChange(of: store.items) { _ in refreshDisplayedItemsCacheSoon() }
             .onChange(of: store.tags) { _ in
-                // Strip orphan UUIDs (tag deleted from store while selected)
-                // before re-rendering so we don't show a stale empty filter.
-                let valid = Set(store.tags.keys)
-                if !selectedTagIds.isSubset(of: valid) {
-                    selectedTagIds.formIntersection(valid)
+                DispatchQueue.main.async {
+                    // Strip orphan UUIDs (tag deleted from store while selected)
+                    // before re-rendering so we don't show a stale empty filter.
+                    let valid = Set(store.tags.keys)
+                    if !selectedTagIds.isSubset(of: valid) {
+                        selectedTagIds.formIntersection(valid)
+                    }
+                    updateDisplayedItemsCache()
                 }
-                updateDisplayedItemsCache()
             }
             .onChange(of: collapsedGroups) { val in
                 self.saveCollapsedGroups(val)
@@ -386,12 +395,14 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
             .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in self.focusSearchField() }
             .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-                let calendar = Calendar.current
-                let nowStart = calendar.startOfDay(for: Date())
-                let cachedStart = calendar.startOfDay(for: currentDate)
-                if nowStart != cachedStart {
-                    currentDate = Date()
-                    updateDisplayedItemsCache()
+                DispatchQueue.main.async {
+                    let calendar = Calendar.current
+                    let nowStart = calendar.startOfDay(for: Date())
+                    let cachedStart = calendar.startOfDay(for: currentDate)
+                    if nowStart != cachedStart {
+                        currentDate = Date()
+                        updateDisplayedItemsCache()
+                    }
                 }
             }
     }
@@ -517,7 +528,7 @@ struct ContentView: View {
         .padding(.vertical, 8)
         .padding(.trailing, 4)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .onChange(of: selectedTab) { _ in keyboardSelectedIndex = nil }
+        .onChange(of: selectedTab) { _ in DispatchQueue.main.async { keyboardSelectedIndex = nil } }
     }
 
     private var mainContent: some View {
@@ -850,10 +861,12 @@ struct ContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .onChange(of: appPickerSearch) { newValue in
-                    searchDebounce?.cancel()
-                    let item = DispatchWorkItem { appPickerSearchDebounced = newValue }
-                    searchDebounce = item
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
+                    DispatchQueue.main.async {
+                        searchDebounce?.cancel()
+                        let item = DispatchWorkItem { appPickerSearchDebounced = newValue }
+                        searchDebounce = item
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
+                    }
                 }
             Color.clear.frame(height: 1)
             ScrollView {
