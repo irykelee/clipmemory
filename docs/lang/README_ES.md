@@ -1,4 +1,4 @@
-# ClipMemory v2.4.0
+# ClipMemory v2.4.1
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -21,6 +21,10 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.4.1 (2026-07-18) — Corrección del feed de actualización
+
+- **🌐 Corregido el "error de actualización"** — el feed appcast se migró de raw.githubusercontent.com (inalcanzable en algunas redes) a un activo de GitHub Release; la comprobación responde al instante. Si v2.4.0 muestra un error, descarga v2.4.1 manualmente una vez; la actualización automática se reanuda después
 
 ### v2.4.0 (2026-07-18) — Papelera
 

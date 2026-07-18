@@ -1,4 +1,4 @@
-# ClipMemory v2.4.0
+# ClipMemory v2.4.1
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -21,6 +21,10 @@
 ---
 
 ## 📋 Changelog
+
+### v2.4.1 (2026-07-18) — Update feed fix
+
+- **🌐 Fix "update error" on check** — the appcast feed moved from raw.githubusercontent.com (unreachable on some networks) to a GitHub Release asset, so update checks respond instantly. If v2.4.0 shows an update error, download v2.4.1 manually once; auto-update resumes afterwards
 
 ### v2.4.0 (2026-07-18) — Recycle Bin
 

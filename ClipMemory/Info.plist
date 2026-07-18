@@ -23,7 +23,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>SUFeedURL</key>
-    <string>https://raw.githubusercontent.com/irykelee/clipmemory/main/appcast.xml</string>
+    <string>https://github.com/irykelee/clipmemory/releases/latest/download/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>5c0ebj7YORA7QE2jxg6fLQtXAHcE9576hQ8b1ggd0IE=</string>
     <key>SUEnableAutomaticChecks</key>
