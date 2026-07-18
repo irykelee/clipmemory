@@ -124,7 +124,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 
 - 📋 Historial del portapapeles (texto / imágenes / enlaces /**Rich Text RTF**)
 - ⭐ Fijar elementos importantes, no se eliminan automáticamente
-- 💾 Imágenes almacenadas como archivos cifrados, supera límite de 10MB
+- 💾 Imágenes almacenadas cifradas, hasta 50MB por imagen
 - 🔍 Búsqueda en tiempo real con resalte multilingüe (incluidos caracteres CJK)
 - ⚡ Deduplicación inteligente, contenido idéntico solo actualiza marca de tiempo
 - 🔄 Prevención de bucle de copia, salta automáticamente la captura desde la App
@@ -178,6 +178,11 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 - Apariencia (Claro / Oscuro / Seguir sistema)
 - Apps excluidas (apps personalizadas para excluir del monitoreo)
 - Alternancia de captura Rich Text
+- Tamaño de fuente (Pequeño / Mediano / Grande)
+- Iniciar al arrancar
+- Retención de la papelera (3 / 7 / 14 / 30 días)
+- Copia de seguridad (diaria automática / cantidad / exportar / importar)
+- Actualizaciones (comprobación automática / comprobar ahora)
 
 ---
 
@@ -190,7 +195,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 ## Migración de datos
 
 El historial (incluida la clave de cifrado) se almacena en `~/Library/Application Support/ClipMemory/`.
-Haz una copia de seguridad de este directorio antes de reinstalar. Se puede restaurar en el mismo Mac o en uno nuevo para seguir leyendo tu historial.
+La forma recomendada de migrar es Ajustes → Copia de seguridad → Exportar copia, que crea un paquete .clipmemory cifrado listo para importar en el nuevo Mac; copiar este directorio manualmente también funciona.
 Antes de eliminar la app, haz clic en el botón 🗑 de la barra de herramientas superior para borrar el historial.
 
 ---

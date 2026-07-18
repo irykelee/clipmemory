@@ -124,7 +124,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 
 - 📋 Histórico da área de transferência (texto / imagens / links /**Rich Text RTF**)
 - ⭐ Fixar itens importantes, não são removidos automaticamente
-- 💾 Imagens armazenadas como arquivos criptografados, supera limite de 10MB
+- 💾 Imagens armazenadas criptografadas, até 50MB por imagem
 - 🔍 Pesquisa em tempo real com destaque multilíngüe (incluindo caracteres CJK)
 - ⚡ Desduplicação inteligente, mesmo conteúdo atualiza marca de tempo sem duplicar
 - 🔄 Prevenção de loop de cópia, salta captura ao copiar da própria app
@@ -178,6 +178,11 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 - Aparência (Claro / Escuro / Seguir sistema)
 - Apps excluídas (apps personalizadas para excluir do monitoramento)
 - Alternância de captura Rich Text
+- Tamanho da fonte (Pequeno / Médio / Grande)
+- Iniciar ao fazer login
+- Retenção da lixeira (3 / 7 / 14 / 30 dias)
+- Cópia de segurança (diária automática / quantidade / exportar / importar)
+- Atualizações (verificação automática / verificar agora)
 
 ---
 
@@ -190,7 +195,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 ## Migração de dados
 
 O histórico (incluindo a chave de criptografia) é armazenado em `~/Library/Application Support/ClipMemory/`.
-Faça backup deste diretório antes de reinstalar — ele pode ser restaurado no mesmo Mac ou em um novo Mac para continuar lendo seu histórico.
+A forma recomendada de migrar é Ajustes → Cópia de segurança → Exportar cópia, que cria um pacote .clipmemory criptografado para importar no novo Mac; copiar este diretório manualmente também funciona.
 Antes de remover o app, clique no botão 🗑 na barra de ferramentas superior para limpar o histórico.
 
 ---

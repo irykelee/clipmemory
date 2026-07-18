@@ -124,7 +124,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 
 - 📋 Clipboard history (text / images / links / **rich text RTF**)
 - ⭐ Pin important items, never auto-deleted
-- 💾 Encrypted image storage, bypasses 10MB limit
+- 💾 Encrypted image storage, up to 50MB per image
 - 🔍 Real-time search, all languages highlighted (CJK multibyte supported)
 - ⚡ Smart deduplication, identical content updates timestamp only
 - 🔄 Copy loop prevention, auto-skips copying from the app itself
@@ -178,6 +178,11 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 - Appearance (Light / Dark / Follow system)
 - Excluded apps (custom apps to skip monitoring)
 - Rich text capture toggle
+- Font size (Small / Medium / Large)
+- Launch at login
+- Recycle bin retention (3 / 7 / 14 / 30 days)
+- Backup (daily auto-backup / retention / export / import)
+- Updates (automatic checks / check now)
 
 ---
 
@@ -189,8 +194,8 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 
 ## Data Migration
 
-History (including encryption key) is stored at `~/Library/Application Support/ClipMemory/`.
-Back up this directory before reinstalling — it can be restored on the same Mac or a new Mac to continue reading your history.
+History (including the encryption key) is stored at `~/Library/Application Support/ClipMemory/`.
+The recommended way to migrate is Settings → Backup → Export Backup, which creates a passphrase-protected .clipmemory package you can import on the new Mac; backing up this directory manually also works.
 Before removing the app, click the 🗑 button in the top toolbar to clear history.
 
 ---
