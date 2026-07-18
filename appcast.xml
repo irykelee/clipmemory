@@ -5,5 +5,15 @@
     <link>https://raw.githubusercontent.com/irykelee/clipmemory/main/appcast.xml</link>
     <description>Most recent changes with links to updates for ClipMemory.</description>
     <language>en</language>
+    <item>
+      <title>Version 2.4.0</title>
+      <sparkle:shortVersionString>2.4.0</sparkle:shortVersionString>
+      <sparkle:version>2.4.0</sparkle:version>
+      <pubDate>Sat, 18 Jul 2026 00:58:03 +0000</pubDate>
+      <enclosure url="https://github.com/irykelee/clipmemory/releases/download/v2.4.0/ClipMemory.tar.gz"
+                 length="6378765"
+                 type="application/octet-stream"
+                 sparkle:edSignature="/Ms04ar60Dl84GAq3YiNqhz5dlU9jJ84i0VgPlCc+6BFohmY0uaa9JyOAUCkftz8HbGnnvg+XnuQ0XOfG+yIBQ==" />
+    </item>
   </channel>
 </rss>
