@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Sparkle
 
 /// Supplies the fallback feed URL to Sparkle when the primary feed failed
@@ -8,6 +9,32 @@ private final class FeedURLProvider: NSObject, SPUUpdaterDelegate {
 
     func feedURLString(for updater: SPUUpdater) -> String? {
         resolvedFeedString
+    }
+}
+
+/// Gentle update reminders for a dockless (LSUIElement) app. When Sparkle is
+/// about to show an update alert, bring the app to the foreground so the alert
+/// is actually visible; badge the Dock icon for scheduled (non-user-initiated)
+/// updates; return to the menu bar when the session ends. Declaring support
+/// also silences Sparkle's "does not implement gentle reminders" log warning.
+/// Ref: https://sparkle-project.org/documentation/gentle-reminders/
+private final class GentleUpdateReminder: NSObject, SPUStandardUserDriverDelegate {
+    var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {
+        NSApp.setActivationPolicy(.regular)
+        if !state.userInitiated {
+            NSApp.dockTile.badgeLabel = "1"
+        }
+    }
+
+    func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
+        NSApp.dockTile.badgeLabel = nil
+    }
+
+    func standardUserDriverWillFinishUpdateSession() {
+        NSApp.dockTile.badgeLabel = nil
+        NSApp.setActivationPolicy(.accessory)
     }
 }
 
@@ -22,6 +49,7 @@ final class UpdateService {
     static let fallbackFeedURL = URL(string: "https://cdn.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml")!
 
     private let feedProvider = FeedURLProvider()
+    private let gentleReminder = GentleUpdateReminder()
     private let updaterController: SPUStandardUpdaterController
 
     private init() {
@@ -29,7 +57,7 @@ final class UpdateService {
         updaterController = SPUStandardUpdaterController(
             startingUpdater: false,
             updaterDelegate: feedProvider,
-            userDriverDelegate: nil
+            userDriverDelegate: gentleReminder
         )
         Task { @MainActor in await startAfterFeedProbe() }
     }
