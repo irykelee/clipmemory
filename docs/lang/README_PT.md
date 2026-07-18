@@ -1,4 +1,4 @@
-# ClipMemory v2.5.0
+# ClipMemory v2.5.5
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -25,6 +25,12 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.5.5 (2026-07-18) — Exclusão por condição + robustez
+
+- **🗑 Apagar por condição** — nova opção no menu 🗑 da barra: tipo × período (ex.: apagar só imagens antigas e manter as de hoje); clique direito na aba de tipo para apagar todo esse tipo; novos botões de exclusão nos cabeçalhos de grupo
+- **🏷️ Opções ao apagar etiquetas** — ao apagar uma etiqueta, escolha «Apagar só etiqueta» ou «Apagar etiqueta e itens (para a Lixeira)»
+- **🔧 Importação reforçada** — nomes de etiquetas descriptografados corretamente entre máquinas (sem texto corrompido); corrigidos duplicados no mesmo pacote, entradas ilegíveis importadas ao falhar a descriptografia, congelamento da UI em pacotes grandes e limpeza de backups apagando arquivos estranhos
 
 ### v2.5.0 (2026-07-18) — Cópia local + exportar/importar
 

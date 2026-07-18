@@ -1,4 +1,4 @@
-# ClipMemory v2.5.0
+# ClipMemory v2.5.5
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -25,6 +25,12 @@
 ---
 
 ## 📋 Changelog
+
+### v2.5.5 (2026-07-18) — Conditional clear + hardening
+
+- **🗑 Clear by condition** — new "Clear by Condition" in the toolbar 🗑 menu: type × time range (e.g. delete only older images, keep today's); right-click a type tab to delete all of that type; new per-group trash buttons on time-group headers
+- **🏷️ Tag deletion options** — deleting a tag now offers "Delete tag only" or "Delete tag & items (to Recycle Bin)"
+- **🔧 Import hardening** — tag names decrypt correctly on cross-machine import (no more garbled text); fixed duplicate imports from one package, unreadable entries imported on decrypt failure, UI freeze on large imports, and backup pruning touching stray files
 
 ### v2.5.0 (2026-07-18) — Local backup + export/import
 
