@@ -70,6 +70,9 @@ final class BackupService {
     @discardableResult
     func backupNow() -> URL? {
         let formatter = DateFormatter()
+        // POSIX locale keeps `yyyy` Gregorian regardless of the user's calendar
+        // (Buddhist/Japanese eras would otherwise break name-sort = time-sort).
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd_HHmmss"
         let destination = backupsDirectory.appendingPathComponent(formatter.string(from: Date()), isDirectory: true)
 
@@ -104,13 +107,30 @@ final class BackupService {
     /// Keeps the newest `keepCount` timestamped backup directories.
     func pruneOldBackups() {
         guard let entries = try? fileManager.contentsOfDirectory(atPath: backupsDirectory.path) else { return }
+        // Only prune our own timestamped backup dirs — stray files (.DS_Store,
+        // anything the user placed here) are left alone.
+        let backupNames = entries.filter(Self.isBackupDirName)
         // Timestamped names sort chronologically as plain strings.
-        let sorted = entries.sorted()
+        let sorted = backupNames.sorted()
         let excess = sorted.count - keepCount
         guard excess > 0 else { return }
         for name in sorted.prefix(excess) {
             try? fileManager.removeItem(at: backupsDirectory.appendingPathComponent(name))
         }
         logger.info("Pruned \(excess) old backup(s), keeping \(self.keepCount)")
+    }
+
+    /// Matches the `yyyy-MM-dd_HHmmss` backup directory format (17 chars).
+    private static func isBackupDirName(_ name: String) -> Bool {
+        let chars = Array(name)
+        guard chars.count == 17 else { return false }
+        for (index, char) in chars.enumerated() {
+            switch index {
+            case 4, 7: guard char == "-" else { return false }
+            case 10: guard char == "_" else { return false }
+            default: guard char.isNumber else { return false }
+            }
+        }
+        return true
     }
 }

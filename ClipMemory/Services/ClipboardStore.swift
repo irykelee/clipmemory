@@ -684,8 +684,11 @@ class ClipboardStore: ObservableObject {
     func importBackupItems(_ newItems: [ClipboardItem], trashedItems newTrashed: [ClipboardItem]) -> (imported: Int, skipped: Int) {
         var imported = 0
         var skipped = 0
-        let existingIds = Set(items.map { $0.id } + trashedItems.map { $0.id })
-        let existingHashes = Set(items.compactMap { $0.contentHash } + trashedItems.compactMap { $0.contentHash })
+        // Mutable sets — entries are added as items are imported so duplicates
+        // within the package itself (or between active and trash lists) are
+        // also caught, not just collisions with pre-existing content (M3 fix).
+        var existingIds = Set(items.map { $0.id } + trashedItems.map { $0.id })
+        var existingHashes = Set(items.compactMap { $0.contentHash } + trashedItems.compactMap { $0.contentHash })
 
         for item in newItems {
             let hashDuplicate = item.contentHash != nil && existingHashes.contains(item.contentHash!)
@@ -694,6 +697,8 @@ class ClipboardStore: ObservableObject {
                 continue
             }
             items.append(item)
+            existingIds.insert(item.id)
+            if let hash = item.contentHash { existingHashes.insert(hash) }
             imported += 1
         }
 
@@ -702,6 +707,8 @@ class ClipboardStore: ObservableObject {
             let hashDuplicate = item.contentHash != nil && existingHashes.contains(item.contentHash!)
             if existingIds.contains(item.id) || hashDuplicate { continue }
             trashedItems.append(item)
+            existingIds.insert(item.id)
+            if let hash = item.contentHash { existingHashes.insert(hash) }
             trashAdded = true
         }
 
