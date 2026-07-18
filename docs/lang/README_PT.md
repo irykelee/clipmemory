@@ -1,4 +1,4 @@
-# ClipMemory v2.4.1
+# ClipMemory v2.4.2
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -21,6 +21,12 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.4.2 (2026-07-18) — Correções de estabilidade + canais duplos de atualização
+
+- **🌐 Canais duplos de atualização** — muda automaticamente para o espelho jsDelivr quando o GitHub está inacessível; alertas de atualização trazem o app para a frente com badge no Dock (gentle reminders)
+- **💾 Segurança dos dados** — novos itens da área de transferência são gravados em disco imediatamente; antes podiam ser perdidos com kill -9 / queda de energia na janela de 500ms
+- **🐛 Correções de estabilidade** — eliminado o spam do aviso SwiftUI "Modifying state during view update" (dezenas por segundo → 0); interrompidos os erros -9878 repetidos a cada início quando o atalho está ocupado
 
 ### v2.4.1 (2026-07-18) — Correção do feed de atualização
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.4.1
+# ClipMemory v2.4.2
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -21,6 +21,12 @@
 ---
 
 ## 📋 Changelog
+
+### v2.4.2 (2026-07-18) — Stability fixes + dual update channels
+
+- **🌐 Dual update channels** — automatically falls back to a jsDelivr mirror when GitHub is unreachable; update alerts bring the app to the foreground with a Dock badge (gentle reminders) instead of staying hidden
+- **💾 Data safety** — new clipboard items are written to disk immediately; previously they could be lost to kill -9 / power loss inside a 500ms debounce window
+- **🐛 Stability fixes** — eliminated SwiftUI "Modifying state during view update" warning spam (dozens per second → 0); stopped repeated -9878 hotkey error logs on every launch when the shortcut is taken
 
 ### v2.4.1 (2026-07-18) — Update feed fix
 
