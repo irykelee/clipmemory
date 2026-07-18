@@ -1,4 +1,4 @@
-# ClipMemory v2.4.2
+# ClipMemory v2.5.0
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -21,6 +21,12 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.5.0 (2026-07-18) — Cópia local + exportar/importar
+
+- **💾 Cópias locais automáticas** — o histórico da área de transferência (incluindo etiquetas, lixeira e imagens) é copiado diariamente na primeira abertura para uma pasta local, mantendo 7 cópias por padrão (3/7/14/30 configurável): uma proteção contra perda de dados
+- **📦 Exportar / Importar** — exporte com um clique um pacote .clipmemory criptografado (protegido por senha); restaure ao trocar de Mac ou reinstalar. A importação mescla e remove duplicados com os dados existentes, sem sobrescrevê-los
+- **⚙️ Nova seção «Cópia de segurança» nos Ajustes** — interruptor de cópia automática, quantidade a manter, Fazer cópia agora, abrir pasta, exportar/importar
 
 ### v2.4.2 (2026-07-18) — Correções de estabilidade + canais duplos de atualização
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.4.2
+# ClipMemory v2.5.0
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -21,6 +21,12 @@
 ---
 
 ## 📋 Changelog
+
+### v2.5.0 (2026-07-18) — Local backup + export/import
+
+- **💾 Local automatic backups** — clipboard history (including tags, recycle bin, images) is backed up daily on first launch to a local Backups folder, keeping 7 copies by default (3/7/14/30 configurable) — a safety net against data loss
+- **📦 Export / Import** — one-click export to a passphrase-protected .clipmemory package; restore after moving to a new Mac or reinstalling. Import merges and dedupes with existing data instead of overwriting it
+- **⚙️ New Backup section in Settings** — auto-backup toggle, retention, Back Up Now, open folder, export/import
 
 ### v2.4.2 (2026-07-18) — Stability fixes + dual update channels
 
