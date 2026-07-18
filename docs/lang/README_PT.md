@@ -187,6 +187,8 @@ Após instalar, o App está em `/Applications/ClipMemory.app`. Encontre o ícone
 
 Ou baixe `.tar.gz` do [GitHub Releases](https://github.com/irykelee/clipmemory/releases) e extraia manualmente em `/Applications/`.
 
+> **Se o macOS bloquear a primeira abertura com "Apple não pode verificar…"**: é o aviso padrão para apps sem notarização, não um vírus. ① Clique com o botão direito no app → **Abrir** → **Abrir** novamente; ou ② Ajustes do Sistema → Privacidade e Segurança → **Abrir Mesmo Assim**. Só na primeira vez. (Quem instalou via `brew install` não verá este aviso.)
+
 ---
 
 ## Desenvolvimento

@@ -187,6 +187,8 @@ brew install --cask clipmemory
 
 または [GitHub Releases](https://github.com/irykelee/clipmemory/releases) から `.tar.gz` をダウンロードして `/Applications/` に手動配置。
 
+> **初回起動時に「Apple は検証できません…」と表示された場合**：これは未公証アプリへの標準的な警告で、ウイルスではありません。① App を右クリック →「開く」→ 再度「開く」、または ② システム設定 → プライバシーとセキュリティ → ClipMemory の「このまま開く」。一度だけの操作です。（`brew install` でインストールした場合は表示されません）
+
 ---
 
 ## 開発
