@@ -55,13 +55,14 @@ final class ImageStorageTests: XCTestCase {
     }
 
     /// Recomputes the same path ImageStorage.imagesDirectory uses, without
-    /// changing the private visibility of the lazy var.
+    /// changing the private visibility of the lazy var. Under XCTest the
+    /// storage redirects to Images-Tests (never the production directory).
     private func storageDirectoryURL() -> URL {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first!
-        return appSupport.appendingPathComponent("ClipMemory/Images", isDirectory: true)
+        return appSupport.appendingPathComponent("ClipMemory/Images-Tests", isDirectory: true)
     }
 
     // MARK: - Fixtures
