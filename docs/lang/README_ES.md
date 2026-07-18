@@ -1,4 +1,4 @@
-# ClipMemory v2.4.1
+# ClipMemory v2.4.2
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -21,6 +21,12 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.4.2 (2026-07-18) — Correcciones de estabilidad + canales duales de actualización
+
+- **🌐 Canales duales de actualización** — cambia automáticamente al espejo jsDelivr cuando GitHub no es accesible; las alertas de actualización traen la app al frente con insignia en el Dock (gentle reminders)
+- **💾 Seguridad de datos** — los nuevos elementos del portapapeles se escriben en disco de inmediato; antes podían perderse con kill -9 / apagón dentro de la ventana de 500ms
+- **🐛 Correcciones de estabilidad** — eliminado el spam del aviso SwiftUI "Modifying state during view update" (decenas por segundo → 0); se detuvieron los errores -9878 repetidos al iniciar cuando el atajo está ocupado
 
 ### v2.4.1 (2026-07-18) — Corrección del feed de actualización
 
