@@ -20,7 +20,15 @@ class ImageStorage {
 
     private lazy var imagesDirectory: URL = {
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("ClipMemory/Images", isDirectory: true)
+        // Under XCTest, redirect to a sandboxed directory. Tests exercise
+        // cleanupOrphanedImages/deleteAllExcept with narrow keep lists, and
+        // every ClipboardStore(...) in a test runs loadItems -> cleanup —
+        // against the real directory that wiped the user's actual image
+        // files on every test run (root cause of "screenshots vanish").
+        let dirname = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            ? "ClipMemory/Images-Tests"
+            : "ClipMemory/Images"
+        let dir = appSupport.appendingPathComponent(dirname, isDirectory: true)
         if !fileManager.fileExists(atPath: dir.path) {
             try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         }
@@ -332,11 +340,18 @@ class ImageStorage {
 
     func deleteAllExcept(filenames: Set<String>) {
         guard let files = try? fileManager.contentsOfDirectory(atPath: imagesDirectory.path) else { return }
+        var deleted = 0
         for file in files {
             guard isValidFilename(file) else { continue }
             if !filenames.contains(file) {
                 try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(file))
+                deleted += 1
             }
+        }
+        // Bulk deletions used to happen silently — log them so a future
+        // "images vanished" report can be traced in the system log.
+        if deleted > 0 {
+            logger.info("deleteAllExcept: removed \(deleted) orphaned image file(s), kept \(filenames.count)")
         }
     }
 
