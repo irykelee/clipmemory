@@ -180,6 +180,8 @@ brew install --cask clipmemory
 
 或从 [GitHub Releases](https://github.com/irykelee/clipmemory/releases) 下载 `.tar.gz` 手动解压到 `/Applications/`。
 
+> **首次打开若提示「Apple 无法验证…」**：这是 macOS 对未公证应用的常规拦截，不是病毒。任选一种：① 右键点 App →「打开」→ 再点「打开」；② 系统设置 → 隐私与安全性 → 找到 ClipMemory 点「仍要打开」。仅需操作一次，之后正常。（通过 `brew install` 安装不会遇到此提示）
+
 ---
 
 ## 开发
