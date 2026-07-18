@@ -28,8 +28,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// Timestamp when the item was moved to the recycle bin. nil for active
     /// items. Used for trash sorting and auto-purge.
     var deletedAt: Date?
+    /// OCR-recognized text of an image item, encrypted at rest (v2 ciphertext).
+    /// nil when OCR has not run or found no text. Never set for non-image items.
+    var ocrText: String?
 
-    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false, tagIds: Set<UUID> = [], deletedAt: Date? = nil) {
+    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false, tagIds: Set<UUID> = [], deletedAt: Date? = nil, ocrText: String? = nil) {
         self.id = id
         self.content = content
         self.type = type
@@ -42,6 +45,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.decryptionFailed = decryptionFailed
         self.tagIds = tagIds
         self.deletedAt = deletedAt
+        self.ocrText = ocrText
     }
 
     // MARK: - Codable compatibility
@@ -61,6 +65,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.decryptionFailed = try container.decodeIfPresent(Bool.self, forKey: .decryptionFailed) ?? false
         self.tagIds = try container.decodeIfPresent(Set<UUID>.self, forKey: .tagIds) ?? []
         self.deletedAt = try container.decodeIfPresent(Date.self, forKey: .deletedAt)
+        self.ocrText = try container.decodeIfPresent(String.self, forKey: .ocrText)
     }
 
     var isExpired: Bool {

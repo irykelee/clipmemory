@@ -227,7 +227,9 @@ struct ContentView: View {
                 let searchableText = item.type == .richText
                     ? item.plainTextFromRTFFallback
                     : (store.getDecryptedContent(item) ?? "")
-                if !searchableText.localizedCaseInsensitiveContains(searchTextDebounced) { return false }
+                let ocrText = item.type == .image ? (store.getDecryptedOcrText(item) ?? "") : ""
+                if !searchableText.localizedCaseInsensitiveContains(searchTextDebounced),
+                   !ocrText.localizedCaseInsensitiveContains(searchTextDebounced) { return false }
             }
             return true
         }
@@ -823,6 +825,12 @@ struct ContentView: View {
             Section {
                 Toggle(L10n.settingsCaptureRichText, isOn: $store.captureRichText)
             } footer: { Text(L10n.settingsCaptureRichTextHint).foregroundColor(.secondary) }
+            Section {
+                Toggle(L10n.settingsOcrEnabled, isOn: Binding(
+                    get: { store.ocrEnabled },
+                    set: { store.ocrEnabled = $0 }
+                ))
+            } footer: { Text(L10n.settingsOcrHint).foregroundColor(.secondary) }
             Section {
                 excludedAppsTags
                 Button(action: { showingAppPicker = true }, label: { Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle") }).buttonStyle(.link)

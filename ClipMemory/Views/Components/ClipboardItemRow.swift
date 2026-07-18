@@ -312,7 +312,34 @@ struct ClipboardItemRow: View, Equatable {
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .contextMenu { Button(action: { onCopyWithFeedback?() }, label: { Label(L10n.actionCopy, systemImage: "doc.on.doc") }); if item.isSensitive { Button(action: onToggleReveal, label: { Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent, systemImage: isRevealed ? "eye.slash" : "eye") }) }; Button(action: onPin, label: { Label(pinText, systemImage: item.isPinned ? "star.slash" : "star") }); Divider(); Button(action: onEditTags, label: { Label(L10n.tooltipEditTags, systemImage: "tag") }); Divider(); Button(role: .destructive, action: onDelete, label: { Label(L10n.actionDelete, systemImage: "trash") }) }
+        .contextMenu {
+            Button(action: { onCopyWithFeedback?() }, label: {
+                Label(L10n.actionCopy, systemImage: "doc.on.doc")
+            })
+            if item.type == .image {
+                Button(action: copyOcrText, label: {
+                    Label(L10n.itemOcrCopy, systemImage: "text.viewfinder")
+                })
+                .disabled(item.ocrText == nil)
+            }
+            if item.isSensitive {
+                Button(action: onToggleReveal, label: {
+                    Label(isRevealed ? L10n.actionHideContent : L10n.actionShowContent,
+                          systemImage: isRevealed ? "eye.slash" : "eye")
+                })
+            }
+            Button(action: onPin, label: {
+                Label(pinText, systemImage: item.isPinned ? "star.slash" : "star")
+            })
+            Divider()
+            Button(action: onEditTags, label: {
+                Label(L10n.tooltipEditTags, systemImage: "tag")
+            })
+            Divider()
+            Button(role: .destructive, action: onDelete, label: {
+                Label(L10n.actionDelete, systemImage: "trash")
+            })
+        }
         .task(id: item.id) {
             guard item.type != .richText, item.type != .image else { return }
             if loadedContent != nil { return }
@@ -346,5 +373,15 @@ struct ClipboardItemRow: View, Equatable {
             loadedRichText = rt
             loadedContent = plain
         }
+    }
+
+    /// Copies the OCR-recognized text of this image item to the pasteboard.
+    /// The app's own copy-loop interception means this won't create a new
+    /// history entry.
+    private func copyOcrText() {
+        guard let text = ClipboardStore.shared.getDecryptedOcrText(item), !text.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 }

@@ -23,6 +23,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = UpdateService.shared
         // Daily local backup (throttled internally to once per 24h).
         BackupService.shared.performBackupIfNeeded()
+        // One-time OCR backfill for pre-existing image items.
+        ClipboardStore.shared.backfillOCRIfNeeded()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
