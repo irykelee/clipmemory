@@ -433,6 +433,16 @@ class ClipboardStore: ObservableObject {
     /// Safe to call with an unknown id — no-op in that case. Triggers a
     /// debounced save for both tags and items.
     func deleteTag(id tagId: UUID) {
+        deleteTag(id: tagId, includeItems: false)
+    }
+
+    /// When `includeItems` is true, items carrying this tag are first moved to
+    /// the recycle bin (recoverable), then the tag definition is deleted and
+    /// its id stripped from any remaining items.
+    func deleteTag(id tagId: UUID, includeItems: Bool) {
+        if includeItems {
+            deleteItems { $0.tagIds.contains(tagId) }
+        }
         guard tags.removeValue(forKey: tagId) != nil else { return }
         for index in items.indices where items[index].tagIds.contains(tagId) {
             items[index].tagIds.remove(tagId)
@@ -608,6 +618,8 @@ class ClipboardStore: ObservableObject {
                     expiresAt: item.expiresAt,
                     isEncrypted: true,
                     contentHash: newHash,
+                    decryptionFailed: item.decryptionFailed,
+                    tagIds: item.tagIds,
                     deletedAt: item.deletedAt
                 )
             } else {
@@ -1027,6 +1039,46 @@ class ClipboardStore: ObservableObject {
         deleteItems { item in
             !item.isPinned && item.createdAt < startOfDayBeforeYesterday
         }
+    }
+
+    // MARK: - Conditional clear (type × time range)
+
+    enum ClearRange: CaseIterable {
+        case all, today, yesterday, older
+    }
+
+    /// Returns whether `date` falls inside the given range, using the same
+    /// day boundaries as clearToday/clearYesterday/clearOlder.
+    func isDate(_ date: Date, inClearRange range: ClearRange, calendar: Calendar = .current) -> Bool {
+        let startOfToday = calendar.startOfDay(for: Date())
+        switch range {
+        case .all:
+            return true
+        case .today:
+            let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? Date.distantFuture
+            return date >= startOfToday && date < endOfToday
+        case .yesterday:
+            guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else { return false }
+            return date >= startOfYesterday && date < startOfToday
+        case .older:
+            guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else { return false }
+            return date < startOfYesterday
+        }
+    }
+
+    /// Clears items matching an optional type and a time range, skipping
+    /// pinned items (same protection rule as the other clear* paths).
+    /// Returns the number of items moved to trash.
+    @discardableResult
+    func clearItems(type: ClipboardItemType?, range: ClearRange) -> Int {
+        let targets = items.filter { item in
+            !item.isPinned
+                && (type == nil || item.type == type)
+                && isDate(item.createdAt, inClearRange: range)
+        }
+        guard !targets.isEmpty else { return 0 }
+        moveToTrash(targets)
+        return targets.count
     }
 
     func copyToClipboard(_ item: ClipboardItem) {

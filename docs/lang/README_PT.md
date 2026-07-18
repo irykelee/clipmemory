@@ -155,6 +155,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 | Ver completo / sensível / imagem | Segurar 0.4s, soltar para ocultar |
 | Modo de seleção múltipla | Clique na caixa de seleção |
 | Limpar histórico | Barra superior 🗑 (fixados são preservados) |
+| Apagar por condição | Barra superior 🗑 → «Apagar por condição» (tipo × período); clique direito na aba de tipo para apagar todo esse tipo |
 | Alternar filtro de tipo | Clique em "Texto/Imagem/Link/Rich Text" na barra lateral |
 
 > 💡 Itens fixados nunca são removidos automaticamente. Copiar o mesmo conteúdo não cria duplicatas, apenas atualiza o timestamp.

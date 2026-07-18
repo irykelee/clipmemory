@@ -49,6 +49,8 @@ struct ContentView: View {
     @State private var itemToDelete: ClipboardItem?
     @State private var showingEmptyTrashAlert = false
     @State private var pendingClearMode: ClearMode?
+    @State private var pendingTypeClear: ClipboardItemType?
+    @State private var showingConditionalClear = false
     private enum ClearMode {
         case today, yesterday, older, all
     }
@@ -329,6 +331,7 @@ struct ContentView: View {
             .onDisappear { stopKeyEventMonitor() }
             .sheet(isPresented: $showingAppPicker) { self.appPickerSheetContent }
             .sheet(isPresented: $showingTips) { self.tipsSheet }
+            .sheet(isPresented: $showingConditionalClear) { ConditionalClearSheet(store: store) }
             .sheet(item: $tagPickerItem) { item in
                 TagPickerSheet(item: item, store: store)
             }
@@ -341,9 +344,16 @@ struct ContentView: View {
                    isPresented: Binding(get: { tagPendingDelete != nil },
                                         set: { if !$0 { tagPendingDelete = nil } })) {
                 Button(L10n.buttonCancel, role: .cancel) { tagPendingDelete = nil }
-                Button(L10n.tagPickerDeleteConfirmConfirm, role: .destructive) {
+                Button(L10n.tagDeleteOnlyTag, role: .destructive) {
                     if let tag = tagPendingDelete {
                         store.deleteTag(id: tag.id)
+                        selectedTagIds.remove(tag.id)
+                    }
+                    tagPendingDelete = nil
+                }
+                Button(L10n.tagDeleteWithContent, role: .destructive) {
+                    if let tag = tagPendingDelete {
+                        store.deleteTag(id: tag.id, includeItems: true)
                         selectedTagIds.remove(tag.id)
                     }
                     tagPendingDelete = nil
@@ -449,6 +459,8 @@ struct ContentView: View {
                 .disabled(store.trashedItems.isEmpty)
             } else {
                 Menu {
+                    Button(action: { showingConditionalClear = true }, label: { Label(L10n.clearConditionalAction, systemImage: "line.3.horizontal.decrease.circle") })
+                    Divider()
                     Button(action: { pendingClearMode = .today }, label: { Label(L10n.clearToday, systemImage: "sunrise") })
                     Button(action: { pendingClearMode = .yesterday }, label: { Label(L10n.clearYesterday, systemImage: "sun.haze") })
                     Button(action: { pendingClearMode = .older }, label: { Label(L10n.clearOlder, systemImage: "clock.arrow.circlepath") })
@@ -489,6 +501,13 @@ struct ContentView: View {
                     Label(tab.label, systemImage: tab.icon)
                         .badge(tabCounts[tab] ?? 0)
                         .tag(tab)
+                        .contextMenu {
+                            if let type = tab.typeFilter {
+                                Button(role: .destructive, action: { pendingTypeClear = type }, label: {
+                                    Label(L10n.clearTypeAction(typeLabel(type)), systemImage: "trash")
+                                })
+                            }
+                        }
                 }
                 Section {
                     Label(SidebarTab.pinned.label, systemImage: SidebarTab.pinned.icon)
@@ -552,6 +571,13 @@ struct ContentView: View {
                                 HStack {
                                     Text(section.group.label).font(.system(size: sz(12), weight: .semibold)).foregroundColor(.secondary)
                                     Spacer()
+                                    Button(action: { pendingClearMode = clearModeForGroup(section.group) }, label: {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: sz(11)))
+                                            .foregroundColor(.secondary)
+                                    })
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(L10n.buttonClear)
                                     Image(systemName: (!collapsedGroups.contains(section.group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
                                         .font(.system(size: sz(10))).foregroundColor(.secondary)
                                 }
@@ -581,6 +607,22 @@ struct ContentView: View {
             }
         }
         .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) { Button(L10n.buttonCancel, role: .cancel) {}; Button(L10n.buttonDelete, role: .destructive) { if let item = itemToDelete { store.deleteItem(item) } } } message: { Text(L10n.alertDeleteMessage) }
+        .alert(L10n.alertClearTitle, isPresented: Binding(
+            get: { pendingTypeClear != nil },
+            set: { if !$0 { pendingTypeClear = nil } }
+        )) {
+            Button(L10n.buttonCancel, role: .cancel) { pendingTypeClear = nil }
+            Button(L10n.buttonClear, role: .destructive) {
+                if let type = pendingTypeClear {
+                    store.clearItems(type: type, range: .all)
+                }
+                pendingTypeClear = nil
+            }
+        } message: {
+            if let type = pendingTypeClear {
+                Text(L10n.clearTypeConfirm(typeLabel(type), store.items.filter { $0.type == type && !$0.isPinned }.count))
+            }
+        }
         .alert(L10n.alertClearTitle, isPresented: Binding(
             get: { pendingClearMode != nil },
             set: { if !$0 { pendingClearMode = nil } }
@@ -633,6 +675,26 @@ struct ContentView: View {
         case .all: count = store.items.filter { !$0.isPinned }.count
         }
         return count > 0 ? L10n.alertClearMessage(count) : L10n.alertClearNone
+    }
+
+    /// Maps a time group to the ClearMode used by the toolbar menu so the new
+    /// per-group header trash button reuses the exact same confirmation flow.
+    private func clearModeForGroup(_ group: TimeGroup) -> ClearMode {
+        switch group {
+        case .today: return .today
+        case .yesterday: return .yesterday
+        case .older: return .older
+        }
+    }
+
+    /// Localized display name for a content type (matches sidebar filter labels).
+    func typeLabel(_ type: ClipboardItemType) -> String {
+        switch type {
+        case .text: return L10n.filterText
+        case .image: return L10n.filterImage
+        case .link: return L10n.filterLink
+        case .richText: return L10n.filterRichText
+        }
     }
 
     private func confirmClear() {

@@ -155,6 +155,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 | Preview full / sensitive / image | Hold 0.4s, release to hide |
 | Multi-select mode | Click checkbox |
 | Clear history | Top bar 🗑 (pinned items preserved) |
+| Clear by condition | Top bar 🗑 → "Clear by Condition" (type × time range); right-click a type tab to delete all of that type |
 | Switch type filter | Click "Text/Image/Link/Rich Text" in sidebar |
 
 > 💡 Pinned items are never auto-deleted. Copying identical content doesn't create duplicates, only updates the timestamp.
