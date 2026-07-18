@@ -2,7 +2,6 @@
 "app.name" = "ClipMemory";
 "button.clear" = "Clear";
 "button.settings" = "Settings";
-"button.back" = "Back";
 "button.cancel" = "Cancel";
 "button.delete" = "Delete";
 "button.confirm" = "Confirm";
@@ -11,9 +10,7 @@
 
 /* Header */
 "header.clear.history" = "Clear History";
-"header.show.all" = "Show All";
 "header.show.pinned" = "Pinned Only";
-"header.pin.all" = "Unpin All";
 
 /* Search */
 "search.placeholder" = "Search clipboard history...";
@@ -35,8 +32,6 @@
 "action.unpin" = "Unpin";
 "action.delete" = "Delete";
 "action.copy" = "Copy";
-"action.view" = "View";
-"action.hide" = "Hide";
 "action.show.content" = "Show Content";
 "action.hide.content" = "Hide Content";
 
@@ -47,22 +42,15 @@
 
 /* Image fallback */
 "image.missing" = "Image file missing";
-"tooltip.clear.history" = "Clear history (pinned items preserved)";
-"tooltip.show.all" = "Show all clipboard history";
-"tooltip.pinned.only" = "Show pinned items only (won't be auto-cleared)";
-"tooltip.reveal" = "Show content";
-"tooltip.hide" = "Hide content";
 
 /* Alerts */
 "alert.clear.title" = "Clear History";
 "alert.clear.message" = "Are you sure you want to clear %d items?\nPinned items will not be deleted.";
 "alert.clear.none" = "No history to clear.";
-"alert.clear.group.message" = "Are you sure you want to clear %1$d items in「%2$@」?\nPinned items will not be deleted.";
 "alert.delete.title" = "Move to Recycle Bin";
 "alert.delete.message" = "Move this item to the Recycle Bin?";
 
 /* Settings */
-"settings.title" = "Settings";
 "settings.section.history" = "History";
 "settings.section.sensitive" = "Sensitive Information";
 "settings.section.language" = "Language";
@@ -75,10 +63,6 @@
 "settings.sensitive.hint" = "Automatically clears sensitive content (passwords, API keys, etc.) after the selected time.";
 "settings.hotkey.change" = "Change";
 "settings.hotkey.recording" = "Press a key combination...";
-"settings.excluded.apps" = "Excluded Apps";
-"settings.excluded.apps.placeholder" = "com.1password.1password, com.bitwarden.desktop";
-"settings.excluded.apps.label" = "Excluded Apps";
-"settings.excluded.apps.hint" = "Comma-separated bundle IDs of apps to exclude from clipboard monitoring (e.g. com.1password.1password, com.bitwarden.desktop). Copy actions from these apps will not be recorded.";
 "settings.add.excluded.app" = "Add Application";
 "settings.section.update" = "Update";
 "settings.update.auto" = "Automatically check for updates";
@@ -107,10 +91,7 @@
 "tag.delete.onlytag" = "Delete Tag Only";
 "tag.delete.withcontent" = "Delete Tag & Items";
 "settings.app.picker.search" = "Search applications";
-"settings.app.picker.running" = "Running";
-"settings.app.picker.installed" = "Installed";
 "settings.app.picker.no.results" = "No apps found";
-"settings.excluded.apps.none" = "No apps excluded";
 
 /* Sensitive Options */
 "sensitive.1.hour" = "1 hour";
@@ -122,12 +103,10 @@
 /* About */
 "about.version" = "ClipMemory v%@";
 "about.free.edition" = "Free Edition · Local Clipboard History";
-"about.paid.edition" = "Pro Edition";
 
 /* Item Labels */
 "item.sensitive" = "Sensitive";
 "item.image" = "[Image]";
-"item.unpin.all" = "Unpin All";
 
 /* Date Groups */
 "group.today" = "Today";
@@ -139,24 +118,12 @@
 "cleanup.today" = "Clear Today";
 "cleanup.yesterday" = "Clear Yesterday";
 "cleanup.older" = "Clear Older";
-"cleanup.all" = "Clear All";
 
 /* Languages */
-"lang.zh-Hans" = "简体中文";
-"lang.zh-Hant" = "繁體中文";
-"lang.en" = "English";
-"lang.ja" = "日本語";
-"lang.ko" = "한국어";
-"lang.es" = "Español";
-"lang.pt" = "Português";
 
 /* App Delegate */
 "app.quit" = "Quit ClipMemory";
 "app.launch.at.login" = "Launch at Login";
-"app.launch.at.login.enabled" = "Launch at Login Enabled";
-"app.launch.at.login.enabled.body" = "ClipMemory will start automatically when you log in.";
-"app.launch.at.login.disabled" = "Launch at Login Disabled";
-"app.launch.at.login.disabled.body" = "ClipMemory will not start automatically.";
 "settings.launch.at.login.error.body" = "Unable to modify Launch at Login setting. Please check system permissions.";
 "app.error" = "Error";
 "batch.selected" = "%d selected";
@@ -177,10 +144,6 @@
 
 /* Theme */
 "settings.section.theme" = "Theme";
-"theme.effect" = "Window Effect";
-"theme.effect.solid" = "Solid";
-"theme.effect.frosted" = "Frosted";
-"theme.effect.ultra" = "Ultra";
 "theme.appearance" = "Appearance";
 "theme.appearance.system" = "Follow System";
 "theme.appearance.light" = "Light";
@@ -197,9 +160,6 @@
 "font.size.small" = "Small";
 "font.size.medium" = "Medium";
 "font.size.large" = "Large";
-"tooltip.close" = "Close";
-"tooltip.minimize" = "Minimize";
-"tooltip.zoom" = "Zoom";
 
 "app.view.welcome.guide" = "View Welcome Guide";
 
@@ -261,10 +221,7 @@
 /* Recycle Bin */
 "trash.title" = "Recycle Bin";
 "trash.empty" = "Recycle Bin is empty";
-"trash.deletedAt" = "Deleted %@";
 "trash.restore" = "Restore";
-"trash.deletePermanently" = "Delete Permanently";
 "trash.emptyConfirm.title" = "Empty Recycle Bin";
 "trash.emptyConfirm.message" = "%d items will be permanently deleted. This action cannot be undone.";
 "trash.retentionDays" = "Recycle Bin retention days";
-"trash.moveToTrash" = "Move to Recycle Bin";

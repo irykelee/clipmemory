@@ -59,7 +59,6 @@ struct L10n {
     static var appName: String { string("app.name") }
     static var buttonClear: String { string("button.clear") }
     static var buttonSettings: String { string("button.settings") }
-    static var buttonBack: String { string("button.back") }
     static var buttonCancel: String { string("button.cancel") }
     static var buttonDelete: String { string("button.delete") }
     static var buttonConfirm: String { string("button.confirm") }
@@ -67,9 +66,7 @@ struct L10n {
     static var buttonDone: String { string("button.done") }
 
     static var headerClearHistory: String { string("header.clear.history") }
-    static var headerShowAll: String { string("header.show.all") }
     static var headerShowPinned: String { string("header.show.pinned") }
-    static var headerPinAll: String { string("header.pin.all") }
 
     static var searchPlaceholder: String { string("search.placeholder") }
 
@@ -82,8 +79,6 @@ struct L10n {
     static var actionUnpin: String { string("action.unpin") }
     static var actionDelete: String { string("action.delete") }
     static var actionCopy: String { string("action.copy") }
-    static var actionView: String { string("action.view") }
-    static var actionHide: String { string("action.hide") }
     static var actionShowContent: String { string("action.show.content") }
     static var actionHideContent: String { string("action.hide.content") }
 
@@ -91,15 +86,7 @@ struct L10n {
     static var tooltipPin: String { string("tooltip.pin") }
     static var tooltipDelete: String { string("tooltip.delete") }
     static var imageMissing: String { string("image.missing") }
-    static var tooltipClearHistory: String { string("tooltip.clear.history") }
-    static var tooltipShowAll: String { string("tooltip.show.all") }
-    static var tooltipPinnedOnly: String { string("tooltip.pinned.only") }
-    static var tooltipReveal: String { string("tooltip.reveal") }
-    static var tooltipHide: String { string("tooltip.hide") }
     static var imageDecryptionFailed: String { string("image.decryptionFailed") }
-    static var tooltipClose: String { string("tooltip.close") }
-    static var tooltipMinimize: String { string("tooltip.minimize") }
-    static var tooltipZoom: String { string("tooltip.zoom") }
     static var tooltipEditTags: String { string("tooltip.editTags") }
 
     // MARK: - Tag suggestions
@@ -138,22 +125,17 @@ struct L10n {
     static var alertClearNone: String { string("alert.clear.none") }
     static var alertDeleteTitle: String { string("alert.delete.title") }
     static var alertDeleteMessage: String { string("alert.delete.message") }
-    static func alertClearGroupMessage(_ count: Int, _ groupLabel: String) -> String { string("alert.clear.group.message", count, groupLabel) }
     static var settingsLaunchAtLoginErrorBody: String { string("settings.launch.at.login.error.body") }
 
     // MARK: - Recycle Bin (Trash)
 
     static var trashTitle: String { string("trash.title") }
     static var trashEmpty: String { string("trash.empty") }
-    static var trashDeletedAt: String { string("trash.deletedAt") }
     static var trashRestore: String { string("trash.restore") }
-    static var trashDeletePermanently: String { string("trash.deletePermanently") }
     static var trashEmptyConfirmTitle: String { string("trash.emptyConfirm.title") }
     static func trashEmptyConfirmMessage(_ count: Int) -> String { string("trash.emptyConfirm.message", count) }
     static var trashRetentionDays: String { string("trash.retentionDays") }
-    static var trashMoveToTrash: String { string("trash.moveToTrash") }
 
-    static var settingsTitle: String { string("settings.title") }
     static var settingsSectionHistory: String { string("settings.section.history") }
     static var settingsSectionSensitive: String { string("settings.section.sensitive") }
     static var settingsSectionLanguage: String { string("settings.section.language") }
@@ -169,10 +151,6 @@ struct L10n {
     static var settingsHotkeyChange: String { string("settings.hotkey.change") }
     static var settingsHotkeyRecording: String { string("settings.hotkey.recording") }
     static var settingsHotkeyReset: String { string("settings.hotkey.reset") }
-    static var settingsExcludedAppsPlaceholder: String { string("settings.excluded.apps.placeholder") }
-    static var settingsExcludedAppsLabel: String { string("settings.excluded.apps.label") }
-    static var settingsExcludedAppsHint: String { string("settings.excluded.apps.hint") }
-    static var settingsExcludedAppsNone: String { string("settings.excluded.apps.none") }
     static var settingsAddExcludedApp: String { string("settings.add.excluded.app") }
     static var settingsSectionUpdate: String { string("settings.section.update") }
     static var settingsUpdateAuto: String { string("settings.update.auto") }
@@ -185,8 +163,8 @@ struct L10n {
     static var settingsBackupOpen: String { string("settings.backup.open") }
     static var settingsBackupExport: String { string("settings.backup.export") }
     static var settingsBackupImport: String { string("settings.backup.import") }
-    static var settingsBackupPassword: String { string("settings.backup.passphrase") }
-    static var settingsBackupPasswordWrong: String { string("settings.backup.passphrase.wrong") }
+    static var settingsBackupPassphrase: String { string("settings.backup.passphrase") }
+    static var settingsBackupPassphraseWrong: String { string("settings.backup.passphrase.wrong") }
     static var settingsBackupError: String { string("settings.backup.error") }
     static var settingsBackupExportDone: String { string("settings.backup.export.done") }
     static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, images) }
@@ -220,16 +198,10 @@ struct L10n {
     static var itemSensitive: String { string("item.sensitive") }
     static var itemImage: String { string("item.image") }
     static var itemRichText: String { string("item.richText") }
-    static var itemUnpinAll: String { string("item.unpin.all") }
 
-    static func langName(_ code: String) -> String { string("lang.\(code)") }
 
     static var quitApp: String { string("app.quit") }
     static var launchAtLogin: String { string("app.launch.at.login") }
-    static var launchAtLoginEnabled: String { string("app.launch.at.login.enabled") }
-    static var launchAtLoginEnabledBody: String { string("app.launch.at.login.enabled.body") }
-    static var launchAtLoginDisabled: String { string("app.launch.at.login.disabled") }
-    static var launchAtLoginDisabledBody: String { string("app.launch.at.login.disabled.body") }
     static var error: String { string("app.error") }
     static func batchSelected(_ count: Int) -> String { string("batch.selected", count) }
     static var sendFeedback: String { string("app.send.feedback") }
@@ -270,10 +242,6 @@ struct L10n {
 
     // MARK: - Theme
     static var settingsSectionTheme: String { string("settings.section.theme") }
-    static var themeEffect: String { string("theme.effect") }
-    static var themeEffectSolid: String { string("theme.effect.solid") }
-    static var themeEffectFrosted: String { string("theme.effect.frosted") }
-    static var themeEffectUltra: String { string("theme.effect.ultra") }
     static var themeAppearance: String { string("theme.appearance") }
     static var themeAppearanceSystem: String { string("theme.appearance.system") }
     static var themeAppearanceLight: String { string("theme.appearance.light") }
@@ -289,12 +257,10 @@ struct L10n {
     static var clearToday: String { string("cleanup.today") }
     static var clearYesterday: String { string("cleanup.yesterday") }
     static var clearOlder: String { string("cleanup.older") }
-    static var clearAll: String { string("cleanup.all") }
     static var unpinToday: String { string("unpin.today") }
     static var unpinYesterday: String { string("unpin.yesterday") }
     static var unpinOlder: String { string("unpin.older") }
     static var unpinAll: String { string("unpin.all") }
-    static var unpinAllButton: String { string("action.unpin") }
 
     // MARK: - QuickBar
     static func quickbarRecent(_ count: Int) -> String { string("quickbar.recent", count) }
