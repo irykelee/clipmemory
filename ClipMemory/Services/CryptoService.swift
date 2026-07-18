@@ -19,7 +19,11 @@ class CryptoService: CryptoServiceProtocol {
         return dir.appendingPathComponent(".encryption_key")
     }
 
+    /// When set (import/test instances), this key is used instead of the app key file.
+    private let customKey: SymmetricKey?
+
     private init() {
+        customKey = nil
         if getKey() == nil {
             generateKey()
         } else {
@@ -32,6 +36,18 @@ class CryptoService: CryptoServiceProtocol {
                 ofItemAtPath: Self.keyFileURL.path
             )
         }
+    }
+
+    /// Instance operating on an explicit key rather than the app key file.
+    /// Used by BackupPackage to decrypt package data with the source machine's
+    /// key and re-encrypt with the local one during import.
+    init(customKeyData: Data) {
+        customKey = SymmetricKey(data: customKeyData)
+    }
+
+    /// Raw key bytes of the app key file (needed to embed into export packages).
+    static func loadKeyData() -> Data? {
+        try? Data(contentsOf: keyFileURL)
     }
 
     private func generateKey() {
@@ -60,6 +76,7 @@ class CryptoService: CryptoServiceProtocol {
     }
 
     private func getKey() -> SymmetricKey? {
+        if let customKey { return customKey }
         guard let keyData = try? Data(contentsOf: Self.keyFileURL), keyData.count == 32 else {
             return nil
         }
