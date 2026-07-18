@@ -10,18 +10,21 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
 
     /// H9: Protects all mutable shared state from data races between main thread and timer queue.
     /// macOS 14+: OSAllocatedUnfairLock (modern, recommended). macOS 13: NSLock fallback.
-    private let _stateLock: Any = {
+    /// C3: the unfair-lock storage and its cast share one #available branch, and the
+    /// NSLock fallback needs no cast at all — there is no `as!` trap path left, so a
+    /// future storage change degrades to NSLock instead of crashing the polling queue.
+    private let _unfairLock: Any? = {
         if #available(macOS 14, *) { return OSAllocatedUnfairLock<Void>() }
-        return NSLock()
+        return nil
     }()
+    private let _nsLock = NSLock()
 
     private func withLock<T>(_ block: () throws -> T) rethrows -> T {
-        if #available(macOS 14, *), let lock = _stateLock as? OSAllocatedUnfairLock<Void> {
+        if #available(macOS 14, *), let lock = _unfairLock as? OSAllocatedUnfairLock<Void> {
             return try lock.withLock(block)
         }
-        let lock = _stateLock as! NSLock
-        lock.lock()
-        defer { lock.unlock() }
+        _nsLock.lock()
+        defer { _nsLock.unlock() }
         return try block()
     }
 

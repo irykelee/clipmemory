@@ -6,6 +6,8 @@ import os.log
 /// Encryption format versions:
 /// - v2 (current): "v2" prefix + AES-GCM sealed box (nonce + ciphertext + tag)
 /// - v1 (legacy): AES-CBC + HMAC-SHA256, no prefix, for backwards compatibility
+/// - pre-1.2.0 (AES-CBC without HMAC) is REJECTED (C4): unauthenticated CBC is
+///   a padding-oracle / tampering hole for anyone who can write UserDefaults.
 class CryptoService: CryptoServiceProtocol {
     static let shared = CryptoService()
 
@@ -177,18 +179,14 @@ class CryptoService: CryptoServiceProtocol {
 
     // MARK: - Legacy Decryption (AES-CBC+HMAC, pre-v2 format)
 
-    /// Returns true if the given base64 string uses the old (pre-v2) format.
-    /// Uses try-decrypt approach: if v2 decrypt succeeds → false, if legacy succeeds → true.
-    /// More robust than byte-prefix inspection and avoids polluting encrypted data.
+    /// Returns true if the given base64 string uses the legacy (pre-v2) format.
+    /// C4: strict byte-prefix check only. v2 payloads are self-describing ("v2"
+    /// marker); anything without the marker is treated as legacy. Decryption
+    /// success is never used as a classifier — that gave a UserDefaults-writing
+    /// attacker a v2/legacy oracle for free.
     func isOldFormat(_ base64String: String) -> Bool {
         guard let combined = Data(base64Encoded: base64String) else { return false }
-        if combined.count >= 2 && combined.prefix(2) == Data("v2".utf8) {
-            // Has v2 marker — try decrypting as v2 to confirm it's valid v2
-            if decryptV2(data: Data(combined.dropFirst(2))) != nil { return false }
-            // v2 marker present but can't decrypt — treat as old format
-        }
-        // No v2 marker or v2 decrypt failed — try legacy
-        return decryptLegacy(from: combined) != nil
+        return !(combined.count >= 2 && combined.prefix(2) == Data("v2".utf8))
     }
 
     /// Migrates old-format encrypted string to new v2 format.
@@ -231,14 +229,10 @@ class CryptoService: CryptoServiceProtocol {
             return aesDecryptCBC(data: Data(ciphertext), key: keyData, iv: Data(iv))
         }
 
-        // Old format without HMAC: 16-byte IV + ciphertext (pre-1.2.0)
-        if combined.count > 16 {
-            let iv = combined.prefix(16)
-            let ciphertext = combined.dropFirst(16)
-            let keyData = key.withUnsafeBytes { Data($0) }
-            return aesDecryptCBC(data: Data(ciphertext), key: keyData, iv: Data(iv))
-        }
-
+        // C4: the pre-1.2.0 branch (16-byte IV + ciphertext, no HMAC) was removed.
+        // Unauthenticated CBC let anyone who can write UserDefaults tamper with
+        // ciphertext undetected and run a padding-oracle attack to recover
+        // plaintext byte-by-byte. Such blobs are now rejected outright.
         return nil
     }
 

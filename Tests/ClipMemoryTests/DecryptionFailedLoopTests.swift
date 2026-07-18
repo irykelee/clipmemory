@@ -32,8 +32,16 @@ final class DecryptionFailedLoopTests: XCTestCase {
         backend.items = [bad]
         store.loadItems()
 
-        // First access: returns nil and marks the failure.
+        // First access: returns nil and schedules the failure mark.
         XCTAssertNil(store.getDecryptedContent(bad))
+
+        // C5: the mark is applied asynchronously on the main queue (never
+        // synchronously inside a view update) — wait for the merge to land.
+        let deadline = Date().addingTimeInterval(5)
+        while store.items.first(where: { $0.id == bad.id })?.decryptionFailed != true,
+              Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
         let markedOnce = store.items.first(where: { $0.id == bad.id })?.decryptionFailed
         XCTAssertEqual(markedOnce, true, "first failure must mark the flag")
 

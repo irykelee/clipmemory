@@ -612,6 +612,13 @@ final class IntegrationTests: XCTestCase {
         let result = storeWithCorrupt.getDecryptedContent(corrupt)
         XCTAssertNil(result, "Corrupt blob must fail decryption")
 
+        // C5: the flag is applied asynchronously on the main queue — wait for it.
+        let flagDeadline = Date().addingTimeInterval(5)
+        while storeWithCorrupt.items.first(where: { $0.id == corrupt.id })?.decryptionFailed != true,
+              Date() < flagDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+
         // The flag must be set on the in-store copy of the item
         let storedItem = storeWithCorrupt.items.first(where: { $0.id == corrupt.id })
         XCTAssertNotNil(storedItem)
@@ -669,6 +676,12 @@ final class IntegrationTests: XCTestCase {
 
         // Trigger getDecryptedContent which sets decryptionFailed = true
         XCTAssertNil(dedupStore.getDecryptedContent(corrupt))
+        // C5: the flag is applied asynchronously on the main queue — wait for it.
+        let markDeadline = Date().addingTimeInterval(5)
+        while dedupStore.items.first(where: { $0.id == corrupt.id })?.decryptionFailed != true,
+              Date() < markDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
         XCTAssertTrue(dedupStore.items[0].decryptionFailed,
                      "Sanity: flag must be set after getDecryptedContent returns nil")
 
@@ -809,6 +822,8 @@ final class IntegrationTests: XCTestCase {
     /// Regression guard for M7: items persisted before HMAC-based dedup have
     /// contentHash == nil. loadItems must backfill them so addItem's fast
     /// hash-compare path applies instead of O(n) decrypt-and-compare.
+    /// C6: the backfill runs on a background queue and merges on main — the
+    /// test polls until the merge lands.
     func testLoadItemsBackfillsContentHashForLegacyItems() {
         let legacy = ClipboardItem(
             content: "legacy plaintext",
@@ -821,6 +836,10 @@ final class IntegrationTests: XCTestCase {
         legacyStore.loadItems()
 
         XCTAssertEqual(legacyStore.items.count, 1)
+        let backfillDeadline = Date().addingTimeInterval(5)
+        while legacyStore.items[0].contentHash == nil, Date() < backfillDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
         XCTAssertNotNil(legacyStore.items[0].contentHash,
                        "loadItems must backfill contentHash for legacy items")
         XCTAssertEqual(legacyStore.items[0].contentHash,
