@@ -116,7 +116,7 @@ jobs:
             version "${VERSION}"
             sha256 "${SHA256}"
 
-            url "https://github.com/irykelee/clipmemory/releases/download/v\#{version}/ClipMemory.tar.gz"
+            url "https://github.com/irykelee/clipmemory/releases/download/v#{version}/ClipMemory.tar.gz"
             name "ClipMemory"
             desc "Clipboard history manager for macOS with encryption and Quick Bar"
             homepage "https://github.com/irykelee/clipmemory"
