@@ -12,6 +12,7 @@ struct TrashItemRow: View, Equatable {
     @State private var loadedImage: NSImage?
     @State private var imageLoadFailed = false
     @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
+    @State private var imageLongPressing = false
     @AppStorage("fontScale") private var fontScale: Double = 1.0
 
     static func == (lhs: TrashItemRow, rhs: TrashItemRow) -> Bool {
@@ -41,6 +42,8 @@ struct TrashItemRow: View, Equatable {
                                 Image(nsImage: ns)
                                     .resizable().aspectRatio(contentMode: .fit)
                                     .frame(maxHeight: 80)
+                                    .overlay(PressableImage { pressed in imageLongPressing = pressed }
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity))
                             } else {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 6).fill(.ultraThinMaterial)
@@ -64,6 +67,14 @@ struct TrashItemRow: View, Equatable {
                                 .frame(width: 120, height: 80)
                             }
                         }
+                        .onChange(of: imageLongPressing) { pressing in
+                            if pressing, let ns = loadedImage {
+                                ImagePreviewPanel.show(image: ns)
+                            } else {
+                                ImagePreviewPanel.hide()
+                            }
+                        }
+                        .onDisappear { ImagePreviewPanel.hide() }
                         .task(id: item.content) {
                             imageLoadFailed = false
                             imageLoadStatus = nil
