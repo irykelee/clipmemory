@@ -7,7 +7,7 @@ Usage:
 What it does:
   1. Bumps the `# ... vX.Y.Z` title in all 8 READMEs.
   2. Inserts the zh-Hans section (your input file, including its `### v...`
-     heading) into README.md and docs/lang/README_ZH-HANS.md.
+     heading) into README.md.
   3. Translates the section into the other 6 languages with DeepSeek
      (env `DEEPSEEK_API_KEY`), using a fixed glossary plus the target file's
      previous changelog section as the style reference, and inserts it at the
@@ -27,7 +27,7 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 FILES = {
-    "zh-Hans": ["README.md", "docs/lang/README_ZH-HANS.md"],
+    "zh-Hans": ["README.md"],
     "en": ["docs/lang/README_EN.md"],
     "zh-Hant": ["docs/lang/README_ZH-HANT.md"],
     "ja": ["docs/lang/README_JA.md"],
