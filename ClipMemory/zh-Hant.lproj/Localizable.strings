@@ -239,7 +239,7 @@
 "alert.key.random.title" = "無法建立加密密鑰";
 "alert.key.random.message" = "系統安全亂數產生器不可用，剪貼簿內容無法加密儲存。App 將結束。";
 "alert.key.storage.title" = "無法儲存加密密鑰";
-"alert.key.storage.message" = "密鑰無法寫入磁碟（磁碟已滿或權限不足）。可以結束 App，或重試。";
+"alert.key.storage.message" = "密鑰無法儲存到系統鑰匙圈（鑰匙圈已鎖定或存取被拒）。可以結束 App，或重試。";
 "alert.key.button.reset" = "重置密鑰";
 "alert.key.button.retry" = "重試";
 // H1：更新鏡像源確認彈窗

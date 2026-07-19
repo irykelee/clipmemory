@@ -33,7 +33,9 @@ class CryptoService: CryptoServiceProtocol {
 
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
 
-    /// Exposed for ImageStorage migration
+    /// Legacy key file location (pre-C1). Still consulted as a read-only
+    /// fallback and migrated into the Keychain by `prepareKey`; new keys
+    /// are never written here. Exposed for ImageStorage migration.
     static var keyFileURL: URL {
         let appSupport = AppDirectories.applicationSupport
         let dir = appSupport.appendingPathComponent("ClipMemory", isDirectory: true)
@@ -41,24 +43,61 @@ class CryptoService: CryptoServiceProtocol {
         return dir.appendingPathComponent(".encryption_key")
     }
 
-    /// When set (import/test instances), this key is used instead of the app key file.
+    /// When set (import/test instances), this key is used instead of the app key.
     private let customKey: SymmetricKey?
+
+    /// True under XCTest. Tests never touch the real Keychain: prepareKey's
+    /// migration is skipped (test-never-touch-prod-data) and key reads stay
+    /// on the legacy file — the test runner is a different binary, so
+    /// querying the production Keychain item could trigger an ACL prompt.
+    private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     private init() {
         customKey = nil
-        Self.prepareKey()
+        if Self.isRunningTests {
+            Self.prepareLegacyFileKeyForTests()
+        } else {
+            Self.prepareKey()
+        }
     }
 
-    /// Instance operating on an explicit key rather than the app key file.
+    /// Instance operating on an explicit key rather than the app key.
     /// Used by BackupPackage to decrypt package data with the source machine's
     /// key and re-encrypt with the local one during import.
     init(customKeyData: Data) {
         customKey = SymmetricKey(data: customKeyData)
     }
 
-    /// Raw key bytes of the app key file (needed to embed into export packages).
+    /// Raw key bytes of the app key (needed to embed into export packages).
     static func loadKeyData() -> Data? {
-        try? Data(contentsOf: keyFileURL)
+        if !isRunningTests, let data = KeychainKeyStore().load(), data.count == 32 { return data }
+        return try? Data(contentsOf: keyFileURL)
+    }
+
+    /// XCTest only: many fixtures are built against the key file's bytes, so
+    /// tests need a stable file key. Ensures one exists (atomic temp write,
+    /// 0o600) without ever touching the Keychain. Failures are logged only —
+    /// affected tests then fail loudly on their own.
+    private static func prepareLegacyFileKeyForTests() {
+        let keyURL = keyFileURL
+        if let existing = try? Data(contentsOf: keyURL), existing.count == 32 { return }
+        var keyData = Data(count: 32)
+        let result = keyData.withUnsafeMutableBytes {
+            SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!)
+        }
+        guard result == errSecSuccess else {
+            logger.error("Tests: failed to generate random key bytes")
+            return
+        }
+        let tempURL = keyURL.appendingPathExtension("tmp")
+        do {
+            try keyData.write(to: tempURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tempURL.path)
+            try FileManager.default.moveItem(at: tempURL, to: keyURL)
+        } catch {
+            logger.error("Tests: failed to store key file: \(error.localizedDescription)")
+            try? FileManager.default.removeItem(at: tempURL)
+        }
     }
 
     /// Called instead of crashing when the app key cannot be prepared (H6).
@@ -69,7 +108,8 @@ class CryptoService: CryptoServiceProtocol {
         CryptoService.defaultKeyFailureHandler(failure)
     }
 
-    /// Loads the app key, generating and persisting a fresh one when missing.
+    /// Prepares the app key: Keychain first, then one-time migration of the
+    /// pre-C1 key file, then fresh generation into the Keychain (C1).
     /// A corrupt key file is never silently overwritten (H6): the failure
     /// handler decides whether to regenerate — accepting that existing
     /// history becomes undecryptable — or quit.
@@ -79,27 +119,38 @@ class CryptoService: CryptoServiceProtocol {
     @discardableResult
     static func prepareKey(
         keyURL: URL = CryptoService.keyFileURL,
+        keyStore: KeyStoring = KeychainKeyStore(),
         failureHandler: (CryptoKeyFailure) -> KeyFailureAction = CryptoService.keyFailureHandler
     ) -> SymmetricKey? {
+        // 1. Keychain is the canonical store.
+        if let data = keyStore.load(), data.count == 32 {
+            return SymmetricKey(data: data)
+        }
+        // 2. Migrate a pre-C1 key file, then remove it.
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: keyURL.path) {
             if let keyData = try? Data(contentsOf: keyURL), keyData.count == 32 {
-                // Defense in depth: ensure existing key file has 0o600 perms.
-                // The previous write-then-chmod pattern could leave the file at
-                // default umask (0o644) if a prior launch crashed between the
-                // write and chmod, or if a system tool reset the perms.
-                try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
+                if keyStore.store(keyData) == errSecSuccess, keyStore.load() == keyData {
+                    try? fileManager.removeItem(at: keyURL)
+                } else {
+                    // Keychain unusable (locked/denied): keep the file so the
+                    // app still works; migration retries on the next launch.
+                    // Restore owner-only perms as defense in depth meanwhile.
+                    logger.error("Keychain migration failed; keeping key file until next launch")
+                    try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
+                }
                 return SymmetricKey(data: keyData)
             }
             // Corrupt or tampered key file — ask before destroying it.
             guard failureHandler(.corruptExistingKey) == .regenerate else { return nil }
             try? fileManager.removeItem(at: keyURL)
         }
-        return generateAndStoreKey(to: keyURL, failureHandler: failureHandler)
+        // 3. Fresh generation into the Keychain.
+        return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
     }
 
     private static func generateAndStoreKey(
-        to keyURL: URL,
+        to keyStore: KeyStoring,
         failureHandler: (CryptoKeyFailure) -> KeyFailureAction
     ) -> SymmetricKey? {
         var keyData = Data(count: 32)
@@ -113,22 +164,15 @@ class CryptoService: CryptoServiceProtocol {
             _ = failureHandler(.secureRandomUnavailable)
             return nil
         }
-        // Write to a temp file with secure perms, then atomically rename.
-        // The previous "write then chmod" pattern left the key file briefly
-        // world-readable before the chmod syscall landed.
-        let tempURL = keyURL.appendingPathExtension("tmp")
-        do {
-            try keyData.write(to: tempURL, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tempURL.path)
-            try FileManager.default.moveItem(at: tempURL, to: keyURL)
-            return SymmetricKey(data: keyData)
-        } catch {
-            logger.error("Failed to store encryption key: \(error.localizedDescription)")
-            try? FileManager.default.removeItem(at: tempURL)
-            // Offer regenerate (transient I/O) or an informed quit — never crash.
+        let status = keyStore.store(keyData)
+        guard status == errSecSuccess else {
+            logger.error("Failed to store encryption key in Keychain: \(status)")
+            // Offer regenerate (e.g. keychain was locked) or an informed
+            // quit — never crash (H6).
             guard failureHandler(.keyStorageFailed) == .regenerate else { return nil }
-            return generateAndStoreKey(to: keyURL, failureHandler: failureHandler)
+            return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
         }
+        return SymmetricKey(data: keyData)
     }
 
     private static func defaultKeyFailureHandler(_ failure: CryptoKeyFailure) -> KeyFailureAction {
@@ -176,6 +220,12 @@ class CryptoService: CryptoServiceProtocol {
 
     private func getKey() -> SymmetricKey? {
         if let customKey { return customKey }
+        // C1: Keychain is canonical; the pre-C1 key file remains a read-only
+        // fallback until prepareKey's migration removes it. Under XCTest,
+        // read only the file — never prompt for the real Keychain item.
+        if !Self.isRunningTests, let data = KeychainKeyStore().load(), data.count == 32 {
+            return SymmetricKey(data: data)
+        }
         guard let keyData = try? Data(contentsOf: Self.keyFileURL), keyData.count == 32 else {
             return nil
         }

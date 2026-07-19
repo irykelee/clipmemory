@@ -235,7 +235,7 @@
 "alert.key.random.title" = "Cannot Create Encryption Key";
 "alert.key.random.message" = "The system secure random generator is unavailable, so clipboard data cannot be encrypted. The app will quit.";
 "alert.key.storage.title" = "Cannot Save Encryption Key";
-"alert.key.storage.message" = "The key could not be written to disk (disk full or a permission problem). Quit, or retry.";
+"alert.key.storage.message" = "The key could not be saved to the macOS Keychain (locked or access denied). Quit, or retry.";
 "alert.key.button.reset" = "Reset Key";
 "alert.key.button.retry" = "Retry";
 // H1: update mirror consent alert

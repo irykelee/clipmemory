@@ -235,7 +235,7 @@
 "alert.key.random.title" = "无法创建加密密钥";
 "alert.key.random.message" = "系统安全随机数生成器不可用，剪贴板内容无法加密存储。应用将退出。";
 "alert.key.storage.title" = "无法保存加密密钥";
-"alert.key.storage.message" = "密钥无法写入磁盘（磁盘已满或权限不足）。可以退出应用，或重试。";
+"alert.key.storage.message" = "密钥无法保存到系统钥匙串（钥匙串已锁定或访问被拒）。可以退出应用，或重试。";
 "alert.key.button.reset" = "重置密钥";
 "alert.key.button.retry" = "重试";
 // H1：更新镜像源确认弹窗
