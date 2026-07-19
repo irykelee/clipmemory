@@ -115,7 +115,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 |-----------------|--------|-----------------|
 | Texto normal | Primeiros 200 caracteres, 3 linhas | Texto completo |
 | Conteúdo sensível | Mascarado `ab••••••yz` | Texto revelado |
-| Imagem | Miniatura 80px | Ampliada para 300px |
+| Imagem | Miniatura 80px | Painel flutuante em tamanho nativo (com rolagem se exceder a tela) |
 
 ### Segurança inteligente — Criptografia + Deteção
 

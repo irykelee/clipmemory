@@ -25,10 +25,13 @@ jobs:
         run: xcodegen generate
 
       - name: Build
-        run: xcodebuild -scheme ClipMemory -configuration Debug build
+        # CI builds stay ad-hoc (CODE_SIGN_IDENTITY="-"): the self-signed
+        # release identity lives in repo secrets, which fork PRs cannot
+        # access — and tests never touch the production Keychain anyway.
+        run: xcodebuild -scheme ClipMemory -configuration Debug build CODE_SIGN_IDENTITY="-"
 
       - name: Test
-        run: xcodebuild -scheme ClipMemory -configuration Debug test
+        run: xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-"
 
       - name: Test (zh-Hans locale)
-        run: xcodebuild -scheme ClipMemory -configuration Debug test -testLanguage zh-Hans
+        run: xcodebuild -scheme ClipMemory -configuration Debug test -testLanguage zh-Hans CODE_SIGN_IDENTITY="-"

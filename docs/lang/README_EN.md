@@ -115,7 +115,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 |-------------|---------|-----------------|
 | Plain text | First 200 chars, 3 lines | Full text |
 | Sensitive content | Masked `ab••••••yz` | Revealed text |
-| Image | Thumbnail 80px | Enlarged to 300px |
+| Image | Thumbnail 80px | Native-size floating panel (scrollable if larger than screen) |
 
 ### Smart Security — Encryption + Detection
 
