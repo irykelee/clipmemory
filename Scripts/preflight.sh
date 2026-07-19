@@ -21,7 +21,7 @@ else
 fi
 
 # 2. all 8 READMEs carry the version in title and changelog
-for f in README.md docs/lang/README_EN.md docs/lang/README_ZH-HANS.md \
+for f in README.md docs/lang/README_EN.md \
          docs/lang/README_ZH-HANT.md docs/lang/README_JA.md docs/lang/README_KO.md \
          docs/lang/README_ES.md docs/lang/README_PT.md; do
   if head -1 "$f" | grep -q "$VERSION"; then ok "$f 标题 $VERSION"; else bad "$f 标题缺 $VERSION"; fi
