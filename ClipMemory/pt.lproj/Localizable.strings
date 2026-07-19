@@ -230,3 +230,18 @@
 "item.ocr.copy" = "Copiar texto da imagem";
 "settings.ocr.enabled" = "Reconhecimento de texto em imagens (OCR)";
 "settings.ocr.hint" = "Processado no dispositivo, sem rede. Aplica-se automaticamente a novas capturas.";
+
+// H6: alertas de falha da chave de criptografia
+"alert.key.corrupt.title" = "O arquivo da chave de criptografia está corrompido";
+"alert.key.corrupt.message" = "Seu histórico é criptografado com a chave original. Redefinir a chave tornará todo o histórico existente ilegível (será exibido como corrompido). Saia para não alterar o arquivo.";
+"alert.key.random.title" = "Não é possível criar a chave de criptografia";
+"alert.key.random.message" = "O gerador aleatório seguro do sistema está indisponível; os dados da área de transferência não podem ser criptografados. O app será encerrado.";
+"alert.key.storage.title" = "Não é possível salvar a chave de criptografia";
+"alert.key.storage.message" = "A chave não pôde ser gravada no disco (disco cheio ou problema de permissão). Saia ou tente novamente.";
+"alert.key.button.reset" = "Redefinir chave";
+"alert.key.button.retry" = "Tentar novamente";
+// H1: alerta de consentimento do espelho de atualizações
+"alert.update.fallback.title" = "Servidor de atualizações inacessível";
+"alert.update.fallback.message" = "Não foi possível conectar ao servidor de atualizações do GitHub. Usar o espelho do jsDelivr (cdn.jsdelivr.net) para verificar atualizações? As atualizações continuam verificadas com a mesma assinatura. Sua escolha será lembrada.";
+"alert.update.fallback.use.mirror" = "Usar espelho";
+"alert.update.fallback.primary.only" = "Apenas GitHub";

@@ -228,3 +228,18 @@
 "item.ocr.copy" = "Copy Text from Image";
 "settings.ocr.enabled" = "Image text recognition (OCR)";
 "settings.ocr.hint" = "On-device, never leaves your Mac. Applies automatically to new screenshots.";
+
+// H6: encryption key failure alerts
+"alert.key.corrupt.title" = "Encryption Key File Is Corrupted";
+"alert.key.corrupt.message" = "Your history is encrypted with the original key. Resetting the key makes all existing history undecryptable (items will show as corrupted). Quit to leave the file untouched.";
+"alert.key.random.title" = "Cannot Create Encryption Key";
+"alert.key.random.message" = "The system secure random generator is unavailable, so clipboard data cannot be encrypted. The app will quit.";
+"alert.key.storage.title" = "Cannot Save Encryption Key";
+"alert.key.storage.message" = "The key could not be written to disk (disk full or a permission problem). Quit, or retry.";
+"alert.key.button.reset" = "Reset Key";
+"alert.key.button.retry" = "Retry";
+// H1: update mirror consent alert
+"alert.update.fallback.title" = "Update Server Unreachable";
+"alert.update.fallback.message" = "Cannot reach the GitHub update server. Use the jsDelivr mirror (cdn.jsdelivr.net) to check for updates instead? Updates stay signed and verified the same way. Your choice is remembered.";
+"alert.update.fallback.use.mirror" = "Use Mirror";
+"alert.update.fallback.primary.only" = "GitHub Only";

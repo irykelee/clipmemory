@@ -232,3 +232,18 @@
 "item.ocr.copy" = "複製圖中文字";
 "settings.ocr.enabled" = "圖片文字識別（OCR）";
 "settings.ocr.hint" = "本機識別，不連網。新截圖自動生效。";
+
+// H6：加密密鑰失敗彈窗
+"alert.key.corrupt.title" = "加密密鑰檔案已損毀";
+"alert.key.corrupt.message" = "歷史記錄均使用原密鑰加密。重置密鑰後，現有歷史記錄將無法解密（項目會顯示為已損毀）。退出可保留原檔案不做改動。";
+"alert.key.random.title" = "無法建立加密密鑰";
+"alert.key.random.message" = "系統安全亂數產生器不可用，剪貼簿內容無法加密儲存。App 將結束。";
+"alert.key.storage.title" = "無法儲存加密密鑰";
+"alert.key.storage.message" = "密鑰無法寫入磁碟（磁碟已滿或權限不足）。可以結束 App，或重試。";
+"alert.key.button.reset" = "重置密鑰";
+"alert.key.button.retry" = "重試";
+// H1：更新鏡像源確認彈窗
+"alert.update.fallback.title" = "無法連接更新伺服器";
+"alert.update.fallback.message" = "無法連接 GitHub 更新伺服器。是否改用 jsDelivr 鏡像源（cdn.jsdelivr.net）檢查更新？更新套件仍經過相同的簽章驗證。你的選擇會被記住。";
+"alert.update.fallback.use.mirror" = "使用鏡像源";
+"alert.update.fallback.primary.only" = "僅用 GitHub";

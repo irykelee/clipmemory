@@ -230,3 +230,18 @@
 "item.ocr.copy" = "Copiar texto de la imagen";
 "settings.ocr.enabled" = "Reconocimiento de texto en imágenes (OCR)";
 "settings.ocr.hint" = "Procesado en el dispositivo, sin red. Se aplica automáticamente a las nuevas capturas.";
+
+// H6: alertas de fallo de la clave de cifrado
+"alert.key.corrupt.title" = "El archivo de clave de cifrado está dañado";
+"alert.key.corrupt.message" = "Tu historial está cifrado con la clave original. Restablecer la clave hará que todo el historial existente sea indescifrable (se mostrará como dañado). Sal para no modificar el archivo.";
+"alert.key.random.title" = "No se puede crear la clave de cifrado";
+"alert.key.random.message" = "El generador aleatorio seguro del sistema no está disponible; los datos del portapapeles no se pueden cifrar. La app se cerrará.";
+"alert.key.storage.title" = "No se puede guardar la clave de cifrado";
+"alert.key.storage.message" = "La clave no pudo escribirse en el disco (disco lleno o problema de permisos). Sal o reintenta.";
+"alert.key.button.reset" = "Restablecer clave";
+"alert.key.button.retry" = "Reintentar";
+// H1: alerta de consentimiento del espejo de actualizaciones
+"alert.update.fallback.title" = "Servidor de actualizaciones inaccesible";
+"alert.update.fallback.message" = "No se puede conectar con el servidor de actualizaciones de GitHub. ¿Usar el espejo de jsDelivr (cdn.jsdelivr.net) para buscar actualizaciones? Las actualizaciones siguen verificadas con la misma firma. Tu elección se recordará.";
+"alert.update.fallback.use.mirror" = "Usar espejo";
+"alert.update.fallback.primary.only" = "Solo GitHub";

@@ -230,3 +230,18 @@
 "item.ocr.copy" = "이미지 내 텍스트 복사";
 "settings.ocr.enabled" = "이미지 텍스트 인식 (OCR)";
 "settings.ocr.hint" = "온디바이스 처리, 네트워크를 사용하지 않습니다. 새 스크린샷에 자동 적용됩니다.";
+
+// H6: 암호화 키 실패 알림
+"alert.key.corrupt.title" = "암호화 키 파일이 손상되었습니다";
+"alert.key.corrupt.message" = "기록은 원래 키로 암호화되어 있습니다. 키를 재설정하면 기존 기록을 모두 복호화할 수 없습니다(손상됨으로 표시됩니다). 종료하면 파일이 변경되지 않습니다.";
+"alert.key.random.title" = "암호화 키를 생성할 수 없습니다";
+"alert.key.random.message" = "시스템 보안 난수 생성기를 사용할 수 없어 클립보드 데이터를 암호화할 수 없습니다. 앱이 종료됩니다.";
+"alert.key.storage.title" = "암호화 키를 저장할 수 없습니다";
+"alert.key.storage.message" = "키를 디스크에 쓸 수 없습니다(디스크 부족 또는 권한 문제). 종료하거나 다시 시도하세요.";
+"alert.key.button.reset" = "키 재설정";
+"alert.key.button.retry" = "다시 시도";
+// H1: 업데이트 미러 확인 알림
+"alert.update.fallback.title" = "업데이트 서버에 연결할 수 없습니다";
+"alert.update.fallback.message" = "GitHub 업데이트 서버에 연결할 수 없습니다. 대신 jsDelivr 미러(cdn.jsdelivr.net)로 업데이트를 확인하시겠습니까? 업데이트는 동일한 서명 검증으로 보호됩니다. 선택이 저장됩니다.";
+"alert.update.fallback.use.mirror" = "미러 사용";
+"alert.update.fallback.primary.only" = "GitHub만 사용";

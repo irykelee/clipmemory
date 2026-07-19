@@ -217,6 +217,22 @@ struct L10n {
     static var alertTrimConfirm: String { string("alert.trim.confirm") }
     static var alertTrimCancel: String { string("alert.trim.cancel") }
 
+    // MARK: - Key Failure Alert (H6)
+    static var alertKeyCorruptTitle: String { string("alert.key.corrupt.title") }
+    static var alertKeyCorruptMessage: String { string("alert.key.corrupt.message") }
+    static var alertKeyRandomTitle: String { string("alert.key.random.title") }
+    static var alertKeyRandomMessage: String { string("alert.key.random.message") }
+    static var alertKeyStorageTitle: String { string("alert.key.storage.title") }
+    static var alertKeyStorageMessage: String { string("alert.key.storage.message") }
+    static var alertKeyButtonReset: String { string("alert.key.button.reset") }
+    static var alertKeyButtonRetry: String { string("alert.key.button.retry") }
+
+    // MARK: - Update Fallback Consent Alert (H1)
+    static var alertUpdateFallbackTitle: String { string("alert.update.fallback.title") }
+    static var alertUpdateFallbackMessage: String { string("alert.update.fallback.message") }
+    static var alertUpdateFallbackUseMirror: String { string("alert.update.fallback.use.mirror") }
+    static var alertUpdateFallbackPrimaryOnly: String { string("alert.update.fallback.primary.only") }
+
     static var filterRichText: String { string("filter.richtext") }
 
     // MARK: - Type Filter

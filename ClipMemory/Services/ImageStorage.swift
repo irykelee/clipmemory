@@ -19,7 +19,7 @@ class ImageStorage {
     }()
 
     private lazy var imagesDirectory: URL = {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = AppDirectories.applicationSupport
         // Under XCTest, redirect to a sandboxed directory. Tests exercise
         // cleanupOrphanedImages/deleteAllExcept with narrow keep lists, and
         // every ClipboardStore(...) in a test runs loadItems -> cleanup —
@@ -39,7 +39,7 @@ class ImageStorage {
     var imagesDirectoryURL: URL { imagesDirectory }
 
     private let legacyImagesDirectory: URL = {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = AppDirectories.applicationSupport
         return appSupport.appendingPathComponent("ClipPaste/Images", isDirectory: true)
     }()
 
