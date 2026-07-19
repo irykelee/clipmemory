@@ -18,7 +18,9 @@ settings:
     CURRENT_PROJECT_VERSION: "2.5.5"
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
-    CODE_SIGN_IDENTITY: "-"
+    # 自签名证书（本机钥匙串 + CI secret，非 Developer ID）——给钥匙串 ACL
+    # 一个跨版本稳定身份，避免升级后反复弹"访问钥匙串"确认。
+    CODE_SIGN_IDENTITY: "ClipMemory Self-Signed"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
 
@@ -37,9 +39,8 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
-        # Ad-hoc 签名下 Hardened Runtime 会让 dyld 拒绝加载同为 ad-hoc 的
-        # Sparkle.framework（library validation 要求 Team ID 匹配）。
-        # 没有 Developer ID / 公证，Hardened Runtime 无意义，关闭。
+        # 自签名（无 Developer ID / 公证）下 Hardened Runtime 无意义，关闭。
+        # 历史教训：ad-hoc + Hardened Runtime 会让 dyld 拒载 Sparkle.framework。
         ENABLE_HARDENED_RUNTIME: NO
         CODE_SIGN_ENTITLEMENTS: ClipMemory/ClipMemory.entitlements
     preBuildScripts:

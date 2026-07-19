@@ -26,6 +26,25 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Import code-signing certificate
+        env:
+          CODESIGN_P12_BASE64: ${{ secrets.CODESIGN_P12_BASE64 }}
+          CODESIGN_P12_PASSWORD: ${{ secrets.CODESIGN_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Self-signed "ClipMemory Self-Signed" identity — gives the Keychain
+          # ACL a stable identity across versions (see project.yml). Temp
+          # keychain so the runner's login keychain is untouched.
+          KEYCHAIN_PW=$(openssl rand -hex 16)
+          security create-keychain -p "$KEYCHAIN_PW" ci-signing.keychain-db
+          security list-keychains -d user -s ci-signing.keychain-db $(security list-keychains -d user | sed 's/"//g')
+          security default-keychain -s ci-signing.keychain-db
+          security unlock-keychain -p "$KEYCHAIN_PW" ci-signing.keychain-db
+          echo "$CODESIGN_P12_BASE64" | base64 --decode > /tmp/codesign.p12
+          security import /tmp/codesign.p12 -k ci-signing.keychain-db -P "$CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
+          rm -f /tmp/codesign.p12
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" ci-signing.keychain-db
+
       - name: Build Release
         run: xcodebuild -scheme ClipMemory -configuration Release build
 
@@ -111,7 +130,14 @@ jobs:
             zap trash: [
               "~/Library/Application Support/ClipMemory",
               "~/Library/Preferences/com.clipmemory.app.plist",
-            ]
+            ],
+            # C1: the root encryption key lives in the Keychain, not in files —
+            # remove it too so zap leaves no key material behind.
+            script: {
+              executable: "/usr/bin/security",
+              args: ["delete-generic-password", "-s", "com.clipmemory.app", "-a", "root-encryption-key"],
+              must_succeed: false,
+            }
           end
           CASK
 
