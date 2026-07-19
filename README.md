@@ -7,18 +7,13 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar.png" alt="Quick Bar 弹窗" width="360"><br>
+  <img src="docs/screenshots/quick-bar.jpg" alt="Quick Bar 弹窗" width="360"><br>
   <em>菜单栏一键唤起 Quick Bar — 最近 8 条，即搜即复制</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window.png" alt="ClipMemory 主窗口" width="720"><br>
+  <img src="docs/screenshots/main-window.jpg" alt="ClipMemory 主窗口" width="720"><br>
   <em>主窗口：类型侧边栏 × 时间分组 × 搜索高亮</em>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/image-preview.jpg" alt="图片原生尺寸预览" width="640"><br>
-  <em>长按图片 → 原生尺寸浮窗，截图文字清晰可辨（超出屏幕可滚动）</em>
 </p>
 
 ---
