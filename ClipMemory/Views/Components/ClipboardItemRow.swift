@@ -200,7 +200,7 @@ struct ClipboardItemRow: View, Equatable {
                             if let ns = loadedImage {
                                 Image(nsImage: ns)
                                     .resizable().aspectRatio(contentMode: .fit)
-                                    .frame(maxHeight: imageLongPressing ? 300 : 80)
+                                    .frame(maxHeight: 80)
                                     .overlay(PressableImage { pressed in imageLongPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
                                     .transition(.opacity)
                             } else {
@@ -231,6 +231,14 @@ struct ClipboardItemRow: View, Equatable {
                             }
                         }
                         .animation(.easeIn(duration: 0.3), value: loadedImage)
+                        .onChange(of: imageLongPressing) { pressing in
+                            if pressing, let ns = loadedImage {
+                                ImagePreviewPanel.show(image: ns)
+                            } else {
+                                ImagePreviewPanel.hide()
+                            }
+                        }
+                        .onDisappear { ImagePreviewPanel.hide() }
                         .task(id: item.content) {
                             imageLoadFailed = false
                             imageLoadStatus = nil
