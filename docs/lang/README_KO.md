@@ -6,6 +6,28 @@
 
 ---
 
+<p align="center">
+  <img src="docs/screenshots/quick-bar-light-kr.jpg" alt="Quick Bar 팝업 (라이트)" width="360"><br>
+  <em>메뉴바에서 Quick Bar 한 번에 실행 — 최근 8개, 즉시 검색·복사 (라이트)</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/quick-bar-dark-kr.jpg" alt="Quick Bar 팝업 (다크)" width="360"><br>
+  <em>메뉴바에서 Quick Bar 한 번에 실행 — 최근 8개, 즉시 검색·복사 (다크)</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/main-window-light-kr.jpg" alt="ClipMemory 메인 창 (라이트)" width="720"><br>
+  <em>메인 창: 유형 사이드바 × 시간 그룹 × 검색 강조 (라이트)</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/main-window-dark-kr.jpg" alt="ClipMemory 메인 창 (다크)" width="720"><br>
+  <em>메인 창: 유형 사이드바 × 시간 그룹 × 검색 강조 (다크)</em>
+</p>
+
+---
+
 ## v1 → v2 주요 개선사항
 
 | 항목 | v1 | v2 |

@@ -6,6 +6,28 @@
 
 ---
 
+<p align="center">
+  <img src="docs/screenshots/quick-bar-light-jp.jpg" alt="Quick Bar ポップアップ（ライト）" width="360"><br>
+  <em>メニューバーから Quick Bar をワンタップ — 最近 8 件、瞬時に検索・コピー（ライト）</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/quick-bar-dark-jp.jpg" alt="Quick Bar ポップアップ（ダーク）" width="360"><br>
+  <em>メニューバーから Quick Bar をワンタップ — 最近 8 件、瞬時に検索・コピー（ダーク）</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/main-window-light-jp.jpg" alt="ClipMemory メインウィンドウ（ライト）" width="720"><br>
+  <em>メインウィンドウ：タイプサイドバー × 時間グループ × 検索ハイライト（ライト）</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/main-window-dark-jp.jpg" alt="ClipMemory メインウィンドウ（ダーク）" width="720"><br>
+  <em>メインウィンドウ：タイプサイドバー × 時間グループ × 検索ハイライト（ダーク）</em>
+</p>
+
+---
+
 ## v1 → v2 主な改良点
 
 | 項目 | v1 | v2 |
