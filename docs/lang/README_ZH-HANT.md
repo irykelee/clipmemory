@@ -7,22 +7,22 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar-light-tw.jpg" alt="Quick Bar 彈窗（淺色）" width="360"><br>
+  <img src="../screenshots/quick-bar-light-tw.jpg" alt="Quick Bar 彈窗（淺色）" width="360"><br>
   <em>選單列一鍵喚起 Quick Bar — 最近 8 條，即搜即複製（淺色）</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar-dark-tw.jpg" alt="Quick Bar 彈窗（深色）" width="360"><br>
+  <img src="../screenshots/quick-bar-dark-tw.jpg" alt="Quick Bar 彈窗（深色）" width="360"><br>
   <em>選單列一鍵喚起 Quick Bar — 最近 8 條，即搜即複製（深色）</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window-light-tw.jpg" alt="ClipMemory 主視窗（淺色）" width="720"><br>
+  <img src="../screenshots/main-window-light-tw.jpg" alt="ClipMemory 主視窗（淺色）" width="720"><br>
   <em>主視窗：類型側邊欄 × 時間分組 × 搜尋高亮（淺色）</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window-dark-tw.jpg" alt="ClipMemory 主視窗（深色）" width="720"><br>
+  <img src="../screenshots/main-window-dark-tw.jpg" alt="ClipMemory 主視窗（深色）" width="720"><br>
   <em>主視窗：類型側邊欄 × 時間分組 × 搜尋高亮（深色）</em>
 </p>
 

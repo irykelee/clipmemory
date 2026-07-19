@@ -7,22 +7,22 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar-light-en.jpg" alt="Quick Bar popup (light)" width="360"><br>
+  <img src="../screenshots/quick-bar-light-en.jpg" alt="Quick Bar popup (light)" width="360"><br>
   <em>One-tap Quick Bar from menu bar — 8 recent items, search and copy instantly (light)</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar-dark-en.jpg" alt="Quick Bar popup (dark)" width="360"><br>
+  <img src="../screenshots/quick-bar-dark-en.jpg" alt="Quick Bar popup (dark)" width="360"><br>
   <em>One-tap Quick Bar from menu bar — 8 recent items, search and copy instantly (dark)</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window-light-en.jpg" alt="ClipMemory main window (light)" width="720"><br>
+  <img src="../screenshots/main-window-light-en.jpg" alt="ClipMemory main window (light)" width="720"><br>
   <em>Main window: type sidebar × time grouping × search highlighting (light)</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window-dark-en.jpg" alt="ClipMemory main window (dark)" width="720"><br>
+  <img src="../screenshots/main-window-dark-en.jpg" alt="ClipMemory main window (dark)" width="720"><br>
   <em>Main window: type sidebar × time grouping × search highlighting (dark)</em>
 </p>
 
