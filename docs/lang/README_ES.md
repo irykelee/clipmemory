@@ -7,22 +7,22 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar-light-es.jpg" alt="Quick Bar emergente (claro)" width="360"><br>
+  <img src="../screenshots/quick-bar-light-es.jpg" alt="Quick Bar emergente (claro)" width="360"><br>
   <em>Quick Bar desde la barra de menús — 8 elementos recientes, búsqueda y copia al instante (claro)</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar-dark-es.jpg" alt="Quick Bar emergente (oscuro)" width="360"><br>
+  <img src="../screenshots/quick-bar-dark-es.jpg" alt="Quick Bar emergente (oscuro)" width="360"><br>
   <em>Quick Bar desde la barra de menús — 8 elementos recientes, búsqueda y copia al instante (oscuro)</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window-light-es.jpg" alt="Ventana principal de ClipMemory (claro)" width="720"><br>
+  <img src="../screenshots/main-window-light-es.jpg" alt="Ventana principal de ClipMemory (claro)" width="720"><br>
   <em>Ventana principal: barra lateral por tipo × agrupación por tiempo × resaltado de búsqueda (claro)</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window-dark-es.jpg" alt="Ventana principal de ClipMemory (oscuro)" width="720"><br>
+  <img src="../screenshots/main-window-dark-es.jpg" alt="Ventana principal de ClipMemory (oscuro)" width="720"><br>
   <em>Ventana principal: barra lateral por tipo × agrupación por tiempo × resaltado de búsqueda (oscuro)</em>
 </p>
 

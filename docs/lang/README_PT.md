@@ -7,22 +7,22 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar-light-pt.jpg" alt="Quick Bar popup (claro)" width="360"><br>
+  <img src="../screenshots/quick-bar-light-pt.jpg" alt="Quick Bar popup (claro)" width="360"><br>
   <em>Quick Bar pela barra de menus — 8 itens recentes, pesquisa e cópia instantâneas (claro)</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar-dark-pt.jpg" alt="Quick Bar popup (escuro)" width="360"><br>
+  <img src="../screenshots/quick-bar-dark-pt.jpg" alt="Quick Bar popup (escuro)" width="360"><br>
   <em>Quick Bar pela barra de menus — 8 itens recentes, pesquisa e cópia instantâneas (escuro)</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window-light-pt.jpg" alt="Janela principal do ClipMemory (claro)" width="720"><br>
+  <img src="../screenshots/main-window-light-pt.jpg" alt="Janela principal do ClipMemory (claro)" width="720"><br>
   <em>Janela principal: barra lateral por tipo × agrupamento por tempo × destaque de pesquisa (claro)</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window-dark-pt.jpg" alt="Janela principal do ClipMemory (escuro)" width="720"><br>
+  <img src="../screenshots/main-window-dark-pt.jpg" alt="Janela principal do ClipMemory (escuro)" width="720"><br>
   <em>Janela principal: barra lateral por tipo × agrupamento por tempo × destaque de pesquisa (escuro)</em>
 </p>
 
