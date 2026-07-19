@@ -230,3 +230,18 @@
 "item.ocr.copy" = "画像内の文字をコピー";
 "settings.ocr.enabled" = "画像文字認識（OCR）";
 "settings.ocr.hint" = "オンデバイスで処理され、通信しません。新しいスクリーンショットに自動で適用されます。";
+
+// H6: 暗号化キー失敗アラート
+"alert.key.corrupt.title" = "暗号化キーファイルが破損しています";
+"alert.key.corrupt.message" = "履歴は元のキーで暗号化されています。キーをリセットすると、既存の履歴はすべて復号できなくなります（破損として表示されます）。終了するとファイルは変更されません。";
+"alert.key.random.title" = "暗号化キーを作成できません";
+"alert.key.random.message" = "システムの安全な乱数生成器が利用できないため、クリップボードデータを暗号化できません。アプリは終了します。";
+"alert.key.storage.title" = "暗号化キーを保存できません";
+"alert.key.storage.message" = "キーをディスクに書き込めませんでした（ディスク容量不足または権限の問題）。終了するか、再試行してください。";
+"alert.key.button.reset" = "キーをリセット";
+"alert.key.button.retry" = "再試行";
+// H1: 更新ミラー確認アラート
+"alert.update.fallback.title" = "更新サーバーに接続できません";
+"alert.update.fallback.message" = "GitHub の更新サーバーに接続できません。代わりに jsDelivr ミラー（cdn.jsdelivr.net）で更新を確認しますか？更新は同じ署名検証で保護されます。選択は記憶されます。";
+"alert.update.fallback.use.mirror" = "ミラーを使用";
+"alert.update.fallback.primary.only" = "GitHub のみ";

@@ -228,3 +228,18 @@
 "item.ocr.copy" = "复制图中文字";
 "settings.ocr.enabled" = "图片文字识别（OCR）";
 "settings.ocr.hint" = "本地识别，不联网。新截图自动生效。";
+
+// H6：加密密钥失败弹窗
+"alert.key.corrupt.title" = "加密密钥文件已损坏";
+"alert.key.corrupt.message" = "历史记录均使用原密钥加密。重置密钥后，现有历史记录将无法解密（条目会显示为已损坏）。退出可保留原文件不做改动。";
+"alert.key.random.title" = "无法创建加密密钥";
+"alert.key.random.message" = "系统安全随机数生成器不可用，剪贴板内容无法加密存储。应用将退出。";
+"alert.key.storage.title" = "无法保存加密密钥";
+"alert.key.storage.message" = "密钥无法写入磁盘（磁盘已满或权限不足）。可以退出应用，或重试。";
+"alert.key.button.reset" = "重置密钥";
+"alert.key.button.retry" = "重试";
+// H1：更新镜像源确认弹窗
+"alert.update.fallback.title" = "无法连接更新服务器";
+"alert.update.fallback.message" = "无法连接 GitHub 更新服务器。是否改用 jsDelivr 镜像源（cdn.jsdelivr.net）检查更新？更新包仍经过同样的签名验证。你的选择会被记住。";
+"alert.update.fallback.use.mirror" = "使用镜像源";
+"alert.update.fallback.primary.only" = "仅用 GitHub";

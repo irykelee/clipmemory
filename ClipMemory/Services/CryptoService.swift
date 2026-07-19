@@ -1,7 +1,27 @@
 import Foundation
+import AppKit
 import CryptoKit
 import CommonCrypto
 import os.log
+
+/// Why the app encryption key could not be prepared (H6).
+enum CryptoKeyFailure {
+    /// Key file exists but is unreadable or not 32 bytes. Regenerating
+    /// makes all existing encrypted history undecryptable.
+    case corruptExistingKey
+    /// SecRandomCopyBytes failed; no key material can be created.
+    case secureRandomUnavailable
+    /// Key generated but could not be written to disk.
+    case keyStorageFailed
+}
+
+/// User decision after a `CryptoKeyFailure`.
+enum KeyFailureAction {
+    /// (Re)generate the key. For a corrupt key this accepts data loss.
+    case regenerate
+    /// Quit the app. The default handler performs the termination.
+    case quit
+}
 
 /// Encryption format versions:
 /// - v2 (current): "v2" prefix + AES-GCM sealed box (nonce + ciphertext + tag)
@@ -11,11 +31,11 @@ import os.log
 class CryptoService: CryptoServiceProtocol {
     static let shared = CryptoService()
 
-    private let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
+    private static let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
 
     /// Exposed for ImageStorage migration
     static var keyFileURL: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = AppDirectories.applicationSupport
         let dir = appSupport.appendingPathComponent("ClipMemory", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent(".encryption_key")
@@ -26,18 +46,7 @@ class CryptoService: CryptoServiceProtocol {
 
     private init() {
         customKey = nil
-        if getKey() == nil {
-            generateKey()
-        } else {
-            // Defense in depth: ensure existing key file has 0o600 perms.
-            // The previous write-then-chmod pattern could leave the file at
-            // default umask (0o644) if a prior launch crashed between the
-            // write and chmod, or if a system tool reset the perms.
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: Self.keyFileURL.path
-            )
-        }
+        Self.prepareKey()
     }
 
     /// Instance operating on an explicit key rather than the app key file.
@@ -52,29 +61,117 @@ class CryptoService: CryptoServiceProtocol {
         try? Data(contentsOf: keyFileURL)
     }
 
-    private func generateKey() {
+    /// Called instead of crashing when the app key cannot be prepared (H6).
+    /// The default shows a critical NSAlert on the main thread and quits the
+    /// app unless the user chooses to regenerate. Tests replace this closure
+    /// so no alert is shown and no termination happens.
+    static var keyFailureHandler: (CryptoKeyFailure) -> KeyFailureAction = { failure in
+        CryptoService.defaultKeyFailureHandler(failure)
+    }
+
+    /// Loads the app key, generating and persisting a fresh one when missing.
+    /// A corrupt key file is never silently overwritten (H6): the failure
+    /// handler decides whether to regenerate — accepting that existing
+    /// history becomes undecryptable — or quit.
+    /// - Returns: the key when available; nil only when a custom failure
+    ///   handler declined to regenerate (the default handler quits the app
+    ///   in that case, so production never silently runs keyless).
+    @discardableResult
+    static func prepareKey(
+        keyURL: URL = CryptoService.keyFileURL,
+        failureHandler: (CryptoKeyFailure) -> KeyFailureAction = CryptoService.keyFailureHandler
+    ) -> SymmetricKey? {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: keyURL.path) {
+            if let keyData = try? Data(contentsOf: keyURL), keyData.count == 32 {
+                // Defense in depth: ensure existing key file has 0o600 perms.
+                // The previous write-then-chmod pattern could leave the file at
+                // default umask (0o644) if a prior launch crashed between the
+                // write and chmod, or if a system tool reset the perms.
+                try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
+                return SymmetricKey(data: keyData)
+            }
+            // Corrupt or tampered key file — ask before destroying it.
+            guard failureHandler(.corruptExistingKey) == .regenerate else { return nil }
+            try? fileManager.removeItem(at: keyURL)
+        }
+        return generateAndStoreKey(to: keyURL, failureHandler: failureHandler)
+    }
+
+    private static func generateAndStoreKey(
+        to keyURL: URL,
+        failureHandler: (CryptoKeyFailure) -> KeyFailureAction
+    ) -> SymmetricKey? {
         var keyData = Data(count: 32)
         let result = keyData.withUnsafeMutableBytes {
             SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!)
         }
         guard result == errSecSuccess else {
             logger.error("Failed to generate random key bytes")
-            fatalError("Cannot continue without cryptographically secure key")
+            // A CSPRNG failure cannot be fixed by regenerating; the default
+            // handler quits the app after alerting. Never fatalError (H6).
+            _ = failureHandler(.secureRandomUnavailable)
+            return nil
         }
         // Write to a temp file with secure perms, then atomically rename.
         // The previous "write then chmod" pattern left the key file briefly
         // world-readable before the chmod syscall landed.
-        let keyURL = Self.keyFileURL
         let tempURL = keyURL.appendingPathExtension("tmp")
         do {
             try keyData.write(to: tempURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tempURL.path)
             try FileManager.default.moveItem(at: tempURL, to: keyURL)
+            return SymmetricKey(data: keyData)
         } catch {
             logger.error("Failed to store encryption key: \(error.localizedDescription)")
             try? FileManager.default.removeItem(at: tempURL)
-            fatalError("Cannot continue without encryption key: \(error.localizedDescription)")
+            // Offer regenerate (transient I/O) or an informed quit — never crash.
+            guard failureHandler(.keyStorageFailed) == .regenerate else { return nil }
+            return generateAndStoreKey(to: keyURL, failureHandler: failureHandler)
         }
+    }
+
+    private static func defaultKeyFailureHandler(_ failure: CryptoKeyFailure) -> KeyFailureAction {
+        let action: KeyFailureAction
+        if Thread.isMainThread {
+            action = presentKeyFailureAlert(failure)
+        } else {
+            action = DispatchQueue.main.sync { presentKeyFailureAlert(failure) }
+        }
+        if action == .quit {
+            // Graceful, informed exit instead of fatalError.
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+        return action
+    }
+
+    /// Must run on the main thread — callers dispatch.
+    private static func presentKeyFailureAlert(_ failure: CryptoKeyFailure) -> KeyFailureAction {
+        NSApp.setActivationPolicy(.regular) // LSUIElement app: alert must be visible
+        defer { NSApp.setActivationPolicy(.accessory) }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        switch failure {
+        case .corruptExistingKey:
+            alert.messageText = L10n.alertKeyCorruptTitle
+            alert.informativeText = L10n.alertKeyCorruptMessage
+            // Quit is the default button — a Return-key accident must never
+            // destroy the user's history.
+            alert.addButton(withTitle: L10n.quitApp)
+            alert.addButton(withTitle: L10n.alertKeyButtonReset)
+        case .secureRandomUnavailable:
+            alert.messageText = L10n.alertKeyRandomTitle
+            alert.informativeText = L10n.alertKeyRandomMessage
+            alert.addButton(withTitle: L10n.quitApp)
+        case .keyStorageFailed:
+            alert.messageText = L10n.alertKeyStorageTitle
+            alert.informativeText = L10n.alertKeyStorageMessage
+            alert.addButton(withTitle: L10n.quitApp)
+            alert.addButton(withTitle: L10n.alertKeyButtonRetry)
+        }
+        let response = alert.runModal()
+        if failure == .secureRandomUnavailable { return .quit }
+        return response == .alertSecondButtonReturn ? .regenerate : .quit
     }
 
     private func getKey() -> SymmetricKey? {
@@ -146,7 +243,7 @@ class CryptoService: CryptoServiceProtocol {
             result.append(combined)
             return result
         } catch {
-            logger.error("AES-GCM encryption failed: \(error.localizedDescription)")
+            Self.logger.error("AES-GCM encryption failed: \(error.localizedDescription)")
             return nil
         }
     }

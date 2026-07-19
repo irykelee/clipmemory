@@ -26,7 +26,7 @@ final class BackupService {
     private let imagesDirectory: URL
 
     init(backupsDirectory: URL? = nil, imagesDirectory: URL? = nil, defaults: UserDefaults = .standard) {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = AppDirectories.applicationSupport
         self.backupsDirectory = backupsDirectory
             ?? appSupport.appendingPathComponent("ClipMemory/Backups", isDirectory: true)
         self.imagesDirectory = imagesDirectory
