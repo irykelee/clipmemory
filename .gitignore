@@ -29,5 +29,7 @@ default.profraw
 docs/superpowers/
 docs/roadmap.md
 docs/DEVELOPMENT.md
+docs/RELEASE.md
+docs/release-notes-template.md
 __pycache__/
 *.pyc
