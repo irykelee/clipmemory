@@ -1,4 +1,4 @@
-# ClipMemory v2.5.5
+# ClipMemory v2.5.6
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -25,6 +25,13 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.5.6 (2026-07-19) — Chave no Chaveiro + visualização em tamanho real + robustez
+
+- **🔐 Chave migrada para o Chaveiro** — a chave raiz de criptografia sai de um arquivo em texto puro para o Chaveiro do macOS (somente neste dispositivo, sem iCloud); brew uninstall --zap também a remove
+- **🖼 Visualização de imagem em tamanho real** — pressione e segure para um painel flutuante em resolução nativa; capturas grandes têm rolagem e o texto continua legível (substitui o zoom de 300px na linha)
+- **🛡 Inicialização robusta** — chave corrompida ou falha ao salvar não derrubam mais o app; um alerta claro oferece sair, tentar de novo ou redefinir (apaga o histórico)
+- **🌐 Espelho com consentimento** — quando o servidor do GitHub está inacessível, o espelho do jsDelivr agora pergunta uma vez e lembra sua escolha; espelho desatualizado é recusado automaticamente
 
 ### v2.5.5 (2026-07-18) — Exclusão por condição + robustez
 

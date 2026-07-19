@@ -1,4 +1,4 @@
-# ClipMemory v2.5.5
+# ClipMemory v2.5.6
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -25,6 +25,13 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.5.6 (2026-07-19) — Clave en el Llavero + vista a tamaño real + endurecimiento
+
+- **🔐 Clave migrada al Llavero** — la clave raíz de cifrado pasa de un archivo en texto plano al Llavero de macOS (solo este dispositivo, sin iCloud); brew uninstall --zap también la elimina
+- **🖼 Vista de imagen a tamaño real** — pulsación larga para un panel flotante a resolución nativa; las capturas grandes se recorren con scroll y el texto sigue legible (sustituye al zoom de 300px en la fila)
+- **🛡 Arranque endurecido** — la corrupción o el fallo al guardar la clave ya no cierran la app; una alerta clara permite salir, reintentar o restablecer (borra el historial)
+- **🌐 Espejo con consentimiento** — si el servidor de GitHub no responde, el espejo de jsDelivr ahora pregunta una vez y recuerda tu elección; un espejo desactualizado se rechaza automáticamente
 
 ### v2.5.5 (2026-07-18) — Eliminación por condición + endurecimiento
 

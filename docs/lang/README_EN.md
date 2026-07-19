@@ -1,4 +1,4 @@
-# ClipMemory v2.5.5
+# ClipMemory v2.5.6
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -25,6 +25,13 @@
 ---
 
 ## 📋 Changelog
+
+### v2.5.6 (2026-07-19) — Keychain key storage + full-size preview + hardening
+
+- **🔐 Key moved to the Keychain** — the root encryption key migrated from a plaintext file to the macOS Keychain (this device only, never iCloud-synced); brew uninstall --zap removes it too
+- **🖼 Full-size image preview** — long-press an image for a native-resolution floating panel; oversized screenshots scroll, so text stays readable (replaces the 300px in-row zoom)
+- **🛡 Startup hardening** — key corruption or storage failure no longer crashes the app; a clear alert offers quit, retry, or reset (reset erases history)
+- **🌐 Mirror feed by consent** — when the GitHub update server is unreachable, the jsDelivr mirror now asks once and remembers your choice; a stale mirror is refused automatically
 
 ### v2.5.5 (2026-07-18) — Conditional clear + hardening
 
