@@ -237,7 +237,7 @@
 "alert.key.random.title" = "Não é possível criar a chave de criptografia";
 "alert.key.random.message" = "O gerador aleatório seguro do sistema está indisponível; os dados da área de transferência não podem ser criptografados. O app será encerrado.";
 "alert.key.storage.title" = "Não é possível salvar a chave de criptografia";
-"alert.key.storage.message" = "A chave não pôde ser gravada no disco (disco cheio ou problema de permissão). Saia ou tente novamente.";
+"alert.key.storage.message" = "A chave não pôde ser salva no Chaveiro do macOS (bloqueado ou acesso negado). Saia ou tente novamente.";
 "alert.key.button.reset" = "Redefinir chave";
 "alert.key.button.retry" = "Tentar novamente";
 // H1: alerta de consentimento do espelho de atualizações

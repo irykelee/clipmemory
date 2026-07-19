@@ -1,9 +1,9 @@
 import XCTest
 @testable import ClipMemory
 
-/// H6: key preparation must never fatalError. Every failure path routes
-/// through the injectable failure handler; a corrupt key file is only
-/// destroyed when the handler explicitly chooses to regenerate.
+/// C1: the root key lives in the Keychain. prepareKey migrates a pre-C1 key
+/// file once, never writes new keys to disk, and never fatalErrors (H6) —
+/// every failure path routes through the injectable failure handler.
 final class CryptoKeyPreparationTests: XCTestCase {
 
     /// Records failures and replays scripted actions; never alerts and
@@ -25,6 +25,25 @@ final class CryptoKeyPreparationTests: XCTestCase {
         }
     }
 
+    /// In-memory key store; store() results can be scripted per call.
+    private final class MockKeyStore: KeyStoring {
+        private(set) var stored: Data?
+        var storeResults: [OSStatus] = [] // default: always succeed
+        private(set) var storeCalls = 0
+
+        func load() -> Data? { stored }
+
+        @discardableResult
+        func store(_ keyData: Data) -> OSStatus {
+            storeCalls += 1
+            let result = storeResults.isEmpty ? errSecSuccess : storeResults.removeFirst()
+            if result == errSecSuccess { stored = keyData }
+            return result
+        }
+
+        func delete() { stored = nil }
+    }
+
     private var tempDir: URL!
 
     override func setUpWithError() throws {
@@ -34,7 +53,6 @@ final class CryptoKeyPreparationTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        // Restore writability in case a test made the directory read-only.
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempDir.path)
         try? FileManager.default.removeItem(at: tempDir)
     }
@@ -43,78 +61,131 @@ final class CryptoKeyPreparationTests: XCTestCase {
         tempDir.appendingPathComponent(".encryption_key")
     }
 
-    func testPrepareKeyGeneratesKeyFileWithSecurePerms() {
+    // MARK: - Keychain is canonical
+
+    func testPrepareKeyUsesKeychainWhenPresent() {
+        let store = MockKeyStore()
+        let existing = Data((0..<32).map { UInt8($0 ^ 0x5A) })
+        store.store(existing)
+
         let recorder = FailureRecorder(actions: [.quit])
-        let key = CryptoService.prepareKey(keyURL: keyURL, failureHandler: recorder.handler)
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
 
         XCTAssertNotNil(key)
-        XCTAssertEqual(recorder.failures, [], "fresh key generation must not invoke the failure handler")
-
-        let data = try? Data(contentsOf: keyURL)
-        XCTAssertEqual(data?.count, 32)
-        let attrs = try? FileManager.default.attributesOfItem(atPath: keyURL.path)
-        XCTAssertEqual(attrs?[.posixPermissions] as? Int, 0o600, "key file must be owner-only")
+        XCTAssertEqual(recorder.failures, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keyURL.path),
+                       "a Keychain-backed key must not create any key file")
     }
 
-    func testPrepareKeyLoadsExistingValidKeyWithoutHandler() {
-        let existing = Data((0..<32).map { UInt8($0) })
-        XCTAssertNoThrow(try existing.write(to: keyURL))
-
+    func testFreshGenerationGoesToKeychainNotDisk() {
+        let store = MockKeyStore()
         let recorder = FailureRecorder(actions: [.quit])
-        let key = CryptoService.prepareKey(keyURL: keyURL, failureHandler: recorder.handler)
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
 
         XCTAssertNotNil(key)
-        XCTAssertEqual(recorder.failures, [], "a valid existing key needs no failure handler")
-        // File content untouched
-        XCTAssertEqual(try? Data(contentsOf: keyURL), existing)
+        XCTAssertEqual(recorder.failures, [])
+        XCTAssertEqual(store.stored?.count, 32, "fresh key must be stored in the Keychain")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keyURL.path),
+                       "C1: new keys are never written to the old file path")
     }
 
-    func testPrepareKeyCorruptFileQuitLeavesFileUntouched() {
-        let corrupt = Data(repeating: 0xAB, count: 10) // wrong length = corrupt
-        XCTAssertNoThrow(try corrupt.write(to: keyURL))
+    func testKeychainGarbageIsTreatedAsAbsent() {
+        let store = MockKeyStore()
+        store.store(Data(repeating: 0xFF, count: 10)) // wrong length = unusable
 
         let recorder = FailureRecorder(actions: [.quit])
-        let key = CryptoService.prepareKey(keyURL: keyURL, failureHandler: recorder.handler)
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
 
-        XCTAssertNil(key, "declining regeneration leaves no key")
-        XCTAssertEqual(recorder.failures, [.corruptExistingKey])
-        XCTAssertEqual(try? Data(contentsOf: keyURL), corrupt, "corrupt file must survive when the user quits")
+        XCTAssertNotNil(key, "garbage in Keychain must be replaced by a fresh key")
+        XCTAssertEqual(store.stored?.count, 32)
     }
 
-    func testPrepareKeyCorruptFileRegenerateReplacesKey() {
+    // MARK: - Legacy file migration
+
+    func testLegacyKeyFileMigratedIntoKeychainThenDeleted() {
+        let legacy = Data((0..<32).map { UInt8($0) })
+        XCTAssertNoThrow(try legacy.write(to: keyURL))
+        let store = MockKeyStore()
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+
+        XCTAssertNotNil(key)
+        XCTAssertEqual(recorder.failures, [])
+        XCTAssertEqual(store.stored, legacy, "legacy key bytes must move into the Keychain unchanged")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keyURL.path),
+                       "key file must be removed after a verified migration")
+    }
+
+    func testMigrationFailureKeepsKeyFileForNextLaunch() throws {
+        let legacy = Data((0..<32).map { UInt8($0) })
+        try legacy.write(to: keyURL)
+        let store = MockKeyStore()
+        store.storeResults = [errSecInteractionNotAllowed] // keychain locked
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+
+        XCTAssertNotNil(key, "migration failure must not break the app — the file key still works")
+        XCTAssertEqual(recorder.failures, [], "migration fallback is silent (log only), not an alert")
+        XCTAssertEqual(try Data(contentsOf: keyURL), legacy, "key file must survive a failed migration")
+        let attrs = try FileManager.default.attributesOfItem(atPath: keyURL.path)
+        XCTAssertEqual(attrs[.posixPermissions] as? Int, 0o600,
+                       "retained key file gets owner-only perms as defense in depth")
+    }
+
+    // MARK: - Corrupt file (H6 behavior preserved)
+
+    func testCorruptKeyFileQuitLeavesFileUntouched() {
         let corrupt = Data(repeating: 0xAB, count: 10)
         XCTAssertNoThrow(try corrupt.write(to: keyURL))
+        let store = MockKeyStore()
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+
+        XCTAssertNil(key)
+        XCTAssertEqual(recorder.failures, [.corruptExistingKey])
+        XCTAssertEqual(try? Data(contentsOf: keyURL), corrupt,
+                       "corrupt file must survive when the user quits")
+    }
+
+    func testCorruptKeyFileRegenerateStoresFreshKeyInKeychain() {
+        let corrupt = Data(repeating: 0xAB, count: 10)
+        XCTAssertNoThrow(try corrupt.write(to: keyURL))
+        let store = MockKeyStore()
 
         let recorder = FailureRecorder(actions: [.regenerate])
-        let key = CryptoService.prepareKey(keyURL: keyURL, failureHandler: recorder.handler)
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
 
         XCTAssertNotNil(key)
         XCTAssertEqual(recorder.failures, [.corruptExistingKey])
-        XCTAssertEqual((try? Data(contentsOf: keyURL))?.count, 32, "regeneration writes a fresh 32-byte key")
-    }
-
-    func testPrepareKeyStorageFailureReturnsNilWhenQuit() throws {
-        // Read-only directory makes the temp-file write fail.
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: tempDir.path)
-
-        let recorder = FailureRecorder(actions: [.quit])
-        let key = CryptoService.prepareKey(keyURL: keyURL, failureHandler: recorder.handler)
-
-        XCTAssertNil(key)
-        XCTAssertEqual(recorder.failures, [.keyStorageFailed])
+        XCTAssertEqual(store.stored?.count, 32, "regeneration writes the fresh key to the Keychain")
         XCTAssertFalse(FileManager.default.fileExists(atPath: keyURL.path))
     }
 
-    func testPrepareKeyStorageFailureRegenerateRetries() throws {
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: tempDir.path)
+    // MARK: - Storage failure on fresh generation (H6 behavior preserved)
 
-        // First failure: regenerate (retry). Still read-only → fails again;
-        // second failure: quit. Bounded recursion, no crash.
-        let recorder = FailureRecorder(actions: [.regenerate, .quit])
-        let key = CryptoService.prepareKey(keyURL: keyURL, failureHandler: recorder.handler)
+    func testFreshStorageFailureReturnsNilWhenQuit() {
+        let store = MockKeyStore()
+        store.storeResults = [errSecInteractionNotAllowed]
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
 
         XCTAssertNil(key)
-        XCTAssertEqual(recorder.failures, [.keyStorageFailed, .keyStorageFailed],
-                       "regenerate must retry the write once more")
+        XCTAssertEqual(recorder.failures, [.keyStorageFailed])
+    }
+
+    func testFreshStorageFailureRegenerateRetries() {
+        let store = MockKeyStore()
+        store.storeResults = [errSecInteractionNotAllowed, errSecSuccess] // locked, then unlocked
+
+        let recorder = FailureRecorder(actions: [.regenerate, .quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+
+        XCTAssertNotNil(key, "regenerate must retry the Keychain store")
+        XCTAssertEqual(recorder.failures, [.keyStorageFailed])
+        XCTAssertEqual(store.stored?.count, 32)
     }
 }

@@ -237,7 +237,7 @@
 "alert.key.random.title" = "암호화 키를 생성할 수 없습니다";
 "alert.key.random.message" = "시스템 보안 난수 생성기를 사용할 수 없어 클립보드 데이터를 암호화할 수 없습니다. 앱이 종료됩니다.";
 "alert.key.storage.title" = "암호화 키를 저장할 수 없습니다";
-"alert.key.storage.message" = "키를 디스크에 쓸 수 없습니다(디스크 부족 또는 권한 문제). 종료하거나 다시 시도하세요.";
+"alert.key.storage.message" = "키를 macOS 키체인에 저장할 수 없습니다(잠김 또는 접근 거부). 종료하거나 다시 시도하세요.";
 "alert.key.button.reset" = "키 재설정";
 "alert.key.button.retry" = "다시 시도";
 // H1: 업데이트 미러 확인 알림

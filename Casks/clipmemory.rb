@@ -16,5 +16,12 @@
 	  zap trash: [
 	    "~/Library/Application Support/ClipMemory",
 	    "~/Library/Preferences/com.clipmemory.app.plist",
-	  ]
+	  ],
+	  # C1: the root encryption key lives in the Keychain, not in files —
+	  # remove it too so zap leaves no key material behind.
+	  script: {
+	    executable: "/usr/bin/security",
+	    args: ["delete-generic-password", "-s", "com.clipmemory.app", "-a", "root-encryption-key"],
+	    must_succeed: false,
+	  }
 	end

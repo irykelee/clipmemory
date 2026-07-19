@@ -237,7 +237,7 @@
 "alert.key.random.title" = "暗号化キーを作成できません";
 "alert.key.random.message" = "システムの安全な乱数生成器が利用できないため、クリップボードデータを暗号化できません。アプリは終了します。";
 "alert.key.storage.title" = "暗号化キーを保存できません";
-"alert.key.storage.message" = "キーをディスクに書き込めませんでした（ディスク容量不足または権限の問題）。終了するか、再試行してください。";
+"alert.key.storage.message" = "キーを macOS キーチェーンに保存できませんでした（ロック中またはアクセス拒否）。終了するか、再試行してください。";
 "alert.key.button.reset" = "キーをリセット";
 "alert.key.button.retry" = "再試行";
 // H1: 更新ミラー確認アラート

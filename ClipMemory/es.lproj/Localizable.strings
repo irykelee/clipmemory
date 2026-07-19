@@ -237,7 +237,7 @@
 "alert.key.random.title" = "No se puede crear la clave de cifrado";
 "alert.key.random.message" = "El generador aleatorio seguro del sistema no está disponible; los datos del portapapeles no se pueden cifrar. La app se cerrará.";
 "alert.key.storage.title" = "No se puede guardar la clave de cifrado";
-"alert.key.storage.message" = "La clave no pudo escribirse en el disco (disco lleno o problema de permisos). Sal o reintenta.";
+"alert.key.storage.message" = "La clave no pudo guardarse en el Llavero de macOS (bloqueado o acceso denegado). Sal o reintenta.";
 "alert.key.button.reset" = "Restablecer clave";
 "alert.key.button.retry" = "Reintentar";
 // H1: alerta de consentimiento del espejo de actualizaciones
