@@ -7,13 +7,23 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/quick-bar.jpg" alt="Quick Bar 弹窗" width="360"><br>
-  <em>菜单栏一键唤起 Quick Bar — 最近 8 条，即搜即复制</em>
+  <img src="docs/screenshots/quick-bar-light-cn.jpg" alt="Quick Bar 弹窗（浅色）" width="360"><br>
+  <em>菜单栏一键唤起 Quick Bar — 最近 8 条，即搜即复制（浅色）</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/main-window.jpg" alt="ClipMemory 主窗口" width="720"><br>
-  <em>主窗口：类型侧边栏 × 时间分组 × 搜索高亮</em>
+  <img src="docs/screenshots/quick-bar-dark-cn.jpg" alt="Quick Bar 弹窗（深色）" width="360"><br>
+  <em>菜单栏一键唤起 Quick Bar — 最近 8 条，即搜即复制（深色）</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/main-window-light-cn.jpg" alt="ClipMemory 主窗口（浅色）" width="720"><br>
+  <em>主窗口：类型侧边栏 × 时间分组 × 搜索高亮（浅色）</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/main-window-dark-cn.jpg" alt="ClipMemory 主窗口（深色）" width="720"><br>
+  <em>主窗口：类型侧边栏 × 时间分组 × 搜索高亮（深色）</em>
 </p>
 
 ---
