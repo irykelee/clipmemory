@@ -327,6 +327,19 @@ struct ContentView: View {
 
     var body: some View {
         withKeyAndSheets(splitViewWithLifecycle)
+            .onChange(of: store.items.count) { _ in
+                // Prune selectedItems to contain only IDs still present in items.
+                // Defensive guard against any delete path that forgets to clean
+                // selectedItems — e.g. per-row delete (was a stale-UUID bug pre-fix),
+                // bulk delete's removeAll, restore-from-trash, auto-expiry, etc.
+                // Without this the bulk-select toolbar (L624-628) stays visible
+                // with stale UUIDs after the underlying item disappears.
+                // .onChange(of: store.items.count) uses `Int` for Equatable
+                // (required by .onChange signature); count changes on add/remove,
+                // which is exactly the prune window we care about.
+                let liveIDs = Set(store.items.map(\.id))
+                selectedItems = selectedItems.intersection(liveIDs)
+            }
     }
 
     private func withKeyAndSheets<V: View>(_ v: V) -> some View {
