@@ -60,7 +60,7 @@ jobs:
           # list was set. Replaced with a direct SHA-1 fingerprint
           # extract (40-char hex) via awk — name-agnostic. The `|| CERT_SHA=""`
           # suffix keeps `set -e` from aborting when no identities match.
-          CERT_SHA=$(security find-identity -v ci-signing.keychain-db 2>&1 | awk -F'"' '/[A-F0-9]{40}/ {print $2; exit}') || CERT_SHA=""
+          CERT_SHA=$(security find-identity -v ci-signing.keychain-db 2>&1 | awk 'match($0, /[A-F0-9]{40}/) {print substr($0, RSTART, RLENGTH); exit}') || CERT_SHA=""
           if [ -z "$CERT_SHA" ]; then
             echo "::warning::could not resolve cert SHA-1; falling back to broad apple: partition"
             security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" ci-signing.keychain-db
