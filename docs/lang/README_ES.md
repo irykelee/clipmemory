@@ -1,4 +1,4 @@
-# ClipMemory v2.5.7
+# ClipMemory v2.5.8
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.5.8 (2026-07-20) — Auditoría de estabilidad + 23 correcciones
+
+- **🛡 Refuerzo de exportación/importación de copia de seguridad** — `ditto` atascado ya no bloquea la UI indefinidamente (timeout 30s + escalada SIGKILL); sal HKDF ahora falla explícitamente si CSPRNG de OS falla, sin relleno silencioso con ceros
+- **⚡ Análisis RTF movido a cola en segundo plano** — Pegar texto enriquecido grande ya no atasca el sondeo del portapapeles; OCR/reconocimiento de imagen también en segundo plano, hilo principal más fluido
+- **🛡 Corrección de advertencia de renderizado SwiftUI** — "Modifying state during view update" en cambios de conteo de ítems eliminado, sin renders extra
+- **🔧 Almacenamiento en memoria seguro para hilos** — Pruebas y futuros llamadores multi-hilo ya no crashean o pierden datos por mutación de array en `MemoryStorageBackend`
+- **🏷 Corrección de fallback de color de etiqueta** — Hex inválido ahora cae al color de acento, visible en modo claro/oscuro
 
 ### v2.5.7 (2026-07-20) — HangDetector observabilidad + correcciones críticas
 

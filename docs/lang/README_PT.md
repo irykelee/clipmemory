@@ -1,4 +1,4 @@
-# ClipMemory v2.5.7
+# ClipMemory v2.5.8
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.5.8 (2026-07-20) — Auditoria de estabilidade + 23 correções
+
+- **🛡 Reforço de exportação/importação de backup** — `ditto` travado não bloqueia mais a UI indefinidamente (timeout 30s + escalação SIGKILL); sal HKDF agora falha explicitamente quando CSPRNG do OS falha, sem preenchimento silencioso com zeros
+- **⚡ Análise RTF movida para fila em segundo plano** — Colar texto rico grande não trava mais o polling da área de transferência; OCR/reconhecimento de imagem também em segundo plano, thread principal mais fluida
+- **🛡 Correção de aviso de renderização SwiftUI** — Aviso "Modifying state during view update" em mudanças de contagem de itens eliminado, sem renderizações extras
+- **🔧 Armazenamento em memória thread-safe** — Testes e futuros chamadores multi-thread não crasham mais ou perdem dados por mutação de array em `MemoryStorageBackend`
+- **🏷 Correção de fallback de cor de etiqueta** — Hex inválido agora cai para cor de destaque, visível em modo claro/escuro
 
 ### v2.5.7 (2026-07-20) — HangDetector observabilidade + correções críticas
 

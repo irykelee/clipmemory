@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.5.7
+# 剪忆 ClipMemory v2.5.8
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 更新日志
+
+### v2.5.8 (2026-07-20) — 稳定性审计 + 23 项修复
+
+- **🛡 备份导出 / 导入加固** — 卡住的 `ditto` 不再无限阻塞 UI（30s 超时 + SIGKILL 升级）；HKDF 盐用 OS CSPRNG 失败时显式报错，不再静默用零填充
+- **⚡ RTF 解析移到后台队列** — 大体积富文本粘贴不再让剪贴板轮询卡顿；OCR/图片识别也走后台，主线程更顺
+- **🛡 SwiftUI 渲染警告修复** — 列表项数变化触发的「Modifying state during view update」警告消除，无多余重复渲染
+- **🔧 内存存储线程安全** — 测试与未来多线程 caller 不再因 `MemoryStorageBackend` 数组 mutation 崩溃 / 丢数据
+- **🏷 标签色 fallback 修复** — 无效 hex 颜色回退到主题色，浅色 / 深色模式下都可见
 
 ### v2.5.7 (2026-07-20) — HangDetector 观测 + 关键 bugfix
 
