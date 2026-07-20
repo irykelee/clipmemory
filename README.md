@@ -48,6 +48,16 @@
 
 ## 📋 更新日志
 
+### v2.5.7 (2026-07-20) — HangDetector 观测 + 关键 bugfix
+
+- **🛰️ HangDetector 观测模块** — 后台 watchdog 自动检测主线程卡死 >60s 并记录完整堆栈 + 恢复时间，方便事后定位疑难 bug
+- **🛡️ 修复 HMAC 失败时静默丢数据** — Keychain 异常时复制内容不再被当重复项丢弃
+- **🛡️ 修复 QuickBar 键盘导航崩溃** — 选中项被外部删除后按 ↑↓ 不再 OOB crash
+- **🧪 测试 force-unwrap crash 修复** — XCTAssertNotNil + `!` 模式改为 `guard let ... XCTFail(...) return`，测试失败优雅记录
+- **🖼️ 图片加载并发竞态修复** — legacy 图片迁移多线程并发，写串行化避免数据竞争
+- **🛡️ Excluded-app 配置 TOCTOU 修复** — 增原子 `updateExcludedBundleIds` API
+- **🧹 主窗口批量选择工具栏状态残留修复** — 单行删除后工具栏正确消失
+
 ### v2.5.6 (2026-07-19) — 密钥入钥匙串 + 原图预览 + 启动加固
 
 - **🔐 密钥迁至钥匙串** — 加密根密钥从明文文件迁入 macOS 钥匙串（仅本机、不同步 iCloud），brew 卸载（zap）时一并清除
