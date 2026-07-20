@@ -7,14 +7,19 @@ extension Color {
     init(hex: String) {
         let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        // 1-line fix (2026-07-20 audit LOW): fall back to `.accentColor` instead
+        // of `.black`. Black-on-Material chips are invisible against dark surfaces
+        // and lose semantic contrast against Light. `.accentColor` keeps chips
+        // visible across light/dark and matches user expectations for "decorative
+        // tag fill".
         guard body.count == 6 else {
-            self = .black
+            self = .accentColor
             return
         }
         let scanner = Scanner(string: body)
         var hexNumber: UInt64 = 0
         guard scanner.scanHexInt64(&hexNumber), scanner.isAtEnd else {
-            self = .black
+            self = .accentColor
             return
         }
         let r = Double((hexNumber & 0xFF0000) >> 16) / 255.0

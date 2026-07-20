@@ -9,7 +9,10 @@ struct TipsView: View {
     /// stays in sync if the user rebinds it in settings. Falls back to the
     /// static default if AppDelegate isn't ready yet (e.g. on first launch).
     private var liveHotkeyDisplay: String {
-        (NSApp.delegate as? AppDelegate)?.hotKeyManager.config.displayString
+        // H-1: hotKeyManager on AppDelegate is now optional — extra level of
+        // optional chaining so a missing manager falls back to defaults instead
+        // of crashing the view that triggered recomputation.
+        (NSApp.delegate as? AppDelegate)?.hotKeyManager?.config.displayString
             ?? HotKeyConfig.defaultConfig.displayString
     }
 

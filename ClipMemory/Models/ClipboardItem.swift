@@ -86,8 +86,16 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     }
 
     /// Extracts plain text from RTF content for preview and search purposes.
-    /// Uses ClipboardStore's RTF cache to avoid repeated parsing.
+    /// Calls the pure `RichTextParser` directly — model layer no longer
+    /// reaches into `ClipboardStore.shared` to obtain a cached result. The
+    /// store can still wrap calls to this with its `NSCache` when callers
+    /// know they're iterating the same item many times.
     var plainTextFromRTFFallback: String {
-        ClipboardStore.shared.getRTFPlaintext(self)
+        // Preserve the original semantic contract: only RTF items yield a
+        // parsed plaintext; every other type returns "" so SwiftUI views
+        // can fall back to `content`. Otherwise non-RTF items would falsely
+        // render the parser `fallback` ("Rich Text") in lists.
+        guard type == .richText else { return "" }
+        return RichTextParser.plaintext(from: content)
     }
 }

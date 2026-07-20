@@ -43,7 +43,21 @@ jobs:
           echo "$CODESIGN_P12_BASE64" | base64 --decode > /tmp/codesign.p12
           security import /tmp/codesign.p12 -k ci-signing.keychain-db -P "$CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
           rm -f /tmp/codesign.p12
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" ci-signing.keychain-db
+          # H-3 fix (2026-07-20 audit): restrict the partition list to the
+          # imported code-signing identity instead of `apple:` wildcard.
+          # On `macos-latest` runners the bare `apple:` partition grants
+          # access to **any** Apple-signed binary (a wide attack surface);
+          # pinning it to our specific SHA-1 means only the imported cert
+          # can use the keychain items. Resolve the SHA via find-identity
+          # and append it after the bare apple-tool: prefix that's required
+          # for codesign/build to work.
+          CERT_SHA=$(security find-identity -v ci-signing.keychain-db 2>&1 | grep -i 'codesign\|clipmemory\|self-signed' | head -1 | awk -F'"' '{print $2}')
+          if [ -z "$CERT_SHA" ]; then
+            echo "::warning::could not resolve cert SHA-1; falling back to broad apple: partition"
+            security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" ci-signing.keychain-db
+          else
+            security set-key-partition-list -S "apple-tool:,apple:$CERT_SHA" -k "$KEYCHAIN_PW" ci-signing.keychain-db
+          fi
 
       - name: Build Release
         run: xcodebuild -scheme ClipMemory -configuration Release build
@@ -66,10 +80,21 @@ jobs:
           tar -xf /tmp/sparkle-dl/Sparkle-*.tar.xz -C /tmp/sparkle
 
           # EdDSA-sign the tarball with the private key from repo secrets
+          # H-2 fix (2026-07-20 audit): `mktemp` and `printf` honor the active
+          # umask; on `macos-latest` runners that's 022, so the EdDSA private
+          # key would be world-readable on disk for the few seconds the
+          # signing tool runs. Setting `umask 077` plus a defensive `chmod
+          # 600` before write closes that window — anyone on the same
+          # ephemeral runner could otherwise exfiltrate the key and sign
+          # arbitrary updates to be served from our feed. The `rm -P` at
+          # the end triggers macOS's 3-pass overwrite instead of a plain
+          # unlink that would leave the SSD-routed data recoverable.
+          umask 077
           KEY_FILE=$(mktemp)
           printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
           SIGNATURE=$(/tmp/sparkle/bin/sign_update --ed-key-file "$KEY_FILE" -p Releases/ClipMemory.tar.gz)
-          rm -f "$KEY_FILE"
+          rm -P "$KEY_FILE"
 
           # Insert the new item into appcast.xml and push it back to main
           ./Scripts/update_appcast.sh appcast.xml "$VERSION" Releases/ClipMemory.tar.gz "$SIGNATURE"

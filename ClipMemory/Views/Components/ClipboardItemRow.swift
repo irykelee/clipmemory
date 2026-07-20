@@ -249,6 +249,16 @@ struct ClipboardItemRow: View, Equatable {
                                 }
                                 return (nil, ImageStorage.shared.imageStatus(for: filename))
                             }.value
+                            // I-8 fix (2026-07-20 audit): see TrashItemRow.swift
+                            // for the same pattern. `Task.detached` does not
+                            // inherit cancellation from the parent `.task(id:)`
+                            // body, so when the user switches rows the late
+                            // image arrives back into a stale `loadedImage`
+                            // state and briefly shows the wrong picture. The
+                            // guard here uses the same idiom: re-check
+                            // `Task.isCancelled` after the await and drop the
+                            // result if the parent task has been cancelled.
+                            if Task.isCancelled { return }
                             if let img = result.0 {
                                 loadedImage = img
                             } else {
@@ -356,6 +366,10 @@ struct ClipboardItemRow: View, Equatable {
             let result = await Task.detached(priority: .utility) {
                 ClipboardStore.shared.getDecryptedContent(item) ?? ""
             }.value
+            // I-8 fix (2026-07-20 audit): same cancellation-isolation as the
+            // image `.task`. Drop the decrypted text when the row has been
+            // recycled so we don't paste stale text into the new item's state.
+            if Task.isCancelled { return }
             loadedContent = result
         }
     }

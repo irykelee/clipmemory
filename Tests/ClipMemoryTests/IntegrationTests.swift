@@ -800,7 +800,7 @@ final class IntegrationTests: XCTestCase {
         let originalCiphertext = "v2:invalid-base64-not-real-ciphertext"
         let corruptTag = Tag(id: tagId, name: originalCiphertext, colorHex: "#FF6B6B")
         let tagBackend = MemoryStorageBackend()
-        tagBackend.tags = [corruptTag]
+        try? tagBackend.saveTags([corruptTag])
 
         let store = ClipboardStore(backend: MemoryStorageBackend(), tagBackend: tagBackend)
         store.loadTags()
@@ -812,7 +812,7 @@ final class IntegrationTests: XCTestCase {
         store.saveTags()
 
         // The saved tag must still carry the original ciphertext, not "[locked]"
-        let saved = tagBackend.tags.first { $0.id == tagId }
+        let saved = (try? tagBackend.loadTags())?.first { $0.id == tagId }
         XCTAssertEqual(saved?.name, originalCiphertext,
                       "saveTags must not overwrite the original ciphertext with the placeholder")
     }

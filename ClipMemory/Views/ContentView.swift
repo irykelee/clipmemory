@@ -44,6 +44,11 @@ struct ContentView: View {
     @State private var cachedDisplayedItems: [ClipboardItem] = []
     @State private var cachedGroupedItems: [(TimeGroup, [ClipboardItem])] = []
     @State private var cachedGroupedItemsWithIndex: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] = []
+    // I-9 (2026-07-20 audit): cached tab/tag usage counts. Body was O(n) twice
+    // per render; cached as @State and refreshed via .onChange(items.count).
+    @State private var cachedTabCounts: [SidebarTab: Int] = [.all: 0]
+    @State private var cachedTagCounts: [UUID: Int] = [:]
+    @State private var cachedTabCountsVersion: Int = 0
     @State private var dateFilter: DateFilter = .all
     /// Captures the previous DateFilter so onChange can log the transition
     /// (1-param onChange API on macOS 13 does not deliver the old value).
@@ -271,8 +276,27 @@ struct ContentView: View {
     var displayedItems: [ClipboardItem] { cachedDisplayedItems }
 
     private var tabCounts: [SidebarTab: Int] {
-        var counts: [SidebarTab: Int] = [.all: store.items.count]
-        for item in store.items { switch item.type {
+        // I-9: serve from cache; invalidation lives in .onChange(of: store.items.count).
+        // Initial seed happens lazily on first access (returned cache falls back to
+        // computed value if cachedTabCountsVersion never bumped).
+        if cachedTabCountsVersion == 0 { return Self.computeTabCounts(items: store.items) }
+        return cachedTabCounts
+    }
+
+    /// Per-tag usage count over ALL items (independent of current sidebar
+    /// selection). Users see "this tag is attached to N items" without
+    /// filtering the count itself by what they've already selected.
+    private var tagCounts: [UUID: Int] {
+        // I-9: identical invalidation contract — see tabCounts above.
+        if cachedTabCountsVersion == 0 { return Self.computeTagCounts(items: store.items) }
+        return cachedTagCounts
+    }
+
+    /// O(n) recompute helper. Called only when cachedTabCountsVersion resets
+    /// (initial render) or when invalidated by `.onChange(of: store.items.count)`.
+    private static func computeTabCounts(items: [ClipboardItem]) -> [SidebarTab: Int] {
+        var counts: [SidebarTab: Int] = [.all: items.count]
+        for item in items { switch item.type {
         case .text: counts[.text, default: 0] += 1
         case .image: counts[.image, default: 0] += 1
         case .link: counts[.link, default: 0] += 1
@@ -281,17 +305,22 @@ struct ContentView: View {
         return counts
     }
 
-    /// Per-tag usage count over ALL items (independent of current sidebar
-    /// selection). Users see "this tag is attached to N items" without
-    /// filtering the count itself by what they've already selected.
-    private var tagCounts: [UUID: Int] {
+    private static func computeTagCounts(items: [ClipboardItem]) -> [UUID: Int] {
         var counts: [UUID: Int] = [:]
-        for item in store.items {
+        for item in items {
             for tagId in item.tagIds {
                 counts[tagId, default: 0] += 1
             }
         }
         return counts
+    }
+
+    /// Cache refresh exposed to the `.onChange(of: store.items.count)` watcher.
+    /// Avoids recomputing on every body re-render.
+    fileprivate func refreshUsageCountCache() {
+        cachedTabCounts = Self.computeTabCounts(items: store.items)
+        cachedTagCounts = Self.computeTagCounts(items: store.items)
+        cachedTabCountsVersion += 1
     }
 
     /// Tags sorted newest-first, matching the TagPickerSheet ordering.
@@ -339,6 +368,9 @@ struct ContentView: View {
                 // which is exactly the prune window we care about.
                 let liveIDs = Set(store.items.map(\.id))
                 selectedItems = selectedItems.intersection(liveIDs)
+                // I-9: refresh cached tab/tag counts so badge() and tag rows
+                // reflect the new item set without recomputing on every body.
+                refreshUsageCountCache()
             }
     }
 
@@ -798,7 +830,9 @@ struct ContentView: View {
             if mods.contains(.shift) { modifiers |= UInt32(shiftKey) }
             isRecordingHotKey = false
             stopKeyEventMonitor()
-            (NSApp.delegate as? AppDelegate)?.hotKeyManager.updateHotKey(keyCode: keyCode, modifiers: modifiers)
+            // H-1: hotKeyManager is optional — skip the rebind if the
+            // AppDelegate hasn't initialized it yet (race on first launch).
+            (NSApp.delegate as? AppDelegate)?.hotKeyManager?.updateHotKey(keyCode: keyCode, modifiers: modifiers)
             return nil
         }
     }

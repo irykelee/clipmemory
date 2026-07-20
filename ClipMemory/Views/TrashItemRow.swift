@@ -85,6 +85,16 @@ struct TrashItemRow: View, Equatable {
                                 }
                                 return (nil, ImageStorage.shared.imageStatus(for: filename))
                             }.value
+                            // I-8 fix (2026-07-20 audit): `Task.detached` does not
+                            // inherit cancellation from the parent `.task(id:)`
+                            // body. If the user scrolled away (item.content
+                            // changed), the detached task keeps running in the
+                            // background and our await eventually delivers a
+                            // stale result that flashes the old image before
+                            // the new row's task replaces it. Drop the result
+                            // when the parent has been cancelled — the new
+                            // row's task will populate state under its own id.
+                            if Task.isCancelled { return }
                             if let img = result.0 {
                                 loadedImage = img
                             } else {
