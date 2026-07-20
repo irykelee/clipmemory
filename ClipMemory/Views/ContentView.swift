@@ -45,6 +45,9 @@ struct ContentView: View {
     @State private var cachedGroupedItems: [(TimeGroup, [ClipboardItem])] = []
     @State private var cachedGroupedItemsWithIndex: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] = []
     @State private var dateFilter: DateFilter = .all
+    /// Captures the previous DateFilter so onChange can log the transition
+    /// (1-param onChange API on macOS 13 does not deliver the old value).
+    @State private var previousDateFilter: DateFilter = .all
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: ClipboardItem?
     @State private var showingEmptyTrashAlert = false
@@ -236,6 +239,7 @@ struct ContentView: View {
     }
 
     private func updateDisplayedItemsCache() {
+        let start = Date()
         cachedDisplayedItems = filterItems(store.items)
         // Update grouped items cache
         var dict: [TimeGroup: [ClipboardItem]] = [:]
@@ -257,6 +261,11 @@ struct ContentView: View {
             result.append((g, groupItems))
         }
         cachedGroupedItemsWithIndex = result
+        UIObservability.logCacheRebuild(
+            groups: cachedGroupedItems.count,
+            items: cachedGroupedItems.reduce(0) { $0 + $1.1.count },
+            durationMs: Date().timeIntervalSince(start) * 1000
+        )
     }
 
     var displayedItems: [ClipboardItem] { cachedDisplayedItems }
@@ -371,7 +380,8 @@ struct ContentView: View {
     /// Defer cache rebuilds out of the current view-update cycle. Writing
     /// @State synchronously inside onChange/onReceive triggers SwiftUI's
     /// "Modifying state during view update" runtime warning.
-    private func refreshDisplayedItemsCacheSoon() {
+    private func refreshDisplayedItemsCacheSoon(source: String) {
+        UIObservability.logRefreshTrigger(source: source)
         DispatchQueue.main.async { updateDisplayedItemsCache() }
     }
 
@@ -383,15 +393,24 @@ struct ContentView: View {
                 updateDisplayedItemsCache()
             }
             .onChange(of: searchText) { newValue in
+                UIObservability.logSearchChange(length: newValue.count)
                 DispatchQueue.main.async { self.debounceSearch(newValue) }
             }
-            .onChange(of: searchTextDebounced) { _ in refreshDisplayedItemsCacheSoon() }
-            .onChange(of: selectedTab) { _ in refreshDisplayedItemsCacheSoon() }
-            .onChange(of: dateFilter) { _ in refreshDisplayedItemsCacheSoon() }
-            .onChange(of: selectedTagIds) { _ in refreshDisplayedItemsCacheSoon() }
-            .onChange(of: store.items) { _ in refreshDisplayedItemsCacheSoon() }
+            .onChange(of: searchTextDebounced) { _ in refreshDisplayedItemsCacheSoon(source: "searchDebounced") }
+            .onChange(of: selectedTab) { _ in refreshDisplayedItemsCacheSoon(source: "selectedTab") }
+            .onChange(of: dateFilter) { newValue in
+                UIObservability.logDateFilterChange(from: previousDateFilter, to: newValue)
+                previousDateFilter = newValue
+                refreshDisplayedItemsCacheSoon(source: "dateFilter")
+            }
+            .onChange(of: selectedTagIds) { newValue in
+                UIObservability.logTagSelectionChange(count: newValue.count)
+                refreshDisplayedItemsCacheSoon(source: "selectedTagIds")
+            }
+            .onChange(of: store.items) { _ in refreshDisplayedItemsCacheSoon(source: "store.items") }
             .onChange(of: store.tags) { _ in
                 DispatchQueue.main.async {
+                    UIObservability.logRefreshTrigger(source: "store.tags")
                     // Strip orphan UUIDs (tag deleted from store while selected)
                     // before re-rendering so we don't show a stale empty filter.
                     let valid = Set(store.tags.keys)
@@ -412,7 +431,11 @@ struct ContentView: View {
                     let nowStart = calendar.startOfDay(for: Date())
                     let cachedStart = calendar.startOfDay(for: currentDate)
                     if nowStart != cachedStart {
+                        // currentDate is @State — capture BEFORE reassigning so
+                        // the rollover log shows the actual transition.
+                        let previous = currentDate
                         currentDate = Date()
+                        UIObservability.logCurrentDateRollover(from: previous, to: currentDate)
                         updateDisplayedItemsCache()
                     }
                 }
@@ -1127,7 +1150,9 @@ struct ContentView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) { Spacer(); Image(systemName: selectedTab == .pinned ? "star" : "tray").font(.system(size: sz(40))).foregroundColor(.secondary); Text(selectedTab == .pinned ? L10n.emptyNoPinned : L10n.emptyNoHistory).font(.system(size: sz(14))).foregroundColor(.secondary); if selectedTab == .pinned { Text(L10n.emptyPinnedHint).font(.system(size: sz(12))).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal) } else { Text(L10n.emptyHistoryHint).font(.system(size: sz(12))).foregroundColor(.secondary) }; Spacer() }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        let name = store.items.isEmpty ? "no_items_overall" : "filter_no_match"
+        UIObservability.logEmptyStateRender(name: name, itemCount: store.items.count)
+        return VStack(spacing: 12) { Spacer(); Image(systemName: selectedTab == .pinned ? "star" : "tray").font(.system(size: sz(40))).foregroundColor(.secondary); Text(selectedTab == .pinned ? L10n.emptyNoPinned : L10n.emptyNoHistory).font(.system(size: sz(14))).foregroundColor(.secondary); if selectedTab == .pinned { Text(L10n.emptyPinnedHint).font(.system(size: sz(12))).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal) } else { Text(L10n.emptyHistoryHint).font(.system(size: sz(12))).foregroundColor(.secondary) }; Spacer() }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func copyItem(_ item: ClipboardItem) { store.copyToClipboard(item) }
