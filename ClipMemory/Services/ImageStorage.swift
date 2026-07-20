@@ -201,6 +201,11 @@ class ImageStorage {
         }
     }
 
+    // Serializes legacy-migration writes across threads. Multiple callers
+    // invoking imageStatus(for:) concurrently for the same legacy PNG would
+    // otherwise race against each other's re-encrypted file write (per gate 1b Medium #4 fix).
+    private static let migrationQueue = DispatchQueue(label: "com.clipmemory.imageStorage.legacyMigration")
+
     func loadImage(filename: String) -> Data? {
         guard case .available(let data) = imageStatus(for: filename) else {
             return nil
@@ -231,9 +236,13 @@ class ImageStorage {
 
         // Try legacy format; if successful, re-encrypt and save with new format
         if let legacyData = try? legacyDecryptImage(encryptedData) {
-            // Re-encrypt with new format and atomically overwrite the file
+            // Re-encrypt with new format and atomically overwrite the file.
+            // Serialize the write through migrationQueue to avoid concurrent
+            // threads racing on the same legacy PNG (per gate 1b Medium #4 fix).
             if let newEncrypted = ServiceContainer.crypto.encryptData(legacyData) {
-                try? newEncrypted.write(to: fileURL, options: .atomic)
+                Self.migrationQueue.sync {
+                    try? newEncrypted.write(to: fileURL, options: .atomic)
+                }
             }
             return .available(legacyData)
         }
@@ -245,7 +254,9 @@ class ImageStorage {
             encryptedData[0] == 0x89 && encryptedData[1] == 0x50 &&
             encryptedData[2] == 0x4E && encryptedData[3] == 0x47 {
             if let newEncrypted = ServiceContainer.crypto.encryptData(encryptedData) {
-                try? newEncrypted.write(to: fileURL, options: .atomic)
+                Self.migrationQueue.sync {
+                    try? newEncrypted.write(to: fileURL, options: .atomic)
+                }
             }
             return .available(encryptedData)
         }
