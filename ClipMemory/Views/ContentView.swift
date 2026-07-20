@@ -357,20 +357,20 @@ struct ContentView: View {
     var body: some View {
         withKeyAndSheets(splitViewWithLifecycle)
             .onChange(of: store.items.count) { _ in
-                // Prune selectedItems to contain only IDs still present in items.
-                // Defensive guard against any delete path that forgets to clean
-                // selectedItems — e.g. per-row delete (was a stale-UUID bug pre-fix),
-                // bulk delete's removeAll, restore-from-trash, auto-expiry, etc.
-                // Without this the bulk-select toolbar (L624-628) stays visible
-                // with stale UUIDs after the underlying item disappears.
-                // .onChange(of: store.items.count) uses `Int` for Equatable
-                // (required by .onChange signature); count changes on add/remove,
-                // which is exactly the prune window we care about.
+                // Prune selectedItems to live IDs (defensive against any
+                // delete path that forgets to clean it — pre-fix stale-UUID
+                // bug left the bulk-select toolbar visible). `.onChange` of
+                // count uses Int for Equatable; count changes on add/remove.
+                // Audit-fix #1 (2026-07-20): defer @State writes to the next
+                // main-actor hop — synchronous writes here triggered
+                // SwiftUI "Modifying state during view update" warnings.
                 let liveIDs = Set(store.items.map(\.id))
-                selectedItems = selectedItems.intersection(liveIDs)
-                // I-9: refresh cached tab/tag counts so badge() and tag rows
-                // reflect the new item set without recomputing on every body.
-                refreshUsageCountCache()
+                let pruned = selectedItems.intersection(liveIDs)
+                Task { @MainActor in
+                    selectedItems = pruned
+                    // I-9: refresh cached tab/tag counts (avoids recompute on every body).
+                    refreshUsageCountCache()
+                }
             }
     }
 

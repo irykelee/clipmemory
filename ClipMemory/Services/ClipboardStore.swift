@@ -20,6 +20,16 @@ extension Notification.Name {
 
 extension ClipboardStore: ClipboardMonitorDelegate {
     func sensitiveClearHoursForMonitor() -> Int {
+        // Audit-fix #3 (2026-07-20): ClipboardMonitor calls this delegate
+        // from background queues (timer at ClipboardMonitor.swift:268,
+        // userInitiated at :344 after H-11). Reading `@Published var
+        // sensitiveClearHours` directly is a data race — the @Published
+        // wrapper does not synchronize the backing storage. The writer is
+        // main-thread only (UI sets it via SwiftUI binding), so we lock
+        // only the reader and let the main-thread write land atomically
+        // for 64-bit Int. Matches the ClipboardMonitor `withLock` idiom.
+        sensitiveClearHoursLock.lock()
+        defer { sensitiveClearHoursLock.unlock() }
         return sensitiveClearHours
     }
     // H-13 (2026-07-20 audit): explicit overrides of the protocol defaults
@@ -55,6 +65,10 @@ class ClipboardStore: ObservableObject {
     @Published var sensitiveClearHours: Int {
         didSet { UserDefaults.standard.set(sensitiveClearHours, forKey: sensitiveClearHoursKey) }
     }
+    // Audit-fix #3 (2026-07-20): see `sensitiveClearHoursForMonitor()` for
+    // why the delegate-method reader needs a lock. Writer remains main-thread
+    // (UI binding); the lock only guards the cross-thread read.
+    private let sensitiveClearHoursLock = NSLock()
 
     @Published var captureRichText: Bool = true {
         didSet { UserDefaults.standard.set(captureRichText, forKey: captureRichTextKey) }
