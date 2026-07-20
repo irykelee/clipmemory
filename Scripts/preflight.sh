@@ -36,12 +36,23 @@ else
 fi
 
 # 4. xcodegen output in sync
-xcodegen generate >/dev/null 2>&1
-if git diff --quiet -- ClipMemory.xcodeproj/project.pbxproj; then
+# H-5 fix (2026-07-20 audit): the previous `>/dev/null 2>&1` swallowed
+# both stdout and stderr, so a missing xcodegen binary or a parse
+# failure looked identical to a successful run with no diff. Capture
+# exit status, log output, and surface a clear diagnostic when either
+# step fails.
+XCODEGEN_LOG=$(mktemp -t clipmemory-preflight.XXXXXX)
+if ! command -v xcodegen >/dev/null 2>&1; then
+  bad "xcodegen 未安装（brew install xcodegen）"
+elif ! xcodegen generate >"$XCODEGEN_LOG" 2>&1; then
+  bad "xcodegen generate 失败（log: $XCODEGEN_LOG）"
+  sed 's/^/    /' "$XCODEGEN_LOG"
+elif git diff --quiet -- ClipMemory.xcodeproj/project.pbxproj; then
   ok "project.pbxproj 与 project.yml 同步"
 else
   bad "project.pbxproj 与 project.yml 不同步（xcodegen generate 后有 diff）"
 fi
+rm -f "$XCODEGEN_LOG"
 
 # 5. swiftlint: no new errors on changed swift files
 CHANGED=$(git status --porcelain -- '*.swift' | awk '{print $2}' | tr '\n' ' ')

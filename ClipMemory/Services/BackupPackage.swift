@@ -18,6 +18,11 @@ enum BackupPackageError: Error, Equatable {
     case unsupportedFormatVersion(Int)
     case missingKeyMaterial
     case archiveFailed
+    /// M-10 (2026-07-20 audit): the OS CSPRNG reported a non-success status
+    /// during salt/nonce generation; we cannot produce a deterministic HKDF
+    /// output from a zero-filled buffer, so surface the failure rather
+    /// than silently shipping a weak salt.
+    case secureRandomUnavailable
 }
 
 struct BackupManifest: Codable {
@@ -65,11 +70,28 @@ final class BackupPackage {
     }
 
     private static func runDitto(_ arguments: [String]) throws {
+        // 30s safety net (LOW, 2026-07-20 audit): without a timeout a stuck
+        // `ditto` (broken pipe, SMB stall, sandbox entitlement missing on a
+        // future macOS release) could block the main thread forever — UI
+        // comes back to life only after we terminate the child here. Long
+        // enough for any legitimate large archive, short enough that the
+        // user can retry instead of force-quitting the app.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         process.arguments = Array(arguments.dropFirst())
         try process.run()
-        process.waitUntilExit()
+        let deadline = Date().addingTimeInterval(30)
+        while process.isRunning {
+            if Date() >= deadline {
+                process.terminate()
+                // SIGTERM is async — give it a beat, then SIGKILL if needed.
+                DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
+                    if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                }
+                throw BackupPackageError.archiveFailed
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
         guard process.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
     }
 
@@ -90,7 +112,7 @@ final class BackupPackage {
         imagesDirectory: URL,
         keyData: Data
     ) throws {
-        let salt = randomBytes(16)
+        let salt = try randomBytes(16)
         let derivedKey = deriveKey(passphrase: passphrase, salt: salt)
         let sealedKey = try AES.GCM.seal(keyData, using: derivedKey)
         guard let sealedKeyData = sealedKey.combined else { throw BackupPackageError.missingKeyMaterial }
@@ -291,9 +313,21 @@ final class BackupPackage {
         )
     }
 
-    private static func randomBytes(_ count: Int) -> Data {
+    private static func randomBytes(_ count: Int) throws -> Data {
+        // M-10 fix (2026-07-20 audit): the previous `SecRandomCopyBytes`
+        // call discarded its `OSStatus` return. On failure the buffer
+        // stays zero-filled, and since this salt feeds HKDF the result
+        // is a predictable, attacker-friendly wrapper around a still-secret
+        // user passphrase. We also `throw` the new `secureRandomUnavailable`
+        // case already declared in `BackupPackageError` (the C1 Keychain
+        // path already raises that on the same condition).
         var data = Data(count: count)
-        _ = data.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!) }
+        let status = data.withUnsafeMutableBytes {
+            SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!)
+        }
+        guard status == errSecSuccess else {
+            throw BackupPackageError.secureRandomUnavailable
+        }
         return data
     }
 }

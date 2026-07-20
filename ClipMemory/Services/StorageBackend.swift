@@ -63,26 +63,39 @@ final class FileStorageBackend: StorageBackend {
 
 /// In-memory backend for testing without persisting to UserDefaults.
 final class MemoryStorageBackend: StorageBackend {
-    var items: [ClipboardItem] = []
-    var tags: [Tag] = []
+    // I-7 fix (2026-07-20 audit): the in-memory backend's mutable arrays
+    // were not protected against concurrent reads/writes. Swift arrays do
+    // not give a hard guarantee against cross-thread mutation (Array
+    // mutation is documented as not thread-safe). Production code paths
+    // are main-actor; tests typically run synchronously; but a test that
+    // races `save()` from two threads, or reads `items` while another
+    // thread mutates it, can crash or silently drop data. Use an
+    // NSLock to keep the contract honest for any future caller.
+    private let lock = NSLock()
+    private var _items: [ClipboardItem] = []
+    private var _tags: [Tag] = []
 
     init(items: [ClipboardItem] = []) {
-        self.items = items
+        self._items = items
     }
 
     func load() throws -> [ClipboardItem] {
-        return items
+        lock.lock(); defer { lock.unlock() }
+        return _items
     }
 
     func save(_ items: [ClipboardItem]) throws {
-        self.items = items
+        lock.lock(); defer { lock.unlock() }
+        self._items = items
     }
 
     func loadTags() throws -> [Tag] {
-        return tags
+        lock.lock(); defer { lock.unlock() }
+        return _tags
     }
 
     func saveTags(_ tags: [Tag]) throws {
-        self.tags = tags
+        lock.lock(); defer { lock.unlock() }
+        self._tags = tags
     }
 }

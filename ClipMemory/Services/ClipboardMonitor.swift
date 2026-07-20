@@ -190,10 +190,12 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
 
     func startMonitoring() {
         lastChangeCount = pasteboard.changeCount
-        // Capture settings on main thread before timer fires
-        captureRichText = ClipboardStore.shared.captureRichText
-        // Observe future setting changes on main thread
-        settingsCancellable = ClipboardStore.shared.$captureRichText
+        // Capture settings on main thread before timer fires.
+        // H-13 (2026-07-20 audit): route through `delegate` so this class
+        // doesn't reach into the `ClipboardStore.shared` singleton. The
+        // publisher forward stays live for the lifetime of the monitor.
+        captureRichText = delegate?.captureRichTextSettingForMonitor() ?? true
+        settingsCancellable = delegate?.captureRichTextPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newValue in
                 self?.captureRichText = newValue
@@ -274,8 +276,12 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
                 isSensitive: isSensitive,
                 expiresAt: expiresAt
             )
-            DispatchQueue.main.async {
-                ClipboardStore.shared.addItem(item)
+            DispatchQueue.main.async { [weak delegate] in
+                // H-13: hand the item to the store via delegate. Going
+                // through `delegate?` rather than `ClipboardStore.shared`
+                // means a future delegate implementation (preview-only,
+                // multi-store replay, etc.) works without touching this file.
+                delegate?.monitorDidCaptureItem(item)
             }
         } else if let imageData = pasteboard.data(forType: .png), !imageData.isEmpty {
             processImageData(imageData)
@@ -307,35 +313,50 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
                 isSensitive: isSensitive,
                 expiresAt: expiresAt
             )
-            ClipboardStore.shared.addItem(item)
+            // H-13: route through delegate; was `ClipboardStore.shared.addItem(item)`.
+            self?.delegate?.monitorDidCaptureItem(item)
             // On-device OCR for search + text extraction (non-blocking).
-            if ClipboardStore.shared.ocrEnabled {
+            if self?.delegate?.ocrEnabledForMonitor() == true {
                 VisionOCRService.shared.recognizeText(in: imageData) { text in
                     guard let text = text, !text.isEmpty else { return }
-                    ClipboardStore.shared.attachOCRText(to: id, text: text)
+                    self?.delegate?.monitorDidRecognizeText(text, forImageItemId: id)
                 }
             }
         }
     }
 
     private func processRichText(_ rtfData: Data) {
-        let plaintext = (try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil))?.string ?? ""
-        let isSensitive = detectSensitive(plaintext)
-        var expiresAt: Date?
-        if isSensitive {
-            let hours = delegate?.sensitiveClearHoursForMonitor() ?? 0
-            if hours > 0 {
-                expiresAt = Date().addingTimeInterval(TimeInterval(hours * 3600))
+        // H-11 (2026-07-20 audit): NSAttributedString RTF parse is synchronous
+        // and can take 100s of ms on large pastes — being called from the
+        // 0.5s clipboard poll queue that's already running captureRichText
+        // evaluation. Hand it off to a userInitiated queue so the poll keeps
+        // ticking; addItem back to the main thread once plaintext is in hand.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let plaintext = (try? NSAttributedString(
+                data: rtfData,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil
+            ))?.string ?? ""
+            let isSensitive = self.detectSensitive(plaintext)
+            var expiresAt: Date?
+            if isSensitive {
+                let hours = self.delegate?.sensitiveClearHoursForMonitor() ?? 0
+                if hours > 0 {
+                    expiresAt = Date().addingTimeInterval(TimeInterval(hours * 3600))
+                }
             }
-        }
-        let item = ClipboardItem(
-            content: rtfData.base64EncodedString(),
-            type: .richText,
-            isSensitive: isSensitive,
-            expiresAt: expiresAt
-        )
-        DispatchQueue.main.async {
-            ClipboardStore.shared.addItem(item)
+            let item = ClipboardItem(
+                content: rtfData.base64EncodedString(),
+                type: .richText,
+                isSensitive: isSensitive,
+                expiresAt: expiresAt
+            )
+            DispatchQueue.main.async { [weak delegate] in
+                // H-13: same singleton-out pattern as `processImageData` —
+                // route the acceptance through the delegate.
+                delegate?.monitorDidCaptureItem(item)
+            }
         }
     }
 

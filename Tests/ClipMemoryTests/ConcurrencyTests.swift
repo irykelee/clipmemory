@@ -129,10 +129,17 @@ final class ConcurrencyTests: XCTestCase {
         group.wait()
 
         // Should not crash; Set operations should be thread-safe.
-        // After 5 distinct inserts + 5 removes (all racing under atomic API),
-        // the set ends empty.
+        // Concurrency-correctness check: every surviving id must be one of
+        // the bundle IDs we touched (no spuriously-added entries). Whether
+        // each id survived insert+remove is timing-dependent under true
+        // concurrency, so we don't assert the previous strict `isEmpty` —
+        // that flake would fail on multi-core machines where some inserts
+        // win their race against matching removes.
         let ids = monitor.excludedBundleIds
-        XCTAssertTrue(ids.isEmpty, "expected empty set after each id was inserted and removed, got \(ids)")
+        let originalSet = Set(bundleIds)
+        let unknownIds = ids.subtracting(originalSet)
+        XCTAssertTrue(unknownIds.isEmpty,
+                      "excludedBundleIds must not contain entries outside the seed set; got \(unknownIds)")
     }
 
     func testExcludedBundleIdsContains() {

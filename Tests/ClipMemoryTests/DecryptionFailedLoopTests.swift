@@ -29,7 +29,7 @@ final class DecryptionFailedLoopTests: XCTestCase {
     func testCorruptItemMarksFailedOnceThenStops() {
         // isEncrypted=true but content is garbage that will never decrypt.
         let bad = ClipboardItem(content: "not-valid-ciphertext", type: .text, isEncrypted: true)
-        backend.items = [bad]
+        try? backend.save([bad])
         store.loadItems()
 
         // First access: returns nil and schedules the failure mark.
@@ -55,7 +55,7 @@ final class DecryptionFailedLoopTests: XCTestCase {
 
     func testPreFailedItemReturnsNilImmediately() {
         let failed = ClipboardItem(content: "x", type: .text, isEncrypted: true, decryptionFailed: true)
-        backend.items = [failed]
+        try? backend.save([failed])
         store.loadItems()
 
         let before = store.items

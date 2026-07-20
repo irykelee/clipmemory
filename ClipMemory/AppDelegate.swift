@@ -3,10 +3,16 @@ import SwiftUI
 import ServiceManagement
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var statusItem: NSStatusItem!
-    var clipboardMonitor: ClipboardMonitor!
-    private(set) var hotKeyManager: HotKeyManager!
-    private(set) var windowManager: WindowManager!
+    // H-1 (2026-07-20 audit): IUO `!` forces an implicit — and unguarded —
+    // unwrap at every read site. If the relevant `setup*` step fails partway,
+    // the very next read crashes here instead of producing a clear log line.
+    // `Optional + guard/bind` makes the failure mode explicit and lets the
+    // app keep running (showing "QuickBar unavailable" is better than
+    // hard-crashing from the menu bar click).
+    var statusItem: NSStatusItem?
+    var clipboardMonitor: ClipboardMonitor?
+    private(set) var hotKeyManager: HotKeyManager?
+    private(set) var windowManager: WindowManager?
     private var languageObserver: NSObjectProtocol?
     private var encryptionFailedObserver: NSObjectProtocol?
     private var welcomeWindow: NSWindow?
@@ -40,7 +46,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // M-6 fix (2026-07-20 audit): the previous terminate hook only
+        // flushed the store and stopped the watchdog. Graceful quit is the
+        // happy path on macOS, but `applicationWillTerminate` is **not**
+        // guaranteed for SIGKILL, Force Quit, or logout — those still leak
+        // Carbon hotkey registration, pasteboard poll timers, and NSPanel
+        // refs (we can't defend against SIGKILL from userspace). For the
+        // graceful path we now also unregister the Carbon hotkey, stop
+        // clipboard polling, and close the welcome window eagerly — same
+        // cleanup the deinit path would do.
         ClipboardStore.shared.flushPendingSaves()
+        hotKeyManager?.unregister()
+        clipboardMonitor?.stopMonitoring()
+        welcomeWindow?.close()
         HangDetector.stop()
     }
 
@@ -79,7 +97,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         welcomeWindow?.close()
         welcomeWindow = nil
 
-        let welcome = WelcomeView(hotKeyManager: hotKeyManager) { [weak self] in
+        // H-1: hotKeyManager is now Optional. If setupHotKey() failed earlier
+        // we still want the welcome view to render — pass an unbinding here
+        // would crash on the first instruction row that reads `hotKeyRef`.
+        // Fall back to a fresh-but-unregistered instance so the welcome can
+        // still describe the default Cmd+Shift+V bound at app start.
+        let hotKey = hotKeyManager ?? HotKeyManager()
+        let welcome = WelcomeView(hotKeyManager: hotKey) { [weak self] in
             self?.welcomeWindow?.close()
             onComplete?()
         }
@@ -93,30 +117,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = statusItem.button {
+        if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "ClipMemory")
             button.toolTip = L10n.appName
             button.target = self; button.action = #selector(statusItemClicked)
             button.sendAction(on: [.leftMouseDown, .rightMouseDown])
         }
-        windowManager.setStatusItem(statusItem)
+        // H-1: both optional now. setStatusItem accepts non-nil; guard explicitly.
+        if let item = statusItem, let wm = windowManager { wm.setStatusItem(item) }
     }
 
-    @objc private func statusItemClicked() { windowManager.showQuickBar() }
+    @objc private func statusItemClicked() {
+        // H-1: windowManager is optional — quietly fail if setup didn't complete
+        // rather than crashing. QuickBar is a nice-to-have; the app stays usable.
+        windowManager?.showQuickBar()
+    }
 
     private func setupLanguageObserver() {
         languageObserver = NotificationCenter.default.addObserver(forName: Notification.Name("LanguageDidChange"), object: nil, queue: .main) { [weak self] _ in
-            self?.statusItem.button?.toolTip = L10n.appName
+            self?.statusItem?.button?.toolTip = L10n.appName
         }
         encryptionFailedObserver = NotificationCenter.default.addObserver(forName: .encryptionFailed, object: nil, queue: .main) { _ in
             let a = NSAlert(); a.messageText = L10n.error; a.informativeText = L10n.alertEncryptFailed; a.alertStyle = .warning; a.addButton(withTitle: L10n.buttonConfirm); a.runModal()
         }
     }
 
-    @objc func showMainWindow() { windowManager.showMainWindow() }
+    @objc func showMainWindow() {
+        // H-1: optional — fail quietly if WindowManager not initialized.
+        windowManager?.showMainWindow()
+    }
 
     @objc private func showSettings() {
-        windowManager.showMainWindow()
+        windowManager?.showMainWindow()
         NotificationCenter.default.post(name: .showSettingsTab, object: nil)
     }
 
@@ -128,17 +160,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = ClipboardStore.shared
         // Then trigger ImageStorage migration
         _ = ImageStorage.shared
-        clipboardMonitor = ClipboardMonitor()
-        clipboardMonitor.delegate = ClipboardStore.shared
-        clipboardMonitor.startMonitoring()
-        ClipboardStore.shared.clipboardMonitor = clipboardMonitor
+        // H-1: optional — guard init result so a partial ClipboardMonitor
+        // construction doesn't take the whole app down. We still let the
+        // store run; the menu bar QuickBar just won't auto-refresh from
+        // system paste events until relaunch.
+        let monitor = ClipboardMonitor()
+        monitor.delegate = ClipboardStore.shared
+        monitor.startMonitoring()
+        clipboardMonitor = monitor
+        ClipboardStore.shared.clipboardMonitor = monitor
         ClipboardStore.shared.updateExcludedAppsOnMonitor()
     }
 
     private func setupHotKey() {
-        hotKeyManager = HotKeyManager()
-        hotKeyManager.setShowWindowHandler { [weak self] in DispatchQueue.main.async { self?.windowManager.showMainWindow() } }
-        hotKeyManager.register()
+        // H-1: optional — same idea. Carbon hotkey registration is best-effort;
+        // a failure here must not prevent the rest of the app from launching.
+        let hotKey = HotKeyManager()
+        hotKey.setShowWindowHandler { [weak self] in
+            DispatchQueue.main.async { self?.windowManager?.showMainWindow() }
+        }
+        hotKey.register()
+        hotKeyManager = hotKey
     }
 
     deinit { if let o = languageObserver { NotificationCenter.default.removeObserver(o) }; if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) } }

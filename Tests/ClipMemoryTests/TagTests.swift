@@ -65,10 +65,15 @@ final class TagTests: XCTestCase {
     }
 
     func testColorHexRejectsInvalidLengths() {
-        XCTAssertEqual(Color(hex: "#FFF"), .black, "3-digit hex should fall back to black")
-        XCTAssertEqual(Color(hex: "#FF00FF00"), .black, "8-digit hex should fall back to black")
-        XCTAssertEqual(Color(hex: "not-a-color"), .black, "Non-hex string should fall back to black")
-        XCTAssertEqual(Color(hex: "#GGG"), .black, "Invalid characters should fall back to black")
+        // 2026-07-20 audit LOW: fallback is `.accentColor` (keeps chips
+        // visible in both light/dark) instead of `.black` (invisible on
+        // dark Material). Equality with `.accentColor` is fine because
+        // SwiftUI resolves it to the same dynamic system color in a given
+        // run — XCAssertEqual compares the resolved values.
+        XCTAssertEqual(Color(hex: "#FFF"), Color.accentColor, "3-digit hex should fall back to accentColor")
+        XCTAssertEqual(Color(hex: "#FF00FF00"), Color.accentColor, "8-digit hex should fall back to accentColor")
+        XCTAssertEqual(Color(hex: "not-a-color"), Color.accentColor, "Non-hex string should fall back to accentColor")
+        XCTAssertEqual(Color(hex: "#GGG"), Color.accentColor, "Invalid characters should fall back to accentColor")
     }
 
     // MARK: - Color.toHex()
@@ -195,7 +200,10 @@ final class ClipboardStoreTagTests: XCTestCase {
     func testSaveTagsPersistsEncryptedNamesToUserDefaults() throws {
         // Use a real FileStorageBackend but isolate tag storage to a dedicated key
         // via a fresh FileStorageBackend(storageKey:) — proves the key parameter works.
-        let key = "ClipMemoryTagsTest_SaveTags"
+        // UUID-suffix the key so re-runs (or parallel runs against the same
+        // UserDefaults) can't accumulate data; cleanup happens unconditionally.
+        let key = "ClipMemoryTagsTest_SaveTags-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: key) }
         let tagBackend = FileStorageBackend(storageKey: key)
         let store = ClipboardStore(backend: MemoryStorageBackend(),
                                    tagBackend: tagBackend)
@@ -221,9 +229,10 @@ final class ClipboardStoreTagTests: XCTestCase {
         let freshStore = ClipboardStore(backend: MemoryStorageBackend(),
                                         tagBackend: FileStorageBackend(storageKey: key))
         XCTAssertEqual(freshStore.tags[tag.id]?.name, "工作")
-
-        // Cleanup so we don't pollute real UserDefaults.
-        UserDefaults.standard.removeObject(forKey: key)
+        // Cleanup runs via `defer` at the top of the test to handle the
+        // failed-assertion path (XCTAssertEqual bails out before reaching
+        // an explicit cleanup line, so leftover data used to accumulate
+        // across runs and break unrelated later tests).
     }
 
     /// A tag whose name coincidentally starts with the encrypted marker prefix

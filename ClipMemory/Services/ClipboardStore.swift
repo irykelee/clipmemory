@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Combine
 import os.log
 
 // swiftlint:disable file_length
@@ -20,6 +21,18 @@ extension Notification.Name {
 extension ClipboardStore: ClipboardMonitorDelegate {
     func sensitiveClearHoursForMonitor() -> Int {
         return sensitiveClearHours
+    }
+    // H-13 (2026-07-20 audit): explicit overrides of the protocol defaults
+    // so the monitor never has to know `ClipboardStore.shared` again. The
+    // publisher forward stays zero-copy via `$` projected value.
+    func captureRichTextSettingForMonitor() -> Bool { captureRichText }
+    var captureRichTextPublisher: AnyPublisher<Bool, Never> {
+        $captureRichText.eraseToAnyPublisher()
+    }
+    func monitorDidCaptureItem(_ item: ClipboardItem) { addItem(item) }
+    func ocrEnabledForMonitor() -> Bool { ocrEnabled }
+    func monitorDidRecognizeText(_ text: String, forImageItemId id: UUID) {
+        attachOCRText(to: id, text: text)
     }
 }
 
@@ -232,9 +245,19 @@ class ClipboardStore: ObservableObject {
     private let pendingFailedIDsLock = NSLock()
 
     deinit {
+        // I-1 fix (2026-07-20 audit): cancel all four DispatchSourceTimers.
+        // Previous deinit only cancelled cleanupTimer and saveTimer — tag and
+        // trash timers kept their source objects alive until next fire.
         cleanupTimer?.cancel()
         saveTimer?.cancel()
-        flushSave()
+        tagSaveTimer?.cancel()
+        trashSaveTimer?.cancel()
+        // I-2 fix (2026-07-20 audit): remove the NotificationCenter observer
+        // registered in init(). Without this, the dispatch table keeps the
+        // selector entry even after dealloc, which causes stale callbacks in
+        // tests that create multiple store instances.
+        NotificationCenter.default.removeObserver(self)
+        flushPendingSaves()
     }
 
     /// Handles image migration completion — updates isEncrypted flags for migrated image items.
@@ -570,7 +593,23 @@ class ClipboardStore: ObservableObject {
                 // Prefix is accidental (e.g. user-named "v2:..."); fall through to encrypt.
             }
             guard let encryptedName = ServiceContainer.crypto.encrypt(tag.name) else {
-                return tag
+                // I-3 fix (2026-07-20 audit): tag encryption failure must NOT
+                // persist the plaintext tag name — that's the equivalent of a
+                // missed encrypt on items but the tag pipeline silently swallowed
+                // it. Match the decryptTagNames path: surface a placeholder,
+                // keep the original ciphertext in the backup map so saveTags
+                // doesn't overwrite it on subsequent calls, and notify the UI
+                // (so the user knows the encryption layer is unhealthy).
+                logger.error("Failed to encrypt tag name for \(tag.id); storing as [locked]")
+                encryptedTagNamesBackup[tag.id] = tag.name
+                NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+                return Tag(
+                    id: tag.id,
+                    name: Self.lockedPlaceholder,
+                    colorHex: tag.colorHex,
+                    isAutoSuggested: tag.isAutoSuggested,
+                    createdAt: tag.createdAt
+                )
             }
             return Tag(
                 id: tag.id,
@@ -861,6 +900,8 @@ class ClipboardStore: ObservableObject {
 
     /// Returns cached RTF plaintext for an item, parsing and caching on first access.
     /// Avoids repeated NSAttributedString RTF parsing in search/filter paths.
+    /// Implementation delegates to the pure `RichTextParser` so the parsing
+    /// rules live in exactly one place; only the cache wrapper is here.
     func getRTFPlaintext(_ item: ClipboardItem) -> String {
         guard item.type == .richText else { return "" }
         let key = item.id.uuidString as NSString
@@ -868,13 +909,7 @@ class ClipboardStore: ObservableObject {
             return cached as String
         }
         let base64RTF = getDecryptedContent(item) ?? item.content
-        let result: String
-        if let data = Data(base64Encoded: base64RTF),
-           let attr = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
-            result = attr.string
-        } else {
-            result = L10n.itemRichText
-        }
+        let result = RichTextParser.plaintext(from: base64RTF, fallback: L10n.itemRichText)
         rtfPlaintextCache.setObject(result as NSString, forKey: key)
         return result
     }
@@ -1002,12 +1037,18 @@ class ClipboardStore: ObservableObject {
 
     func trimToMaxItems() {
         guard items.count > maxItems else { return }
+        // C-1 fix (2026-07-20 audit): pinned items are an explicit retention
+        // guarantee the user opted into — never silently evict them to make
+        // room for non-pinned history. If the user pins more than maxItems,
+        // pinned overflows the cap; non-pinned is shrunk to whatever slots
+        // remain (possibly zero). Trade-off: the active list may exceed
+        // maxItems; alternative policies (rejecting new pins at cap, separate
+        // pinned cap) are policy decisions for the user, not silent data loss.
         let pinned = items.filter { $0.isPinned }
         var nonPinned = items.filter { !$0.isPinned }
-        let trimmedPinned = pinned.count > maxItems ? Array(pinned.prefix(maxItems)) : pinned
-        let allowedNonPinned = max(0, maxItems - trimmedPinned.count)
+        let allowedNonPinned = max(0, maxItems - pinned.count)
         nonPinned = Array(nonPinned.prefix(allowedNonPinned))
-        let trimmed = trimmedPinned + nonPinned
+        let trimmed = pinned + nonPinned
         let trimmedIds = Set(trimmed.map { $0.id })
         let removedItems = items.filter { !trimmedIds.contains($0.id) }
         for item in removedItems {

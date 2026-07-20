@@ -55,6 +55,18 @@ class ImageStorage {
     }
 
     private init() {
+        // I-5 fix (2026-07-20 audit): in XCTest, do NOT run legacy migration
+        // and do NOT touch UserDefaults.standard. XCTest runs in a separate
+        // binary but shares the bundle-id UserDefaults domain with production,
+        // so a test that sets `migrationCompleteKey = true` would mask real
+        // legacy migration on the user's next production launch — and a test
+        // that wrote the migrationComplete key for fake test data would
+        // permanently disable the user's real migration. The new test fixture
+        // is responsible for setting up its own source/destination if it
+        // needs to exercise the migration path.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return
+        }
         migrateFromLegacyIfNeeded()
     }
 
@@ -267,7 +279,13 @@ class ImageStorage {
     /// Decrypts image data using legacy AES-CBC+HMAC format (pre-v2).
     /// Used only for migrating existing image files to the new v2 format.
     private func legacyDecryptImage(_ combined: Data) throws -> Data? {
-        guard let key = try? Data(contentsOf: CryptoService.keyFileURL), key.count == 32 else {
+        // C-2 fix (2026-07-20 audit): post-C1, the file key is gone but the
+        // user's Keychain entry carries the same 32 bytes. `CryptoService
+        // .loadKeyData()` already implements the "try Keychain first, fall
+        // back to key file" resolution (added in C1). Without this fallback,
+        // every legacy-encrypted image left behind after upgrade surfaces as
+        // `.decryptionFailed` in the UI and is effectively unrecoverable.
+        guard let key = CryptoService.loadKeyData(), key.count == 32 else {
             return nil
         }
 
