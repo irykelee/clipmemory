@@ -55,6 +55,28 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         set { withLock { _excludedBundleIds = newValue } }
     }
 
+    /// Atomic compound update for `excludedBundleIds` (per gate 1b Medium #5 fix).
+    /// The compound operation `var ids = monitor.excludedBundleIds; ids.insert(...);
+    /// monitor.excludedBundleIds = ids` is racy — the getter and setter each
+    /// take the lock individually but the read-modify-write window is unprotected.
+    /// This method takes the lock once for the whole mutation, eliminating the
+    /// TOCTOU race that loses inserted/removed entries under concurrent load.
+    ///
+    /// Usage:
+    /// ```
+    /// monitor.updateExcludedBundleIds { ids in
+    ///     ids.insert("com.testbed.target")
+    ///     ids.remove("com.example.legitimateapp")
+    /// }
+    /// ```
+    func updateExcludedBundleIds(_ block: (inout Set<String>) -> Void) {
+        withLock {
+            var copy = _excludedBundleIds
+            block(&copy)
+            _excludedBundleIds = copy
+        }
+    }
+
     /// Delegate for accessing store configuration (breaks circular dependency)
     weak var delegate: ClipboardMonitorDelegate?
 
