@@ -159,7 +159,11 @@ struct QuickBarView: View {
                 searchText: searchText,
                 onUp: {
                     guard !displayedItems.isEmpty else { return }
-                    if let idx = keyboardSelectedIndex, idx > 0 {
+                    // Add upper-bound guard (idx < displayedItems.count) so a stale
+                    // keyboardSelectedIndex pointing past the end — e.g. after the user
+                    // deletes the currently-selected item — falls through to the safe
+                    // else branch instead of computing an out-of-bounds subscript.
+                    if let idx = keyboardSelectedIndex, idx > 0, idx < displayedItems.count {
                         keyboardSelectedIndex = idx - 1
                     } else {
                         keyboardSelectedIndex = displayedItems.count - 1
@@ -169,7 +173,9 @@ struct QuickBarView: View {
                 onDown: {
                     guard !displayedItems.isEmpty else { return }
                     let last = displayedItems.count - 1
-                    if let idx = keyboardSelectedIndex, idx < last {
+                    // Add idx >= 0 guard so a stale negative idx (e.g. -5) cannot bypass
+                    // the < last check and trigger a negative-index Array subscript trap.
+                    if let idx = keyboardSelectedIndex, idx < last, idx >= 0 {
                         keyboardSelectedIndex = idx + 1
                     } else {
                         keyboardSelectedIndex = 0
