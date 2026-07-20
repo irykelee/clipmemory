@@ -150,4 +150,68 @@ enum HangDetector {
         state.withLock { $0.lastHeartbeat = date }
     }
     // swiftlint:enable identifier_name large_tuple
+
+    // MARK: - Mutation API: heartbeat (spec §4.2 / §4.3)
+
+    /// Refresh `state.lastHeartbeat` to the current `Date()`.
+    /// Invoked by the heartbeat timer (main queue, 1s).
+    static func recordHeartbeat() {
+        state.withLock { $0.lastHeartbeat = Date() }
+    }
+
+    // MARK: - Mutation API: staleness check (spec §4.2 / §4.3 / §7)
+
+    /// If the gap between `now` and `state.lastHeartbeat` exceeds
+    /// `thresholdSeconds`, emit a detection log (error) and update state.
+    /// Otherwise no-op. Idempotent across calls; periodic checker calls
+    /// from `.global(.utility)` queue are independent of main thread.
+    ///
+    /// Implementation uses a single `withLock` per call (per MEDIUM #8):
+    /// snapshot only the values needed for decision outside the lock,
+    /// then re-enter the lock briefly to mutate state (Task 3 introduces
+    /// the cap-at-5 + firstDetectedAt-once writes).
+    static func checkStaleness(now: Date) {
+        // swiftlint:disable:next large_tuple
+        let snapshot = state.withLock { s -> (elapsed: TimeInterval, count: Int, firstDetectedAt: Date?, stack: [String]) in
+            (now.timeIntervalSince(s.lastHeartbeat), s.detectionCount, s.firstDetectedAt, s.lastMainStack)
+        }
+        guard snapshot.elapsed >= thresholdSeconds, snapshot.count < maxDetectionCount else {
+            return
+        }
+        // Emit logs outside the lock (per MEDIUM #8 — logger calls must never hold the lock).
+        logHangDetected(elapsed: snapshot.elapsed, threshold: thresholdSeconds, count: snapshot.count + 1)
+        logStackTruncated(stack: snapshot.stack)
+        logHangMainStackFull(stack: snapshot.stack)
+        // Mutate state inside the lock + re-check cap to close the snapshot→re-entry
+        // race window (per spec §4.2 single-lock pattern + gate 1b H1): a concurrent
+        // stack-timer recovery between the outer snapshot read and this re-entry could
+        // otherwise reset detectionCount to 0, bypassing the cap and emitting a spurious
+        // detection log exactly at the recovery moment.
+        state.withLock { s in
+            guard s.detectionCount < maxDetectionCount else { return }
+            s.lastDetectedAt = now
+            s.firstDetectedAt = s.firstDetectedAt ?? now
+            s.detectionCount += 1
+        }
+    }
+
+    // MARK: - Detection log wrappers (per spec §7 + reviewer #4 privacy syntax)
+
+    /// `logger.error("hang.detected elapsed=Xs threshold=Ys detection_count=N")`.
+    private static func logHangDetected(elapsed: TimeInterval, threshold: TimeInterval, count: Int) {
+        logger.error("\(formatHangDetected(elapsed: elapsed, threshold: threshold), privacy: .public) detection_count=\(count, privacy: .public)")
+    }
+
+    /// `logger.error("hang.main_stack lines=N first_line=...")` — single-line preview.
+    private static func logStackTruncated(stack: [String]) {
+        let preview = formatStackTruncated(stack: stack)
+        let firstLine = preview.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? "(empty)"
+        logger.error("hang.main_stack lines=\(stack.count, privacy: .public) first_line=\(firstLine, privacy: .public)")
+    }
+
+    /// `logger.error("hang.main_stack_full\n<full stack>")` — multi-line; each newline emits its own log entry under os.Logger.
+    private static func logHangMainStackFull(stack: [String]) {
+        let body = stack.isEmpty ? "(empty)" : stack.joined(separator: "\n")
+        logger.error("hang.main_stack_full\n\(body, privacy: .public)")
+    }
 }
