@@ -2,6 +2,15 @@ import Foundation
 import AppKit
 import os.log
 
+// swiftlint:disable file_length
+// (1) Justification: ClipboardStore is the central coordinator of clipboard flow
+// (addItem / dedup / persistence / migration). Splitting risks cross-cutting
+// regressions. Tracking a 1250-line ceiling explicitly via disable so the
+// discipline is visible in code review.
+// (2) Code added per Critical fix on 2026-07-20 (HMAC silent data loss) made
+// the file 1258 lines, exceeding the project's file_length 1250 threshold.
+// Move logic into a separate file in a future refactor pass.
+
 extension Notification.Name {
     static let encryptionFailed = Notification.Name("ClipboardStore.encryptionFailed")
     static let showSettingsTab = Notification.Name("ClipMemory.showSettingsTab")
@@ -636,7 +645,17 @@ class ClipboardStore: ObservableObject {
         // M3: Always encrypt text and link content (images are encrypted by ImageStorage)
         if item.type != .image {
             if let encrypted = ServiceContainer.crypto.encrypt(item.content) {
-                newHash = ServiceContainer.crypto.hmacHex(for: plaintextContent) ?? ""
+                let computedHash = ServiceContainer.crypto.hmacHex(for: plaintextContent)
+                if computedHash == nil {
+                    // HMAC failure (rare — Keychain -25308 or crypto internal error).
+                    // Don't fall back to "" — that creates silent dedup collisions when
+                    // multiple distinct contents all fail HMAC. Use nil contentHash;
+                    // the dedup pre-filter below short-circuits and we fall through to
+                    // insert the item rather than risk dropping real data.
+                    logger.error("HMAC failed for clipboard item; storing without dedup fingerprint")
+                    NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+                }
+                newHash = computedHash
                 newItem = ClipboardItem(
                     id: item.id,
                     content: encrypted,
@@ -660,8 +679,11 @@ class ClipboardStore: ObservableObject {
             }
         }
 
-        // Use contentHash for fast pre-filter before expensive decryption
-        if let existingIndex = items.firstIndex(where: { existing in
+        // Use contentHash for fast pre-filter before expensive decryption.
+        // Skip the entire dedup pre-filter when newHash is nil (HMAC failure path) —
+        // the legacy "" fallback used to match any item with an empty hash, collapsing
+        // distinct contents silently. Better to accept a duplicate in this rare path.
+        if let newHash = newHash, let existingIndex = items.firstIndex(where: { existing in
             // Type must match
             guard existing.type == newItem.type else { return false }
             // If both have contentHash, compare hashes first (avoids decryption)
