@@ -188,4 +188,39 @@ final class HangDetectorTests: XCTestCase {
         let s = HangDetector._snapshotStateForTesting()
         XCTAssertEqual(s.detectionCount, 5, "cap must hold at exactly 5 even with 6 consecutive stale checks")
     }
+
+    // MARK: - §6.2 State tests continued (Task 4: stack capture + recovery)
+
+    func testRecordStackCapture_capturesNonEmptyStack() {
+        // Capture the test runner's call stack; on macOS 13 + XCTest it's reliably non-empty.
+        // Per gate 1b H2: this test now actually asserts what its name promises. The
+        // _snapshotStateForTesting() helper was widened in Task 1 Step 4 to expose
+        // `lastMainStack` (5 fields instead of 4) so we can verify the population.
+        HangDetector.recordStackCaptureAndMaybeRecover()
+        let s = HangDetector._snapshotStateForTesting()
+        XCTAssertGreaterThan(s.lastMainStack.count, 0, "recordStackCaptureAndMaybeRecover must populate lastMainStack from Thread.callStackSymbols")
+        // Sanity: no detection triggered, so the recovery path doesn't run either.
+        XCTAssertNil(s.lastDetectedAt, "no detection → recovery path must not clear nonexistent state")
+        XCTAssertEqual(s.detectionCount, 0)
+    }
+
+    func testRecordStackCapture_clearsDetectionStateWhenRecovered() {
+        // 1. Seed detection by setting stale heartbeat + calling checkStaleness once.
+        let now = Date()
+        HangDetector._seedLastHeartbeatForTesting(now.addingTimeInterval(-70))
+        HangDetector.checkStaleness(now: now)
+        let seeded = HangDetector._snapshotStateForTesting()
+        XCTAssertEqual(seeded.detectionCount, 1)
+        XCTAssertNotNil(seeded.firstDetectedAt)
+
+        // 2. Simulate recovery: capture stack. Implementation must detect the prior
+        //    detection and clear lastDetectedAt / firstDetectedAt / detectionCount.
+        HangDetector.recordStackCaptureAndMaybeRecover()
+
+        // 3. State must now show zeroed-out detection metadata.
+        let cleared = HangDetector._snapshotStateForTesting()
+        XCTAssertNil(cleared.lastDetectedAt, "recovery must clear lastDetectedAt")
+        XCTAssertNil(cleared.firstDetectedAt, "recovery must clear firstDetectedAt (the downtime baseline is no longer valid)")
+        XCTAssertEqual(cleared.detectionCount, 0, "recovery must reset detectionCount to 0")
+    }
 }

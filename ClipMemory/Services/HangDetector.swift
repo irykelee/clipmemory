@@ -195,6 +195,52 @@ enum HangDetector {
         }
     }
 
+    // MARK: - Mutation API: stack capture + recovery (spec §4.2 + §7)
+
+    /// Captures `Thread.callStackSymbols` (this thread is the main queue per
+    /// the timer setup in `start()`, so the captured frames belong to main).
+    /// Empty-stack rule (reviewer #3, spec §4.2): if the captured stack is
+    /// empty, do NOT overwrite `lastMainStack` — preserve the previously-captured
+    /// (pre-hang) frames so the diagnostic value survives.
+    ///
+    /// Recovery detection (spec §4.2 / MEDIUM #7 — recovery is owned by the
+    /// stack timer, not the heartbeat): if the snapshot shows a prior
+    /// detection (`firstDetectedAt != nil`), compute `downtime = now - firstDetectedAt`,
+    /// emit `logger.info("hang.recovered downtime=...")`, and clear
+    /// `lastDetectedAt` / `firstDetectedAt` / `detectionCount` in a single
+    /// locked write.
+    static func recordStackCaptureAndMaybeRecover() {
+        let now = Date()
+        let newStack = Thread.callStackSymbols
+        // Empty-stack rule (spec §4.2 reviewer #3): if `newStack` is empty, leave
+        // `lastMainStack` untouched (preserve pre-hang frames for diagnosis).
+        // Breadcrumb emitted OUTSIDE any lock per MEDIUM #8 (gate 1b Md: this debug
+        // log is the spec-mandated trail for "why didn't we get a fresh stack" debugging).
+        if newStack.isEmpty {
+            logger.debug("hang.stack_capture empty=\(true, privacy: .public)")
+        }
+        // Per gate 1b Mc: collapse the original 3 separate `withLock` calls (snapshot +
+        // stack-write + recovery-clear) into a single post-snapshot lock so stack-write
+        // and recovery-clear are atomic relative to a concurrent checker read.
+        let recoveryDowntime: TimeInterval? = state.withLock { s -> TimeInterval? in
+            if !newStack.isEmpty {
+                s.lastMainStack = newStack
+            }
+            if let first = s.firstDetectedAt {
+                let downtime = now.timeIntervalSince(first)
+                s.lastDetectedAt = nil
+                s.firstDetectedAt = nil
+                s.detectionCount = 0
+                return downtime
+            }
+            return nil
+        }
+        // Recovery log OUTSIDE lock (per MEDIUM #8).
+        if let downtime = recoveryDowntime {
+            logHangRecovered(downtime: downtime)
+        }
+    }
+
     // MARK: - Detection log wrappers (per spec §7 + reviewer #4 privacy syntax)
 
     /// `logger.error("hang.detected elapsed=Xs threshold=Ys detection_count=N")`.
@@ -213,5 +259,13 @@ enum HangDetector {
     private static func logHangMainStackFull(stack: [String]) {
         let body = stack.isEmpty ? "(empty)" : stack.joined(separator: "\n")
         logger.error("hang.main_stack_full\n\(body, privacy: .public)")
+    }
+
+    /// `logger.info("hang.recovered downtime=Xs")`.
+    /// Uses `firstDetectedAt` (not `lastDetectedAt`) so the downtime
+    /// reflects the true hang duration (first detection → recovery),
+    /// not just (last detection → recovery) which would understate it.
+    private static func logHangRecovered(downtime: TimeInterval) {
+        logger.info("\(formatHangRecovered(downtime: downtime), privacy: .public)")
     }
 }
