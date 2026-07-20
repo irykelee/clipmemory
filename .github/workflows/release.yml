@@ -43,30 +43,18 @@ jobs:
           echo "$CODESIGN_P12_BASE64" | base64 --decode > /tmp/codesign.p12
           security import /tmp/codesign.p12 -k ci-signing.keychain-db -P "$CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
           rm -f /tmp/codesign.p12
-          # H-3 fix (2026-07-20 audit): restrict the partition list to the
-          # imported code-signing identity instead of `apple:` wildcard.
-          # On `macos-latest` runners the bare `apple:` partition grants
-          # access to **any** Apple-signed binary (a wide attack surface);
-          # pinning it to our specific SHA-1 means only the imported cert
-          # can use the keychain items. Resolve the SHA via find-identity
-          # and append it after the bare apple-tool: prefix that's required
-          # for codesign/build to work.
-          #
-          # H-3 bug fix (v2.5.8 release): the previous name-based grep
-          # (`grep -i 'codesign\|clipmemory\|self-signed'`) failed on the
-          # macos-latest runner because BSD grep does NOT treat `\|` as
-          # alternation (that's GNU grep syntax) — the pipeline always
-          # returned 1, `set -euo pipefail` aborted before the partition
-          # list was set. Replaced with a direct SHA-1 fingerprint
-          # extract (40-char hex) via awk — name-agnostic. The `|| CERT_SHA=""`
-          # suffix keeps `set -e` from aborting when no identities match.
-          CERT_SHA=$(security find-identity -v ci-signing.keychain-db 2>&1 | awk 'match($0, /[A-F0-9]{40}/) {print substr($0, RSTART, RLENGTH); exit}') || CERT_SHA=""
-          if [ -z "$CERT_SHA" ]; then
-            echo "::warning::could not resolve cert SHA-1; falling back to broad apple: partition"
-            security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" ci-signing.keychain-db
-          else
-            security set-key-partition-list -S "apple-tool:,apple:$CERT_SHA" -k "$KEYCHAIN_PW" ci-signing.keychain-db
-          fi
+          # H-3 REVERTED (v2.5.8 release): the audit proposed narrowing
+          # the partition list from `apple:` wildcard to `apple:$CERT_SHA`
+          # so only the imported cert's binaries can use the keychain
+          # item. Two failed attempts (BSD-grep `\|` syntax error, then
+          # awk `-F'"'` extracting cert name instead of SHA, then awk
+          # `match()`+`substr()` extracting correct SHA but codesign
+          # STILL hung 9+ min on Sparkle.framework) showed this workflow
+          # is too fragile to change without dedicated runner testing.
+          # Reverted to the v2.5.7 working config (`apple-tool:,apple:`).
+          # The H-3 audit finding stays valid but ships as "deferred —
+          # needs workflow runner sandbox" in docs/RELEASE.md.
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" ci-signing.keychain-db
 
       - name: Build Release
         run: xcodebuild -scheme ClipMemory -configuration Release build
