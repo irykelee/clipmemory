@@ -268,4 +268,71 @@ enum HangDetector {
     private static func logHangRecovered(downtime: TimeInterval) {
         logger.info("\(formatHangRecovered(downtime: downtime), privacy: .public)")
     }
+
+    // MARK: - Lifecycle (spec §10.1 / §10.2)
+
+    /// Start all 3 timers. Re-entry guarded via `isStarted`. Idempotent:
+    /// a second `start()` while already started is a no-op.
+    ///
+    /// Order matters (per spec §4.1 LOW #17 — handler MUST be bound before resume):
+    /// `makeTimerSource` → `schedule` → `setEventHandler` → `resume`.
+    ///
+    /// Capture warning (per CRITICAL reviewer #7 in spec §4.1): the timer
+    /// closures MUST NOT capture `hb`/`st`/`ch` in a `[weak ...]` form —
+    /// when the closure runs in the timer's queue, the local var has
+    /// already gone out of scope (start() returned). Call the static
+    /// entry point directly instead.
+    static func start() {
+        guard !isStarted else { return }
+        state.withLock { $0 = .initial }
+        // NOTE: `isStarted = true` is set at the END of this function (after all 3 timer
+        // resume() calls), per gate 1b Ma — see the final line of `start()`.
+
+        let mainQueue = DispatchQueue.main
+        let utilityQueue = DispatchQueue.global(qos: .utility)
+
+        // Heartbeat: main, 1s — `recordHeartbeat()`
+        let hb = DispatchSource.makeTimerSource(queue: mainQueue)
+        hb.schedule(deadline: .now() + 1, repeating: 1, leeway: .milliseconds(100))
+        hb.setEventHandler {
+            HangDetector.recordHeartbeat()
+        }
+        hb.resume()
+        timers.heartbeat = hb
+
+        // Stack capture + recovery: main, 5s — `recordStackCaptureAndMaybeRecover()`
+        let st = DispatchSource.makeTimerSource(queue: mainQueue)
+        st.schedule(deadline: .now() + 5, repeating: 5, leeway: .milliseconds(500))
+        st.setEventHandler {
+            HangDetector.recordStackCaptureAndMaybeRecover()
+        }
+        st.resume()
+        timers.stack = st
+
+        // Checker: .utility, 30s — `checkStaleness(now:)` reading snapshot for stale detection
+        let ch = DispatchSource.makeTimerSource(queue: utilityQueue)
+        ch.schedule(deadline: .now() + 30, repeating: 30, leeway: .seconds(1))
+        ch.setEventHandler {
+            HangDetector.checkStaleness(now: Date())
+        }
+        ch.resume()
+        timers.checker = ch
+
+        // Per gate 1b Ma: set `isStarted = true` AFTER all 3 timer `resume()` calls (and
+        // their `timers.*` field assignments) so any exception / future-throwing API call
+        // in the timer-setup path leaves `start()` re-callable. `stop()` per spec §10.2
+        // deliberately does NOT clear `isStarted`, so a failure mid-setup before this line
+        // would otherwise make the watchdog permanently inert for the rest of the process.
+        isStarted = true
+    }
+
+    /// Cancel all 3 timers in reverse-start order. Idempotent: no-op if
+    /// `start()` wasn't called (the timer fields are nil). Does NOT reset
+    /// `state` and does NOT clear `isStarted` — process lifetime is one
+    /// start + one stop (terminate) per spec §10.2 "故意的不对称".
+    static func stop() {
+        timers.checker?.cancel();   timers.checker = nil
+        timers.stack?.cancel();     timers.stack = nil
+        timers.heartbeat?.cancel(); timers.heartbeat = nil
+    }
 }

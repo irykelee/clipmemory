@@ -34,10 +34,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         BackupService.shared.performBackupIfNeeded()
         // One-time OCR backfill for pre-existing image items.
         ClipboardStore.shared.backfillOCRIfNeeded()
+        // C: start HangDetector watchdog last so all prior setup completes
+        // before the main-thread heartbeat timer begins ticking.
+        HangDetector.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         ClipboardStore.shared.flushPendingSaves()
+        HangDetector.stop()
     }
 
     @objc func disableFindMenuShortcut() {
