@@ -1,4 +1,4 @@
-# ClipMemory v2.5.7
+# ClipMemory v2.5.8
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 Changelog
+
+### v2.5.8 (2026-07-20) — Stability audit + 23 fixes
+
+- **🛡 Backup export/import hardening** — Stuck `ditto` no longer blocks UI forever (30s timeout + SIGKILL escalation); HKDF salt now errors explicitly on CSPRNG failure instead of silently using zero-fill
+- **⚡ RTF parse moved off the clipboard poll queue** — Large rich-text pastes no longer stall the 0.5s poll; OCR/image recognition also background
+- **🛡 SwiftUI rendering warning fixed** — "Modifying state during view update" warnings on item-count changes eliminated, no more spurious extra renders
+- **🔧 In-memory storage thread-safe** — Tests and future multi-thread callers no longer crash or lose data from `MemoryStorageBackend` array mutation
+- **🏷 Tag color fallback fixed** — Invalid hex colors now fall back to accent color, visible in both light/dark mode
 
 ### v2.5.7 (2026-07-20) — HangDetector observability + key bug fixes
 
