@@ -15,6 +15,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupWindowManager()
         setupStatusItem()
         setupClipboardMonitor()
+        // A.2: log startup health snapshot BEFORE long-running ops (backup,
+        // OCR backfill, Sparkle) so it appears first in `log show` output
+        // and is the first thing we look at on the next bug.
+        let startupCounts = StartupHealth.Counts(
+            items: ClipboardStore.shared.items.count,
+            trashed: ClipboardStore.shared.trashedItems.count,
+            tags: ClipboardStore.shared.tags.count
+        )
+        StartupHealth.logSnapshot(counts: startupCounts)
         setupHotKey()
         setupLanguageObserver()
         NSApp.setActivationPolicy(.accessory)
