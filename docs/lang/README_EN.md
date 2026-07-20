@@ -48,6 +48,16 @@
 
 ## 📋 Changelog
 
+### v2.5.7 (2026-07-20) — HangDetector observability + key bug fixes
+
+- **🛰️ HangDetector observability module** — Background watchdog auto-detects main-thread hangs >60s and logs full call stack + recovery time. Helpful for post-mortem debugging.
+- **🛡️ Fix silent data loss when HMAC fails** — On rare Keychain-access errors, clipboard content was being dropped as duplicate. Now retained.
+- **🛡️ Fix QuickBar keyboard navigation crash** — When the selected item was deleted externally, ↑↓ no longer traps on OOB subscript.
+- **🧪 Fix test force-unwrap crash** — Replaced `XCTAssertNotNil + !` pattern with `guard let ... XCTFail(...) return`.
+- **🖼️ Fix image load concurrency race** — Serialized legacy image migration writes via dedicated DispatchQueue.
+- **🛡️ Fix excluded-app config TOCTOU** — Added atomic `updateExcludedBundleIds { ... }` API to ClipboardMonitor.
+- **🧹 Fix bulk-select toolbar stale state** — Main window toolbar now correctly dismisses after per-row delete.
+
 ### v2.5.6 (2026-07-19) — Keychain key storage + full-size preview + hardening
 
 - **🔐 Key moved to the Keychain** — the root encryption key migrated from a plaintext file to the macOS Keychain (this device only, never iCloud-synced); brew uninstall --zap removes it too
