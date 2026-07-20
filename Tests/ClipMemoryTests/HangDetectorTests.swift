@@ -87,4 +87,26 @@ final class HangDetectorTests: XCTestCase {
             XCTAssertFalse(result.contains(noise), "dispatch noise \(noise) should have been filtered; got:\n\(result)")
         }
     }
+
+    func testFormatStackTruncated_filtersDispatchNoise_realisticFrames() {
+        // Real `Thread.callStackSymbols` returns frames like
+        // "<idx> <module> <addr> <symbol> + <offset>", NOT bare symbol names.
+        // This test catches the whole-string-vs-substring bug the existing
+        // bare-symbol test missed.
+        let stack = [
+            "0   ClipMemory                0x000000010a3b4ef0 -[AppDelegate applicationDidFinishLaunching:] + 96",
+            "1   libdispatch.dylib         0x0000000100002ac3 _dispatch_main_queue_drain + 372",
+            "2   ClipMemory                0x000000010a3b5200 -[ContentView refreshDisplayedItemsCacheSoon] + 56",
+            "3   libdispatch.dylib         0x00000001000028d5 _dispatch_source_latch_and_call + 47",
+        ]
+        let result = HangDetector.formatStackTruncated(stack: stack)
+        // App frames must remain (their full-frame strings kept).
+        XCTAssertTrue(result.contains("AppDelegate"))
+        XCTAssertTrue(result.contains("ContentView"))
+        // Dispatch noise frames must be filtered (their substrings removed from result).
+        XCTAssertFalse(result.contains("_dispatch_main_queue_drain"), "must filter realistic main_queue_drain frame")
+        XCTAssertFalse(result.contains("_dispatch_source_latch_and_call"), "must filter realistic source_latch frame")
+        XCTAssertFalse(result.contains("_dispatch_root_queue_drain"), "must filter realistic root_queue_drain frame")
+        XCTAssertFalse(result.contains("__libdispatch_source_mgr_invoke"), "must filter realistic source_mgr_invoke frame")
+    }
 }
