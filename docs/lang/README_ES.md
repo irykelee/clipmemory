@@ -48,6 +48,16 @@
 
 ## 📋 Registro de cambios
 
+### v2.5.7 (2026-07-20) — HangDetector observabilidad + correcciones críticas
+
+- **🛰️ Módulo de observabilidad HangDetector** — El watchdog en segundo plano detecta automáticamente bloqueos del hilo principal >60s y registra la pila completa + tiempo de recuperación
+- **🛡️ Corrige pérdida silenciosa de datos cuando falla HMAC** — En errores raros de Keychain, el contenido se descartaba como duplicado
+- **🛡️ Corrige crash de navegación QuickBar** — Al pulsar ↑↓ con el elemento seleccionado borrado externamente ya no crashea
+- **🧪 Corrige crash de force-unwrap en tests** — Patrón `XCTAssertNotNil + !` reemplazado por `guard let ... XCTFail(...) return`
+- **🖼️ Corrige condición de carga de imágenes en paralelo** — Escrituras serializadas vía DispatchQueue
+- **🛡️ Corrige TOCTOU de config Excluded-app** — Añadida API atómica `updateExcludedBundleIds`
+- **🧹 Corrige estado residual de la barra de selección** — Se cierra correctamente tras eliminar fila
+
 ### v2.5.6 (2026-07-19) — Clave en el Llavero + vista a tamaño real + endurecimiento
 
 - **🔐 Clave migrada al Llavero** — la clave raíz de cifrado pasa de un archivo en texto plano al Llavero de macOS (solo este dispositivo, sin iCloud); brew uninstall --zap también la elimina

@@ -48,6 +48,16 @@
 
 ## 📋 更新日誌
 
+### v2.5.7 (2026-07-20) — HangDetector 觀測 + 關鍵 bugfix
+
+- **🛰️ HangDetector 觀測模組** — 後台 watchdog 自動偵測主執行緒卡死 >60s 並記錄完整堆疊 + 恢復時間，方便事後定位疑難 bug
+- **🛡️ 修復 HMAC 失敗時靜默丟資料** — Keychain 異常時複製內容不再被當重複項丟棄
+- **🛡️ 修復 QuickBar 鍵盤導航崩潰** — 選中項被外部刪除後按 ↑↓ 不再 OOB crash
+- **🧪 測試 force-unwrap crash 修復** — XCTAssertNotNil + `!` 模式改為 `guard let ... XCTFail(...) return`
+- **🖼️ 圖片載入並發競爭修復** — legacy 圖片遷移多執行緒並發，寫入序列化避免資料競爭
+- **🛡️ Excluded-app 配置 TOCTOU 修復** — 增原子 `updateExcludedBundleIds` API
+- **🧹 主視窗批量選擇工具列狀態殘留修復** — 單行刪除後工具列正確消失
+
 ### v2.5.6 (2026-07-19) — 密鑰入鑰匙圈 + 原圖預覽 + 啟動加固
 
 - **🔐 密鑰遷至鑰匙圈** — 加密根密鑰從明文檔案遷入 macOS 鑰匙圈（僅本機、不同步 iCloud），brew 解除安裝（zap）時一併清除
