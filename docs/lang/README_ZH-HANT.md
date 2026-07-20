@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.5.6
+# 剪憶 ClipMemory v2.5.7
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 

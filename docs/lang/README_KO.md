@@ -1,4 +1,4 @@
-# ClipMemory v2.5.6
+# ClipMemory v2.5.7
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
