@@ -168,9 +168,16 @@ final class StartupHealthTests: XCTestCase {
             imagesDirectory: tempImagesDir,
             defaults: defaults
         )
-        let stored = defaults.object(forKey: "lastLaunchTime") as? Date
-        XCTAssertNotNil(stored)
-        XCTAssertLessThan(abs(stored!.timeIntervalSinceNow), 5)
+        guard let stored = defaults.object(forKey: "lastLaunchTime") as? Date else {
+            // Replaced the prior XCTAssertNotNil + `stored!` force-unwrap pattern
+            // (per gate 1b Medium #3): a soft XCTAssertNotNil failure let control
+            // flow proceed, then `stored!` trapped with `Unexpectedly found nil
+            // while unwrapping` and SIGILL'd the test process. The guard above
+            // records a clean XCTest failure and returns instead.
+            XCTFail("logSnapshot should have stored lastLaunchTime under defaults")
+            return
+        }
+        XCTAssertLessThan(abs(stored.timeIntervalSinceNow), 5)
     }
 
     func testLogSnapshotDoesNotOverwriteBeforeReading() {
