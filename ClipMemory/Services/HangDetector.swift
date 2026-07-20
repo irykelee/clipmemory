@@ -91,7 +91,13 @@ enum HangDetector {
     /// `"(empty)"`. Semantically distinct inputs collapse to the same output —
     /// intentional (we don't have useful frames in either case).
     static func formatStackTruncated(stack: [String]) -> String {
-        let filtered = stack.filter { !noiseFilter.contains($0) }
+        // Substring match: real `Thread.callStackSymbols` returns frames like
+        // "0   libdispatch.dylib  0x... _dispatch_main_queue_drain + 16" with index +
+        // module + address + offset, so bare-symbol whole-string match never matches
+        // production frames. Per gate 1b post-review fix.
+        let filtered = stack.filter { frame in
+            !noiseFilter.contains { noise in frame.contains(noise) }
+        }
         if filtered.isEmpty {
             return "(empty)"
         }
