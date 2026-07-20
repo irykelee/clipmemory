@@ -56,4 +56,40 @@ enum UIObservability {
     static func formatRefreshTrigger(source: String) -> String {
         "refresh.trigger source=\(source)"
     }
+
+    // MARK: - Logger wrappers
+
+    /// High-frequency (per-keystroke). Use `.debug` so default `log show`
+    /// stays clean; enable with `log show --debug` / Console.app debug filter.
+    static func logSearchChange(length: Int) {
+        logger.debug("\(formatSearchChange(length: length), privacy: .public)")
+    }
+
+    /// Diagnostic-rare. Use `.info` so it shows up by default — this is the
+    /// one we want to see when "sidebar OK but main empty" happens.
+    static func logCacheRebuild(groups: Int, items: Int, durationMs: Double) {
+        logger.info("\(formatCacheRebuild(groups: groups, items: items, durationMs: durationMs), privacy: .public)")
+    }
+
+    static func logDateFilterChange(from: ContentView.DateFilter, to: ContentView.DateFilter) {
+        logger.info("\(formatDateFilterChange(from: from, to: to), privacy: .public)")
+    }
+
+    static func logTagSelectionChange(count: Int) {
+        logger.info("\(formatTagSelectionChange(count: count), privacy: .public)")
+    }
+
+    static func logCurrentDateRollover(from: Date, to: Date) {
+        logger.info("\(formatCurrentDateRollover(from: from, to: to), privacy: .public)")
+    }
+
+    static func logEmptyStateRender(name: String, itemCount: Int) {
+        logger.info("\(formatEmptyStateRender(name: name, itemCount: itemCount), privacy: .public)")
+    }
+
+    /// High-frequency (fires on every state change). Use `.debug` — too noisy
+    /// for `.info`; the rebuild itself (T4) gets the `.info`.
+    static func logRefreshTrigger(source: String) {
+        logger.debug("\(formatRefreshTrigger(source: source), privacy: .public)")
+    }
 }
