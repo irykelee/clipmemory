@@ -95,29 +95,29 @@ final class ConcurrencyTests: XCTestCase {
         let queue = DispatchQueue(label: "test.excludedBundleIds", attributes: .concurrent)
         let group = DispatchGroup()
 
-        // Concurrent adds
+        // Concurrent adds — use atomic compound API (per gate 1b Medium #5 fix)
         for bundleId in bundleIds {
             group.enter()
             queue.async {
-                var ids = monitor.excludedBundleIds
-                ids.insert(bundleId)
-                monitor.excludedBundleIds = ids
+                monitor.updateExcludedBundleIds { ids in
+                    ids.insert(bundleId)
+                }
                 group.leave()
             }
         }
 
-        // Concurrent removes
+        // Concurrent removes — use atomic compound API
         for bundleId in bundleIds {
             group.enter()
             queue.async {
-                var ids = monitor.excludedBundleIds
-                ids.remove(bundleId)
-                monitor.excludedBundleIds = ids
+                monitor.updateExcludedBundleIds { ids in
+                    ids.remove(bundleId)
+                }
                 group.leave()
             }
         }
 
-        // Concurrent reads
+        // Concurrent reads (atomic getter is still safe; kept for symmetry)
         for _ in 0..<100 {
             group.enter()
             queue.async {
@@ -128,9 +128,11 @@ final class ConcurrencyTests: XCTestCase {
 
         group.wait()
 
-        // Should not crash; Set operations should be thread-safe
+        // Should not crash; Set operations should be thread-safe.
+        // After 5 distinct inserts + 5 removes (all racing under atomic API),
+        // the set ends empty.
         let ids = monitor.excludedBundleIds
-        XCTAssertNotNil(ids)
+        XCTAssertTrue(ids.isEmpty, "expected empty set after each id was inserted and removed, got \(ids)")
     }
 
     func testExcludedBundleIdsContains() {
@@ -140,17 +142,18 @@ final class ConcurrencyTests: XCTestCase {
         // Initially should not contain
         XCTAssertFalse(monitor.excludedBundleIds.contains(testBundleId))
 
-        // Add it
-        var ids = monitor.excludedBundleIds
-        ids.insert(testBundleId)
-        monitor.excludedBundleIds = ids
+        // Add it via atomic compound API (per gate 1b Medium #5 fix)
+        monitor.updateExcludedBundleIds { ids in
+            ids.insert(testBundleId)
+        }
 
         // Should now contain
         XCTAssertTrue(monitor.excludedBundleIds.contains(testBundleId))
 
-        // Remove it
-        ids.remove(testBundleId)
-        monitor.excludedBundleIds = ids
+        // Remove it via atomic compound API
+        monitor.updateExcludedBundleIds { ids in
+            ids.remove(testBundleId)
+        }
 
         // Should no longer contain
         XCTAssertFalse(monitor.excludedBundleIds.contains(testBundleId))
@@ -163,14 +166,14 @@ final class ConcurrencyTests: XCTestCase {
 
         let bundleIds = ["com.test1", "com.test2", "com.test3"]
 
-        // Writers
+        // Writers — use atomic compound API (per gate 1b Medium #5 fix)
         for id in bundleIds {
             for _ in 0..<50 {
                 group.enter()
                 queue.async {
-                    var ids = monitor.excludedBundleIds
-                    ids.insert(id)
-                    monitor.excludedBundleIds = ids
+                    monitor.updateExcludedBundleIds { ids in
+                        ids.insert(id)
+                    }
                     group.leave()
                 }
             }
@@ -207,14 +210,14 @@ final class ConcurrencyTests: XCTestCase {
             }
         }
 
-        // excludedBundleIds modifier
+        // excludedBundleIds modifier — use atomic compound API (per gate 1b Medium #5 fix)
         let bundleIds = ["com.test1", "com.test2", "com.test3"]
         for id in bundleIds {
             group.enter()
             queue.async {
-                var ids = monitor.excludedBundleIds
-                ids.insert(id)
-                monitor.excludedBundleIds = ids
+                monitor.updateExcludedBundleIds { ids in
+                    ids.insert(id)
+                }
                 group.leave()
             }
         }
