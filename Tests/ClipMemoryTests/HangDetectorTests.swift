@@ -159,4 +159,33 @@ final class HangDetectorTests: XCTestCase {
         XCTAssertNotNil(s.firstDetectedAt)
         XCTAssertEqual(s.detectionCount, 1)
     }
+
+    // MARK: - §6.2 State tests continued (Task 3: cap-at-5 + firstDetectedAt-once)
+
+    func testCheckStaleness_staleHeartbeat_writesFirstDetectedAtOnlyOnce() {
+        // 3 consecutive stale checks with the same `now`: firstDetectedAt must stay
+        // pinned to the first call's timestamp (per spec §3 firstDetectedAt field doc).
+        let now = Date()
+        HangDetector._seedLastHeartbeatForTesting(now.addingTimeInterval(-70))
+        HangDetector.checkStaleness(now: now)
+        let first = HangDetector._snapshotStateForTesting().firstDetectedAt
+        HangDetector.checkStaleness(now: now)
+        HangDetector.checkStaleness(now: now)
+        let s = HangDetector._snapshotStateForTesting()
+        XCTAssertEqual(s.detectionCount, 3)
+        XCTAssertEqual(s.firstDetectedAt, first, "firstDetectedAt must remain pinned at the first detection time")
+    }
+
+    func testCheckStaleness_repeatedDetection_capsAt5() {
+        // 6 consecutive stale checks: cap should hold at exactly 5 (per spec §5
+        // LOW #15: "checker may log only when detectionCount < 5, regardless of
+        // elapsed time since last log").
+        let now = Date()
+        HangDetector._seedLastHeartbeatForTesting(now.addingTimeInterval(-70))
+        for _ in 0..<6 {
+            HangDetector.checkStaleness(now: now)
+        }
+        let s = HangDetector._snapshotStateForTesting()
+        XCTAssertEqual(s.detectionCount, 5, "cap must hold at exactly 5 even with 6 consecutive stale checks")
+    }
 }
