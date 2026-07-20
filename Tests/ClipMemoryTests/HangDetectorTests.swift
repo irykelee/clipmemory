@@ -109,4 +109,54 @@ final class HangDetectorTests: XCTestCase {
         XCTAssertFalse(result.contains("_dispatch_root_queue_drain"), "must filter realistic root_queue_drain frame")
         XCTAssertFalse(result.contains("__libdispatch_source_mgr_invoke"), "must filter realistic source_mgr_invoke frame")
     }
+
+    // MARK: - setUp (for §6.2 state tests)
+
+    override func setUp() {
+        super.setUp()
+        HangDetector._resetForTesting()
+    }
+
+    // MARK: - §6.2 State manipulation tests (4 of 8 in this task; remaining 4 land in Tasks 3 + 4)
+
+    func testRecordHeartbeat_updatesTimestamp() {
+        let before = Date()
+        HangDetector.recordHeartbeat()
+        let after = Date()
+        let s = HangDetector._snapshotStateForTesting()
+        // Allow ±0.1s slack for clock granularity (spec §6.2 LOW #14 tightening).
+        XCTAssertGreaterThanOrEqual(s.lastHeartbeat, before.addingTimeInterval(-0.1))
+        XCTAssertLessThanOrEqual(s.lastHeartbeat, after.addingTimeInterval(0.1))
+    }
+
+    func testCheckStaleness_recentHeartbeat_noStateChange() {
+        let now = Date()
+        HangDetector._seedLastHeartbeatForTesting(now.addingTimeInterval(-10))
+        HangDetector.checkStaleness(now: now)
+        let s = HangDetector._snapshotStateForTesting()
+        XCTAssertNil(s.lastDetectedAt)
+        XCTAssertNil(s.firstDetectedAt)
+        XCTAssertEqual(s.detectionCount, 0)
+    }
+
+    func testCheckStaleness_exactlyAtThreshold_writesDetection() {
+        // Per spec §6.2 + reviewer #2: `>=` (not `>`) means elapsed=60 must trigger.
+        let now = Date()
+        HangDetector._seedLastHeartbeatForTesting(now.addingTimeInterval(-60))
+        HangDetector.checkStaleness(now: now)
+        let s = HangDetector._snapshotStateForTesting()
+        XCTAssertNotNil(s.lastDetectedAt)
+        XCTAssertNotNil(s.firstDetectedAt)
+        XCTAssertEqual(s.detectionCount, 1)
+    }
+
+    func testCheckStaleness_staleHeartbeat_writesDetection() {
+        let now = Date()
+        HangDetector._seedLastHeartbeatForTesting(now.addingTimeInterval(-70))
+        HangDetector.checkStaleness(now: now)
+        let s = HangDetector._snapshotStateForTesting()
+        XCTAssertNotNil(s.lastDetectedAt)
+        XCTAssertNotNil(s.firstDetectedAt)
+        XCTAssertEqual(s.detectionCount, 1)
+    }
 }
