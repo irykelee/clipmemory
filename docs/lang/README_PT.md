@@ -1,4 +1,4 @@
-# ClipMemory v2.5.8
+# ClipMemory v2.5.9
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.5.9 (2026-07-21) — Detecção de travamentos + correções de auditoria completas
+
+- **🛡 Detecção de travamentos (HangDetector)** — Batimento cardíaco da thread principal + sonda de 30s; primeiro travamento após 60s sem resposta registra a stack e recupera automaticamente; evita congelamentos silenciosos da UI
+- **🛡 Upgrade PBKDF2 do pacote de backup** — PBKDF2-SHA256 de 600k rodadas substitui HKDF de rodada única; custo de força bruta offline ~10⁵× maior (conforme OWASP 2023); pacotes antigos compatíveis transparentemente
+- **⚡ Ponte de cache para cópia RTF** — Ramo RTF de `copyToClipboard` com cache < 1ms (antes 20-100ms de parsing síncrono bloqueando a thread principal); cache ponteia automaticamente entre lista e quickbar
+- **🛡 Estado de UI preservado** — Entrada na barra de pesquisa não deixa destaque de teclado obsoleto por bypass do `@State didSet` via Binding; emblemas de tags na barra lateral não ficam obsoletos ao adicionar/remover tags
+- **🛡 E/S da thread principal descarregada** — Caminhos image/RTF de `copyToClipboard` não bloqueiam mais a sondagem da área de transferência; exportação de backup com guarda de tamanho 50MB evita OOM
 
 ### v2.5.8 (2026-07-20) — Auditoria de estabilidade + 23 correções
 

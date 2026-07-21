@@ -1,4 +1,4 @@
-# ClipMemory v2.5.8
+# ClipMemory v2.5.9
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 Changelog
+
+### v2.5.9 (2026-07-21) — Hang detection + comprehensive audit fixes
+
+- **🛡 Hang detection (HangDetector)** — Main-thread heartbeat + 30s probe; first hang after 60s of no response records stack and auto-recovers; prevents silent UI freezes
+- **🛡 Backup PBKDF2 upgrade** — 600k-round PBKDF2-SHA256 replaces single-round HKDF; offline brute-force cost ~10⁵× higher (OWASP 2023 compliant); old packages transparently compatible
+- **⚡ RTF copy cache bridge** — `copyToClipboard` RTF branch hits cache in < 1ms (previously 20-100ms sync parse blocking main thread); cache auto-bridges across list/quickbar
+- **🛡 UI state preservation** — Search bar input no longer leaves stale keyboard highlight due to `@State didSet` bypassing via Binding; sidebar tag badges no longer stale on tag add/remove
+- **🛡 Main-thread I/O offload** — `copyToClipboard` image/RTF paths no longer block clipboard poll; backup export 50MB size guard prevents OOM
 
 ### v2.5.8 (2026-07-20) — Stability audit + 23 fixes
 
