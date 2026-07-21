@@ -53,6 +53,7 @@
 		7D06F010CEA290AA290A0335 /* ClipboardStoreTrashTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4E6D5E6E7DBF88457A6077 /* ClipboardStoreTrashTests.swift */; };
 		7F23EF5F15D0EE3F180A79E3 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AB1C7BD0454681ABF687DF9 /* main.swift */; };
 		81520509F9D37309F19E9B2B /* TagPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9CFDA4DE370490B4369B899 /* TagPickerSheet.swift */; };
+		82AADDBEE61C7A4905FE8D65 /* UpdateStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21CBEF1E7589EC16754CAF0 /* UpdateStatus.swift */; };
 		83892A798C8F07BCB2A87488 /* LanguageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B185E481A34967FB1CC7F192 /* LanguageManager.swift */; };
 		8927BF4F0FA925EDA72F4CAA /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98ADF74CF248C9E8B4EE7EA6 /* BackupService.swift */; };
 		8AE3D6EABA7C52180921E9EE /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576BC9BCA44C3479F2691F5B /* AppVersion.swift */; };
@@ -181,6 +182,7 @@
 		BDF83CE3799A1C6382C0CF3D /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		BE06FB3A83C605C9A635F08C /* ClipMemoryTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClipMemoryTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0E0F15D0596B4B0CD96170B /* StartupHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupHealth.swift; sourceTree = "<group>"; };
+		C21CBEF1E7589EC16754CAF0 /* UpdateStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateStatus.swift; sourceTree = "<group>"; };
 		C4DF9D5EC30A4297B53974BF /* DecryptionFailedLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptionFailedLoopTests.swift; sourceTree = "<group>"; };
 		C6D2821AF8DB1B3210BC7F41 /* ClipMemory.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClipMemory.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C72273B00BF3BBC48397B157 /* TagPickerLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagPickerLogic.swift; sourceTree = "<group>"; };
@@ -371,6 +373,7 @@
 				E9DA1199ECD933699D11DC9D /* UIObservability.swift */,
 				9F46F5F4CF6C919A81945264 /* UpdateFeedPolicy.swift */,
 				0D94B664336CED43230940FC /* UpdateService.swift */,
+				C21CBEF1E7589EC16754CAF0 /* UpdateStatus.swift */,
 				84072C9393127BAA49827196 /* WindowManager.swift */,
 			);
 			path = Services;
@@ -603,6 +606,7 @@
 				469A48A4E563533B46DA62DE /* UIObservability.swift in Sources */,
 				AE305D39BC8490F2FAD2E72A /* UpdateFeedPolicy.swift in Sources */,
 				62A7A0496DAB0F7CDD3542C7 /* UpdateService.swift in Sources */,
+				82AADDBEE61C7A4905FE8D65 /* UpdateStatus.swift in Sources */,
 				B5E8195E9EA0DB0AD0C8C23D /* WelcomeView.swift in Sources */,
 				680A6DBC49D7A6C7AADE7DBB /* WindowManager.swift in Sources */,
 				7F23EF5F15D0EE3F180A79E3 /* main.swift in Sources */,
