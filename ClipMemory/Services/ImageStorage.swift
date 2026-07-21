@@ -312,12 +312,15 @@ class ImageStorage {
             return try aesDecryptCBC(data: Data(ciphertext), key: key, iv: Data(iv))
         }
 
-        if combined.count > 16 {
-            let iv = combined.prefix(16)
-            let ciphertext = combined.dropFirst(16)
-            return try aesDecryptCBC(data: Data(ciphertext), key: key, iv: Data(iv))
-        }
-
+        // M-5 (2026-07-21 audit): align with CryptoService C4 strategy. The
+        // pre-1.2.0 branch (no HMAC, unauthenticated CBC) lets a local process
+        // that can write Images/ tamper ciphertext and observe a padding-oracle-
+        // style success / timing channel. CryptoService.decryptLegacy removed
+        // this path in C4 and refuses; ImageStorage's legacyDecryptImage
+        // previously kept it open to read very old archives. We close it: any
+        // combined buffer under 49 bytes (no HMAC) is treated as tampered /
+        // corrupt and surfaces as `.decryptionFailed` in the UI like the main
+        // path. Upgrade tools in the export path don't exercise this code.
         return nil
     }
 
