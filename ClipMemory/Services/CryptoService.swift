@@ -88,12 +88,23 @@ class CryptoService: CryptoServiceProtocol {
     /// Raw key bytes of the app key (needed to embed into export packages).
     /// H-2: routes through the in-memory cache when available, so the
     /// BackupPackage export path does not also hit the Keychain.
+    /// BUG-018 (2026-07-21): also writes back to cache on miss so
+    /// subsequent calls (e.g. multiple BackupPackage exports in one
+    /// session) don't re-query the Keychain each time.
     static func loadKeyData() -> Data? {
         if let cached = shared.cachedLoadedKey.withLock({ $0 }) {
             return cached.withUnsafeBytes { Data($0) }
         }
-        if !isRunningTests, let data = KeychainKeyStore().load(), data.count == 32 { return data }
-        return try? Data(contentsOf: keyFileURL)
+        let keyData: Data?
+        if !isRunningTests, let data = KeychainKeyStore().load(), data.count == 32 {
+            keyData = data
+        } else {
+            keyData = try? Data(contentsOf: keyFileURL)
+        }
+        if let keyData, keyData.count == 32 {
+            shared.cachedLoadedKey.withLock { $0 = SymmetricKey(data: keyData) }
+        }
+        return keyData
     }
 
     /// XCTest only: many fixtures are built against the key file's bytes, so
