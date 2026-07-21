@@ -1082,8 +1082,13 @@ class ClipboardStore: ObservableObject {
         var nonPinned = items.filter { !$0.isPinned }
         let allowedNonPinned = max(0, maxItems - pinned.count)
         nonPinned = Array(nonPinned.prefix(allowedNonPinned))
-        let trimmed = pinned + nonPinned
-        let trimmedIds = Set(trimmed.map { $0.id })
+        // BUG-014 (2026-07-21): `pinned + nonPinned` (previous) + L1100
+        // `items = trimmed` moved ALL pinned items to the front of the
+        // array, breaking the time-descending order — a pinned 8:00 item
+        // could appear before a non-pinned 9:00 item. Compute the
+        // surviving-id set and removeAll in place so original ordering is
+        // preserved.
+        let trimmedIds = Set((pinned + nonPinned).map { $0.id })
         let removedItems = items.filter { !trimmedIds.contains($0.id) }
         for item in removedItems {
             contentCache.removeObject(forKey: item.id.uuidString as NSString)
@@ -1093,7 +1098,7 @@ class ClipboardStore: ObservableObject {
         for item in removedImages {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
-        items = trimmed
+        items.removeAll { !trimmedIds.contains($0.id) }
         updatePinnedItems()
         scheduleSave()
     }
