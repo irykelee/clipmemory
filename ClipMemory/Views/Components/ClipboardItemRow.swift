@@ -401,6 +401,11 @@ struct ClipboardItemRow: View, Equatable {
         }
         let rt = AttributedString(nsAttr)
         let plain = nsAttr.string
+        // M-3 (2026-07-21 audit): bridge to store cache so copyToClipboard
+        // hits cache (< 1ms) instead of re-parsing NSAttributedString
+        // (20-100ms sync). Cache key matches getRTFPlaintext for symmetric
+        // hit/miss.
+        ClipboardStore.shared.cacheRTFPlaintext(item, plain)
         await MainActor.run {
             loadedRichText = rt
             loadedContent = plain
