@@ -1251,6 +1251,16 @@ class ClipboardStore: ObservableObject {
 
         guard (preparedImage != nil) || (preparedText != nil) || (preparedRtfData != nil) else { return }
 
+        // M-4 (2026-07-21 audit): recordOwnWrite() MUST run BEFORE clearContents().
+        // clearContents() increments pasteboard.changeCount immediately, but the
+        // old order set skipNextCapture=true only afterwards. A timer tick in the
+        // ~ms window between clear and recordOwnWrite saw changeCount bump with
+        // skipNextCapture still false, re-captured our own write, and persisted a
+        // duplicate item. Setting the flag first closes the window.
+        if let monitor = clipboardMonitor {
+            monitor.recordOwnWrite()
+        }
+
         pasteboard.clearContents()
 
         if let image = preparedImage {
@@ -1264,11 +1274,6 @@ class ClipboardStore: ObservableObject {
             pasteboard.setString(text, forType: .string)
         }
 
-        // Update changeCount immediately to prevent ClipboardMonitor from re-capturing
-        // what we just wrote. This breaks the copy → re-capture → duplicate loop.
-        if let monitor = clipboardMonitor {
-            monitor.recordOwnWrite()
-        }
         moveToTop(item)
     }
 
