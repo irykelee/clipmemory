@@ -105,8 +105,12 @@ class ClipboardStore: ObservableObject {
     private var groupCounts: GroupCounts {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
+        // BUG-016 (2026-07-21): misleading variable name. startOfDayBeforeYesterday
+        // was computed with value: -1 (= yesterday, not before yesterday). The
+        // variable is consumed by unpinOlder (L1164) which clearly intends
+        // "older than yesterday". Fix: value: -2 to match the name + intent.
         guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday),
-              let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else {
+              let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -2, to: startOfToday) else {
             return GroupCounts(today: 0, yesterday: 0, older: 0)
         }
         var today = 0, yesterday = 0, older = 0
