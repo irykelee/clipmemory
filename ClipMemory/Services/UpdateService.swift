@@ -207,7 +207,12 @@ final class UpdateService {
     @MainActor
     func setPolicy(_ policy: UpdateFeedPolicy) {
         Self.feedPolicy = policy
-        Task { await triggerProbe() }
+        // L-2: store the Task so `triggerProbe` can cancel the prior probe
+        // before starting a new one. Matches init's `currentProbeTask =`
+        // pattern (line 88). probeGeneration already prevents stale-result
+        // overwrites; this prevents Task resource accumulation under
+        // rapid policy switches.
+        currentProbeTask = Task { await triggerProbe() }
     }
 
     /// Run a probe, update feed URL + status. Called at startup and after
