@@ -62,8 +62,13 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.content = try container.decode(String.self, forKey: .content)
         self.type = try container.decode(ClipboardItemType.self, forKey: .type)
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
-        self.isPinned = try container.decode(Bool.self, forKey: .isPinned)
-        self.isSensitive = try container.decode(Bool.self, forKey: .isSensitive)
+        self.isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        // BUG-043 (2026-07-21): use decodeIfPresent ?? false for backward
+        // compat with persisted data missing these fields. decode(Bool)
+        // throws keyNotFound on absent key → wipe history on upgrade.
+        // All other newer fields (isEncrypted, tagIds, decryptionFailed,
+        // ocrAttempted) already use this pattern.
+        self.isSensitive = try container.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
         self.expiresAt = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
         self.isEncrypted = try container.decodeIfPresent(Bool.self, forKey: .isEncrypted) ?? false
         self.contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
