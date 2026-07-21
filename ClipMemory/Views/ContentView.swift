@@ -43,7 +43,7 @@ struct ContentView: View {
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
     @State private var selectedTab: SidebarTab = .all
-    @State private var searchText = "" { didSet { keyboardSelectedIndex = nil } }
+    @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
     @State private var searchTextDebounced = ""
     @State private var searchTextDebounce: DispatchWorkItem?
@@ -390,14 +390,16 @@ struct ContentView: View {
 
     var body: some View {
         withKeyAndSheets(splitViewWithLifecycle)
-            .onChange(of: store.items.count) { _ in
+            .onChange(of: store.items) { _ in
                 // Prune selectedItems to live IDs (defensive against any
                 // delete path that forgets to clean it — pre-fix stale-UUID
-                // bug left the bulk-select toolbar visible). `.onChange` of
-                // count uses Int for Equatable; count changes on add/remove.
+                // bug left the bulk-select toolbar visible).
                 // Audit-fix #1 (2026-07-20): defer @State writes to the next
                 // main-actor hop — synchronous writes here triggered
                 // SwiftUI "Modifying state during view update" warnings.
+                // BUG-005 (2026-07-21): watch `store.items` not `.count` —
+                // tag add/remove changes item content but not count, leaving
+                // sidebar tag badges stale until an item is added/removed.
                 let liveIDs = Set(store.items.map(\.id))
                 let pruned = selectedItems.intersection(liveIDs)
                 Task { @MainActor in
@@ -405,6 +407,13 @@ struct ContentView: View {
                     // I-9: refresh cached tab/tag counts (avoids recompute on every body).
                     refreshUsageCountCache()
                 }
+            }
+            // BUG-004 (2026-07-21): @State didSet bypassed by Binding writes
+            // (TextField sets State.wrappedValue directly, skipping the
+            // setter). Use .onChange to observe via the view layer; matches
+            // QuickBarView.swift:57-58 established pattern.
+            .onChange(of: searchText) { _ in
+                keyboardSelectedIndex = nil
             }
     }
 
