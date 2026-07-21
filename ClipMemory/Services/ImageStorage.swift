@@ -18,7 +18,11 @@ class ImageStorage {
         return cache
     }()
 
-    private lazy var imagesDirectory: URL = {
+    // BUG-026 (2026-07-21): Swift lazy is not thread-safe — concurrent first
+    // access can cause double initialization. Use `let` with immediate init.
+    // XCTest env check happens at class construction time; XCTest sets
+    // XCTestConfigurationFilePath before any test class instance is created.
+    private let imagesDirectory: URL = {
         let appSupport = AppDirectories.applicationSupport
         // Under XCTest, redirect to a sandboxed directory. Tests exercise
         // cleanupOrphanedImages/deleteAllExcept with narrow keep lists, and
@@ -29,8 +33,8 @@ class ImageStorage {
             ? "ClipMemory/Images-Tests"
             : "ClipMemory/Images"
         let dir = appSupport.appendingPathComponent(dirname, isDirectory: true)
-        if !fileManager.fileExists(atPath: dir.path) {
-            try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        if FileManager.default.fileExists(atPath: dir.path) == false {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         return dir
     }()
