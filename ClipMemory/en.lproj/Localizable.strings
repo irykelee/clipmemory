@@ -243,3 +243,10 @@
 "alert.update.fallback.message" = "Cannot reach the GitHub update server. Use the jsDelivr mirror (cdn.jsdelivr.net) to check for updates instead? Updates stay signed and verified the same way. Your choice is remembered.";
 "alert.update.fallback.use.mirror" = "Use Mirror";
 "alert.update.fallback.primary.only" = "GitHub Only";
+
+// Update Source Switch (Task 6)
+"settings.updateSource.title" = "Update Source";
+"settings.updateSource.option.automatic" = "Automatic";
+"settings.updateSource.option.primary" = "Primary (GitHub)";
+"settings.updateSource.option.fallback" = "Mirror (jsDelivr)";
+"settings.updateSource.statusPanel" = "Source: %1$@ · Last check: %2$@ · Last switch: %3$@";

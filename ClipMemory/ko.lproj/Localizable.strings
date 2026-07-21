@@ -245,3 +245,10 @@
 "alert.update.fallback.message" = "GitHub 업데이트 서버에 연결할 수 없습니다. 대신 jsDelivr 미러(cdn.jsdelivr.net)로 업데이트를 확인하시겠습니까? 업데이트는 동일한 서명 검증으로 보호됩니다. 선택이 저장됩니다.";
 "alert.update.fallback.use.mirror" = "미러 사용";
 "alert.update.fallback.primary.only" = "GitHub만 사용";
+
+// 업데이트 소스 전환 (Task 6)
+"settings.updateSource.title" = "업데이트 소스";
+"settings.updateSource.option.automatic" = "자동";
+"settings.updateSource.option.primary" = "기본 (GitHub)";
+"settings.updateSource.option.fallback" = "미러 (jsDelivr)";
+"settings.updateSource.statusPanel" = "소스: %1$@ · 마지막 확인: %2$@ · 마지막 전환: %3$@";
