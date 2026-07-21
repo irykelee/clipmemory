@@ -62,10 +62,18 @@ extension ClipboardStore {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             for item in candidates {
                 guard let data = imageStorage.loadImage(filename: item.content) else { continue }
-                self?.markOCRAttempted(itemId: item.id)
                 ocr.recognizeText(in: data) { [weak self] text in
-                    guard let text = text, !text.isEmpty else { return }
-                    self?.attachOCRText(to: item.id, text: text)
+                    // BUG-010 (2026-07-21): do NOT mark ocrAttempted before
+                    // OCR completes. If `attachOCRText`'s encrypt() failed
+                    // (e.g. CryptoService unavailable), ocrAttempted was
+                    // already true → item permanently lost OCR retry.
+                    // Now: only mark on no-result; successful attach sets
+                    // ocrAttempted=true internally (L22).
+                    if let text = text, !text.isEmpty {
+                        self?.attachOCRText(to: item.id, text: text)
+                    } else {
+                        self?.markOCRAttempted(itemId: item.id)
+                    }
                 }
             }
         }
