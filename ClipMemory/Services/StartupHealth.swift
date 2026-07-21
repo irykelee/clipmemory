@@ -67,7 +67,14 @@ enum StartupHealth {
         defaults: UserDefaults = .standard
     ) -> Snapshot {
         let dir = imagesDirectory ?? ImageStorage.shared.imagesDirectoryURL
-        let imgCount = (try? fileManager.contentsOfDirectory(atPath: dir.path).count) ?? 0
+        // BUG-038 (2026-07-21): contentsOfDirectory returns ALL files
+        // (.DS_Store, temp files, etc.). Filter by image extensions to
+        // report an accurate image count for the health snapshot.
+        let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "tiff", "tif", "gif", "webp", "heic"]
+        let imgCount = (try? fileManager
+            .contentsOfDirectory(atPath: dir.path)
+            .filter { imageExtensions.contains(($0 as NSString).pathExtension.lowercased()) }
+            .count) ?? 0
         return Snapshot(
             version: AppVersion.current,
             macosVersion: ProcessInfo.processInfo.operatingSystemVersionString,
