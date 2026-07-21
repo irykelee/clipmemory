@@ -66,7 +66,16 @@ final class UpdateService {
     private let probeEngine: FeedProbeEngine
     let status = UpdateStatus()
 
-    init(probeEngine: FeedProbeEngine = DefaultFeedProbeEngine()) {
+    /// Monotonic token for in-flight probes. Incrementing on every
+    /// `triggerProbe()` cancels the prior probe's write-back so a slower
+    /// earlier probe can't clobber a faster later one.
+    private var probeGeneration: Int = 0
+    private var currentProbeTask: Task<Void, Never>?
+
+    init(
+        probeEngine: FeedProbeEngine = DefaultFeedProbeEngine(),
+        autoStart: Bool = true
+    ) {
         Self.migrateFeedConsentIfNeeded()
         self.probeEngine = probeEngine
         // Start is deferred until the primary-feed probe finishes.
@@ -75,7 +84,9 @@ final class UpdateService {
             updaterDelegate: feedProvider,
             userDriverDelegate: gentleReminder
         )
-        Task { @MainActor in await startAfterFeedProbe() }
+        if autoStart {
+            currentProbeTask = Task { @MainActor in await startAfterFeedProbe() }
+        }
     }
 
     /// The user's recorded mirror-feed choice. nil = never asked (H1).
@@ -201,8 +212,14 @@ final class UpdateService {
 
     /// Run a probe, update feed URL + status. Called at startup and after
     /// `setPolicy`. Spec §3.1 / §3.2.
+    /// Concurrency: increments `probeGeneration` before any await; verifies
+    /// the captured token still matches after resume before writing back. This
+    /// prevents a slow earlier probe from overwriting a faster later one.
     @MainActor
     func triggerProbe() async {
+        probeGeneration += 1
+        let myGeneration = probeGeneration
+        currentProbeTask?.cancel()
         let channels = UpdateFeedPolicies.knownChannels
         let policy = Self.feedPolicy
         let lastKnown = Self.lastPrimaryItemDate
@@ -212,26 +229,31 @@ final class UpdateService {
             channels: channels,
             timeout: nil
         )
+        // Generation check: a newer `triggerProbe()` ran while we were
+        // awaiting — its decision wins, drop ours silently.
+        guard myGeneration == probeGeneration else { return }
         guard let decision else { return }
         feedProvider.resolvedFeedString = decision.chosenURL.absoluteString
         status.currentSource = decision.usedChannelID
         status.lastCheck = Date()
         status.lastSwitchReason = decision.reason.rawValue
         status.lastSwitchAt = Date()
-        // Per spec §3.1: only update lastPrimaryItemDate when primary actually fetched.
-        let primaryID = channels.first(where: { $0.kind == .primary })?.id
-        if decision.usedChannelID == primaryID, policy != .fallback {
-            if let xml = await fetch(url: decision.chosenURL),
-               let date = Self.latestItemDate(inAppcastXML: xml) {
-                Self.lastPrimaryItemDate = date
+        // Per spec §3.1: only update lastPrimaryItemDate when primary actually
+        // fetched (decision carries the body — no second URLSession call).
+        // Use `max(old, new)` so out-of-order responses can only ever raise
+        // the baseline, never roll it back.
+        if let observed = decision.primaryLatestDate {
+            let newBaseline: Date
+            if let existing = Self.lastPrimaryItemDate {
+                newBaseline = observed > existing ? observed : existing
+            } else {
+                newBaseline = observed
             }
+            Self.lastPrimaryItemDate = newBaseline
         }
-        do {
-            try updaterController.updater.resetUpdateCycleAfterShortDelay()
-        } catch {
-            NSLog("ClipMemory: feed switch deferred: \(error.localizedDescription)")
-            status.lastSwitchReason = "switchDeferred"
-        }
+        // resetUpdateCycleAfterShortDelay() does not throw on macOS in
+        // Sparkle 2.9.4 — only SPUUpdater.start() does. Fire-and-forget.
+        updaterController.updater.resetUpdateCycleAfterShortDelay()
     }
 
     /// Probe the primary feed; only with persisted (or freshly given) user
@@ -268,20 +290,6 @@ final class UpdateService {
             try updaterController.updater.start()
         } catch {
             NSLog("ClipMemory: Sparkle updater failed to start: \(error.localizedDescription)")
-        }
-    }
-
-    /// Cheap reachability fetch: the appcast is ~1 KB, so a plain GET with a
-    /// short timeout is enough — no need for HEAD/Range cleverness. Returns
-    /// the body on HTTP 200 so callers can inspect appcast dates.
-    private func fetch(url: URL) async -> String? {
-        do {
-            let request = URLRequest(url: url, timeoutInterval: 5)
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            return String(data: data, encoding: .utf8)
-        } catch {
-            return nil
         }
     }
 }
