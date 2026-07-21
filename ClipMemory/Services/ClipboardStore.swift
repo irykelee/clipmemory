@@ -928,6 +928,21 @@ class ClipboardStore: ObservableObject {
         return result
     }
 
+    /// M-3 (2026-07-21 audit): bridge entry-point for views that have already
+    /// parsed RTF (e.g. `ClipboardItemRow.loadRichText()` list row rendering,
+    /// `QuickBarView` RTF preview). Stores the plaintext in
+    /// `rtfPlaintextCache` so subsequent `copyToClipboard` calls hit the
+    /// cache instead of re-parsing `NSAttributedString(data: .rtf)` on
+    /// every copy. Cache hit < 1ms vs 20-100ms sync parse. (M-3 spec §3.)
+    func cacheRTFPlaintext(_ item: ClipboardItem, _ plaintext: String) {
+        guard item.type == .richText else { return }
+        rtfPlaintextCache.setObject(
+            plaintext as NSString,
+            forKey: item.id.uuidString as NSString,
+            cost: plaintext.utf8.count
+        )
+    }
+
     // MARK: - Recycle Bin (Trash)
 
     /// Load trashed items from the trash backend.
