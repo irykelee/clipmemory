@@ -5,6 +5,11 @@ import Foundation
 enum ProbeReason: String, Equatable {
     case automaticReachable       // .automatic + primary 200
     case automaticPrimaryDown     // .automatic + primary down + fallback fresh
+    // BUG-035 (2026-07-21): distinguished from automaticPrimaryDown which
+    // semantically implies fallback took over. bothDownKeepPrimary covers
+    // the "primary down AND fallback down" case where we keep the primary
+    // URL (no better choice).
+    case bothDownKeepPrimary     // .automatic + primary down + fallback also down
     case mirrorStaleRejected      // .automatic + primary down + fallback stale → keep primary
     case userForced               // .primary mode (regardless of network)
     case userForcedFallback       // .fallback mode (bypasses stale guard, user informed consent)
@@ -119,10 +124,13 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         }
         // Primary unreachable — try fallback.
         guard let fallbackXML = await fetchBody(url: fallback.url, timeout: timeout) else {
+            // BUG-035 (2026-07-21): both down — distinct reason so the UI
+            // can show "both feeds unreachable" instead of misleadingly
+            // suggesting fallback took over.
             return FeedProbeDecision(
                 chosenURL: primary.url,
                 usedChannelID: primary.id,
-                reason: .automaticPrimaryDown,
+                reason: .bothDownKeepPrimary,
                 primaryAppcastXML: nil,
                 primaryLatestDate: nil
             )
