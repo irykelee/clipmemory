@@ -128,9 +128,20 @@ final class BackupPackage {
                 }
             }
             guard derivationStatus == errSecSuccess else {
+                // NEW-2 (2026-07-21): zero the buffer before throw too — on
+                // failure the derived bytes are still sensitive.
+                derivedKey.resetBytes(in: 0..<32)
                 throw BackupPackageError.pbkdf2Failure
             }
-            return SymmetricKey(data: derivedKey)
+            // NEW-2 (2026-07-21): defense-in-depth. SymmetricKey copies the
+            // bytes — zero the source buffer AFTER the copy, not before.
+            // (Bug found in test: zeroing before SymmetricKey(data:) makes
+            // the key all zeros, which silently corrupts AES-GCM and
+            // breaks testImportWithWrongPasswordFailsAndWritesNothing.)
+            // Salt and passphrase are caller-owned; out of scope here.
+            let key = SymmetricKey(data: derivedKey)
+            derivedKey.resetBytes(in: 0..<32)
+            return key
         default:
             throw BackupPackageError.unsupportedKeyDerivationVersion(version)
         }
