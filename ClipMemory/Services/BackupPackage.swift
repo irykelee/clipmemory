@@ -226,11 +226,23 @@ final class BackupPackage {
         let packageImages = staging.appendingPathComponent("Images", isDirectory: true)
         if FileManager.default.fileExists(atPath: packageImages.path) {
             let files = (try? FileManager.default.contentsOfDirectory(atPath: packageImages.path)) ?? []
+            // M-2 (2026-07-21 audit): import path lacked a size guard while
+            // saveImage caps at 50 MB. A malicious or corrupted 500 MB entry
+            // would crash us with OOM during Data(contentsOf:). Cap matches
+            // ImageStorage.saveImage so import never exceeds what save would have
+            // produced.
+            let maxImageBytes = 50 * 1024 * 1024
             for file in files {
                 guard file.hasSuffix(".png") else { continue }
                 let target = imagesDirectory.appendingPathComponent(file)
                 guard !FileManager.default.fileExists(atPath: target.path) else { continue }
                 let fileURL = packageImages.appendingPathComponent(file)
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+                   let size = attrs[.size] as? Int,
+                   size > maxImageBytes {
+                    logger.warning("Skipping oversized image in backup: \(file) (\(size) bytes > \(maxImageBytes))")
+                    continue
+                }
                 guard let encrypted = try? Data(contentsOf: fileURL),
                       let plain = packageCrypto.decryptData(encrypted),
                       let reencrypted = localCrypto.encryptData(plain) else { continue }
