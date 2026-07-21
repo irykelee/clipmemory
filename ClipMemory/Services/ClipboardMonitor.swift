@@ -216,6 +216,17 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         timer?.setEventHandler { [weak self] in
             self?.checkClipboard()
         }
+
+        // H-1 (2026-07-21 audit fix): Pre-heat lazy regex compilation on the
+        // main thread BEFORE the timer resumes. Swift's `lazy var` is not
+        // thread-safe; without this, the first clipboard event from the
+        // timer queue (`com.clipmemory.clipboardmonitor`) racing with a
+        // background `processRichText` call on
+        // `DispatchQueue.global(qos: .userInitiated)` could trigger
+        // undefined behavior (crash / double-init) on first capture that
+        // happens to be rich-text.
+        _ = sensitiveValueRegexes
+        _ = compiledSensitivePatterns
         timer?.resume()
     }
 
