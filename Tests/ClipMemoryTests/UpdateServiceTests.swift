@@ -152,4 +152,143 @@ final class UpdateServiceTests: XCTestCase {
             XCTAssertEqual(UpdateService.feedPolicy, policy, "round-trip failed for \(policy)")
         }
     }
+
+    // MARK: - Feed probe (spec §5 tests 5-9)
+
+    private let primaryChannel = FeedChannel(
+        id: "primary", url: URL(string: "https://example.com/primary.xml")!,
+        kind: .primary, labelKey: "x"
+    )
+    private let fallbackChannel = FeedChannel(
+        id: "fallback", url: URL(string: "https://example.com/fallback.xml")!,
+        kind: .fallback, labelKey: "x"
+    )
+
+    override func setUp() {
+        super.setUp()
+        MockURLProtocol.stubResponses = [:]
+        MockURLProtocol.stubError = nil
+    }
+
+    func testProbeAutomaticSelectsPrimaryWhenReachable() async {
+        MockURLProtocol.stubResponses[primaryChannel.url] = (200, "<rss><channel></channel></rss>", nil)
+        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
+        let decision = await engine.resolve(
+            policy: .automatic, lastKnownDate: nil,
+            channels: [primaryChannel, fallbackChannel]
+        )
+        XCTAssertEqual(decision?.chosenURL, primaryChannel.url)
+        XCTAssertEqual(decision?.reason, .automaticReachable)
+    }
+
+    func testProbeAutomaticSelectsFallbackWhenPrimaryTimesOut() async {
+        // Primary fails (status 0 = badServerResponse); fallback succeeds.
+        // (Brief step 3.2 originally used `stubError = URLError(.timedOut)`
+        // globally, which fails BOTH URLs and contradicts the test's clear
+        // intent of "primary times out, fallback reached".)
+        MockURLProtocol.stubResponses = [
+            primaryChannel.url: (0, "", nil),
+            fallbackChannel.url: (200, "<rss><channel></channel></rss>", nil)
+        ]
+        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
+        let decision = await engine.resolve(
+            policy: .automatic, lastKnownDate: nil,
+            channels: [primaryChannel, fallbackChannel]
+        )
+        XCTAssertEqual(decision?.chosenURL, fallbackChannel.url)
+        XCTAssertEqual(decision?.reason, .automaticPrimaryDown)
+    }
+
+    func testProbeAutomaticRejectsStaleFallback() async {
+        // Primary fails (status 0 = badServerResponse), fallback succeeds with stale pubDate
+        MockURLProtocol.stubResponses = [
+            primaryChannel.url: (0, "", nil),
+            fallbackChannel.url: (200, sampleAppcast, nil) // sampleAppcast pubDate ~2020
+        ]
+        MockURLProtocol.stubError = nil
+        let lastKnown = Date(timeIntervalSince1970: 1_900_000_000) // 2030, after sampleAppcast
+        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
+        let decision = await engine.resolve(
+            policy: .automatic, lastKnownDate: lastKnown,
+            channels: [primaryChannel, fallbackChannel]
+        )
+        XCTAssertEqual(decision?.chosenURL, primaryChannel.url,
+                       "stale fallback must be rejected; keep primary even when unreachable")
+        XCTAssertEqual(decision?.reason, .mirrorStaleRejected)
+    }
+
+    func testProbeManualPrimaryForcesPrimaryRegardlessOfNetwork() async {
+        MockURLProtocol.stubError = URLError(.notConnectedToInternet)
+        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
+        let decision = await engine.resolve(
+            policy: .primary, lastKnownDate: nil,
+            channels: [primaryChannel, fallbackChannel]
+        )
+        XCTAssertEqual(decision?.chosenURL, primaryChannel.url,
+                       "user-forced primary must NOT silently downgrade to fallback")
+        XCTAssertEqual(decision?.reason, .userForced)
+    }
+
+    func testProbeManualFallbackBypassesStaleGuard() async {
+        let lastKnown = Date(timeIntervalSince1970: 1_900_000_000) // 2030
+        MockURLProtocol.stubResponses = [
+            primaryChannel.url: (0, "", nil), // unreachable
+            fallbackChannel.url: (200, sampleAppcast, nil) // stale
+        ]
+        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
+        let decision = await engine.resolve(
+            policy: .fallback, lastKnownDate: lastKnown,
+            channels: [primaryChannel, fallbackChannel]
+        )
+        XCTAssertEqual(decision?.chosenURL, fallbackChannel.url,
+                       "user-forced fallback bypasses stale guard (informed consent)")
+        XCTAssertEqual(decision?.reason, .userForcedFallback)
+    }
+}
+
+// MARK: - MockURLProtocol test helper (file scope, outside UpdateServiceTests class)
+
+/// Test stub: feeds canned responses based on URL → (status, body) map.
+/// Tests register an instance via `URLSessionConfiguration.protocolClasses`.
+final class MockURLProtocol: URLProtocol {
+    static var stubResponses: [URL: (status: Int, body: String, delay: TimeInterval?)] = [:]
+    static var stubError: Error?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        stubError != nil || stubResponses.keys.contains(request.url!)
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        if let error = MockURLProtocol.stubError {
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
+        guard let url = request.url, let stub = MockURLProtocol.stubResponses[url] else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        if let delay = stub.delay {
+            Thread.sleep(forTimeInterval: delay)
+        }
+        if stub.status < 100 {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        let response = HTTPURLResponse(url: url, statusCode: stub.status, httpVersion: "HTTP/1.1", headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: stub.body.data(using: .utf8) ?? Data())
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+enum MockURLSessionFactory {
+    static func make() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        return URLSession(configuration: config)
+    }
 }
