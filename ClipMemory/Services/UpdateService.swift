@@ -58,19 +58,35 @@ final class UpdateService {
 
     private static let fallbackConsentKey = "UpdateFallbackFeedConsent"
     private static let lastPrimaryItemDateKey = "LastPrimaryAppcastItemDate"
+    private static let feedPolicyKey = "UpdateFeedPolicy"
 
     private let feedProvider = FeedURLProvider()
     private let gentleReminder = GentleUpdateReminder()
     private let updaterController: SPUStandardUpdaterController
+    private let probeEngine: FeedProbeEngine
+    let status = UpdateStatus()
 
-    private init() {
+    /// Monotonic token for in-flight probes. Incrementing on every
+    /// `triggerProbe()` cancels the prior probe's write-back so a slower
+    /// earlier probe can't clobber a faster later one.
+    private var probeGeneration: Int = 0
+    private var currentProbeTask: Task<Void, Never>?
+
+    init(
+        probeEngine: FeedProbeEngine = DefaultFeedProbeEngine(),
+        autoStart: Bool = true
+    ) {
+        Self.migrateFeedConsentIfNeeded()
+        self.probeEngine = probeEngine
         // Start is deferred until the primary-feed probe finishes.
         updaterController = SPUStandardUpdaterController(
             startingUpdater: false,
             updaterDelegate: feedProvider,
             userDriverDelegate: gentleReminder
         )
-        Task { @MainActor in await startAfterFeedProbe() }
+        if autoStart {
+            currentProbeTask = Task { @MainActor in await startAfterFeedProbe() }
+        }
     }
 
     /// The user's recorded mirror-feed choice. nil = never asked (H1).
@@ -82,6 +98,33 @@ final class UpdateService {
             } else {
                 UserDefaults.standard.removeObject(forKey: fallbackConsentKey)
             }
+        }
+    }
+
+    /// The user's current update-source policy. Single source of truth.
+    static var feedPolicy: UpdateFeedPolicy {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: feedPolicyKey),
+                  let policy = UpdateFeedPolicy(rawValue: raw) else {
+                return .automatic
+            }
+            return policy
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: feedPolicyKey)
+        }
+    }
+
+    /// One-shot migration from legacy `UpdateFallbackFeedConsent` Bool to
+    /// `UpdateFeedPolicy` enum. Idempotent — safe to call from init() every launch.
+    /// Spec §3.1 migration block.
+    static func migrateFeedConsentIfNeeded() {
+        guard UserDefaults.standard.object(forKey: feedPolicyKey) == nil else { return }
+        if let legacy = fallbackFeedConsent {
+            feedPolicy = legacy ? .automatic : .primary
+            UserDefaults.standard.removeObject(forKey: fallbackConsentKey)
+        } else {
+            feedPolicy = .automatic
         }
     }
 
@@ -160,46 +203,69 @@ final class UpdateService {
 
     // MARK: - Feed probe & deferred start
 
+    /// Persist a new policy and re-resolve the active feed URL.
+    @MainActor
+    func setPolicy(_ policy: UpdateFeedPolicy) {
+        Self.feedPolicy = policy
+        Task { await triggerProbe() }
+    }
+
+    /// Run a probe, update feed URL + status. Called at startup and after
+    /// `setPolicy`. Spec §3.1 / §3.2.
+    /// Concurrency: increments `probeGeneration` before any await; verifies
+    /// the captured token still matches after resume before writing back. This
+    /// prevents a slow earlier probe from overwriting a faster later one.
+    @MainActor
+    func triggerProbe() async {
+        probeGeneration += 1
+        let myGeneration = probeGeneration
+        currentProbeTask?.cancel()
+        let channels = UpdateFeedPolicies.knownChannels
+        let policy = Self.feedPolicy
+        let lastKnown = Self.lastPrimaryItemDate
+        let decision = await probeEngine.resolve(
+            policy: policy,
+            lastKnownDate: lastKnown,
+            channels: channels,
+            timeout: nil
+        )
+        // Generation check: a newer `triggerProbe()` ran while we were
+        // awaiting — its decision wins, drop ours silently.
+        guard myGeneration == probeGeneration else { return }
+        guard let decision else { return }
+        feedProvider.resolvedFeedString = decision.chosenURL.absoluteString
+        status.currentSource = decision.usedChannelID
+        status.lastCheck = Date()
+        status.lastSwitchReason = decision.reason.rawValue
+        status.lastSwitchAt = Date()
+        // Per spec §3.1: only update lastPrimaryItemDate when primary actually
+        // fetched (decision carries the body — no second URLSession call).
+        // Use `max(old, new)` so out-of-order responses can only ever raise
+        // the baseline, never roll it back.
+        if let observed = decision.primaryLatestDate {
+            let newBaseline: Date
+            if let existing = Self.lastPrimaryItemDate {
+                newBaseline = observed > existing ? observed : existing
+            } else {
+                newBaseline = observed
+            }
+            Self.lastPrimaryItemDate = newBaseline
+        }
+        // resetUpdateCycleAfterShortDelay() does not throw on macOS in
+        // Sparkle 2.9.4 — only SPUUpdater.start() does. Fire-and-forget.
+        updaterController.updater.resetUpdateCycleAfterShortDelay()
+    }
+
     /// Probe the primary feed; only with persisted (or freshly given) user
     /// consent fall back to the jsDelivr mirror, then start the updater.
     /// The network fetches run off the main thread; Sparkle calls stay on main.
     @MainActor
     private func startAfterFeedProbe() async {
-        guard let primaryString = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
-              let primary = URL(string: primaryString) else {
+        guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") is String else {
             startUpdater()
             return
         }
-        if let primaryXML = await fetch(url: primary) {
-            if let date = Self.latestItemDate(inAppcastXML: primaryXML) {
-                Self.lastPrimaryItemDate = date
-            }
-            startUpdater()
-            return
-        }
-        // Primary unreachable. H1: no silent fallback — ask once, persist.
-        let consent: FeedConsent
-        if let stored = Self.fallbackFeedConsent {
-            consent = stored ? .granted : .denied
-        } else {
-            consent = askFallbackConsent() ? .granted : .denied
-            Self.fallbackFeedConsent = consent == .granted
-        }
-        var mirrorStale = false
-        if consent == .granted, let fallbackXML = await fetch(url: Self.fallbackFeedURL),
-           Self.fallbackIsStale(fallbackXML: fallbackXML, lastPrimaryItemDate: Self.lastPrimaryItemDate) {
-            NSLog("ClipMemory: mirror update feed is older than the primary's last appcast; ignoring it")
-            mirrorStale = true
-        }
-        let resolved = Self.resolvedFeed(
-            primary: primary,
-            primaryReachable: false,
-            consent: consent,
-            mirrorStale: mirrorStale
-        )
-        if resolved != primary {
-            feedProvider.resolvedFeedString = resolved.absoluteString
-        }
+        await triggerProbe()
         startUpdater()
     }
 
@@ -224,20 +290,6 @@ final class UpdateService {
             try updaterController.updater.start()
         } catch {
             NSLog("ClipMemory: Sparkle updater failed to start: \(error.localizedDescription)")
-        }
-    }
-
-    /// Cheap reachability fetch: the appcast is ~1 KB, so a plain GET with a
-    /// short timeout is enough — no need for HEAD/Range cleverness. Returns
-    /// the body on HTTP 200 so callers can inspect appcast dates.
-    private func fetch(url: URL) async -> String? {
-        do {
-            let request = URLRequest(url: url, timeoutInterval: 5)
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            return String(data: data, encoding: .utf8)
-        } catch {
-            return nil
         }
     }
 }

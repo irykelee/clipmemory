@@ -103,37 +103,22 @@ class ImageStorage {
                 continue
             }
 
+            var success = false
             // Check if already encrypted (v2 format starts with "v2", legacy format has specific structure)
             // Unencrypted PNG starts with signature 89 50 4E 47
             let isUnencryptedPNG = imageData.count >= 4 &&
                 imageData[0] == 0x89 && imageData[1] == 0x50 &&
                 imageData[2] == 0x4E && imageData[3] == 0x47
-
-            var success = false
             if isUnencryptedPNG {
                 logger.info("Migrating unencrypted image: \(filename)")
-                // Encrypt and save to new location
-                if let encryptedData = ServiceContainer.crypto.encryptData(imageData) {
-                    let newPath = imagesDirectory.appendingPathComponent(filename)
-                    do {
-                        try encryptedData.write(to: newPath, options: .atomic)
-                        try fileManager.removeItem(at: legacyPath)
-                        success = true
-                        logger.info("Successfully migrated: \(filename)")
-                    } catch {
-                        logger.error("Failed to write migrated image: \(error.localizedDescription)")
-                    }
-                }
+                success = migrateUnencryptedPNG(
+                    filename: filename, imageData: imageData, legacyPath: legacyPath
+                )
             } else {
                 // Already encrypted (or legacy format), just copy to new location
-                let newPath = imagesDirectory.appendingPathComponent(filename)
-                do {
-                    try imageData.write(to: newPath, options: .atomic)
-                    try fileManager.removeItem(at: legacyPath)
-                    success = true
-                } catch {
-                    logger.error("Failed to copy image: \(error.localizedDescription)")
-                }
+                success = copyLegacyImage(
+                    filename: filename, imageData: imageData, legacyPath: legacyPath
+                )
             }
 
             if success {
@@ -164,6 +149,40 @@ class ImageStorage {
         }
 
         logger.info("Image migration complete: \(migratedFilenames.count) files migrated, hadFailure=\(hadFailure)")
+    }
+
+    /// Encrypt and write one unencrypted legacy PNG. Returns true on success.
+    /// Original logic preserved verbatim (encrypt failure → no logger, silent skip).
+    private func migrateUnencryptedPNG(
+        filename: String, imageData: Data, legacyPath: URL
+    ) -> Bool {
+        // Encrypt and save to new location
+        guard let encryptedData = ServiceContainer.crypto.encryptData(imageData) else { return false }
+        let newPath = imagesDirectory.appendingPathComponent(filename)
+        do {
+            try encryptedData.write(to: newPath, options: .atomic)
+            try fileManager.removeItem(at: legacyPath)
+            logger.info("Successfully migrated: \(filename)")
+            return true
+        } catch {
+            logger.error("Failed to write migrated image: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Copy an already-encrypted legacy file as-is to the new location.
+    private func copyLegacyImage(
+        filename: String, imageData: Data, legacyPath: URL
+    ) -> Bool {
+        let newPath = imagesDirectory.appendingPathComponent(filename)
+        do {
+            try imageData.write(to: newPath, options: .atomic)
+            try fileManager.removeItem(at: legacyPath)
+            return true
+        } catch {
+            logger.error("Failed to copy image: \(error.localizedDescription)")
+            return false
+        }
     }
 
     /// Validates that a filename is safe: must be a UUID string + ".png" extension.

@@ -245,3 +245,10 @@
 "alert.update.fallback.message" = "GitHub の更新サーバーに接続できません。代わりに jsDelivr ミラー（cdn.jsdelivr.net）で更新を確認しますか？更新は同じ署名検証で保護されます。選択は記憶されます。";
 "alert.update.fallback.use.mirror" = "ミラーを使用";
 "alert.update.fallback.primary.only" = "GitHub のみ";
+
+// アップデート ソース切替 (Task 6)
+"settings.updateSource.title" = "アップデート ソース";
+"settings.updateSource.option.automatic" = "自動";
+"settings.updateSource.option.primary" = "プライマリ（GitHub）";
+"settings.updateSource.option.fallback" = "ミラー（jsDelivr）";
+"settings.updateSource.statusPanel" = "ソース: %1$@ · 最終確認: %2$@ · 切替: %3$@";
