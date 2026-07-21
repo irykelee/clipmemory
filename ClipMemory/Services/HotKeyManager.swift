@@ -145,6 +145,11 @@ class HotKeyManager {
         let hotKeyID = EventHotKeyID(signature: OSType(0x434C5050), id: 1)
         let hotKeyStatus = RegisterEventHotKey(config.keyCode, config.modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
         if hotKeyStatus != noErr {
+            // BUG-012 (2026-07-21): if InstallEventHandler succeeded but
+            // RegisterEventHotKey failed, the handler is installed but
+            // never fires — leaks for process lifetime. Remove it.
+            RemoveEventHandler(eventHandler)
+            eventHandler = nil
             if hotKeyStatus == eventHotKeyExistsErr {
                 logger.error("Hotkey \(self.config.displayString) is already registered by another app or ClipMemory instance — global hotkey inactive")
             } else {
