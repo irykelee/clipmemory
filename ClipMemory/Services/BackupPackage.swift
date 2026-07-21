@@ -476,9 +476,17 @@ final class BackupPackage {
         // user passphrase. We also `throw` the new `secureRandomUnavailable`
         // case already declared in `BackupPackageError` (the C1 Keychain
         // path already raises that on the same condition).
+        // BUG-025 (2026-07-21): `$0.baseAddress!` would trap if the caller
+        // passes `count == 0` (Data(capacity: 0) reports baseAddress == nil).
+        // All current call sites pass 16 or 32, but the public-ish signature
+        // doesn't enforce that. Guard the unwrap and throw the same
+        // secureRandomUnavailable error rather than crashing.
         var data = Data(count: count)
-        let status = data.withUnsafeMutableBytes {
-            SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!)
+        let status = data.withUnsafeMutableBytes { rawBuffer -> Int32 in
+            guard let base = rawBuffer.baseAddress else {
+                return errSecAllocate
+            }
+            return SecRandomCopyBytes(kSecRandomDefault, count, base)
         }
         guard status == errSecSuccess else {
             throw BackupPackageError.secureRandomUnavailable

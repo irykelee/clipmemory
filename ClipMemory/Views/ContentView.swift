@@ -1008,7 +1008,14 @@ struct ContentView: View {
             Section {
                 Text(L10n.aboutVersion(AppVersion.current)).foregroundColor(.secondary)
                 Text(L10n.aboutFreeEdition).foregroundColor(.secondary)
-                Button(L10n.sendFeedback) { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }.buttonStyle(.link)
+                Button(L10n.sendFeedback) {
+                    // NEW-4 (2026-07-21): the literal URL is safe to force-unwrap,
+                    // but `if let` keeps the codebase free of `!` and signals
+                    // intent to future readers.
+                    if let url = URL(string: "https://github.com/irykelee/clipmemory/issues/new") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }.buttonStyle(.link)
                 Button(L10n.viewWelcomeGuide) { (NSApp.delegate as? AppDelegate)?.showWelcomeView() }.buttonStyle(.link)
                 Button(L10n.tipsTitle) { showingTips = true }.buttonStyle(.link)
             } header: { Text(L10n.settingsSectionAbout) }
