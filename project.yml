@@ -98,6 +98,12 @@ schemes:
       gatherCoverageData: true
       targets:
         - ClipMemoryTests
+      environmentVariables:
+        # Default OFF (empty) — assert mode. Recording requires overriding
+        # via xcodebuild -resultBundlePath-style or by editing the scheme
+        # in Xcode UI. The simpler in-code override is to write a new
+        # golden manually via NSImage + PNG export; see SnapshotTestHelpers.
+        SNAPSHOT_RECORD: ""
     profile:
       config: Release
     analyze:
