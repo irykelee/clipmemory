@@ -223,27 +223,43 @@ final class BackupPackage {
         result.tagsImported = onMain { store.importBackupTags(localizedTags) }
 
         // Images: decrypt with package key, re-encrypt with local key.
-        let packageImages = staging.appendingPathComponent("Images", isDirectory: true)
-        if FileManager.default.fileExists(atPath: packageImages.path) {
-            let files = (try? FileManager.default.contentsOfDirectory(atPath: packageImages.path)) ?? []
-            for file in files {
-                guard file.hasSuffix(".png") else { continue }
-                let target = imagesDirectory.appendingPathComponent(file)
-                guard !FileManager.default.fileExists(atPath: target.path) else { continue }
-                let fileURL = packageImages.appendingPathComponent(file)
-                guard let encrypted = try? Data(contentsOf: fileURL),
-                      let plain = packageCrypto.decryptData(encrypted),
-                      let reencrypted = localCrypto.encryptData(plain) else { continue }
-                try? reencrypted.write(to: target, options: .atomic)
-                result.imagesImported += 1
-            }
-        }
+        result.imagesImported = importImages(
+            staging: staging,
+            imagesDirectory: imagesDirectory,
+            packageCrypto: packageCrypto,
+            localCrypto: localCrypto
+        )
 
-        logger.info("Imported backup: \(result.itemsImported) items, \(result.tagsImported) tags, \(result.imagesImported) images (\(result.itemsSkipped) duplicates skipped)")
+        logger.info("Imported backup: \(result.itemsImported) items, \(result.tagsImported) tags")
         return result
     }
 
     // MARK: - Private helpers
+
+    /// Decrypt each PNG in `staging/Images` with the package key and re-encrypt with
+    /// the local key. Skips files already present locally. Returns count imported.
+    private static func importImages(
+        staging: URL,
+        imagesDirectory: URL,
+        packageCrypto: CryptoServiceProtocol,
+        localCrypto: CryptoServiceProtocol
+    ) -> Int {
+        let packageImages = staging.appendingPathComponent("Images", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: packageImages.path) else { return 0 }
+        var count = 0
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: packageImages.path)) ?? []
+        for file in files where file.hasSuffix(".png") {
+            let target = imagesDirectory.appendingPathComponent(file)
+            guard !FileManager.default.fileExists(atPath: target.path) else { continue }
+            let fileURL = packageImages.appendingPathComponent(file)
+            guard let encrypted = try? Data(contentsOf: fileURL),
+                  let plain = packageCrypto.decryptData(encrypted),
+                  let reencrypted = localCrypto.encryptData(plain) else { continue }
+            try? reencrypted.write(to: target, options: .atomic)
+            count += 1
+        }
+        return count
+    }
 
     private static func decodeItems(from directory: URL, name: String) -> [ClipboardItem] {
         guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
@@ -265,7 +281,11 @@ final class BackupPackage {
     /// local key. Image items reference filenames (unencrypted) and are
     /// re-keyed at the file level instead. Returns nil when content can't be
     /// decrypted (corrupt entry) or the item is already expired.
-    private static func reencrypt(item: ClipboardItem, from packageCrypto: CryptoServiceProtocol, to localCrypto: CryptoServiceProtocol) -> ClipboardItem? {
+    private static func reencrypt(
+        item: ClipboardItem,
+        from packageCrypto: CryptoServiceProtocol,
+        to localCrypto: CryptoServiceProtocol
+    ) -> ClipboardItem? {
         if item.isExpired { return nil }
         guard item.type != .image else { return item }
 
