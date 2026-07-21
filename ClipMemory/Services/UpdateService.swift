@@ -58,12 +58,14 @@ final class UpdateService {
 
     private static let fallbackConsentKey = "UpdateFallbackFeedConsent"
     private static let lastPrimaryItemDateKey = "LastPrimaryAppcastItemDate"
+    private static let feedPolicyKey = "UpdateFeedPolicy"
 
     private let feedProvider = FeedURLProvider()
     private let gentleReminder = GentleUpdateReminder()
     private let updaterController: SPUStandardUpdaterController
 
     private init() {
+        Self.migrateFeedConsentIfNeeded()
         // Start is deferred until the primary-feed probe finishes.
         updaterController = SPUStandardUpdaterController(
             startingUpdater: false,
@@ -82,6 +84,33 @@ final class UpdateService {
             } else {
                 UserDefaults.standard.removeObject(forKey: fallbackConsentKey)
             }
+        }
+    }
+
+    /// The user's current update-source policy. Single source of truth.
+    static var feedPolicy: UpdateFeedPolicy {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: feedPolicyKey),
+                  let policy = UpdateFeedPolicy(rawValue: raw) else {
+                return .automatic
+            }
+            return policy
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: feedPolicyKey)
+        }
+    }
+
+    /// One-shot migration from legacy `UpdateFallbackFeedConsent` Bool to
+    /// `UpdateFeedPolicy` enum. Idempotent — safe to call from init() every launch.
+    /// Spec §3.1 migration block.
+    static func migrateFeedConsentIfNeeded() {
+        guard UserDefaults.standard.object(forKey: feedPolicyKey) == nil else { return }
+        if let legacy = fallbackFeedConsent {
+            feedPolicy = legacy ? .automatic : .primary
+            UserDefaults.standard.removeObject(forKey: fallbackConsentKey)
+        } else {
+            feedPolicy = .automatic
         }
     }
 

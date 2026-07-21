@@ -12,6 +12,8 @@ final class UpdateServiceTests: XCTestCase {
         // Never leak consent/date state written to UserDefaults across tests.
         UpdateService.fallbackFeedConsent = nil
         UpdateService.lastPrimaryItemDate = nil
+        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        UserDefaults.standard.removeObject(forKey: "UpdateFallbackFeedConsent")
     }
 
     // MARK: - Feed resolution
@@ -115,5 +117,39 @@ final class UpdateServiceTests: XCTestCase {
     func testFallbackIsNotStaleWhenUnparsable() {
         XCTAssertFalse(UpdateService.fallbackIsStale(fallbackXML: "garbage", lastPrimaryItemDate: Date()),
                        "unparsable mirror data must not block the consented fallback")
+    }
+
+    // MARK: - Feed policy (UpdateSourceSwitch spec §3.1, §5 tests 1-4)
+
+    func testPolicyMigrationFromTrueConsentYieldsAutomatic() {
+        UpdateService.fallbackFeedConsent = true
+        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        UpdateService.migrateFeedConsentIfNeeded()
+        XCTAssertEqual(UpdateService.feedPolicy, .automatic)
+        XCTAssertNil(UserDefaults.standard.object(forKey: "UpdateFallbackFeedConsent"),
+                     "old key must be cleared after migration")
+    }
+
+    func testPolicyMigrationFromFalseConsentYieldsPrimary() {
+        UpdateService.fallbackFeedConsent = false
+        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        UpdateService.migrateFeedConsentIfNeeded()
+        XCTAssertEqual(UpdateService.feedPolicy, .primary)
+        XCTAssertNil(UserDefaults.standard.object(forKey: "UpdateFallbackFeedConsent"))
+    }
+
+    func testPolicyDefaultsToAutomaticWhenUnset() {
+        UserDefaults.standard.removeObject(forKey: "UpdateFallbackFeedConsent")
+        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        UpdateService.migrateFeedConsentIfNeeded()
+        XCTAssertEqual(UpdateService.feedPolicy, .automatic,
+                       "first-time users default to automatic for safety")
+    }
+
+    func testPolicyRoundTripsThroughUserDefaults() {
+        for policy in UpdateFeedPolicy.allCases {
+            UpdateService.feedPolicy = policy
+            XCTAssertEqual(UpdateService.feedPolicy, policy, "round-trip failed for \(policy)")
+        }
     }
 }
