@@ -48,6 +48,10 @@ private final class GentleUpdateReminder: NSObject, SPUStandardUserDriverDelegat
 /// Singleton wrapper around Sparkle's updater so the rest of the app
 /// (AppDelegate, settings UI) never touches SPU* types directly.
 final class UpdateService {
+    // BUG-033 (2026-07-21): @MainActor so the singleton init can call
+    // @MainActor init() of UpdateStatus. First access (always on main)
+    // creates the instance; thread-safe via Swift's lazy static init.
+    @MainActor
     static let shared = UpdateService()
 
     /// Secondary feed mirrored by jsDelivr from this repo's main branch.
@@ -64,7 +68,13 @@ final class UpdateService {
     private let gentleReminder = GentleUpdateReminder()
     private let updaterController: SPUStandardUpdaterController
     private let probeEngine: FeedProbeEngine
-    let status = UpdateStatus()
+    // BUG-033 (2026-07-21): lazy var + MainActor.assumeIsolated so the
+    // @MainActor UpdateStatus() init runs on first access. Callers always
+    // access via @MainActor methods (setPolicy, triggerProbe), so the
+    // main-thread assertion is safe.
+    lazy var status: UpdateStatus = MainActor.assumeIsolated {
+        UpdateStatus()
+    }
 
     /// Monotonic token for in-flight probes. Incrementing on every
     /// `triggerProbe()` cancels the prior probe's write-back so a slower
@@ -72,6 +82,10 @@ final class UpdateService {
     private var probeGeneration: Int = 0
     private var currentProbeTask: Task<Void, Never>?
 
+    // BUG-033 (2026-07-21): @MainActor init so UpdateStatus() (now @MainActor)
+    // can be constructed inline. All callers (AppDelegate boot, tests) already
+    // run on main.
+    @MainActor
     init(
         probeEngine: FeedProbeEngine = DefaultFeedProbeEngine(),
         autoStart: Bool = true
