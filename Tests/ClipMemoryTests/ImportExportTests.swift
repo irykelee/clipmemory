@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import ClipMemory
 
 /// BackupPackage export → import round-trip, passphrase check, merge dedupe.
@@ -174,5 +175,156 @@ final class ImportExportTests: XCTestCase {
         XCTAssertEqual(second.itemsSkipped, 1, "second import must dedupe by id")
         XCTAssertEqual(second.tagsImported, 0)
         XCTAssertEqual(store.items.count, 1)
+    }
+
+    // MARK: - M-1 (2026-07-21 audit) PBKDF2 KDF upgrade regression coverage
+
+    /// Construct a legacy v1 `.clipmemory` package in the temp dir using HKDF
+    /// (the pre-M-1 derivation path) plus a manifest JSON that **omits** the
+    /// `keyDerivationVersion` field. Used by both `testImportLegacyHKDFPackage`
+    /// and `testOldManifestMissingKeyDerivationVersionDefaultsToLegacy` to prove
+    /// the decoder's `decodeIfPresent ?? 1` default transparently dispatches
+    /// to the HKDF read path for legacy `.clipmemory` files. (M-1 spec §7.)
+    private func constructLegacyPackage(passphrase: String, machineKey: Data) throws -> URL {
+        let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
+        let derivedKey = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: Data(passphrase.utf8)),
+            salt: salt,
+            info: Data("clipmemory-backup-v1".utf8),
+            outputByteCount: 32
+        )
+        let sealed = try AES.GCM.seal(machineKey, using: derivedKey)
+        guard let sealedData = sealed.combined else {
+            throw NSError(domain: "ImportExportTests", code: 0)
+        }
+
+        let staging = tempRoot.appendingPathComponent("legacy-staging-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
+
+        try sealedData.write(to: staging.appendingPathComponent("key.enc"), options: .atomic)
+        // Manifest JSON **without** `keyDerivationVersion` — decoder defaults to 1.
+        // createdAt must be `timeIntervalSinceReferenceDate` (Double), matching
+        // JSONEncoder's default Date strategy — ISO 8601 strings won't decode.
+        let manifest: [String: Any] = [
+            "formatVersion": 1,
+            "createdAt": Date().timeIntervalSinceReferenceDate,
+            "appVersion": "2.5.8",
+            "keySalt": salt.base64EncodedString(),
+            "itemCount": 0, "tagCount": 0, "imageCount": 0
+        ]
+        let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
+        try manifestData.write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
+        try Data().write(to: staging.appendingPathComponent("items.json"), options: .atomic)
+        try Data().write(to: staging.appendingPathComponent("tags.json"), options: .atomic)
+        try Data().write(to: staging.appendingPathComponent("trash.json"), options: .atomic)
+
+        let archiveURL = tempRoot.appendingPathComponent("legacy-\(UUID().uuidString).clipmemory")
+        // Note: file is freshly named (UUID), guaranteed not to exist yet —
+        // do NOT call `FileManager.removeItem` here (it would throw).
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        process.arguments = ["-c", "-k", "--sequesterRsrc", staging.path, archiveURL.path]
+        try process.run()
+        process.waitUntilExit()
+        return archiveURL
+    }
+
+    /// M-1 spec §11 A2: a `.clipmemory` package written by pre-M-1 ClipMemory
+    /// (v2.5.8 or earlier) has no `keyDerivationVersion` field. The decoder
+    /// must default to 1, dispatch to the HKDF path, and successfully
+    /// re-encrypt the machine key.
+    func testImportLegacyHKDFPackage() throws {
+        let archiveURL = try constructLegacyPackage(passphrase: "secret123", machineKey: localKeyData)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archiveURL.path))
+
+        let result = try BackupPackage.importPackage(
+            from: archiveURL,
+            passphrase: "secret123",
+            store: store,
+            localCrypto: localCrypto,
+            imagesDirectory: imagesDir
+        )
+
+        // Legacy package has no items / tags / images — the round-trip proves
+        // the machine-key derivation path, not the payload.
+        XCTAssertEqual(result.itemsImported, 0)
+        XCTAssertEqual(result.tagsImported, 0)
+        XCTAssertEqual(result.imagesImported, 0)
+        XCTAssertEqual(result.itemsSkipped, 0)
+    }
+
+    /// M-1 spec §11 A4: a package whose `keyDerivationVersion` is outside the
+    /// supported set {1, 2} must throw the new `.unsupportedKeyDerivationVersion`
+    /// error — distinct from the pre-existing `.unsupportedFormatVersion`.
+    func testImportUnsupportedKeyDerivationVersion() throws {
+        // Export a normal v2 package, then mutate its manifest to advertise
+        // version=99, recompress, and verify the new error path fires.
+        try seedPackageSource(crypto: localCrypto)
+        let packageURL = tempRoot.appendingPathComponent("bad-version.clipmemory")
+        try BackupPackage.exportPackage(
+            to: packageURL,
+            passphrase: "secret123",
+            defaults: defaults,
+            imagesDirectory: imagesDir,
+            keyData: localKeyData
+        )
+
+        let extractDir = tempRoot.appendingPathComponent("extract-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: extractDir) }
+
+        let extract = Process()
+        extract.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        extract.arguments = ["-x", "-k", packageURL.path, extractDir.path]
+        try extract.run()
+        extract.waitUntilExit()
+
+        let manifestURL = extractDir.appendingPathComponent("manifest.json")
+        let manifestData = try Data(contentsOf: manifestURL)
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
+        var mutated = manifest
+        mutated["keyDerivationVersion"] = 99
+        let mutatedData = try JSONSerialization.data(withJSONObject: mutated, options: [.sortedKeys])
+        try mutatedData.write(to: manifestURL, options: .atomic)
+
+        // Recompress from extractDir into the same path — `ditto -c` overwrites
+        // by default, no `removeItem` needed before recompress.
+        let recompress = Process()
+        recompress.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        recompress.arguments = ["-c", "-k", "--sequesterRsrc", extractDir.path, packageURL.path]
+        try recompress.run()
+        recompress.waitUntilExit()
+
+        XCTAssertThrowsError(
+            try BackupPackage.importPackage(
+                from: packageURL,
+                passphrase: "secret123",
+                store: store,
+                localCrypto: localCrypto,
+                imagesDirectory: imagesDir
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BackupPackageError,
+                .unsupportedKeyDerivationVersion(99)
+            )
+        }
+    }
+
+    /// M-1 spec §11 A5: a manifest that omits `keyDerivationVersion` must
+    /// decode with the default value 1, dispatch to the HKDF path, and import
+    /// successfully. Reuses `constructLegacyPackage` from `testImportLegacyHKDFPackage`.
+    func testOldManifestMissingKeyDerivationVersionDefaultsToLegacy() throws {
+        let archiveURL = try constructLegacyPackage(passphrase: "secret123", machineKey: localKeyData)
+        XCTAssertNoThrow(
+            try BackupPackage.importPackage(
+                from: archiveURL,
+                passphrase: "secret123",
+                store: store,
+                localCrypto: localCrypto,
+                imagesDirectory: imagesDir
+            )
+        )
     }
 }
