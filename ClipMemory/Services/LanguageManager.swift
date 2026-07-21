@@ -13,14 +13,13 @@ class LanguageManager: ObservableObject {
     }
 
     private init() {
-        let preferred = UserDefaults.standard.string(forKey: "appLanguage")
-        if let preferred = preferred {
-            self.selectedLanguage = preferred
-        } else {
-            let systemLang = Self.getSystemLanguage()
-            self.selectedLanguage = systemLang
-            UserDefaults.standard.set(systemLang, forKey: "appLanguage")
-        }
+        // BUG-050 (2026-07-21): simplify init — nil/non-nil branch split
+        // wrote to UserDefaults inconsistently (only the nil branch).
+        // Both branches now converge: derive the language, assign, persist
+        // (idempotent if UserDefaults already had it), apply.
+        let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? Self.getSystemLanguage()
+        self.selectedLanguage = lang
+        UserDefaults.standard.set(lang, forKey: "appLanguage")
         applyLanguage()
     }
 
