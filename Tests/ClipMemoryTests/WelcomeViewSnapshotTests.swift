@@ -18,6 +18,16 @@ import SwiftUI
 /// deterministically.
 final class WelcomeViewSnapshotTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        snapshotTestSetUp()
+    }
+
+    override func tearDown() {
+        snapshotTestTearDown()
+        super.tearDown()
+    }
+
     @MainActor
     func testRendersWelcome() {
         let view = WelcomeView(
