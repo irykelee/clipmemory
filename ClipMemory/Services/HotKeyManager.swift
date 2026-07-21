@@ -7,7 +7,7 @@ struct HotKeyConfig: Codable, Equatable {
     var keyCode: UInt32
     var modifiers: UInt32
 
-    static let defaultConfig = HotKeyConfig(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | controlKey))
+    static let defaultConfig = HotKeyConfig(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | shiftKey))
 
     private static let keyCodeKey = "HotKeyKeyCode"
     private static let modifiersKey = "HotKeyModifiers"
