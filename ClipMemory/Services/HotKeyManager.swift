@@ -38,7 +38,7 @@ struct HotKeyConfig: Codable, Equatable {
         return .defaultConfig
     }
 
-    /// Human-readable description of the hotkey (e.g. "⌘⌃V")
+    /// Human-readable description of the hotkey (e.g. "⌘⇧V")
     var displayString: String {
         var parts: [String] = []
         if modifiers & UInt32(cmdKey) != 0 { parts.append("⌘") }
