@@ -243,3 +243,10 @@
 "alert.update.fallback.message" = "无法连接 GitHub 更新服务器。是否改用 jsDelivr 镜像源（cdn.jsdelivr.net）检查更新？更新包仍经过同样的签名验证。你的选择会被记住。";
 "alert.update.fallback.use.mirror" = "使用镜像源";
 "alert.update.fallback.primary.only" = "仅用 GitHub";
+
+// 更新源切换 (Task 6)
+"settings.updateSource.title" = "更新源";
+"settings.updateSource.option.automatic" = "自动";
+"settings.updateSource.option.primary" = "主源（GitHub）";
+"settings.updateSource.option.fallback" = "镜像（jsDelivr）";
+"settings.updateSource.statusPanel" = "当前源：%1$@ · 上次检查：%2$@ · 上次切换：%3$@";

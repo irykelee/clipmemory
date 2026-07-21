@@ -245,3 +245,10 @@
 "alert.update.fallback.message" = "No se puede conectar con el servidor de actualizaciones de GitHub. ¿Usar el espejo de jsDelivr (cdn.jsdelivr.net) para buscar actualizaciones? Las actualizaciones siguen verificadas con la misma firma. Tu elección se recordará.";
 "alert.update.fallback.use.mirror" = "Usar espejo";
 "alert.update.fallback.primary.only" = "Solo GitHub";
+
+// Cambio de fuente de actualización (Task 6)
+"settings.updateSource.title" = "Fuente de actualización";
+"settings.updateSource.option.automatic" = "Automático";
+"settings.updateSource.option.primary" = "Principal (GitHub)";
+"settings.updateSource.option.fallback" = "Espejo (jsDelivr)";
+"settings.updateSource.statusPanel" = "Fuente: %1$@ · Última verificación: %2$@ · Último cambio: %3$@";

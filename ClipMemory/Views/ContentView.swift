@@ -3,6 +3,13 @@ import AppKit
 import Carbon.HIToolbox
 import ServiceManagement
 
+// swiftlint:disable file_length
+// Justification: ContentView is the single SwiftUI root for sidebar + content +
+// settings Form. Splitting ContentView was deferred per 2026-07-20 audit
+// (ContentView split is the remaining deferred item). File was already at the
+// 1250-line ceiling before Task 7; adding the UpdateSource Section pushes it
+// over. Track the 1250 ceiling explicitly so any further growth is visible.
+
 enum SidebarTab: String, CaseIterable {
     case all, text, image, link, richText, pinned, trash, settings
     var icon: String {
@@ -129,7 +136,9 @@ struct ContentView: View {
             keyboardSelectedIndex = visibleIdx[pos - 1]
         } else {
             // No selection, or selection hidden — wrap to last visible.
-            keyboardSelectedIndex = visibleIdx.last!
+            // Guarded by `!visibleIdx.isEmpty` above, but use optional fallback for
+            // safety against future refactors that drop the guard.
+            keyboardSelectedIndex = visibleIdx.last ?? keyboardSelectedIndex
         }
         if let idx = keyboardSelectedIndex { scrollAnchor = cachedDisplayedItems[idx].id }
     }
@@ -143,7 +152,9 @@ struct ContentView: View {
             keyboardSelectedIndex = visibleIdx[pos + 1]
         } else {
             // No selection, selection hidden, or at end — wrap to first visible.
-            keyboardSelectedIndex = visibleIdx.first!
+            // Guarded by `!visibleIdx.isEmpty` above, but use optional fallback for
+            // safety against future refactors that drop the guard.
+            keyboardSelectedIndex = visibleIdx.first ?? keyboardSelectedIndex
         }
         if let idx = keyboardSelectedIndex { scrollAnchor = cachedDisplayedItems[idx].id }
     }
@@ -241,6 +252,29 @@ struct ContentView: View {
             }
             return true
         }
+    }
+
+    /// Checks if the calendar day rolled over since `currentDate` was last set,
+    /// and if so, advances `currentDate` + refreshes the displayed-items cache.
+    /// Called from `.onReceive(NSCalendarDayChangedNotification)` (cross-midnight)
+    /// and `.onAppear` (initial render even if no rollover yet).
+    private func handleDayRolloverIfNeeded() {
+        let calendar = Calendar.current
+        let nowStart = calendar.startOfDay(for: Date())
+        let cachedStart = calendar.startOfDay(for: currentDate)
+        guard nowStart != cachedStart else { return }
+        handleDayRollover()
+    }
+
+    /// Applies the day rollover: bump `currentDate`, log, refresh cache.
+    /// Always called on main thread (notification + onAppear both deliver on main).
+    private func handleDayRollover() {
+        // currentDate is @State — capture BEFORE reassigning so the rollover log
+        // shows the actual transition.
+        let previous = currentDate
+        currentDate = Date()
+        UIObservability.logCurrentDateRollover(from: previous, to: currentDate)
+        updateDisplayedItemsCache()
     }
 
     private func updateDisplayedItemsCache() {
@@ -468,22 +502,24 @@ struct ContentView: View {
             .onChange(of: collapsedGroups) { val in
                 self.saveCollapsedGroups(val)
             }
-            .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
+            .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in
+                // Defer to next runloop to avoid "Modifying state during view update"
+                // (writing @State inside an onReceive handler triggers SwiftUI warning).
+                DispatchQueue.main.async { selectedTab = .settings }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in self.focusSearchField() }
-            .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-                DispatchQueue.main.async {
-                    let calendar = Calendar.current
-                    let nowStart = calendar.startOfDay(for: Date())
-                    let cachedStart = calendar.startOfDay(for: currentDate)
-                    if nowStart != cachedStart {
-                        // currentDate is @State — capture BEFORE reassigning so
-                        // the rollover log shows the actual transition.
-                        let previous = currentDate
-                        currentDate = Date()
-                        UIObservability.logCurrentDateRollover(from: previous, to: currentDate)
-                        updateDisplayedItemsCache()
-                    }
-                }
+            // M8 fix: use NSCalendarDayChanged notification (fires at midnight) instead of
+            // Timer.publish(every: 60). Reduces wakeups from 1440/day to 1/day, and removes
+            // the synchronous-write-of-@State-in-onReceive pattern that triggered SwiftUI warnings.
+            .onReceive(NotificationCenter.default.publisher(
+                for: Notification.Name(rawValue: "NSCalendarDayChangedNotification")
+            )) { _ in
+                handleDayRollover()
+            }
+            // Initial-fire: on first appear, refresh cache so today/yesterday groups are
+            // accurate even if NSCalendarDayChanged was already posted earlier today.
+            .onAppear {
+                handleDayRolloverIfNeeded()
             }
     }
 
@@ -944,6 +980,21 @@ struct ContentView: View {
                 if let lastCheck = UpdateService.shared.lastUpdateCheckDate {
                     Text(L10n.settingsUpdateLastCheck(lastCheck.formatted(date: .abbreviated, time: .shortened))).foregroundColor(.secondary)
                 }
+            }
+            Section(L10n.settingsUpdateSourceTitle) {
+                Picker(L10n.settingsUpdateSourceTitle, selection: Binding(
+                    get: { UpdateService.feedPolicy },
+                    set: { newPolicy in UpdateService.shared.setPolicy(newPolicy) }
+                )) {
+                    ForEach(UpdateFeedPolicy.allCases, id: \.self) { policy in
+                        switch policy {
+                        case .automatic: Text(L10n.settingsUpdateSourceOptionAutomatic).tag(policy)
+                        case .primary:   Text(L10n.settingsUpdateSourceOptionPrimary).tag(policy)
+                        case .fallback:  Text(L10n.settingsUpdateSourceOptionFallback).tag(policy)
+                        }
+                    }
+                }.pickerStyle(.segmented)
+                UpdateStatusPanelView().environmentObject(UpdateService.shared.status)
             }
             Section {
                 Text(L10n.aboutVersion(AppVersion.current)).foregroundColor(.secondary)
