@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import CommonCrypto
 import os.log
 
 /// Export/import of a `.clipmemory` package (zip archive).
@@ -23,6 +24,14 @@ enum BackupPackageError: Error, Equatable {
     /// output from a zero-filled buffer, so surface the failure rather
     /// than silently shipping a weak salt.
     case secureRandomUnavailable
+    /// M-1 spec §3.2 (2026-07-21): `CCKeyDerivationPBKDF` returned a non-success
+    /// status — surface rather than silently ship a weak/zero derived key.
+    case pbkdf2Failure
+    /// M-1 spec §3.2 (2026-07-21): package's `keyDerivationVersion` is outside
+    /// the supported set {1, 2}. Distinct from `unsupportedFormatVersion` (which
+    /// is about the overall package data format) so log / test can pinpoint
+    /// the actual blocker.
+    case unsupportedKeyDerivationVersion(Int)
 }
 
 struct BackupManifest: Codable {
@@ -33,6 +42,39 @@ struct BackupManifest: Codable {
     var itemCount: Int
     var tagCount: Int
     var imageCount: Int
+    /// M-1 fix (2026-07-21): backup packages used HKDF-SHA256 to derive a
+    /// key from a passphrase, but HKDF is unsuitable for passphrase-to-key
+    /// derivation — it has no work factor. An attacker with the package can
+    /// crack weak passphrases in milliseconds using a dictionary attack
+    /// (baked into Hashcat as mode 1600). PBKDF2-HMAC-SHA256 with 600 000
+    /// iterations (OWASP 2023) raises that cost by ~10⁵. Old packages (no
+    /// `keyDerivationVersion` field) default to version 1 (HKDF) on read.
+    var keyDerivationVersion: Int = 2
+
+    enum CodingKeys: String, CodingKey {
+        case formatVersion, createdAt, appVersion, keySalt
+        case itemCount, tagCount, imageCount, keyDerivationVersion
+    }
+}
+
+/// M-1 spec §3.1 (2026-07-21): custom decoder lives in extension so Swift
+/// still synthesizes the memberwise init that `exportPackage` relies on
+/// (reviewer H-1 fix). Default missing `keyDerivationVersion` field to 1
+/// so the HKDF read path activates transparently for legacy `.clipmemory`
+/// files written by pre-M-1 ClipMemory (v2.5.8 and earlier).
+extension BackupManifest {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        formatVersion = try container.decode(Int.self, forKey: .formatVersion)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        appVersion = try container.decode(String.self, forKey: .appVersion)
+        keySalt = try container.decode(String.self, forKey: .keySalt)
+        itemCount = try container.decode(Int.self, forKey: .itemCount)
+        tagCount = try container.decode(Int.self, forKey: .tagCount)
+        imageCount = try container.decode(Int.self, forKey: .imageCount)
+        // Default HKDF (version 1) for old packages without this field.
+        keyDerivationVersion = try container.decodeIfPresent(Int.self, forKey: .keyDerivationVersion) ?? 1
+    }
 }
 
 struct BackupImportResult {
@@ -48,14 +90,50 @@ final class BackupPackage {
 
     // MARK: - Passphrase key derivation
 
-    private static func deriveKey(passphrase: String, salt: Data) -> SymmetricKey {
-        let inputKeyMaterial = SymmetricKey(data: Data(passphrase.utf8))
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: inputKeyMaterial,
-            salt: salt,
-            info: Data("clipmemory-backup-v1".utf8),
-            outputByteCount: 32
-        )
+    /// M-1 fix: version 1 used HKDF-SHA256 (no work factor, vulnerable to
+    /// dictionary attack). Version 2 uses PBKDF2-HMAC-SHA256 with 600 000
+    /// iterations (OWASP 2023) — ~10⁵× slower than HKDF for weak passphrases.
+    private static let pbkdf2Iterations = 600_000
+
+    private static func deriveKey(passphrase: String, salt: Data, version: Int = 2) throws -> SymmetricKey {
+        switch version {
+        case 1:
+            // Legacy HKDF path for old packages.
+            let inputKeyMaterial = SymmetricKey(data: Data(passphrase.utf8))
+            return HKDF<SHA256>.deriveKey(
+                inputKeyMaterial: inputKeyMaterial,
+                salt: salt,
+                info: Data("clipmemory-backup-v1".utf8),
+                outputByteCount: 32
+            )
+        case 2:
+            // PBKDF2-HMAC-SHA256.
+            var derivedKey = Data(count: 32)
+            let passphraseData = Data(passphrase.utf8)
+            let derivationStatus = derivedKey.withUnsafeMutableBytes { derivedKeyBytes in
+                salt.withUnsafeBytes { saltBytes in
+                    passphraseData.withUnsafeBytes { passphraseBytes in
+                        CCKeyDerivationPBKDF(
+                            CCPBKDFAlgorithm(kCCPBKDF2),
+                            passphraseBytes.baseAddress?.assumingMemoryBound(to: Int8.self),
+                            passphraseData.count,
+                            saltBytes.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                            salt.count,
+                            CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                            UInt32(pbkdf2Iterations),
+                            derivedKeyBytes.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                            32
+                        )
+                    }
+                }
+            }
+            guard derivationStatus == errSecSuccess else {
+                throw BackupPackageError.pbkdf2Failure
+            }
+            return SymmetricKey(data: derivedKey)
+        default:
+            throw BackupPackageError.unsupportedKeyDerivationVersion(version)
+        }
     }
 
     // MARK: - ditto helpers
@@ -113,7 +191,7 @@ final class BackupPackage {
         keyData: Data
     ) throws {
         let salt = try randomBytes(16)
-        let derivedKey = deriveKey(passphrase: passphrase, salt: salt)
+        let derivedKey = try deriveKey(passphrase: passphrase, salt: salt, version: 2)
         let sealedKey = try AES.GCM.seal(keyData, using: derivedKey)
         guard let sealedKeyData = sealedKey.combined else { throw BackupPackageError.missingKeyMaterial }
 
@@ -150,7 +228,8 @@ final class BackupPackage {
             keySalt: salt.base64EncodedString(),
             itemCount: counts.items,
             tagCount: counts.tags,
-            imageCount: imageCount
+            imageCount: imageCount,
+            keyDerivationVersion: 2
         )
         try JSONEncoder().encode(manifest).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
 
@@ -191,7 +270,7 @@ final class BackupPackage {
         }
 
         // Passphrase check: GCM open fails on wrong passphrase.
-        let derivedKey = deriveKey(passphrase: passphrase, salt: salt)
+        let derivedKey = try deriveKey(passphrase: passphrase, salt: salt, version: manifest.keyDerivationVersion)
         let packageKeyData: Data
         do {
             let sealedBox = try AES.GCM.SealedBox(combined: sealedKeyData)
