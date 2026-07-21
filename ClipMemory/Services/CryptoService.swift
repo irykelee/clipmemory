@@ -33,6 +33,23 @@ class CryptoService: CryptoServiceProtocol {
 
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
 
+    // H-2 (2026-07-21 audit fix): Cache the loaded Keychain/file key so
+    // subsequent encrypt/decrypt skip the Keychain round-trip (~1–10ms each).
+    // Without this, list rendering triggered N Keychain queries per uncached
+    // item, pinning the main thread.
+    //
+    // Threading: protect with OSAllocatedUnfairLock — encrypt/decrypt are
+    // called from both main thread (`getDecryptedContent`) and background
+    // queues (`ImageStorage.backgroundQueue → encryptData`). Unchecked
+    // read+write of a `var` from multiple threads is undefined behavior.
+    //
+    // Invariants:
+    // - Only populated when `customKey` is nil (shared instance, app key).
+    // - custom-key instances (init(customKeyData:)) never populate this.
+    // - `prepareKey` resets customKey on regenerate and reloads into the cache.
+    private var cachedLoadedKey: OSAllocatedUnfairLock<SymmetricKey?> =
+        OSAllocatedUnfairLock(initialState: nil)
+
     /// Legacy key file location (pre-C1). Still consulted as a read-only
     /// fallback and migrated into the Keychain by `prepareKey`; new keys
     /// are never written here. Exposed for ImageStorage migration.
@@ -69,7 +86,12 @@ class CryptoService: CryptoServiceProtocol {
     }
 
     /// Raw key bytes of the app key (needed to embed into export packages).
+    /// H-2: routes through the in-memory cache when available, so the
+    /// BackupPackage export path does not also hit the Keychain.
     static func loadKeyData() -> Data? {
+        if let cached = shared.cachedLoadedKey.withLock({ $0 }) {
+            return cached.withUnsafeBytes { Data($0) }
+        }
         if !isRunningTests, let data = KeychainKeyStore().load(), data.count == 32 { return data }
         return try? Data(contentsOf: keyFileURL)
     }
@@ -220,16 +242,22 @@ class CryptoService: CryptoServiceProtocol {
 
     private func getKey() -> SymmetricKey? {
         if let customKey { return customKey }
+        // H-2: Hit cache before touching Keychain / disk. The cache is only
+        // populated after a successful load below.
+        if let cached = cachedLoadedKey.withLock({ $0 }) { return cached }
         // C1: Keychain is canonical; the pre-C1 key file remains a read-only
         // fallback until prepareKey's migration removes it. Under XCTest,
         // read only the file — never prompt for the real Keychain item.
+        let loaded: SymmetricKey?
         if !Self.isRunningTests, let data = KeychainKeyStore().load(), data.count == 32 {
-            return SymmetricKey(data: data)
+            loaded = SymmetricKey(data: data)
+        } else if let keyData = try? Data(contentsOf: Self.keyFileURL), keyData.count == 32 {
+            loaded = SymmetricKey(data: keyData)
+        } else {
+            loaded = nil
         }
-        guard let keyData = try? Data(contentsOf: Self.keyFileURL), keyData.count == 32 else {
-            return nil
-        }
-        return SymmetricKey(data: keyData)
+        if let loaded { cachedLoadedKey.withLock { $0 = loaded } }
+        return loaded
     }
 
     // MARK: - Public API
