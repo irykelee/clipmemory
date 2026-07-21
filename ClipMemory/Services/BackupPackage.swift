@@ -397,19 +397,45 @@ final class BackupPackage {
     }
 
     private static func decodeItems(from directory: URL, name: String) -> [ClipboardItem] {
-        guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
-              let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) else {
+        // BUG-024 (2026-07-21 partial): the previous `try?` chain silently
+        // returned [] on both file-read and JSON-decode failure. A
+        // corrupted package would import 0 items with no indication that
+        // data was lost. Log the underlying error so future audits can
+        // diagnose corrupted imports; full UI surface is a bigger refactor
+        // (requires threading an error through BackupImportResult +
+        // ContentView.importBackup).
+        let url = directory.appendingPathComponent(name)
+        do {
+            let data = try Data(contentsOf: url)
+            do {
+                return try JSONDecoder().decode([ClipboardItem].self, from: data)
+            } catch {
+                logger.error("Failed to decode \(name): \(error.localizedDescription)")
+                return []
+            }
+        } catch {
+            logger.error("Failed to read \(name): \(error.localizedDescription)")
             return []
         }
-        return items
     }
 
     private static func decodeTags(from directory: URL, name: String) -> [Tag] {
-        guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)),
-              let tags = try? JSONDecoder().decode([Tag].self, from: data) else {
+        // See decodeItems above for the rationale on the explicit do/catch
+        // (BUG-024): the prior silent try? meant corrupt packages imported
+        // with zero tags and no log line pointing at the cause.
+        let url = directory.appendingPathComponent(name)
+        do {
+            let data = try Data(contentsOf: url)
+            do {
+                return try JSONDecoder().decode([Tag].self, from: data)
+            } catch {
+                logger.error("Failed to decode \(name): \(error.localizedDescription)")
+                return []
+            }
+        } catch {
+            logger.error("Failed to read \(name): \(error.localizedDescription)")
             return []
         }
-        return tags
     }
 
     /// Decrypts item content with the package key and re-encrypts with the
