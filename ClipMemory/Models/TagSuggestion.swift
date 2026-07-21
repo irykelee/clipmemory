@@ -192,7 +192,12 @@ enum TagSuggestion {
 
     /// 16+ char alphanumeric run (API-key / account-token shape).
     private static func containsAccountLikeToken(_ s: String) -> Bool {
-        s.range(of: #"\b[A-Za-z0-9]{16,}\b"#,
+        // BUG-046 (2026-07-21): ICU regex treats CJK characters as \w,
+        // so \b doesn't fire at the CJK/Latin boundary. A 16+ char
+        // token embedded in Chinese text (e.g. 密钥abc123def456ghi789)
+        // goes undetected. Use lookarounds instead of \b — match a run
+        // of [A-Za-z0-9] not preceded or followed by another alnum.
+        s.range(of: #"(?<![A-Za-z0-9])[A-Za-z0-9]{16,}(?![A-Za-z0-9])"#,
                 options: .regularExpression) != nil
     }
 
