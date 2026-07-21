@@ -47,17 +47,21 @@ final class HotKeyManagerTests: XCTestCase {
 
     // MARK: - H.1 HotKeyConfig defaults & displayString
 
-    func testDefaultConfigIsCmdCtrlV() {
-        // H.1.1: Production default is ⌘⌃V (menu-bar app convention)
+    func testDefaultConfigIsCmdShiftV() {
+        // H.1.1: Production default is ⌘⇧V (matches AppDelegate.swift:104
+        // documented intent and macOS clipboard-manager convention).
+        // BUG-011 (2026-07-21): was ⌘⌃V (Cmd+Ctrl+V), changed to ⌘⇧V
+        // (Cmd+Shift+V). Existing users with persisted Cmd+Ctrl+V are
+        // unaffected (load() reads UserDefaults first).
         let config = HotKeyConfig.defaultConfig
         XCTAssertEqual(config.keyCode, UInt32(kVK_ANSI_V))
-        XCTAssertEqual(config.modifiers, UInt32(cmdKey | controlKey))
+        XCTAssertEqual(config.modifiers, UInt32(cmdKey | shiftKey))
     }
 
-    func testDisplayStringCmdCtrlV() {
+    func testDisplayStringCmdShiftV() {
         // H.1.2: Modifier symbols + key letter
         let config = HotKeyConfig.defaultConfig
-        XCTAssertEqual(config.displayString, "⌘⌃V")
+        XCTAssertEqual(config.displayString, "⌘⇧V")
     }
 
     func testDisplayStringAllModifiers() {
