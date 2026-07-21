@@ -63,9 +63,12 @@ final class UpdateService {
     private let feedProvider = FeedURLProvider()
     private let gentleReminder = GentleUpdateReminder()
     private let updaterController: SPUStandardUpdaterController
+    private let probeEngine: FeedProbeEngine
+    let status = UpdateStatus()
 
-    private init() {
+    init(probeEngine: FeedProbeEngine = DefaultFeedProbeEngine()) {
         Self.migrateFeedConsentIfNeeded()
+        self.probeEngine = probeEngine
         // Start is deferred until the primary-feed probe finishes.
         updaterController = SPUStandardUpdaterController(
             startingUpdater: false,
@@ -189,46 +192,58 @@ final class UpdateService {
 
     // MARK: - Feed probe & deferred start
 
+    /// Persist a new policy and re-resolve the active feed URL.
+    @MainActor
+    func setPolicy(_ policy: UpdateFeedPolicy) {
+        Self.feedPolicy = policy
+        Task { await triggerProbe() }
+    }
+
+    /// Run a probe, update feed URL + status. Called at startup and after
+    /// `setPolicy`. Spec §3.1 / §3.2.
+    @MainActor
+    func triggerProbe() async {
+        let channels = UpdateFeedPolicies.knownChannels
+        let policy = Self.feedPolicy
+        let lastKnown = Self.lastPrimaryItemDate
+        let decision = await probeEngine.resolve(
+            policy: policy,
+            lastKnownDate: lastKnown,
+            channels: channels,
+            timeout: nil
+        )
+        guard let decision else { return }
+        feedProvider.resolvedFeedString = decision.chosenURL.absoluteString
+        status.currentSource = decision.usedChannelID
+        status.lastCheck = Date()
+        status.lastSwitchReason = decision.reason.rawValue
+        status.lastSwitchAt = Date()
+        // Per spec §3.1: only update lastPrimaryItemDate when primary actually fetched.
+        let primaryID = channels.first(where: { $0.kind == .primary })?.id
+        if decision.usedChannelID == primaryID, policy != .fallback {
+            if let xml = await fetch(url: decision.chosenURL),
+               let date = Self.latestItemDate(inAppcastXML: xml) {
+                Self.lastPrimaryItemDate = date
+            }
+        }
+        do {
+            try updaterController.updater.resetUpdateCycleAfterShortDelay()
+        } catch {
+            NSLog("ClipMemory: feed switch deferred: \(error.localizedDescription)")
+            status.lastSwitchReason = "switchDeferred"
+        }
+    }
+
     /// Probe the primary feed; only with persisted (or freshly given) user
     /// consent fall back to the jsDelivr mirror, then start the updater.
     /// The network fetches run off the main thread; Sparkle calls stay on main.
     @MainActor
     private func startAfterFeedProbe() async {
-        guard let primaryString = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
-              let primary = URL(string: primaryString) else {
+        guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") is String else {
             startUpdater()
             return
         }
-        if let primaryXML = await fetch(url: primary) {
-            if let date = Self.latestItemDate(inAppcastXML: primaryXML) {
-                Self.lastPrimaryItemDate = date
-            }
-            startUpdater()
-            return
-        }
-        // Primary unreachable. H1: no silent fallback — ask once, persist.
-        let consent: FeedConsent
-        if let stored = Self.fallbackFeedConsent {
-            consent = stored ? .granted : .denied
-        } else {
-            consent = askFallbackConsent() ? .granted : .denied
-            Self.fallbackFeedConsent = consent == .granted
-        }
-        var mirrorStale = false
-        if consent == .granted, let fallbackXML = await fetch(url: Self.fallbackFeedURL),
-           Self.fallbackIsStale(fallbackXML: fallbackXML, lastPrimaryItemDate: Self.lastPrimaryItemDate) {
-            NSLog("ClipMemory: mirror update feed is older than the primary's last appcast; ignoring it")
-            mirrorStale = true
-        }
-        let resolved = Self.resolvedFeed(
-            primary: primary,
-            primaryReachable: false,
-            consent: consent,
-            mirrorStale: mirrorStale
-        )
-        if resolved != primary {
-            feedProvider.resolvedFeedString = resolved.absoluteString
-        }
+        await triggerProbe()
         startUpdater()
     }
 
