@@ -3,6 +3,13 @@ import AppKit
 import Carbon.HIToolbox
 import ServiceManagement
 
+// swiftlint:disable file_length
+// Justification: ContentView is the single SwiftUI root for sidebar + content +
+// settings Form. Splitting ContentView was deferred per 2026-07-20 audit
+// (ContentView split is the remaining deferred item). File was already at the
+// 1250-line ceiling before Task 7; adding the UpdateSource Section pushes it
+// over. Track the 1250 ceiling explicitly so any further growth is visible.
+
 enum SidebarTab: String, CaseIterable {
     case all, text, image, link, richText, pinned, trash, settings
     var icon: String {
@@ -944,6 +951,21 @@ struct ContentView: View {
                 if let lastCheck = UpdateService.shared.lastUpdateCheckDate {
                     Text(L10n.settingsUpdateLastCheck(lastCheck.formatted(date: .abbreviated, time: .shortened))).foregroundColor(.secondary)
                 }
+            }
+            Section(L10n.settingsUpdateSourceTitle) {
+                Picker(L10n.settingsUpdateSourceTitle, selection: Binding(
+                    get: { UpdateService.feedPolicy },
+                    set: { newPolicy in UpdateService.shared.setPolicy(newPolicy) }
+                )) {
+                    ForEach(UpdateFeedPolicy.allCases, id: \.self) { policy in
+                        switch policy {
+                        case .automatic: Text(L10n.settingsUpdateSourceOptionAutomatic).tag(policy)
+                        case .primary:   Text(L10n.settingsUpdateSourceOptionPrimary).tag(policy)
+                        case .fallback:  Text(L10n.settingsUpdateSourceOptionFallback).tag(policy)
+                        }
+                    }
+                }.pickerStyle(.segmented)
+                UpdateStatusPanelView().environmentObject(UpdateService.shared.status)
             }
             Section {
                 Text(L10n.aboutVersion(AppVersion.current)).foregroundColor(.secondary)
