@@ -1,4 +1,4 @@
-# ClipMemory v2.5.8
+# ClipMemory v2.5.9
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.5.9 (2026-07-21) — Detección de cuelgues + correcciones de auditoría completas
+
+- **🛡 Detección de cuelgues (HangDetector)** — Latido del hilo principal + sonda de 30s; primer cuelgue tras 60s sin respuesta registra el stack y se recupera automáticamente; evita congelamientos silenciosos de la UI
+- **🛡 Mejora PBKDF2 del paquete de copia** — PBKDF2-SHA256 de 600k rondas reemplaza HKDF de una sola ronda; coste de fuerza bruta offline ~10⁵× mayor (cumple OWASP 2023); paquetes antiguos compatibles transparentemente
+- **⚡ Puente de caché para copia RTF** — Rama RTF de `copyToClipboard` con caché < 1ms (antes 20-100ms de análisis síncrono bloqueando el hilo principal); caché puente automático entre lista y quickbar
+- **🛡 Estado de UI preservado** — Entrada en barra de búsqueda ya no deja resaltado de teclado obsoleto por bypass de `@State didSet` vía Binding; insignias de etiquetas en sidebar ya no quedan obsoletas al añadir/quitar etiquetas
+- **🛡 E/S del hilo principal descarga** — Rutas image/RTF de `copyToClipboard` ya no bloquean el sondeo del portapapeles; exportación de copia de seguridad con guarda de tamaño 50MB evita OOM
 
 ### v2.5.8 (2026-07-20) — Auditoría de estabilidad + 23 correcciones
 

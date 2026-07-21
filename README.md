@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.5.8
+# 剪忆 ClipMemory v2.5.9
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 更新日志
+
+### v2.5.9 (2026-07-21) — 卡死检测 + 全量审计修复
+
+- **🛡 卡死检测（HangDetector）** — 主线程心跳 + 30s 探针；首次检测到主线程 60s 不响应即记 stack + 自动恢复；避免 UI 真正卡死后无声无息
+- **🛡 备份包 PBKDF2 升级** — 600k 轮 PBKDF2-SHA256 取代单轮 HKDF，弱口令离线暴力破解成本提升 ~10⁵ 倍（OWASP 2023 合规）；老包透明兼容
+- **⚡ RTF 复制缓存桥接** — `copyToClipboard` RTF 分支命中 cache 后 < 1ms（之前每次重解析 20-100ms 阻塞主线程）；cache 跨 list/quickbar 自动桥接
+- **🛡 UI 状态不丢失** — search bar 输入不再因 `@State didSet` 不经 Binding 触发导致键盘高亮残留；sidebar 标签 badge 不再因 tag 增减 stale
+- **🛡 主线程 IO 后台化** — `copyToClipboard` image/RTF 路径不再阻塞剪贴板轮询；备份导出 50MB size guard 防 OOM
 
 ### v2.5.8 (2026-07-20) — 稳定性审计 + 23 项修复
 
