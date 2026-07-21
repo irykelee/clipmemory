@@ -42,11 +42,10 @@ enum HangDetector {
     }
 
     private static let state = OSAllocatedUnfairLock<State>(initialState: .initial)
-    private static var timers: (
-        heartbeat: DispatchSourceTimer?,
-        stack: DispatchSourceTimer?,
-        checker: DispatchSourceTimer?
-    ) = (nil, nil, nil)
+    // 3 timer refs split as individual optionals (avoids Large-Tuple lint rule)
+    private static var heartbeatTimer: DispatchSourceTimer?
+    private static var stackTimer: DispatchSourceTimer?
+    private static var checkerTimer: DispatchSourceTimer?
     // main-thread only; set at end of `start()` after all 3 timer `resume()` calls
     // (per spec §10.2 + gate 1b Ma — avoids permanent no-op if a future API throws mid-setup,
     // since `stop()` per §10.2 deliberately does NOT reset isStarted).
@@ -79,7 +78,7 @@ enum HangDetector {
         "_dispatch_main_queue_drain",
         "_dispatch_root_queue_drain",
         "_dispatch_source_latch_and_call",
-        "__libdispatch_source_mgr_invoke",
+        "__libdispatch_source_mgr_invoke"
     ]
 
     /// Returns the first 20 frames of `stack` joined with `\n`, with `"(empty)"` for
@@ -123,9 +122,9 @@ enum HangDetector {
     /// MUST be called in setUp. MUST NOT be called concurrently with start() / stop().
     internal static func _resetForTesting() {
         state.withLock { $0 = State(lastHeartbeat: Date(), lastMainStack: [], lastDetectedAt: nil, firstDetectedAt: nil, detectionCount: 0) }
-        timers.heartbeat?.cancel(); timers.heartbeat = nil
-        timers.stack?.cancel();     timers.stack = nil
-        timers.checker?.cancel();   timers.checker = nil
+        heartbeatTimer?.cancel(); heartbeatTimer = nil
+        stackTimer?.cancel();     stackTimer = nil
+        checkerTimer?.cancel();   checkerTimer = nil
         isStarted = false
     }
 
@@ -298,7 +297,7 @@ enum HangDetector {
             HangDetector.recordHeartbeat()
         }
         hb.resume()
-        timers.heartbeat = hb
+        heartbeatTimer = hb
 
         // Stack capture + recovery: main, 5s — `recordStackCaptureAndMaybeRecover()`
         let st = DispatchSource.makeTimerSource(queue: mainQueue)
@@ -307,7 +306,7 @@ enum HangDetector {
             HangDetector.recordStackCaptureAndMaybeRecover()
         }
         st.resume()
-        timers.stack = st
+        stackTimer = st
 
         // Checker: .utility, 30s — `checkStaleness(now:)` reading snapshot for stale detection
         let ch = DispatchSource.makeTimerSource(queue: utilityQueue)
@@ -316,10 +315,10 @@ enum HangDetector {
             HangDetector.checkStaleness(now: Date())
         }
         ch.resume()
-        timers.checker = ch
+        checkerTimer = ch
 
         // Per gate 1b Ma: set `isStarted = true` AFTER all 3 timer `resume()` calls (and
-        // their `timers.*` field assignments) so any exception / future-throwing API call
+        // their timer field assignments) so any exception / future-throwing API call
         // in the timer-setup path leaves `start()` re-callable. `stop()` per spec §10.2
         // deliberately does NOT clear `isStarted`, so a failure mid-setup before this line
         // would otherwise make the watchdog permanently inert for the rest of the process.
@@ -331,8 +330,8 @@ enum HangDetector {
     /// `state` and does NOT clear `isStarted` — process lifetime is one
     /// start + one stop (terminate) per spec §10.2 "故意的不对称".
     static func stop() {
-        timers.checker?.cancel();   timers.checker = nil
-        timers.stack?.cancel();     timers.stack = nil
-        timers.heartbeat?.cancel(); timers.heartbeat = nil
+        checkerTimer?.cancel();   checkerTimer = nil
+        stackTimer?.cancel();     stackTimer = nil
+        heartbeatTimer?.cancel(); heartbeatTimer = nil
     }
 }
