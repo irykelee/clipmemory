@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 import AppKit
+@testable import ClipMemory
 
 /// Snapshot test infrastructure for ClipMemory (NEW-7 Phase 1).
 ///
@@ -140,3 +141,33 @@ func assertImageSnapshot(
         )
     }
 }
+
+/// Isolates snapshot tests from global state pollution by other tests in
+/// the suite. Without this, prior tests mutating `fontScale`
+/// (UserDefaults key read by `@AppStorage("fontScale")`) or
+/// `LanguageManager.shared.selectedLanguage` produce different render
+/// output under full-suite vs focused test runs.
+///
+/// Call from `setUp()` of any test class that calls `assertImageSnapshot`.
+/// Stores the original values and restores them in `tearDown()`.
+func snapshotTestSetUp() {
+    let defaults = UserDefaults.standard
+    snapshotTestSavedFontScale = defaults.double(forKey: "fontScale")
+    snapshotTestSavedLanguage = LanguageManager.shared.selectedLanguage
+    // Force defaults used by our rendered views to a deterministic baseline
+    defaults.set(1.0, forKey: "fontScale")
+    LanguageManager.shared.selectedLanguage = "en"
+}
+
+func snapshotTestTearDown() {
+    let defaults = UserDefaults.standard
+    if snapshotTestSavedFontScale != nil {
+        defaults.set(snapshotTestSavedFontScale, forKey: "fontScale")
+    } else {
+        defaults.removeObject(forKey: "fontScale")
+    }
+    LanguageManager.shared.selectedLanguage = snapshotTestSavedLanguage
+}
+
+private var snapshotTestSavedFontScale: Double?
+private var snapshotTestSavedLanguage: String = "en"
