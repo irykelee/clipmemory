@@ -463,11 +463,11 @@ final class MockURLProtocol: URLProtocol {
     static var stubResponses: [URL: (status: Int, body: String, delay: TimeInterval?)] = [:]
     static var stubError: Error?
 
-    override class func canInit(with request: URLRequest) -> Bool {
+    override static func canInit(with request: URLRequest) -> Bool {
         stubError != nil || stubResponses.keys.contains(request.url!)
     }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         if let error = MockURLProtocol.stubError {
