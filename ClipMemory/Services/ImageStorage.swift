@@ -389,7 +389,10 @@ class ImageStorage {
               let image = NSImage(data: data) else {
             return nil
         }
-        imageCache.setObject(image, forKey: filename as NSString)
+        // BUG-027 (2026-07-21): pass cost: data.count so totalCostLimit (100MB)
+// can trigger eviction. Without cost:, only countLimit (100) is
+// effective — 100 large images can far exceed 100MB.
+imageCache.setObject(image, forKey: filename as NSString, cost: data.count)
         return image
     }
 
