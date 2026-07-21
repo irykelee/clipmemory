@@ -67,6 +67,7 @@
 		A462756FFA11EDCD580018A3 /* BackupServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D811280F543ADD5CF1BAB54A /* BackupServiceTests.swift */; };
 		A9458EE0D526D8B63812E216 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C816574DD183240D08D58A64 /* AppDelegate.swift */; };
 		A9DC6DB797E74F073944C008 /* ClipboardMonitorDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0494294A654E1B59A1072CE4 /* ClipboardMonitorDelegate.swift */; };
+		AE305D39BC8490F2FAD2E72A /* UpdateFeedPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F46F5F4CF6C919A81945264 /* UpdateFeedPolicy.swift */; };
 		AEDADD5501035A250ED77887 /* TrashItemRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14ED4AF1FE79FF40252DEF61 /* TrashItemRow.swift */; };
 		B0AFA6CAB8B808B97C9B06F3 /* AppDirectories.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B4D4D940383DE2B189A772 /* AppDirectories.swift */; };
 		B262EF7A5FC194FCDFACED79 /* StorageBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9168850C81327649C0142FD4 /* StorageBackend.swift */; };
@@ -161,6 +162,7 @@
 		9168850C81327649C0142FD4 /* StorageBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageBackend.swift; sourceTree = "<group>"; };
 		98ADF74CF248C9E8B4EE7EA6 /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
 		9E9F7143F2C0CE7EC0A4E899 /* BackupPackage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupPackage.swift; sourceTree = "<group>"; };
+		9F46F5F4CF6C919A81945264 /* UpdateFeedPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateFeedPolicy.swift; sourceTree = "<group>"; };
 		A060CA837242FD57B25DFFD9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A3E34CEE9BF8F658996168D5 /* TagChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagChip.swift; sourceTree = "<group>"; };
 		A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcurrencyTests.swift; sourceTree = "<group>"; };
@@ -364,6 +366,7 @@
 				C0E0F15D0596B4B0CD96170B /* StartupHealth.swift */,
 				9168850C81327649C0142FD4 /* StorageBackend.swift */,
 				E9DA1199ECD933699D11DC9D /* UIObservability.swift */,
+				9F46F5F4CF6C919A81945264 /* UpdateFeedPolicy.swift */,
 				0D94B664336CED43230940FC /* UpdateService.swift */,
 				84072C9393127BAA49827196 /* WindowManager.swift */,
 			);
@@ -594,6 +597,7 @@
 				31703362387388224F14C74C /* TipsView.swift in Sources */,
 				AEDADD5501035A250ED77887 /* TrashItemRow.swift in Sources */,
 				469A48A4E563533B46DA62DE /* UIObservability.swift in Sources */,
+				AE305D39BC8490F2FAD2E72A /* UpdateFeedPolicy.swift in Sources */,
 				62A7A0496DAB0F7CDD3542C7 /* UpdateService.swift in Sources */,
 				B5E8195E9EA0DB0AD0C8C23D /* WelcomeView.swift in Sources */,
 				680A6DBC49D7A6C7AADE7DBB /* WindowManager.swift in Sources */,
