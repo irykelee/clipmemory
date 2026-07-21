@@ -335,14 +335,15 @@ struct TagPickerSheet: View {
         let existing = Array(store.tags.values)
         // kind-derived tag names from the suggest(...) shim — same source as before
         let names = TagSuggestion.suggest(for: item.type, content: content)
-        // Auto-attach suggestions that already exist (by name) but aren't attached yet.
-        for name in names {
-            if let hit = existing.first(where: { $0.name == name }),
-               !item.tagIds.contains(hit.id) {
-                store.addTag(to: item.id, tagId: hit.id)
-            }
-        }
-        // Surface only names that DON'T already exist as tags.
+        // BUG-040 (2026-07-21): previously this loop silently called
+        // `store.addTag(...)` for every suggested name that matched an
+        // existing tag — opening the picker modified data without the user
+        // ever tapping anything. A user opening the picker to *browse*
+        // their tags ended up with several auto-attached ones and no easy
+        // way to know what changed. Removed the auto-attach. Existing tag
+        // matches are no longer surfaced here (they would otherwise appear
+        // as duplicates of already-existing tags), but the user can still
+        // search and attach them manually via the existing picker below.
         suggestionsToCreate = names.filter { name in
             !existing.contains(where: { $0.name == name })
         }
