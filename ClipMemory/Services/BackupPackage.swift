@@ -252,10 +252,35 @@ final class BackupPackage {
         )
         try JSONEncoder().encode(manifest).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
 
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        // BUG-023 (2026-07-21): the old `removeItem` then `zipDirectory` was
+        // non-atomic — if zip failed (disk full, permission, sandbox block),
+        // the previous backup was already deleted and no new one existed,
+        // leaving the user with zero backups. Build the zip at a temp path
+        // first; if it succeeds, atomically replace the destination (or move
+        // into place if the destination is new). A failed zip leaves both
+        // the old backup and the temp file untouched.
+        let tempDestination = destination.deletingLastPathComponent()
+            .appendingPathComponent(".clipmemory-export-\(UUID().uuidString).tmp")
+        do {
+            try zipDirectory(staging, to: tempDestination)
+        } catch {
+            try? FileManager.default.removeItem(at: tempDestination)
+            throw error
         }
-        try zipDirectory(staging, to: destination)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            // replaceItem keeps `destination` valid until the swap is
+            // committed; on success the temp file takes its place.
+            var resultingURL: NSURL?
+            _ = try FileManager.default.replaceItem(
+                at: destination,
+                withItemAt: tempDestination,
+                backupItemName: nil,
+                options: [],
+                resultingItemURL: &resultingURL
+            )
+        } else {
+            try FileManager.default.moveItem(at: tempDestination, to: destination)
+        }
         logger.info("Exported backup package to \(destination.path)")
     }
 
