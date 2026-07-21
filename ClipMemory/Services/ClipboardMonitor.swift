@@ -241,9 +241,22 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
     }
 
     private func checkClipboard() {
-        // Skip if ClipboardStore just wrote to pasteboard (break copy loop)
-        if skipNextCapture {
-            skipNextCapture = false
+        // L-1 (2026-07-21 audit): the original check-then-act was two separate
+        // lock acquisitions; a recordOwnWrite() landing between the read and the
+        // false-write could re-set the flag back to true after we cleared it,
+        // defeating the skip and re-capturing our own write. Wrap the read+clear
+        // in a single withLock so the toggle is atomic with respect to the
+        // observer. lastChangeCount is set outside the lock on the next line as
+        // before — that field is independently protected by its own lock-aware
+        // accessor and not in L-1's scope.
+        let shouldSkip = withLock { () -> Bool in
+            if _skipNextCapture {
+                _skipNextCapture = false
+                return true
+            }
+            return false
+        }
+        if shouldSkip {
             lastChangeCount = pasteboard.changeCount
             return
         }
