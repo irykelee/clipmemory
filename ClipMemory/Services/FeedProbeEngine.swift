@@ -65,17 +65,7 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         let effectiveTimeout = timeout ?? probeTimeoutSeconds
         switch policy {
         case .primary:
-            // Force-fetch the primary even in .primary mode so we can update
-            // its baseline date without a second URLSession call from the
-            // caller. Failure here just leaves the baseline unchanged.
-            let primaryXML = await fetchBody(url: primary.url, timeout: effectiveTimeout)
-            return FeedProbeDecision(
-                chosenURL: primary.url,
-                usedChannelID: primary.id,
-                reason: .userForced,
-                primaryAppcastXML: primaryXML,
-                primaryLatestDate: primaryXML.flatMap(parseLatestDate)
-            )
+            return await resolvePrimary(primary: primary, timeout: effectiveTimeout)
         case .fallback:
             // Bypass stale guard — user informed consent. Don't re-fetch primary.
             return FeedProbeDecision(
@@ -86,47 +76,76 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
                 primaryLatestDate: nil
             )
         case .automatic:
-            let primaryXML = await fetchBody(url: primary.url, timeout: effectiveTimeout)
-            if let primaryXML {
-                return FeedProbeDecision(
-                    chosenURL: primary.url,
-                    usedChannelID: primary.id,
-                    reason: .automaticReachable,
-                    primaryAppcastXML: primaryXML,
-                    primaryLatestDate: parseLatestDate(primaryXML)
-                )
-            }
-            // Primary unreachable — try fallback.
-            guard let fallbackXML = await fetchBody(url: fallback.url, timeout: effectiveTimeout) else {
-                // Both down — keep primary (no silent failover when fallback also unreachable).
-                return FeedProbeDecision(
-                    chosenURL: primary.url,
-                    usedChannelID: primary.id,
-                    reason: .automaticPrimaryDown,
-                    primaryAppcastXML: nil,
-                    primaryLatestDate: nil
-                )
-            }
-            // Stale guard — applies in .automatic only.
-            if let lastKnownDate,
-               let fallbackDate = parseLatestDate(fallbackXML),
-               fallbackDate < lastKnownDate {
-                return FeedProbeDecision(
-                    chosenURL: primary.url,
-                    usedChannelID: primary.id,
-                    reason: .mirrorStaleRejected,
-                    primaryAppcastXML: nil,
-                    primaryLatestDate: nil
-                )
-            }
+            return await resolveAutomatic(
+                primary: primary,
+                fallback: fallback,
+                lastKnownDate: lastKnownDate,
+                timeout: effectiveTimeout
+            )
+        }
+    }
+
+    /// `.primary` mode: user explicitly chose primary — fetch it so caller can
+    /// update baseline date without a second URLSession call. Failure leaves
+    /// baseline unchanged.
+    private func resolvePrimary(primary: FeedChannel, timeout: TimeInterval) async -> FeedProbeDecision {
+        let primaryXML = await fetchBody(url: primary.url, timeout: timeout)
+        return FeedProbeDecision(
+            chosenURL: primary.url,
+            usedChannelID: primary.id,
+            reason: .userForced,
+            primaryAppcastXML: primaryXML,
+            primaryLatestDate: primaryXML.flatMap(parseLatestDate)
+        )
+    }
+
+    /// `.automatic` mode: try primary first; if down, try fallback unless stale.
+    /// Both down → keep primary (no silent failover). Stale guard applies only here.
+    private func resolveAutomatic(
+        primary: FeedChannel,
+        fallback: FeedChannel,
+        lastKnownDate: Date?,
+        timeout: TimeInterval
+    ) async -> FeedProbeDecision {
+        let primaryXML = await fetchBody(url: primary.url, timeout: timeout)
+        if let primaryXML {
             return FeedProbeDecision(
-                chosenURL: fallback.url,
-                usedChannelID: fallback.id,
+                chosenURL: primary.url,
+                usedChannelID: primary.id,
+                reason: .automaticReachable,
+                primaryAppcastXML: primaryXML,
+                primaryLatestDate: parseLatestDate(primaryXML)
+            )
+        }
+        // Primary unreachable — try fallback.
+        guard let fallbackXML = await fetchBody(url: fallback.url, timeout: timeout) else {
+            return FeedProbeDecision(
+                chosenURL: primary.url,
+                usedChannelID: primary.id,
                 reason: .automaticPrimaryDown,
                 primaryAppcastXML: nil,
                 primaryLatestDate: nil
             )
         }
+        // Stale guard — applies in .automatic only.
+        if let lastKnownDate,
+           let fallbackDate = parseLatestDate(fallbackXML),
+           fallbackDate < lastKnownDate {
+            return FeedProbeDecision(
+                chosenURL: primary.url,
+                usedChannelID: primary.id,
+                reason: .mirrorStaleRejected,
+                primaryAppcastXML: nil,
+                primaryLatestDate: nil
+            )
+        }
+        return FeedProbeDecision(
+            chosenURL: fallback.url,
+            usedChannelID: fallback.id,
+            reason: .automaticPrimaryDown,
+            primaryAppcastXML: nil,
+            primaryLatestDate: nil
+        )
     }
 
     private func fetchBody(url: URL, timeout: TimeInterval) async -> String? {
