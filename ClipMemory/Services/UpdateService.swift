@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Sparkle
+import os
 
 /// The user's persisted choice about the jsDelivr mirror feed (H1).
 enum FeedConsent {
@@ -12,7 +13,15 @@ enum FeedConsent {
 /// Supplies the fallback feed URL to Sparkle when the primary feed failed
 /// the launch probe. Returning nil makes Sparkle use the Info.plist SUFeedURL.
 private final class FeedURLProvider: NSObject, SPUUpdaterDelegate {
-    var resolvedFeedString: String?
+    // BUG-031 (2026-07-21): wrap in OSAllocatedUnfairLock — Sparkle's
+    // feedURLString(for:) delegate callback can run on any thread, while
+    // the setter is invoked on @MainActor. String? is not atomic across
+    // threads; lock fixes the data race.
+    private let resolvedFeedLock = OSAllocatedUnfairLock<String?>(initialState: nil)
+    var resolvedFeedString: String? {
+        get { resolvedFeedLock.withLock { $0 } }
+        set { resolvedFeedLock.withLock { $0 = newValue } }
+    }
 
     func feedURLString(for updater: SPUUpdater) -> String? {
         resolvedFeedString
