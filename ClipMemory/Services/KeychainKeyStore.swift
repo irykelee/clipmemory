@@ -62,15 +62,26 @@ struct KeychainKeyStore: KeyStoring {
         // item is absent. Caller (CryptoService.prepareKey) keeps its
         // key-file fallback regardless — this only removes the delete
         // window inside this method.
-        var attributes = baseQuery
-        attributes[kSecValueData as String] = keyData
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        attributes[kSecAttrSynchronizable as String] = false
-        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, attributes as CFDictionary)
+        // BUG-019 (2026-07-21): attributesToUpdate must NOT include
+        // kSecClass — the query attribute is the 1st arg, the update
+        // payload is the 2nd. Apple docs are ambiguous; current macOS
+        // silently accepts, but defensive split avoids errSecParam risk
+        // on older Security frameworks.
+        let attributesToUpdate: [String: Any] = [
+            kSecValueData as String: keyData,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecAttrSynchronizable as String: false
+        ]
+        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, attributesToUpdate as CFDictionary)
         if updateStatus != errSecItemNotFound {
             return updateStatus
         }
-        return SecItemAdd(attributes as CFDictionary, nil)
+        // SecItemAdd needs the full query (class/service/account) + value attrs.
+        var addAttributes = baseQuery
+        addAttributes[kSecValueData as String] = keyData
+        addAttributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        addAttributes[kSecAttrSynchronizable as String] = false
+        return SecItemAdd(addAttributes as CFDictionary, nil)
     }
 
     func delete() {
