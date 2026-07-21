@@ -23,9 +23,17 @@ struct TrashItemRow: View, Equatable {
         isHovered ? Color.accentColor.opacity(0.06) : Color.clear
     }
 
+    // BUG-042 (2026-07-21): cache the formatter. Without this, every
+    // scroll-frame during list scrolling allocates a new formatter per
+    // visible row — visible perf hit on long trash lists.
+    private static let deletedAtFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        return f
+    }()
+
     private var formattedDeletedAt: String {
         guard let deletedAt = item.deletedAt else { return "" }
-        return RelativeDateTimeFormatter().localizedString(for: deletedAt, relativeTo: Date())
+        return Self.deletedAtFormatter.localizedString(for: deletedAt, relativeTo: Date())
     }
 
     private var decryptedContent: String {
