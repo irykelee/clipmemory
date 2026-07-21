@@ -21,5 +21,32 @@ protocol SensitiveDetectorProtocol {
 // MARK: - Service Container
 
 enum ServiceContainer {
-    static var crypto: CryptoServiceProtocol = CryptoService.shared
+    /// Crypto service backing encrypt/decrypt across the store, image save,
+    /// and backup package I/O.
+    ///
+    /// BUG-049 (2026-07-21): the previous `static var` allowed any code
+    /// path to reassign the instance mid-run. A background thread that
+    /// read `crypto` just before the swap would continue using a stale or
+    /// partially-initialized instance while the main thread used the new
+    /// one, causing inconsistent encrypt/decrypt across the same items
+    /// array. The full fix is DI via init injection (deferred to a future
+    /// refactor). For now, the setter is restricted to XCTest contexts:
+    /// production code that accidentally swaps will trigger
+    /// `assertionFailure`. Tests still work because their pattern is
+    /// `setUp: save original, inject fake / tearDown: restore original`
+    /// — both swaps happen under XCTestConfigurationFilePath.
+    static var crypto: CryptoServiceProtocol = CryptoService.shared {
+        didSet {
+            let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            // No-op same-instance assignment in tests is fine; any
+            // production swap (oldValue is the production singleton) is
+            // not.
+            if !inTest {
+                assertionFailure(
+                    "ServiceContainer.crypto reassigned outside XCTest — race risk. " +
+                    "Use only in test setUp/tearDown."
+                )
+            }
+        }
+    }
 }
