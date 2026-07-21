@@ -160,8 +160,14 @@ struct ClipboardItemRow: View, Equatable {
         let prefixLen = prefix.count
         var a = AttributedString(prefix + ds)
         let lowerDS = ds.lowercased()
-        // Compute highlight positions relative to ds, not lt
-        let dsStartOffset = lt.distance(from: lt.startIndex, to: dsi)
+        // BUG-008 (2026-07-21): dsStartOffset was dead code AND a cross-string
+        // bug — `dsi` is an index into `text` (L157), but `lt.distance(from:
+        // lt.startIndex, to: dsi)` used it with `lt` (`text.lowercased()`, a
+        // different String instance). For Unicode text where lowercased()
+        // changes internal representation (e.g. "İ" → "i̇", "ß" → "ss"),
+        // this traps with fatalError. Highlight computation already uses
+        // `lowerDS` (the substring `ds` lowercased), so this offset was
+        // also semantically dead — never read. Delete only.
         guard let fmInDS = lowerDS.range(of: lh) else { return a }
         var ss = fmInDS.lowerBound
         while let r = lowerDS.range(of: lh, range: ss..<lowerDS.endIndex) {
