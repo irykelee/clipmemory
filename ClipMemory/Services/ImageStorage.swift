@@ -98,15 +98,18 @@ class ImageStorage {
             guard !migratedSet.contains(filename) else { continue }
 
             let legacyPath = legacyImagesDirectory.appendingPathComponent(filename)
-            guard let imageData = try? Data(contentsOf: legacyPath) else {
+            // BUG-028 (2026-07-21): check size via attributesOfItem BEFORE
+            // Data(contentsOf:) — avoids allocating a potentially-GB-sized
+            // buffer for a corrupted/expanded legacy file. L-4 previously
+            // checked after the load (50MB cap, but still allocates).
+            let fileAttrs = try? fileManager.attributesOfItem(atPath: legacyPath.path)
+            let fileSize = (fileAttrs?[.size] as? NSNumber)?.intValue ?? 0
+            guard fileSize > 0, fileSize <= maxImageSize else {
+                logger.warning("Skipping oversized legacy image: \(filename) (\(fileSize) bytes)")
                 hadFailure = true
                 continue
             }
-            // L-4: match saveImage's maxImageSize cap. Legacy files were
-            // written under the same 50MB limit, but a corrupted/expanded
-            // file shouldn't be loaded into memory unconstrained.
-            guard imageData.count <= maxImageSize else {
-                logger.warning("Skipping oversized legacy image: \(filename) (\(imageData.count) bytes)")
+            guard let imageData = try? Data(contentsOf: legacyPath) else {
                 hadFailure = true
                 continue
             }
