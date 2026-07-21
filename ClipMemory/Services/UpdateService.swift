@@ -288,20 +288,12 @@ final class UpdateService {
         startUpdater()
     }
 
-    /// One-time consent alert for the mirror feed (H1). Runs at launch only
-    /// when the primary is unreachable and no choice was persisted yet.
-    @MainActor
-    private func askFallbackConsent() -> Bool {
-        NSApp.setActivationPolicy(.regular)
-        defer { NSApp.setActivationPolicy(.accessory) }
-        let alert = NSAlert()
-        alert.messageText = L10n.alertUpdateFallbackTitle
-        alert.informativeText = L10n.alertUpdateFallbackMessage
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L10n.alertUpdateFallbackUseMirror)
-        alert.addButton(withTitle: L10n.alertUpdateFallbackPrimaryOnly)
-        return alert.runModal() == .alertFirstButtonReturn
-    }
+    // BUG-032 (2026-07-21): askFallbackConsent (private @MainActor) was
+    // dead code — never called. Fallback is handled automatically by
+    // FeedProbeEngine's .automatic policy. Method deleted.
+    // L10n keys (alertUpdateFallback*) left in place — removing them
+    // requires 7-language .strings edits, deferred to a release that
+    // touches i18n.
 
     @MainActor
     private func startUpdater() {
