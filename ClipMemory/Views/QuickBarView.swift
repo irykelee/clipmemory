@@ -32,9 +32,12 @@ struct QuickBarView: View {
             ? Array(store.items.prefix(maxItems))
             : store.items.filter { item in
                 guard !item.isDecryptionFailed else { return false }
-                let searchableText = item.type == .richText
-                    ? item.plainTextFromRTFFallback
-                    : (ClipboardStore.shared.getDecryptedContent(item) ?? "")
+                let rtfText: String? = item.type == .richText ? item.plainTextFromRTFFallback : nil
+                if let plain = rtfText {
+                    ClipboardStore.shared.cacheRTFPlaintext(item, plain)
+                }
+                let searchableText = rtfText
+                    ?? (ClipboardStore.shared.getDecryptedContent(item) ?? "")
                 return searchableText.localizedCaseInsensitiveContains(searchTextDebounced)
             }
         return base
