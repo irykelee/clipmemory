@@ -965,8 +965,23 @@ struct ContentView: View {
                     set: { backupService.keepCount = $0 }
                 )) { ForEach([3, 7, 14, 30], id: \.self) { Text("\($0)").tag($0) } }
                 Button(L10n.settingsBackupNow) {
-                    backupService.backupNow()
-                    backupRefresh.toggle()
+                    // BUG-020 (2026-07-21 partial): backupNow() does
+                    // synchronous file IO (createDirectory + write blobs +
+                    // copyItem + pruneOldBackups). For users with 1GB+ of
+                    // images the main thread blocks for ~10s+ after
+                    // tapping \"Backup Now\" here. The auto-backup path
+                    // (performBackupIfNeeded) already wraps the call in
+                    // DispatchQueue.global — only this UI button was
+                    // missing it. Hop to a background queue and toggle
+                    // the refresh signal on the main queue when done.
+                    // BackupService logs its own failures, so we don't
+                    // need a logger here.
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        _ = backupService.backupNow()
+                        DispatchQueue.main.async {
+                            backupRefresh.toggle()
+                        }
+                    }
                 }.buttonStyle(.link)
                 Button(L10n.settingsBackupOpen) {
                     NSWorkspace.shared.open(backupService.backupsDirectoryURL)
