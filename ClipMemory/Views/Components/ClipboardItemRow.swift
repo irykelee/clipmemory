@@ -249,12 +249,21 @@ struct ClipboardItemRow: View, Equatable {
                             imageLoadFailed = false
                             imageLoadStatus = nil
                             let filename = item.content
-                            let result: (NSImage?, ImageStorage.ImageLoadStatus?) = await Task.detached(priority: .userInitiated) {
-                                if let img = ImageStorage.shared.loadImageObject(filename: filename) {
-                                    return (img, nil)
-                                }
-                                return (nil, ImageStorage.shared.imageStatus(for: filename))
+                            // BUG-029 (2026-07-21): split into two awaits —
+                            // loadImageObject stays on a detached thread
+                            // (CPU-bound NSImage decode), but the
+                            // status-on-miss path now hops through
+                            // imageStatusAsync so the legacy decrypt +
+                            // migrationQueue.sync doesn't starve the
+                            // cooperative thread pool when hundreds of
+                            // cold images are loaded at once.
+                            let img: NSImage? = await Task.detached(priority: .userInitiated) {
+                                ImageStorage.shared.loadImageObject(filename: filename)
                             }.value
+                            let status: ImageStorage.ImageLoadStatus? = img == nil
+                                ? await ImageStorage.shared.imageStatusAsync(for: filename)
+                                : nil
+                            let result = (img, status) as (NSImage?, ImageStorage.ImageLoadStatus?)
                             // I-8 fix (2026-07-20 audit): see TrashItemRow.swift
                             // for the same pattern. `Task.detached` does not
                             // inherit cancellation from the parent `.task(id:)`
