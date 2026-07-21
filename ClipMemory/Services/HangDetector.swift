@@ -181,11 +181,18 @@ enum HangDetector {
         logHangDetected(elapsed: snapshot.elapsed, threshold: thresholdSeconds, count: snapshot.count + 1)
         logStackTruncated(stack: snapshot.stack)
         logHangMainStackFull(stack: snapshot.stack)
-        // Mutate state inside the lock + re-check cap to close the snapshot→re-entry
-        // race window (per spec §4.2 single-lock pattern + gate 1b H1): a concurrent
-        // stack-timer recovery between the outer snapshot read and this re-entry could
-        // otherwise reset detectionCount to 0, bypassing the cap and emitting a spurious
-        // detection log exactly at the recovery moment.
+        // Mutate state inside the lock + re-check cap (per spec §4.2 single-lock
+        // pattern + gate 1b H1): the inner cap guard prevents a concurrent
+        // stack-timer recovery between the outer snapshot read (L174) and this
+        // re-entry from resetting detectionCount to 0 and then us blindly
+        // overwriting firstDetectedAt / pushing detectionCount back to 1.
+        //
+        // Note: the cap re-check ONLY guards the state write above. The three
+        // `logger.error(...)` calls at L181-183 already ran with the outer-snapshot
+        // count; a recovery landing in the snapshot→re-entry slice produces ≤1
+        // spurious `hang.detected` log at the recovery moment. Self-heals within
+        // ≤5s on the next stack-timer fire (which re-emits `hang.recovered` for
+        // the freshly-cleared state).
         state.withLock { s in
             guard s.detectionCount < maxDetectionCount else { return }
             s.lastDetectedAt = now
