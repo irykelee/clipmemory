@@ -1258,7 +1258,13 @@ class ClipboardStore: ObservableObject {
         case .richText:
             if let base64 = getDecryptedContent(item), let data = Data(base64Encoded: base64) {
                 preparedRtfData = data
-                preparedText = (try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil))?.string
+                // M-3 (2026-07-21 audit): use getRTFPlaintext (cache-aware)
+                // instead of re-parsing NSAttributedString(data: .rtf) on
+                // every copy. Cache hit < 1ms vs 20-100ms sync parse. Cache
+                // is pre-populated by ClipboardItemRow.loadRichText() and
+                // QuickBarView (M-3 bridge). Miss falls back to sync
+                // RichTextParser.plaintext via getRTFPlaintext.
+                preparedText = getRTFPlaintext(item)
             }
         default:
             preparedText = getDecryptedContent(item)
