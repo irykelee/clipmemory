@@ -1195,8 +1195,12 @@ struct ContentView: View {
                     } else if filtered.isEmpty {
                         Text(L10n.settingsAppPickerNoResults).font(.system(size: sz(12))).foregroundColor(.secondary).padding()
                     } else {
-                        ForEach(filtered.indices, id: \.self) { idx in
-                            let app = filtered[idx]
+                        // BUG-006 (2026-07-21): use \.bundleId (stable across re-filter), not
+// \.self on indices. When an app launches/quits mid-picker, indices
+// are reused and AppPickerRow's @State (isHovered, resolvedIcon)
+// jumps to the wrong app. Matches the established pattern at L1131
+// (ForEach(apps, id: \.bundleId)).
+ForEach(filtered, id: \.bundleId) { app in
                             AppPickerRow(
                                 name: app.name,
                                 bundleId: app.bundleId,
