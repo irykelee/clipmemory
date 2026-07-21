@@ -43,10 +43,13 @@ struct L10n {
         return bundle
     }
 
-    private static var englishBundle: Bundle {
+    // BUG-048 (2026-07-21): cache englishBundle. Without this, every
+    // localization miss re-runs Bundle.main.path + Bundle(path:) — both
+    // non-trivial. The bundle path doesn't change at runtime.
+    private static let englishBundle: Bundle = {
         Bundle.main.path(forResource: "en", ofType: "lproj")
             .flatMap { Bundle(path: $0) } ?? Bundle.main
-    }
+    }()
 
     private static func getFromBundle(_ key: String, bundle: Bundle) -> String? {
         let result = bundle.localizedString(forKey: key, value: nil, table: "Localizable")
