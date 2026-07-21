@@ -27,7 +27,12 @@ enum NewTagLogic {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if let existing = store.tags.values.first(where: { $0.name == trimmed }) {
+        // BUG-041 (2026-07-21): standardize on case-insensitive comparison
+        // to match TagPickerSheet.swift:233 (.lowercased() == .lowercased()).
+        // Without this, "Work" could be rejected here but "work" accepted
+        // in the tag picker (or vice versa) — two tags differing only
+        // by case would coexist.
+        if let existing = store.tags.values.first(where: { $0.name.lowercased() == trimmed.lowercased() }) {
             return .reused(existing.id)
         }
 
