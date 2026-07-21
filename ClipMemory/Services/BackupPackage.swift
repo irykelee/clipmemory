@@ -165,21 +165,29 @@ final class BackupPackage {
         // comes back to life only after we terminate the child here. Long
         // enough for any legitimate large archive, short enough that the
         // user can retry instead of force-quitting the app.
+        // BUG-022 (2026-07-21): the previous loop polled every 50 ms with
+        // Thread.sleep — main thread stays blocked the full timeout window
+        // even when ditto exits cleanly at 200 ms, and the SIGKILL escalation
+        // is racy (process.isRunning read from a non-atomic getter).
+        // terminationHandler signals a semaphore the instant ditto exits, so
+        // we wake immediately on success or failure. The 30 s timeout is kept
+        // as a safety net; on timeout we still terminate + SIGKILL.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         process.arguments = Array(arguments.dropFirst())
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in
+            semaphore.signal()
+        }
         try process.run()
-        let deadline = Date().addingTimeInterval(30)
-        while process.isRunning {
-            if Date() >= deadline {
-                process.terminate()
-                // SIGTERM is async — give it a beat, then SIGKILL if needed.
-                DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-                    if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-                }
-                throw BackupPackageError.archiveFailed
+        let timedOut = semaphore.wait(timeout: .now() + 30) == .timedOut
+        if timedOut {
+            process.terminate()
+            // SIGTERM is async — give it a beat, then SIGKILL if needed.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             }
-            Thread.sleep(forTimeInterval: 0.05)
+            throw BackupPackageError.archiveFailed
         }
         guard process.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
     }
