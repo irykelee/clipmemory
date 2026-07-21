@@ -252,11 +252,37 @@ class ImageStorage {
     // otherwise race against each other's re-encrypted file write (per gate 1b Medium #4 fix).
     private static let migrationQueue = DispatchQueue(label: "com.clipmemory.imageStorage.legacyMigration")
 
+    /// Serial queue used by `imageStatus` for off-main disk reads. Same
+    /// queue is reused by `imageStatusAsync` so the order of reads is
+    /// deterministic and concurrent migrations don't race reads.
+    private let statusQueue = DispatchQueue(label: "com.clipmemory.imageStorage.status", qos: .userInitiated)
+
     func loadImage(filename: String) -> Data? {
         guard case .available(let data) = imageStatus(for: filename) else {
             return nil
         }
         return data
+    }
+
+    /// Async variant of `imageStatus(for:)`. The sync version is still
+    /// available for tests and internal callers (loadImage uses it), but
+    /// BUG-029 (2026-07-21): UI callers used to call the sync version from
+    /// a Task.detached closure — but the inner `Data(contentsOf:)` read +
+    /// legacy-decrypt path still ran on the calling thread of `Task.detached`
+    /// (a Swift cooperative thread pool worker, not the main thread).
+    /// For users with hundreds of cold images on first list render that
+    /// worker pool starves. This wrapper hops onto a serial dedicated queue
+    /// so heavy image-status work is fully off any SwiftUI render path.
+    func imageStatusAsync(for filename: String) async -> ImageLoadStatus {
+        await withCheckedContinuation { continuation in
+            statusQueue.async { [weak self] in
+                guard let self else {
+                    continuation.resume(returning: .fileMissing)
+                    return
+                }
+                continuation.resume(returning: self.imageStatus(for: filename))
+            }
+        }
     }
 
     /// Returns the availability status of an image file without caching.
