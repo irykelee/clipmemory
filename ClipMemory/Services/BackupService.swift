@@ -73,7 +73,13 @@ final class BackupService {
         // POSIX locale keeps `yyyy` Gregorian regardless of the user's calendar
         // (Buddhist/Japanese eras would otherwise break name-sort = time-sort).
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd_HHmmss"
+        // BUG-021 (2026-07-21): `yyyy-MM-dd_HHmmss` has second precision —
+        // a manual "Backup Now" landing in the same second as the daily
+        // auto-backup, or two rapid manual triggers, would produce the
+        // same directory name and `copyItem` would fail because the
+        // destination already exists. Append `.SSS` for millisecond
+        // precision — still human-sortable, still unique within a year.
+        formatter.dateFormat = "yyyy-MM-dd_HHmmss.SSS"
         let destination = backupsDirectory.appendingPathComponent(formatter.string(from: Date()), isDirectory: true)
 
         do {

@@ -209,11 +209,25 @@ class CryptoService: CryptoServiceProtocol {
     }
 
     private static func defaultKeyFailureHandler(_ failure: CryptoKeyFailure) -> KeyFailureAction {
+        // BUG-017 (2026-07-21): the previous branch used
+        // `DispatchQueue.main.sync`, which deadlocks if the calling thread
+        // holds a lock that main is waiting for (key failure paths can run
+        // while a UI handler is mid-mutation). Replace with an async dispatch
+        // + semaphore.wait(timeout:). Caller still blocks until the alert
+        // returns, but if main is busy for >5s we surface a forced .quit
+        // rather than hang the calling thread indefinitely.
         let action: KeyFailureAction
         if Thread.isMainThread {
             action = presentKeyFailureAlert(failure)
         } else {
-            action = DispatchQueue.main.sync { presentKeyFailureAlert(failure) }
+            var captured: KeyFailureAction?
+            let semaphore = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async {
+                captured = presentKeyFailureAlert(failure)
+                semaphore.signal()
+            }
+            _ = semaphore.wait(timeout: .now() + 5)
+            action = captured ?? .quit
         }
         if action == .quit {
             // Graceful, informed exit instead of fatalError.

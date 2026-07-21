@@ -54,7 +54,9 @@ final class VisionOCRService: OCRServiceProtocol {
         }
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
-        request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en", "ja", "ko"]
+        request.recognitionLanguages = Self.supportedRecognitionLanguages(
+            from: ["zh-Hans", "zh-Hant", "en", "ja", "ko"]
+        )
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
@@ -67,5 +69,30 @@ final class VisionOCRService: OCRServiceProtocol {
         guard !lines.isEmpty else { return nil }
         let joined = lines.joined(separator: "\n")
         return String(joined.prefix(maxCharacters))
+    }
+
+    /// NEW-1 (2026-07-21): filter the requested languages against the ones
+    /// the active revision actually supports. If macOS drops a locale in a
+    /// future release, the previous code would set an unsupported value and
+    /// `handler.perform` would throw — caught and silently turned into a
+    /// nil OCR result. The user would see "no text recognized" with no
+    /// indication that a config mismatch is the cause. Falling back to
+    /// "en" only when NONE of the requested langs are supported keeps
+    /// every supported locale working and degrades gracefully otherwise.
+    private static func supportedRecognitionLanguages(from requested: [String]) -> [String] {
+        if #available(macOS 13.0, *) {
+            // The 2-arg overload is deprecated in macOS 12+ in favor of the
+            // parameterless form (introduced macOS 15). Suppress the warning
+            // here — we explicitly want to query Revision3 since the rest of
+            // the file pins that revision for reproducibility (BUG-045).
+            let supported = (try? VNRecognizeTextRequest
+                .supportedRecognitionLanguages(
+                    for: VNRequestTextRecognitionLevel.accurate,
+                    revision: VNRecognizeTextRequestRevision3
+                )) ?? []
+            let filtered = requested.filter { supported.contains($0) }
+            return filtered.isEmpty ? ["en"] : filtered
+        }
+        return requested
     }
 }

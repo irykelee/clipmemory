@@ -47,11 +47,26 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
     private let parseLatestDate: (String) -> Date?
 
     init(
-        urlSession: URLSession = .shared,
+        urlSession: URLSession? = nil,
         probeTimeoutSeconds: TimeInterval = 5,
         parseLatestDate: @escaping (String) -> Date? = UpdateService.latestItemDate(inAppcastXML:)
     ) {
-        self.urlSession = urlSession
+        // BUG-036 (2026-07-21): URLSession.shared has a default
+        // `timeoutIntervalForRequest` of 60s that some macOS versions honor
+        // over the per-request `timeoutInterval` for `data(for:)`. Force
+        // an ephemeral session with explicit 5s request timeout so the
+        // probe's 5s budget is actually enforced. Tests inject their own
+        // URLSession via the parameter; the default ephemeral one has no
+        // shared cookie/cache state so probes don't pollute each other.
+        if let urlSession {
+            self.urlSession = urlSession
+        } else {
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = probeTimeoutSeconds
+            config.timeoutIntervalForResource = probeTimeoutSeconds
+            config.requestCachePolicy = .reloadIgnoringLocalCacheData
+            self.urlSession = URLSession(configuration: config)
+        }
         self.probeTimeoutSeconds = probeTimeoutSeconds
         self.parseLatestDate = parseLatestDate
     }
