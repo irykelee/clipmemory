@@ -252,37 +252,207 @@ final class UpdateServiceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
         MockURLProtocol.stubResponses = [:]
         MockURLProtocol.stubError = nil
-        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
-        let service = UpdateService(probeEngine: engine)
-        _ = UpdateFeedPolicies.knownChannels // reference for completeness
+        // Deterministic stub — no network dependency (Important #4 fix).
+        let stub = StubProbeEngine()
+        await stub.setNextDecision(automaticPrimaryDecision)
+        let service = UpdateService(probeEngine: stub, autoStart: false)
 
+        // AutoStart off — no probe runs from init (Important #4 seam).
+        let initCalls = await stub.callCount
+        XCTAssertEqual(initCalls, 0,
+                       "autoStart:false must NOT trigger an init probe")
+
+        let probeDone = expectation(description: "setPolicy probe completes")
+        await stub.setOnResolve { _ in probeDone.fulfill() }
         service.setPolicy(.automatic)
-        // Wait for async probe completion
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        await fulfillment(of: [probeDone], timeout: 2)
 
+        let afterCalls = await stub.callCount
+        XCTAssertEqual(afterCalls, 1, "setPolicy must trigger exactly one probe")
         XCTAssertEqual(service.status.currentSource, "github-release",
-                       "automatic mode with reachable primary → github-release")
+                       "stub decision reflects in status immediately")
         XCTAssertEqual(UpdateService.feedPolicy, .automatic,
                        "policy must be persisted to UserDefaults")
     }
 
     @MainActor
-    func testSetFeedURLErrorLeavesPreviousURLAndLogsDeferral() async {
-        // Note: we can't easily inject a Sparkle failure in unit test. Instead,
-        // verify the catch block's status.reason update path by triggering a
-        // setPolicy call that succeeds at probe level but observes status.reason
-        // transitions. Sparkle reset failures are covered by e2e manual (Task 9).
+    func testSetFallbackPolicyActivatesMirrorWithoutFetch() async {
+        // SPUUpdater.resetUpdateCycleAfterShortDelay() does not throw on
+        // macOS in Sparkle 2.9.4, so the do/try/catch path is unreachable
+        // in unit tests — but the .fallback → jsdelivr-mirror activation
+        // path is exercised here. Sparkle reset failures are covered by
+        // e2e manual (Task 9).
         UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
         MockURLProtocol.stubResponses = [:]
-        let service = UpdateService(probeEngine: DefaultFeedProbeEngine(
-            urlSession: MockURLSessionFactory.make()
-        ))
+        let stub = StubProbeEngine()
+        await stub.setNextDecision(forcedFallbackDecision)
+        let service = UpdateService(probeEngine: stub, autoStart: false)
+        let probeDone = expectation(description: "fallback probe completes")
+        await stub.setOnResolve { _ in probeDone.fulfill() }
         service.setPolicy(.fallback)
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        await fulfillment(of: [probeDone], timeout: 2)
         XCTAssertEqual(service.status.currentSource, "jsdelivr-mirror",
                        ".fallback mode → jsDelivr mirror immediately, no fetch")
         XCTAssertEqual(UpdateService.feedPolicy, .fallback)
     }
+
+    // MARK: - Concurrency (Important #1 race)
+
+    /// A slow startup probe must NOT overwrite a faster post-setPolicy probe.
+    /// This regression test pins the generation-token + post-await check by
+    /// making the first (slow) probe return a fallback decision AFTER the
+    /// second (fast) probe has already written a primary decision.
+    @MainActor
+    func testSlowStartupProbeDoesNotOverwriteFasterUserChoice() async {
+        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        UpdateService.lastPrimaryItemDate = nil
+        MockURLProtocol.stubResponses = [:]
+        MockURLProtocol.stubError = nil
+        let stub = StubProbeEngine()
+        let primaryDecision = automaticPrimaryDecision
+        let fallbackDecision = forcedFallbackDecision
+        let service = UpdateService(probeEngine: stub, autoStart: false)
+
+        // First probe: slow, returns fallback.
+        await stub.enqueueDecision(fallbackDecision, delaySeconds: 0.5)
+        // Second probe: fast, returns primary (user just chose primary).
+        await stub.enqueueDecision(primaryDecision, delaySeconds: 0.0)
+
+        // Simulate the startup probe firing alongside a fast user-driven
+        // probe. We kick them off in order; the second awaits zero delay and
+        // finishes first, then the first resumes and would normally clobber.
+        async let firstProbe: Void = service.triggerProbe()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        async let secondProbe: Void = service.triggerProbe()
+        _ = await (firstProbe, secondProbe)
+
+        let calls = await stub.callCount
+        XCTAssertEqual(calls, 2, "both probes must have completed")
+        XCTAssertEqual(service.status.currentSource, "github-release",
+                       "fast probe result (primary) must win; slow stale probe must be dropped")
+    }
+
+    // MARK: - Baseline monotonicity (Important #2)
+
+    @MainActor
+    func testBaselineWrittenFromPrimaryObservationOnly() async {
+        // Important #2: probe returns primary metadata inline. A single
+        // successful primary fetch must update the baseline, even though
+        // no second URLSession fetch happens.
+        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        UpdateService.lastPrimaryItemDate = nil
+        let stub = StubProbeEngine()
+        let decisionWithPrimaryDate = FeedProbeDecision(
+            chosenURL: URL(string: "https://example.com/primary.xml")!,
+            usedChannelID: "primary",
+            reason: .automaticReachable,
+            primaryAppcastXML: sampleAppcast,
+            primaryLatestDate: dateFromPubDateString("Sat, 18 Jul 2026 03:32:59 +0000")
+        )
+        await stub.setNextDecision(decisionWithPrimaryDate)
+        let service = UpdateService(probeEngine: stub, autoStart: false)
+        await service.triggerProbe()
+
+        XCTAssertEqual(UpdateService.lastPrimaryItemDate,
+                       decisionWithPrimaryDate.primaryLatestDate,
+                       "baseline written from a single primary fetch — no second URLSession needed")
+    }
+
+    @MainActor
+    func testBaselineMonotonicDoesNotRollBackOnOlderObservation() async {
+        // Important #2: max(old, new) so an out-of-order response can never
+        // lower the baseline.
+        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        let newer = dateFromPubDateString("Sat, 18 Jul 2026 12:00:00 +0000")
+        let older = dateFromPubDateString("Sat, 18 Jul 2026 03:32:59 +0000")
+        UpdateService.lastPrimaryItemDate = newer
+        let stub = StubProbeEngine()
+        let olderDecision = FeedProbeDecision(
+            chosenURL: URL(string: "https://example.com/primary.xml")!,
+            usedChannelID: "primary",
+            reason: .automaticReachable,
+            primaryAppcastXML: sampleAppcast,
+            primaryLatestDate: older
+        )
+        await stub.setNextDecision(olderDecision)
+        let service = UpdateService(probeEngine: stub, autoStart: false)
+        await service.triggerProbe()
+
+        XCTAssertEqual(UpdateService.lastPrimaryItemDate, newer,
+                       "baseline must be max(old, new); older observation must not roll back")
+    }
+}
+
+// MARK: - StubProbeEngine (file scope; outside UpdateServiceTests class)
+
+/// Deterministic `FeedProbeEngine` for UpdateService orchestration tests.
+/// Records each call, supports configurable decisions + delays, and fires
+/// an onResolve callback so XCTest expectations can await completion without
+/// wall-clock sleeps.
+actor StubProbeEngine: FeedProbeEngine {
+    private struct PendingDecision {
+        let decision: FeedProbeDecision
+        let delaySeconds: TimeInterval
+    }
+    private var queue: [PendingDecision] = []
+    private(set) var callCount: Int = 0
+    private var onResolve: ((UpdateFeedPolicy) -> Void)?
+
+    func setNextDecision(_ decision: FeedProbeDecision) {
+        queue.append(PendingDecision(decision: decision, delaySeconds: 0))
+    }
+
+    func enqueueDecision(_ decision: FeedProbeDecision, delaySeconds: TimeInterval) {
+        queue.append(PendingDecision(decision: decision, delaySeconds: delaySeconds))
+    }
+
+    func setOnResolve(_ callback: ((UpdateFeedPolicy) -> Void)?) {
+        onResolve = callback
+    }
+
+    func resolve(
+        policy: UpdateFeedPolicy,
+        lastKnownDate: Date?,
+        channels: [FeedChannel],
+        timeout: TimeInterval?
+    ) async -> FeedProbeDecision? {
+        callCount += 1
+        let next = queue.isEmpty ? nil : queue.removeFirst()
+        if let next {
+            if next.delaySeconds > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(next.delaySeconds * 1_000_000_000))
+            }
+            onResolve?(policy)
+            return next.decision
+        }
+        onResolve?(policy)
+        return nil
+    }
+}
+
+// MARK: - Decision fixtures + helpers (file scope)
+
+let automaticPrimaryDecision = FeedProbeDecision(
+    chosenURL: URL(string: "https://example.com/primary.xml")!,
+    usedChannelID: "github-release",
+    reason: .automaticReachable,
+    primaryAppcastXML: nil,
+    primaryLatestDate: nil
+)
+
+let forcedFallbackDecision = FeedProbeDecision(
+    chosenURL: URL(string: "https://example.com/fallback.xml")!,
+    usedChannelID: "jsdelivr-mirror",
+    reason: .userForcedFallback,
+    primaryAppcastXML: nil,
+    primaryLatestDate: nil
+)
+
+func dateFromPubDateString(_ raw: String) -> Date {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+    return formatter.date(from: raw)!
 }
 
 // MARK: - MockURLProtocol test helper (file scope, outside UpdateServiceTests class)

@@ -14,6 +14,15 @@ struct FeedProbeDecision: Equatable {
     let chosenURL: URL
     let usedChannelID: String
     let reason: ProbeReason
+
+    /// Observed primary appcast body (nil when primary did not return 200, or
+    /// when the chosen channel was not primary). Lets UpdateService update
+    /// its `lastPrimaryItemDate` baseline without a second URLSession fetch.
+    let primaryAppcastXML: String?
+
+    /// Most recent `<pubDate>` extracted from `primaryAppcastXML`. nil when
+    /// the body is nil or contained no parseable dates.
+    let primaryLatestDate: Date?
 }
 
 /// Pure protocol — test stubbing by injecting a deterministic mock that
@@ -56,27 +65,67 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         let effectiveTimeout = timeout ?? probeTimeoutSeconds
         switch policy {
         case .primary:
-            return FeedProbeDecision(chosenURL: primary.url, usedChannelID: primary.id, reason: .userForced)
+            // Force-fetch the primary even in .primary mode so we can update
+            // its baseline date without a second URLSession call from the
+            // caller. Failure here just leaves the baseline unchanged.
+            let primaryXML = await fetchBody(url: primary.url, timeout: effectiveTimeout)
+            return FeedProbeDecision(
+                chosenURL: primary.url,
+                usedChannelID: primary.id,
+                reason: .userForced,
+                primaryAppcastXML: primaryXML,
+                primaryLatestDate: primaryXML.flatMap(parseLatestDate)
+            )
         case .fallback:
-            // Bypass stale guard — user informed consent.
-            return FeedProbeDecision(chosenURL: fallback.url, usedChannelID: fallback.id, reason: .userForcedFallback)
+            // Bypass stale guard — user informed consent. Don't re-fetch primary.
+            return FeedProbeDecision(
+                chosenURL: fallback.url,
+                usedChannelID: fallback.id,
+                reason: .userForcedFallback,
+                primaryAppcastXML: nil,
+                primaryLatestDate: nil
+            )
         case .automatic:
             let primaryXML = await fetchBody(url: primary.url, timeout: effectiveTimeout)
-            if primaryXML != nil {
-                return FeedProbeDecision(chosenURL: primary.url, usedChannelID: primary.id, reason: .automaticReachable)
+            if let primaryXML {
+                return FeedProbeDecision(
+                    chosenURL: primary.url,
+                    usedChannelID: primary.id,
+                    reason: .automaticReachable,
+                    primaryAppcastXML: primaryXML,
+                    primaryLatestDate: parseLatestDate(primaryXML)
+                )
             }
             // Primary unreachable — try fallback.
             guard let fallbackXML = await fetchBody(url: fallback.url, timeout: effectiveTimeout) else {
                 // Both down — keep primary (no silent failover when fallback also unreachable).
-                return FeedProbeDecision(chosenURL: primary.url, usedChannelID: primary.id, reason: .automaticPrimaryDown)
+                return FeedProbeDecision(
+                    chosenURL: primary.url,
+                    usedChannelID: primary.id,
+                    reason: .automaticPrimaryDown,
+                    primaryAppcastXML: nil,
+                    primaryLatestDate: nil
+                )
             }
             // Stale guard — applies in .automatic only.
             if let lastKnownDate,
                let fallbackDate = parseLatestDate(fallbackXML),
                fallbackDate < lastKnownDate {
-                return FeedProbeDecision(chosenURL: primary.url, usedChannelID: primary.id, reason: .mirrorStaleRejected)
+                return FeedProbeDecision(
+                    chosenURL: primary.url,
+                    usedChannelID: primary.id,
+                    reason: .mirrorStaleRejected,
+                    primaryAppcastXML: nil,
+                    primaryLatestDate: nil
+                )
             }
-            return FeedProbeDecision(chosenURL: fallback.url, usedChannelID: fallback.id, reason: .automaticPrimaryDown)
+            return FeedProbeDecision(
+                chosenURL: fallback.url,
+                usedChannelID: fallback.id,
+                reason: .automaticPrimaryDown,
+                primaryAppcastXML: nil,
+                primaryLatestDate: nil
+            )
         }
     }
 
