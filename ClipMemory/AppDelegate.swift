@@ -183,5 +183,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyManager = hotKey
     }
 
-    deinit { if let o = languageObserver { NotificationCenter.default.removeObserver(o) }; if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) } }
+    deinit {
+        if let o = languageObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) }
+        // BUG-037 (2026-07-21): deinit was observer-only. Carbon hotkey,
+        // clipboard monitor timer, and welcome window are cleaned only
+        // in applicationWillTerminate. If AppDelegate is ever deallocated
+        // outside the terminate path, those resources leak. Mirror the
+        // terminate cleanup here as a safety net.
+        hotKeyManager?.unregister()
+        clipboardMonitor?.stopMonitoring()
+        welcomeWindow?.close()
+    }
 }
