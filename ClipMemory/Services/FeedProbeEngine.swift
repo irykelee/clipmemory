@@ -23,22 +23,8 @@ protocol FeedProbeEngine: Sendable {
         policy: UpdateFeedPolicy,
         lastKnownDate: Date?,
         channels: [FeedChannel],
-        timeout: TimeInterval
+        timeout: TimeInterval?
     ) async -> FeedProbeDecision?
-}
-
-extension FeedProbeEngine {
-    /// Convenience overload — defaults to 5s per-call timeout (matches
-    /// `DefaultFeedProbeEngine.init`'s `probeTimeoutSeconds` default).
-    /// Swift does not allow default args in protocol methods, so we
-    /// expose a 3-param overload via extension.
-    func resolve(
-        policy: UpdateFeedPolicy,
-        lastKnownDate: Date?,
-        channels: [FeedChannel]
-    ) async -> FeedProbeDecision? {
-        await resolve(policy: policy, lastKnownDate: lastKnownDate, channels: channels, timeout: 5)
-    }
 }
 
 final class DefaultFeedProbeEngine: FeedProbeEngine {
@@ -60,12 +46,14 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         policy: UpdateFeedPolicy,
         lastKnownDate: Date?,
         channels: [FeedChannel],
-        timeout: TimeInterval
+        timeout: TimeInterval? = nil
     ) async -> FeedProbeDecision? {
         guard let primary = channels.first(where: { $0.kind == .primary }),
               let fallback = channels.first(where: { $0.kind == .fallback }) else {
             return nil
         }
+        // Per-call override wins; otherwise use engine-level config from init.
+        let effectiveTimeout = timeout ?? probeTimeoutSeconds
         switch policy {
         case .primary:
             return FeedProbeDecision(chosenURL: primary.url, usedChannelID: primary.id, reason: .userForced)
@@ -73,12 +61,12 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
             // Bypass stale guard — user informed consent.
             return FeedProbeDecision(chosenURL: fallback.url, usedChannelID: fallback.id, reason: .userForcedFallback)
         case .automatic:
-            let primaryXML = await fetchBody(url: primary.url, timeout: timeout)
+            let primaryXML = await fetchBody(url: primary.url, timeout: effectiveTimeout)
             if primaryXML != nil {
                 return FeedProbeDecision(chosenURL: primary.url, usedChannelID: primary.id, reason: .automaticReachable)
             }
             // Primary unreachable — try fallback.
-            guard let fallbackXML = await fetchBody(url: fallback.url, timeout: timeout) else {
+            guard let fallbackXML = await fetchBody(url: fallback.url, timeout: effectiveTimeout) else {
                 // Both down — keep primary (no silent failover when fallback also unreachable).
                 return FeedProbeDecision(chosenURL: primary.url, usedChannelID: primary.id, reason: .automaticPrimaryDown)
             }
