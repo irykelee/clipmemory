@@ -102,6 +102,14 @@ class ImageStorage {
                 hadFailure = true
                 continue
             }
+            // L-4: match saveImage's maxImageSize cap. Legacy files were
+            // written under the same 50MB limit, but a corrupted/expanded
+            // file shouldn't be loaded into memory unconstrained.
+            guard imageData.count <= maxImageSize else {
+                logger.warning("Skipping oversized legacy image: \(filename) (\(imageData.count) bytes)")
+                hadFailure = true
+                continue
+            }
 
             var success = false
             // Check if already encrypted (v2 format starts with "v2", legacy format has specific structure)
