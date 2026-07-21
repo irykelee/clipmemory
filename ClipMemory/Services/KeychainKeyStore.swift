@@ -55,12 +55,21 @@ struct KeychainKeyStore: KeyStoring {
 
     @discardableResult
     func store(_ keyData: Data) -> OSStatus {
-        // Replace, not duplicate: drop any stale copy first.
-        SecItemDelete(baseQuery as CFDictionary)
+        // L-3: SecItemDelete + SecItemAdd had a non-atomic window — if
+        // SecItemAdd failed (e.g. ACL violation), the previous key was
+        // already deleted. Now try SecItemUpdate first (atomic at OS
+        // level when item exists); fall back to SecItemAdd only when the
+        // item is absent. Caller (CryptoService.prepareKey) keeps its
+        // key-file fallback regardless — this only removes the delete
+        // window inside this method.
         var attributes = baseQuery
         attributes[kSecValueData as String] = keyData
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         attributes[kSecAttrSynchronizable as String] = false
+        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, attributes as CFDictionary)
+        if updateStatus != errSecItemNotFound {
+            return updateStatus
+        }
         return SecItemAdd(attributes as CFDictionary, nil)
     }
 
