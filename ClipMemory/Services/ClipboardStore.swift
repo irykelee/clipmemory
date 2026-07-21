@@ -900,6 +900,11 @@ class ClipboardStore: ObservableObject {
     private func mergePendingDecryptionFailures() {
         pendingFailedIDsLock.lock()
         let ids = pendingFailedIDs
+        // BUG-015 (2026-07-21): without removeAll, pendingFailedIDs grew
+        // monotonically — every failed decryption ID accumulated forever.
+        // Each subsequent merge re-processed the entire set. Clear inside
+        // the same lock window to keep the snapshot/clear atomic.
+        pendingFailedIDs.removeAll()
         pendingFailedIDsLock.unlock()
         var changed = false
         for id in ids {
