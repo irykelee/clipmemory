@@ -136,7 +136,9 @@ struct ContentView: View {
             keyboardSelectedIndex = visibleIdx[pos - 1]
         } else {
             // No selection, or selection hidden — wrap to last visible.
-            keyboardSelectedIndex = visibleIdx.last!
+            // Guarded by `!visibleIdx.isEmpty` above, but use optional fallback for
+            // safety against future refactors that drop the guard.
+            keyboardSelectedIndex = visibleIdx.last ?? keyboardSelectedIndex
         }
         if let idx = keyboardSelectedIndex { scrollAnchor = cachedDisplayedItems[idx].id }
     }
@@ -150,7 +152,9 @@ struct ContentView: View {
             keyboardSelectedIndex = visibleIdx[pos + 1]
         } else {
             // No selection, selection hidden, or at end — wrap to first visible.
-            keyboardSelectedIndex = visibleIdx.first!
+            // Guarded by `!visibleIdx.isEmpty` above, but use optional fallback for
+            // safety against future refactors that drop the guard.
+            keyboardSelectedIndex = visibleIdx.first ?? keyboardSelectedIndex
         }
         if let idx = keyboardSelectedIndex { scrollAnchor = cachedDisplayedItems[idx].id }
     }
