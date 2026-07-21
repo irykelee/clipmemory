@@ -254,6 +254,29 @@ struct ContentView: View {
         }
     }
 
+    /// Checks if the calendar day rolled over since `currentDate` was last set,
+    /// and if so, advances `currentDate` + refreshes the displayed-items cache.
+    /// Called from `.onReceive(NSCalendarDayChangedNotification)` (cross-midnight)
+    /// and `.onAppear` (initial render even if no rollover yet).
+    private func handleDayRolloverIfNeeded() {
+        let calendar = Calendar.current
+        let nowStart = calendar.startOfDay(for: Date())
+        let cachedStart = calendar.startOfDay(for: currentDate)
+        guard nowStart != cachedStart else { return }
+        handleDayRollover()
+    }
+
+    /// Applies the day rollover: bump `currentDate`, log, refresh cache.
+    /// Always called on main thread (notification + onAppear both deliver on main).
+    private func handleDayRollover() {
+        // currentDate is @State — capture BEFORE reassigning so the rollover log
+        // shows the actual transition.
+        let previous = currentDate
+        currentDate = Date()
+        UIObservability.logCurrentDateRollover(from: previous, to: currentDate)
+        updateDisplayedItemsCache()
+    }
+
     private func updateDisplayedItemsCache() {
         let start = Date()
         cachedDisplayedItems = filterItems(store.items)
@@ -479,22 +502,24 @@ struct ContentView: View {
             .onChange(of: collapsedGroups) { val in
                 self.saveCollapsedGroups(val)
             }
-            .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in selectedTab = .settings }
+            .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in
+                // Defer to next runloop to avoid "Modifying state during view update"
+                // (writing @State inside an onReceive handler triggers SwiftUI warning).
+                DispatchQueue.main.async { selectedTab = .settings }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in self.focusSearchField() }
-            .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-                DispatchQueue.main.async {
-                    let calendar = Calendar.current
-                    let nowStart = calendar.startOfDay(for: Date())
-                    let cachedStart = calendar.startOfDay(for: currentDate)
-                    if nowStart != cachedStart {
-                        // currentDate is @State — capture BEFORE reassigning so
-                        // the rollover log shows the actual transition.
-                        let previous = currentDate
-                        currentDate = Date()
-                        UIObservability.logCurrentDateRollover(from: previous, to: currentDate)
-                        updateDisplayedItemsCache()
-                    }
-                }
+            // M8 fix: use NSCalendarDayChanged notification (fires at midnight) instead of
+            // Timer.publish(every: 60). Reduces wakeups from 1440/day to 1/day, and removes
+            // the synchronous-write-of-@State-in-onReceive pattern that triggered SwiftUI warnings.
+            .onReceive(NotificationCenter.default.publisher(
+                for: Notification.Name(rawValue: "NSCalendarDayChangedNotification")
+            )) { _ in
+                handleDayRollover()
+            }
+            // Initial-fire: on first appear, refresh cache so today/yesterday groups are
+            // accurate even if NSCalendarDayChanged was already posted earlier today.
+            .onAppear {
+                handleDayRolloverIfNeeded()
             }
     }
 
