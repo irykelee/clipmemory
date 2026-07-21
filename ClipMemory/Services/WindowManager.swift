@@ -36,6 +36,12 @@ class WindowManager: NSObject, NSWindowDelegate {
             if mainContentView == nil {
                 mainContentView = ContentView()
             }
+            // NEW-6 (2026-07-21): replace `mainContentView!` with a guard.
+            // The property is always set by the `if mainContentView == nil`
+            // block above, but a future refactor could rearrange the
+            // branches — a guard makes the invariant explicit and avoids
+            // a crash if the property is ever nil at this line.
+            guard let contentView = mainContentView else { return }
             let window = NSWindow(
                 contentRect: savedWindowFrame,
                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -46,7 +52,7 @@ class WindowManager: NSObject, NSWindowDelegate {
             window.toolbarStyle = .unified
             window.delegate = self
             window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: mainContentView!)
+            window.contentView = NSHostingView(rootView: contentView)
             window.makeKeyAndOrderFront(nil)
             mainWindow = window
         }

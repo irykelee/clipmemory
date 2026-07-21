@@ -161,7 +161,12 @@ enum TagSuggestion {
 
     /// Code signals: balanced braces or common keywords.
     private static func containsCodeMarker(_ s: String) -> Bool {
-        let markers = ["func ", "def ", "class ", "import ", "=>", "{", "}", ";"]
+        // BUG-047 (2026-07-21): the prior marker set included ";" — every
+        // natural-language sentence with a semicolon ("note: important;
+        // please read") was misclassified as code. Drop the semicolon.
+        // Remaining markers (func / def / class / import / => / { / })
+        // all imply an actual code construct; lone ";" does not.
+        let markers = ["func ", "def ", "class ", "import ", "=>", "{", "}"]
         return markers.contains { s.contains($0) }
     }
 
