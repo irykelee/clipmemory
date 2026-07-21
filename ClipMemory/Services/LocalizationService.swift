@@ -233,6 +233,13 @@ struct L10n {
     static var alertUpdateFallbackUseMirror: String { string("alert.update.fallback.use.mirror") }
     static var alertUpdateFallbackPrimaryOnly: String { string("alert.update.fallback.primary.only") }
 
+    // MARK: - Update Source Switch (Task 6)
+    static var settingsUpdateSourceTitle: String { string("settings.updateSource.title") }
+    static var settingsUpdateSourceOptionAutomatic: String { string("settings.updateSource.option.automatic") }
+    static var settingsUpdateSourceOptionPrimary: String { string("settings.updateSource.option.primary") }
+    static var settingsUpdateSourceOptionFallback: String { string("settings.updateSource.option.fallback") }
+    static var settingsUpdateSourceStatusPanel: String { string("settings.updateSource.statusPanel") }
+
     static var filterRichText: String { string("filter.richtext") }
 
     // MARK: - Type Filter
