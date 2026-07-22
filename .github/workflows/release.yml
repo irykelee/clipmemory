@@ -130,26 +130,35 @@ jobs:
           # Best-effort: refresh the jsDelivr mirror of the fallback feed
           curl -sf "https://purge.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml" || true
 
-      - name: Extract bilingual title from release notes
-        id: title
+      - name: Extract bilingual title and body from release notes
+        id: notes
         # P0-2 fix (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md): the previous
         # release left the title as the auto-generated stub "v2.5.10"
         # because softprops/action-gh-release defaults the title to the tag
-        # name when `title:` is not passed. Pull the first H1 of the
-        # release-notes file as the title (it is authored bilingual per
-        # docs/release-notes-template.md), with a deterministic bilingual
-        # fallback if the notes file is missing so release isn't blocked.
+        # name when `title:` is not passed, and the body to auto-generated
+        # PR notes when `body_path:` is not passed. Pull both from
+        # docs/release-notes/v${VERSION}.md (it is authored bilingual per
+        # docs/release-notes-template.md), with deterministic bilingual
+        # fallbacks if the notes file is missing so release isn't blocked.
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           NOTES="docs/release-notes/v${VERSION}.md"
+          BODY_FILE="/tmp/clipmemory-release-body.md"
           if [[ -f "$NOTES" ]]; then
             BILINGUAL=$(head -1 "$NOTES" | sed 's/^# *//' | tr -d '\r')
-            echo "title=${BILINGUAL}" >> "$GITHUB_OUTPUT"
-            echo "Extracted title from ${NOTES}: ${BILINGUAL}"
+            tail -n +2 "$NOTES" > "$BODY_FILE"
+            echo "Extracted from ${NOTES}: ${BILINGUAL}"
           else
-            echo "title=剪忆 ClipMemory v${VERSION} — Release / 发布 (release-notes file missing)" >> "$GITHUB_OUTPUT"
-            echo "WARN: ${NOTES} not found; using placeholder title (post-push fix: gh release edit --title)"
+            BILINGUAL="剪忆 ClipMemory v${VERSION} — Release / 发布 (release-notes file missing)"
+            {
+              echo "# ${BILINGUAL}"
+              echo ""
+              echo "_Auto-placeholder: \`docs/release-notes/v${VERSION}.md\` was not present at release time. Use \`gh release edit v${VERSION} --notes-file <path>\` post-push to fill in bilingual release notes per docs/RELEASE_PUSH_CHECKLIST.md §D3._"
+            } > "$BODY_FILE"
+            echo "WARN: ${NOTES} not found; placeholder title + body"
           fi
+          echo "title=${BILINGUAL}" >> "$GITHUB_OUTPUT"
+          echo "body_path=${BODY_FILE}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -157,8 +166,10 @@ jobs:
           files: |
             Releases/ClipMemory.tar.gz
             appcast.xml
-          title: ${{ steps.title.outputs.title }}
-          generate_release_notes: true
+          title: ${{ steps.notes.outputs.title }}
+          body_path: ${{ steps.notes.outputs.body_path }}
+          # Don't auto-generate notes — we supply body_path from release-notes file.
+          generate_release_notes: false
 
       - name: Update Homebrew tap
         env:
