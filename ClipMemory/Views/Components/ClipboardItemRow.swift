@@ -1,6 +1,20 @@
 import SwiftUI
 import AppKit
 
+// BUG-009 (2026-07-22): NSCache-backed memoization (not @State) so
+// writes during view-body evaluation do not trigger "Modifying state
+// during view update." countLimit prevents unbounded growth.
+private let highlightedCache: NSCache<NSString, NSAttributedString> = {
+    let c = NSCache<NSString, NSAttributedString>()
+    c.countLimit = 500
+    return c
+}()
+private let maskedHighlightedCache: NSCache<NSString, NSAttributedString> = {
+    let c = NSCache<NSString, NSAttributedString>()
+    c.countLimit = 500
+    return c
+}()
+
 // MARK: - AppKit NSPressGestureRecognizer for stable image long-press
 struct PressableImage: NSViewRepresentable {
     let onPressChanged: (Bool) -> Void
@@ -63,14 +77,10 @@ struct ClipboardItemRow: View, Equatable {
     @State private var isHovered = false
     @State private var loadedImage: NSImage?
     @State private var loadedContent: String?
+    @State private var loadedRichText: AttributedString?
     @State private var longPressing = false
     @State private var imageLongPressing = false
     @State private var showFullContent = false
-    @State private var _cachedHighlighted: [String: AttributedString] = [:]
-    @State private var loadedRichText: AttributedString?
-    /// True after the .task attempted to load the image and got nil.
-    /// The companion `imageLoadStatus` tells us whether the file is missing
-    /// or decryption failed, so we only offer one-click delete for true orphans.
     @State private var imageLoadFailed = false
     @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
 
@@ -86,7 +96,6 @@ struct ClipboardItemRow: View, Equatable {
         lhs.item.createdAt == rhs.item.createdAt &&
         lhs.item.decryptionFailed == rhs.item.decryptionFailed
     }
-    @State private var _cachedMaskedHighlighted: [String: AttributedString] = [:]
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     private var iconSize: CGFloat { fontScale * 13 }
 
@@ -132,17 +141,21 @@ struct ClipboardItemRow: View, Equatable {
     }
 
     private var cachedHighlighted: AttributedString {
-        let cacheKey = "\(item.id.uuidString)-\(searchText)"
-        if let cached = _cachedHighlighted[cacheKey] { return cached }
+        let key = "\(item.id.uuidString)-\(searchText)" as NSString
+        if let cached = highlightedCache.object(forKey: key) {
+            return AttributedString(cached)
+        }
         let result = highlightedContent(decryptedContent, highlight: searchText)
-        _cachedHighlighted[cacheKey] = result
+        highlightedCache.setObject(NSAttributedString(result), forKey: key)
         return result
     }
     private var cachedMaskedHighlighted: AttributedString {
-        let cacheKey = "\(item.id.uuidString)-\(searchText)"
-        if let cached = _cachedMaskedHighlighted[cacheKey] { return cached }
+        let key = "\(item.id.uuidString)-\(searchText)" as NSString
+        if let cached = maskedHighlightedCache.object(forKey: key) {
+            return AttributedString(cached)
+        }
         let result = maskedHighlightedContent(decryptedContent, highlight: searchText)
-        _cachedMaskedHighlighted[cacheKey] = result
+        maskedHighlightedCache.setObject(NSAttributedString(result), forKey: key)
         return result
     }
 
