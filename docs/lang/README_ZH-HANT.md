@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.5.9
+# 剪憶 ClipMemory v2.5.10
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -47,6 +47,12 @@
 ---
 
 ## 📋 更新日誌
+
+### v2.5.10 (2026-07-22) — 備份錯誤可見 + UI 重構 + SwiftUI 警告修復
+
+- **🛡 備份包損壞可見（BUG-024）** — 損壞的 items.json / trash.json / tags.json / 圖片檔案不再靜默匯入 0 條；現在匯入失敗會 throw `corruptedData` 並在設定頁彈窗提示
+- **⚡ SidebarView 抽取（NEW-7 Phase 3）** — ContentView 從 1162 行減至 1123 行；側邊欄獨立的 11 參數顯式介面，單測 + 手動驗證 7/7 通過
+- **🛡 SwiftUI @State 警告修復（BUG-009）** — `ClipboardItemRow` 高亮快取從 `@State` 字典遷移到 `NSCache`；不再觸發「Modifying state during view update」執行時警告，快取 countLimit=500 上限防記憶體洩漏
 
 ### v2.5.9 (2026-07-21) — 卡死偵測 + 全量稽核修復
 

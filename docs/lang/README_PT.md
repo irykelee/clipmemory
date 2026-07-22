@@ -1,4 +1,4 @@
-# ClipMemory v2.5.9
+# ClipMemory v2.5.10
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,12 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.5.10 (2026-07-22) — Erros de backup visíveis + refatoração de UI + correção de aviso SwiftUI
+
+- **🛡 Corrupção de backup visível (BUG-024)** — Arquivos items.json / trash.json / tags.json / de imagem corrompidos não são mais importados silenciosamente como 0 itens; falhas agora lançam `corruptedData` e surgem em alerta de Configurações
+- **⚡ Extração de SidebarView (NEW-7 Fase 3)** — ContentView reduzido de 1162 para 1123 linhas; barra lateral com interface explícita de 11 parâmetros, testes snapshot + verificação manual 7/7 aprovada
+- **🛡 Correção de aviso @State de SwiftUI (BUG-009)** — Cache de destaque de `ClipboardItemRow` migrado de dicionários `@State` para `NSCache`; sem mais aviso em tempo de execução "Modifying state during view update"; cache limitado a 500 entradas para evitar crescimento ilimitado
 
 ### v2.5.9 (2026-07-21) — Detecção de travamentos + correções de auditoria completas
 
