@@ -79,7 +79,7 @@
 "settings.backup.passphrase.wrong" = "密码错误或备份包已损坏";
 "settings.backup.error" = "备份操作失败，请重试";
 "settings.backup.export.done" = "导出完成";
-"settings.backup.import.result" = "导入完成：新增 %1$d 条，跳过重复 %2$d 条，图片 %3$d 张";
+"settings.backup.import.result" = "导入完成：新增 %1$d 条，跳过重复 %2$d 条，损坏 %3$d 条，图片 %4$d 张";
 "settings.backup.last" = "上次备份：%@";
 "clear.type.action" = "删除全部%@";
 "clear.type.confirm" = "将删除 %2$d 个%1$@条目（不含收藏，进回收站）";

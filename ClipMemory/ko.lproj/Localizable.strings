@@ -79,7 +79,7 @@
 "settings.backup.passphrase.wrong" = "암호가 틀렸거나 패키지가 손상됨";
 "settings.backup.error" = "백업 작업 실패, 다시 시도하세요";
 "settings.backup.export.done" = "내보내기 완료";
-"settings.backup.import.result" = "가져오기 완료: 항목 %1$d개 추가, 중복 %2$d개 건너뜀, 이미지 %3$d개";
+"settings.backup.import.result" = "가져오기 완료: 항목 %1$d개 추가, 중복 %2$d개 건너뜀, 손상 %3$d개, 이미지 %4$d개";
 "settings.backup.last" = "마지막 백업: %@";
 "clear.type.action" = "%@ 모두 삭제";
 "clear.type.confirm" = "%1$@ %2$d개 항목을 삭제합니다(고정은 유지, 휴지통으로 이동)";

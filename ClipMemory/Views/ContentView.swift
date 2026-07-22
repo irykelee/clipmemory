@@ -23,6 +23,16 @@ enum SidebarTab: String, CaseIterable {
     }
 }
 
+/// Localized display name for a clipboard content type.
+func typeLabel(_ type: ClipboardItemType) -> String {
+    switch type {
+    case .text: return L10n.filterText
+    case .image: return L10n.filterImage
+    case .link: return L10n.filterLink
+    case .richText: return L10n.filterRichText
+    }
+}
+
 let appCornerRadius: CGFloat = 8
 
 /// Time-based grouping used by ContentView's list sections. Defined at
@@ -605,62 +615,23 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        VStack(spacing: 0) {
-            LogoView()
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-            List(selection: $selectedTab) {
-                ForEach([SidebarTab.all, .text, .image, .link, .richText], id: \.self) { tab in
-                    Label(tab.label, systemImage: tab.icon)
-                        .badge(tabCounts[tab] ?? 0)
-                        .tag(tab)
-                        .contextMenu {
-                            if let type = tab.typeFilter {
-                                Button(role: .destructive, action: { pendingTypeClear = type }, label: {
-                                    Label(L10n.clearTypeAction(typeLabel(type)), systemImage: "trash")
-                                })
-                            }
-                        }
-                }
-                Section {
-                    Label(SidebarTab.pinned.label, systemImage: SidebarTab.pinned.icon)
-                        .tag(SidebarTab.pinned)
-                    Label(SidebarTab.trash.label, systemImage: SidebarTab.trash.icon)
-                        .badge(store.trashedItems.count)
-                        .tag(SidebarTab.trash)
-                    Label(SidebarTab.settings.label, systemImage: SidebarTab.settings.icon)
-                        .tag(SidebarTab.settings)
-                }
-                Section(L10n.sidebarSectionTags) {
-                    if store.tags.isEmpty {
-                        Text(L10n.sidebarTagsEmpty)
-                            .font(.system(size: sz(11)))
-                            .foregroundColor(.secondary)
-                    } else {
-                        ForEach(sortedTags, id: \.id) { tag in
-                            SidebarTagRow(
-                                tag: tag,
-                                count: tagCounts[tag.id] ?? 0,
-                                isSelected: selectedTagIds.contains(tag.id),
-                                onTap: { toggleTag(tag.id) },
-                                onDelete: { tagPendingDelete = tag }
-                            )
-                        }
-                    }
-                    Button(action: { showNewTagSheet = true }, label: {
-                        Label(L10n.sidebarNewTag, systemImage: "plus.circle")
-                            .font(.system(size: sz(12)))
-                    })
-                    .buttonStyle(.plain)
-                    .foregroundColor(.accentColor)
+        SidebarView(
+            store: store,
+            selectedTab: $selectedTab,
+            selectedTagIds: selectedTagIds,
+            tabCounts: tabCounts,
+            tagCounts: tagCounts,
+            sortedTags: sortedTags,
+            onToggleTag: { toggleTag($0) },
+            onNewTag: { showNewTagSheet = true },
+            onDeleteTag: { tagPendingDelete = $0 },
+            onClearType: { pendingTypeClear = $0 },
+            onTabChanged: {
+                DispatchQueue.main.async {
+                    keyboardSelectedIndex = nil
                 }
             }
-            .listStyle(.sidebar)
-        }
-        .padding(.vertical, 8)
-        .padding(.trailing, 4)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .onChange(of: selectedTab) { _ in DispatchQueue.main.async { keyboardSelectedIndex = nil } }
+        )
     }
 
     private var mainContent: some View {
@@ -797,16 +768,6 @@ struct ContentView: View {
         case .today: return .today
         case .yesterday: return .yesterday
         case .older: return .older
-        }
-    }
-
-    /// Localized display name for a content type (matches sidebar filter labels).
-    func typeLabel(_ type: ClipboardItemType) -> String {
-        switch type {
-        case .text: return L10n.filterText
-        case .image: return L10n.filterImage
-        case .link: return L10n.filterLink
-        case .richText: return L10n.filterRichText
         }
     }
 
@@ -988,9 +949,16 @@ struct ContentView: View {
                     imagesDirectory: ImageStorage.shared.imagesDirectoryURL
                 )
                 DispatchQueue.main.async {
-                    showBackupInfo(L10n.settingsBackupImportResult(result.itemsImported, result.itemsSkipped, result.imagesImported))
+                    showBackupInfo(L10n.settingsBackupImportResult(
+                        result.itemsImported,
+                        result.itemsSkipped,
+                        result.itemsSkippedCorrupt,
+                        result.imagesImported
+                    ))
                 }
             } catch BackupPackageError.wrongPassword {
+                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPassphraseWrong) }
+            } catch BackupPackageError.corruptedData {
                 DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPassphraseWrong) }
             } catch {
                 DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }

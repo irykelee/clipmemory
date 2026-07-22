@@ -79,7 +79,7 @@
 "settings.backup.passphrase.wrong" = "Senha incorreta ou pacote corrompido";
 "settings.backup.error" = "A operação de cópia falhou, tente novamente";
 "settings.backup.export.done" = "Exportação concluída";
-"settings.backup.import.result" = "Importação concluída: %1$d itens adicionados, %2$d duplicados ignorados, %3$d imagens";
+"settings.backup.import.result" = "Importação concluída: %1$d itens adicionados, %2$d duplicados ignorados, %3$d corrompidos, %4$d imagens";
 "settings.backup.last" = "Última cópia: %@";
 "clear.type.action" = "Apagar todos os %@";
 "clear.type.confirm" = "%2$d itens de \"%1$@\" serão apagados (fixados mantidos, para a Lixeira)";

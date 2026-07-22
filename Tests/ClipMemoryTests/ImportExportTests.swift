@@ -69,6 +69,188 @@ final class ImportExportTests: XCTestCase {
         try encryptedImage.write(to: imagesDir.appendingPathComponent(name))
     }
 
+    // MARK: - Package construction helpers
+
+    /// Writes items/trash/tags JSON blobs to `staging`, optionally overwriting
+    /// with random garbage to simulate corruption.
+    private func writePackageContents(
+        cryptoForPackage: CryptoService,
+        seedItems: Bool,
+        seedTags: Bool,
+        corruptItems: Bool,
+        corruptTrash: Bool,
+        corruptTags: Bool,
+        to staging: URL
+    ) throws {
+        let itemsBlob: Data
+        if seedItems {
+            let item = ClipboardItem(
+                content: try XCTUnwrap(cryptoForPackage.encrypt("payload")),
+                type: .text,
+                isEncrypted: true,
+                contentHash: try XCTUnwrap(cryptoForPackage.hmacHex(for: "payload"))
+            )
+            itemsBlob = try JSONEncoder().encode([item])
+        } else {
+            itemsBlob = Data("[]".utf8)
+        }
+        try itemsBlob.write(to: staging.appendingPathComponent("items.json"))
+
+        // Trash: legal empty JSON (`[]\n`), not zero-byte Data().
+        // Spec risk §3: BUG-024 P1 fix rejects empty Data() as invalid JSON.
+        let trashBlob = Data("[]\n".utf8)
+        try trashBlob.write(to: staging.appendingPathComponent("trash.json"))
+
+        let tagsBlob: Data
+        if seedTags {
+            let tag = Tag(id: UUID(), name: "test-tag", colorHex: "#FF6B6B")
+            tagsBlob = try JSONEncoder().encode([tag])
+        } else {
+            tagsBlob = Data("[]".utf8)
+        }
+        try tagsBlob.write(to: staging.appendingPathComponent("tags.json"))
+
+        // Corrupt-flags: overwrite named file with garbage before zipping.
+        let garbage = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
+        if corruptItems { try garbage.write(to: staging.appendingPathComponent("items.json")) }
+        if corruptTrash { try garbage.write(to: staging.appendingPathComponent("trash.json")) }
+        if corruptTags { try garbage.write(to: staging.appendingPathComponent("tags.json")) }
+    }
+
+    /// Derives a key, seals `crypto`'s raw key data, writes key.enc and
+    /// manifest.json to `staging`, then zips `staging` into a .clipmemory
+    /// archive at `packageURL`.
+    private func sealAndArchive(
+        manifest: BackupManifest,
+        salt: Data,
+        passphrase: String,
+        cryptoForPackage: CryptoService,
+        from staging: URL,
+        to packageURL: URL
+    ) throws {
+        let derivedKey = try BackupPackage.deriveKey(passphrase: passphrase, salt: salt, version: 1)
+        let packageKeyData = cryptoForPackage.exportKeyDataForTesting()
+        let sealed = try AES.GCM.seal(packageKeyData, using: derivedKey)
+        try XCTUnwrap(sealed.combined).write(to: staging.appendingPathComponent("key.enc"))
+        try XCTUnwrap(JSONEncoder().encode(manifest))
+            .write(to: staging.appendingPathComponent("manifest.json"))
+
+        let ditto = Process()
+        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        ditto.arguments = ["-c", "-k", "--sequesterRsrc", staging.path, packageURL.path]
+        try ditto.run()
+        ditto.waitUntilExit()
+        XCTAssertEqual(ditto.terminationStatus, 0, "ditto failed building test fixture")
+    }
+
+    /// Builds a self-contained `.clipmemory` package in a temp directory and
+    /// returns its URL. Items/tags/trash blobs come from a fresh
+    /// `MemoryStorageBackend` so the test never touches production storage.
+    /// Set `corruptItems`/`corruptTrash`/`corruptTags` to overwrite the named
+    /// JSON with garbage so the decoder fails. `seedItems` and `seedTags`
+    /// control whether the package's items.json/tags.json are populated or
+    /// empty (`[]`).
+    private func constructPackage(
+        seedItems: Bool = true,
+        seedTags: Bool = true,
+        corruptItems: Bool = false,
+        corruptTrash: Bool = false,
+        corruptTags: Bool = false
+    ) throws -> URL {
+        let cryptoForPackage = CryptoService(customKeyData: Data((32..<64).map { UInt8($0 & 0xFF) }))
+        let pkgTemp = tempRoot.appendingPathComponent("pkg-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: pkgTemp, withIntermediateDirectories: true)
+        let pkgStaging = pkgTemp.appendingPathComponent("staging", isDirectory: true)
+        try FileManager.default.createDirectory(at: pkgStaging, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: pkgStaging.appendingPathComponent("Images", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+
+        try writePackageContents(
+            cryptoForPackage: cryptoForPackage,
+            seedItems: seedItems,
+            seedTags: seedTags,
+            corruptItems: corruptItems,
+            corruptTrash: corruptTrash,
+            corruptTags: corruptTags,
+            to: pkgStaging
+        )
+
+        let passphrase = "secret123"
+        let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
+        let manifest = BackupManifest(
+            formatVersion: 1,
+            createdAt: Date(),
+            appVersion: "test",
+            keySalt: salt.base64EncodedString(),
+            itemCount: 1,
+            tagCount: seedTags ? 1 : 0,
+            imageCount: 0,
+            keyDerivationVersion: 1
+        )
+        let packageURL = tempRoot.appendingPathComponent("fixture.clipmemory")
+        try sealAndArchive(
+            manifest: manifest,
+            salt: salt,
+            passphrase: passphrase,
+            cryptoForPackage: cryptoForPackage,
+            from: pkgStaging,
+            to: packageURL
+        )
+        try? FileManager.default.removeItem(at: pkgTemp)
+        return packageURL
+    }
+
+    /// Builds a `.clipmemory` archive from a caller-supplied `itemsBlob`,
+    /// bypassing the seed/corrupt logic of `constructPackage`. Used by tests
+    /// that need per-entry key mismatches (good item + corrupt item).
+    private func constructPackageWithItemsBlob(
+        itemsBlob: Data,
+        trashBlob: Data = Data("[]".utf8),
+        tagsBlob: Data = Data("[]".utf8),
+        passphrase: String = "secret123",
+        cryptoForPackage: CryptoService,
+        itemCount: Int,
+        tagCount: Int = 0
+    ) throws -> URL {
+        let pkgTemp = tempRoot.appendingPathComponent("pcbi-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: pkgTemp, withIntermediateDirectories: true)
+        let pkgStaging = pkgTemp.appendingPathComponent("staging", isDirectory: true)
+        try FileManager.default.createDirectory(at: pkgStaging, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: pkgStaging.appendingPathComponent("Images", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+
+        try itemsBlob.write(to: pkgStaging.appendingPathComponent("items.json"))
+        try trashBlob.write(to: pkgStaging.appendingPathComponent("trash.json"))
+        try tagsBlob.write(to: pkgStaging.appendingPathComponent("tags.json"))
+
+        let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
+        let manifest = BackupManifest(
+            formatVersion: 1,
+            createdAt: Date(),
+            appVersion: "test",
+            keySalt: salt.base64EncodedString(),
+            itemCount: itemCount,
+            tagCount: tagCount,
+            imageCount: 0,
+            keyDerivationVersion: 1
+        )
+        let packageURL = tempRoot.appendingPathComponent("per-entry.clipmemory")
+        try sealAndArchive(
+            manifest: manifest,
+            salt: salt,
+            passphrase: passphrase,
+            cryptoForPackage: cryptoForPackage,
+            from: pkgStaging,
+            to: packageURL
+        )
+        try? FileManager.default.removeItem(at: pkgTemp)
+        return packageURL
+    }
+
     func testExportImportRoundTripRestoresContent() throws {
         try seedPackageSource(crypto: localCrypto)
         let packageURL = tempRoot.appendingPathComponent("backup.clipmemory")
@@ -215,9 +397,9 @@ final class ImportExportTests: XCTestCase {
         ]
         let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
         try manifestData.write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
-        try Data().write(to: staging.appendingPathComponent("items.json"), options: .atomic)
-        try Data().write(to: staging.appendingPathComponent("tags.json"), options: .atomic)
-        try Data().write(to: staging.appendingPathComponent("trash.json"), options: .atomic)
+        try Data("[]\n".utf8).write(to: staging.appendingPathComponent("items.json"), options: .atomic)
+        try Data("[]\n".utf8).write(to: staging.appendingPathComponent("tags.json"), options: .atomic)
+        try Data("[]\n".utf8).write(to: staging.appendingPathComponent("trash.json"), options: .atomic)
 
         let archiveURL = tempRoot.appendingPathComponent("legacy-\(UUID().uuidString).clipmemory")
         // Note: file is freshly named (UUID), guaranteed not to exist yet —
@@ -326,5 +508,122 @@ final class ImportExportTests: XCTestCase {
                 imagesDirectory: imagesDir
             )
         )
+    }
+
+    /// BUG-024: corrupt `items.json` aborts the whole import with a typed
+    /// error pointing at the offending file. Before this fix, decodeItems
+    /// returned [] and the UI cheerfully reported "imported 0 items".
+    func testImportThrowsWhenItemsJSONCorrupt() throws {
+        let url = try constructPackage(corruptItems: true)
+        XCTAssertThrowsError(
+            try BackupPackage.importPackage(
+                from: url,
+                passphrase: "secret123",
+                store: store,
+                localCrypto: localCrypto,
+                imagesDirectory: imagesDir
+            )
+        ) { error in
+            guard case BackupPackageError.corruptedData(_, .items) = error else {
+                XCTFail("expected .corruptedData(_, .items), got \(error)")
+                return
+            }
+        }
+        // Transaction check: items must NOT have been merged into the store.
+        XCTAssertTrue(store.items.isEmpty, "items should not have been merged on package-level failure")
+    }
+
+    func testImportThrowsWhenTrashJSONCorrupt() throws {
+        let url = try constructPackage(corruptTrash: true)
+        XCTAssertThrowsError(
+            try BackupPackage.importPackage(
+                from: url,
+                passphrase: "secret123",
+                store: store,
+                localCrypto: localCrypto,
+                imagesDirectory: imagesDir
+            )
+        ) { error in
+            guard case BackupPackageError.corruptedData(_, .trash) = error else {
+                XCTFail("expected .corruptedData(_, .trash), got \(error)")
+                return
+            }
+        }
+    }
+
+    func testImportThrowsWhenTagsJSONCorrupt() throws {
+        let url = try constructPackage(corruptTags: true)
+        XCTAssertThrowsError(
+            try BackupPackage.importPackage(
+                from: url,
+                passphrase: "secret123",
+                store: store,
+                localCrypto: localCrypto,
+                imagesDirectory: imagesDir
+            )
+        ) { error in
+            guard case BackupPackageError.corruptedData(_, .tags) = error else {
+                XCTFail("expected .corruptedData(_, .tags), got \(error)")
+                return
+            }
+        }
+    }
+
+    /// BUG-024 boundary guard: a legit empty backup (items.json = [],
+    /// tags.json = []) must NOT throw. This is the easiest regression
+    /// in the fix — if a future change accidentally throws on the empty
+    /// array path, this test fails before users see "package corrupted"
+    /// for legitimately empty backups.
+    func testImportSucceedsWithLegitEmptyItemsAndTags() throws {
+        let url = try constructPackage(seedItems: false, seedTags: false)
+        let result = try BackupPackage.importPackage(
+            from: url,
+            passphrase: "secret123",
+            store: store,
+            localCrypto: localCrypto,
+            imagesDirectory: imagesDir
+        )
+        XCTAssertEqual(result.itemsImported, 0)
+        XCTAssertEqual(result.itemsSkippedCorrupt, 0)
+    }
+
+    func testImportSkipsCorruptItemsAndCountsThem() throws {
+        // Build a package with two items: one encrypted with the package key
+        // (decrypts + re-encrypts successfully), one encrypted with a *different*
+        // key (decryption fails → reencrypt returns nil → corruptCount += 1).
+        let packageCrypto = CryptoService(customKeyData: Data((32..<64).map { UInt8($0 & 0xFF) }))
+        let wrongCrypto = CryptoService(customKeyData: Data((64..<96).map { UInt8($0 & 0xFF) }))
+        let goodItem = ClipboardItem(
+            content: try XCTUnwrap(packageCrypto.encrypt("good")),
+            type: .text,
+            isEncrypted: true,
+            contentHash: try XCTUnwrap(packageCrypto.hmacHex(for: "good"))
+        )
+        let corruptItem = ClipboardItem(
+            content: try XCTUnwrap(wrongCrypto.encrypt("bad")),
+            type: .text,
+            isEncrypted: true,
+            contentHash: try XCTUnwrap(wrongCrypto.hmacHex(for: "bad"))
+        )
+        let itemsBlob = try JSONEncoder().encode([goodItem, corruptItem])
+        let packageURL = try constructPackageWithItemsBlob(
+            itemsBlob: itemsBlob,
+            trashBlob: Data("[]".utf8),
+            tagsBlob: Data("[]".utf8),
+            passphrase: "secret123",
+            cryptoForPackage: packageCrypto,
+            itemCount: 2,
+            tagCount: 0
+        )
+
+        let result = try BackupPackage.importPackage(
+            from: packageURL,
+            passphrase: "secret123",
+            store: store,
+            localCrypto: localCrypto,
+            imagesDirectory: imagesDir
+        )
+        XCTAssertEqual(result.itemsImported, 1, "good item should import")
+        XCTAssertEqual(result.itemsSkippedCorrupt, 1, "wrong-key item should be counted as corrupt")
     }
 }

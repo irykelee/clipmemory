@@ -85,6 +85,15 @@ class CryptoService: CryptoServiceProtocol {
         customKey = SymmetricKey(data: customKeyData)
     }
 
+    /// Exposes the custom key bytes for test fixtures. Tests that call this
+    /// must initialize CryptoService with customKeyData.
+    func exportKeyDataForTesting() -> Data {
+        guard let key = customKey else {
+            fatalError("CryptoService was not initialized with customKeyData; test fixtures require it")
+        }
+        return key.withUnsafeBytes { Data($0) }
+    }
+
     /// Raw key bytes of the app key (needed to embed into export packages).
     /// H-2: routes through the in-memory cache when available, so the
     /// BackupPackage export path does not also hit the Keychain.
