@@ -130,12 +130,34 @@ jobs:
           # Best-effort: refresh the jsDelivr mirror of the fallback feed
           curl -sf "https://purge.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml" || true
 
+      - name: Extract bilingual title from release notes
+        id: title
+        # P0-2 fix (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md): the previous
+        # release left the title as the auto-generated stub "v2.5.10"
+        # because softprops/action-gh-release defaults the title to the tag
+        # name when `title:` is not passed. Pull the first H1 of the
+        # release-notes file as the title (it is authored bilingual per
+        # docs/release-notes-template.md), with a deterministic bilingual
+        # fallback if the notes file is missing so release isn't blocked.
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES="docs/release-notes/v${VERSION}.md"
+          if [[ -f "$NOTES" ]]; then
+            BILINGUAL=$(head -1 "$NOTES" | sed 's/^# *//' | tr -d '\r')
+            echo "title=${BILINGUAL}" >> "$GITHUB_OUTPUT"
+            echo "Extracted title from ${NOTES}: ${BILINGUAL}"
+          else
+            echo "title=剪忆 ClipMemory v${VERSION} — Release / 发布 (release-notes file missing)" >> "$GITHUB_OUTPUT"
+            echo "WARN: ${NOTES} not found; using placeholder title (post-push fix: gh release edit --title)"
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: |
             Releases/ClipMemory.tar.gz
             appcast.xml
+          title: ${{ steps.title.outputs.title }}
           generate_release_notes: true
 
       - name: Update Homebrew tap
