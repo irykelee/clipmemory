@@ -1,4 +1,4 @@
-# ClipMemory v2.5.9
+# ClipMemory v2.5.10
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,12 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.5.10 (2026-07-22) — Errores de copia visibles + refactorización UI + corrección de advertencia SwiftUI
+
+- **🛡 Corrupción de copia visible (BUG-024)** — Archivos items.json / trash.json / tags.json / de imagen corruptos ya no se importan silenciosamente como 0 elementos; los fallos ahora lanzan `corruptedData` y aparecen en alerta de Ajustes
+- **⚡ Extracción de SidebarView (NEW-7 Fase 3)** — ContentView reducido de 1162 a 1123 líneas; barra lateral con interfaz explícita de 11 parámetros, pruebas snapshot + verificación manual 7/7 aprobada
+- **🛡 Corrección de advertencia @State de SwiftUI (BUG-009)** — Caché de resaltado de `ClipboardItemRow` migrada de diccionarios `@State` a `NSCache`; sin más advertencia en tiempo de ejecución "Modifying state during view update"; caché limitada a 500 entradas para evitar crecimiento ilimitado
 
 ### v2.5.9 (2026-07-21) — Detección de cuelgues + correcciones de auditoría completas
 

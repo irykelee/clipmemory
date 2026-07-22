@@ -1,4 +1,4 @@
-# ClipMemory v2.5.9
+# ClipMemory v2.5.10
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,12 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.5.10 (2026-07-22) — バックアップエラー可視化 + UI リファクタ + SwiftUI 警告修正
+
+- **🛡 バックアップ破損可視化（BUG-024）** — 破損した items.json / trash.json / tags.json / 画像ファイルが黙って 0 件インポートされなくなる；失敗時は `corruptedData` を throw し設定画面でアラート表示
+- **⚡ SidebarView 抽出（NEW-7 Phase 3）** — ContentView を 1162 行から 1123 行に削減；サイドバーは独立した 11 パラメータ明示インターフェース、単体テスト + 手動検証 7/7 合格
+- **🛡 SwiftUI @State 警告修正（BUG-009）** — `ClipboardItemRow` のハイライトキャッシュを `@State` 辞書から `NSCache` に移行；「Modifying state during view update」ランタイム警告が解消、キャッシュ上限 countLimit=500 でメモリリーク防止
 
 ### v2.5.9 (2026-07-21) — ハング検出 + 全監査修正
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.5.9
+# ClipMemory v2.5.10
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,12 @@
 ---
 
 ## 📋 Changelog
+
+### v2.5.10 (2026-07-22) — Backup errors surfaced + UI refactor + SwiftUI warning fix
+
+- **🛡 Backup corruption visible (BUG-024)** — Corrupt items.json / trash.json / tags.json / image files no longer silently import 0 items; failures now throw `corruptedData` and surface in Settings alert
+- **⚡ SidebarView extraction (NEW-7 Phase 3)** — ContentView trimmed from 1162 to 1123 lines; sidebar has dedicated 11-param explicit interface, snapshot tests + manual 7/7 verification passed
+- **🛡 SwiftUI @State warning fix (BUG-009)** — `ClipboardItemRow` highlight cache migrated from `@State` dictionaries to `NSCache`; no more "Modifying state during view update" runtime warning; cache bounded at 500 entries to prevent unbounded growth
 
 ### v2.5.9 (2026-07-21) — Hang detection + comprehensive audit fixes
 

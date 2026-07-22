@@ -1,4 +1,4 @@
-# ClipMemory v2.5.9
+# ClipMemory v2.5.10
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -47,6 +47,12 @@
 ---
 
 ## 📋 변경 로그
+
+### v2.5.10 (2026-07-22) — 백업 오류 노출 + UI 리팩터 + SwiftUI 경고 수정
+
+- **🛡 백업 손상 노출（BUG-024）** — 손상된 items.json / trash.json / tags.json / 이미지 파일이 조용히 0개 항목을 가져오지 않음; 실패 시 `corruptedData` throw하고 설정 화면에서 알림 표시
+- **⚡ SidebarView 추출（NEW-7 Phase 3）** — ContentView 1162줄에서 1123줄로 축소; 사이드바는 독립적인 11 매개변수 명시적 인터페이스, 단위 테스트 + 수동 검증 7/7 통과
+- **🛡 SwiftUI @State 경고 수정（BUG-009）** — `ClipboardItemRow` 하이라이트 캐시를 `@State` 딕셔너리에서 `NSCache`로 이전; "Modifying state during view update" 런타임 경고 해소, 캐시 한도 countLimit=500으로 메모리 누수 방지
 
 ### v2.5.9 (2026-07-21) — 행 감지 + 전체 감사 수정
 
