@@ -170,7 +170,7 @@ struct L10n {
     static var settingsBackupPassphraseWrong: String { string("settings.backup.passphrase.wrong") }
     static var settingsBackupError: String { string("settings.backup.error") }
     static var settingsBackupExportDone: String { string("settings.backup.export.done") }
-    static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, images) }
+    static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ corrupt: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, corrupt, images) }
     static func settingsBackupLast(_ date: String) -> String { string("settings.backup.last", date) }
     static func clearTypeAction(_ typeName: String) -> String { string("clear.type.action", typeName) }
     static func clearTypeConfirm(_ typeName: String, _ count: Int) -> String { string("clear.type.confirm", typeName, count) }

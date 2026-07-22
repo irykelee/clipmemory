@@ -32,6 +32,23 @@ enum BackupPackageError: Error, Equatable {
     /// is about the overall package data format) so log / test can pinpoint
     /// the actual blocker.
     case unsupportedKeyDerivationVersion(Int)
+    /// BUG-024 (2026-07-22): file-level corruption that breaks the
+    /// whole-package transaction. Distinct from `invalidPackage`
+    /// (manifest/keyfile structure) and `wrongPassword` (key check):
+    /// these files parse cleanly but contain corrupt data the
+    /// decoder or file system rejected.
+    case corruptedData(String, BackupFileSource)
+}
+
+/// BUG-024 (2026-07-22): identifies which JSON/file in a `.clipmemory`
+/// package failed to read or decode, so logs can pinpoint the offending
+/// file and tests can assert against a stable enum case. `.image` carries
+/// the filename via the `corruptedData` reason string, not here.
+enum BackupFileSource: String, Equatable, Sendable {
+    case items
+    case trash
+    case tags
+    case image
 }
 
 struct BackupManifest: Codable {
@@ -82,6 +99,10 @@ struct BackupImportResult {
     var itemsSkipped = 0
     var tagsImported = 0
     var imagesImported = 0
+    /// BUG-024 (2026-07-22): count of items dropped because their
+    /// content failed GCM auth (per-entry corruption, not package-level).
+    /// Distinct from `itemsSkipped` (dedupe by id/contentHash).
+    var itemsSkippedCorrupt = 0
 }
 
 final class BackupPackage {
@@ -95,7 +116,7 @@ final class BackupPackage {
     /// iterations (OWASP 2023) — ~10⁵× slower than HKDF for weak passphrases.
     private static let pbkdf2Iterations = 600_000
 
-    private static func deriveKey(passphrase: String, salt: Data, version: Int = 2) throws -> SymmetricKey {
+    static func deriveKey(passphrase: String, salt: Data, version: Int = 2) throws -> SymmetricKey {
         switch version {
         case 1:
             // Legacy HKDF path for old packages.
@@ -327,10 +348,18 @@ final class BackupPackage {
         var result = BackupImportResult()
 
         // Items + trash: re-encrypt content with the local key, then merge.
-        let packageItems = decodeItems(from: staging, name: "items.json")
-        let packageTrash = decodeItems(from: staging, name: "trash.json")
-        let reencryptedItems = packageItems.compactMap { reencrypt(item: $0, from: packageCrypto, to: localCrypto) }
-        let reencryptedTrash = packageTrash.compactMap { reencrypt(item: $0, from: packageCrypto, to: localCrypto) }
+        let packageItems = try decodeItems(from: staging, name: "items.json", source: .items)
+        let packageTrash = try decodeItems(from: staging, name: "trash.json", source: .trash)
+        // BUG-024 (2026-07-22): single-entry GCM auth failures stay per-entry,
+        // surfaced via `itemsSkippedCorrupt` so the UI shows "corrupt N" rather
+        // than silently dropping them.
+        let (reencryptedItems, itemCorruptCount) = reencryptItemsWithCorruptCount(
+            packageItems, from: packageCrypto, to: localCrypto
+        )
+        let (reencryptedTrash, trashCorruptCount) = reencryptItemsWithCorruptCount(
+            packageTrash, from: packageCrypto, to: localCrypto
+        )
+        result.itemsSkippedCorrupt = itemCorruptCount + trashCorruptCount
         // Store mutations (@Published) must run on main even when the caller
         // invoked us from a background queue for a large package (M2 fix).
         let merge = onMain { store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash) }
@@ -341,12 +370,12 @@ final class BackupPackage {
         // + ciphertext under the SOURCE machine's key) — decrypt them with the
         // package key so the local store holds plaintext (re-encrypted with
         // the local key on the next saveTags).
-        let packageTags = decodeTags(from: staging, name: "tags.json")
+        let packageTags = try decodeTags(from: staging, name: "tags.json", source: .tags)
         let localizedTags = packageTags.map { reencryptTagName($0, from: packageCrypto) }
         result.tagsImported = onMain { store.importBackupTags(localizedTags) }
 
         // Images: decrypt with package key, re-encrypt with local key.
-        result.imagesImported = importImages(
+        result.imagesImported = try importImages(
             staging: staging,
             imagesDirectory: imagesDirectory,
             packageCrypto: packageCrypto,
@@ -360,13 +389,16 @@ final class BackupPackage {
     // MARK: - Private helpers
 
     /// Decrypt each PNG in `staging/Images` with the package key and re-encrypt with
-    /// the local key. Skips files already present locally. Returns count imported.
+    /// the local key. Skips files already present locally. Throws
+    /// `BackupPackageError.corruptedData(_, .image)` on file-read, decrypt-auth,
+    /// or write failure — see spec risk §1 for why this does not roll back items
+    /// already merged into the store before this image pass. Returns count imported.
     private static func importImages(
         staging: URL,
         imagesDirectory: URL,
         packageCrypto: CryptoServiceProtocol,
         localCrypto: CryptoServiceProtocol
-    ) -> Int {
+    ) throws -> Int {
         let packageImages = staging.appendingPathComponent("Images", isDirectory: true)
         guard FileManager.default.fileExists(atPath: packageImages.path) else { return 0 }
         var count = 0
@@ -387,54 +419,108 @@ final class BackupPackage {
                 logger.warning("Skipping oversized image in backup: \(file) (\(size) bytes > \(maxImageBytes))")
                 continue
             }
-            guard let encrypted = try? Data(contentsOf: fileURL),
-                  let plain = packageCrypto.decryptData(encrypted),
-                  let reencrypted = localCrypto.encryptData(plain) else { continue }
-            try? reencrypted.write(to: target, options: .atomic)
+            let encrypted: Data
+            do {
+                encrypted = try Data(contentsOf: fileURL)
+            } catch {
+                logger.error("Failed to read image \(file): \(error.localizedDescription)")
+                throw BackupPackageError.corruptedData(
+                    "\(file): \(error.localizedDescription)",
+                    .image
+                )
+            }
+            guard let plain = packageCrypto.decryptData(encrypted),
+                  let reencrypted = localCrypto.encryptData(plain) else {
+                logger.error("Failed to decrypt image \(file)")
+                throw BackupPackageError.corruptedData(
+                    "\(file): decrypt/auth failed",
+                    .image
+                )
+            }
+            do {
+                try reencrypted.write(to: target, options: .atomic)
+            } catch {
+                logger.error("Failed to write image \(file): \(error.localizedDescription)")
+                throw BackupPackageError.corruptedData(
+                    "\(file): \(error.localizedDescription)",
+                    .image
+                )
+            }
             count += 1
         }
         return count
     }
 
-    private static func decodeItems(from directory: URL, name: String) -> [ClipboardItem] {
-        // BUG-024 (2026-07-21 partial): the previous `try?` chain silently
-        // returned [] on both file-read and JSON-decode failure. A
-        // corrupted package would import 0 items with no indication that
-        // data was lost. Log the underlying error so future audits can
-        // diagnose corrupted imports; full UI surface is a bigger refactor
-        // (requires threading an error through BackupImportResult +
-        // ContentView.importBackup).
-        let url = directory.appendingPathComponent(name)
-        do {
-            let data = try Data(contentsOf: url)
-            do {
-                return try JSONDecoder().decode([ClipboardItem].self, from: data)
-            } catch {
-                logger.error("Failed to decode \(name): \(error.localizedDescription)")
-                return []
+    /// Re-encrypts each item with the local key, dropping entries whose
+    /// ciphertext fails GCM auth (BUG-024 per-entry corruption). Returns
+    /// the successfully re-encrypted items and a count of dropped entries.
+    private static func reencryptItemsWithCorruptCount(
+        _ items: [ClipboardItem],
+        from packageCrypto: CryptoServiceProtocol,
+        to localCrypto: CryptoServiceProtocol
+    ) -> (reencrypted: [ClipboardItem], corruptCount: Int) {
+        var reencrypted: [ClipboardItem] = []
+        reencrypted.reserveCapacity(items.count)
+        var corruptCount = 0
+        for item in items {
+            if let ok = reencrypt(item: item, from: packageCrypto, to: localCrypto) {
+                reencrypted.append(ok)
+            } else {
+                corruptCount += 1
             }
+        }
+        return (reencrypted, corruptCount)
+    }
+
+    private static func decodeItems(
+        from directory: URL,
+        name: String,
+        source: BackupFileSource
+    ) throws -> [ClipboardItem] {
+        let url = directory.appendingPathComponent(name)
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+            // Spec risk §3 (P1 fix 2026-07-22): file missing is a legal empty
+            // state (exportPackage skips writing JSON files that would be empty),
+            // not package-level corruption. Treat it as an empty array.
+            return []
         } catch {
             logger.error("Failed to read \(name): \(error.localizedDescription)")
-            return []
+            throw BackupPackageError.corruptedData(error.localizedDescription, source)
+        }
+        do {
+            return try JSONDecoder().decode([ClipboardItem].self, from: data)
+        } catch {
+            logger.error("Failed to decode \(name): \(error.localizedDescription)")
+            throw BackupPackageError.corruptedData(error.localizedDescription, source)
         }
     }
 
-    private static func decodeTags(from directory: URL, name: String) -> [Tag] {
-        // See decodeItems above for the rationale on the explicit do/catch
-        // (BUG-024): the prior silent try? meant corrupt packages imported
-        // with zero tags and no log line pointing at the cause.
+    private static func decodeTags(
+        from directory: URL,
+        name: String,
+        source: BackupFileSource
+    ) throws -> [Tag] {
         let url = directory.appendingPathComponent(name)
+        let data: Data
         do {
-            let data = try Data(contentsOf: url)
-            do {
-                return try JSONDecoder().decode([Tag].self, from: data)
-            } catch {
-                logger.error("Failed to decode \(name): \(error.localizedDescription)")
-                return []
-            }
+            data = try Data(contentsOf: url)
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+            // Spec risk §3 (P1 fix 2026-07-22): file missing is a legal empty
+            // state (exportPackage skips writing JSON files that would be empty),
+            // not package-level corruption. Treat it as an empty array.
+            return []
         } catch {
             logger.error("Failed to read \(name): \(error.localizedDescription)")
-            return []
+            throw BackupPackageError.corruptedData(error.localizedDescription, source)
+        }
+        do {
+            return try JSONDecoder().decode([Tag].self, from: data)
+        } catch {
+            logger.error("Failed to decode \(name): \(error.localizedDescription)")
+            throw BackupPackageError.corruptedData(error.localizedDescription, source)
         }
     }
 
