@@ -109,12 +109,22 @@ for f in "${LP_FILES[@]}"; do
 done
 
 echo ""
-echo "=== A4. Casks/clipmemory.rb version check ==="
-CASK_VERSION=$(awk -F'"' '/version "/ {print $2; exit}' Casks/clipmemory.rb)
-if [[ "$CASK_VERSION" == "$VERSION" ]]; then
-  pass "Casks/clipmemory.rb version = $VERSION"
+echo "=== A4. Casks/clipmemory.rb (reference template) check ==="
+# Per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md P0-4: local Cask is a static
+# reference template; the LIVE Cask lives in the homebrew-clipmemory tap
+# repo and is updated by the Release workflow. Version-gating here was
+# always wrong (local SDK ≠ CI SDK → tarball sha always diverges). Verify
+# only that the template (a) exists and (b) parses as valid Ruby. Tap-repo
+# Cask sha is cross-checked separately by the workflow post-release step.
+if [[ ! -f Casks/clipmemory.rb ]]; then
+  fail "Casks/clipmemory.rb missing (reference template required)"
+elif ! command -v ruby >/dev/null 2>&1; then
+  echo "  ⚠️  ruby not available — skipping syntax check (run: ruby -c Casks/clipmemory.rb manually)"
+  pass "Casks/clipmemory.rb exists (syntax unchecked: no ruby in PATH)"
+elif ruby -c Casks/clipmemory.rb >/dev/null 2>&1; then
+  pass "Casks/clipmemory.rb present + valid Ruby (reference template — live Cask in tap repo)"
 else
-  fail "Casks/clipmemory.rb version = '$CASK_VERSION' (expected '$VERSION')"
+  fail "Casks/clipmemory.rb has Ruby syntax errors — run: ruby -c Casks/clipmemory.rb"
 fi
 
 echo ""

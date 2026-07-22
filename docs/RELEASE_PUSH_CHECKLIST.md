@@ -37,9 +37,9 @@ For each of: `README.md`, `docs/lang/README_{EN,ZH-HANS,ZH-HANT,JA,KO,ES,PT}.md`
 
 ### A4. Cask (per `docs/RELEASE.md` B4.11)
 
-- [ ] `Casks/clipmemory.rb` `version` updated to new version
-- [ ] `Casks/clipmemory.rb` `sha256` updated to actual release tarball SHA
-- [ ] tarball SHA computed from local `gh release download vX.Y.Z --pattern "ClipMemory.tar.gz"` artifact, then `shasum -a 256`
+- [ ] Live Cask check: `curl -s https://raw.githubusercontent.com/irykelee/homebrew-clipmemory/main/Casks/clipmemory.rb | grep version` shows new version (this is the source of truth)
+- [ ] Tap Cask sha256 == release tarball sha256 (cross-check via `gh release download vX.Y.Z` → `shasum -a 256`)
+- [ ] Local `Casks/clipmemory.rb` (reference template only): Ruby 语法有效即可（`ruby -c Casks/clipmemory.rb`）；版本/sha 不再要求本地同步（per P0-4 in `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md`）
 
 ### A5. Pre-flight (per `docs/RELEASE.md` B1.3)
 

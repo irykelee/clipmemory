@@ -1,3 +1,13 @@
+# --- REFERENCE ONLY ---
+# Live Cask is maintained in https://github.com/irykelee/homebrew-clipmemory
+# and is updated by the Release workflow. This file is a static template
+# kept in sync only for format-level changes (depends_on syntax, zap keys,
+# etc.). It is intentionally NOT auto-updated by Scripts/package.sh because
+# the local macOS SDK + codesign differ from the CI runner, so the local
+# tarball SHA always diverges from the CI tarball SHA. Per P0-4 in
+# docs/RELEASE_PROCESS_AUDIT_2026-07-22.md. Pre-push verify checks this
+# file for syntactic validity only (ruby -c), not for matching the latest
+# release version. See docs/RELEASE.md §B4.11.
 	cask "clipmemory" do
  	version "2.5.10"
 	  sha256 "e09f873adb5e9b9ba73189f1d7b8ab546341ef2ba027f01bff9145dd53a20abe"
