@@ -75,21 +75,22 @@ else
 fi
 
 echo ""
-echo "=== D3. gh release view v$VERSION title check ==="
-if command -v gh >/dev/null 2>&1; then
-  if gh release view "$VERSION" >/dev/null 2>&1; then
-    TITLE=$(gh release view "$VERSION" --json name -q '.name' 2>/dev/null || \
-           gh release view "$VERSION" 2>&1 | grep '^title:' | awk '{print $2}')
-    if [[ "$TITLE" == "v$VERSION" ]]; then
-      fail "release title is auto-generated stub '$TITLE' (per docs/RELEASE.md B4.10: must be bilingual)"
-    else
-      pass "release title = '$TITLE' (looks bilingual / human-authored)"
-    fi
+echo "=== D3. gh api release v$VERSION title check ==="
+# P0-5 fix (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md): `gh release view`
+# is intermittently flaky due to gh CLI cache and returns "not found" even
+# for existing releases. `gh api` is a direct REST passthrough — stable.
+if ! command -v gh >/dev/null 2>&1; then
+  echo "  ⚠️  gh CLI not available (skipped)"
+elif TITLE=$(gh api "repos/${GH_OWNER:-irykelee}/${GH_REPO:-clipmemory}/releases/tags/v${VERSION}" --jq .name 2>/dev/null); then
+  if [[ -z "$TITLE" || "$TITLE" == "null" ]]; then
+    echo "  ⚠️  release v$VERSION not found on remote yet (skipped)"
+  elif [[ "$TITLE" == "v$VERSION" ]]; then
+    fail "release title is auto-stub '$TITLE' (must be bilingual per docs/RELEASE.md B4.10)"
   else
-    echo "  ⚠️  release $VERSION not found on remote yet (skipped)"
+    pass "release title = '$TITLE'"
   fi
 else
-  echo "  ⚠️  gh CLI not available (skipped)"
+  echo "  ⚠️  gh api failed for v$VERSION (skipped)"
 fi
 
 echo ""
