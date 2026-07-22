@@ -221,3 +221,67 @@ jobs:
           git add Casks/clipmemory.rb
           git diff --cached --quiet || git commit -m "chore: update clipmemory to v${VERSION}"
           git push origin main
+
+      - name: Verify post-release state
+        # P0-3 fix (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md): the v2.5.10
+        # release shipped with the auto-stub title and a body that was edited
+        # manually via `gh release edit` post-push — exactly the class of
+        # regression this step now catches automatically. By the time this
+        # runs the release IS already public; failure here does NOT unpublish
+        # it, but surfaces the issue in the workflow run log so it can be
+        # re-edited immediately (per docs/RELEASE_PUSH_CHECKLIST.md §D3).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e  # collect all checks into the log before exiting
+          VERSION="${GITHUB_REF_NAME#v}"
+          OWNER="${GH_OWNER:-irykelee}"
+          REPO="${GH_REPO:-clipmemory}"
+          API="repos/${OWNER}/${REPO}/releases/tags/v${VERSION}"
+
+          FAILS=0
+          note_fail() { echo "❌ $*"; FAILS=$((FAILS+1)); }
+          note_ok()   { echo "✅ $*"; }
+
+          echo "=== Post-release verification for v${VERSION} ==="
+
+          # 1. Title is NOT the auto-stub "vX.Y.Z".
+          TITLE=$(gh api "$API" --jq .name 2>/dev/null)
+          if [[ -z "$TITLE" || "$TITLE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            note_fail "title is auto-stub '$TITLE' — re-edit with: gh release edit v${VERSION} --title \"剪忆 ClipMemory v${VERSION} — <EN> / <ZH>\""
+          else
+            note_ok "title looks bilingual: '$TITLE'"
+          fi
+
+          # 2. Body contains a Chinese section header.
+          BODY=$(gh api "$API" --jq .body 2>/dev/null)
+          if echo "$BODY" | grep -qE '^## 中文'; then
+            note_ok "body has '## 中文' section"
+          else
+            note_fail "body missing '## 中文' header — add per docs/release-notes-template.md"
+          fi
+
+          # 3. Body contains an English section header.
+          if echo "$BODY" | grep -qE '^## English'; then
+            note_ok "body has '## English' section"
+          else
+            note_fail "body missing '## English' header — add per docs/release-notes-template.md"
+          fi
+
+          # 4. Both required assets attached (per docs/RELEASE.md B3.8).
+          for asset in "ClipMemory.tar.gz" "appcast.xml"; do
+            ATTACHED=$(gh api "$API" --jq ".assets[] | select(.name == \"${asset}\") | .name" 2>/dev/null)
+            if [[ -n "$ATTACHED" ]]; then
+              note_ok "asset ${asset} attached"
+            else
+              note_fail "asset ${asset} missing — re-run ./Scripts/package.sh + verify"
+            fi
+          done
+
+          echo ""
+          if [[ "$FAILS" -gt 0 ]]; then
+            echo "❌ ${FAILS} post-release verification check(s) FAILED."
+            echo "   The release IS published; fix via gh release edit (see docs/RELEASE_PUSH_CHECKLIST.md §D3)."
+            exit 1
+          fi
+          echo "✅ All post-release verification checks passed."
