@@ -1,4 +1,4 @@
-# ClipMemory v2.5.10
+# ClipMemory v2.5.11
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,94 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.5.11 (2026-07-23) — ContentView 分割 + 16 件のバグ修正
+
+### 主要更新 (Highlights)
+
+- **🏗 ContentView 分割 (NEW-7 Phase 4)** — メインリスト / 選択 / 一括操作 / 削除アラートをすべて ContentView から独立した `ItemListView`（287 行）に抽出。ContentView は 1178 → 995 行（-15.5%）。リストレンダリングとリスト関連の状態を疎結合化。ただし、検索 / フィルター / スクロールキャッシュは ContentView に保持（一度にリファクタするリスクを回避）。後続の Phase 6+ ViewModel collapse で `@State` を `@StateObject` にまとめれば、ItemListView のスナップショットベースラインを取得可能
+- **🛡 データ安全 4 点セット** — `maxItems` セッターを `1...10_000` にクランプ（負の値や巨大値を防止）。`backupNow()` を直列化（NSLock）し、ダブルクリック + 自動バックアップの競合を防止。`addTag()` で前後の空白をトリムし、"  Work  " と "Work" が重複保存されるのを防止。`ClipboardItemRow` が LanguageManager を監視し、言語切り替え時に日付を即時再レンダリング
+- **🌐 i18n 複数形対応 (F-7)** — 6 つの %d 複数形キーを `.stringsdict` 化（batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm）。英語で "1 item" / "5 items" がどちらも "1 items" と表示されなくなる。`Scripts/generate_stringsdict.py` を新規追加し、7 言語をワンキーで再生成可能
+- **🛡 設定画面「今すぐバックアップ」のエラーを黙殺しない (F-4)** — 従来は `try?` ですべての backupNow() 失敗を破棄。現在は do/catch + onShowBackupError コールバック → ContentView が `L10n.settingsBackupError` NSAlert を表示（export/import/pre-import スナップショットの失敗パスと統一）
+- **🛡 QuickBar ⌘F で本当に検索にフォーカスできるようになった (F-9)** — 従来は KeyCaptureView の NSEvent ローカルモニターのみに依存（ポップオーバーウィンドウコンテキストでは信頼性が低い）。現在は `.cmdFFindAction` 通知をフォールバックとして追加し、ContentView と同じパスを経由
+
+### 修正 (Fixes)
+
+影響度順（高 → 中 → 低）：
+
+**High impact（アーキテクチャ / データ / UX クリティカルパス）**
+
+- **NEW-7 Phase 4 ItemListView 抽出** — メインリスト / 選択 / 一括操作 / 削除アラートをすべて ContentView から抽出（287 行）。ContentView は 1178 → 995 行（-15.5%）
+- **E-1 maxItems セッター クランプ** — `1...10_000` の範囲内。UserDefaults が -1 や 999_999_999 で汚染されなくなる。新しい `minMaxItems` / `maxMaxItems` 定数が唯一の信頼できる情報源
+- **E-2 backupNow() 直列化** — `NSLock` でラップ。「今すぐバックアップ」のダブルクリック + 自動バックアップが同一フレームでトリガーされても、`createDirectory` + `copyItem(Images)` で競合しなくなる
+- **E-13 ClipboardItemRow が LanguageManager を監視** — `@ObservedObject private var languageManager = LanguageManager.shared` を追加。設定 → 言語を切り替えると、日付形式が即座に再レンダリングされる（スクロールでオフ/オンにする必要がなくなった）
+- **F-9 QuickBar ⌘F 修正** — `.onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction))` を QuickBarView のルート VStack に追加。ポップオーバー環境でも ⌘F で検索フィールドにフォーカス可能
+- **F-4 設定画面「今すぐバックアップ」エラーアラート** — `onShowBackupError` コールバックを ContentView の `showBackupInfo(L10n.settingsBackupError)` に接続。失敗が可視化される
+
+**Medium impact（UX 一貫性 / a11y / i18n）**
+
+- **F-10 Welcome Enter でデフォルトボタンにバインド** — `.keyboardShortcut(.defaultAction)` を `getStartedButton` に追加。Welcome ポップアップで Enter キーを押すと直接 onComplete が実行される
+- **F-13 TipsView ↑↓ ラベル** — `L10n.quickbarRecent(8)` を `L10n.tipsKeyUpdown` = "Navigate items" に変更。6 言語すべてネイティブ翻訳（zh-Hans 切换条目 / zh-Hant 切換條目 / ja 項目を移動 / ko 항목 이동 / es Navegar por los elementos / pt Navegar pelos itens）
+- **F-3 TrashItemRow ボタンのキーボード可視性** — `@FocusState private var isFocused: Bool` + `.focusable()` + `.focused($isFocused)` を追加。行がフォーカス状態のときは opacity に関わらずボタンを表示（従来はホバー時のみ表示）
+- **F-16 TagPickerSheet キーボード削除** — `.contextMenu` + `.onDeleteCommand` を追加。⌫ / Forward Delete キーまたは右クリックメニューで削除確認をトリガー可能（従来は長押しのみ）
+- **F-20 pin/delete accessibilityLabel** — 画像のみのボタンに `.accessibilityLabel(...)` を追加し、既存の `L10n.tooltip*` キーを再利用。VoiceOver が「button」と文脈のないラベルを読み上げなくなる
+
+**Low impact（クリーンアップ / パフォーマンス / 境界値の正確性 / i18n 補完）**
+
+- **E-6 addTag 空白トリム** — `tag.name.trimmingCharacters(in: .whitespacesAndNewlines)` を `addTag(_:)` の入口に追加。"  Work  " と "Work" が重複保存されなくなる
+- **BUG-007 ItemListView ヘッダートグル、検索中はスキップ** — `onTapGesture` が `!searchText.isEmpty` のときは no-op。force-expand 表示ルール下で collapsedGroups を変更すると、検索クリア時に予期せぬ collapsed 状態が発生するのを防止
+- **F-25 UpdateStatusPanelView DateFormatter キャッシュ** — `static let dateFormatter` を追加。body が再レンダリングされるたびに新しい DateFormatter が生成されなくなる
+- **F-7 .stringsdict に 3 つの複数形キーを追加** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`。3 つの複数引数キー（alert.trim 2x %d / tagPicker & sidebar.deleteTag with %@）は次ラウンドに延期
+
+### アップグレード注意事項 (Upgrade Note)
+
+- v2.4.0 以降で自動アップデートモジュール（Sparkle）を搭載しているバージョン：アプリ内の自動アップデートを待つか、`brew upgrade --cask clipmemory` を実行
+- データ移行や一度きりのポップアップはなし
+- **i18n 改善**：中国語/日本語/韓国語のインターフェースに切り替えた際、"Recent 1 item" / "Recent 5 items" が複数形に従って表示されるようになった
+
+### v2.5.11
+
+### 主要更新 (Highlights)
+
+- **🏗 ContentView 分割 (NEW-7 Phase 4)** — メインリスト / 選択 / 一括操作 / 削除アラートをすべて ContentView から独立した `ItemListView`（287 行）に抽出。ContentView は 1178 → 995 行（-15.5%）。リストレンダリングとリスト関連の状態を疎結合化。ただし、検索 / フィルター / スクロールキャッシュは ContentView に保持（一度にリファクタするリスクを回避）。後続の Phase 6+ ViewModel collapse で `@State` を `@StateObject` にまとめれば、ItemListView のスナップショットベースラインを取得可能
+- **🛡 データ安全 4 点セット** — `maxItems` セッターを `1...10_000` にクランプ（負の値や巨大値を防止）。`backupNow()` を直列化（NSLock）し、ダブルクリック + 自動バックアップの競合を防止。`addTag()` で前後の空白をトリムし、"  Work  " と "Work" が重複保存されるのを防止。`ClipboardItemRow` が LanguageManager を監視し、言語切り替え時に日付を即時再レンダリング
+- **🌐 i18n 複数形対応 (F-7)** — 6 つの %d 複数形キーを `.stringsdict` 化（batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm）。英語で "1 item" / "5 items" がどちらも "1 items" と表示されなくなる。`Scripts/generate_stringsdict.py` を新規追加し、7 言語をワンキーで再生成可能
+- **🛡 設定画面「今すぐバックアップ」のエラーを黙殺しない (F-4)** — 従来は `try?` ですべての backupNow() 失敗を破棄。現在は do/catch + onShowBackupError コールバック → ContentView が `L10n.settingsBackupError` NSAlert を表示（export/import/pre-import スナップショットの失敗パスと統一）
+- **🛡 QuickBar ⌘F で本当に検索にフォーカスできるようになった (F-9)** — 従来は KeyCaptureView の NSEvent ローカルモニターのみに依存（ポップオーバーウィンドウコンテキストでは信頼性が低い）。現在は `.cmdFFindAction` 通知をフォールバックとして追加し、ContentView と同じパスを経由
+
+### 修正 (Fixes)
+
+影響度順（高 → 中 → 低）：
+
+**High impact（アーキテクチャ / データ / UX クリティカルパス）**
+
+- **NEW-7 Phase 4 ItemListView 抽出** — メインリスト / 選択 / 一括操作 / 削除アラートをすべて ContentView から抽出（287 行）。ContentView は 1178 → 995 行（-15.5%）
+- **E-1 maxItems セッター クランプ** — `1...10_000` の範囲内。UserDefaults が -1 や 999_999_999 で汚染されなくなる。新しい `minMaxItems` / `maxMaxItems` 定数が唯一の信頼できる情報源
+- **E-2 backupNow() 直列化** — `NSLock` でラップ。「今すぐバックアップ」のダブルクリック + 自動バックアップが同一フレームでトリガーされても、`createDirectory` + `copyItem(Images)` で競合しなくなる
+- **E-13 ClipboardItemRow が LanguageManager を監視** — `@ObservedObject private var languageManager = LanguageManager.shared` を追加。設定 → 言語を切り替えると、日付形式が即座に再レンダリングされる（スクロールでオフ/オンにする必要がなくなった）
+- **F-9 QuickBar ⌘F 修正** — `.onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction))` を QuickBarView のルート VStack に追加。ポップオーバー環境でも ⌘F で検索フィールドにフォーカス可能
+- **F-4 設定画面「今すぐバックアップ」エラーアラート** — `onShowBackupError` コールバックを ContentView の `showBackupInfo(L10n.settingsBackupError)` に接続。失敗が可視化される
+
+**Medium impact（UX 一貫性 / a11y / i18n）**
+
+- **F-10 Welcome Enter でデフォルトボタンにバインド** — `.keyboardShortcut(.defaultAction)` を `getStartedButton` に追加。Welcome ポップアップで Enter キーを押すと直接 onComplete が実行される
+- **F-13 TipsView ↑↓ ラベル** — `L10n.quickbarRecent(8)` を `L10n.tipsKeyUpdown` = "Navigate items" に変更。6 言語すべてネイティブ翻訳（zh-Hans 切换条目 / zh-Hant 切換條目 / ja 項目を移動 / ko 항목 이동 / es Navegar por los elementos / pt Navegar pelos itens）
+- **F-3 TrashItemRow ボタンのキーボード可視性** — `@FocusState private var isFocused: Bool` + `.focusable()` + `.focused($isFocused)` を追加。行がフォーカス状態のときは opacity に関わらずボタンを表示（従来はホバー時のみ表示）
+- **F-16 TagPickerSheet キーボード削除** — `.contextMenu` + `.onDeleteCommand` を追加。⌫ / Forward Delete キーまたは右クリックメニューで削除確認をトリガー可能（従来は長押しのみ）
+- **F-20 pin/delete accessibilityLabel** — 画像のみのボタンに `.accessibilityLabel(...)` を追加し、既存の `L10n.tooltip*` キーを再利用。VoiceOver が「button」と文脈のないラベルを読み上げなくなる
+
+**Low impact（クリーンアップ / パフォーマンス / 境界値の正確性 / i18n 補完）**
+
+- **E-6 addTag 空白トリム** — `tag.name.trimmingCharacters(in: .whitespacesAndNewlines)` を `addTag(_:)` の入口に追加。"  Work  " と "Work" が重複保存されなくなる
+- **BUG-007 ItemListView ヘッダートグル、検索中はスキップ** — `onTapGesture` が `!searchText.isEmpty` のときは no-op。force-expand 表示ルール下で collapsedGroups を変更すると、検索クリア時に予期せぬ collapsed 状態が発生するのを防止
+- **F-25 UpdateStatusPanelView DateFormatter キャッシュ** — `static let dateFormatter` を追加。body が再レンダリングされるたびに新しい DateFormatter が生成されなくなる
+- **F-7 .stringsdict に 3 つの複数形キーを追加** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`。3 つの複数引数キー（alert.trim 2x %d / tagPicker & sidebar.deleteTag with %@）は次ラウンドに延期
+
+### アップグレード注意事項 (Upgrade Note)
+
+- v2.4.0 以降で自動アップデートモジュール（Sparkle）を搭載しているバージョン：アプリ内の自動アップデートを待つか、`brew upgrade --cask clipmemory` を実行
+- データ移行や一度きりのポップアップはなし
+- **i18n 改善**：中国語/日本語/韓国語のインターフェースに切り替えた際、"Recent 1 item" / "Recent 5 items" が複数形に従って表示されるようになった
 
 ### v2.5.10 (2026-07-22) — バックアップエラー可視化 + UI リファクタ + SwiftUI 警告修正
 

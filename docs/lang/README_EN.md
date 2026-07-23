@@ -1,4 +1,4 @@
-# ClipMemory v2.5.10
+# ClipMemory v2.5.11
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,94 @@
 ---
 
 ## 📋 Changelog
+
+### v2.5.11 (2026-07-23) — ContentView split + 16 bug fixes
+
+### Highlights
+
+- **🏗 ContentView split (NEW-7 Phase 4)** — Main list / selection / batch operations / delete alerts all extracted from ContentView into a standalone `ItemListView` (287 lines); ContentView 1178 → 995 lines (-15.5%). Decouples list render + list-related state, but retains view-layer search / filter / scroll cache in ContentView (to avoid one-shot refactor risk). Subsequent Phase 6+ ViewModel collapse will consolidate `@State` into `@StateObject`, then `ItemListView` snapshot baseline can be opened
+- **🛡 Data safety 4-piece set** — `maxItems` setter clamped to `1...10_000` to prevent negative/oversized values; `backupNow()` serialized via `NSLock` to prevent double-click + auto-backup race; `addTag()` trims leading/trailing whitespace to prevent "  Work  " and "Work" from being stored as duplicates; `ClipboardItemRow` observes `LanguageManager` to immediately re-render dates when language switches
+- **🌐 i18n plural support (F-7)** — 6 `%d` plural keys now use `.stringsdict` (`batch.selected` / `quickbar.recent` / `trash.emptyConfirm.message` / `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`); English "1 item" / "5 items" no longer both display as "1 items"; new `Scripts/generate_stringsdict.py` for one-click regeneration across 7 languages
+- **🛡 Settings "Back Up Now" errors no longer silently swallowed (F-4)** — Previously `try?` discarded every `backupNow()` failure; now uses `do/catch` + `onShowBackupError` callback → `ContentView` displays `L10n.settingsBackupError` `NSAlert` (consistent with export/import/pre-import snapshot failure paths)
+- **🛡 QuickBar ⌘F now reliably focuses search (F-9)** — Previously relied solely on `KeyCaptureView`'s `NSEvent` local monitor (unreliable in popover window context); now adds `.cmdFFindAction` notification as fallback, following the same path as `ContentView`
+
+### Fixes
+
+Sorted by impact (high → medium → low):
+
+**High impact (Architecture / Data / UX critical path)**
+
+- **NEW-7 Phase 4 ItemListView extraction** — Main list / selection / batch operations / delete alerts all extracted from `ContentView` (287 lines); `ContentView` 1178 → 995 lines (-15.5%)
+- **E-1 maxItems setter clamp** — Range `1...10_000`; `UserDefaults` no longer polluted by -1 / 999_999_999; new `minMaxItems` / `maxMaxItems` constants are the single source of truth
+- **E-2 backupNow() serialization** — Wrapped with `NSLock`; double-click "Back Up Now" + auto-backup triggered on the same frame no longer race on `createDirectory` + `copyItem(Images)`
+- **E-13 ClipboardItemRow observes LanguageManager** — `@ObservedObject private var languageManager = LanguageManager.shared`; date format immediately re-renders when switching Settings → Language (no longer requires scrolling off+on)
+- **F-9 QuickBar ⌘F fix** — `.onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction))` added to `QuickBarView` root `VStack`; ⌘F now focuses the search field in popover environments
+- **F-4 Settings Back Up Now error alert** — `onShowBackupError` callback wired to `ContentView`'s `showBackupInfo(L10n.settingsBackupError)`; failures are now visible
+
+**Medium impact (UX consistency / a11y / i18n)**
+
+- **F-10 Welcome Enter bound to default button** — `.keyboardShortcut(.defaultAction)` added to `getStartedButton`; pressing Enter in the Welcome popup now directly triggers `onComplete`
+- **F-13 TipsView ↑↓ label** — `L10n.quickbarRecent(8)` changed to `L10n.tipsKeyUpdown` = "Navigate items"; natively translated in all 6 languages (zh-Hans 切换条目 / zh-Hant 切換條目 / ja 項目を移動 / ko 항목 이동 / es Navegar por los elementos / pt Navegar pelos itens)
+- **F-3 TrashItemRow button keyboard visibility** — `@FocusState private var isFocused: Bool` + `.focusable()` + `.focused($isFocused)`; buttons are now visible when the row is focused (previously only on hover)
+- **F-16 TagPickerSheet keyboard deletion** — `.contextMenu` + `.onDeleteCommand`; ⌫ / Forward Delete keys or right-click menu can now trigger delete confirmation (previously only long-press)
+- **F-20 pin/delete accessibilityLabel** — Image-only buttons now have `.accessibilityLabel(...)` reusing existing `L10n.tooltip*` keys; VoiceOver no longer reads "button" without context
+
+**Low impact (Cleanup / Performance / Boundary correctness / i18n polish)**
+
+- **E-6 addTag trim whitespace** — `tag.name.trimmingCharacters(in: .whitespacesAndNewlines)` at the `addTag(_:)` entry point; "  Work  " and "Work" are no longer stored as duplicates
+- **BUG-007 ItemListView header toggle skip during search** — `onTapGesture` is a no-op when `!searchText.isEmpty`; under force-expand display rules, mutating `collapsedGroups` could cause unexpected collapsed states when clearing search
+- **F-25 UpdateStatusPanelView DateFormatter cached** — `static let dateFormatter`; no longer creates a new `DateFormatter` on every body re-render
+- **F-7 extend .stringsdict 3 plural keys** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`; 3 multi-arg keys (`alert.trim` 2x `%d` / `tagPicker` & `sidebar.deleteTag` with `%@`) deferred to the next round
+
+### Upgrade Note
+
+- For versions with the built-in auto-update module (Sparkle) since v2.4.0: wait for in-app auto-update, or run `brew upgrade --cask clipmemory`
+- No data migration, no one-time popup
+- **i18n improvements**: When switching to Chinese/Japanese/Korean interface, "Recent 1 item" / "Recent 5 items" now display according to plural forms
+
+### v2.5.11
+
+### Highlights
+
+- **🏗 ContentView split (NEW-7 Phase 4)** — Main list / selection / batch operations / delete alerts all extracted from ContentView into a standalone `ItemListView` (287 lines); ContentView 1178 → 995 lines (-15.5%). Decouples list render + list-related state, but retains view-layer search / filter / scroll cache in ContentView (to avoid one-shot refactor risk). Subsequent Phase 6+ ViewModel collapse will consolidate `@State` into `@StateObject`, then `ItemListView` snapshot baseline can be opened
+- **🛡 Data safety 4-piece set** — `maxItems` setter clamped to `1...10_000` to prevent negative/oversized values; `backupNow()` serialized via `NSLock` to prevent double-click + auto-backup race; `addTag()` trims leading/trailing whitespace to prevent "  Work  " and "Work" from being stored as duplicates; `ClipboardItemRow` observes `LanguageManager` to immediately re-render dates when language switches
+- **🌐 i18n plural support (F-7)** — 6 `%d` plural keys now use `.stringsdict` (`batch.selected` / `quickbar.recent` / `trash.emptyConfirm.message` / `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`); English "1 item" / "5 items" no longer both display as "1 items"; new `Scripts/generate_stringsdict.py` for one-click regeneration across 7 languages
+- **🛡 Settings "Back Up Now" errors no longer silently swallowed (F-4)** — Previously `try?` discarded every `backupNow()` failure; now uses `do/catch` + `onShowBackupError` callback → `ContentView` displays `L10n.settingsBackupError` `NSAlert` (consistent with export/import/pre-import snapshot failure paths)
+- **🛡 QuickBar ⌘F now reliably focuses search (F-9)** — Previously relied solely on `KeyCaptureView`'s `NSEvent` local monitor (unreliable in popover window context); now adds `.cmdFFindAction` notification as fallback, following the same path as `ContentView`
+
+### Fixes
+
+Sorted by impact (high → medium → low):
+
+**High impact (Architecture / Data / UX critical path)**
+
+- **NEW-7 Phase 4 ItemListView extraction** — Main list / selection / batch operations / delete alerts all extracted from `ContentView` (287 lines); `ContentView` 1178 → 995 lines (-15.5%)
+- **E-1 maxItems setter clamp** — Range `1...10_000`; `UserDefaults` no longer polluted by -1 / 999_999_999; new `minMaxItems` / `maxMaxItems` constants are the single source of truth
+- **E-2 backupNow() serialization** — Wrapped with `NSLock`; double-click "Back Up Now" + auto-backup triggered on the same frame no longer race on `createDirectory` + `copyItem(Images)`
+- **E-13 ClipboardItemRow observes LanguageManager** — `@ObservedObject private var languageManager = LanguageManager.shared`; date format immediately re-renders when switching Settings → Language (no longer requires scrolling off+on)
+- **F-9 QuickBar ⌘F fix** — `.onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction))` added to `QuickBarView` root `VStack`; ⌘F now focuses the search field in popover environments
+- **F-4 Settings Back Up Now error alert** — `onShowBackupError` callback wired to `ContentView`'s `showBackupInfo(L10n.settingsBackupError)`; failures are now visible
+
+**Medium impact (UX consistency / a11y / i18n)**
+
+- **F-10 Welcome Enter bound to default button** — `.keyboardShortcut(.defaultAction)` added to `getStartedButton`; pressing Enter in the Welcome popup now directly triggers `onComplete`
+- **F-13 TipsView ↑↓ label** — `L10n.quickbarRecent(8)` changed to `L10n.tipsKeyUpdown` = "Navigate items"; natively translated in all 6 languages (zh-Hans 切换条目 / zh-Hant 切換條目 / ja 項目を移動 / ko 항목 이동 / es Navegar por los elementos / pt Navegar pelos itens)
+- **F-3 TrashItemRow button keyboard visibility** — `@FocusState private var isFocused: Bool` + `.focusable()` + `.focused($isFocused)`; buttons are now visible when the row is focused (previously only on hover)
+- **F-16 TagPickerSheet keyboard deletion** — `.contextMenu` + `.onDeleteCommand`; ⌫ / Forward Delete keys or right-click menu can now trigger delete confirmation (previously only long-press)
+- **F-20 pin/delete accessibilityLabel** — Image-only buttons now have `.accessibilityLabel(...)` reusing existing `L10n.tooltip*` keys; VoiceOver no longer reads "button" without context
+
+**Low impact (Cleanup / Performance / Boundary correctness / i18n polish)**
+
+- **E-6 addTag trim whitespace** — `tag.name.trimmingCharacters(in: .whitespacesAndNewlines)` at the `addTag(_:)` entry point; "  Work  " and "Work" are no longer stored as duplicates
+- **BUG-007 ItemListView header toggle skip during search** — `onTapGesture` is a no-op when `!searchText.isEmpty`; under force-expand display rules, mutating `collapsedGroups` could cause unexpected collapsed states when clearing search
+- **F-25 UpdateStatusPanelView DateFormatter cached** — `static let dateFormatter`; no longer creates a new `DateFormatter` on every body re-render
+- **F-7 extend .stringsdict 3 plural keys** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`; 3 multi-arg keys (`alert.trim` 2x `%d` / `tagPicker` & `sidebar.deleteTag` with `%@`) deferred to the next round
+
+### Upgrade Note
+
+- For versions with the built-in auto-update module (Sparkle) since v2.4.0: wait for in-app auto-update, or run `brew upgrade --cask clipmemory`
+- No data migration, no one-time popup
+- **i18n improvements**: When switching to Chinese/Japanese/Korean interface, "Recent 1 item" / "Recent 5 items" now display according to plural forms
 
 ### v2.5.10 (2026-07-22) — Backup errors surfaced + UI refactor + SwiftUI warning fix
 
