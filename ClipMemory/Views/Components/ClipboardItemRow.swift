@@ -366,8 +366,29 @@ struct ClipboardItemRow: View, Equatable {
                 .buttonStyle(.plain)
                 .help(L10n.tooltipEditTags)
                 .accessibilityLabel(L10n.tooltipEditTags)
-                Button(action: onPin) { Image(systemName: item.isPinned ? "star.fill" : "star").font(.system(size: iconSize)).foregroundColor(item.isPinned ? .orange : .secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
-                Button(action: onDelete) { Image(systemName: "trash").font(.system(size: iconSize)).foregroundColor(.secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(L10n.tooltipDelete)
+                // F-20 (2026-07-23 audit): pin + delete were Image-only Buttons with only
+// a `.help()` tooltip — `.help()` does NOT surface to VoiceOver / a11y
+// users. Reusing the same L10n strings keeps the visible label and the
+// VoiceOver announcement in sync (and avoids creating new keys that would
+// need 7-lang review).
+Button(action: onPin) {
+    Image(systemName: item.isPinned ? "star.fill" : "star")
+        .font(.system(size: iconSize))
+        .foregroundColor(item.isPinned ? .orange : .secondary)
+        .frame(width: 24, height: 24)
+}
+.buttonStyle(.plain)
+.help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
+.accessibilityLabel(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
+Button(action: onDelete) {
+    Image(systemName: "trash")
+        .font(.system(size: iconSize))
+        .foregroundColor(.secondary)
+        .frame(width: 24, height: 24)
+}
+.buttonStyle(.plain)
+.help(L10n.tooltipDelete)
+.accessibilityLabel(L10n.tooltipDelete)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle())
