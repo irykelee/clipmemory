@@ -73,12 +73,13 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     mkdir -p "${PROJECT_DIR}/Homebrew"
     cp "${OUTPUT_DIR}/${APP_NAME}.tar.gz" "${PROJECT_DIR}/Homebrew/"
 
-    # Write back SHA + version into Casks/clipmemory.rb so `brew install`
-    # picks up the new build without a manual edit.
-    update_cask_sha "${PROJECT_DIR}/Casks/clipmemory.rb" "${OUTPUT_DIR}/${APP_NAME}.tar.gz" "${VERSION}"
-
     echo ""
     echo "Packaging complete!"
     echo "File: ${OUTPUT_DIR}/${APP_NAME}.tar.gz"
     echo "SHA256: $SHA256"
+    echo ""
+    echo "Note: Casks/clipmemory.rb is reference-only — live Cask lives in the"
+    echo "      homebrew-clipmemory tap repo and is updated by the Release workflow"
+    echo "      (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md P0-4). To verify the"
+    echo "      local Cask template still parses: ruby -c Casks/clipmemory.rb"
 fi

@@ -3,6 +3,7 @@
 > **Why this exists**: Today (2026-07-20) the AI pushed 13 commits + tag v2.5.7 and declared "all done". The user then had to ping **4 separate times** to surface: release page auto-stub, Casks file stale, README changelog missing, Chinese section had English titles, 5 lang READMEs missing entries. Total: 5 missed channels. The 12-step `docs/RELEASE.md` flow is correct but hidden — Claude can't eyeball-check 12 paragraphs. This file is the **single-page, all-checkboxes-at-once, executable** version.
 >
 > **Rule**: Before `git push origin vX.Y.Z`, run through every checkbox below. After tag push, run all post-push verifies. Mark each `[x]` in real-time; missing = bug.
+> Sections A–E are per-release. Section **F** is one-time repo setup (branch protection) — run once, not every release.
 >
 > **Automation**: `Scripts/pre_push_verify.sh` automates the local checks below. Even if it returns green, **do not skip the manual sections** (release page content, GH Actions verify, tap repo) — those need eyes.
 
@@ -37,9 +38,9 @@ For each of: `README.md`, `docs/lang/README_{EN,ZH-HANS,ZH-HANT,JA,KO,ES,PT}.md`
 
 ### A4. Cask (per `docs/RELEASE.md` B4.11)
 
-- [ ] `Casks/clipmemory.rb` `version` updated to new version
-- [ ] `Casks/clipmemory.rb` `sha256` updated to actual release tarball SHA
-- [ ] tarball SHA computed from local `gh release download vX.Y.Z --pattern "ClipMemory.tar.gz"` artifact, then `shasum -a 256`
+- [ ] Live Cask check: `curl -s https://raw.githubusercontent.com/irykelee/homebrew-clipmemory/main/Casks/clipmemory.rb | grep version` shows new version (this is the source of truth)
+- [ ] Tap Cask sha256 == release tarball sha256 (cross-check via `gh release download vX.Y.Z` → `shasum -a 256`)
+- [ ] Local `Casks/clipmemory.rb` (reference template only): Ruby 语法有效即可（`ruby -c Casks/clipmemory.rb`）；版本/sha 不再要求本地同步（per P0-4 in `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md`）
 
 ### A5. Pre-flight (per `docs/RELEASE.md` B1.3)
 
@@ -87,6 +88,72 @@ For each of: `README.md`, `docs/lang/README_{EN,ZH-HANS,ZH-HANT,JA,KO,ES,PT}.md`
 - [ ] Session-resume `~/Documents/session-resume/YYYY-MM-DD.md` updated (Round N appended)
 - [ ] `~/Documents/session-resume/` cumulative memory updated
 - [ ] `~/.claude/projects/-Users-iryke/memory/MEMORY.md` index updated (if new memory rules added)
+
+---
+
+## F. One-time Setup — Branch Protection on `main`
+
+> **Why**: `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md` §1 P0-15 (no branch protection) → 2026-07-22 v2.5.10 release required user-explicit force-push to main to recover. Branch protection would have blocked that path and forced the fix to flow through a PR.
+> **When**: One-time per repo (or after GH Settings reset). **Not** per-release.
+> **Status (2026-07-23)**: NOT YET configured. `gh api repos/irykelee/clipmemory/branches/main/protection` → 404 "Branch not protected".
+
+### F1. Configure via GitHub Web UI
+
+Repo → Settings → Branches → main → **Add rule** / **Edit**:
+- [ ] Branch name pattern: `main`
+- [ ] ☑ **Require a pull request before merging**
+  - [ ] Required approving reviews: **1**
+  - [ ] ☑ Dismiss stale pull request approvals when new commits are pushed
+- [ ] ☑ **Require status checks to pass before merging**
+  - [ ] Required status checks: search and add **`CI`** (matches `.github/workflows/ci.yml` `name: CI`)
+  - [ ] ☑ Require branches to be up to date before merging
+- [ ] ☑ **Do not allow force pushes**
+- [ ] ☑ **Do not allow deletions**
+
+### F2. Configure via `gh api` (scriptable, equivalent to F1)
+
+```bash
+gh api -X PUT repos/irykelee/clipmemory/branches/main/protection \
+  --input - <<'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["CI"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": false,
+    "required_approving_review_count": 1
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "block_creations": false,
+  "required_conversation_resolution": true
+}
+EOF
+```
+
+Verify it landed:
+```bash
+gh api repos/irykelee/clipmemory/branches/main/protection --jq '.required_status_checks.contexts'
+# Expected: ["CI"]
+
+gh api repos/irykelee/clipmemory/branches/main/protection --jq '.required_pull_request_reviews.required_approving_review_count'
+# Expected: 1
+
+gh api repos/irykelee/clipmemory/branches/main/protection --jq '.allow_force_pushes.enabled // false'
+# Expected: false
+```
+
+### F3. Caveats and interactions with existing flow
+
+- **Status check name must match exactly**: `"CI"` comes from `name: CI` in `.github/workflows/ci.yml`. Renaming the workflow file → must update the `contexts` list in F2.
+- **Solo dev + 1 review = blocker**: GH does not allow self-approving your own PR if `required_approving_review_count >= 1`. For true solo dev, set `count: 0` (still gets PR + status check + no-force-push protection); rely on CI for gate. The "1 review" target assumes external reviewer.
+- **Release workflow force-push**: per P0-1 (commit `5dbf45b`), the appcast commit is now pushed via `--force-with-lease` to the **source branch** (e.g. `fix/v2.5.x-hotfix`), NOT to `main`. So this protection does **not** conflict with the release pipeline.
+- **Hotfix / emergency direct-push to main is BLOCKED**: any urgent fix to `main` must go through a PR. This is intentional — it's the protection. If truly blocking, set `enforce_admins: false` and admins can bypass (use sparingly).
+- **`Release` workflow is NOT in status checks**: it only runs on tag push (per workflow trigger `on: push: tags`). Tag pushes don't open PRs, so adding `Release` to contexts would block tag pushes. Only `CI` is appropriate here.
 
 ---
 

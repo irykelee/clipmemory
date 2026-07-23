@@ -28,11 +28,21 @@ for f in README.md docs/lang/README_EN.md \
   if grep -q "### v$VERSION (" "$f"; then ok "$f changelog $VERSION"; else bad "$f changelog 缺 $VERSION"; fi
 done
 
-# 3. repo Cask version
-if grep -q "version \"$VERSION\"" Casks/clipmemory.rb; then
-  ok "Casks/clipmemory.rb version $VERSION"
+# 3. local Cask (reference template only) syntactic check
+# Per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md P0-4: local Cask is a
+# static reference template; the LIVE Cask lives in the homebrew-clipmemory
+# tap repo and is updated by the Release workflow. Pre-flight only checks
+# the template (a) exists and (b) parses as valid Ruby. The version-gate
+# was removed because local SDK ≠ CI SDK → local tarball sha always
+# diverges from CI, so a "match" here was misleading.
+if [[ ! -f Casks/clipmemory.rb ]]; then
+  bad "Casks/clipmemory.rb 缺失（reference 模板）"
+elif ! command -v ruby >/dev/null 2>&1; then
+  echo "  ⚠️  ruby 不可用，跳过 Cask 语法检查"
+elif ruby -c Casks/clipmemory.rb >/dev/null 2>&1; then
+  ok "Casks/clipmemory.rb reference 模板语法 OK（live Cask 在 tap repo）"
 else
-  bad "Casks/clipmemory.rb 版本不是 $VERSION"
+  bad "Casks/clipmemory.rb Ruby 语法错误（ruby -c Casks/clipmemory.rb）"
 fi
 
 # 4. xcodegen output in sync
