@@ -103,8 +103,26 @@ final class BackupService {
     /// failure to `nil`. `ContentView.importBackup` had no way to detect the
     /// pre-import snapshot failing and proceeded to overwrite user data
     /// anyway. Now the failure is observable at the type level.
+    ///
+    /// E-2 (2026-07-23 audit): a second concurrent invocation (e.g. a
+    /// double-clicked manual "Backup Now" landing in the same window as
+    /// the daily auto-backup fired from `performBackupIfNeeded`) used to
+    /// race — both calls would race on the timestamped directory creation
+    /// and the Images/ copy. Serialize via `backupLock` so the second
+    /// caller blocks until the first completes, then runs sequentially
+    /// after it (duplicate work but never corruption).
+    private let backupLock = NSLock()
+
     @discardableResult
     func backupNow() throws -> URL {
+        backupLock.lock()
+        defer { backupLock.unlock() }
+        return try performBackupUnlocked()
+    }
+
+    /// The actual backup work, factored out so `backupNow()` can wrap it
+    /// with the concurrency lock without mixing lock and logic.
+    private func performBackupUnlocked() throws -> URL {
         let formatter = DateFormatter()
         // POSIX locale keeps `yyyy` Gregorian regardless of the user's calendar
         // (Buddhist/Japanese eras would otherwise break name-sort = time-sort).
