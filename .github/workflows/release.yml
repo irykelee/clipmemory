@@ -13,6 +13,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        # v2.5.11 hotfix: `fetch-depth: 0` fetches all branches + tags
+        # so the appcast push's source-branch detection (P0-1 fix
+        # from `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md`) can resolve
+        # the vX.Y.Z tag's commit to its actual source branch.
+        # Without this, `git branch --all --contains` returns empty
+        # (runner only has the trigger ref), falls back to main, and
+        # `git push --force-with-lease` fails with "stale info" when
+        # the runner's local main ref doesn't match remote main.
+        with:
+          fetch-depth: 0
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
