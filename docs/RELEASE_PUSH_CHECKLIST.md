@@ -105,7 +105,7 @@ Repo → Settings → Branches → main → **Add rule** / **Edit**:
   - [ ] Required approving reviews: **1**
   - [ ] ☑ Dismiss stale pull request approvals when new commits are pushed
 - [ ] ☑ **Require status checks to pass before merging**
-  - [ ] Required status checks: search and add **`CI`** (matches `.github/workflows/ci.yml` `name: CI`)
+  - [ ] Required status checks: search and add **`build-and-test`** (matches the `build-and-test:` job in `.github/workflows/ci.yml`; the workflow file's `name: CI` is the workflow display name, NOT the status-check context — GitHub uses the **job name** as the context)
   - [ ] ☑ Require branches to be up to date before merging
 - [ ] ☑ **Do not allow force pushes**
 - [ ] ☑ **Do not allow deletions**
@@ -118,7 +118,7 @@ gh api -X PUT repos/irykelee/clipmemory/branches/main/protection \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["CI"]
+    "contexts": ["build-and-test"]
   },
   "enforce_admins": true,
   "required_pull_request_reviews": {
@@ -138,7 +138,7 @@ EOF
 Verify it landed:
 ```bash
 gh api repos/irykelee/clipmemory/branches/main/protection --jq '.required_status_checks.contexts'
-# Expected: ["CI"]
+# Expected: ["build-and-test"]
 
 gh api repos/irykelee/clipmemory/branches/main/protection --jq '.required_pull_request_reviews.required_approving_review_count'
 # Expected: 1
@@ -149,7 +149,7 @@ gh api repos/irykelee/clipmemory/branches/main/protection --jq '.allow_force_pus
 
 ### F3. Caveats and interactions with existing flow
 
-- **Status check name must match exactly**: `"CI"` comes from `name: CI` in `.github/workflows/ci.yml`. Renaming the workflow file → must update the `contexts` list in F2.
+- **Status check context = JOB name, not workflow name**: GitHub uses the job name from the workflow YAML as the status-check context. `.github/workflows/ci.yml` has `name: CI` (workflow display) + `jobs: build-and-test:` (job = context). If you rename the job → must update the `contexts` list. If you only rename the workflow file → context unchanged. Verify with `gh pr checks <N> --json name,workflow` to see the exact context names currently in use.
 - **Solo dev + 1 review = blocker**: GH does not allow self-approving your own PR if `required_approving_review_count >= 1`. For true solo dev, set `count: 0` (still gets PR + status check + no-force-push protection); rely on CI for gate. The "1 review" target assumes external reviewer.
 - **Release workflow force-push**: per P0-1 (commit `5dbf45b`), the appcast commit is now pushed via `--force-with-lease` to the **source branch** (e.g. `fix/v2.5.x-hotfix`), NOT to `main`. So this protection does **not** conflict with the release pipeline.
 - **Hotfix / emergency direct-push to main is BLOCKED**: any urgent fix to `main` must go through a PR. This is intentional — it's the protection. If truly blocking, set `enforce_admins: false` and admins can bypass (use sparingly).
