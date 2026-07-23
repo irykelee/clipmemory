@@ -115,9 +115,15 @@ func assertImageSnapshot(
     // so byte-for-byte comparison is unreliable across environments. On
     // CI we treat snapshot tests as render smoke tests: confirm the view
     // can be rendered + written to PNG, skip the visual comparison. Local
-    // runs (env var CI unset) keep the strict comparison for regression
+    // runs (env var unset) keep the strict comparison for regression
     // detection.
-    if ProcessInfo.processInfo.environment["CI"] != nil {
+    //
+    // Detect CI via GITHUB_ACTIONS="true" (set by GitHub Actions) AND
+    // CI="true" (set by many CI providers). xcodebuild test does not
+    // always inherit CI from the workflow shell, so check both.
+    let env = ProcessInfo.processInfo.environment
+    let isCI = env["GITHUB_ACTIONS"] == "true" || env["CI"] == "true"
+    if isCI {
         do {
             try FileManager.default.createDirectory(at: goldenDir, withIntermediateDirectories: true)
             try actualData.write(to: goldenURL)
