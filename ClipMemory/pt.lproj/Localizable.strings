@@ -183,6 +183,7 @@
 "tips.title" = "Dicas";
 "tips.actions" = "Operações";
 "tips.keyboard" = "Teclado";
+"tips.key.updown" = "Navigate items"; /* TODO(i18n): native translation pending 7-lang review */
 "settings.hotkey.reset" = "Redefinir";
 "filter.richtext" = "Texto rico";
 "item.richText" = "Texto rico";

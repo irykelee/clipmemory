@@ -183,6 +183,7 @@
 "tips.title" = "Tips & Shortcuts";
 "tips.actions" = "Item Operations";
 "tips.keyboard" = "Keyboard Navigation";
+"tips.key.updown" = "Navigate items";
 "settings.hotkey.reset" = "Reset";
 "alert.trim.title" = "Trim History";
 "alert.trim.message" = "You have %d items but the limit is %d. Trim extra items?";

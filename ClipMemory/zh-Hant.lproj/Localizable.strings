@@ -182,6 +182,7 @@
 "tips.title" = "使用技巧";
 "tips.actions" = "基本操作";
 "tips.keyboard" = "鍵盤操作";
+"tips.key.updown" = "Navigate items"; /* TODO(i18n): native translation pending 7-lang review */
 "settings.hotkey.reset" = "重置";
 "filter.richtext" = "富文本";
 "item.richText" = "富文本";

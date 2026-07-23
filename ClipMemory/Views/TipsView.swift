@@ -45,7 +45,12 @@ struct TipsView: View {
                         }
                         // Keyboard
                         section(L10n.tipsKeyboard) {
-                            row("↑↓ — \(L10n.quickbarRecent(8))")
+                            // F-13 (2026-07-23 audit): was hardcoded to
+                            // `L10n.quickbarRecent(8)` which renders as
+                            // "8 items" / "8 条内容" — misleadingly implied
+                            // ↑↓ nav was scoped to the 8 most recent items.
+                            // Actual behavior navigates the full filtered list.
+                            row("↑↓ — \(L10n.tipsKeyUpdown)")
                             row("⏎ — \(L10n.actionCopy)")
                             row("⎋ — \(L10n.buttonClose)")
                         }

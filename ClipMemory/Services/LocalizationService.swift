@@ -327,4 +327,9 @@ struct L10n {
     static var tipsTitle: String { string("tips.title") }
     static var tipsActions: String { string("tips.actions") }
     static var tipsKeyboard: String { string("tips.keyboard") }
+    /// F-13 (2026-07-23 audit): was incorrectly bound to
+    /// `quickbarRecent(8)` ("8 items"), which misleadingly implied that
+    /// the ↑↓ keyboard nav was scoped to the most recent 8 items. Actual
+    /// behavior navigates the full filtered list.
+    static var tipsKeyUpdown: String { string("tips.key.updown") }
 }
