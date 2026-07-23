@@ -959,7 +959,14 @@ struct ContentView: View {
             } catch BackupPackageError.wrongPassword {
                 DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPassphraseWrong) }
             } catch BackupPackageError.corruptedData {
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPassphraseWrong) }
+                // Route corrupted-package errors to a generic 'operation failed'
+                // notice rather than the 'wrong passphrase' one. The
+                // `passphrase.wrong` L10n key is intentionally ambiguous
+                // (covers "or corrupted") for users with a valid passphrase
+                // who entered it correctly; for actual corruption we want
+                // them to recognize "file problem, not password problem" and
+                // try a different backup instead of retrying the passphrase.
+                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
             } catch {
                 DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
             }
