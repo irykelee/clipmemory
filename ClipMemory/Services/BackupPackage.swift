@@ -413,9 +413,18 @@ final class BackupPackage {
             let target = imagesDirectory.appendingPathComponent(file)
             guard !FileManager.default.fileExists(atPath: target.path) else { continue }
             let fileURL = packageImages.appendingPathComponent(file)
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-               let size = attrs[.size] as? Int,
-               size > maxImageBytes {
+            // C-4 (2026-07-24 audit): the prior `if let attrs = try?` chain
+            // silently bypassed the size cap whenever `attributesOfItem`
+            // failed (permissions, broken symlink, network FS error) — a
+            // hostile or corrupted package could then `Data(contentsOf:)`
+            // a 500 MB entry and crash the app with OOM. Fail closed: skip
+            // the file rather than risk unbounded memory.
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+                  let size = attrs[.size] as? Int else {
+                logger.warning("Cannot determine size of image in backup (skipping): \(file)")
+                continue
+            }
+            guard size <= maxImageBytes else {
                 logger.warning("Skipping oversized image in backup: \(file) (\(size) bytes > \(maxImageBytes))")
                 continue
             }
