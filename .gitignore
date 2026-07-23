@@ -37,3 +37,6 @@ docs/RELEASE.md
 docs/release-notes-template.md
 __pycache__/
 *.pyc
+
+# Agent session memory workspace (Claude Code ephemeral)
+.workbuddy/

@@ -76,9 +76,6 @@ struct ContentView: View {
     @State private var pendingClearMode: ClearMode?
     @State private var pendingTypeClear: ClipboardItemType?
     @State private var showingConditionalClear = false
-    private enum ClearMode {
-        case today, yesterday, older, all
-    }
     @State private var revealedItems: Set<UUID> = []
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
@@ -175,7 +172,7 @@ struct ContentView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             if self.lastCopiedId == item.id { self.lastCopiedId = nil }
         }
-        copyItem(item)
+        store.copyToClipboard(item)
     }
 
     private func handleKeyEscape() {
@@ -548,7 +545,7 @@ struct ContentView: View {
             if selectedTab == .settings {
                 settingsDetail
             } else {
-                mainContent
+                itemList
             }
         }
         .frame(minWidth: 640, minHeight: 440)
@@ -634,97 +631,35 @@ struct ContentView: View {
         )
     }
 
-    private var mainContent: some View {
-        VStack(spacing: 0) {
-            if selectedTab == .trash {
-                trashView
-            } else if displayedItems.isEmpty { emptyState } else {
-                ScrollViewReader { proxy in
-                    List {
-                        ForEach(groupedItemsWithIndex, id: \.group) { section in
-                            Section {
-                                if !searchText.isEmpty || !collapsedGroups.contains(section.group) {
-                                    ForEach(section.items, id: \.item.id) { itemWithIndex in
-                                        self.buildItemRow(itemWithIndex: itemWithIndex)
-                                            .listRowInsets(EdgeInsets())
-                                            .listRowSeparator(.hidden)
-                                            .id(itemWithIndex.item.id)
-                                    }
-                                }
-                            } header: {
-                                HStack {
-                                    Text(section.group.label).font(.system(size: sz(12), weight: .semibold)).foregroundColor(.secondary)
-                                    Spacer()
-                                    Button(action: { pendingClearMode = clearModeForGroup(section.group) }, label: {
-                                        Image(systemName: "trash")
-                                            .font(.system(size: sz(11)))
-                                            .foregroundColor(.secondary)
-                                    })
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel(L10n.buttonClear)
-                                    Image(systemName: (!collapsedGroups.contains(section.group) || !searchText.isEmpty) ? "chevron.down" : "chevron.right")
-                                        .font(.system(size: sz(10))).foregroundColor(.secondary)
-                                }
-                                .contentShape(Rectangle()).onTapGesture { toggleGroup(section.group) }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                    }
-                    .listStyle(.plain)
-                    .layoutPriority(1)
-                    .task(id: scrollAnchor) {
-                        if let anchor = scrollAnchor {
-                            proxy.scrollTo(anchor, anchor: .center)
-                        }
-                    }
-                }
-                .overlay(alignment: .top) {
-                    if !selectedItems.isEmpty {
-                        HStack { Text(L10n.batchSelected(selectedItems.count)).font(.system(size: sz(12))).foregroundColor(.secondary); Spacer()
-                            Button(action: { store.togglePinItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }, label: { Label(batchAllPinned ? L10n.actionUnpin : L10n.actionPin, systemImage: batchAllPinned ? "star.slash" : "star").font(.system(size: sz(12))) }).buttonStyle(.plain)
-                            Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }, label: { Label(L10n.actionDelete, systemImage: "trash").font(.system(size: sz(12))) }).buttonStyle(.plain).foregroundColor(.red)
-                            Button(action: { selectedItems.removeAll() }, label: { Text(L10n.buttonCancel).font(.system(size: sz(12))) }).buttonStyle(.plain).foregroundColor(.secondary)
-                        }.padding(.horizontal, 16).padding(.vertical, 8).background(.regularMaterial)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.15), value: selectedItems.isEmpty)
-            }
-        }
-        .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) { Button(L10n.buttonCancel, role: .cancel) {}; Button(L10n.buttonDelete, role: .destructive) { if let item = itemToDelete { store.deleteItem(item) } } } message: { Text(L10n.alertDeleteMessage) }
-        .alert(L10n.alertClearTitle, isPresented: Binding(
-            get: { pendingTypeClear != nil },
-            set: { if !$0 { pendingTypeClear = nil } }
-        )) {
-            Button(L10n.buttonCancel, role: .cancel) { pendingTypeClear = nil }
-            Button(L10n.buttonClear, role: .destructive) {
-                if let type = pendingTypeClear {
-                    store.clearItems(type: type, range: .all)
-                }
-                pendingTypeClear = nil
-            }
-        } message: {
-            if let type = pendingTypeClear {
-                Text(L10n.clearTypeConfirm(typeLabel(type), store.items.filter { $0.type == type && !$0.isPinned }.count))
-            }
-        }
-        .alert(L10n.alertClearTitle, isPresented: Binding(
-            get: { pendingClearMode != nil },
-            set: { if !$0 { pendingClearMode = nil } }
-        )) {
-            Button(L10n.buttonCancel, role: .cancel) { pendingClearMode = nil }
-            Button(L10n.buttonClear, role: .destructive) { confirmClear() }
-        } message: {
-            Text(clearAlertText)
-        }
-        .alert(L10n.trashEmptyConfirmTitle, isPresented: $showingEmptyTrashAlert) {
-            Button(L10n.buttonCancel, role: .cancel) { showingEmptyTrashAlert = false }
-            Button(L10n.buttonClear, role: .destructive) {
-                store.emptyTrash()
-                showingEmptyTrashAlert = false
-            }
-        } message: {
-            Text(L10n.trashEmptyConfirmMessage(store.trashedItems.count))
-        }
+    /// NEW-7 Phase 4: passes the list-related @State through to ItemListView.
+    /// ContentView keeps ownership so filterItems / search debouncing / day
+    /// rollover stay in one place — the ViewModel collapse is Phase 5+ scope.
+    ///
+    /// The trim alert (pendingMaxItemsReduction) stays here because it was
+    /// not part of the list rendering — it's owned by Settings's maxItems
+    /// picker and only happens to be presented from the list detail pane.
+    private var itemList: some View {
+        ItemListView(
+            store: store,
+            selectedTab: selectedTab,
+            displayedItems: displayedItems,
+            groupedItemsWithIndex: groupedItemsWithIndex,
+            batchAllPinned: batchAllPinned,
+            searchText: $searchText,
+            collapsedGroups: $collapsedGroups,
+            selectedItems: $selectedItems,
+            keyboardSelectedIndex: $keyboardSelectedIndex,
+            lastCopiedId: $lastCopiedId,
+            scrollAnchor: $scrollAnchor,
+            revealedItems: $revealedItems,
+            pendingClearMode: $pendingClearMode,
+            pendingTypeClear: $pendingTypeClear,
+            showingConditionalClear: $showingConditionalClear,
+            showingDeleteAlert: $showingDeleteAlert,
+            itemToDelete: $itemToDelete,
+            showingEmptyTrashAlert: $showingEmptyTrashAlert,
+            tagPickerItem: $tagPickerItem
+        )
         .alert(L10n.alertTrimTitle, isPresented: Binding(
             get: { pendingMaxItemsReduction != nil },
             set: { if !$0 { pendingMaxItemsReduction = nil } }
@@ -745,69 +680,6 @@ struct ContentView: View {
         } message: {
             if let pair = pendingMaxItemsReduction {
                 Text(L10n.alertTrimMessage(store.items.count, pair.new))
-            }
-        }
-    }
-
-    private var clearAlertText: String {
-        guard let mode = pendingClearMode else { return "" }
-        let count: Int
-        switch mode {
-        case .today: count = store.todayCount
-        case .yesterday: count = store.yesterdayCount
-        case .older: count = store.olderCount
-        case .all: count = store.items.filter { !$0.isPinned }.count
-        }
-        return count > 0 ? L10n.alertClearMessage(count) : L10n.alertClearNone
-    }
-
-    /// Maps a time group to the ClearMode used by the toolbar menu so the new
-    /// per-group header trash button reuses the exact same confirmation flow.
-    private func clearModeForGroup(_ group: TimeGroup) -> ClearMode {
-        switch group {
-        case .today: return .today
-        case .yesterday: return .yesterday
-        case .older: return .older
-        }
-    }
-
-    private func confirmClear() {
-        guard let mode = pendingClearMode else { return }
-        switch mode {
-        case .today: store.clearToday()
-        case .yesterday: store.clearYesterday()
-        case .older: store.clearOlder()
-        case .all: store.clearAllItems()
-        }
-        pendingClearMode = nil
-    }
-
-    private var trashView: some View {
-        VStack(spacing: 0) {
-            if store.trashedItems.isEmpty {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "trash")
-                        .font(.system(size: sz(36)))
-                        .foregroundColor(.secondary)
-                    Text(L10n.trashEmpty)
-                        .font(.system(size: sz(14)))
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-            } else {
-                List {
-                    ForEach(store.trashedItems) { item in
-                        TrashItemRow(
-                            item: item,
-                            onRestore: { store.restoreFromTrash(item) },
-                            onDeletePermanently: { store.deletePermanently(item) }
-                        )
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden)
-                    }
-                }
-                .listStyle(.plain)
             }
         }
     }
@@ -845,10 +717,6 @@ struct ContentView: View {
         if let m = keyEventMonitor { NSEvent.removeMonitor(m); keyEventMonitor = nil }
     }
 
-    private func toggleGroup(_ g: TimeGroup) {
-        if collapsedGroups.contains(g) { collapsedGroups.remove(g) } else { collapsedGroups.insert(g) }
-    }
-
     private var settingsDetail: some View {
         SettingsView(
             languageManager: languageManager,
@@ -863,6 +731,13 @@ struct ContentView: View {
             onApplyAppearance: applyAppearance,
             onExportBackup: exportBackup,
             onImportBackup: importBackup,
+            // F-4 (2026-07-23 audit): surface backupNow() errors
+            // via the same `showBackupInfo` channel used by export /
+            // import / pre-import safety-snapshot failures. Reusing
+            // the generic "operation failed" message — BackupError's
+            // specific cases (directory creation vs copy) are internal
+            // and don't change the user's remediation.
+            onShowBackupError: { showBackupInfo(L10n.settingsBackupError) },
             onShowLaunchAtLoginError: showLaunchAtLoginError,
             onShowWelcomeGuide: { (NSApp.delegate as? AppDelegate)?.showWelcomeView() },
             onStartHotKeyRecording: startRecording
@@ -889,17 +764,41 @@ struct ContentView: View {
         alert.runModal()
     }
 
-    /// Prompts for the backup passphrase (min 6 chars). Returns nil on cancel/too short.
+    /// Prompts for the backup passphrase (min 6 chars). Returns nil on cancel,
+    /// or a valid passphrase on confirm. Loops with a warning if the user
+    /// tries to confirm a too-short input — previously this silently
+    /// returned nil which made Export look broken (3.1, 2026-07-23 audit).
     private func promptBackupPassphrase() -> String? {
-        let alert = NSAlert()
-        alert.messageText = L10n.settingsBackupPassphrase
-        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        alert.accessoryView = field
-        alert.addButton(withTitle: L10n.buttonConfirm)
-        alert.addButton(withTitle: L10n.buttonCancel)
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        let value = field.stringValue
-        return value.count >= 6 ? value : nil
+        while true {
+            let alert = NSAlert()
+            alert.messageText = L10n.settingsBackupPassphrase
+            // H-2 (2026-07-23, per audit-2026-07-23-3subagent-findings §②):
+            // NSAlert's informativeText shows below the title in secondary smaller
+            // text. Without it, users see only "Backup passphrase (min 6 chars)"
+            // and have no idea what the password is for. Explains the round-trip
+            // requirement so they save the password somewhere recoverable.
+            alert.informativeText = L10n.settingsBackupPassphraseInfo
+            let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+            alert.accessoryView = field
+            alert.addButton(withTitle: L10n.buttonConfirm)
+            alert.addButton(withTitle: L10n.buttonCancel)
+
+            guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+            let value = field.stringValue
+            if value.count >= 6 { return value }
+
+            // 3.1 (2026-07-23 audit): short input re-prompts with an
+            // explicit "Passphrase too short" warning. The previous
+            // `return value.count >= 6 ? value : nil` silently swallowed
+            // the bad input — user clicked Export, alert closed, nothing
+            // happened, looked like the button was broken.
+            let warning = NSAlert()
+            warning.messageText = L10n.passphraseTooShortTitle
+            warning.informativeText = L10n.passphraseTooShortMessage
+            warning.alertStyle = .warning
+            warning.addButton(withTitle: L10n.buttonConfirm)
+            warning.runModal()
+        }
     }
 
     private func exportBackup() {
@@ -908,8 +807,15 @@ struct ContentView: View {
         panel.nameFieldStringValue = "ClipMemory-backup.clipmemory"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard let passphrase = promptBackupPassphrase() else { return }
+        // H-3 (2026-07-23, per audit-2026-07-23-3subagent-findings §②):
+        // Previously routed to the generic `settingsBackupError` ("operation
+        // failed, please try again"), which sent users hunting for transport
+        // / disk / permission causes when the actual issue is a missing root
+        // encryption key (Keychain empty + .encryption_key fallback file
+        // gone). The dedicated message tells them to reset encryption from
+        // Settings — the only correct remediation.
         guard let keyData = CryptoService.loadKeyData() else {
-            showBackupInfo(L10n.settingsBackupError)
+            showBackupInfo(L10n.settingsBackupErrorMissingEncryptionKey)
             return
         }
         // Flush the 500ms debounce so the package includes the very latest items.
@@ -939,7 +845,17 @@ struct ContentView: View {
         // Heavy work (unzip, re-keying, image copies) off the main thread;
         // BackupPackage hops to main for the @Published merges itself.
         DispatchQueue.global(qos: .userInitiated).async {
-            backupService.backupNow()
+            // M-2 (2026-07-23): backupNow now throws. Pre-import
+            // safety snapshot is REQUIRED before mutating user data.
+            // If it fails we must NOT proceed with the import —
+            // silently overwriting the user's current clipboard
+            // history with no rollback point is a data-loss bug.
+            do {
+                _ = try backupService.backupNow()
+            } catch {
+                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
+                return
+            }
             do {
                 let result = try BackupPackage.importPackage(
                     from: url,
@@ -1083,55 +999,4 @@ ForEach(filtered, id: \.bundleId) { app in
         }
     }
 
-    private var emptyState: some View {
-        let name = store.items.isEmpty ? "no_items_overall" : "filter_no_match"
-        UIObservability.logEmptyStateRender(name: name, itemCount: store.items.count)
-        return VStack(spacing: 12) { Spacer(); Image(systemName: selectedTab == .pinned ? "star" : "tray").font(.system(size: sz(40))).foregroundColor(.secondary); Text(selectedTab == .pinned ? L10n.emptyNoPinned : L10n.emptyNoHistory).font(.system(size: sz(14))).foregroundColor(.secondary); if selectedTab == .pinned { Text(L10n.emptyPinnedHint).font(.system(size: sz(12))).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal) } else { Text(L10n.emptyHistoryHint).font(.system(size: sz(12))).foregroundColor(.secondary) }; Spacer() }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-
-    private func copyItem(_ item: ClipboardItem) { store.copyToClipboard(item) }
-    private func toggleReveal(_ id: UUID) { if revealedItems.contains(id) { revealedItems.remove(id) } else { revealedItems.insert(id) } }
-
-    /// Builds a single ClipboardItemRow. Extracted from the ForEach body to
-    /// keep Swift's type-checker happy — the row init has 12 named parameters
-    /// and SwiftUI's @ViewBuilder blows the solver budget when inlined inside
-    /// a deeply nested Section/ForEach.
-    @ViewBuilder
-    private func buildItemRow(itemWithIndex: (item: ClipboardItem, globalIndex: Int)) -> some View {
-        let item: ClipboardItem = itemWithIndex.item
-        let itemId: UUID = item.id
-        let revealed: Bool = revealedItems.contains(itemId)
-        let kbSelected: Bool = keyboardSelectedIndex == itemWithIndex.globalIndex
-        let copied: Bool = lastCopiedId == itemId
-        let selected: Bool = selectedItems.contains(itemId)
-        let copyAction: () -> Void = {
-            self.lastCopiedId = itemId
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                if self.lastCopiedId == itemId { self.lastCopiedId = nil }
-            }
-            self.copyItem(item)
-        }
-        let pinAction: () -> Void = { self.store.togglePin(item) }
-        let deleteAction: () -> Void = {
-            self.itemToDelete = item
-            self.showingDeleteAlert = true
-        }
-        let selectAction: (Bool) -> Void = { isOn in
-            if isOn { self.selectedItems.insert(itemId) } else { self.selectedItems.remove(itemId) }
-        }
-        let revealAction: () -> Void = { self.toggleReveal(itemId) }
-        let editTagsAction: () -> Void = { self.tagPickerItem = item }
-        ClipboardItemRow(item: item,
-            isRevealed: revealed,
-            isKeyboardSelected: kbSelected,
-            isCopied: copied,
-            isSelected: selected,
-            searchText: searchText,
-            onCopyWithFeedback: copyAction,
-            onPin: pinAction,
-            onDelete: deleteAction,
-            onSelect: selectAction,
-            onToggleReveal: revealAction,
-            onEditTags: editTagsAction)
-    }
-}

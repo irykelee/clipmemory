@@ -46,6 +46,7 @@ final class SettingsViewSnapshotTests: XCTestCase {
             onApplyAppearance: {},
             onExportBackup: {},
             onImportBackup: {},
+            onShowBackupError: {},
             onShowLaunchAtLoginError: {},
             onShowWelcomeGuide: {},
             onStartHotKeyRecording: {}

@@ -209,6 +209,18 @@ struct QuickBarView: View {
             )
             .frame(width: 0, height: 0)
         )
+        // F-9 (2026-07-23 audit): ⌘F inside the QuickBar popover could be
+        // a no-op because the popover is in its own NSWindow and the
+        // KeyCaptureView NSEvent local monitor doesn't always fire there
+        // consistently. AppDelegate's `handleFindAction` posts a
+        // `.cmdFFindAction` notification via the menu path, but QuickBar
+        // had no listener for it. Mirrors ContentView's
+        // `.onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction))`
+        // (ContentView.swift:524) so the menu path focuses the search
+        // field regardless of which route fires.
+        .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in
+            isSearchFocused = true
+        }
         .onChange(of: showFullWindow) { newValue in
             if newValue {
                 onDismiss()

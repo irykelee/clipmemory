@@ -75,6 +75,13 @@ struct ClipboardItemRow: View, Equatable {
     let onToggleReveal: () -> Void
     var onEditTags: () -> Void = { }
     @State private var isHovered = false
+    // E-13 (2026-07-23 audit): the row reads LanguageManager.shared
+    // for `cachedAbsoluteDateFormatter(for:)` (line ~140) but didn't
+    // observe it. Switching language via Settings → Language wouldn't
+    // re-render the row's date label until the row scrolled off + on
+    // (item.id task re-firing). Subscribe so language changes trigger
+    // an immediate refresh of the rendered date string.
+    @ObservedObject private var languageManager = LanguageManager.shared
     @State private var loadedImage: NSImage?
     @State private var loadedContent: String?
     @State private var loadedRichText: AttributedString?
@@ -211,7 +218,21 @@ struct ClipboardItemRow: View, Equatable {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Button(action: { onSelect?(!isSelected) }, label: { Image(systemName: isSelected ? "checkmark.circle.fill" : "circle").font(.system(size: iconSize)).foregroundColor(isSelected ? .accentColor : .secondary).frame(width: 22, height: 22) }).buttonStyle(.plain)
+            Button {
+                    onSelect?(!isSelected)
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: iconSize))
+                        .foregroundColor(isSelected ? .accentColor : .secondary)
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                // F-19 (2026-07-23 audit): VoiceOver sees only "button" for an
+                // icon-only select toggle. Add an explicit label that flips
+                // with state and announce the .isSelected trait so screen
+                // readers convey the row's current selection.
+                .accessibilityLabel(isSelected ? L10n.actionDeselect : L10n.actionSelect)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .top) {
                     if item.type == .image {
@@ -352,8 +373,29 @@ struct ClipboardItemRow: View, Equatable {
                 .buttonStyle(.plain)
                 .help(L10n.tooltipEditTags)
                 .accessibilityLabel(L10n.tooltipEditTags)
-                Button(action: onPin) { Image(systemName: item.isPinned ? "star.fill" : "star").font(.system(size: iconSize)).foregroundColor(item.isPinned ? .orange : .secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
-                Button(action: onDelete) { Image(systemName: "trash").font(.system(size: iconSize)).foregroundColor(.secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(L10n.tooltipDelete)
+                // F-20 (2026-07-23 audit): pin + delete were Image-only Buttons with only
+// a `.help()` tooltip — `.help()` does NOT surface to VoiceOver / a11y
+// users. Reusing the same L10n strings keeps the visible label and the
+// VoiceOver announcement in sync (and avoids creating new keys that would
+// need 7-lang review).
+Button(action: onPin) {
+    Image(systemName: item.isPinned ? "star.fill" : "star")
+        .font(.system(size: iconSize))
+        .foregroundColor(item.isPinned ? .orange : .secondary)
+        .frame(width: 24, height: 24)
+}
+.buttonStyle(.plain)
+.help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
+.accessibilityLabel(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
+Button(action: onDelete) {
+    Image(systemName: "trash")
+        .font(.system(size: iconSize))
+        .foregroundColor(.secondary)
+        .frame(width: 24, height: 24)
+}
+.buttonStyle(.plain)
+.help(L10n.tooltipDelete)
+.accessibilityLabel(L10n.tooltipDelete)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle())

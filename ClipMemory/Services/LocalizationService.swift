@@ -23,6 +23,15 @@ struct L10n {
     /// - Returns: The formatted localized string
     static func string(_ key: String, _ args: CVarArg...) -> String {
         let template = string(key)
+        // F-7 (2026-07-23 audit): when the Localizable.strings entry uses
+        // the .stringsdict plural marker `%#@var@`, plain `String(format:)`
+        // can't resolve the right plural form — Foundation needs
+        // `String.localizedStringWithFormat` for that. Detect the marker
+        // and route accordingly; other keys keep the cheap `String(format:)`
+        // path so we don't pay the .stringsdict lookup cost on every call.
+        if template.contains("%#@") {
+            return String.localizedStringWithFormat(template, args)
+        }
         return String(format: template, arguments: args)
     }
 
@@ -84,6 +93,11 @@ struct L10n {
     static var actionCopy: String { string("action.copy") }
     static var actionShowContent: String { string("action.show.content") }
     static var actionHideContent: String { string("action.hide.content") }
+    // F-19 (2026-07-23 audit): VoiceOver labels for the row select checkbox.
+    // The button is icon-only (`checkmark.circle.fill` vs `circle`) — without
+    // these labels, VoiceOver reads "button" with no functional hint.
+    static var actionSelect: String { string("action.select") }
+    static var actionDeselect: String { string("action.deselect") }
 
     static var tooltipUnpin: String { string("tooltip.unpin") }
     static var tooltipPin: String { string("tooltip.pin") }
@@ -138,6 +152,11 @@ struct L10n {
     static var trashEmptyConfirmTitle: String { string("trash.emptyConfirm.title") }
     static func trashEmptyConfirmMessage(_ count: Int) -> String { string("trash.emptyConfirm.message", count) }
     static var trashRetentionDays: String { string("trash.retentionDays") }
+    // F-1 (2026-07-23 audit): per-row permanent-delete confirmation. The
+    // bulk `trashEmptyConfirmTitle` reads "Empty Trash" which is wrong
+    // for a single-item dialog — different copy, different action surface.
+    static var trashDeleteConfirmTitle: String { string("trash.deleteConfirm.title") }
+    static var trashDeleteConfirmConfirm: String { string("trash.deleteConfirm.confirm") }
 
     static var settingsSectionHistory: String { string("settings.section.history") }
     static var settingsSectionSensitive: String { string("settings.section.sensitive") }
@@ -167,8 +186,25 @@ struct L10n {
     static var settingsBackupExport: String { string("settings.backup.export") }
     static var settingsBackupImport: String { string("settings.backup.import") }
     static var settingsBackupPassphrase: String { string("settings.backup.passphrase") }
+    // H-2 (2026-07-23): informativeText for promptBackupPassphrase.
+    // Tells users the passphrase will be needed again to restore, not just
+    // asking for an opaque password. Reduces confusion when the user later
+    // cannot recall why they typed one.
+    static var settingsBackupPassphraseInfo: String { string("settings.backup.passphrase.info") }
     static var settingsBackupPassphraseWrong: String { string("settings.backup.passphrase.wrong") }
+    // 3.1 (2026-07-23): re-prompt feedback when user enters a passphrase
+    // shorter than the 6-char minimum. Previously the alert closed with
+    // no feedback, making Export look broken.
+    static var passphraseTooShortTitle: String { string("passphrase.tooShort.title") }
+    static var passphraseTooShortMessage: String { string("passphrase.tooShort.message") }
     static var settingsBackupError: String { string("settings.backup.error") }
+    // H-3 (2026-07-23): distinguishes root-encryption-key-missing from a
+    // generic "operation failed". The previous generic message sent users
+    // hunting for transport / disk / permission causes when the real issue
+    // is that CryptoService.loadKeyData() returned nil (Keychain empty +
+    // .encryption_key fallback file gone). Tells them to reset encryption
+    // from Settings instead of retrying.
+    static var settingsBackupErrorMissingEncryptionKey: String { string("settings.backup.error.missingEncryptionKey") }
     static var settingsBackupExportDone: String { string("settings.backup.export.done") }
     static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ corrupt: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, corrupt, images) }
     static func settingsBackupLast(_ date: String) -> String { string("settings.backup.last", date) }
@@ -300,4 +336,9 @@ struct L10n {
     static var tipsTitle: String { string("tips.title") }
     static var tipsActions: String { string("tips.actions") }
     static var tipsKeyboard: String { string("tips.keyboard") }
+    /// F-13 (2026-07-23 audit): was incorrectly bound to
+    /// `quickbarRecent(8)` ("8 items"), which misleadingly implied that
+    /// the ↑↓ keyboard nav was scoped to the most recent 8 items. Actual
+    /// behavior navigates the full filtered list.
+    static var tipsKeyUpdown: String { string("tips.key.updown") }
 }

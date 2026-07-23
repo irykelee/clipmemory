@@ -14,11 +14,23 @@ struct UpdateStatusPanelView: View {
         }
     }
 
-    private func formatted(_ date: Date?) -> String {
-        guard let date else { return "—" }
+    // F-25 (2026-07-23 audit): DateFormatter is expensive to construct
+    // (locale + calendar + format pattern lookups). The previous
+    // implementation allocated a new one on every body re-render, and
+    // `body` re-runs on every @Published change in `UpdateStatus`. Cache
+    // a single static instance — safe because SwiftUI body always runs
+    // on the main thread, and this is only ever called from body.
+    // The .current locale is captured at process start; if the user
+    // changes macOS system locale at runtime, a relaunch picks it up.
+    private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .short
         f.timeStyle = .short
-        return f.string(from: date)
+        return f
+    }()
+
+    private func formatted(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        return Self.dateFormatter.string(from: date)
     }
 }

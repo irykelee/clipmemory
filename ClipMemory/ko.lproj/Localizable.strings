@@ -34,6 +34,9 @@
 "action.copy" = "복사";
 "action.show.content" = "내용 보기";
 "action.hide.content" = "내용 숨기기";
+// F-19 (2026-07-23 audit): VoiceOver labels for select checkbox
+"action.select" = "선택";
+"action.deselect" = "선택 해제";
 
 /* Tooltips */
 "tooltip.unpin" = "고정 해제";
@@ -45,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "기록 비우기";
-"alert.clear.message" = "%d개 항목을 지울까요?\n고정된 항목은 삭제되지 않습니다.";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "비울 기록이 없습니다.";
 "alert.delete.title" = "휴지통으로 이동";
 "alert.delete.message" = "이 항목을 휴지통으로 이동하시겠습니까?";
@@ -56,7 +59,7 @@
 "settings.section.language" = "언어";
 "settings.section.about" = "정보";
 "settings.max.items" = "최대 개수";
-"settings.max.items.count" = "%d개";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "자동 삭제";
 "settings.sensitive.hint" = "비밀번호, API 키 등 민감정보 자동 삭제까지의 대기 시간";
 "settings.section.hotkey" = "단축키";
@@ -77,6 +80,9 @@
 "settings.backup.import" = "백업 가져오기…";
 "settings.backup.passphrase" = "백업 암호(최소 6자)";
 "settings.backup.passphrase.wrong" = "암호가 틀렸거나 패키지가 손상됨";
+// 3.1 (2026-07-23 audit): short-passphrase re-prompt
+"passphrase.tooShort.title" = "암호가 너무 짧습니다";
+"passphrase.tooShort.message" = "암호는 최소 6자 이상이어야 합니다. 다시 입력해 주세요.";
 "settings.backup.error" = "백업 작업 실패, 다시 시도하세요";
 "settings.backup.export.done" = "내보내기 완료";
 "settings.backup.import.result" = "가져오기 완료: 항목 %1$d개 추가, 중복 %2$d개 건너뜀, 손상 %3$d개, 이미지 %4$d개";
@@ -87,7 +93,7 @@
 "clear.conditional.title" = "조건별 삭제";
 "clear.conditional.type" = "유형";
 "clear.conditional.range" = "기간";
-"clear.conditional.confirm" = "%d개 항목을 삭제합니다(고정은 유지, 휴지통으로 이동)";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "태그만 삭제";
 "tag.delete.withcontent" = "태그 및 내용 삭제";
 "settings.app.picker.search" = "앱 검색";
@@ -126,7 +132,7 @@
 "app.launch.at.login" = "로그인 시 시작";
 "settings.launch.at.login.error.body" = "로그인 시 시작 설정을 수정할 수 없습니다. 시스템 권한을 확인하세요.";
 "app.error" = "오류";
-"batch.selected" = "%d개 선택됨";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "피드백";
 "alert.encrypt.failed" = "민감 데이터 암호화에 실패했습니다. 저장되지 않았습니다.";
 
@@ -150,7 +156,7 @@
 "theme.appearance.dark" = "다크";
 
 /* QuickBar */
-"quickbar.recent" = "%d개";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "전체 창 열기";
 "quickbar.no.results" = "결과 없음";
 
@@ -177,6 +183,7 @@
 "tips.title" = "팁 및 단축키";
 "tips.actions" = "기본 작업";
 "tips.keyboard" = "키보드 조작";
+"tips.key.updown" = "항목 이동";
 "settings.hotkey.reset" = "초기화";
 "filter.richtext" = "서식 있는 텍스트";
 "item.richText" = "서식 있는 텍스트";
@@ -225,8 +232,11 @@
 "trash.empty" = "휴지통이 비어 있습니다";
 "trash.restore" = "복원";
 "trash.emptyConfirm.title" = "휴지통 비우기";
-"trash.emptyConfirm.message" = "%d개 항목이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "휴지통 보관 일수";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "이 항목을 영구적으로 삭제하시겠습니까?";
+"trash.deleteConfirm.confirm" = "삭제";
 "item.ocr.copy" = "이미지 내 텍스트 복사";
 "settings.ocr.enabled" = "이미지 텍스트 인식 (OCR)";
 "settings.ocr.hint" = "온디바이스 처리, 네트워크를 사용하지 않습니다. 새 스크린샷에 자동 적용됩니다.";
@@ -252,3 +262,7 @@
 "settings.updateSource.option.primary" = "기본 (GitHub)";
 "settings.updateSource.option.fallback" = "미러 (jsDelivr)";
 "settings.updateSource.statusPanel" = "소스: %1$@ · 마지막 확인: %2$@ · 마지막 전환: %3$@";
+
+/* 백업 UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "백업 파일을 암호화하는 데 사용됩니다. 복원할 때 다시 필요합니다.";
+"settings.backup.error.missingEncryptionKey" = "내보낼 수 없음: 암호화 키를 찾을 수 없습니다. 설정에서 암호화를 재설정하세요.";

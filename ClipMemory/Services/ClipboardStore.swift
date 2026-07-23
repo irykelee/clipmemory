@@ -57,9 +57,28 @@ class ClipboardStore: ObservableObject {
     /// Persistence is handled by `loadTags()` / `saveTags()`.
     @Published var tags: [UUID: Tag] = [:]
 
+    /// Min/max bounds for `maxItems`. E-1 (2026-07-23 audit): the setter
+    /// previously wrote any value (including negatives or absurdly large
+    /// numbers from a corrupted UserDefaults or an out-of-bounds slider)
+    /// straight to UserDefaults, leading to `trimToMaxItems()` running
+    /// with `maxItems = -1` (trims everything) or `maxItems = 1_000_000_000`
+    /// (no trimming at all, then UI breaks). Clamp to a sane range.
+    static let minMaxItems = 1
+    static let maxMaxItems = 10_000
+
     // @Published with didSet for automatic UserDefaults persistence
     @Published var maxItems: Int {
-        didSet { UserDefaults.standard.set(maxItems, forKey: maxItemsKey) }
+        didSet {
+            let clamped = max(Self.minMaxItems, min(maxItems, Self.maxMaxItems))
+            if maxItems != clamped {
+                // Re-assignment re-fires didSet with the clamped value,
+                // which then falls through to the UserDefaults write.
+                // The recursion is bounded by the equality check above.
+                maxItems = clamped
+                return
+            }
+            UserDefaults.standard.set(maxItems, forKey: maxItemsKey)
+        }
     }
 
     @Published var sensitiveClearHours: Int {
@@ -486,7 +505,25 @@ class ClipboardStore: ObservableObject {
     /// Insert or replace a tag by its UUID. Tags with the same id overwrite
     /// (idempotent rename/recolor). Triggers a debounced tag save.
     func addTag(_ tag: Tag) {
-        tags[tag.id] = tag
+        // E-6 (2026-07-23 audit): trim leading/trailing whitespace +
+        // newlines from the user-supplied tag name before storing.
+        // Without this, a tag named "  Work  " persists as-is and the
+        // sidebar / search / suggestions all see it as a distinct tag
+        // from "Work". Trimming here is defensive — it protects all
+        // callers (NewTagSheet, TagPickerSheet bulk-add, future entry
+        // points) without each needing to remember to trim.
+        let trimmedName = tag.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedName != tag.name {
+            tags[tag.id] = Tag(
+                id: tag.id,
+                name: trimmedName,
+                colorHex: tag.colorHex,
+                isAutoSuggested: tag.isAutoSuggested,
+                createdAt: tag.createdAt
+            )
+        } else {
+            tags[tag.id] = tag
+        }
         scheduleTagSave()
     }
 
