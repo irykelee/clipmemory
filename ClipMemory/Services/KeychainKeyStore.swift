@@ -1,6 +1,23 @@
 import Foundation
 import Security
 
+/// C-2 (2026-07-24 audit): distinguishes Keychain load outcomes so callers
+/// can avoid the data-loss path where a locked Keychain is misread as
+/// "no key" and the app silently regenerates + overwrites the existing
+/// item. Maps the SecItemCopyMatching OSStatus to a typed result.
+enum KeychainLoadStatus {
+    /// errSecItemNotFound — no item, caller may generate or migrate.
+    case notFound
+    /// errSecInteractionNotAllowed — item exists but the keychain is
+    /// locked (typical for launchd-started processes pre-unlock, or
+    /// "open at login" launches). Caller MUST NOT regenerate.
+    case interactionLocked
+    /// errSecSuccess with valid data.
+    case found(Data)
+    /// Any other OSStatus (parameter error, decode failure, etc).
+    case otherError(OSStatus)
+}
+
 /// Abstraction over the root-key store so tests can substitute in-memory
 /// fakes and never touch the real Keychain or the real key file (C1).
 protocol KeyStoring {
@@ -8,11 +25,28 @@ protocol KeyStoring {
     /// Keychain error (denied ACL, locked keychain) is indistinguishable
     /// from "no key" for callers, which then fall back or regenerate.
     func load() -> Data?
+    /// C-2: typed view of the Keychain load result. Preferred over `load()`
+    /// in paths that must NOT regenerate (i.e. `CryptoService.prepareKey`),
+    /// so a locked Keychain (`interactionLocked`) is not mistaken for
+    /// `notFound`.
+    func loadStatus() -> KeychainLoadStatus
     /// Persists key bytes, replacing any existing item.
     /// Returns errSecSuccess or a Keychain OSStatus.
     @discardableResult
     func store(_ keyData: Data) -> OSStatus
     func delete()
+}
+
+extension KeyStoring {
+    /// Default for stores that cannot distinguish locked from not-found
+    /// (in-memory test fakes, encrypted-file fallbacks). Real Keychain
+    /// conformers (`KeychainKeyStore`) MUST override to surface
+    /// `errSecInteractionNotAllowed` as `.interactionLocked` — C-2 callers
+    /// rely on that distinction to avoid regenerating the user's key.
+    func loadStatus() -> KeychainLoadStatus {
+        if let data = load() { return .found(data) }
+        return .notFound
+    }
 }
 
 /// Stores the app's 32-byte root encryption key in the login keychain as a
@@ -44,13 +78,29 @@ struct KeychainKeyStore: KeyStoring {
     }
 
     func load() -> Data? {
+        switch loadStatus() {
+        case .found(let data): return data
+        default: return nil
+        }
+    }
+
+    func loadStatus() -> KeychainLoadStatus {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess else { return nil }
-        return item as? Data
+        switch status {
+        case errSecSuccess:
+            guard let data = item as? Data else { return .otherError(status) }
+            return .found(data)
+        case errSecItemNotFound:
+            return .notFound
+        case errSecInteractionNotAllowed:
+            return .interactionLocked
+        default:
+            return .otherError(status)
+        }
     }
 
     @discardableResult

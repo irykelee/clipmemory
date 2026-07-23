@@ -30,8 +30,23 @@ final class CryptoKeyPreparationTests: XCTestCase {
         private(set) var stored: Data?
         var storeResults: [OSStatus] = [] // default: always succeed
         private(set) var storeCalls = 0
+        /// C-2 (2026-07-24 audit): tests simulating Keychain states that load()
+        /// alone cannot express (e.g., locked). When nil, loadStatus() mirrors
+        /// load(): .found if stored != nil, .notFound otherwise.
+        var lockedStatus: KeychainLoadStatus?
 
-        func load() -> Data? { stored }
+        func load() -> Data? {
+            switch loadStatus() {
+            case .found(let data): return data
+            default: return nil
+            }
+        }
+
+        func loadStatus() -> KeychainLoadStatus {
+            if let lockedStatus { return lockedStatus }
+            if let stored { return .found(stored) }
+            return .notFound
+        }
 
         @discardableResult
         func store(_ keyData: Data) -> OSStatus {
@@ -41,7 +56,10 @@ final class CryptoKeyPreparationTests: XCTestCase {
             return result
         }
 
-        func delete() { stored = nil }
+        func delete() {
+            stored = nil
+            lockedStatus = nil
+        }
     }
 
     private var tempDir: URL!
@@ -187,5 +205,27 @@ final class CryptoKeyPreparationTests: XCTestCase {
         XCTAssertNotNil(key, "regenerate must retry the Keychain store")
         XCTAssertEqual(recorder.failures, [.keyStorageFailed])
         XCTAssertEqual(store.stored?.count, 32)
+    }
+
+    // MARK: - C-2 (2026-07-24 audit): Keychain locked must not trigger regeneration
+
+    /// C-2: a locked Keychain (errSecInteractionNotAllowed — typical on
+    /// launchd-start before first unlock) must NOT fall through to
+    /// `generateAndStoreKey`. Doing so would overwrite the user's existing
+    /// Keychain item and permanently destroy all encrypted history.
+    /// Fix: prepareKey must detect .interactionLocked from loadStatus() and
+    /// return nil without touching the store. Next launch (post-unlock) will
+    /// load the key normally.
+    func testPrepareKeyDoesNotRegenerateWhenKeychainLocked() {
+        let store = MockKeyStore()
+        store.lockedStatus = .interactionLocked
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+
+        XCTAssertNil(key, "locked Keychain must defer key prep, not regenerate")
+        XCTAssertEqual(recorder.failures, [], "no user-facing failure when Keychain is locked")
+        XCTAssertNil(store.stored, "no Keychain write may occur when locked")
+        XCTAssertEqual(store.storeCalls, 0, "store() must never be called when Keychain reports locked")
     }
 }

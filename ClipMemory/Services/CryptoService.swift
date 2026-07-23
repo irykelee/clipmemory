@@ -165,8 +165,22 @@ class CryptoService: CryptoServiceProtocol {
         failureHandler: (CryptoKeyFailure) -> KeyFailureAction = CryptoService.keyFailureHandler
     ) -> SymmetricKey? {
         // 1. Keychain is the canonical store.
-        if let data = keyStore.load(), data.count == 32 {
+        // C-2 (2026-07-24 audit): distinguish locked Keychain from "not found".
+        // Pre-fix, any non-success SecItemCopyMatching status (including
+        // errSecInteractionNotAllowed at pre-unlock launchd start) collapsed
+        // to nil, then fell through to generateAndStoreKey — overwriting the
+        // user's real key and permanently destroying all encrypted history.
+        switch keyStore.loadStatus() {
+        case .found(let data) where data.count == 32:
             return SymmetricKey(data: data)
+        case .found:
+            logger.error("Keychain contains invalid key (not 32 bytes); treating as absent")
+            // fall through to file migration / fresh generation
+        case .interactionLocked:
+            logger.error("Keychain interaction not allowed (locked); deferring key prep until unlock")
+            return nil
+        case .notFound, .otherError:
+            break // fall through to file migration / fresh generation
         }
         // 2. Migrate a pre-C1 key file, then remove it.
         let fileManager = FileManager.default
