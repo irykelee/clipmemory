@@ -48,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "清除歷史";
-"alert.clear.message" = "確定清除 %d 筆記錄？\n釘選內容不會被刪除。";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "沒有可清除的記錄。";
 "alert.delete.title" = "移至垃圾桶";
 "alert.delete.message" = "確定將該內容移至垃圾桶嗎？";
@@ -63,7 +63,7 @@
 "settings.hotkey.recording" = "請按下新的快捷鍵...";
 "settings.section.about" = "關於";
 "settings.max.items" = "最大筆記數";
-"settings.max.items.count" = "%d 筆記";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "自動清理";
 "settings.sensitive.hint" = "偵測到密碼、API金鑰等敏感內容時，自動清理前的等待時間";
 "settings.section.excluded.apps" = "排除的應用程式";
@@ -94,7 +94,7 @@
 "clear.conditional.title" = "按條件刪除";
 "clear.conditional.type" = "類型";
 "clear.conditional.range" = "時間範圍";
-"clear.conditional.confirm" = "將刪除 %d 個條目（不含收藏，進垃圾桶）";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "僅刪除標籤";
 "tag.delete.withcontent" = "刪除標籤與內容";
 "settings.app.picker.search" = "搜尋應用程式";

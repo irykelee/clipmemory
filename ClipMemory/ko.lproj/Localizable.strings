@@ -48,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "기록 비우기";
-"alert.clear.message" = "%d개 항목을 지울까요?\n고정된 항목은 삭제되지 않습니다.";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "비울 기록이 없습니다.";
 "alert.delete.title" = "휴지통으로 이동";
 "alert.delete.message" = "이 항목을 휴지통으로 이동하시겠습니까?";
@@ -59,7 +59,7 @@
 "settings.section.language" = "언어";
 "settings.section.about" = "정보";
 "settings.max.items" = "최대 개수";
-"settings.max.items.count" = "%d개";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "자동 삭제";
 "settings.sensitive.hint" = "비밀번호, API 키 등 민감정보 자동 삭제까지의 대기 시간";
 "settings.section.hotkey" = "단축키";
@@ -93,7 +93,7 @@
 "clear.conditional.title" = "조건별 삭제";
 "clear.conditional.type" = "유형";
 "clear.conditional.range" = "기간";
-"clear.conditional.confirm" = "%d개 항목을 삭제합니다(고정은 유지, 휴지통으로 이동)";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "태그만 삭제";
 "tag.delete.withcontent" = "태그 및 내용 삭제";
 "settings.app.picker.search" = "앱 검색";

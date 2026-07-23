@@ -48,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "清空历史";
-"alert.clear.message" = "确定清空 %d 条记录？\n收藏内容不会被删除。";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "没有可清空的记录。";
 "alert.delete.title" = "移至回收站";
 "alert.delete.message" = "确定将该内容移至回收站吗？";
@@ -61,7 +61,7 @@
 "settings.section.excluded.apps" = "排除应用";
 "settings.section.about" = "关于";
 "settings.max.items" = "最大条数";
-"settings.max.items.count" = "%d 条";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "自动清理";
 "settings.sensitive.hint" = "检测到密码、API密钥等敏感内容时，自动清理前的等待时间";
 "settings.hotkey.change" = "修改";
@@ -93,7 +93,7 @@
 "clear.conditional.title" = "按条件删除";
 "clear.conditional.type" = "类型";
 "clear.conditional.range" = "时间范围";
-"clear.conditional.confirm" = "将删除 %d 个条目（不含收藏，进回收站）";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "仅删除标签";
 "tag.delete.withcontent" = "删除标签和内容";
 "settings.app.picker.search" = "搜索应用";

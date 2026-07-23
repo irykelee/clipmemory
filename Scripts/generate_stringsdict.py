@@ -41,6 +41,25 @@ KEYS = [
         "%d item will be permanently deleted. This action cannot be undone.",
         "%d items will be permanently deleted. This action cannot be undone.",
     ),
+    # F-7 extend (2026-07-23 audit round 2): 3 more simple %d-only
+    # keys. Multi-arg keys (alert.trim.message with 2x %d,
+    # tagPicker/sidebar.deleteTag.message with %@ + %d) need
+    # positional-arg format keys and are deferred to a follow-up.
+    (
+        "alert.clear.message",
+        "Are you sure you want to clear %d item?\nPinned items will not be deleted.",
+        "Are you sure you want to clear %d items?\nPinned items will not be deleted.",
+    ),
+    (
+        "settings.max.items.count",
+        "%d item",
+        "%d items",
+    ),
+    (
+        "clear.conditional.confirm",
+        "%d item will be deleted (pinned kept, moved to the Trash)",
+        "%d items will be deleted (pinned kept, moved to the Trash)",
+    ),
 ]
 
 # Per-locale plural category translations of the English singular/other

@@ -38,5 +38,42 @@
 			<string>%d items will be permanently deleted. This action cannot be undone.</string>
 		</dict>
 	</dict>
+	<key>alert.clear.message</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>other</key>
+			<string>Are you sure you want to clear %d items?
+Pinned items will not be deleted.</string>
+		</dict>
+	</dict>
+	<key>settings.max.items.count</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>other</key>
+			<string>%d items</string>
+		</dict>
+	</dict>
+	<key>clear.conditional.confirm</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>other</key>
+			<string>%d items will be deleted (pinned kept, moved to the Trash)</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

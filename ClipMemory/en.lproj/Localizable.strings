@@ -48,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "Clear History";
-"alert.clear.message" = "Are you sure you want to clear %d items?\nPinned items will not be deleted.";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "No history to clear.";
 "alert.delete.title" = "Move to Trash";
 "alert.delete.message" = "Move this item to the Trash?";
@@ -61,7 +61,7 @@
 "settings.section.excluded.apps" = "Excluded Apps";
 "settings.section.about" = "About";
 "settings.max.items" = "Max Items";
-"settings.max.items.count" = "%d items";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "Auto-Clear";
 "settings.sensitive.hint" = "Automatically clears sensitive content (passwords, API keys, etc.) after the selected time.";
 "settings.hotkey.change" = "Change";
@@ -93,7 +93,7 @@
 "clear.conditional.title" = "Clear by Condition";
 "clear.conditional.type" = "Type";
 "clear.conditional.range" = "Time Range";
-"clear.conditional.confirm" = "%d items will be deleted (pinned kept, moved to the Trash)";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "Delete Tag Only";
 "tag.delete.withcontent" = "Delete Tag & Items";
 "settings.app.picker.search" = "Search applications";

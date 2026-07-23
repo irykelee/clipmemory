@@ -48,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "履歴をクリア";
-"alert.clear.message" = "%d件の履歴を削除しますか？\nピン留めした項目は削除されません。";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "削除する履歴がありません。";
 "alert.delete.title" = "ごみ箱に移動";
 "alert.delete.message" = "この項目をごみ箱に移動しますか？";
@@ -59,7 +59,7 @@
 "settings.section.language" = "言語";
 "settings.section.about" = "このアプリについて";
 "settings.max.items" = "最大保存数";
-"settings.max.items.count" = "%d件";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "自動削除";
 "settings.sensitive.hint" = "パスワード、APIキーなどの重要な情報を自動削除するまでの時間";
 "settings.section.hotkey" = "ホットキー";
@@ -93,7 +93,7 @@
 "clear.conditional.title" = "条件で削除";
 "clear.conditional.type" = "タイプ";
 "clear.conditional.range" = "期間";
-"clear.conditional.confirm" = "%d 件を削除します（ピン留めは保持、ごみ箱へ移動）";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "タグのみ削除";
 "tag.delete.withcontent" = "タグと内容を削除";
 "settings.app.picker.search" = "アプリを検索";

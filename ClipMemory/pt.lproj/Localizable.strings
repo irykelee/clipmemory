@@ -48,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "Limpar histórico";
-"alert.clear.message" = "Excluir %d itens?\nItens fixados serão mantidos.";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "Nada para limpar.";
 "alert.delete.title" = "Mover para a lixeira";
 "alert.delete.message" = "Mover este item para a lixeira?";
@@ -59,7 +59,7 @@
 "settings.section.language" = "Idioma";
 "settings.section.about" = "Sobre";
 "settings.max.items" = "Máximo de itens";
-"settings.max.items.count" = "%d itens";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "Exclusão automática";
 "settings.sensitive.hint" = "Tempo até excluir automaticamente senhas, chaves de API, etc.";
 "settings.section.hotkey" = "Atalho";
@@ -93,7 +93,7 @@
 "clear.conditional.title" = "Apagar por condição";
 "clear.conditional.type" = "Tipo";
 "clear.conditional.range" = "Período";
-"clear.conditional.confirm" = "%d itens serão apagados (fixados mantidos, para a Lixeira)";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "Apagar só etiqueta";
 "tag.delete.withcontent" = "Apagar etiqueta e conteúdo";
 "settings.app.picker.search" = "Pesquisar aplicativos";
