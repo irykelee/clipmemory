@@ -90,6 +90,72 @@ For each of: `README.md`, `docs/lang/README_{EN,ZH-HANS,ZH-HANT,JA,KO,ES,PT}.md`
 
 ---
 
+## F. One-time Setup — Branch Protection on `main`
+
+> **Why**: `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md` §1 P0-15 (no branch protection) → 2026-07-22 v2.5.10 release required user-explicit force-push to main to recover. Branch protection would have blocked that path and forced the fix to flow through a PR.
+> **When**: One-time per repo (or after GH Settings reset). **Not** per-release.
+> **Status (2026-07-23)**: NOT YET configured. `gh api repos/irykelee/clipmemory/branches/main/protection` → 404 "Branch not protected".
+
+### F1. Configure via GitHub Web UI
+
+Repo → Settings → Branches → main → **Add rule** / **Edit**:
+- [ ] Branch name pattern: `main`
+- [ ] ☑ **Require a pull request before merging**
+  - [ ] Required approving reviews: **1**
+  - [ ] ☑ Dismiss stale pull request approvals when new commits are pushed
+- [ ] ☑ **Require status checks to pass before merging**
+  - [ ] Required status checks: search and add **`CI`** (matches `.github/workflows/ci.yml` `name: CI`)
+  - [ ] ☑ Require branches to be up to date before merging
+- [ ] ☑ **Do not allow force pushes**
+- [ ] ☑ **Do not allow deletions**
+
+### F2. Configure via `gh api` (scriptable, equivalent to F1)
+
+```bash
+gh api -X PUT repos/irykelee/clipmemory/branches/main/protection \
+  --input - <<'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["CI"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": false,
+    "required_approving_review_count": 1
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "block_creations": false,
+  "required_conversation_resolution": true
+}
+EOF
+```
+
+Verify it landed:
+```bash
+gh api repos/irykelee/clipmemory/branches/main/protection --jq '.required_status_checks.contexts'
+# Expected: ["CI"]
+
+gh api repos/irykelee/clipmemory/branches/main/protection --jq '.required_pull_request_reviews.required_approving_review_count'
+# Expected: 1
+
+gh api repos/irykelee/clipmemory/branches/main/protection --jq '.allow_force_pushes.enabled // false'
+# Expected: false
+```
+
+### F3. Caveats and interactions with existing flow
+
+- **Status check name must match exactly**: `"CI"` comes from `name: CI` in `.github/workflows/ci.yml`. Renaming the workflow file → must update the `contexts` list in F2.
+- **Solo dev + 1 review = blocker**: GH does not allow self-approving your own PR if `required_approving_review_count >= 1`. For true solo dev, set `count: 0` (still gets PR + status check + no-force-push protection); rely on CI for gate. The "1 review" target assumes external reviewer.
+- **Release workflow force-push**: per P0-1 (commit `5dbf45b`), the appcast commit is now pushed via `--force-with-lease` to the **source branch** (e.g. `fix/v2.5.x-hotfix`), NOT to `main`. So this protection does **not** conflict with the release pipeline.
+- **Hotfix / emergency direct-push to main is BLOCKED**: any urgent fix to `main` must go through a PR. This is intentional — it's the protection. If truly blocking, set `enforce_admins: false` and admins can bypass (use sparingly).
+- **`Release` workflow is NOT in status checks**: it only runs on tag push (per workflow trigger `on: push: tags`). Tag pushes don't open PRs, so adding `Release` to contexts would block tag pushes. Only `CI` is appropriate here.
+
+---
+
 ## Anti-patterns (lessons from 2026-07-20)
 
 | Mistake | What it cost | Avoid by |
