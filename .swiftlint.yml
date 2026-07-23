@@ -4,6 +4,20 @@
 # 规范统一策略（ratchet）：warning 按 AGENTS.md 规范值（文件≤800 行 / 函数≤50 行），
 # error 按现状封顶（防继续增长）。拆分存量大文件后逐步把 error 降到规范值。
 # 现状基线（2026-07-18）：最长文件 1181 行、最长函数 350 行、最长行 628 字符、最大圈复杂度 42。
+#
+# P1-7 (2026-07-23): baseline captures 68 pre-existing warnings
+# (file_length on IntegrationTests.swift, function_body_length on
+# BackupPackage.swift, cyclomatic_complexity on HotKeyManager.swift,
+# line_length + trailing_newline on multiple test files). The baseline
+# suppresses those from the ratchet so NEW violations introduced after
+# 2026-07-23 stay visible. To regenerate the baseline after intentional
+# cleanup: temporarily comment out `baseline:` below, run
+# `swiftlint lint --write-baseline .swiftlint-baseline --quiet`,
+# then uncomment. The two-step dance is required because --write-baseline
+# will not overwrite an existing baseline file (it tries to decode it
+# first to merge, and chokes if the new content is different).
+baseline: .swiftlint-baseline
+
 disabled_rules:
   - function_parameter_count
   - force_cast
