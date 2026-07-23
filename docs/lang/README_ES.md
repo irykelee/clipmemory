@@ -1,4 +1,4 @@
-# ClipMemory v2.5.10
+# ClipMemory v2.5.11
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,94 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.5.11 (2026-07-23) — División de ContentView + 16 correcciones de errores
+
+### Principales actualizaciones (Highlights)
+
+- **🏗 División de ContentView (NEW-7 Phase 4)** — Lista principal / selección / operaciones por lotes / alertas de eliminación, todo extraído de ContentView a un `ItemListView` independiente (287 líneas); ContentView 1178 → 995 líneas (-15.5%). Desacopla el renderizado de la lista + el estado relacionado con la lista, pero mantiene la búsqueda / filtro / caché de desplazamiento de la capa de vista en ContentView (evitando el riesgo de una refactorización única). La fase 6+ posterior (ViewModel collapse) convertirá `@State` en `@StateObject` para poder abrir la línea base de snapshot de ItemListView.
+- **🛡 Paquete cuádruple de seguridad de datos** — El setter `maxItems` ahora limita a 1...10_000 para evitar valores negativos/extragrandes; `backupNow()` serializado (NSLock) para evitar condiciones de carrera por doble clic + copia de seguridad automática; `addTag()` recorta espacios al inicio/final para evitar duplicados como "  Work  " y "Work"; `ClipboardItemRow` observa LanguageManager para re-renderizar la fecha inmediatamente al cambiar de idioma.
+- **🌐 Soporte de plurales i18n (F-7)** — 6 claves plurales con %d ahora usan `.stringsdict` (batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm); en inglés "1 item" / "5 items" ya no son ambos "1 items"; nuevo script `Scripts/generate_stringsdict.py` para regenerar 7 idiomas con un solo comando.
+- **🛡 Los errores de "Back Up Now" en Ajustes ya no se silencian (F-4)** — Antes `try?` descartaba cada fallo de `backupNow()`; ahora do/catch + callback `onShowBackupError` → ContentView muestra `L10n.settingsBackupError` NSAlert (consistente con las rutas de fallo de exportación/importación/snapshot previo a importación).
+- **🛡 QuickBar ⌘F realmente enfoca la búsqueda (F-9)** — Antes solo dependía del monitor local NSEvent de KeyCaptureView (poco fiable en contexto de popover); ahora se añade notificación `.cmdFFindAction` como respaldo, siguiendo la misma ruta que ContentView.
+
+### Correcciones (Fixes)
+
+Ordenadas por impacto (alto → medio → bajo):
+
+**Alto impacto (ruta crítica de arquitectura / datos / UX)**
+
+- **NEW-7 Phase 4 Extracción de ItemListView** — Lista principal / selección / operaciones por lotes / alertas de eliminación, todo extraído de ContentView (287 líneas); ContentView 1178 → 995 líneas (-15.5%).
+- **E-1 Limitación del setter maxItems** — Rango `1...10_000`; UserDefaults ya no se contamina con -1 / 999_999_999; las nuevas constantes `minMaxItems` / `maxMaxItems` son la única fuente de verdad.
+- **E-2 Serialización de backupNow()** — Envuelto con `NSLock`; doble clic en "Back Up Now" + copia de seguridad automática en el mismo fotograma ya no causan condiciones de carrera en `createDirectory` + `copyItem(Images)`.
+- **E-13 ClipboardItemRow observa LanguageManager** — `@ObservedObject private var languageManager = LanguageManager.shared`; al cambiar Idioma en Ajustes, el formato de fecha se re-renderiza inmediatamente (ya no espera a desplazar fuera y dentro de la vista).
+- **F-9 Corrección de ⌘F en QuickBar** — `.onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction))` añadido al VStack raíz de QuickBarView; en entorno popover, ⌘F también enfoca el campo de búsqueda.
+- **F-4 Alerta de error de "Back Up Now" en Ajustes** — Callback `onShowBackupError` conectado a `showBackupInfo(L10n.settingsBackupError)` en ContentView; los fallos ahora son visibles.
+
+**Impacto medio (consistencia UX / a11y / i18n)**
+
+- **F-10 Enter en Welcome vinculado al botón por defecto** — `.keyboardShortcut(.defaultAction)` añadido a `getStartedButton`; al presionar Enter en la ventana de Welcome se ejecuta directamente onComplete.
+- **F-13 Etiqueta ↑↓ en TipsView** — `L10n.quickbarRecent(8)` cambiado a `L10n.tipsKeyUpdown` = "Navigate items"; traducciones nativas en 6 idiomas (zh-Hans 切换条目 / zh-Hant 切換條目 / ja 項目を移動 / ko 항목 이동 / es Navegar por los elementos / pt Navegar pelos itens).
+- **F-3 Botones de TrashItemRow visibles con teclado** — `@FocusState private var isFocused: Bool` + `.focusable()` + `.focused($isFocused)`; en estado de foco de la fila, la opacidad también muestra los botones (antes solo se mostraban al pasar el ratón).
+- **F-16 Eliminación por teclado en TagPickerSheet** — `.contextMenu` + `.onDeleteCommand`; las teclas ⌫ / Forward Delete o el menú contextual pueden activar la confirmación de eliminación (antes solo con pulsación larga).
+- **F-20 accessibilityLabel para pin/delete** — Botones solo con imagen añaden `.accessibilityLabel(...)` reutilizando claves `L10n.tooltip*` existentes; VoiceOver ya no lee "button" sin contexto.
+
+**Bajo impacto (limpieza / rendimiento / corrección de límites / mejora i18n)**
+
+- **E-6 Recorte de espacios en addTag** — `tag.name.trimmingCharacters(in: .whitespacesAndNewlines)` en la entrada de `addTag(_:)`; "  Work  " y "Work" ya no se duplican.
+- **BUG-007 Omisión de toggle de encabezado en ItemListView durante búsqueda** — `onTapGesture` no-op cuando `!searchText.isEmpty`; bajo reglas de visualización force-expand, mutar `collapsedGroups` provocaba estados colapsados inesperados al limpiar la búsqueda.
+- **F-25 DateFormatter en UpdateStatusPanelView en caché** — `static let dateFormatter`; cada re-renderizado del body ya no crea un nuevo DateFormatter.
+- **F-7 Extensión de .stringsdict con 3 claves plurales** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`; 3 claves multi-argumento (alert.trim con 2x %d / tagPicker & sidebar.deleteTag con %@) se posponen a la siguiente ronda.
+
+### Nota de actualización (Upgrade Note)
+
+- Versiones con módulo de actualización automática (Sparkle) desde v2.4.0: esperar la actualización automática en la app, o `brew upgrade --cask clipmemory`.
+- Sin migración de datos, sin ventanas emergentes únicas.
+- **Mejora i18n**: al cambiar a interfaz en chino, japonés o coreano, "Recent 1 item" / "Recent 5 items" ahora se muestran según la forma plural correspondiente.
+
+### v2.5.11
+
+### Principales actualizaciones (Highlights)
+
+- **🏗 División de ContentView (NEW-7 Phase 4)** — Lista principal / selección / operaciones por lotes / alertas de eliminación, todo extraído de ContentView a un `ItemListView` independiente (287 líneas); ContentView 1178 → 995 líneas (-15.5%). Desacopla el renderizado de la lista + el estado relacionado con la lista, pero mantiene la búsqueda / filtro / caché de desplazamiento de la capa de vista en ContentView (evitando el riesgo de una refactorización única). La fase 6+ posterior (ViewModel collapse) convertirá `@State` en `@StateObject` para poder abrir la línea base de snapshot de ItemListView.
+- **🛡 Paquete cuádruple de seguridad de datos** — El setter `maxItems` ahora limita a 1...10_000 para evitar valores negativos/extragrandes; `backupNow()` serializado (NSLock) para evitar condiciones de carrera por doble clic + copia de seguridad automática; `addTag()` recorta espacios al inicio/final para evitar duplicados como "  Work  " y "Work"; `ClipboardItemRow` observa LanguageManager para re-renderizar la fecha inmediatamente al cambiar de idioma.
+- **🌐 Soporte de plurales i18n (F-7)** — 6 claves plurales con %d ahora usan `.stringsdict` (batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm); en inglés "1 item" / "5 items" ya no son ambos "1 items"; nuevo script `Scripts/generate_stringsdict.py` para regenerar 7 idiomas con un solo comando.
+- **🛡 Los errores de "Back Up Now" en Ajustes ya no se silencian (F-4)** — Antes `try?` descartaba cada fallo de `backupNow()`; ahora do/catch + callback `onShowBackupError` → ContentView muestra `L10n.settingsBackupError` NSAlert (consistente con las rutas de fallo de exportación/importación/snapshot previo a importación).
+- **🛡 QuickBar ⌘F realmente enfoca la búsqueda (F-9)** — Antes solo dependía del monitor local NSEvent de KeyCaptureView (poco fiable en contexto de popover); ahora se añade notificación `.cmdFFindAction` como respaldo, siguiendo la misma ruta que ContentView.
+
+### Correcciones (Fixes)
+
+Ordenadas por impacto (alto → medio → bajo):
+
+**Alto impacto (ruta crítica de arquitectura / datos / UX)**
+
+- **NEW-7 Phase 4 Extracción de ItemListView** — Lista principal / selección / operaciones por lotes / alertas de eliminación, todo extraído de ContentView (287 líneas); ContentView 1178 → 995 líneas (-15.5%).
+- **E-1 Limitación del setter maxItems** — Rango `1...10_000`; UserDefaults ya no se contamina con -1 / 999_999_999; las nuevas constantes `minMaxItems` / `maxMaxItems` son la única fuente de verdad.
+- **E-2 Serialización de backupNow()** — Envuelto con `NSLock`; doble clic en "Back Up Now" + copia de seguridad automática en el mismo fotograma ya no causan condiciones de carrera en `createDirectory` + `copyItem(Images)`.
+- **E-13 ClipboardItemRow observa LanguageManager** — `@ObservedObject private var languageManager = LanguageManager.shared`; al cambiar Idioma en Ajustes, el formato de fecha se re-renderiza inmediatamente (ya no espera a desplazar fuera y dentro de la vista).
+- **F-9 Corrección de ⌘F en QuickBar** — `.onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction))` añadido al VStack raíz de QuickBarView; en entorno popover, ⌘F también enfoca el campo de búsqueda.
+- **F-4 Alerta de error de "Back Up Now" en Ajustes** — Callback `onShowBackupError` conectado a `showBackupInfo(L10n.settingsBackupError)` en ContentView; los fallos ahora son visibles.
+
+**Impacto medio (consistencia UX / a11y / i18n)**
+
+- **F-10 Enter en Welcome vinculado al botón por defecto** — `.keyboardShortcut(.defaultAction)` añadido a `getStartedButton`; al presionar Enter en la ventana de Welcome se ejecuta directamente onComplete.
+- **F-13 Etiqueta ↑↓ en TipsView** — `L10n.quickbarRecent(8)` cambiado a `L10n.tipsKeyUpdown` = "Navigate items"; traducciones nativas en 6 idiomas (zh-Hans 切换条目 / zh-Hant 切換條目 / ja 項目を移動 / ko 항목 이동 / es Navegar por los elementos / pt Navegar pelos itens).
+- **F-3 Botones de TrashItemRow visibles con teclado** — `@FocusState private var isFocused: Bool` + `.focusable()` + `.focused($isFocused)`; en estado de foco de la fila, la opacidad también muestra los botones (antes solo se mostraban al pasar el ratón).
+- **F-16 Eliminación por teclado en TagPickerSheet** — `.contextMenu` + `.onDeleteCommand`; las teclas ⌫ / Forward Delete o el menú contextual pueden activar la confirmación de eliminación (antes solo con pulsación larga).
+- **F-20 accessibilityLabel para pin/delete** — Botones solo con imagen añaden `.accessibilityLabel(...)` reutilizando claves `L10n.tooltip*` existentes; VoiceOver ya no lee "button" sin contexto.
+
+**Bajo impacto (limpieza / rendimiento / corrección de límites / mejora i18n)**
+
+- **E-6 Recorte de espacios en addTag** — `tag.name.trimmingCharacters(in: .whitespacesAndNewlines)` en la entrada de `addTag(_:)`; "  Work  " y "Work" ya no se duplican.
+- **BUG-007 Omisión de toggle de encabezado en ItemListView durante búsqueda** — `onTapGesture` no-op cuando `!searchText.isEmpty`; bajo reglas de visualización force-expand, mutar `collapsedGroups` provocaba estados colapsados inesperados al limpiar la búsqueda.
+- **F-25 DateFormatter en UpdateStatusPanelView en caché** — `static let dateFormatter`; cada re-renderizado del body ya no crea un nuevo DateFormatter.
+- **F-7 Extensión de .stringsdict con 3 claves plurales** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`; 3 claves multi-argumento (alert.trim con 2x %d / tagPicker & sidebar.deleteTag con %@) se posponen a la siguiente ronda.
+
+### Nota de actualización (Upgrade Note)
+
+- Versiones con módulo de actualización automática (Sparkle) desde v2.4.0: esperar la actualización automática en la app, o `brew upgrade --cask clipmemory`.
+- Sin migración de datos, sin ventanas emergentes únicas.
+- **Mejora i18n**: al cambiar a interfaz en chino, japonés o coreano, "Recent 1 item" / "Recent 5 items" ahora se muestran según la forma plural correspondiente.
 
 ### v2.5.10 (2026-07-22) — Errores de copia visibles + refactorización UI + corrección de advertencia SwiftUI
 
