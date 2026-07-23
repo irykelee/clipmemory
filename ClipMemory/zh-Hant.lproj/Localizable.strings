@@ -132,7 +132,7 @@
 "app.quit" = "退出 ClipMemory";
 "app.launch.at.login" = "登入時啟動";
 "app.error" = "錯誤";
-"batch.selected" = "已選擇 %d 項";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "回饋";
 "alert.encrypt.failed" = "敏感資料加密失敗，內容未儲存。";
 
@@ -155,7 +155,7 @@
 "theme.appearance.dark" = "深色";
 
 /* QuickBar */
-"quickbar.recent" = "%d 條內容";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "打開完整視窗";
 "quickbar.no.results" = "無結果";
 
@@ -234,7 +234,7 @@
 "trash.empty" = "垃圾桶是空的";
 "trash.restore" = "復原";
 "trash.emptyConfirm.title" = "清空垃圾桶";
-"trash.emptyConfirm.message" = "%d 個條目將被永久刪除，此操作不可撤銷。";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "垃圾桶保留天數";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "永久刪除此條目？";

@@ -23,6 +23,15 @@ struct L10n {
     /// - Returns: The formatted localized string
     static func string(_ key: String, _ args: CVarArg...) -> String {
         let template = string(key)
+        // F-7 (2026-07-23 audit): when the Localizable.strings entry uses
+        // the .stringsdict plural marker `%#@var@`, plain `String(format:)`
+        // can't resolve the right plural form — Foundation needs
+        // `String.localizedStringWithFormat` for that. Detect the marker
+        // and route accordingly; other keys keep the cheap `String(format:)`
+        // path so we don't pay the .stringsdict lookup cost on every call.
+        if template.contains("%#@") {
+            return String.localizedStringWithFormat(template, args)
+        }
         return String(format: template, arguments: args)
     }
 

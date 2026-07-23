@@ -132,7 +132,7 @@
 "app.launch.at.login" = "Launch at Login";
 "settings.launch.at.login.error.body" = "Unable to modify Launch at Login setting. Please check system permissions.";
 "app.error" = "Error";
-"batch.selected" = "%d selected";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "Feedback";
 "alert.encrypt.failed" = "Failed to encrypt sensitive data. Item was not saved.";
 
@@ -156,7 +156,7 @@
 "theme.appearance.dark" = "Dark";
 
 /* QuickBar */
-"quickbar.recent" = "%d items";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "Open Clipboard";
 "quickbar.no.results" = "No results";
 
@@ -230,7 +230,7 @@
 "trash.empty" = "Trash is empty";
 "trash.restore" = "Restore";
 "trash.emptyConfirm.title" = "Empty Trash";
-"trash.emptyConfirm.message" = "%d items will be permanently deleted. This action cannot be undone.";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "Trash retention days";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "Permanently delete this item?";

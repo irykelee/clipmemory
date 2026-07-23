@@ -132,7 +132,7 @@
 "app.launch.at.login" = "Iniciar ao iniciar sessão";
 "settings.launch.at.login.error.body" = "Não é possível modificar a definição de início de sessão. Verifique as permissões do sistema.";
 "app.error" = "Erro";
-"batch.selected" = "%d selecionados";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "Feedback";
 "alert.encrypt.failed" = "Falha ao criptografar dados sensíveis. Item não foi salvo.";
 
@@ -156,7 +156,7 @@
 "theme.appearance.dark" = "Escuro";
 
 /* QuickBar */
-"quickbar.recent" = "%d itens";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "Abrir janela completa";
 "quickbar.no.results" = "Sem resultados";
 
@@ -232,7 +232,7 @@
 "trash.empty" = "A lixeira está vazia";
 "trash.restore" = "Restaurar";
 "trash.emptyConfirm.title" = "Esvaziar lixeira";
-"trash.emptyConfirm.message" = "%d itens serão apagados permanentemente. Esta ação não pode ser desfeita.";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "Dias de retenção da lixeira";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "Excluir este item permanentemente?";

@@ -132,7 +132,7 @@
 "app.launch.at.login" = "登录时启动";
 "settings.launch.at.login.error.body" = "无法修改登录时启动设置，请检查系统权限。";
 "app.error" = "错误";
-"batch.selected" = "已选择 %d 项";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "反馈";
 "alert.encrypt.failed" = "敏感数据加密失败，内容未保存。";
 
@@ -156,7 +156,7 @@
 "theme.appearance.dark" = "深色";
 
 /* QuickBar */
-"quickbar.recent" = "%d 条内容";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "打开完整窗口";
 "quickbar.no.results" = "无结果";
 
@@ -230,7 +230,7 @@
 "trash.empty" = "回收站是空的";
 "trash.restore" = "恢复";
 "trash.emptyConfirm.title" = "清空回收站";
-"trash.emptyConfirm.message" = "%d 个条目将被永久删除，此操作不可撤销。";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "回收站保留天数";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "永久删除此条目？";

@@ -132,7 +132,7 @@
 "app.launch.at.login" = "ログイン時に起動";
 "settings.launch.at.login.error.body" = "ログイン時起動設定を変更できません。システム権限を確認してください。";
 "app.error" = "エラー";
-"batch.selected" = "%d 件選択中";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "フィードバック";
 "alert.encrypt.failed" = "機密データの暗号化に失敗しました。保存されませんでした。";
 
@@ -156,7 +156,7 @@
 "theme.appearance.dark" = "ダーク";
 
 /* QuickBar */
-"quickbar.recent" = "%d 件";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "完全なウィンドウを開く";
 "quickbar.no.results" = "結果なし";
 
@@ -232,7 +232,7 @@
 "trash.empty" = "ごみ箱は空です";
 "trash.restore" = "復元";
 "trash.emptyConfirm.title" = "ごみ箱を空にする";
-"trash.emptyConfirm.message" = "%d 件のアイテムが完全に削除されます。この操作は元に戻せません。";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "ごみ箱の保持日数";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "この項目を完全に削除しますか？";

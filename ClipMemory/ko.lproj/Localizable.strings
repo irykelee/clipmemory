@@ -132,7 +132,7 @@
 "app.launch.at.login" = "로그인 시 시작";
 "settings.launch.at.login.error.body" = "로그인 시 시작 설정을 수정할 수 없습니다. 시스템 권한을 확인하세요.";
 "app.error" = "오류";
-"batch.selected" = "%d개 선택됨";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "피드백";
 "alert.encrypt.failed" = "민감 데이터 암호화에 실패했습니다. 저장되지 않았습니다.";
 
@@ -156,7 +156,7 @@
 "theme.appearance.dark" = "다크";
 
 /* QuickBar */
-"quickbar.recent" = "%d개";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "전체 창 열기";
 "quickbar.no.results" = "결과 없음";
 
@@ -232,7 +232,7 @@
 "trash.empty" = "휴지통이 비어 있습니다";
 "trash.restore" = "복원";
 "trash.emptyConfirm.title" = "휴지통 비우기";
-"trash.emptyConfirm.message" = "%d개 항목이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "휴지통 보관 일수";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "이 항목을 영구적으로 삭제하시겠습니까?";
