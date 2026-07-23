@@ -9,6 +9,11 @@ struct TrashItemRow: View, Equatable {
     let onDeletePermanently: () -> Void
 
     @State private var isHovered = false
+    // F-3 (2026-07-23 audit): keyboard users Tab through the trash list
+    // but the Restore / Delete buttons were hidden by `.opacity(isHovered
+    // ? 1 : 0)` — invisible to anyone not using a mouse. Track row
+    // focus and reveal the buttons when the row is focused OR hovered.
+    @FocusState private var isFocused: Bool
     @State private var loadedImage: NSImage?
     @State private var imageLoadFailed = false
     @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
@@ -173,13 +178,18 @@ struct TrashItemRow: View, Equatable {
                 .accessibilityLabel(L10n.actionDelete)
                 .help(L10n.actionDelete)
             }
-            .opacity(isHovered ? 1 : 0)
+            .opacity(isHovered || isFocused ? 1 : 0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(rowBackground)
         .cornerRadius(6)
         .onHover { hovering in isHovered = hovering }
+        // F-3 (2026-07-23 audit): make the row focusable so keyboard users
+        // can Tab to it from the trash list. Pair with `.focused` so the
+        // action buttons become visible (see opacity change above).
+        .focusable()
+        .focused($isFocused)
         // F-1 confirmation dialog. The `role: .destructive` button
         // surfaces the system red "Delete" label; cancel is `role: .cancel`
         // so ⌘. / Esc dismiss without action.
