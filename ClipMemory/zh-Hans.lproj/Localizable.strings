@@ -183,7 +183,7 @@
 "tips.title" = "使用技巧";
 "tips.actions" = "基本操作";
 "tips.keyboard" = "键盘操作";
-"tips.key.updown" = "Navigate items"; /* TODO(i18n): native translation pending 7-lang review */
+"tips.key.updown" = "切换条目";
 "settings.hotkey.reset" = "重置";
 "alert.trim.title" = "裁剪历史记录";
 "alert.trim.message" = "当前有 %d 条记录，但上限为 %d。裁剪多余记录？";

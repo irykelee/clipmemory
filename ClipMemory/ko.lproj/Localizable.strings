@@ -183,7 +183,7 @@
 "tips.title" = "팁 및 단축키";
 "tips.actions" = "기본 작업";
 "tips.keyboard" = "키보드 조작";
-"tips.key.updown" = "Navigate items"; /* TODO(i18n): native translation pending 7-lang review */
+"tips.key.updown" = "항목 이동";
 "settings.hotkey.reset" = "초기화";
 "filter.richtext" = "서식 있는 텍스트";
 "item.richText" = "서식 있는 텍스트";
