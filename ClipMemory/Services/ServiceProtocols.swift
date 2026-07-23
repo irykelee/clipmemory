@@ -31,10 +31,18 @@ enum ServiceContainer {
     /// one, causing inconsistent encrypt/decrypt across the same items
     /// array. The full fix is DI via init injection (deferred to a future
     /// refactor). For now, the setter is restricted to XCTest contexts:
-    /// production code that accidentally swaps will trigger
-    /// `assertionFailure`. Tests still work because their pattern is
+    /// production code that accidentally swaps triggers
+    /// `preconditionFailure` (Debug AND Release — aborts the process so a
+    /// production swap can never silently take effect). Tests still work
+    /// because their pattern is
     /// `setUp: save original, inject fake / tearDown: restore original`
     /// — both swaps happen under XCTestConfigurationFilePath.
+    ///
+    /// H-1 hardening (2026-07-23): previous version used
+    /// `assertionFailure`, which is elided in `-O` builds. A Release
+    /// production swap would silently bypass the guard. Bumping to
+    /// `preconditionFailure` closes that hole without expanding scope
+    /// (still no DI refactor).
     static var crypto: CryptoServiceProtocol = CryptoService.shared {
         didSet {
             let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -42,7 +50,7 @@ enum ServiceContainer {
             // production swap (oldValue is the production singleton) is
             // not.
             if !inTest {
-                assertionFailure(
+                preconditionFailure(
                     "ServiceContainer.crypto reassigned outside XCTest — race risk. " +
                     "Use only in test setUp/tearDown."
                 )
