@@ -26,6 +26,12 @@ struct WelcomeView: View {
                 .padding()
         })
         .buttonStyle(.borderedProminent)
+        // F-10 (2026-07-23 audit): Enter on the Welcome sheet did nothing
+        // because the button had no keyboard shortcut. SwiftUI's
+        // `.keyboardShortcut(.defaultAction)` binds Enter globally to the
+        // view (no focus required), which is the macOS-standard behavior
+        // for a primary action button in a modal sheet.
+        .keyboardShortcut(.defaultAction)
         if #available(macOS 14.0, *) {
             base.buttonBorderShape(.capsule)
         } else {

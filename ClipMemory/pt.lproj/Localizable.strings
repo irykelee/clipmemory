@@ -34,6 +34,9 @@
 "action.copy" = "Copiar";
 "action.show.content" = "Mostrar conteúdo";
 "action.hide.content" = "Ocultar conteúdo";
+// F-19 (2026-07-23 audit): VoiceOver labels for select checkbox
+"action.select" = "Selecionar";
+"action.deselect" = "Desmarcar";
 
 /* Tooltips */
 "tooltip.unpin" = "Desfixar";
@@ -45,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "Limpar histórico";
-"alert.clear.message" = "Excluir %d itens?\nItens fixados serão mantidos.";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "Nada para limpar.";
 "alert.delete.title" = "Mover para a lixeira";
 "alert.delete.message" = "Mover este item para a lixeira?";
@@ -56,7 +59,7 @@
 "settings.section.language" = "Idioma";
 "settings.section.about" = "Sobre";
 "settings.max.items" = "Máximo de itens";
-"settings.max.items.count" = "%d itens";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "Exclusão automática";
 "settings.sensitive.hint" = "Tempo até excluir automaticamente senhas, chaves de API, etc.";
 "settings.section.hotkey" = "Atalho";
@@ -77,6 +80,9 @@
 "settings.backup.import" = "Importar cópia…";
 "settings.backup.passphrase" = "Senha da cópia (mínimo 6 caracteres)";
 "settings.backup.passphrase.wrong" = "Senha incorreta ou pacote corrompido";
+// 3.1 (2026-07-23 audit): short-passphrase re-prompt
+"passphrase.tooShort.title" = "Senha muito curta";
+"passphrase.tooShort.message" = "A senha deve ter pelo menos 6 caracteres. Tente novamente.";
 "settings.backup.error" = "A operação de cópia falhou, tente novamente";
 "settings.backup.export.done" = "Exportação concluída";
 "settings.backup.import.result" = "Importação concluída: %1$d itens adicionados, %2$d duplicados ignorados, %3$d corrompidos, %4$d imagens";
@@ -87,7 +93,7 @@
 "clear.conditional.title" = "Apagar por condição";
 "clear.conditional.type" = "Tipo";
 "clear.conditional.range" = "Período";
-"clear.conditional.confirm" = "%d itens serão apagados (fixados mantidos, para a Lixeira)";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "Apagar só etiqueta";
 "tag.delete.withcontent" = "Apagar etiqueta e conteúdo";
 "settings.app.picker.search" = "Pesquisar aplicativos";
@@ -126,7 +132,7 @@
 "app.launch.at.login" = "Iniciar ao iniciar sessão";
 "settings.launch.at.login.error.body" = "Não é possível modificar a definição de início de sessão. Verifique as permissões do sistema.";
 "app.error" = "Erro";
-"batch.selected" = "%d selecionados";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "Feedback";
 "alert.encrypt.failed" = "Falha ao criptografar dados sensíveis. Item não foi salvo.";
 
@@ -150,7 +156,7 @@
 "theme.appearance.dark" = "Escuro";
 
 /* QuickBar */
-"quickbar.recent" = "%d itens";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "Abrir janela completa";
 "quickbar.no.results" = "Sem resultados";
 
@@ -177,6 +183,7 @@
 "tips.title" = "Dicas";
 "tips.actions" = "Operações";
 "tips.keyboard" = "Teclado";
+"tips.key.updown" = "Navegar pelos itens";
 "settings.hotkey.reset" = "Redefinir";
 "filter.richtext" = "Texto rico";
 "item.richText" = "Texto rico";
@@ -225,8 +232,11 @@
 "trash.empty" = "A lixeira está vazia";
 "trash.restore" = "Restaurar";
 "trash.emptyConfirm.title" = "Esvaziar lixeira";
-"trash.emptyConfirm.message" = "%d itens serão apagados permanentemente. Esta ação não pode ser desfeita.";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "Dias de retenção da lixeira";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "Excluir este item permanentemente?";
+"trash.deleteConfirm.confirm" = "Excluir";
 "item.ocr.copy" = "Copiar texto da imagem";
 "settings.ocr.enabled" = "Reconhecimento de texto em imagens (OCR)";
 "settings.ocr.hint" = "Processado no dispositivo, sem rede. Aplica-se automaticamente a novas capturas.";
@@ -252,3 +262,7 @@
 "settings.updateSource.option.primary" = "Principal (GitHub)";
 "settings.updateSource.option.fallback" = "Espelho (jsDelivr)";
 "settings.updateSource.statusPanel" = "Fonte: %1$@ · Última verificação: %2$@ · Última mudança: %3$@";
+
+/* Backup UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "Usada para criptografar o arquivo de backup. Você precisará dela novamente para restaurar.";
+"settings.backup.error.missingEncryptionKey" = "Não é possível exportar: chave de criptografia ausente. Redefina a criptografia em Ajustes.";

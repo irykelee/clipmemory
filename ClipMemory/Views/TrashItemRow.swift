@@ -9,10 +9,16 @@ struct TrashItemRow: View, Equatable {
     let onDeletePermanently: () -> Void
 
     @State private var isHovered = false
+    // F-3 (2026-07-23 audit): keyboard users Tab through the trash list
+    // but the Restore / Delete buttons were hidden by `.opacity(isHovered
+    // ? 1 : 0)` — invisible to anyone not using a mouse. Track row
+    // focus and reveal the buttons when the row is focused OR hovered.
+    @FocusState private var isFocused: Bool
     @State private var loadedImage: NSImage?
     @State private var imageLoadFailed = false
     @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
     @State private var imageLongPressing = false
+    @State private var pendingDelete = false
     @AppStorage("fontScale") private var fontScale: Double = 1.0
 
     static func == (lhs: TrashItemRow, rhs: TrashItemRow) -> Bool {
@@ -151,21 +157,70 @@ struct TrashItemRow: View, Equatable {
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.accentColor)
+                // F-2 (2026-07-23 audit): explicit a11y label so VoiceOver
+                // announces the action. The `Label(...)` above already
+                // provides visible text, but VoiceOver ignores `.help()`.
+                .accessibilityLabel(L10n.trashRestore)
+                .help(L10n.trashRestore)
 
-                Button(action: onDeletePermanently) {
+                // F-1 + F-2 (2026-07-23 audit): wrap destructive permanent
+                // delete in a confirmation dialog (one mis-click = data
+                // loss otherwise) and give the icon-only button a VoiceOver
+                // label — pure SF Symbols give VoiceOver no functional hint.
+                Button {
+                    pendingDelete = true
+                } label: {
                     Image(systemName: "trash.fill")
                         .font(.system(size: fontScale * 12))
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.red)
+                .accessibilityLabel(L10n.actionDelete)
+                .help(L10n.actionDelete)
             }
-            .opacity(isHovered ? 1 : 0)
+            .opacity(isHovered || isFocused ? 1 : 0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(rowBackground)
         .cornerRadius(6)
         .onHover { hovering in isHovered = hovering }
+        // F-3 (2026-07-23 audit): make the row focusable so keyboard users
+        // can Tab to it from the trash list. Pair with `.focused` so the
+        // action buttons become visible (see opacity change above).
+        .focusable()
+        .focused($isFocused)
+        // F-1 confirmation dialog. The `role: .destructive` button
+        // surfaces the system red "Delete" label; cancel is `role: .cancel`
+        // so ⌘. / Esc dismiss without action.
+        .confirmationDialog(
+            L10n.trashDeleteConfirmTitle,
+            isPresented: $pendingDelete,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.trashDeleteConfirmConfirm, role: .destructive) {
+                onDeletePermanently()
+            }
+            Button(L10n.buttonCancel, role: .cancel) {}
+        } message: {
+            Text(deleteConfirmationSnippet)
+        }
+    }
+
+    /// Short preview shown in the F-1 confirmation dialog so the user can
+    /// verify which item they're about to destroy. Images get a generic
+    /// "[image]" label rather than a binary blob.
+    private var deleteConfirmationSnippet: String {
+        switch item.type {
+        case .image:
+            return L10n.itemImage
+        case .richText:
+            return ClipboardStore.shared.getRTFPlaintext(item).prefix(80).description
+        default:
+            return ClipboardStore.shared.getDecryptedContent(item).map {
+                String($0.prefix(80))
+            } ?? ""
+        }
     }
 
     private var plainTextFallback: String {

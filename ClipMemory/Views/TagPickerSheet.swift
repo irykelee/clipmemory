@@ -197,6 +197,22 @@ struct TagPickerSheet: View {
             // Long-press for delete confirmation
             TagRowLongPress(onDelete: { pendingDelete = tag })
         }
+        // F-16 (2026-07-23 audit): the only path to delete a tag was a
+        // long-press gesture (NSViewRepresentable). Mouse-only — keyboard
+        // and VoiceOver users had no way to trigger delete. Add a SwiftUI
+        // context menu (right-click / ⌃-click via a11y) and bind the
+        // Delete (⌫) / Forward Delete keys via `.onDeleteCommand` so the
+        // row also responds when it's keyboard-focused.
+        .contextMenu {
+            Button(role: .destructive) {
+                pendingDelete = tag
+            } label: {
+                Label(L10n.tagPickerDeleteConfirmTitle, systemImage: "trash")
+            }
+        }
+        .onDeleteCommand {
+            pendingDelete = tag
+        }
         .padding(.vertical, 2)
     }
 

@@ -34,6 +34,9 @@
 "action.copy" = "複製";
 "action.show.content" = "顯示內容";
 "action.hide.content" = "收合內容";
+// F-19 (2026-07-23 audit): VoiceOver labels for select checkbox
+"action.select" = "選取";
+"action.deselect" = "取消選取";
 
 /* Tooltips */
 "tooltip.unpin" = "取消釘選";
@@ -45,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "清除歷史";
-"alert.clear.message" = "確定清除 %d 筆記錄？\n釘選內容不會被刪除。";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "沒有可清除的記錄。";
 "alert.delete.title" = "移至垃圾桶";
 "alert.delete.message" = "確定將該內容移至垃圾桶嗎？";
@@ -60,7 +63,7 @@
 "settings.hotkey.recording" = "請按下新的快捷鍵...";
 "settings.section.about" = "關於";
 "settings.max.items" = "最大筆記數";
-"settings.max.items.count" = "%d 筆記";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "自動清理";
 "settings.sensitive.hint" = "偵測到密碼、API金鑰等敏感內容時，自動清理前的等待時間";
 "settings.section.excluded.apps" = "排除的應用程式";
@@ -78,6 +81,9 @@
 "settings.backup.import" = "導入備份…";
 "settings.backup.passphrase" = "備份密碼（至少 6 位）";
 "settings.backup.passphrase.wrong" = "密碼錯誤或備份包已損毀";
+// 3.1 (2026-07-23 audit): short-passphrase re-prompt
+"passphrase.tooShort.title" = "密碼太短";
+"passphrase.tooShort.message" = "密碼至少需要 6 位字元，請重新輸入。";
 "settings.backup.error" = "備份操作失敗，請重試";
 "settings.backup.export.done" = "導出完成";
 "settings.backup.import.result" = "導入完成：新增 %1$d 條，跳過重複 %2$d 條，損壞 %3$d 條，圖片 %4$d 張";
@@ -88,7 +94,7 @@
 "clear.conditional.title" = "按條件刪除";
 "clear.conditional.type" = "類型";
 "clear.conditional.range" = "時間範圍";
-"clear.conditional.confirm" = "將刪除 %d 個條目（不含收藏，進垃圾桶）";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "僅刪除標籤";
 "tag.delete.withcontent" = "刪除標籤與內容";
 "settings.app.picker.search" = "搜尋應用程式";
@@ -126,7 +132,7 @@
 "app.quit" = "退出 ClipMemory";
 "app.launch.at.login" = "登入時啟動";
 "app.error" = "錯誤";
-"batch.selected" = "已選擇 %d 項";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "回饋";
 "alert.encrypt.failed" = "敏感資料加密失敗，內容未儲存。";
 
@@ -149,7 +155,7 @@
 "theme.appearance.dark" = "深色";
 
 /* QuickBar */
-"quickbar.recent" = "%d 條內容";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "打開完整視窗";
 "quickbar.no.results" = "無結果";
 
@@ -176,6 +182,7 @@
 "tips.title" = "使用技巧";
 "tips.actions" = "基本操作";
 "tips.keyboard" = "鍵盤操作";
+"tips.key.updown" = "切換條目";
 "settings.hotkey.reset" = "重置";
 "filter.richtext" = "富文本";
 "item.richText" = "富文本";
@@ -227,8 +234,11 @@
 "trash.empty" = "垃圾桶是空的";
 "trash.restore" = "復原";
 "trash.emptyConfirm.title" = "清空垃圾桶";
-"trash.emptyConfirm.message" = "%d 個條目將被永久刪除，此操作不可撤銷。";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "垃圾桶保留天數";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "永久刪除此條目？";
+"trash.deleteConfirm.confirm" = "刪除";
 "item.ocr.copy" = "複製圖中文字";
 "settings.ocr.enabled" = "圖片文字識別（OCR）";
 "settings.ocr.hint" = "本機識別，不連網。新截圖自動生效。";
@@ -254,3 +264,7 @@
 "settings.updateSource.option.primary" = "主來源（GitHub）";
 "settings.updateSource.option.fallback" = "鏡像（jsDelivr）";
 "settings.updateSource.statusPanel" = "目前來源：%1$@ · 上次檢查：%2$@ · 上次切換：%3$@";
+
+/* 備份 UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "用於加密備份檔案。還原時需要再次輸入。";
+"settings.backup.error.missingEncryptionKey" = "無法匯出：加密金鑰遺失。請到「設定」中重設加密。";

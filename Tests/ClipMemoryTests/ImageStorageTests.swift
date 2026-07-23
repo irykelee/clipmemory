@@ -239,6 +239,77 @@ final class ImageStorageTests: XCTestCase {
         XCTAssertEqual(storage.imageStatus(for: filename), .decryptionFailed)
     }
 
+    // MARK: - P1-4 (2026-07-23 audit): image corruption detection
+
+    /// Regression: imageStatus(for:) returning .decryptionFailed must increment
+    /// the static corruptionEventCount so silent disk corruption (bad sector,
+    /// partial overwrite, key drift) becomes observable in logs/diagnostics.
+    /// Before the fix, .decryptionFailed was a silent terminal state — the
+    /// user only saw the broken image and had no way to know whether the
+    /// problem was common or a one-off.
+    ///
+    /// Trigger: write a v2-prefixed blob with garbage ciphertext (fails GCM
+    /// tag check). imageStatus takes the v2 decrypt branch (prefix match)
+    /// and falls through to .decryptionFailed.
+    func testImageCorruptionCounterIncrementsOnV2Garbage() {
+        let preCount = ImageStorage.corruptionEventCount
+        let uuid = newTestUUID()
+        let filename = "\(uuid.uuidString).png"
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+
+        // v2 prefix + 64 bytes of 0x00 → prefix check passes, GCM tag check fails
+        var garbage = Data("v2".utf8)
+        garbage.append(Data(repeating: 0x00, count: 64))
+        try? garbage.write(to: fileURL, options: .atomic)
+
+        let status = storage.imageStatus(for: filename)
+        XCTAssertEqual(status, .decryptionFailed,
+                      "v2-prefixed garbage must surface as .decryptionFailed")
+        XCTAssertEqual(ImageStorage.corruptionEventCount, preCount + 1,
+                      "P1-4: corruptionEventCount must increment on .decryptionFailed")
+    }
+
+    /// Regression: pre-v2 garbage (no v2 prefix, no PNG magic) must also be
+    /// counted as corruption. The legacy decrypt path's HMAC check rejects
+    /// random bytes; the PNG-magic check rejects non-image data; both fall
+    /// through to .decryptionFailed and must bump the counter.
+    func testImageCorruptionCounterIncrementsOnNonImageGarbage() {
+        let preCount = ImageStorage.corruptionEventCount
+        let uuid = newTestUUID()
+        let filename = "\(uuid.uuidString).png"
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+
+        // 32 bytes of 0xFF — fails every format check
+        try? Data(repeating: 0xFF, count: 32).write(to: fileURL, options: .atomic)
+
+        XCTAssertEqual(storage.imageStatus(for: filename), .decryptionFailed)
+        XCTAssertEqual(ImageStorage.corruptionEventCount, preCount + 1,
+                      "P1-4: corruptionEventCount must increment on non-image garbage")
+    }
+
+    /// Negative control: a missing file must NOT bump the counter. .fileMissing
+    /// is a legitimate "user cleared history" outcome, not corruption. Mixing
+    /// the two would inflate the counter and mask real corruption trends.
+    func testImageCorruptionCounterUnchangedOnMissingFile() {
+        let preCount = ImageStorage.corruptionEventCount
+        let missing = "\(UUID().uuidString).png"
+        XCTAssertEqual(storage.imageStatus(for: missing), .fileMissing)
+        XCTAssertEqual(ImageStorage.corruptionEventCount, preCount,
+                      "P1-4: missing files must not count as corruption")
+    }
+
+    /// Negative control: a successful save→load round trip must NOT bump the
+    /// counter. Only the .decryptionFailed terminal path counts.
+    func testImageCorruptionCounterUnchangedOnValidRoundTrip() {
+        let preCount = ImageStorage.corruptionEventCount
+        let uuid = newTestUUID()
+        let original = makePNGData()
+        let filename = saveAndWait(original, uuid: uuid) ?? ""
+        _ = storage.loadImage(filename: filename)
+        XCTAssertEqual(ImageStorage.corruptionEventCount, preCount,
+                      "P1-4: valid round-trip must not count as corruption")
+    }
+
     // MARK: - I.4 Filename validation (path-traversal guard)
 
     func testLoadImageRejectsPathTraversalAttempts() {

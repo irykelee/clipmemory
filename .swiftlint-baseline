@@ -1,0 +1,1015 @@
+[
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 151 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/AppDelegate.swift",
+        "line": 110
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 740), styleMask: [.titled, .closable], backing: .buffered, defer: false)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 160 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/AppDelegate.swift",
+        "line": 137
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        languageObserver = NotificationCenter.default.addObserver(forName: Notification.Name(\"LanguageDidChange\"), object: nil, queue: .main) { [weak self] _ in"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 185 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/AppDelegate.swift",
+        "line": 141
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "            let a = NSAlert(); a.messageText = L10n.error; a.informativeText = L10n.alertEncryptFailed; a.alertStyle = .warning; a.addButton(withTitle: L10n.buttonConfirm); a.runModal()"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 359 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Models/ClipboardItem.swift",
+        "line": 39
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false, tagIds: Set<UUID> = [], deletedAt: Date? = nil, ocrText: String? = nil, ocrAttempted: Bool = false) {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "function_body_length",
+      "reason": "Function body should span 50 lines or less excluding comments and whitespace: currently spans 57 lines",
+      "ruleName": "Function Body Length",
+      "location": {
+        "character": 12,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/BackupPackage.swift",
+        "line": 226
+      },
+      "ruleDescription": "Function bodies should not span too many lines"
+    },
+    "text": "    static func exportPackage("
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 190 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/ClipboardStore.swift",
+        "line": 192
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        excludedBundleIdsString = UserDefaults.standard.string(forKey: excludedBundleIdsKey) ?? \"com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb\""
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "cyclomatic_complexity",
+      "reason": "Function should have complexity 10 or less; currently complexity is 18",
+      "ruleName": "Cyclomatic Complexity",
+      "location": {
+        "character": 5,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/ClipboardStore.swift",
+        "line": 321
+      },
+      "ruleDescription": "Complexity of function bodies should be limited."
+    },
+    "text": "    func loadItems() {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "function_body_length",
+      "reason": "Function body should span 50 lines or less excluding comments and whitespace: currently spans 94 lines",
+      "ruleName": "Function Body Length",
+      "location": {
+        "character": 5,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/ClipboardStore.swift",
+        "line": 321
+      },
+      "ruleDescription": "Function bodies should not span too many lines"
+    },
+    "text": "    func loadItems() {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "large_tuple",
+      "reason": "Tuples should have at most 2 members",
+      "ruleName": "Large Tuple",
+      "location": {
+        "character": 34,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/ClipboardStore.swift",
+        "line": 374
+      },
+      "ruleDescription": "Tuples shouldn't have too many members. Create a custom type instead."
+    },
+    "text": "        var backfillCandidates: [(id: UUID, content: String, isEncrypted: Bool)] = []"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "function_body_length",
+      "reason": "Function body should span 50 lines or less excluding comments and whitespace: currently spans 62 lines",
+      "ruleName": "Function Body Length",
+      "location": {
+        "character": 5,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/ClipboardStore.swift",
+        "line": 697
+      },
+      "ruleDescription": "Function bodies should not span too many lines"
+    },
+    "text": "    func addItem(_ item: ClipboardItem) {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "cyclomatic_complexity",
+      "reason": "Function should have complexity 10 or less; currently complexity is 42",
+      "ruleName": "Cyclomatic Complexity",
+      "location": {
+        "character": 13,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/HotKeyManager.swift",
+        "line": 52
+      },
+      "ruleDescription": "Complexity of function bodies should be limited."
+    },
+    "text": "    private func keyCodeToString(_ code: UInt32) -> String {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 152 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/HotKeyManager.swift",
+        "line": 154
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                logger.error(\"Hotkey \\(self.config.displayString) is already registered by another app or ClipMemory instance \u2014 global hotkey inactive\")"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "cyclomatic_complexity",
+      "reason": "Function should have complexity 10 or less; currently complexity is 13",
+      "ruleName": "Cyclomatic Complexity",
+      "location": {
+        "character": 13,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/ImageStorage.swift",
+        "line": 81
+      },
+      "ruleDescription": "Complexity of function bodies should be limited."
+    },
+    "text": "    private func migrateFromLegacyIfNeeded() {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "function_body_length",
+      "reason": "Function body should span 50 lines or less excluding comments and whitespace: currently spans 67 lines",
+      "ruleName": "Function Body Length",
+      "location": {
+        "character": 13,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/ImageStorage.swift",
+        "line": 81
+      },
+      "ruleDescription": "Function bodies should not span too many lines"
+    },
+    "text": "    private func migrateFromLegacyIfNeeded() {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 190 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/LocalizationService.swift",
+        "line": 200
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "    static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ corrupt: Int, _ images: Int) -> String { string(\"settings.backup.import.result\", added, skipped, corrupt, images) }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "vertical_whitespace",
+      "reason": "Limit vertical whitespace to a single empty line; currently 2",
+      "ruleName": "Vertical Whitespace",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Services/LocalizationService.swift",
+        "line": 235
+      },
+      "ruleDescription": "Limit vertical whitespace to a single empty line"
+    },
+    "text": ""
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 172 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/AppPickerRow.swift",
+        "line": 27
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                    Image(nsImage: NSImage(systemSymbolName: \"app.badge.questionmark\", accessibilityDescription: nil) ?? NSImage()).resizable().frame(width: 32, height: 32)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 257 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 133
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        if isCopied { Color.green.opacity(0.12) } else if isSelected { Color.accentColor.opacity(0.10) } else if isHovered || isKeyboardSelected { Color.accentColor.opacity(0.06) } else if item.isSensitive { Color.orange.opacity(0.04) } else { Color.clear }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 193 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 170
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        if mso > 30 { dsi = text.index(text.index(text.startIndex, offsetBy: mso), offsetBy: -20, limitedBy: text.startIndex) ?? text.startIndex; prefix = \"...\" } else { dsi = text.startIndex }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 212 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 199
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "    private func maskContent(_ c: String) -> String { c.count <= 4 ? String(repeating: \"\\u{2022}\", count: c.count) : String(c.prefix(2)) + String(repeating: \"\\u{2022}\", count: c.count - 4) + String(c.suffix(2)) }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 285 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 203
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        while let r = lc.range(of: lh, range: ss..<lc.endIndex) { let cs = lc.index(r.lowerBound, offsetBy: -ctx, limitedBy: lc.startIndex) ?? lc.startIndex; let ce = lc.index(r.upperBound, offsetBy: ctx, limitedBy: lc.endIndex) ?? lc.endIndex; vis.append(cs..<ce); ss = r.upperBound }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 231 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 205
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        var merged: [Range<String.Index>] = []; for r in vis { if let last = merged.last, last.upperBound >= r.lowerBound { merged[merged.count-1] = last.lowerBound..<max(last.upperBound, r.upperBound) } else { merged.append(r) } }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 346 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 207
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        for r in merged { if ci < r.lowerBound { var b = AttributedString(String(repeating: \"\\u{2022}\", count: content.distance(from: ci, to: r.lowerBound))); b.foregroundColor = .orange; res += b }; var h = AttributedString(String(content[r])); h.backgroundColor = .blue.opacity(0.15); h.foregroundColor = .primary; res += h; ci = r.upperBound }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 188 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 208
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        if ci < content.endIndex { var t = AttributedString(String(repeating: \"\\u{2022}\", count: content.distance(from: ci, to: content.endIndex))); t.foregroundColor = .orange; res += t }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 152 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 237
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                                    .overlay(PressableImage { pressed in imageLongPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 154 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 321
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                                        .overlay(PressableImage { pressed in showFullContent = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 378 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 345
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                HStack(spacing: 8) { Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: \"exclamationmark.shield\").font(.system(size: fontScale * 11)).foregroundColor(.orange) }; if !item.tagIds.isEmpty { TagChipStack(tagIds: item.tagIds, store: ClipboardStore.shared) } }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 288 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 369
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                Button(action: onPin) { Image(systemName: item.isPinned ? \"star.fill\" : \"star\").font(.system(size: iconSize)).foregroundColor(item.isPinned ? .orange : .secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 203 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 370
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                Button(action: onDelete) { Image(systemName: \"trash\").font(.system(size: iconSize)).foregroundColor(.secondary).frame(width: 24, height: 24) }.buttonStyle(.plain).help(L10n.tooltipDelete)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 159 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 373
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle())"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 160 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 423
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "              let nsAttr = try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 160 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/ClipboardItemRow.swift",
+        "line": 441
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "              let nsAttr = try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "trailing_newline",
+      "reason": "Files should have a single trailing newline",
+      "ruleName": "Trailing Newline",
+      "location": {
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/Components/UpdateStatusPanelView.swift",
+        "line": 24
+      },
+      "ruleDescription": "Files should have a single trailing newline"
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 212 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 16
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        switch self { case .all: \"tray.full\"; case .text: \"doc.text\"; case .image: \"photo\"; case .link: \"link\"; case .richText: \"doc.richtext\"; case .pinned: \"star\"; case .trash: \"trash\"; case .settings: \"gear\" }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 279 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 19
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        switch self { case .all: L10n.filterAll; case .text: L10n.filterText; case .image: L10n.filterImage; case .link: L10n.filterLink; case .richText: L10n.filterRichText; case .pinned: L10n.headerShowPinned; case .trash: L10n.trashTitle; case .settings: L10n.buttonSettings }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 183 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 386
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "            switch self { case .all: return L10n.dateFilterAll; case .today: return L10n.groupToday; case .yesterday: return L10n.groupYesterday; case .older: return L10n.groupOlder }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 167 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 585
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                    Button(action: { showingConditionalClear = true }, label: { Label(L10n.clearConditionalAction, systemImage: \"line.3.horizontal.decrease.circle\") })"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 155 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 665
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                                    Image(systemName: (!collapsedGroups.contains(section.group) || !searchText.isEmpty) ? \"chevron.down\" : \"chevron.right\")"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 323 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 684
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                            Button(action: { store.togglePinItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }, label: { Label(batchAllPinned ? L10n.actionUnpin : L10n.actionPin, systemImage: batchAllPinned ? \"star.slash\" : \"star\").font(.system(size: sz(12))) }).buttonStyle(.plain)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 278 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 685
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                            Button(action: { store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) }); selectedItems.removeAll() }, label: { Label(L10n.actionDelete, systemImage: \"trash\").font(.system(size: sz(12))) }).buttonStyle(.plain).foregroundColor(.red)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 185 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 686
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                            Button(action: { selectedItems.removeAll() }, label: { Text(L10n.buttonCancel).font(.system(size: sz(12))) }).buttonStyle(.plain).foregroundColor(.secondary)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 267 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 693
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) { Button(L10n.buttonCancel, role: .cancel) {}; Button(L10n.buttonDelete, role: .destructive) { if let item = itemToDelete { store.deleteItem(item) } } } message: { Text(L10n.alertDeleteMessage) }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 612 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/ContentView.swift",
+        "line": 1130
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        return VStack(spacing: 12) { Spacer(); Image(systemName: selectedTab == .pinned ? \"star\" : \"tray\").font(.system(size: sz(40))).foregroundColor(.secondary); Text(selectedTab == .pinned ? L10n.emptyNoPinned : L10n.emptyNoHistory).font(.system(size: sz(14))).foregroundColor(.secondary); if selectedTab == .pinned { Text(L10n.emptyPinnedHint).font(.system(size: sz(12))).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal) } else { Text(L10n.emptyHistoryHint).font(.system(size: sz(12))).foregroundColor(.secondary) }; Spacer() }.frame(maxWidth: .infinity, maxHeight: .infinity)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "cyclomatic_complexity",
+      "reason": "Function should have complexity 10 or less; currently complexity is 12",
+      "ruleName": "Cyclomatic Complexity",
+      "location": {
+        "character": 13,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/KeyCaptureView.swift",
+        "line": 55
+      },
+      "ruleDescription": "Complexity of function bodies should be limited."
+    },
+    "text": "    private func setupMonitor() {"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 175 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/QuickBarView.swift",
+        "line": 345
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                    highlightedText((ClipboardStore.shared.getDecryptedContent(item) ?? \"\").replacingOccurrences(of: \"\\n\", with: \" \"), highlight: searchText, fontSize: sz(12))"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 156 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/SettingsView.swift",
+        "line": 71
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                    Text(L10n.themeAppearanceSystem).tag(\"system\"); Text(L10n.themeAppearanceLight).tag(\"light\"); Text(L10n.themeAppearanceDark).tag(\"dark\")"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 189 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/SettingsView.swift",
+        "line": 75
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                Picker(L10n.settingsSectionLanguage, selection: $languageManager.selectedLanguage) { ForEach(languageManager.availableLanguages, id: \\.code) { Text($0.name).tag($0.code) } }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 191 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/SettingsView.swift",
+        "line": 78
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                Picker(L10n.string(\"settings.font.picker\"), selection: $fontScale) { Text(L10n.fontSizeSmall).tag(1.0); Text(L10n.fontSizeMedium).tag(1.2); Text(L10n.fontSizeLarge).tag(1.4) }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 197 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/SettingsView.swift",
+        "line": 81
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).tag($0.hours) } }.id(languageManager.selectedLanguage)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 151 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/SettingsView.swift",
+        "line": 93
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                Picker(L10n.trashRetentionDays, selection: $store.trashRetentionDays) { ForEach([3, 7, 14, 30], id: \\.self) { Text(\"\\($0)\").tag($0) } }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 153 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/SettingsView.swift",
+        "line": 106
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                Button(action: { showingAppPicker = true }, label: { Label(L10n.settingsAddExcludedApp, systemImage: \"plus.circle\") }).buttonStyle(.link)"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 155 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/SettingsView.swift",
+        "line": 110
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                    do { if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } } catch { onShowLaunchAtLoginError() }"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "trailing_newline",
+      "reason": "Files should have a single trailing newline",
+      "ruleName": "Trailing Newline",
+      "location": {
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/SettingsView.swift",
+        "line": 240
+      },
+      "ruleDescription": "Files should have a single trailing newline"
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 172 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/ClipMemory/Views/WelcomeView.swift",
+        "line": 58
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                        InstructionRow(number: \"2\", icon: \"keyboard\", title: L10n.welcomeStep2Title, description: L10n.welcomeStep2Desc(hotKeyManager.config.displayString))"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 197 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/BackupServiceTests.swift",
+        "line": 112
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                \"remaining dir name should be 21 chars (BUG-021 live format). If this fails, the filter's length check drifted away from backupNow()'s dateFormat \u2014 cross-check both sites together.\""
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "trailing_newline",
+      "reason": "Files should have a single trailing newline",
+      "ruleName": "Trailing Newline",
+      "location": {
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/ClipboardItemRowSnapshotTests.swift",
+        "line": 97
+      },
+      "ruleDescription": "Files should have a single trailing newline"
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 157 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/ClipboardItemTests.swift",
+        "line": 231
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "        let nsAttr = try XCTUnwrap(NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil))"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 278 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/ClipboardStoreRTFCacheTests.swift",
+        "line": 59
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "    private let validRTF = \"{\\\\rtf1\\\\ansi\\\\ansicpg1252\\\\cocoartf2512\\n{\\\\colortbl;\\\\red255\\\\green255\\\\blue255;}\\n\\\\pard\\\\tx560\\\\tx1120\\\\tx1680\\\\tx2240\\\\tx2800\\\\tx3360\\\\tx3920\\\\tx4480\\\\tx5040\\\\tx5600\\\\tx6160\\\\tx6720\\\\li0\\\\ri0\\\\sa200\\\\sl240\\\\slmult1\\\\f0\\\\fs24 \\\\cf0 Hello\\\\cf0  }\""
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "trailing_comma",
+      "reason": "Collection literals should not have trailing commas",
+      "ruleName": "Trailing Comma",
+      "location": {
+        "character": 46,
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/HangDetectorTests.swift",
+        "line": 73
+      },
+      "ruleDescription": "Trailing commas in arrays and dictionaries should be avoided/enforced."
+    },
+    "text": "            \"__libdispatch_source_mgr_invoke\","
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "trailing_comma",
+      "reason": "Collection literals should not have trailing commas",
+      "ruleName": "Trailing Comma",
+      "location": {
+        "character": 100,
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/HangDetectorTests.swift",
+        "line": 100
+      },
+      "ruleDescription": "Trailing commas in arrays and dictionaries should be avoided/enforced."
+    },
+    "text": "            \"3   libdispatch.dylib         0x00000001000028d5 _dispatch_source_latch_and_call + 47\","
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "file_length",
+      "reason": "File should contain 800 lines or less: currently contains 849",
+      "ruleName": "File Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/IntegrationTests.swift",
+        "line": 849
+      },
+      "ruleDescription": "Files should not span too many lines."
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 181 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/ReleaseReadinessTests.swift",
+        "line": 98
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "                       \"Expected exactly 4 version literals in project.pbxproj (Release+Debug \u00d7 2 keys), found \\(matches.count). Run `xcodegen generate` after editing project.yml.\","
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "line_length",
+      "reason": "Line should be 150 characters or less; currently it has 169 characters",
+      "ruleName": "Line Length",
+      "location": {
+        "character": 1,
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/SensitiveDetectorTests.swift",
+        "line": 82
+      },
+      "ruleDescription": "Lines should not span too many characters."
+    },
+    "text": "            \"[REDACTED-JWT-FIXTURE]\""
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "trailing_newline",
+      "reason": "Files should have a single trailing newline",
+      "ruleName": "Trailing Newline",
+      "location": {
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/SettingsViewSnapshotTests.swift",
+        "line": 60
+      },
+      "ruleDescription": "Files should have a single trailing newline"
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "trailing_newline",
+      "reason": "Files should have a single trailing newline",
+      "ruleName": "Trailing Newline",
+      "location": {
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/SnapshotTestHelpers.swift",
+        "line": 202
+      },
+      "ruleDescription": "Files should have a single trailing newline"
+    },
+    "text": "private var snapshotTestSavedLanguage: String = \"en\""
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "trailing_newline",
+      "reason": "Files should have a single trailing newline",
+      "ruleName": "Trailing Newline",
+      "location": {
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/TrashItemRowSnapshotTests.swift",
+        "line": 53
+      },
+      "ruleDescription": "Files should have a single trailing newline"
+    },
+    "text": "}"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "large_tuple",
+      "reason": "Tuples should have at most 2 members",
+      "ruleName": "Large Tuple",
+      "location": {
+        "character": 37,
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/UpdateServiceTests.swift",
+        "line": 463
+      },
+      "ruleDescription": "Tuples shouldn't have too many members. Create a custom type instead."
+    },
+    "text": "    static var stubResponses: [URL: (status: Int, body: String, delay: TimeInterval?)] = [:]"
+  },
+  {
+    "violation": {
+      "severity": "warning",
+      "ruleIdentifier": "trailing_newline",
+      "reason": "Files should have a single trailing newline",
+      "ruleName": "Trailing Newline",
+      "location": {
+        "file": "file:///Users/iryke/Projects/ClipMemory/Tests/ClipMemoryTests/WelcomeViewSnapshotTests.swift",
+        "line": 45
+      },
+      "ruleDescription": "Files should have a single trailing newline"
+    },
+    "text": "}"
+  }
+]

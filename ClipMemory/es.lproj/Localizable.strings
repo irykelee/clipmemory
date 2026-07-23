@@ -34,6 +34,9 @@
 "action.copy" = "Copiar";
 "action.show.content" = "Mostrar contenido";
 "action.hide.content" = "Ocultar contenido";
+// F-19 (2026-07-23 audit): VoiceOver labels for select checkbox
+"action.select" = "Seleccionar";
+"action.deselect" = "Deseleccionar";
 
 /* Tooltips */
 "tooltip.unpin" = "Desfijar";
@@ -45,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "Vaciar historial";
-"alert.clear.message" = "¿Eliminar %d elementos?\nLos favoritos se conservarán.";
+"alert.clear.message" = "%#@count@";
 "alert.clear.none" = "No hay nada que vaciar.";
 "alert.delete.title" = "Mover a la papelera";
 "alert.delete.message" = "¿Mover este elemento a la papelera?";
@@ -57,7 +60,7 @@
 "settings.section.theme" = "Tema";
 "settings.section.about" = "Acerca de";
 "settings.max.items" = "Máximo de elementos";
-"settings.max.items.count" = "%d elementos";
+"settings.max.items.count" = "%#@count@";
 "settings.auto.clear" = "Borrado automático";
 "settings.sensitive.hint" = "Tiempo hasta borrar automáticamente contraseñas, claves API, etc.";
 "settings.section.hotkey" = "Atajo";
@@ -78,6 +81,9 @@
 "settings.backup.import" = "Importar copia…";
 "settings.backup.passphrase" = "Contraseña de la copia (mínimo 6 caracteres)";
 "settings.backup.passphrase.wrong" = "Contraseña incorrecta o paquete dañado";
+// 3.1 (2026-07-23 audit): short-passphrase re-prompt
+"passphrase.tooShort.title" = "Contraseña demasiado corta";
+"passphrase.tooShort.message" = "La contraseña debe tener al menos 6 caracteres. Inténtalo de nuevo.";
 "settings.backup.error" = "La operación de copia falló, inténtelo de nuevo";
 "settings.backup.export.done" = "Exportación completada";
 "settings.backup.import.result" = "Importación completa: %1$d elementos añadidos, %2$d duplicados omitidos, %3$d dañados, %4$d imágenes";
@@ -88,7 +94,7 @@
 "clear.conditional.title" = "Eliminar por condición";
 "clear.conditional.type" = "Tipo";
 "clear.conditional.range" = "Periodo";
-"clear.conditional.confirm" = "Se eliminarán %d elementos (fijados conservados, a la Papelera)";
+"clear.conditional.confirm" = "%#@count@";
 "tag.delete.onlytag" = "Eliminar solo etiqueta";
 "tag.delete.withcontent" = "Eliminar etiqueta y contenido";
 "settings.app.picker.search" = "Buscar aplicaciones";
@@ -127,7 +133,7 @@
 "app.launch.at.login" = "Iniciar al iniciar sesión";
 "settings.launch.at.login.error.body" = "No se puede modificar el inicio de sesión. Comprueba los permisos del sistema.";
 "app.error" = "Error";
-"batch.selected" = "%d seleccionados";
+"batch.selected" = "%#@count@";
 "app.send.feedback" = "Comentarios";
 "alert.encrypt.failed" = "Error al cifrar datos sensibles. El elemento no se guardó.";
 
@@ -150,7 +156,7 @@
 "theme.appearance.dark" = "Oscuro";
 
 /* QuickBar */
-"quickbar.recent" = "%d elementos";
+"quickbar.recent" = "%#@count@";
 "quickbar.open.full" = "Abrir ventana completa";
 "quickbar.no.results" = "Sin resultados";
 
@@ -177,6 +183,7 @@
 "tips.title" = "Consejos";
 "tips.actions" = "Operaciones";
 "tips.keyboard" = "Teclado";
+"tips.key.updown" = "Navegar por los elementos";
 "settings.hotkey.reset" = "Restablecer";
 "filter.richtext" = "Texto enriquecido";
 "item.richText" = "Texto enriquecido";
@@ -225,8 +232,11 @@
 "trash.empty" = "La papelera está vacía";
 "trash.restore" = "Restaurar";
 "trash.emptyConfirm.title" = "Vaciar papelera";
-"trash.emptyConfirm.message" = "%d elementos se eliminarán permanentemente. Esta acción no se puede deshacer.";
+"trash.emptyConfirm.message" = "%#@count@";
 "trash.retentionDays" = "Días de retención de la papelera";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "¿Eliminar este elemento permanentemente?";
+"trash.deleteConfirm.confirm" = "Eliminar";
 "item.ocr.copy" = "Copiar texto de la imagen";
 "settings.ocr.enabled" = "Reconocimiento de texto en imágenes (OCR)";
 "settings.ocr.hint" = "Procesado en el dispositivo, sin red. Se aplica automáticamente a las nuevas capturas.";
@@ -252,3 +262,7 @@
 "settings.updateSource.option.primary" = "Principal (GitHub)";
 "settings.updateSource.option.fallback" = "Espejo (jsDelivr)";
 "settings.updateSource.statusPanel" = "Fuente: %1$@ · Última verificación: %2$@ · Último cambio: %3$@";
+
+/* Respaldo UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "Usada para cifrar el archivo de copia. La necesitarás de nuevo para restaurar.";
+"settings.backup.error.missingEncryptionKey" = "No se puede exportar: falta la clave de cifrado. Restablece el cifrado desde Ajustes.";
