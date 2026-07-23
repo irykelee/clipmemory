@@ -50,94 +50,12 @@
 
 ### v2.5.11 (2026-07-23) — ContentView 拆分 + 16 项 bug 修复
 
-
-### 主要更新 (Highlights)
-
-- **🏗 ContentView 拆分 (NEW-7 Phase 4)** — 主列表 / 选择 / 批量操作 / 删除 alerts 全部从 ContentView 抽出到独立 `ItemListView`（287 行）；ContentView 1178 → 995 行（-15.5%）。解耦 list render + list-related state，但保留 view 层的搜索 / filter / 滚动 cache 在 ContentView（避免一次性 refactor 风险）。后续 Phase 6+ ViewModel collapse 把 `@State` 收成 `@StateObject` 即可开 ItemListView snapshot baseline
-- **🛡 数据安全 4 件套** — `maxItems` setter clamp 1...10_000 防负值/超大；`backupNow()` 串行化（NSLock）防 double-click + auto-backup race；`addTag()` trim 前导/尾部空白防 "  Work  " 跟 "Work" 双存；`ClipboardItemRow` observe LanguageManager 切语言时立即重渲染日期
-- **🌐 i18n plural support (F-7)** — 6 个 %d plural keys 走 `.stringsdict`（batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm）；英文 "1 item" / "5 items" 不再都是 "1 items"；新增 `Scripts/generate_stringsdict.py` 一键 regen 7 lang
-- **🛡 Settings "Back Up Now" 错误不再静默吞 (F-4)** — 原来 `try?` 直接 discard every backupNow() 失败；现在 do/catch + onShowBackupError callback → ContentView 弹 `L10n.settingsBackupError` NSAlert（与 export/import/pre-import snapshot 失败路径一致）
-- **🛡 QuickBar ⌘F 真的能聚焦搜索了 (F-9)** — 之前只依赖 KeyCaptureView 的 NSEvent local monitor（popover 窗口上下文里不可靠）；现在加 `.cmdFFindAction` notification 兜底，与 ContentView 走同一条路径
-
-### 修复 (Fixes)
-
-按影响排序 (high → medium → low)：
-
-**High impact（架构 / 数据 / UX 关键路径）**
-
-- **NEW-7 Phase 4 ItemListView 提取** — 主列表 / 选择 / 批量操作 / 删除 alerts 全部从 ContentView 抽出（287 行）；ContentView 1178 → 995 行（-15.5%）
-- **E-1 maxItems setter clamp** — `1...10_000` 范围内；UserDefaults 不再被 -1 / 999_999_999 污染；新 `minMaxItems` / `maxMaxItems` 常量是唯一 source of truth
-- **E-2 backupNow() 串行化** — `NSLock` 包裹；double-click "Back Up Now" + auto-backup 同帧触发不再 race on `createDirectory` + `copyItem(Images)`
-- **E-13 ClipboardItemRow observe LanguageManager** — `@ObservedObject private var languageManager = LanguageManager.shared`；切 Settings → Language 时日期格式立即重渲染（不再等滚动 off+on）
-- **F-9 QuickBar ⌘F 修复** — `.onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction))` 加到 QuickBarView 根 VStack；popover 环境下 ⌘F 也能 focus search field
-- **F-4 Settings Back Up Now 错误 alert** — `onShowBackupError` callback wired 到 ContentView 的 `showBackupInfo(L10n.settingsBackupError)`；失败现在可见
-
-**Medium impact（UX 一致性 / a11y / i18n）**
-
-- **F-10 Welcome Enter 绑默认按钮** — `.keyboardShortcut(.defaultAction)` 加到 `getStartedButton`；Welcome 弹窗按 Enter 直接走 onComplete
-- **F-13 TipsView ↑↓ label** — `L10n.quickbarRecent(8)` 改为 `L10n.tipsKeyUpdown` = "Navigate items"；6 lang 全部 native 翻译（zh-Hans 切换条目 / zh-Hant 切換條目 / ja 項目を移動 / ko 항목 이동 / es Navegar por los elementos / pt Navegar pelos itens）
-- **F-3 TrashItemRow 按钮 keyboard 可见** — `@FocusState private var isFocused: Bool` + `.focusable()` + `.focused($isFocused)`；row 焦点状态时 opacity 也显示按钮（之前只 hover 显示）
-- **F-16 TagPickerSheet 键盘删除** — `.contextMenu` + `.onDeleteCommand`；⌫ / Forward Delete 键或右键菜单都能触发 delete confirmation（之前只能 long-press）
-- **F-20 pin/delete accessibilityLabel** — Image-only Button 加 `.accessibilityLabel(...)` 复用现有 `L10n.tooltip*` key；VoiceOver 不再读 "button" 无上下文的标签
-
-**Low impact（清理 / 性能 / 边界正确性 / i18n 完善）**
-
-- **E-6 addTag trim 空白** — `tag.name.trimmingCharacters(in: .whitespacesAndNewlines)` 在 `addTag(_:)` 入口；"  Work  " 跟 "Work" 不再双存
-- **BUG-007 ItemListView header toggle skip during search** — `onTapGesture` 在 `!searchText.isEmpty` 时 no-op；force-expand 显示规则下，mutate collapsedGroups 反而清空搜索时冒出意外 collapsed 状态
-- **F-25 UpdateStatusPanelView DateFormatter cached** — `static let dateFormatter`；每次 body re-render 不再 new 一个 DateFormatter
-- **F-7 extend .stringsdict 3 plural keys** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`；3 multi-arg keys (alert.trim 2x %d / tagPicker & sidebar.deleteTag with %@) 延后到下个 round
-
-### 升级提示 (Upgrade Note)
-
-- v2.4.0 起带自动升级模块（Sparkle）的版本：等 App 内自动更新，或 `brew upgrade --cask clipmemory`
-- 无数据迁移、无一次性弹窗
-- **i18n 改进**：切到中文/日文/韩文界面时，"Recent 1 item" / "Recent 5 items" 现在按 plural 形式显示
-
-### v2.5.11
-
-
-### 主要更新 (Highlights)
-
-- **🏗 ContentView 拆分 (NEW-7 Phase 4)** — 主列表 / 选择 / 批量操作 / 删除 alerts 全部从 ContentView 抽出到独立 `ItemListView`（287 行）；ContentView 1178 → 995 行（-15.5%）。解耦 list render + list-related state，但保留 view 层的搜索 / filter / 滚动 cache 在 ContentView（避免一次性 refactor 风险）。后续 Phase 6+ ViewModel collapse 把 `@State` 收成 `@StateObject` 即可开 ItemListView snapshot baseline
-- **🛡 数据安全 4 件套** — `maxItems` setter clamp 1...10_000 防负值/超大；`backupNow()` 串行化（NSLock）防 double-click + auto-backup race；`addTag()` trim 前导/尾部空白防 "  Work  " 跟 "Work" 双存；`ClipboardItemRow` observe LanguageManager 切语言时立即重渲染日期
-- **🌐 i18n plural support (F-7)** — 6 个 %d plural keys 走 `.stringsdict`（batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm）；英文 "1 item" / "5 items" 不再都是 "1 items"；新增 `Scripts/generate_stringsdict.py` 一键 regen 7 lang
-- **🛡 Settings "Back Up Now" 错误不再静默吞 (F-4)** — 原来 `try?` 直接 discard every backupNow() 失败；现在 do/catch + onShowBackupError callback → ContentView 弹 `L10n.settingsBackupError` NSAlert（与 export/import/pre-import snapshot 失败路径一致）
-- **🛡 QuickBar ⌘F 真的能聚焦搜索了 (F-9)** — 之前只依赖 KeyCaptureView 的 NSEvent local monitor（popover 窗口上下文里不可靠）；现在加 `.cmdFFindAction` notification 兜底，与 ContentView 走同一条路径
-
-### 修复 (Fixes)
-
-按影响排序 (high → medium → low)：
-
-**High impact（架构 / 数据 / UX 关键路径）**
-
-- **NEW-7 Phase 4 ItemListView 提取** — 主列表 / 选择 / 批量操作 / 删除 alerts 全部从 ContentView 抽出（287 行）；ContentView 1178 → 995 行（-15.5%）
-- **E-1 maxItems setter clamp** — `1...10_000` 范围内；UserDefaults 不再被 -1 / 999_999_999 污染；新 `minMaxItems` / `maxMaxItems` 常量是唯一 source of truth
-- **E-2 backupNow() 串行化** — `NSLock` 包裹；double-click "Back Up Now" + auto-backup 同帧触发不再 race on `createDirectory` + `copyItem(Images)`
-- **E-13 ClipboardItemRow observe LanguageManager** — `@ObservedObject private var languageManager = LanguageManager.shared`；切 Settings → Language 时日期格式立即重渲染（不再等滚动 off+on）
-- **F-9 QuickBar ⌘F 修复** — `.onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction))` 加到 QuickBarView 根 VStack；popover 环境下 ⌘F 也能 focus search field
-- **F-4 Settings Back Up Now 错误 alert** — `onShowBackupError` callback wired 到 ContentView 的 `showBackupInfo(L10n.settingsBackupError)`；失败现在可见
-
-**Medium impact（UX 一致性 / a11y / i18n）**
-
-- **F-10 Welcome Enter 绑默认按钮** — `.keyboardShortcut(.defaultAction)` 加到 `getStartedButton`；Welcome 弹窗按 Enter 直接走 onComplete
-- **F-13 TipsView ↑↓ label** — `L10n.quickbarRecent(8)` 改为 `L10n.tipsKeyUpdown` = "Navigate items"；6 lang 全部 native 翻译（zh-Hans 切换条目 / zh-Hant 切換條目 / ja 項目を移動 / ko 항목 이동 / es Navegar por los elementos / pt Navegar pelos itens）
-- **F-3 TrashItemRow 按钮 keyboard 可见** — `@FocusState private var isFocused: Bool` + `.focusable()` + `.focused($isFocused)`；row 焦点状态时 opacity 也显示按钮（之前只 hover 显示）
-- **F-16 TagPickerSheet 键盘删除** — `.contextMenu` + `.onDeleteCommand`；⌫ / Forward Delete 键或右键菜单都能触发 delete confirmation（之前只能 long-press）
-- **F-20 pin/delete accessibilityLabel** — Image-only Button 加 `.accessibilityLabel(...)` 复用现有 `L10n.tooltip*` key；VoiceOver 不再读 "button" 无上下文的标签
-
-**Low impact（清理 / 性能 / 边界正确性 / i18n 完善）**
-
-- **E-6 addTag trim 空白** — `tag.name.trimmingCharacters(in: .whitespacesAndNewlines)` 在 `addTag(_:)` 入口；"  Work  " 跟 "Work" 不再双存
-- **BUG-007 ItemListView header toggle skip during search** — `onTapGesture` 在 `!searchText.isEmpty` 时 no-op；force-expand 显示规则下，mutate collapsedGroups 反而清空搜索时冒出意外 collapsed 状态
-- **F-25 UpdateStatusPanelView DateFormatter cached** — `static let dateFormatter`；每次 body re-render 不再 new 一个 DateFormatter
-- **F-7 extend .stringsdict 3 plural keys** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`；3 multi-arg keys (alert.trim 2x %d / tagPicker & sidebar.deleteTag with %@) 延后到下个 round
-
-### 升级提示 (Upgrade Note)
-
-- v2.4.0 起带自动升级模块（Sparkle）的版本：等 App 内自动更新，或 `brew upgrade --cask clipmemory`
-- 无数据迁移、无一次性弹窗
-- **i18n 改进**：切到中文/日文/韩文界面时，"Recent 1 item" / "Recent 5 items" 现在按 plural 形式显示
-
+- **🏗 ContentView 拆分 (NEW-7 Phase 4)** — 主列表 / 选择 / 批量操作 / 删除 alerts 全部从 ContentView 抽出到独立 `ItemListView`（287 行）；ContentView 1178 → 995 行（-15.5%）
+- **🛡 数据安全 4 件套** — `maxItems` setter clamp 1...10_000；`backupNow()` 串行化（NSLock）；`addTag()` trim 空白；`ClipboardItemRow` observe LanguageManager
+- **🌐 i18n plural support (F-7)** — 6 个 %d keys 走 `.stringsdict`（batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm）
+- **🛡 Settings "Back Up Now" 错误可见 (F-4)** — `try?` 改 do/catch + onShowBackupError callback
+- **🛡 QuickBar ⌘F (F-9)** — popover 环境下也能 focus search field
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.5.11
 ### v2.5.10 (2026-07-22) — 备份错误可见 + UI 重构 + SwiftUI 警告修复
 
 - **🛡 备份包损坏可见（BUG-024）** — 损坏的 items.json / trash.json / tags.json / 图片文件不再静默导入 0 条；现在导入失败会 throw `corruptedData` 并在设置页弹窗提示
