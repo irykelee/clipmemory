@@ -254,3 +254,7 @@
 "settings.updateSource.option.primary" = "主來源（GitHub）";
 "settings.updateSource.option.fallback" = "鏡像（jsDelivr）";
 "settings.updateSource.statusPanel" = "目前來源：%1$@ · 上次檢查：%2$@ · 上次切換：%3$@";
+
+/* 備份 UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "用於加密備份檔案。還原時需要再次輸入。";
+"settings.backup.error.missingEncryptionKey" = "無法匯出：加密金鑰遺失。請到「設定」中重設加密。";

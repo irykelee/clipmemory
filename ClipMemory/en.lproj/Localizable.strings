@@ -250,3 +250,7 @@
 "settings.updateSource.option.primary" = "Primary (GitHub)";
 "settings.updateSource.option.fallback" = "Mirror (jsDelivr)";
 "settings.updateSource.statusPanel" = "Source: %1$@ · Last check: %2$@ · Last switch: %3$@";
+
+/* Backup UX (H-2/H-3, 2026-07-23) — push requires 7-lang native speaker review per RELEASE_PUSH_CHECKLIST.md §7 */
+"settings.backup.passphrase.info" = "Used to encrypt the backup file. You'll need it again to restore.";
+"settings.backup.error.missingEncryptionKey" = "Cannot export: encryption key missing. Please reset encryption from Settings.";

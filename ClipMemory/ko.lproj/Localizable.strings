@@ -252,3 +252,7 @@
 "settings.updateSource.option.primary" = "기본 (GitHub)";
 "settings.updateSource.option.fallback" = "미러 (jsDelivr)";
 "settings.updateSource.statusPanel" = "소스: %1$@ · 마지막 확인: %2$@ · 마지막 전환: %3$@";
+
+/* 백업 UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "백업 파일을 암호화하는 데 사용됩니다. 복원할 때 다시 필요합니다.";
+"settings.backup.error.missingEncryptionKey" = "내보낼 수 없음: 암호화 키를 찾을 수 없습니다. 설정에서 암호화를 재설정하세요.";

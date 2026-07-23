@@ -252,3 +252,7 @@
 "settings.updateSource.option.primary" = "プライマリ（GitHub）";
 "settings.updateSource.option.fallback" = "ミラー（jsDelivr）";
 "settings.updateSource.statusPanel" = "ソース: %1$@ · 最終確認: %2$@ · 切替: %3$@";
+
+/* バックアップ UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "バックアップファイルを暗号化するために使用されます。復元時に再度必要です。";
+"settings.backup.error.missingEncryptionKey" = "エクスポートできません: 暗号化キーが見つかりません。設定から暗号化をリセットしてください。";

@@ -893,6 +893,12 @@ struct ContentView: View {
     private func promptBackupPassphrase() -> String? {
         let alert = NSAlert()
         alert.messageText = L10n.settingsBackupPassphrase
+        // H-2 (2026-07-23, per audit-2026-07-23-3subagent-findings §②):
+        // NSAlert's informativeText shows below the title in secondary smaller
+        // text. Without it, users see only "Backup passphrase (min 6 chars)"
+        // and have no idea what the password is for. Explains the round-trip
+        // requirement so they save the password somewhere recoverable.
+        alert.informativeText = L10n.settingsBackupPassphraseInfo
         let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         alert.accessoryView = field
         alert.addButton(withTitle: L10n.buttonConfirm)
@@ -908,8 +914,15 @@ struct ContentView: View {
         panel.nameFieldStringValue = "ClipMemory-backup.clipmemory"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard let passphrase = promptBackupPassphrase() else { return }
+        // H-3 (2026-07-23, per audit-2026-07-23-3subagent-findings §②):
+        // Previously routed to the generic `settingsBackupError` ("operation
+        // failed, please try again"), which sent users hunting for transport
+        // / disk / permission causes when the actual issue is a missing root
+        // encryption key (Keychain empty + .encryption_key fallback file
+        // gone). The dedicated message tells them to reset encryption from
+        // Settings — the only correct remediation.
         guard let keyData = CryptoService.loadKeyData() else {
-            showBackupInfo(L10n.settingsBackupError)
+            showBackupInfo(L10n.settingsBackupErrorMissingEncryptionKey)
             return
         }
         // Flush the 500ms debounce so the package includes the very latest items.

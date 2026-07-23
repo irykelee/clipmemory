@@ -252,3 +252,7 @@
 "settings.updateSource.option.primary" = "Principal (GitHub)";
 "settings.updateSource.option.fallback" = "Espejo (jsDelivr)";
 "settings.updateSource.statusPanel" = "Fuente: %1$@ · Última verificación: %2$@ · Último cambio: %3$@";
+
+/* Respaldo UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "Usada para cifrar el archivo de copia. La necesitarás de nuevo para restaurar.";
+"settings.backup.error.missingEncryptionKey" = "No se puede exportar: falta la clave de cifrado. Restablece el cifrado desde Ajustes.";

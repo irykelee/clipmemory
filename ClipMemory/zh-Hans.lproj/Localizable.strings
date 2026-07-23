@@ -250,3 +250,7 @@
 "settings.updateSource.option.primary" = "主源（GitHub）";
 "settings.updateSource.option.fallback" = "镜像（jsDelivr）";
 "settings.updateSource.statusPanel" = "当前源：%1$@ · 上次检查：%2$@ · 上次切换：%3$@";
+
+/* 备份 UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "用于加密备份文件。恢复时需要再次输入。";
+"settings.backup.error.missingEncryptionKey" = "无法导出：加密密钥缺失。请到「设置」中重置加密。";

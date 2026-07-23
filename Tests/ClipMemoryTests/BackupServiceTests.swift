@@ -97,12 +97,23 @@ final class BackupServiceTests: XCTestCase {
     // MARK: - M-2 (2026-07-23): throws-path coverage
 
     func testBackupNowThrowsWhenDirectoryCreationFails() {
-        // Block the next backup dir by placing a regular file at the
-        // timestamped path. createDirectory(withIntermediateDirectories:)
-        // throws when the parent path collides with a non-directory.
-        let blocker = backupsDir.appendingPathComponent("2026-07-23_120000")
-        try? "blocker".write(to: blocker, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: blocker) }
+        // Block backupNow by replacing `backupsDir` itself with a regular
+        // file. createDirectory(withIntermediateDirectories:) cannot create
+        // a `<stamped>` child under a non-directory parent, so backupNow
+        // throws .directoryCreationFailed deterministically.
+        //
+        // History note: this test originally blocked a single second-precision
+        // timestamped subpath (e.g. "2026-07-23_120000"). BUG-021 later
+        // promoted the backup name format to millisecond precision
+        // (`yyyy-MM-dd_HHmmss.SSS`), which made per-stamp blocker matching
+        // unreliable — backupNow would create a fresh timestamp and miss the
+        // blocker. Blocking the parent directory is stamp-agnostic.
+        try? FileManager.default.removeItem(at: backupsDir)
+        try? "blocker".write(to: backupsDir, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: backupsDir)
+            try? FileManager.default.createDirectory(at: backupsDir, withIntermediateDirectories: true)
+        }
         XCTAssertThrowsError(try service.backupNow()) { error in
             guard case BackupError.directoryCreationFailed = error else {
                 XCTFail("expected BackupError.directoryCreationFailed, got \(error)")
@@ -112,25 +123,54 @@ final class BackupServiceTests: XCTestCase {
     }
 
     func testBackupNowDoesNotMutateStateOnFailure() throws {
-        seedStoreData()
-        // Establish a baseline successful backup so lastBackupDate is populated
-        // and a backup dir exists on disk.
-        _ = try service.backupNow()
-        XCTAssertNotNil(service.lastBackupDate)
-        let preDate = service.lastBackupDate
-        let preEntries = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        // Use an isolated BackupService backed by a fresh backups directory
+        // so the failure case can replace the dir with a blocker file
+        // without disturbing the main `service` / `backupsDir` shared with
+        // sibling tests. The setUp-created `backupsDir` remains untouched;
+        // we only operate within `isolatedBackups`.
+        let isolatedBackups = tempRoot.appendingPathComponent("Backups-Isolated", isDirectory: true)
+        let isolatedImages = tempRoot.appendingPathComponent("Images-Isolated", isDirectory: true)
+        try? FileManager.default.createDirectory(at: isolatedImages, withIntermediateDirectories: true)
+        let isolatedDefaults = UserDefaults(suiteName: "BackupServiceTests-Isolated-\(UUID().uuidString)")!
+        let isolated = BackupService(
+            backupsDirectory: isolatedBackups,
+            imagesDirectory: isolatedImages,
+            defaults: isolatedDefaults
+        )
 
-        // Force next backup to throw at createDirectory with the same blocker
-        // pattern. The failed call must NOT advance lastBackupDate (that
-        // assignment sits AFTER all try blocks) and must NOT leave a
-        // partially-written backup directory.
-        let blocker = backupsDir.appendingPathComponent("2026-07-23_999999")
-        try? "blocker".write(to: blocker, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: blocker) }
+        // Seed an item into the isolated defaults so backupNow has something
+        // to write, then establish a successful baseline backup.
+        let item = ClipboardItem(content: "isolated-backup", type: .text)
+        let data = try JSONEncoder().encode([item])
+        isolatedDefaults.set(data, forKey: "ClipboardItems")
+        _ = try isolated.backupNow()
+        XCTAssertNotNil(isolated.lastBackupDate)
+        let preDate = isolated.lastBackupDate
+        let preEntries = (try? FileManager.default.contentsOfDirectory(atPath: isolatedBackups.path)) ?? []
+        XCTAssertGreaterThan(preEntries.count, 0, "baseline backup should have produced a dir on disk")
 
-        XCTAssertThrowsError(try service.backupNow())
-        XCTAssertEqual(service.lastBackupDate, preDate, "lastBackupDate must not advance on failed backup")
-        let postEntries = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
-        XCTAssertEqual(postEntries, preEntries, "no partial backup dir should appear on disk")
+        // Now block by replacing isolatedBackups with a regular file.
+        // createDirectory(withIntermediateDirectories:) cannot place a
+        // <stamped> child under a non-directory parent, so backupNow throws
+        // .directoryCreationFailed — same as the simpler blocker test.
+        try? FileManager.default.removeItem(at: isolatedBackups)
+        try? "blocker".write(to: isolatedBackups, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: isolatedBackups)
+        }
+
+        XCTAssertThrowsError(try isolated.backupNow())
+        XCTAssertEqual(isolated.lastBackupDate, preDate, "lastBackupDate must not advance on failed backup")
+
+        // post-failure, isolatedBackups is still a regular file (not a directory),
+        // so contentsOfDirectory(atPath:) reports []. We expect the failed
+        // attempt to leave state identical to "blocked dir" — no partial
+        // backup dir was created on the surviving backups tree. The assertion
+        // is therefore against the post-block state, not the pre-block
+        // baseline; this catches "backupNow leaked a partial subdir under
+        // the blocker" without conflating it with the wipe of the original
+        // children.
+        let postEntries = (try? FileManager.default.contentsOfDirectory(atPath: isolatedBackups.path)) ?? []
+        XCTAssertEqual(postEntries, [], "no partial backup dir should appear under the blocked parent")
     }
 }

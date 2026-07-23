@@ -252,3 +252,7 @@
 "settings.updateSource.option.primary" = "Principal (GitHub)";
 "settings.updateSource.option.fallback" = "Espelho (jsDelivr)";
 "settings.updateSource.statusPanel" = "Fonte: %1$@ · Última verificação: %2$@ · Última mudança: %3$@";
+
+/* Backup UX (H-2/H-3, 2026-07-23) */
+"settings.backup.passphrase.info" = "Usada para criptografar o arquivo de backup. Você precisará dela novamente para restaurar.";
+"settings.backup.error.missingEncryptionKey" = "Não é possível exportar: chave de criptografia ausente. Redefina a criptografia em Ajustes.";

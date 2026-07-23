@@ -167,8 +167,20 @@ struct L10n {
     static var settingsBackupExport: String { string("settings.backup.export") }
     static var settingsBackupImport: String { string("settings.backup.import") }
     static var settingsBackupPassphrase: String { string("settings.backup.passphrase") }
+    // H-2 (2026-07-23): informativeText for promptBackupPassphrase.
+    // Tells users the passphrase will be needed again to restore, not just
+    // asking for an opaque password. Reduces confusion when the user later
+    // cannot recall why they typed one.
+    static var settingsBackupPassphraseInfo: String { string("settings.backup.passphrase.info") }
     static var settingsBackupPassphraseWrong: String { string("settings.backup.passphrase.wrong") }
     static var settingsBackupError: String { string("settings.backup.error") }
+    // H-3 (2026-07-23): distinguishes root-encryption-key-missing from a
+    // generic "operation failed". The previous generic message sent users
+    // hunting for transport / disk / permission causes when the real issue
+    // is that CryptoService.loadKeyData() returned nil (Keychain empty +
+    // .encryption_key fallback file gone). Tells them to reset encryption
+    // from Settings instead of retrying.
+    static var settingsBackupErrorMissingEncryptionKey: String { string("settings.backup.error.missingEncryptionKey") }
     static var settingsBackupExportDone: String { string("settings.backup.export.done") }
     static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ corrupt: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, corrupt, images) }
     static func settingsBackupLast(_ date: String) -> String { string("settings.backup.last", date) }
