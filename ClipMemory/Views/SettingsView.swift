@@ -126,7 +126,12 @@ struct SettingsView: View {
                     // was missing it. Hop to a background queue and toggle
                     // the refresh signal on the main queue when done.
                     DispatchQueue.global(qos: .userInitiated).async {
-                        _ = backupService.backupNow()
+                        // M-2 (2026-07-23): backupNow now throws. UI-button path
+                        // is best-effort: skip on failure but still refresh the
+                        // UI so the user sees an updated timestamp. Real
+                        // failure feedback comes via the import path (which
+                        // inspects the thrown error to abort).
+                        _ = try? backupService.backupNow()
                         DispatchQueue.main.async {
                             backupRefresh.toggle()
                         }

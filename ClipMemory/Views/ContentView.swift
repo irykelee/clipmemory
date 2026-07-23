@@ -939,7 +939,17 @@ struct ContentView: View {
         // Heavy work (unzip, re-keying, image copies) off the main thread;
         // BackupPackage hops to main for the @Published merges itself.
         DispatchQueue.global(qos: .userInitiated).async {
-            backupService.backupNow()
+            // M-2 (2026-07-23): backupNow now throws. Pre-import
+            // safety snapshot is REQUIRED before mutating user data.
+            // If it fails we must NOT proceed with the import —
+            // silently overwriting the user's current clipboard
+            // history with no rollback point is a data-loss bug.
+            do {
+                _ = try backupService.backupNow()
+            } catch {
+                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
+                return
+            }
             do {
                 let result = try BackupPackage.importPackage(
                     from: url,

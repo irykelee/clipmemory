@@ -11,6 +11,28 @@ import os.log
 /// Trigger: once per day on app launch (throttled by `lastBackupDate`), plus a
 /// manual "Backup Now" from Settings. Old backups are pruned to `backupKeepCount`.
 /// All paths are injectable so tests never touch the real Application Support.
+
+/// Failures thrown by `backupNow()`. Created M-2 (2026-07-23) when the
+/// signature was promoted from `URL?` to `throws -> URL`. Each case names
+/// the failed filesystem step so callers (and tests) can disambiguate
+/// without parsing `localizedDescription`.
+enum BackupError: LocalizedError {
+    case directoryCreationFailed(underlying: Error)
+    case writeFailed(filename: String, underlying: Error)
+    case imageCopyFailed(underlying: Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .directoryCreationFailed(let e):
+            return "Backup directory creation failed: \(e.localizedDescription)"
+        case .writeFailed(let name, let e):
+            return "Backup write to \(name) failed: \(e.localizedDescription)"
+        case .imageCopyFailed(let e):
+            return "Backup image copy failed: \(e.localizedDescription)"
+        }
+    }
+}
+
 final class BackupService {
     static let shared = BackupService()
 
@@ -61,14 +83,28 @@ final class BackupService {
             return
         }
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.backupNow()
+            // M-2 (2026-07-23): backupNow now throws. Auto-backup path is
+            // best-effort — log + skip on failure. Real user-visible failures
+            // surface from the manual UI button path and the import path
+            // (both of which inspect the thrown error directly).
+            _ = try? self?.backupNow()
         }
     }
 
     /// Creates a timestamped backup directory with the three store blobs and a
     /// copy of Images/, then prunes old backups. Returns the new directory.
+    /// Throws `BackupError` on any filesystem failure. Callers should either:
+    /// - Log + skip (e.g., `performBackupIfNeeded`, the "Backup Now" UI button)
+    /// - Abort the calling operation (e.g., the pre-import safety snapshot —
+    ///   failing here means we have no rollback point, so the import must NOT
+    ///   proceed; see `ContentView.swift` importBackup flow for the contract).
+    ///
+    /// M-2 (2026-07-23): previously returned `URL?` and silently coerced every
+    /// failure to `nil`. `ContentView.importBackup` had no way to detect the
+    /// pre-import snapshot failing and proceeded to overwrite user data
+    /// anyway. Now the failure is observable at the type level.
     @discardableResult
-    func backupNow() -> URL? {
+    func backupNow() throws -> URL {
         let formatter = DateFormatter()
         // POSIX locale keeps `yyyy` Gregorian regardless of the user's calendar
         // (Buddhist/Japanese eras would otherwise break name-sort = time-sort).
@@ -84,30 +120,40 @@ final class BackupService {
 
         do {
             try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
-
-            let blobs: [(String, String)] = [
-                ("items.json", "ClipboardItems"),
-                ("tags.json", "ClipMemoryTags"),
-                ("trash.json", "ClipboardTrashedItems")
-            ]
-            for (filename, key) in blobs {
-                guard let data = defaults.data(forKey: key) else { continue }
-                try data.write(to: destination.appendingPathComponent(filename), options: .atomic)
-            }
-
-            if fileManager.fileExists(atPath: imagesDirectory.path) {
-                let imagesDestination = destination.appendingPathComponent("Images", isDirectory: true)
-                try fileManager.copyItem(at: imagesDirectory, to: imagesDestination)
-            }
-
-            defaults.set(Date(), forKey: Self.lastBackupDateKey)
-            pruneOldBackups()
-            logger.info("Backup completed at \(destination.path)")
-            return destination
         } catch {
-            logger.error("Backup failed: \(error.localizedDescription)")
-            return nil
+            logger.error("Backup failed (directory): \(error.localizedDescription)")
+            throw BackupError.directoryCreationFailed(underlying: error)
         }
+
+        let blobs: [(String, String)] = [
+            ("items.json", "ClipboardItems"),
+            ("tags.json", "ClipMemoryTags"),
+            ("trash.json", "ClipboardTrashedItems")
+        ]
+        for (filename, key) in blobs {
+            guard let data = defaults.data(forKey: key) else { continue }
+            do {
+                try data.write(to: destination.appendingPathComponent(filename), options: .atomic)
+            } catch {
+                logger.error("Backup failed (write \(filename)): \(error.localizedDescription)")
+                throw BackupError.writeFailed(filename: filename, underlying: error)
+            }
+        }
+
+        if fileManager.fileExists(atPath: imagesDirectory.path) {
+            let imagesDestination = destination.appendingPathComponent("Images", isDirectory: true)
+            do {
+                try fileManager.copyItem(at: imagesDirectory, to: imagesDestination)
+            } catch {
+                logger.error("Backup failed (copy Images): \(error.localizedDescription)")
+                throw BackupError.imageCopyFailed(underlying: error)
+            }
+        }
+
+        defaults.set(Date(), forKey: Self.lastBackupDateKey)
+        pruneOldBackups()
+        logger.info("Backup completed at \(destination.path)")
+        return destination
     }
 
     /// Keeps the newest `keepCount` timestamped backup directories.
