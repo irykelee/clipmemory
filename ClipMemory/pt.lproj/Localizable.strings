@@ -227,6 +227,9 @@
 "trash.emptyConfirm.title" = "Esvaziar lixeira";
 "trash.emptyConfirm.message" = "%d itens serão apagados permanentemente. Esta ação não pode ser desfeita.";
 "trash.retentionDays" = "Dias de retenção da lixeira";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "Excluir este item permanentemente?";
+"trash.deleteConfirm.confirm" = "Excluir";
 "item.ocr.copy" = "Copiar texto da imagem";
 "settings.ocr.enabled" = "Reconhecimento de texto em imagens (OCR)";
 "settings.ocr.hint" = "Processado no dispositivo, sem rede. Aplica-se automaticamente a novas capturas.";

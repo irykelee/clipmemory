@@ -227,6 +227,9 @@
 "trash.emptyConfirm.title" = "휴지통 비우기";
 "trash.emptyConfirm.message" = "%d개 항목이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.";
 "trash.retentionDays" = "휴지통 보관 일수";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "이 항목을 영구적으로 삭제하시겠습니까?";
+"trash.deleteConfirm.confirm" = "삭제";
 "item.ocr.copy" = "이미지 내 텍스트 복사";
 "settings.ocr.enabled" = "이미지 텍스트 인식 (OCR)";
 "settings.ocr.hint" = "온디바이스 처리, 네트워크를 사용하지 않습니다. 새 스크린샷에 자동 적용됩니다.";

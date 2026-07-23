@@ -227,6 +227,9 @@
 "trash.emptyConfirm.title" = "ごみ箱を空にする";
 "trash.emptyConfirm.message" = "%d 件のアイテムが完全に削除されます。この操作は元に戻せません。";
 "trash.retentionDays" = "ごみ箱の保持日数";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "この項目を完全に削除しますか？";
+"trash.deleteConfirm.confirm" = "削除";
 "item.ocr.copy" = "画像内の文字をコピー";
 "settings.ocr.enabled" = "画像文字認識（OCR）";
 "settings.ocr.hint" = "オンデバイスで処理され、通信しません。新しいスクリーンショットに自動で適用されます。";

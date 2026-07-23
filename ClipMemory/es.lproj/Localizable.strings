@@ -227,6 +227,9 @@
 "trash.emptyConfirm.title" = "Vaciar papelera";
 "trash.emptyConfirm.message" = "%d elementos se eliminarán permanentemente. Esta acción no se puede deshacer.";
 "trash.retentionDays" = "Días de retención de la papelera";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "¿Eliminar este elemento permanentemente?";
+"trash.deleteConfirm.confirm" = "Eliminar";
 "item.ocr.copy" = "Copiar texto de la imagen";
 "settings.ocr.enabled" = "Reconocimiento de texto en imágenes (OCR)";
 "settings.ocr.hint" = "Procesado en el dispositivo, sin red. Se aplica automáticamente a las nuevas capturas.";

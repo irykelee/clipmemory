@@ -138,6 +138,11 @@ struct L10n {
     static var trashEmptyConfirmTitle: String { string("trash.emptyConfirm.title") }
     static func trashEmptyConfirmMessage(_ count: Int) -> String { string("trash.emptyConfirm.message", count) }
     static var trashRetentionDays: String { string("trash.retentionDays") }
+    // F-1 (2026-07-23 audit): per-row permanent-delete confirmation. The
+    // bulk `trashEmptyConfirmTitle` reads "Empty Trash" which is wrong
+    // for a single-item dialog — different copy, different action surface.
+    static var trashDeleteConfirmTitle: String { string("trash.deleteConfirm.title") }
+    static var trashDeleteConfirmConfirm: String { string("trash.deleteConfirm.confirm") }
 
     static var settingsSectionHistory: String { string("settings.section.history") }
     static var settingsSectionSensitive: String { string("settings.section.sensitive") }

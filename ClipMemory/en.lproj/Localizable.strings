@@ -225,6 +225,9 @@
 "trash.emptyConfirm.title" = "Empty Trash";
 "trash.emptyConfirm.message" = "%d items will be permanently deleted. This action cannot be undone.";
 "trash.retentionDays" = "Trash retention days";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "Permanently delete this item?";
+"trash.deleteConfirm.confirm" = "Delete";
 "item.ocr.copy" = "Copy Text from Image";
 "settings.ocr.enabled" = "Image text recognition (OCR)";
 "settings.ocr.hint" = "On-device, never leaves your Mac. Applies automatically to new screenshots.";

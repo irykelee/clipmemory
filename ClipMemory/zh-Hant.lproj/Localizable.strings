@@ -229,6 +229,9 @@
 "trash.emptyConfirm.title" = "清空垃圾桶";
 "trash.emptyConfirm.message" = "%d 個條目將被永久刪除，此操作不可撤銷。";
 "trash.retentionDays" = "垃圾桶保留天數";
+// F-1 (2026-07-23 audit): per-row permanent delete confirmation
+"trash.deleteConfirm.title" = "永久刪除此條目？";
+"trash.deleteConfirm.confirm" = "刪除";
 "item.ocr.copy" = "複製圖中文字";
 "settings.ocr.enabled" = "圖片文字識別（OCR）";
 "settings.ocr.hint" = "本機識別，不連網。新截圖自動生效。";
