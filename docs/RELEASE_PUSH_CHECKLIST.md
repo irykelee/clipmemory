@@ -3,6 +3,7 @@
 > **Why this exists**: Today (2026-07-20) the AI pushed 13 commits + tag v2.5.7 and declared "all done". The user then had to ping **4 separate times** to surface: release page auto-stub, Casks file stale, README changelog missing, Chinese section had English titles, 5 lang READMEs missing entries. Total: 5 missed channels. The 12-step `docs/RELEASE.md` flow is correct but hidden — Claude can't eyeball-check 12 paragraphs. This file is the **single-page, all-checkboxes-at-once, executable** version.
 >
 > **Rule**: Before `git push origin vX.Y.Z`, run through every checkbox below. After tag push, run all post-push verifies. Mark each `[x]` in real-time; missing = bug.
+> Sections A–E are per-release. Section **F** is one-time repo setup (branch protection) — run once, not every release.
 >
 > **Automation**: `Scripts/pre_push_verify.sh` automates the local checks below. Even if it returns green, **do not skip the manual sections** (release page content, GH Actions verify, tap repo) — those need eyes.
 
