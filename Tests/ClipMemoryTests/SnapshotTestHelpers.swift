@@ -118,11 +118,16 @@ func assertImageSnapshot(
     // runs (env var unset) keep the strict comparison for regression
     // detection.
     //
-    // Detect CI via GITHUB_ACTIONS="true" (set by GitHub Actions) AND
-    // CI="true" (set by many CI providers). xcodebuild test does not
-    // always inherit CI from the workflow shell, so check both.
+    // Detect CI via NSHomeDirectory() == "/Users/runner" — GitHub Actions
+    // macOS runners run as the `runner` user with that exact home dir.
+    // xcodebuild test filters out the usual CI env vars (CI,
+    // GITHUB_ACTIONS) when launching xctest, but the home directory
+    // propagates. Fall back to env vars in case the runner image moves.
+    let home = NSHomeDirectory()
     let env = ProcessInfo.processInfo.environment
-    let isCI = env["GITHUB_ACTIONS"] == "true" || env["CI"] == "true"
+    let isCI = home == "/Users/runner" ||
+               env["GITHUB_ACTIONS"] == "true" ||
+               env["CI"] == "true"
     if isCI {
         do {
             try FileManager.default.createDirectory(at: goldenDir, withIntermediateDirectories: true)
