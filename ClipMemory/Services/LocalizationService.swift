@@ -84,6 +84,11 @@ struct L10n {
     static var actionCopy: String { string("action.copy") }
     static var actionShowContent: String { string("action.show.content") }
     static var actionHideContent: String { string("action.hide.content") }
+    // F-19 (2026-07-23 audit): VoiceOver labels for the row select checkbox.
+    // The button is icon-only (`checkmark.circle.fill` vs `circle`) — without
+    // these labels, VoiceOver reads "button" with no functional hint.
+    static var actionSelect: String { string("action.select") }
+    static var actionDeselect: String { string("action.deselect") }
 
     static var tooltipUnpin: String { string("tooltip.unpin") }
     static var tooltipPin: String { string("tooltip.pin") }
@@ -178,6 +183,11 @@ struct L10n {
     // cannot recall why they typed one.
     static var settingsBackupPassphraseInfo: String { string("settings.backup.passphrase.info") }
     static var settingsBackupPassphraseWrong: String { string("settings.backup.passphrase.wrong") }
+    // 3.1 (2026-07-23): re-prompt feedback when user enters a passphrase
+    // shorter than the 6-char minimum. Previously the alert closed with
+    // no feedback, making Export look broken.
+    static var passphraseTooShortTitle: String { string("passphrase.tooShort.title") }
+    static var passphraseTooShortMessage: String { string("passphrase.tooShort.message") }
     static var settingsBackupError: String { string("settings.backup.error") }
     // H-3 (2026-07-23): distinguishes root-encryption-key-missing from a
     // generic "operation failed". The previous generic message sent users

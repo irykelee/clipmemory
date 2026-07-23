@@ -34,6 +34,9 @@
 "action.copy" = "コピー";
 "action.show.content" = "内容を表示";
 "action.hide.content" = "内容を非表示";
+// F-19 (2026-07-23 audit): VoiceOver labels for select checkbox
+"action.select" = "選択";
+"action.deselect" = "選択解除";
 
 /* Tooltips */
 "tooltip.unpin" = "ピン留め解除";
@@ -77,6 +80,9 @@
 "settings.backup.import" = "バックアップを読み込む…";
 "settings.backup.passphrase" = "バックアップパスワード（6文字以上）";
 "settings.backup.passphrase.wrong" = "パスワードが違うかパッケージが破損しています";
+// 3.1 (2026-07-23 audit): short-passphrase re-prompt
+"passphrase.tooShort.title" = "パスワードが短すぎます";
+"passphrase.tooShort.message" = "パスワードは 6 文字以上で入力してください。";
 "settings.backup.error" = "バックアップ操作に失敗しました。もう一度お試しください";
 "settings.backup.export.done" = "書き出しが完了しました";
 "settings.backup.import.result" = "読み込み完了：%1$d 件追加、%2$d 件の重複をスキップ、%3$d 件破損、画像 %4$d 件";

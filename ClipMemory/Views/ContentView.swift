@@ -889,23 +889,41 @@ struct ContentView: View {
         alert.runModal()
     }
 
-    /// Prompts for the backup passphrase (min 6 chars). Returns nil on cancel/too short.
+    /// Prompts for the backup passphrase (min 6 chars). Returns nil on cancel,
+    /// or a valid passphrase on confirm. Loops with a warning if the user
+    /// tries to confirm a too-short input — previously this silently
+    /// returned nil which made Export look broken (3.1, 2026-07-23 audit).
     private func promptBackupPassphrase() -> String? {
-        let alert = NSAlert()
-        alert.messageText = L10n.settingsBackupPassphrase
-        // H-2 (2026-07-23, per audit-2026-07-23-3subagent-findings §②):
-        // NSAlert's informativeText shows below the title in secondary smaller
-        // text. Without it, users see only "Backup passphrase (min 6 chars)"
-        // and have no idea what the password is for. Explains the round-trip
-        // requirement so they save the password somewhere recoverable.
-        alert.informativeText = L10n.settingsBackupPassphraseInfo
-        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        alert.accessoryView = field
-        alert.addButton(withTitle: L10n.buttonConfirm)
-        alert.addButton(withTitle: L10n.buttonCancel)
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        let value = field.stringValue
-        return value.count >= 6 ? value : nil
+        while true {
+            let alert = NSAlert()
+            alert.messageText = L10n.settingsBackupPassphrase
+            // H-2 (2026-07-23, per audit-2026-07-23-3subagent-findings §②):
+            // NSAlert's informativeText shows below the title in secondary smaller
+            // text. Without it, users see only "Backup passphrase (min 6 chars)"
+            // and have no idea what the password is for. Explains the round-trip
+            // requirement so they save the password somewhere recoverable.
+            alert.informativeText = L10n.settingsBackupPassphraseInfo
+            let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+            alert.accessoryView = field
+            alert.addButton(withTitle: L10n.buttonConfirm)
+            alert.addButton(withTitle: L10n.buttonCancel)
+
+            guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+            let value = field.stringValue
+            if value.count >= 6 { return value }
+
+            // 3.1 (2026-07-23 audit): short input re-prompts with an
+            // explicit "Passphrase too short" warning. The previous
+            // `return value.count >= 6 ? value : nil` silently swallowed
+            // the bad input — user clicked Export, alert closed, nothing
+            // happened, looked like the button was broken.
+            let warning = NSAlert()
+            warning.messageText = L10n.passphraseTooShortTitle
+            warning.informativeText = L10n.passphraseTooShortMessage
+            warning.alertStyle = .warning
+            warning.addButton(withTitle: L10n.buttonConfirm)
+            warning.runModal()
+        }
     }
 
     private func exportBackup() {

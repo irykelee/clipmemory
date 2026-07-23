@@ -211,7 +211,21 @@ struct ClipboardItemRow: View, Equatable {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Button(action: { onSelect?(!isSelected) }, label: { Image(systemName: isSelected ? "checkmark.circle.fill" : "circle").font(.system(size: iconSize)).foregroundColor(isSelected ? .accentColor : .secondary).frame(width: 22, height: 22) }).buttonStyle(.plain)
+            Button {
+                    onSelect?(!isSelected)
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: iconSize))
+                        .foregroundColor(isSelected ? .accentColor : .secondary)
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                // F-19 (2026-07-23 audit): VoiceOver sees only "button" for an
+                // icon-only select toggle. Add an explicit label that flips
+                // with state and announce the .isSelected trait so screen
+                // readers convey the row's current selection.
+                .accessibilityLabel(isSelected ? L10n.actionDeselect : L10n.actionSelect)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .top) {
                     if item.type == .image {

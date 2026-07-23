@@ -34,6 +34,9 @@
 "action.copy" = "複製";
 "action.show.content" = "顯示內容";
 "action.hide.content" = "收合內容";
+// F-19 (2026-07-23 audit): VoiceOver labels for select checkbox
+"action.select" = "選取";
+"action.deselect" = "取消選取";
 
 /* Tooltips */
 "tooltip.unpin" = "取消釘選";
@@ -78,6 +81,9 @@
 "settings.backup.import" = "導入備份…";
 "settings.backup.passphrase" = "備份密碼（至少 6 位）";
 "settings.backup.passphrase.wrong" = "密碼錯誤或備份包已損毀";
+// 3.1 (2026-07-23 audit): short-passphrase re-prompt
+"passphrase.tooShort.title" = "密碼太短";
+"passphrase.tooShort.message" = "密碼至少需要 6 位字元，請重新輸入。";
 "settings.backup.error" = "備份操作失敗，請重試";
 "settings.backup.export.done" = "導出完成";
 "settings.backup.import.result" = "導入完成：新增 %1$d 條，跳過重複 %2$d 條，損壞 %3$d 條，圖片 %4$d 張";

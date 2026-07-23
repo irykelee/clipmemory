@@ -34,6 +34,9 @@
 "action.copy" = "Copiar";
 "action.show.content" = "Mostrar conteúdo";
 "action.hide.content" = "Ocultar conteúdo";
+// F-19 (2026-07-23 audit): VoiceOver labels for select checkbox
+"action.select" = "Selecionar";
+"action.deselect" = "Desmarcar";
 
 /* Tooltips */
 "tooltip.unpin" = "Desfixar";
@@ -77,6 +80,9 @@
 "settings.backup.import" = "Importar cópia…";
 "settings.backup.passphrase" = "Senha da cópia (mínimo 6 caracteres)";
 "settings.backup.passphrase.wrong" = "Senha incorreta ou pacote corrompido";
+// 3.1 (2026-07-23 audit): short-passphrase re-prompt
+"passphrase.tooShort.title" = "Senha muito curta";
+"passphrase.tooShort.message" = "A senha deve ter pelo menos 6 caracteres. Tente novamente.";
 "settings.backup.error" = "A operação de cópia falhou, tente novamente";
 "settings.backup.export.done" = "Exportação concluída";
 "settings.backup.import.result" = "Importação concluída: %1$d itens adicionados, %2$d duplicados ignorados, %3$d corrompidos, %4$d imagens";
