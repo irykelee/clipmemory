@@ -172,14 +172,21 @@ final class BackupService {
         logger.info("Pruned \(excess) old backup(s), keeping \(self.keepCount)")
     }
 
-    /// Matches the `yyyy-MM-dd_HHmmss` backup directory format (17 chars).
+    /// Matches the `yyyy-MM-dd_HHmmss.SSS` backup directory format (21 chars).
+    /// The length MUST match the live `dateFormat` in `backupNow()` — when
+    /// BUG-021 (2026-07-21) promoted the stamp from second precision (17 chars)
+    /// to millisecond precision (21 chars), this filter was overlooked, so
+    /// `pruneOldBackups` matched 0 production dirs and the `Backups/` tree
+    /// grew unboundedly. Cross-check the two sites together when changing
+    /// either.
     private static func isBackupDirName(_ name: String) -> Bool {
         let chars = Array(name)
-        guard chars.count == 17 else { return false }
+        guard chars.count == 21 else { return false }
         for (index, char) in chars.enumerated() {
             switch index {
             case 4, 7: guard char == "-" else { return false }
             case 10: guard char == "_" else { return false }
+            case 17: guard char == "." else { return false }
             default: guard char.isNumber else { return false }
             }
         }

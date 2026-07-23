@@ -63,8 +63,12 @@ final class BackupServiceTests: XCTestCase {
 
     func testPruneKeepsOnlyNewestN() {
         service.keepCount = 3
+        // Regression for 1.1 (2026-07-23 audit): the backup dir format is
+        // BUG-021 `yyyy-MM-dd_HHmmss.SSS` (21 chars). Seed matching names so
+        // `isBackupDirName` accepts them; if the length check drifts again,
+        // this test catches it without depending on `backupNow` internals.
         for i in 0..<5 {
-            let name = String(format: "2026-07-%02d_120000", 14 + i)
+            let name = String(format: "2026-07-%02d_120000.000", 14 + i)
             try? FileManager.default.createDirectory(
                 at: backupsDir.appendingPathComponent(name, isDirectory: true),
                 withIntermediateDirectories: true
@@ -73,7 +77,41 @@ final class BackupServiceTests: XCTestCase {
         service.pruneOldBackups()
         let remaining = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
         XCTAssertEqual(remaining.count, 3)
-        XCTAssertEqual(remaining.min(), "2026-07-16_120000", "oldest two must be pruned")
+        XCTAssertEqual(remaining.min(), "2026-07-16_120000.000", "oldest two must be pruned")
+    }
+
+    /// End-to-end regression for 1.1: when backup dirs are produced by the
+    /// real `backupNow()` (which writes BUG-021 21-char millisecond stamps
+    /// and runs prune internally per `keepCount`), the live format must be
+    /// accepted by the filter. Before the fix the filter checked 17 chars,
+    /// so 0 production dirs matched and pruning silently never fired —
+    /// letting `Backups/` grow unboundedly.
+    ///
+    /// Note: `backupNow()` calls `pruneOldBackups()` itself, so we can't
+    /// assert a pre-prune count of 5 (the 4th and 5th calls auto-prune).
+    /// What matters is that *every* name produced by `backupNow()` passes
+    /// the filter — i.e. the filter accepts the real format, not just a
+    /// hand-seeded one with the same length.
+    func testPruneRecognizesRealBackupNowFormat() throws {
+        service.keepCount = 3
+        seedStoreData()
+        for _ in 0..<5 {
+            _ = try service.backupNow()
+            // Millisecond precision can collide on fast hardware — sleep a
+            // few ms to guarantee distinct stamps across the 5 backups.
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+
+        service.pruneOldBackups()
+
+        let remaining = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        XCTAssertEqual(remaining.count, 3, "prune must trim to keepCount=3 using the live 21-char format")
+        for name in remaining {
+            XCTAssertEqual(
+                name.count, 21,
+                "remaining dir name should be 21 chars (BUG-021 live format). If this fails, the filter's length check drifted away from backupNow()'s dateFormat — cross-check both sites together."
+            )
+        }
     }
 
     func testPerformBackupIfNeededThrottlesWithin24h() throws {
