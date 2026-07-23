@@ -505,7 +505,25 @@ class ClipboardStore: ObservableObject {
     /// Insert or replace a tag by its UUID. Tags with the same id overwrite
     /// (idempotent rename/recolor). Triggers a debounced tag save.
     func addTag(_ tag: Tag) {
-        tags[tag.id] = tag
+        // E-6 (2026-07-23 audit): trim leading/trailing whitespace +
+        // newlines from the user-supplied tag name before storing.
+        // Without this, a tag named "  Work  " persists as-is and the
+        // sidebar / search / suggestions all see it as a distinct tag
+        // from "Work". Trimming here is defensive — it protects all
+        // callers (NewTagSheet, TagPickerSheet bulk-add, future entry
+        // points) without each needing to remember to trim.
+        let trimmedName = tag.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedName != tag.name {
+            tags[tag.id] = Tag(
+                id: tag.id,
+                name: trimmedName,
+                colorHex: tag.colorHex,
+                isAutoSuggested: tag.isAutoSuggested,
+                createdAt: tag.createdAt
+            )
+        } else {
+            tags[tag.id] = tag
+        }
         scheduleTagSave()
     }
 
