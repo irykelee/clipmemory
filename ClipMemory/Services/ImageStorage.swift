@@ -149,14 +149,25 @@ class ImageStorage {
         // processed. If anything failed, the next launch will retry the rest.
         if !hadFailure {
             UserDefaults.standard.set(true, forKey: migrationCompleteKey)
-            // M-3 (2026-07-23): post-migration cleanup of legacy PNG plaintext.
-            // All eligible files succeeded → safe to remove the legacy dir.
-            // `try?` because removal is best-effort: if it fails, the
-            // completion flag still persists so the next launch won't retry
-            // migration — at worst a stale dir sits unused and can be removed
-            // manually. Fixes plain-PNG forensic-readable residue found in
-            // [[clipmemory/audit-2026-07-23-3subagent-findings]] §④.
-            try? fileManager.removeItem(at: legacyImagesDirectory)
+            // M-3 + 2.1 (2026-07-23 audit): post-migration cleanup. Originally
+            // `removeItem(at: legacyImagesDirectory)` deleted the whole dir
+            // — but the legacy dir belongs to the old ClipPaste app and may
+            // contain user files that never matched our migration filter
+            // (non-UUID-prefix files, non-PNG extensions, subfolders, etc.).
+            // Removing the whole dir would silently destroy those. Now we
+            // remove ONLY the files we successfully migrated; anything else
+            // stays. The forensic-residue concern from M-3 is fully addressed
+            // because all plaintext PNGs eligible for migration are gone.
+            //
+            // `try?` per file: removal is best-effort. If a particular file
+            // is locked, we still mark the migration complete and move on —
+            // at worst one plaintext PNG lingers, which is no worse than
+            // the pre-M-3 state.
+            for filename in migratedFilenames {
+                try? fileManager.removeItem(
+                    at: legacyImagesDirectory.appendingPathComponent(filename)
+                )
+            }
         }
 
         // Post notification so ClipboardStore can update isEncrypted flags.

@@ -125,6 +125,22 @@ final class BackupService {
             throw BackupError.directoryCreationFailed(underlying: error)
         }
 
+        // 1.2 (2026-07-23 audit): partial-failure cleanup. Once we've
+        // created the timestamped dir, any subsequent throw leaves an
+        // empty or partial dir on disk. `lastBackupDate` correctly does
+        // NOT advance (so the next backup retries), but the orphan dir
+        // would accumulate forever — combined with the now-fixed 1.1
+        // prune filter bug, this would amplify disk growth.
+        //
+        // `succeeded` flips to `true` only right before the final `return`
+        // — every other path throws and trips the defer's removeItem.
+        var succeeded = false
+        defer {
+            if !succeeded {
+                try? fileManager.removeItem(at: destination)
+            }
+        }
+
         let blobs: [(String, String)] = [
             ("items.json", "ClipboardItems"),
             ("tags.json", "ClipMemoryTags"),
@@ -153,6 +169,7 @@ final class BackupService {
         defaults.set(Date(), forKey: Self.lastBackupDateKey)
         pruneOldBackups()
         logger.info("Backup completed at \(destination.path)")
+        succeeded = true
         return destination
     }
 

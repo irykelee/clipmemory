@@ -114,6 +114,49 @@ final class BackupServiceTests: XCTestCase {
         }
     }
 
+    /// Regression for 1.2 (2026-07-23 audit): when `backupNow()` throws
+    /// mid-flight (after creating the timestamped dir), the partial dir
+    /// must be removed so it doesn't accumulate alongside successful
+    /// backups. Before the fix, a failed `copyItem(Images)` left an empty
+    /// `<ts>/` on disk forever — combined with the broken 1.1 prune, this
+    /// was a silent disk leak.
+    ///
+    /// Trigger: put a chmod-0 file inside `imagesDirectory`. `fileExists`
+    /// returns true (the dir is valid), so the copy branch runs, but
+    /// `copyItem` recursively reads the dir's contents — hitting the
+    /// chmod-0 file throws `.imageCopyFailed`.
+    ///
+    /// History note: an earlier draft replaced `imagesDirectory` with a
+    /// regular file, but `copyItem(file, path)` doesn't throw — it
+    /// happily creates a new file at `path`. Hence this version uses an
+    /// unreadable file INSIDE an otherwise-valid directory.
+    func testBackupNowCleansUpPartialDirOnImageCopyFailure() {
+        let unreadable = imagesDir.appendingPathComponent("\(UUID().uuidString).png")
+        try? Data("x".utf8).write(to: unreadable)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o000)],
+            ofItemAtPath: unreadable.path
+        )
+        defer {
+            try? FileManager.default.removeItem(at: imagesDir)
+        }
+
+        seedStoreData()
+
+        XCTAssertThrowsError(try service.backupNow()) { error in
+            guard case BackupError.imageCopyFailed = error else {
+                XCTFail("expected BackupError.imageCopyFailed, got \(error)")
+                return
+            }
+        }
+
+        let remaining = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        XCTAssertEqual(
+            remaining, [],
+            "1.2: partial timestamped dir must be cleaned up after backupNow throws mid-flight"
+        )
+    }
+
     func testPerformBackupIfNeededThrottlesWithin24h() throws {
         seedStoreData()
         XCTAssertNoThrow(try service.backupNow())
