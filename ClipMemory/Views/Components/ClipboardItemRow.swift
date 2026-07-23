@@ -75,6 +75,13 @@ struct ClipboardItemRow: View, Equatable {
     let onToggleReveal: () -> Void
     var onEditTags: () -> Void = { }
     @State private var isHovered = false
+    // E-13 (2026-07-23 audit): the row reads LanguageManager.shared
+    // for `cachedAbsoluteDateFormatter(for:)` (line ~140) but didn't
+    // observe it. Switching language via Settings → Language wouldn't
+    // re-render the row's date label until the row scrolled off + on
+    // (item.id task re-firing). Subscribe so language changes trigger
+    // an immediate refresh of the rendered date string.
+    @ObservedObject private var languageManager = LanguageManager.shared
     @State private var loadedImage: NSImage?
     @State private var loadedContent: String?
     @State private var loadedRichText: AttributedString?
