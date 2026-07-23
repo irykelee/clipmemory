@@ -230,6 +230,26 @@ class ImageStorage {
     private let maxImageSize = 50 * 1024 * 1024 // 50MB limit
     private let backgroundQueue = DispatchQueue(label: "com.clipmemory.imagestorage", qos: .userInitiated)
 
+    // P1-4 (2026-07-23 audit): in-memory counter for silent disk corruption.
+    // imageStatus(for:) returns .decryptionFailed for the same terminal
+    // reasons that previously produced no observability — bad sector, partial
+    // overwrite, key drift — and users had no way to tell whether a broken
+    // image was a one-off or a trend. The counter + per-event log line let
+    // diagnostics surface the rate without persisting on disk (deliberate
+    // choice: counters reset on launch so a stale "5 events" reading from
+    // 2 weeks ago can't mask new corruption).
+    //
+    // OSAllocatedUnfairLock because imageStatus may be called from the
+    // statusQueue (background) and counter reads from any thread; Int is not
+    // atomic across threads without a lock.
+    private static let corruptionCountLock = OSAllocatedUnfairLock<Int>(initialState: 0)
+
+    /// Number of times `imageStatus(for:)` has returned `.decryptionFailed`
+    /// since process start. Reset on each launch (in-memory only). P1-4.
+    static var corruptionEventCount: Int {
+        corruptionCountLock.withLock { $0 }
+    }
+
     /// Saves image data asynchronously on a background queue to avoid blocking the main thread.
     /// Encryption and disk I/O happen off the main thread.
     func saveImage(_ data: Data, id: UUID, completion: @escaping (String?) -> Void) {
@@ -352,6 +372,13 @@ class ImageStorage {
             return .available(encryptedData)
         }
 
+        // P1-4 (2026-07-23 audit): every terminal .decryptionFailed now bumps
+        // the corruption counter + emits a log line. The log lets a user grep
+        // Console.app for "imageCorrupted" to find which filenames are
+        // affected; the counter gives Settings/diagnostics a current rate
+        // without forcing users to dig through the system log.
+        Self.corruptionCountLock.withLock { $0 += 1 }
+        logger.error("imageCorrupted filename=\(filename, privacy: .public) bytes=\(encryptedData.count)")
         return .decryptionFailed
     }
 
