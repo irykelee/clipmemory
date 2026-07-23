@@ -41,6 +41,13 @@ struct SettingsView: View {
     let onApplyAppearance: () -> Void
     let onExportBackup: () -> Void
     let onImportBackup: () -> Void
+    /// F-4 (2026-07-23 audit): Settings' "Back Up Now" button used
+    /// `try?` which silently swallowed every failure — user had no
+    /// way to tell whether a backup actually completed. Mirrors the
+    /// existing `onShowLaunchAtLoginError` / `onExportBackup` /
+    /// `onImportBackup` callback pattern so ContentView can surface
+    /// the error via `showBackupInfo(...)`.
+    let onShowBackupError: () -> Void
     let onShowLaunchAtLoginError: () -> Void
     let onShowWelcomeGuide: () -> Void
     let onStartHotKeyRecording: () -> Void
@@ -126,14 +133,23 @@ struct SettingsView: View {
                     // was missing it. Hop to a background queue and toggle
                     // the refresh signal on the main queue when done.
                     DispatchQueue.global(qos: .userInitiated).async {
-                        // M-2 (2026-07-23): backupNow now throws. UI-button path
-                        // is best-effort: skip on failure but still refresh the
-                        // UI so the user sees an updated timestamp. Real
-                        // failure feedback comes via the import path (which
-                        // inspects the thrown error to abort).
-                        _ = try? backupService.backupNow()
-                        DispatchQueue.main.async {
-                            backupRefresh.toggle()
+                        // F-4 (2026-07-23 audit): `try?` swallowed every
+                        // failure. The pre-2.5.10 setting used to be
+                        // "trust the timestamp updates" but after M-2
+                        // (backupNow now throws) we can actually surface
+                        // the error. Refresh on success (timestamp update);
+                        // invoke `onShowBackupError` on failure so the
+                        // user gets a real alert instead of a silent
+                        // "Back Up Now" that did nothing.
+                        do {
+                            _ = try backupService.backupNow()
+                            DispatchQueue.main.async {
+                                backupRefresh.toggle()
+                            }
+                        } catch {
+                            DispatchQueue.main.async {
+                                onShowBackupError()
+                            }
                         }
                     }
                 }.buttonStyle(.link)

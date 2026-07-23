@@ -731,6 +731,13 @@ struct ContentView: View {
             onApplyAppearance: applyAppearance,
             onExportBackup: exportBackup,
             onImportBackup: importBackup,
+            // F-4 (2026-07-23 audit): surface backupNow() errors
+            // via the same `showBackupInfo` channel used by export /
+            // import / pre-import safety-snapshot failures. Reusing
+            // the generic "operation failed" message — BackupError's
+            // specific cases (directory creation vs copy) are internal
+            // and don't change the user's remediation.
+            onShowBackupError: { showBackupInfo(L10n.settingsBackupError) },
             onShowLaunchAtLoginError: showLaunchAtLoginError,
             onShowWelcomeGuide: { (NSApp.delegate as? AppDelegate)?.showWelcomeView() },
             onStartHotKeyRecording: startRecording
