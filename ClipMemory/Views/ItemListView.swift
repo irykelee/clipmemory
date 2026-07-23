@@ -66,7 +66,18 @@ struct ItemListView: View {
                                         .font(.system(size: sz(10)))
                                         .foregroundColor(.secondary)
                                 }
-                                .contentShape(Rectangle()).onTapGesture { toggleGroup(section.group) }
+                                .contentShape(Rectangle())
+                                // BUG-007 (2026-07-21 audit, still present in
+                                // ItemListView after Phase 4 extraction):
+                                // the group header tap toggles `collapsedGroups`
+                                // even when search text is non-empty. Search
+                                // force-expands groups for display, so the tap
+                                // is a no-op visually, and clearing search
+                                // then reveals the user-collapsed state
+                                // unexpectedly. Skip the toggle during search.
+                                .onTapGesture {
+                                    if searchText.isEmpty { toggleGroup(section.group) }
+                                }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
