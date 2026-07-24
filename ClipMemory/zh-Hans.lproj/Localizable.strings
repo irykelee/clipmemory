@@ -135,6 +135,7 @@
 "batch.selected" = "%#@count@";
 "app.send.feedback" = "反馈";
 "alert.encrypt.failed" = "敏感数据加密失败，内容未保存。";
+"alert.encrypt.failed.count" = "敏感数据加密失败，%d 条内容未保存。";
 
 /* Welcome View */
 "welcome.title" = "欢迎使用 剪忆 ClipMemory";

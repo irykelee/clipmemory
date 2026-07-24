@@ -135,6 +135,7 @@
 "batch.selected" = "%#@count@";
 "app.send.feedback" = "フィードバック";
 "alert.encrypt.failed" = "機密データの暗号化に失敗しました。保存されませんでした。";
+"alert.encrypt.failed.count" = "機密データの暗号化に失敗しました。%d 件保存されませんでした。";
 
 /* Welcome View */
 "welcome.title" = "ClipMemory へようこそ";
