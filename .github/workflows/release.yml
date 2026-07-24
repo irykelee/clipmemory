@@ -4,6 +4,22 @@ on:
   push:
     tags:
       - 'v*'
+  # C2 (2026-07-23 ship-review): validate release.yml changes via PR dry-run.
+  # PR runs skip publish-related steps (cert import, signing, GitHub Release
+  # creation, tap update) via `if: github.event_name == 'push'` guards, but
+  # still run the build + test + cache steps as smoke coverage.
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+
+# D1 (2026-07-23 ship-review): concurrency group prevents two tags racing on
+# the appcast push (which would fail with non-fast-forward). `cancel-in-progress:
+# false` is intentional — never cancel a release mid-flight; PR runs against the
+# same group are blocked until the in-flight tag finishes, which is acceptable
+# since PRs are infrequent.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-and-release:
@@ -24,6 +40,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # B1 + C4 (2026-07-23 ship-review): cache Homebrew downloads, Sparkle
+      # signing tools, and Xcode DerivedData. Key on project.yml +
+      # project.pbxproj + ClipMemory/Package.resolved so cache invalidates
+      # automatically on code/SPM-dep changes. Restore-keys provide partial
+      # hits so a single file change still benefits from prior brew + sparkle
+      # downloads (which change less often than DerivedData).
+      - name: Cache Homebrew + Sparkle + DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /tmp/sparkle-dl
+            /tmp/sparkle
+            ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-brew-sparkle-deriveddata-v2-${{ hashFiles('project.yml', 'project.pbxproj', 'ClipMemory/Package.resolved') }}-sparkle-2.9.4
+          restore-keys: |
+            ${{ runner.os }}-brew-sparkle-deriveddata-v2-
+            ${{ runner.os }}-brew-sparkle-deriveddata-
+
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
@@ -31,12 +66,22 @@ jobs:
         run: xcodebuild -version
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        # B1 (2026-07-23 ship-review): skip brew install when the binary is
+        # already on PATH (cache hit covers Library/Caches/Homebrew but not
+        # the actual install dir; this catches the case where the runner
+        # already has xcodegen from a previous run).
+        run: |
+          if which xcodegen >/dev/null 2>&1; then
+            echo "xcodegen already installed: $(xcodegen --version)"
+          else
+            brew install xcodegen
+          fi
 
       - name: Generate Xcode project
         run: xcodegen generate
 
       - name: Import code-signing certificate
+        if: github.event_name == 'push'
         env:
           CODESIGN_P12_BASE64: ${{ secrets.CODESIGN_P12_BASE64 }}
           CODESIGN_P12_PASSWORD: ${{ secrets.CODESIGN_P12_PASSWORD }}
@@ -69,10 +114,19 @@ jobs:
       - name: Build Release
         run: xcodebuild -scheme ClipMemory -configuration Release build
 
+      # B2 (2026-07-23 ship-review): run unit tests before packaging. Previously
+      # the release workflow only ran `xcodebuild build` — a failing test would
+      # still produce a tarball and a public GitHub Release. Now tests fail the
+      # job before we burn 5-10 min on package + EdDSA sign + GitHub Release +
+      # tap push.
+      - name: Run tests
+        run: xcodebuild test -scheme ClipMemory -destination 'platform=macOS'
+
       - name: Package and update local Cask
         run: ./Scripts/package.sh
 
       - name: Sign tarball and update appcast
+        if: github.event_name == 'push'
         env:
           SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,9 +134,15 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
 
-          # Fetch the latest Sparkle signing tools via gh (authenticated —
-          # anonymous api.github.com calls are rate-limited on CI runners)
-          gh release download --repo sparkle-project/Sparkle --pattern 'Sparkle-*.tar.xz' --dir /tmp/sparkle-dl --clobber
+          # Fetch the Sparkle signing tools via gh (authenticated — anonymous
+          # api.github.com calls are rate-limited on CI runners).
+          # C3 (2026-07-23 ship-review): pin to --tag 2.9.4 instead of latest.
+          # Sparkle occasionally ships breaking API changes (the previous
+          # `sign_update` flag set was stable for ~6 months before changing),
+          # and pulling latest silently breaks CI mid-release. Pin matches
+          # `packages.Sparkle.from: "2.9.4"` in project.yml. Bump both
+          # together when Sparkle 2.x API breaks.
+          gh release download --repo sparkle-project/Sparkle --tag 2.9.4 --pattern 'Sparkle-*.tar.xz' --dir /tmp/sparkle-dl --clobber
           mkdir -p /tmp/sparkle
           tar -xf /tmp/sparkle-dl/Sparkle-*.tar.xz -C /tmp/sparkle
 
@@ -140,6 +200,65 @@ jobs:
           # Best-effort: refresh the jsDelivr mirror of the fallback feed
           curl -sf "https://purge.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml" || true
 
+      # C1 (2026-07-23 ship-review): pre-release verify, BEFORE the GitHub
+      # Release is published. P0-3 (post-release verify) only catches
+      # problems AFTER the release is public, which means a manual
+      # `gh release edit` is required. This step fails the workflow before
+      # any public side effect:
+      #   1. release-notes file exists with bilingual sections (no stub)
+      #   2. project.yml MARKETING_VERSION matches the tag (avoids the
+      #      v2.2.3 class of "tag cut but version not bumped" regressions)
+      #   3. no duplicate `### vX.Y.Z` block in any of the 7 lang READMEs
+      #      (catches sync_readme.py dedupe regressions BEFORE publish)
+      - name: Pre-release verify
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES="docs/release-notes/v${VERSION}.md"
+
+          FAILS=0
+          fail() { echo "❌ $*"; FAILS=$((FAILS+1)); }
+          ok()   { echo "✅ $*"; }
+
+          echo "=== Pre-release verify for v${VERSION} ==="
+
+          # 1. Release notes file exists + bilingual sections.
+          if [[ ! -f "$NOTES" ]]; then
+            fail "${NOTES} missing — create per docs/release-notes-template.md before tagging"
+          else
+            grep -qE '^## 中文' "$NOTES"   || fail "${NOTES} missing '## 中文' header"
+            grep -qE '^## English' "$NOTES" || fail "${NOTES} missing '## English' header"
+            ok "release-notes bilingual sections present"
+          fi
+
+          # 2. project.yml MARKETING_VERSION matches the tag.
+          MARKETING_VERSION=$(grep -E '^    MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          if [[ "$MARKETING_VERSION" != "$VERSION" ]]; then
+            fail "project.yml MARKETING_VERSION ($MARKETING_VERSION) != tag ($VERSION) — bump before tagging"
+          else
+            ok "project.yml MARKETING_VERSION matches tag"
+          fi
+
+          # 3. No duplicate ### vX.Y.Z block in any of 7 lang READMEs.
+          for f in README.md docs/lang/README_EN.md docs/lang/README_ZH-HANT.md docs/lang/README_JA.md docs/lang/README_KO.md docs/lang/README_ES.md docs/lang/README_PT.md; do
+            COUNT=$(grep -cE "^### v${VERSION}\b" "$f" || true)
+            if [[ "$COUNT" -ne 1 ]]; then
+              fail "${f} has ${COUNT} '### v${VERSION}' block(s) (expected 1) — re-run sync_readme.py after dedupe fix"
+            else
+              ok "${f} has exactly 1 v${VERSION} block"
+            fi
+          done
+
+          if [[ "$FAILS" -gt 0 ]]; then
+            echo ""
+            echo "❌ ${FAILS} pre-release verify check(s) FAILED."
+            echo "   Release was NOT published. Fix the listed issues and re-tag."
+            exit 1
+          fi
+          echo ""
+          echo "✅ All pre-release verify checks passed."
+
       - name: Extract bilingual title and body from release notes
         id: notes
         # P0-2 fix (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md): the previous
@@ -171,6 +290,7 @@ jobs:
           echo "body_path=${BODY_FILE}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v3
         with:
           files: |
@@ -182,6 +302,7 @@ jobs:
           generate_release_notes: false
 
       - name: Update Homebrew tap
+        if: github.event_name == 'push'
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
@@ -233,6 +354,7 @@ jobs:
           git push origin main
 
       - name: Verify post-release state
+        if: github.event_name == 'push'
         # P0-3 fix (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md): the v2.5.10
         # release shipped with the auto-stub title and a body that was edited
         # manually via `gh release edit` post-push — exactly the class of
