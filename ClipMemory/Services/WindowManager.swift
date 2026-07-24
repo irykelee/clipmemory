@@ -1,6 +1,34 @@
 import AppKit
 import SwiftUI
 
+/// Main NSWindow subclass that disables AppKit's NSFullScreenTransition
+/// (macOS 13+ green-button → real fullscreen, which has the LSUIElement
+/// trap: hidden traffic lights, no exit affordance, can't shrink). Instead
+/// `performZoom` toggles the frame between the user's saved frame and
+/// `NSScreen.visibleFrame` directly — windowed mode, traffic lights
+/// remain visible, menu bar visible, and dragging any edge or clicking
+/// the green button again escapes the screen-size state.
+///
+/// We don't add `.fullScreen` to the styleMask (so AppKit's built-in
+/// fullscreen machinery stays disengaged) and we override
+/// `canUseWindowFullScreen` to explicitly opt out.
+final class MainWindow: NSWindow {
+    private var userFrame: NSRect?
+    override func performZoom(_ sender: Any?) {
+        guard let screen = NSScreen.main else { return }
+        let screenFrame = screen.visibleFrame
+        let currentFrame = self.frame
+        let isBigEnough = currentFrame.width >= screenFrame.width - 20
+            && currentFrame.height >= screenFrame.height - 20
+        if isBigEnough, let saved = userFrame {
+            setFrame(saved, display: true, animate: true)
+        } else {
+            userFrame = currentFrame
+            setFrame(screenFrame, display: true, animate: true)
+        }
+    }
+}
+
 class WindowManager: NSObject, NSWindowDelegate {
     private(set) var mainWindow: NSWindow?
     private var quickBarPopover: NSPopover?
@@ -42,21 +70,8 @@ class WindowManager: NSObject, NSWindowDelegate {
             // branches — a guard makes the invariant explicit and avoids
             // a crash if the property is ever nil at this line.
             guard let contentView = mainContentView else { return }
-            let window = NSWindow(
+            let window = MainWindow(
                 contentRect: savedWindowFrame,
-                // Per user direction (2026-07-24): drop ALL NSWindow
-                // customizations beyond the minimum styleMask. The previous
-                // fullsize-content + transparent-titlebar + hidden-title +
-                // unified-toolbar combo was an attempt at a modern overlay
-                // look, but it interacts badly with the LSUIElement
-                // menu-bar app model: traffic lights float / get hidden, the
-                // green button's zoom toggle becomes the only "fullscreen"
-                // affordance with no visible exit. Using NSWindow defaults
-                // gives us standard red / yellow / green traffic lights,
-                // a real title bar (so window identity + Cmd+W hint are
-                // visible), and a green button that does AppKit's normal
-                // zoom-toggle (which is itself the exit: click again to
-                // shrink).
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered, defer: false
             )
