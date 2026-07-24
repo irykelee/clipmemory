@@ -208,6 +208,9 @@
 "sidebar.deleteTag" = "Eliminar etiqueta";
 "sidebar.deleteTag.confirm.title" = "Eliminar etiqueta?";
 "sidebar.deleteTag.confirm.message" = "A etiqueta «%@» será removida de %d itens";
+"sidebar.tag.accessibility.label" = "Etiqueta %@, %d itens";
+"sidebar.tag.accessibility.selected" = "selecionada";
+"sidebar.tag.accessibility.unselected" = "não selecionada";
 "newTag.title" = "Nova etiqueta";
 "newTag.create" = "Criar";
 "newTag.customColor" = "Cor personalizada";

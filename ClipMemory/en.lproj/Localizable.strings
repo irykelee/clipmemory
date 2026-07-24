@@ -212,6 +212,11 @@
 "sidebar.deleteTag" = "Delete Tag";
 "sidebar.deleteTag.confirm.title" = "Delete Tag?";
 "sidebar.deleteTag.confirm.message" = "Tag \"%@\" will be removed from %d items";
+// L-17 (2026-07-24 audit): accessibility labels for the sidebar tag row
+// so VoiceOver reads "Tag Work, 5 items" with full context.
+"sidebar.tag.accessibility.label" = "Tag %@, %d items";
+"sidebar.tag.accessibility.selected" = "selected";
+"sidebar.tag.accessibility.unselected" = "not selected";
 "newTag.title" = "New Tag";
 "newTag.create" = "Create";
 "newTag.customColor" = "Custom Color";

@@ -18,7 +18,20 @@ struct NewTagSheet: View {
     let onCreated: (UUID) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
-    @State private var color: String = Tag.presetColors.first ?? "#4ECDC4"
+    @State private var color: String
+
+    // L-15 (2026-07-24 audit): seed `color` from `TagPickerLogic.defaultColorHex`
+    // in `init` so the first render uses the right value. Previously the
+    // `@State` default was the first preset, then `onAppear` overwrote it —
+    // causing a one-frame flicker when the sheet appeared over an existing
+    // tag set that had already used the first preset.
+    init(store: ClipboardStore, onCreated: @escaping (UUID) -> Void) {
+        self.store = store
+        self.onCreated = onCreated
+        self._color = State(
+            initialValue: TagPickerLogic.defaultColorHex(existingTags: Array(store.tags.values))
+        )
+    }
 
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -80,9 +93,9 @@ struct NewTagSheet: View {
             .padding(16)
         }
         .frame(width: 320, height: 240)
-        .onAppear {
-            color = TagPickerLogic.defaultColorHex(existingTags: Array(store.tags.values))
-        }
+        // L-15 (2026-07-24 audit): `color` is now seeded in `init` so the
+        // first render uses the right preset. No more onAppear override,
+        // which was causing a one-frame flicker.
     }
 
     private var header: some View {

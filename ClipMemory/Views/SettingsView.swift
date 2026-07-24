@@ -33,6 +33,16 @@ struct SettingsView: View {
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @State private var hotkeyRefresh = false
     @State private var backupRefresh = false
+    // M-12 (2026-07-24 audit): cache the running-application lookup results
+    // so each render doesn't re-query NSWorkspace.runningApplications. We
+    // refresh on appear + whenever the underlying excludedBundleIdsString
+    // changes (via the store's @Published).
+    @State private var excludedApps: [(name: String, bundleId: String)] = []
+    // M-13 (2026-07-24 audit): hoist SMAppService.mainApp.status out of the
+    // Toggle getter so we don't hit ServiceManagement on every body render.
+    // Refresh on appear + on NSApplicationDidBecomeActiveNotification so a
+    // background change (e.g. user toggled via System Settings) re-syncs.
+    @State private var launchAtLoginEnabled: Bool = SMAppService.mainApp.status == .enabled
 
     let hotKeyManager: HotKeyManager?
     @ObservedObject var store: ClipboardStore
@@ -113,9 +123,23 @@ struct SettingsView: View {
                 Button(action: { showingAppPicker = true }, label: { Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle") }).buttonStyle(.link)
             } header: { Text(L10n.settingsSectionExcludedApps) }
             Section {
-                Toggle(L10n.launchAtLogin, isOn: Binding(get: { SMAppService.mainApp.status == .enabled }, set: { v in
-                    do { if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } } catch { onShowLaunchAtLoginError() }
-                }))
+                Toggle(L10n.launchAtLogin, isOn: Binding(
+                    // M-13: read from the @State cache instead of querying
+                    // SMAppService.mainApp.status on every body render.
+                    get: { launchAtLoginEnabled },
+                    set: { v in
+                        do {
+                            if v { try SMAppService.mainApp.register() }
+                            else { try SMAppService.mainApp.unregister() }
+                            // Optimistically reflect the requested state on
+                            // success; the .onReceive below will re-sync if
+                            // the framework disagrees (e.g. requires logout).
+                            launchAtLoginEnabled = v
+                        } catch {
+                            onShowLaunchAtLoginError()
+                        }
+                    }
+                ))
             }
             Section {
                 Toggle(L10n.settingsBackupAuto, isOn: Binding(
@@ -206,33 +230,39 @@ struct SettingsView: View {
             } header: { Text(L10n.settingsSectionAbout) }
         }
         .formStyle(.grouped)
+        // M-12/M-13 (2026-07-24 audit): refresh the cached excluded-apps and
+        // launch-at-login state when the view appears, and whenever the
+        // excludedBundleIdsString is mutated (e.g. user adds/removes an app).
+        .onAppear {
+            refreshExcludedApps()
+            refreshLaunchAtLogin()
+        }
+        .onChange(of: store.excludedBundleIdsString) { _ in
+            refreshExcludedApps()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // Pick up changes the user made while ClipMemory was backgrounded
+            // (e.g. toggling "Open at Login" in System Settings).
+            refreshLaunchAtLogin()
+        }
     }
 
     /// Local copy of `ContentView.excludedAppsTags` (lines 1132-1173 before
-    /// this refactor). Reads `store.excludedBundleIdsString` and renders
-    /// one chip per excluded app with an `x` to remove.
+    /// this refactor). Renders one chip per excluded app with an `x` to
+    /// remove. The lookup table (`excludedApps`) is cached in `@State` and
+    /// refreshed only on appear + when `store.excludedBundleIdsString`
+    /// changes — see `refreshExcludedApps()`.
     private var excludedAppsTags: some View {
-        let rawIds = store.excludedBundleIdsString
+        if excludedApps.isEmpty {
+            return AnyView(EmptyView())
+        }
+        let excludedIds = store.excludedBundleIdsString
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        var seen = Set<String>()
-        let excludedIds = rawIds.filter { seen.insert($0).inserted }
-        if excludedIds.isEmpty {
-            return AnyView(EmptyView())
-        }
-        let apps: [(name: String, bundleId: String)] = excludedIds.compactMap { bundleId in
-            if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleId }) {
-                return (app.localizedName ?? bundleId, bundleId)
-            }
-            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
-                return (url.deletingPathExtension().lastPathComponent, bundleId)
-            }
-            return nil
-        }
         return AnyView(
             FlowLayout(spacing: 6) {
-                ForEach(apps, id: \.bundleId) { app in
+                ForEach(excludedApps, id: \.bundleId) { app in
                     HStack(spacing: 4) {
                         Text(app.name).font(.system(size: sz(11)))
                         Button(action: {
@@ -252,5 +282,35 @@ struct SettingsView: View {
                 }
             }
         )
+    }
+
+    /// M-12 (2026-07-24 audit): rebuild the cached `excludedApps` array from
+    /// the store's excluded bundle ids. Called on appear + whenever the
+    /// excludedBundleIdsString changes. Previously this work ran inline in
+    /// the body getter, querying NSWorkspace.runningApplications on every
+    /// render (Settings tab switching, theme picker, etc).
+    private func refreshExcludedApps() {
+        let rawIds = store.excludedBundleIdsString
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var seen = Set<String>()
+        let excludedIds = rawIds.filter { seen.insert($0).inserted }
+        excludedApps = excludedIds.compactMap { bundleId in
+            if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleId }) {
+                return (app.localizedName ?? bundleId, bundleId)
+            }
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                return (url.deletingPathExtension().lastPathComponent, bundleId)
+            }
+            return nil
+        }
+    }
+
+    /// M-13 (2026-07-24 audit): re-read SMAppService.mainApp.status from
+    /// the framework so we pick up out-of-band changes (e.g. user toggles
+    /// via System Settings, or the framework requires logout to apply).
+    private func refreshLaunchAtLogin() {
+        launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
     }
 }

@@ -208,6 +208,9 @@
 "sidebar.deleteTag" = "태그 삭제";
 "sidebar.deleteTag.confirm.title" = "태그를 삭제하시겠습니까?";
 "sidebar.deleteTag.confirm.message" = "태그「%@」이(가) %d개 항목에서 제거됩니다";
+"sidebar.tag.accessibility.label" = "태그 %@, %d개 항목";
+"sidebar.tag.accessibility.selected" = "선택됨";
+"sidebar.tag.accessibility.unselected" = "선택되지 않음";
 "newTag.title" = "새 태그";
 "newTag.create" = "만들기";
 "newTag.customColor" = "사용자 지정 색상";

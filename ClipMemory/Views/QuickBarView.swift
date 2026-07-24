@@ -223,10 +223,16 @@ struct QuickBarView: View {
         }
         .onChange(of: showFullWindow) { newValue in
             if newValue {
+                // M-14 (2026-07-24 audit): the previous code called
+                // `onDismiss()` then queued `showMainWindow()` on the next
+                // runloop tick. The popover closing + main window showing
+                // happened in two separate AppKit frames, leaving a brief
+                // gap where no window was frontmost (visible flicker on
+                // some macOS 14/15 builds). Invoke both synchronously in
+                // the same tick — onDismiss closes the popover, then
+                // showMainWindow activates the main window immediately.
                 onDismiss()
-                DispatchQueue.main.async {
-                    (NSApp.delegate as? AppDelegate)?.showMainWindow()
-                }
+                (NSApp.delegate as? AppDelegate)?.showMainWindow()
             }
         }
     }

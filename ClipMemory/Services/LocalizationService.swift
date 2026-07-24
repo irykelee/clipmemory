@@ -37,11 +37,22 @@ struct L10n {
 
     // MARK: - Private
 
+    // M-22 (2026-07-24 audit): `cachedBundle`/`cachedLanguage` were plain
+    // mutable statics with no sync. Two concurrent first-callers (e.g. a
+    // @MainActor view body and a background OCR completion that both touch
+    // a localized string) would race on the read+write and either return a
+    // stale bundle or both pay the `Bundle(path:)` cost. `NSLock` wraps the
+    // read-modify-write below; reads on the hot path that hit the cache
+    // still take the lock briefly, but `Bundle.main.path` + `Bundle(path:)`
+    // dwarf the lock cost.
+    private static let cacheLock = NSLock()
     private static var cachedLanguage: String?
     private static var cachedBundle: Bundle?
 
     private static var currentBundle: Bundle {
         let lang = LanguageManager.shared.selectedLanguage
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
         if let bundle = cachedBundle, cachedLanguage == lang {
             return bundle
         }
@@ -133,6 +144,12 @@ struct L10n {
     static var sidebarDeleteTag: String { string("sidebar.deleteTag") }
     static var sidebarDeleteTagConfirmTitle: String { string("sidebar.deleteTag.confirm.title") }
     static func sidebarDeleteTagConfirmMessage(_ name: String, _ count: Int) -> String { string("sidebar.deleteTag.confirm.message", name, count) }
+    // L-17 (2026-07-24 audit): explicit accessibility labels so VoiceOver
+    // reads "Tag Work, 5 items" instead of the bare "Work, 5". Lives on the
+    // tag-row accessibility modifier (see SidebarTagRow).
+    static func sidebarTagAccessibilityLabel(_ name: String, _ count: Int) -> String { string("sidebar.tag.accessibility.label", name, count) }
+    static var sidebarTagAccessibilitySelected: String { string("sidebar.tag.accessibility.selected") }
+    static var sidebarTagAccessibilityUnselected: String { string("sidebar.tag.accessibility.unselected") }
     static var newTagTitle: String { string("newTag.title") }
     static var newTagCreate: String { string("newTag.create") }
     static var newTagCustomColor: String { string("newTag.customColor") }

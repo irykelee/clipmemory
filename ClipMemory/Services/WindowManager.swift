@@ -31,6 +31,18 @@ final class MainWindow: NSWindow {
     }
 }
 
+/// L-23 (2026-07-24 audit): typed Codable shape for the persisted window
+/// frame. Replaces the previous `JSONSerialization` round-trip via a
+/// `[String: CGFloat]` dictionary — same wire format ("x"/"y"/"w"/"h" keys
+/// with numeric values) so any existing UserDefaults blob continues to
+/// decode without migration.
+struct WindowFrame: Codable, Equatable {
+    var x: CGFloat
+    var y: CGFloat
+    var w: CGFloat
+    var h: CGFloat
+}
+
 class WindowManager: NSObject, NSWindowDelegate {
     private(set) var mainWindow: NSWindow?
     private var quickBarPopover: NSPopover?
@@ -54,9 +66,14 @@ class WindowManager: NSObject, NSWindowDelegate {
         popover.contentViewController = NSHostingController(rootView: QuickBarView(onDismiss: { [weak self] in
             self?.quickBarPopover?.close()
         }))
+        // L-21 (2026-07-24 audit): sync SwiftUI content to current
+        // NSApp.appearance BEFORE show() so the popover window opens with
+        // the correct colorScheme on its first frame. Setting
+        // `window.appearance` after `show()` left a one-frame flash where
+        // the SwiftUI host view rendered with the system default
+        // appearance before AppKit applied ours.
+        popover.appearance = NSApp.appearance
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        // Sync SwiftUI content to current NSApp.appearance so colorScheme follows app theme
-        popover.contentViewController?.view.window?.appearance = NSApp.appearance
     }
 
     func showMainWindow() {
@@ -114,10 +131,8 @@ class WindowManager: NSObject, NSWindowDelegate {
         get {
             let defaultFrame = NSRect(x: 0, y: 0, width: 680, height: 500)
             guard let data = UserDefaults.standard.data(forKey: windowFrameKey),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: CGFloat],
-                  let x = dict["x"], let y = dict["y"],
-                  let w = dict["w"], let h = dict["h"] else { return defaultFrame }
-            let saved = NSRect(x: x, y: y, width: w, height: h)
+                  let frame = try? JSONDecoder().decode(WindowFrame.self, from: data) else { return defaultFrame }
+            let saved = NSRect(x: frame.x, y: frame.y, width: frame.w, height: frame.h)
             if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(saved) }) {
                 let v = NSScreen.main?.visibleFrame ?? defaultFrame
                 return NSRect(x: v.midX - 340, y: v.midY - 250, width: 680, height: 500)
@@ -125,8 +140,8 @@ class WindowManager: NSObject, NSWindowDelegate {
             return saved
         }
         set {
-            let d: [String: CGFloat] = ["x": newValue.origin.x, "y": newValue.origin.y, "w": newValue.size.width, "h": newValue.size.height]
-            if let data = try? JSONSerialization.data(withJSONObject: d) { UserDefaults.standard.set(data, forKey: windowFrameKey) }
+            let f = WindowFrame(x: newValue.origin.x, y: newValue.origin.y, w: newValue.size.width, h: newValue.size.height)
+            if let data = try? JSONEncoder().encode(f) { UserDefaults.standard.set(data, forKey: windowFrameKey) }
         }
     }
 
