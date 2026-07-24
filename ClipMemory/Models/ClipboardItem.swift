@@ -56,6 +56,14 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     // MARK: - Codable compatibility
     // Synthesized Codable ignores property defaults, so old persisted data
     // missing newer fields would throw keyNotFound and wipe the history.
+    //
+    // M-20 (2026-07-24 audit) contract — NEW FIELDS MUST USE THIS PATTERN:
+    //   self.<newField> = try container.decodeIfPresent(<Type>.self,
+    //       forKey: .<newField>) ?? <default>
+    // A bare `try container.decode(...)` on a field added in a later release
+    // wipes the user's history on upgrade (keyNotFound). Add a unit test for
+    // any new field to ClipboardItemCodableTests that decodes a JSON missing
+    // the key, then commit alongside the change.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
@@ -95,6 +103,15 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// reaches into `ClipboardStore.shared` to obtain a cached result. The
     /// store can still wrap calls to this with its `NSCache` when callers
     /// know they're iterating the same item many times.
+    ///
+    /// M-24 (2026-07-24 audit) performance contract — NEVER CALL FROM A
+    /// LIST RENDERING LOOP. Each call re-parses the RTF; for large RTF
+    /// payloads that is 5–20 ms per item. Callers that iterate items
+    /// (sidebar filters, full-text search, RichTextItemRow preview) MUST go
+    /// through ClipboardStore.rtfPlaintextCache (NSCache<NSString, NSString>,
+    /// countLimit tracks maxItems per M-4) to amortize the parse across
+    /// repeated reads of the same item. Direct calls are appropriate only
+    /// for one-shot operations (export, single-row preview).
     var plainTextFromRTFFallback: String {
         // Preserve the original semantic contract: only RTF items yield a
         // parsed plaintext; every other type returns "" so SwiftUI views
