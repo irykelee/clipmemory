@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Why a particular channel was chosen. Surfaced in the UI status panel
 /// (spec §2 component `UpdateStatus`).
@@ -42,6 +43,8 @@ protocol FeedProbeEngine: Sendable {
 }
 
 final class DefaultFeedProbeEngine: FeedProbeEngine {
+    // H-20 (2026-07-24 audit): logger for size-cap refusals.
+    private static let logger = Logger(subsystem: "com.clipmemory.app", category: "FeedProbe")
     private let urlSession: URLSession
     private let probeTimeoutSeconds: TimeInterval
     private let parseLatestDate: (String) -> Date?
@@ -176,9 +179,22 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
             let request = URLRequest(url: url, timeoutInterval: timeout)
             let (data, response) = try await urlSession.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            // H-20 (2026-07-24 audit): cap response body at 1 MB. Without this,
+            // a malicious or compromised CDN could serve a multi-GB body and
+            // OOM the process. appcast.xml is typically <50 KB; 1 MB is a
+            // generous ceiling well above any legitimate feed.
+            guard data.count <= Self.maxResponseBytes else {
+                DefaultFeedProbeEngine.logger.warning("Feed body exceeded \(Self.maxResponseBytes) bytes (got \(data.count)) — refusing")
+                return nil
+            }
             return String(data: data, encoding: .utf8)
         } catch {
             return nil
         }
     }
+
+    /// H-20 (2026-07-24 audit): 1 MB cap on feed body size. appcast.xml feeds
+    /// are typically <50 KB; 1 MB leaves 20x headroom while preventing the
+    /// OOM path from a malicious CDN response.
+    static let maxResponseBytes = 1_000_000
 }
