@@ -230,15 +230,18 @@ class ClipboardStore: ObservableObject {
         self.tagBackend = tagBackend
         self.trashBackend = trashBackend
 
-        let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
         // M-3 (2026-07-24 audit): init validation must match didSet's clamp
         // range [minMaxItems, maxMaxItems]. Previously init used an enum of
         // [50, 100, 200, 500] — any other integer (250, 1000, 1_000_000 from
         // a corrupt UserDefaults or future-migrated value) silently fell
         // back to 100 even when didSet would have accepted it. Clamp with
         // the same bounds as didSet; migrate out-of-range values forward.
-        let clampedInit = max(Self.minMaxItems, min(savedMaxItems, Self.maxMaxItems))
-        if clampedInit != savedMaxItems {
+        // Absent key must default to 100, NOT clamp: integer(forKey:)
+        // returns 0 for a missing key, and clamping 0 yields minMaxItems
+        // (1) — fresh installs would silently cap history at a single item.
+        let savedMaxItems = UserDefaults.standard.object(forKey: maxItemsKey) as? Int
+        let clampedInit = savedMaxItems.map { max(Self.minMaxItems, min($0, Self.maxMaxItems)) } ?? 100
+        if savedMaxItems != nil && clampedInit != savedMaxItems {
             UserDefaults.standard.set(clampedInit, forKey: maxItemsKey)
         }
         // M-4: tune the caches to match the resolved value. Done BEFORE the

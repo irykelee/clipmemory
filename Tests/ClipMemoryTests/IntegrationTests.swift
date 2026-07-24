@@ -173,6 +173,10 @@ final class IntegrationTests: XCTestCase {
     func testTrimToMaxItemsRemovesOldest() {
         let customBackend = MemoryStorageBackend()
         let customStore = ClipboardStore(backend: customBackend)
+        // maxItems persists to UserDefaults via didSet — restore it so
+        // later tests (and the host app's own defaults domain) are unaffected.
+        let originalMaxItems = customStore.maxItems
+        defer { customStore.maxItems = originalMaxItems }
         customStore.maxItems = 3
 
         for i in 1...5 {

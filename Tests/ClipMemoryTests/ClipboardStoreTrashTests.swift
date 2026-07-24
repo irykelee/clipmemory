@@ -183,6 +183,12 @@ final class ClipboardStoreTrashTests: XCTestCase {
     // MARK: - Auto cleanup does not trash
 
     func testTrimToMaxItemsDoesNotTrash() {
+        // maxItems persists to UserDefaults via didSet — restore it so later
+        // test classes (e.g. IntegrationTests) don't inherit the tiny cap.
+        // M-3 (2026-07-24) widened init acceptance from {50,100,200,500} to
+        // the [1, 10000] clamp, which made this leak visible downstream.
+        let originalMaxItems = store.maxItems
+        defer { store.maxItems = originalMaxItems }
         store.maxItems = 2
         for i in 1...5 {
             store.addItem(ClipboardItem(content: "Item \(i)", type: .text))
