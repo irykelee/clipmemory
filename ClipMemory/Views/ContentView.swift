@@ -78,6 +78,13 @@ struct ContentView: View {
     @State private var showingConditionalClear = false
     @State private var revealedItems: Set<UUID> = []
     @State private var keyboardSelectedIndex: Int?
+    // H-10 (2026-07-24 audit): visibleGlobalIndices used to be a computed
+    // property walked on every ↑/↓/Return (3 calls per keystroke, each O(n)).
+    // Cache it as @State and recompute only when collapsedGroups /
+    // searchTextDebounced / cachedDisplayedItems change (via the onChange
+    // handlers below + updateDisplayedItemsCache). handleKeyUp/Down/Return now
+    // just read the cached value.
+    @State private var cachedVisibleGlobalIndices: [Int] = []
     @State private var lastCopiedId: UUID?
     @State private var scrollAnchor: UUID?
     @State private var selectedItems: Set<UUID> = []
@@ -114,26 +121,45 @@ struct ContentView: View {
     }
 
     // MARK: - Keyboard Handlers
-    /// Global indices (into `cachedDisplayedItems`) of items whose group is
-    /// not collapsed. Used as the navigation sequence for ↑/↓/Return so the
-    /// highlight doesn't skip through hidden rows.
-    /// When search is active the UI force-expands all groups, so keyboard nav
-    /// must treat every item as visible to stay in sync with what the user sees.
-    private var visibleGlobalIndices: [Int] {
+    /// Pure helper extracted from the old computed property so the logic is
+    /// unit-testable without a SwiftUI view body. Returns global indices into
+    /// `items` whose time-group is not collapsed. Active search forces all
+    /// groups expanded (matches original body behavior).
+    static func computeVisibleGlobalIndices(
+        items: [ClipboardItem],
+        collapsedGroups: Set<TimeGroup>,
+        searchText: String,
+        today: Date,
+        yesterday: Date
+    ) -> [Int] {
         let effectiveCollapsed: Set<TimeGroup> = searchText.isEmpty ? collapsedGroups : []
         let visibleIds = Set(SidebarTagFilter.visibleItems(
-            items: cachedDisplayedItems,
+            items: items,
             collapsedGroups: effectiveCollapsed,
-            today: startOfToday,
-            yesterday: startOfYesterday
+            today: today,
+            yesterday: yesterday
         ).map(\.id))
-        return cachedDisplayedItems.indices.filter {
-            visibleIds.contains(cachedDisplayedItems[$0].id)
+        return items.indices.filter {
+            visibleIds.contains(items[$0].id)
         }
     }
 
+    /// H-10: rebuild cachedVisibleGlobalIndices from current state. Called
+    /// when cachedDisplayedItems / collapsedGroups / searchTextDebounced
+    /// change (see onChange handlers below + updateDisplayedItemsCache).
+    /// Key handlers read `cachedVisibleGlobalIndices` directly.
+    private func recomputeVisibleGlobalIndices() {
+        cachedVisibleGlobalIndices = Self.computeVisibleGlobalIndices(
+            items: cachedDisplayedItems,
+            collapsedGroups: collapsedGroups,
+            searchText: searchTextDebounced,
+            today: startOfToday,
+            yesterday: startOfYesterday
+        )
+    }
+
     private func handleKeyUp() {
-        let visibleIdx = visibleGlobalIndices
+        let visibleIdx = cachedVisibleGlobalIndices
         guard !visibleIdx.isEmpty else { return }
         if let current = keyboardSelectedIndex,
            let pos = visibleIdx.firstIndex(of: current),
@@ -149,7 +175,7 @@ struct ContentView: View {
     }
 
     private func handleKeyDown() {
-        let visibleIdx = visibleGlobalIndices
+        let visibleIdx = cachedVisibleGlobalIndices
         guard !visibleIdx.isEmpty else { return }
         if let current = keyboardSelectedIndex,
            let pos = visibleIdx.firstIndex(of: current),
@@ -165,7 +191,7 @@ struct ContentView: View {
     }
 
     private func handleKeyReturn() {
-        let visibleIdx = visibleGlobalIndices
+        let visibleIdx = cachedVisibleGlobalIndices
         guard let idx = keyboardSelectedIndex, visibleIdx.contains(idx) else { return }
         let item = cachedDisplayedItems[idx]
         lastCopiedId = item.id
@@ -285,6 +311,8 @@ struct ContentView: View {
     private func updateDisplayedItemsCache() {
         let start = Date()
         cachedDisplayedItems = filterItems(store.items)
+        // H-10 (2026-07-24 audit): items changed → visible indices change too.
+        recomputeVisibleGlobalIndices()
         // Update grouped items cache
         var dict: [TimeGroup: [ClipboardItem]] = [:]
         for item in cachedDisplayedItems {
@@ -419,6 +447,19 @@ struct ContentView: View {
             // QuickBarView.swift:57-58 established pattern.
             .onChange(of: searchText) { _ in
                 keyboardSelectedIndex = nil
+            }
+            // H-10 (2026-07-24 audit): collapsed-groups toggles invalidate the
+            // visible-index sequence. Recompute on the next main hop so the
+            // keyboard handlers pick up the new sequence immediately.
+            .onChange(of: collapsedGroups) { _ in
+                recomputeVisibleGlobalIndices()
+            }
+            // H-10 (2026-07-24 audit): searchTextDebounced is the "search has
+            // settled" signal (raw searchText changes on every keystroke; the
+            // debounced copy only fires 250ms after the last edit). Recompute
+            // on the settled copy so we don't pay O(n) per keystroke.
+            .onChange(of: searchTextDebounced) { _ in
+                recomputeVisibleGlobalIndices()
             }
     }
 
