@@ -82,9 +82,18 @@ enum TagSuggestion {
     /// - Returns: a `Set<String>` of tag names derived from `kind`. Empty when
     ///   `kind == .plain`.
     static func suggest(for type: ClipboardItemType, content: String) -> Set<String> {
-        let f = detect(for: type, content: content)
+        tagNames(for: detect(for: type, content: content).kind)
+    }
+
+    /// Secondary CLIP-3 (2026-07-24 audit): kind → tag-name mapping lifted
+    /// out of the suggest(...) shim so callers that already ran `detect`
+    /// (e.g. TagPickerSheet.loadSuggestions) can derive the names from the
+    /// facets they hold instead of re-running the whole regex + NLTagger
+    /// pipeline a second time. `suggest` delegates here; the two paths
+    /// cannot drift apart.
+    static func tagNames(for kind: KindFacet) -> Set<String> {
         var out = Set<String>()
-        switch f.kind {
+        switch kind {
         case .code:        out.insert(L10n.tagSuggestionKindCode)
         case .email:       out.insert(L10n.tagSuggestionKindEmail)
         case .credential:  out.insert(L10n.tagSuggestionKindCredential)
@@ -189,13 +198,27 @@ enum TagSuggestion {
         guard parts.count >= 2 else { return false }
         for i in 0..<(parts.count - 1) {
             let local = parts[i]
-            let rest = parts[i+1]
             guard let lastLocal = local.last,
-                  localLastCharValid(lastLocal),
-                  let dot = rest.firstIndex(of: "."),
-                  rest.distance(from: rest.startIndex, to: dot) > 0
+                  localLastCharValid(lastLocal)
             else { continue }
-            let tld = rest[rest.index(after: dot)...]
+            // CLIP-2 model (2026-07-24 audit): three false-negative classes
+            // in the previous first-dot check —
+            //   1. mid-sentence: "mail bob@example.com please" validated the
+            //      TLD candidate "com please" (space → not all letters);
+            //   2. trailing punctuation: "bob@example.com." gave "com.";
+            //   3. subdomains: "bob@mail.example.com" gave "example.com"
+            //      (dot → not all letters).
+            // Fix: truncate the domain candidate at the first whitespace,
+            // strip trailing punctuation, then validate against the LAST
+            // dot so subdomains resolve to the real TLD.
+            var domain = String(parts[i + 1].prefix(while: { !$0.isWhitespace }))
+            while let last = domain.last, !last.isLetter, !last.isNumber {
+                domain.removeLast()
+            }
+            guard let dot = domain.lastIndex(of: "."),
+                  domain.distance(from: domain.startIndex, to: dot) > 0
+            else { continue }
+            let tld = domain[domain.index(after: dot)...]
             guard tld.count >= 2, tld.allSatisfy({ $0.isLetter }) else { continue }
             return true
         }

@@ -12,6 +12,14 @@ struct QuickBarView: View {
     @State private var lastCopiedId: UUID?
     @State private var showFullWindow = false
     @State private var scrollAnchor: UUID?
+    // CLIP-4 (2026-07-24 audit): displayedItems used to be an uncached
+    // computed property consumed 4+ times per body evaluation (section
+    // label, empty-state, ForEach, dividers, keyboard handlers), each an
+    // O(n) filter with per-item RTF-plaintext/decrypt lookups. Cache it as
+    // @State and recompute only when store.items / searchTextDebounced
+    // change — mirrors the visibleGlobalIndices pattern in ContentView
+    // (H-10). The getter below stays side-effect-free (BUG-039).
+    @State private var cachedDisplayedItems: [ClipboardItem] = []
     @FocusState private var isSearchFocused: Bool
     @AppStorage("fontScale") private var fontScale: Double = 1.0
 
@@ -28,32 +36,47 @@ struct QuickBarView: View {
     }
 
     var displayedItems: [ClipboardItem] {
-        // BUG-039 (2026-07-21): the previous filter wrote to
-        // `cacheRTFPlaintext` inside the getter, and SwiftUI evaluates
-        // computed properties during view body updates — multiple times per
-        // frame in a list of 8 rows during search keystrokes. Writing the
-        // cache from inside a getter is a side effect during view-body
-        // evaluation, which can both trigger "modifying state during view
-        // update" warnings and bloat the unbounded NSCache with redundant
-        // writes. Removed. The ClipboardItemRow bridge (M-3 audit) still
-        // warms the cache for items rendered in the main list; QuickBar
-        // users will see a one-off 20-100ms re-parse on first copy of an
-        // RTF item not yet rendered in the main list — acceptable.
-        let base = searchTextDebounced.isEmpty
-            ? Array(store.items.prefix(maxItems))
-            : store.items.filter { item in
-                guard !item.isDecryptionFailed else { return false }
-                // CLIP-1 main (2026-07-24 audit): use store.getRTFPlaintext
-                // instead of item.plainTextFromRTFFallback so search hits
-                // actual RTF plaintext (not the parser's hardcoded "Rich Text"
-                // placeholder for encrypted items) AND goes through the cache
-                // (M-24 contract).
-                let searchableText = item.type == .richText
-                    ? ClipboardStore.shared.getRTFPlaintext(item)
-                    : (ClipboardStore.shared.getDecryptedContent(item) ?? "")
-                return searchableText.localizedCaseInsensitiveContains(searchTextDebounced)
-            }
-        return base
+        cachedDisplayedItems
+    }
+
+    /// CLIP-4: pure filter extracted from the old computed property so the
+    /// logic is unit-testable without a SwiftUI view body. Side-effect-free:
+    /// reads go through the store's caches (M-24 contract), no cache writes
+    /// (BUG-039 — the previous filter wrote to `cacheRTFPlaintext` inside
+    /// the getter, which SwiftUI evaluates during view-body updates).
+    static func computeDisplayedItems(
+        items: [ClipboardItem],
+        searchTextDebounced: String,
+        maxItems: Int,
+        store: ClipboardStore
+    ) -> [ClipboardItem] {
+        if searchTextDebounced.isEmpty {
+            return Array(items.prefix(maxItems))
+        }
+        return items.filter { item in
+            guard !item.isDecryptionFailed else { return false }
+            // CLIP-1 main (2026-07-24 audit): use store.getRTFPlaintext
+            // instead of item.plainTextFromRTFFallback so search hits
+            // actual RTF plaintext (not the parser's hardcoded "Rich Text"
+            // placeholder for encrypted items) AND goes through the cache
+            // (M-24 contract).
+            let searchableText = item.type == .richText
+                ? store.getRTFPlaintext(item)
+                : (store.getDecryptedContent(item) ?? "")
+            return searchableText.localizedCaseInsensitiveContains(searchTextDebounced)
+        }
+    }
+
+    /// Rebuild cachedDisplayedItems from current inputs. Called on appear
+    /// and when store.items / searchTextDebounced change (see modifiers in
+    /// body). Key handlers read `displayedItems` (the cache) directly.
+    private func recomputeDisplayedItems() {
+        cachedDisplayedItems = Self.computeDisplayedItems(
+            items: store.items,
+            searchTextDebounced: searchTextDebounced,
+            maxItems: maxItems,
+            store: store
+        )
     }
 
     var body: some View {
@@ -239,6 +262,19 @@ struct QuickBarView: View {
                 onDismiss()
                 (NSApp.delegate as? AppDelegate)?.showMainWindow()
             }
+        }
+        // CLIP-4 (2026-07-24 audit): keep cachedDisplayedItems in sync with
+        // its two inputs. onAppear covers popover-open (the view is created
+        // fresh each time). The onChange writes are deferred one runloop
+        // tick — writing @State synchronously inside onChange during a view
+        // update triggers SwiftUI's "Modifying state during view update"
+        // warning (same pattern as ContentView.refreshDisplayedItemsCacheSoon).
+        .onAppear { recomputeDisplayedItems() }
+        .onChange(of: store.items) { _ in
+            DispatchQueue.main.async { recomputeDisplayedItems() }
+        }
+        .onChange(of: searchTextDebounced) { _ in
+            DispatchQueue.main.async { recomputeDisplayedItems() }
         }
     }
 }
