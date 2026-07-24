@@ -1,4 +1,4 @@
-# ClipMemory v2.5.11
+# ClipMemory v2.5.12
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.5.12 (2026-07-24) — Revisão de Estabilidade e Segurança de Dados
+
+- **🛡 Correções concentradas de segurança de dados** — Mais de 30 correções após revisão completa do código: o histórico da área de transferência não é mais perdido silenciosamente durante toda a sessão devido a uma condição de corrida na inicialização da chave (STOR-1); a detecção do feed de atualização não se cancela mais, causando falha total na mitigação de espelho (UPD-1); a restauração de itens de rich text agora pesquisa por conteúdo (CLIP-1); itens de imagem suportam deduplicação, a mesma captura de tela copiada repetidamente não gera mais arquivos e itens de lista duplicados
+- **🖼 Texto OCR não é mais perdido** — Copiar itens de imagem, importar cópias de segurança e migrar imagens de versões anteriores não limpam mais o texto OCR reconhecido (STOR-2)
+- **⚡ Inicialização e operações mais suaves** — A migração de imagens de versões anteriores foi removida da thread principal de inicialização; o cache de resultados de pesquisa da QuickBar não filtra mais repetidamente a cada renderização; o painel de etiquetas executa o pipeline de tokenização apenas uma vez ao abrir; a codificação JSON de persistência foi movida para uma fila em segundo plano
+- **🔔 Notificações de erro não inundam mais a tela** — Pop-ups de falha de criptografia são agregados por contagem de 60 segundos por origem; falhas de preenchimento de OCR não geram mais pop-ups em cadeia
+- **💾 Importação de cópias de segurança mais segura** — A extração do pacote de cópia de segurança verifica links simbólicos e travessia de caminho; a leitura de JSON tem um limite máximo de 100 MB; falhas de exclusão da marca `.incomplete` não são mais silenciosamente ignoradas
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.5.12
 
 ### v2.5.11 (2026-07-23) — Divisão da ContentView + 16 correções de bugs
 

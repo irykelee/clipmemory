@@ -1,4 +1,4 @@
-# ClipMemory v2.5.11
+# ClipMemory v2.5.12
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.5.12 (2026-07-24) — Stability & Data Safety Overhaul
+
+- **🛡 Data safety concentrated fixes** — 30+ fixes after full code review: clipboard history no longer silently lost for an entire session due to key initialization race (STOR-1); update feed probe no longer self-cancels causing mirror failover to be completely ineffective (UPD-1); rich text item restoration now works with content search (CLIP-1); image items support deduplication, duplicate copies of the same screenshot no longer produce duplicate files and list items
+- **🖼 OCR text no longer lost** — Copying image items, importing backups, and migrating legacy images no longer clear recognized OCR text (STOR-2)
+- **⚡ Smoother startup & operations** — Legacy image migration moved off the main startup thread; QuickBar search result cache no longer re-filters on every render; tag panel runs the tokenization pipeline only once on open; JSON persistence encoding moved to a background queue
+- **🔔 Error alerts no longer spam** — Encryption failure popups are aggregated by source with a 60-second cooldown; OCR backfill failures no longer trigger cascading alerts
+- **💾 Safer backup import** — Backup archive extraction validates symbolic links and path traversal; JSON reading has a 100 MB limit; `.incomplete` marker deletion failure no longer silently swallows errors
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.5.12
 
 ### v2.5.11 (2026-07-23) — ContentView split + 16 bug fixes
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.5.11
+# ClipMemory v2.5.12
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.5.12 (2026-07-24) — Revisión de estabilidad y seguridad de datos
+
+- **🛡 Correcciones concentradas de seguridad de datos** — Más de 30 correcciones tras una revisión completa del código: el historial del portapapeles ya no se pierde silenciosamente durante toda la sesión debido a una condición de carrera en la inicialización de claves (STOR-1); el feed de actualización ya no se cancela a sí mismo, lo que inhabilitaba por completo la conmutación por error del espejo (UPD-1); los elementos de texto enriquecido se restauran para buscar por contenido (CLIP-1); los elementos de imagen admiten deduplicación, por lo que copiar la misma captura de pantalla repetidamente ya no genera archivos y elementos de lista duplicados.
+- **🖼 El texto OCR ya no se pierde** — Copiar elementos de imagen, importar copias de seguridad y migrar imágenes de versiones anteriores ya no elimina el texto OCR reconocido (STOR-2).
+- **⚡ Inicio y operaciones más fluidos** — La migración de imágenes de versiones anteriores se ha sacado del hilo principal de inicio; la caché de resultados de búsqueda de QuickBar ya no filtra repetidamente en cada renderizado; el panel de etiquetas solo ejecuta el pipeline de tokenización una vez al abrirse; la codificación JSON persistente se ha movido a una cola en segundo plano.
+- **🔔 Las notificaciones de error ya no saturan la pantalla** — Las ventanas emergentes de error de cifrado se agregan por origen cada 60 segundos; los fallos de relleno de OCR ya no provocan ventanas emergentes en cadena.
+- **💾 La importación de copias de seguridad es más segura** — La extracción del paquete de copia de seguridad verifica enlaces simbólicos y desbordamiento de ruta; la lectura de JSON tiene un límite de 100 MB; los fallos de eliminación marcados como `.incomplete` ya no se silencian.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.5.12
 
 ### v2.5.11 (2026-07-23) — División de ContentView + 16 correcciones de errores
 

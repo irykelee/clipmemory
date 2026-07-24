@@ -14,8 +14,8 @@ packages:
 settings:
   base:
     PRODUCT_NAME: ClipMemory
-    MARKETING_VERSION: "2.5.11"
-    CURRENT_PROJECT_VERSION: "2.5.11"
+    MARKETING_VERSION: "2.5.12"
+    CURRENT_PROJECT_VERSION: "2.5.12"
     SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
     # Personal Team（免费 Apple ID）的 Apple Development 证书——带 Team ID，
