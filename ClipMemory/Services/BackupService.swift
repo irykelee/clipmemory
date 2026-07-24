@@ -20,6 +20,7 @@ enum BackupError: LocalizedError {
     case directoryCreationFailed(underlying: Error)
     case writeFailed(filename: String, underlying: Error)
     case imageCopyFailed(underlying: Error)
+    case markerRemovalFailed(underlying: Error)
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +30,8 @@ enum BackupError: LocalizedError {
             return "Backup write to \(name) failed: \(e.localizedDescription)"
         case .imageCopyFailed(let e):
             return "Backup image copy failed: \(e.localizedDescription)"
+        case .markerRemovalFailed(let e):
+            return "Backup .incomplete marker removal failed: \(e.localizedDescription)"
         }
     }
 }
@@ -60,18 +63,21 @@ final class BackupService {
     private static let backupDirTimestampFormat = "yyyy-MM-dd_HHmmss.SSS"
 
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "BackupService")
-    private let fileManager = FileManager.default
+    private let fileManager: FileManager
     private let defaults: UserDefaults
     private let backupsDirectory: URL
     private let imagesDirectory: URL
 
-    init(backupsDirectory: URL? = nil, imagesDirectory: URL? = nil, defaults: UserDefaults = .standard) {
+    init(backupsDirectory: URL? = nil, imagesDirectory: URL? = nil, defaults: UserDefaults = .standard, fileManager: FileManager = .default) {
         let appSupport = AppDirectories.applicationSupport
         self.backupsDirectory = backupsDirectory
             ?? appSupport.appendingPathComponent("ClipMemory/Backups", isDirectory: true)
         self.imagesDirectory = imagesDirectory
             ?? appSupport.appendingPathComponent("ClipMemory/Images", isDirectory: true)
         self.defaults = defaults
+        // BKP-1 (2026-07-24): injectable so tests can deterministically fail
+        // the .incomplete marker removal without chmod tricks on real dirs.
+        self.fileManager = fileManager
     }
 
     var backupsDirectoryURL: URL { backupsDirectory }
@@ -225,13 +231,30 @@ final class BackupService {
         // the `pruneOldBackups` log-but-don't-throw path) still leaves the
         // dir in a consistent state: either marked incomplete (defer cleanup
         // will remove it) or marker-free (it stays as a valid backup).
-        try? fileManager.removeItem(at: destination.appendingPathComponent(Self.incompleteMarkerName))
+        try removeIncompleteMarker(in: destination)
 
         defaults.set(Date(), forKey: Self.lastBackupDateKey)
         pruneOldBackups()
         logger.info("Backup completed at \(destination.path)")
         succeeded = true
         return destination
+    }
+
+    /// BKP-1 (2026-07-24): this used to be `try?` inside
+    /// `performBackupUnlocked`. A swallowed removal failure left a
+    /// fully-written backup carrying `.incomplete`, and the NEXT
+    /// `pruneOldBackups()` would then delete that good backup as a crash
+    /// leftover — the exact data-loss scenario H-6 was protecting against.
+    /// Treat removal failure like any other backup step failure: log +
+    /// throw, the caller's defer cleans up the timestamped dir, and
+    /// `lastBackupDate` stays put so the next launch retries.
+    private func removeIncompleteMarker(in destination: URL) throws {
+        do {
+            try fileManager.removeItem(at: destination.appendingPathComponent(Self.incompleteMarkerName))
+        } catch {
+            logger.error("Backup failed (remove .incomplete marker): \(error.localizedDescription)")
+            throw BackupError.markerRemovalFailed(underlying: error)
+        }
     }
 
     /// Keeps the newest `keepCount` timestamped backup directories.
