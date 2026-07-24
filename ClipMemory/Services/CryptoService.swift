@@ -38,17 +38,26 @@ class CryptoService: CryptoServiceProtocol {
     // Without this, list rendering triggered N Keychain queries per uncached
     // item, pinning the main thread.
     //
-    // Threading: protect with OSAllocatedUnfairLock — encrypt/decrypt are
-    // called from both main thread (`getDecryptedContent`) and background
-    // queues (`ImageStorage.backgroundQueue → encryptData`). Unchecked
-    // read+write of a `var` from multiple threads is undefined behavior.
+    // Threading: protect with NSLock — encrypt/decrypt are called from both
+    // main thread (`getDecryptedContent`) and background queues
+    // (`ImageStorage.backgroundQueue → encryptData`). Unchecked read+write
+    // of a `var` from multiple threads is undefined behavior. Originally
+    // OSAllocatedUnfairLock but C-1 (2026-07-24 audit) flagged it as
+    // macOS 14+ only; this is a near-zero-contention read-mostly path so
+    // NSLock has no measurable cost.
     //
     // Invariants:
     // - Only populated when `customKey` is nil (shared instance, app key).
     // - custom-key instances (init(customKeyData:)) never populate this.
     // - `prepareKey` resets customKey on regenerate and reloads into the cache.
-    private var cachedLoadedKey: OSAllocatedUnfairLock<SymmetricKey?> =
-        OSAllocatedUnfairLock(initialState: nil)
+    private let cachedLoadedKeyLock = NSLock()
+    private var cachedLoadedKey: SymmetricKey?
+
+    private func withCachedLoadedKey<R>(_ block: () throws -> R) rethrows -> R {
+        cachedLoadedKeyLock.lock()
+        defer { cachedLoadedKeyLock.unlock() }
+        return try block()
+    }
 
     /// Legacy key file location (pre-C1). Still consulted as a read-only
     /// fallback and migrated into the Keychain by `prepareKey`; new keys
@@ -101,7 +110,7 @@ class CryptoService: CryptoServiceProtocol {
     /// subsequent calls (e.g. multiple BackupPackage exports in one
     /// session) don't re-query the Keychain each time.
     static func loadKeyData() -> Data? {
-        if let cached = shared.cachedLoadedKey.withLock({ $0 }) {
+        if let cached = shared.withCachedLoadedKey({ shared.cachedLoadedKey }) {
             return cached.withUnsafeBytes { Data($0) }
         }
         let keyData: Data?
@@ -111,7 +120,7 @@ class CryptoService: CryptoServiceProtocol {
             keyData = try? Data(contentsOf: keyFileURL)
         }
         if let keyData, keyData.count == 32 {
-            shared.cachedLoadedKey.withLock { $0 = SymmetricKey(data: keyData) }
+            shared.withCachedLoadedKey { shared.cachedLoadedKey = SymmetricKey(data: keyData) }
         }
         return keyData
     }
@@ -292,7 +301,7 @@ class CryptoService: CryptoServiceProtocol {
         if let customKey { return customKey }
         // H-2: Hit cache before touching Keychain / disk. The cache is only
         // populated after a successful load below.
-        if let cached = cachedLoadedKey.withLock({ $0 }) { return cached }
+        if let cached = withCachedLoadedKey({ cachedLoadedKey }) { return cached }
         // C1: Keychain is canonical; the pre-C1 key file remains a read-only
         // fallback until prepareKey's migration removes it. Under XCTest,
         // read only the file — never prompt for the real Keychain item.
@@ -304,7 +313,7 @@ class CryptoService: CryptoServiceProtocol {
         } else {
             loaded = nil
         }
-        if let loaded { cachedLoadedKey.withLock { $0 = loaded } }
+        if let loaded { withCachedLoadedKey { cachedLoadedKey = loaded } }
         return loaded
     }
 

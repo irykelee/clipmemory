@@ -239,15 +239,20 @@ class ImageStorage {
     // choice: counters reset on launch so a stale "5 events" reading from
     // 2 weeks ago can't mask new corruption).
     //
-    // OSAllocatedUnfairLock because imageStatus may be called from the
-    // statusQueue (background) and counter reads from any thread; Int is not
-    // atomic across threads without a lock.
-    private static let corruptionCountLock = OSAllocatedUnfairLock<Int>(initialState: 0)
+    // NSLock because imageStatus may be called from the statusQueue (background)
+    // and counter reads from any thread; Int is not atomic across threads
+    // without a lock. Originally OSAllocatedUnfairLock but C-1 (2026-07-24
+    // audit) flagged it as macOS 14+ only; this is a single Int increment
+    // path so NSLock has no measurable cost.
+    private static let corruptionCountLock = NSLock()
+    private static var corruptionCount: Int = 0
 
     /// Number of times `imageStatus(for:)` has returned `.decryptionFailed`
     /// since process start. Reset on each launch (in-memory only). P1-4.
     static var corruptionEventCount: Int {
-        corruptionCountLock.withLock { $0 }
+        corruptionCountLock.lock()
+        defer { corruptionCountLock.unlock() }
+        return corruptionCount
     }
 
     /// Saves image data asynchronously on a background queue to avoid blocking the main thread.
@@ -380,7 +385,9 @@ class ImageStorage {
             // Console.app for "imageCorrupted" to find which filenames are
             // affected; the counter gives Settings/diagnostics a current rate
             // without forcing users to dig through the system log.
-            Self.corruptionCountLock.withLock { $0 += 1 }
+            Self.corruptionCountLock.lock()
+            Self.corruptionCount += 1
+            Self.corruptionCountLock.unlock()
             logger.error("imageCorrupted filename=\(filename, privacy: .public) bytes=\(encryptedData.count)")
             return .decryptionFailed
         }

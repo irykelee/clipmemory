@@ -13,14 +13,25 @@ enum FeedConsent {
 /// Supplies the fallback feed URL to Sparkle when the primary feed failed
 /// the launch probe. Returning nil makes Sparkle use the Info.plist SUFeedURL.
 private final class FeedURLProvider: NSObject, SPUUpdaterDelegate {
-    // BUG-031 (2026-07-21): wrap in OSAllocatedUnfairLock — Sparkle's
-    // feedURLString(for:) delegate callback can run on any thread, while
-    // the setter is invoked on @MainActor. String? is not atomic across
-    // threads; lock fixes the data race.
-    private let resolvedFeedLock = OSAllocatedUnfairLock<String?>(initialState: nil)
+    // BUG-031 (2026-07-21): wrap in NSLock — Sparkle's feedURLString(for:)
+    // delegate callback can run on any thread, while the setter is invoked
+    // on @MainActor. String? is not atomic across threads; lock fixes the
+    // data race. Originally OSAllocatedUnfairLock but C-1 (2026-07-24
+    // audit) flagged it as macOS 14+ only; write-once read-sparse pattern
+    // means NSLock has no measurable cost.
+    private let resolvedFeedLock = NSLock()
+    private var resolvedFeedStringBacking: String?
     var resolvedFeedString: String? {
-        get { resolvedFeedLock.withLock { $0 } }
-        set { resolvedFeedLock.withLock { $0 = newValue } }
+        get {
+            resolvedFeedLock.lock()
+            defer { resolvedFeedLock.unlock() }
+            return resolvedFeedStringBacking
+        }
+        set {
+            resolvedFeedLock.lock()
+            defer { resolvedFeedLock.unlock() }
+            resolvedFeedStringBacking = newValue
+        }
     }
 
     func feedURLString(for updater: SPUUpdater) -> String? {
