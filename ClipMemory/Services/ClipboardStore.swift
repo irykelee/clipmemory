@@ -789,6 +789,16 @@ class ClipboardStore: ObservableObject {
                 )
                 return
             }
+        } else {
+            // CLIP-1: image items arrive with a contentHash computed by
+            // ClipboardMonitor over the raw image bytes (HMAC-SHA256, same
+            // style as text items). The item's `content` is a fresh UUID
+            // filename — useless for dedup — so without adopting this hash
+            // the dedup pre-filter below could never match images and every
+            // re-copy of the same picture added a new entry + file. nil
+            // (legacy items, or crypto failure at capture time) → skip
+            // dedup, same contract as the text HMAC-failure path.
+            newHash = item.contentHash
         }
 
         // Use contentHash for fast pre-filter before expensive decryption.
@@ -814,6 +824,15 @@ class ClipboardStore: ObservableObject {
             // and ocrText/ocrAttempted (STOR-2).
             existing = existing.with(createdAt: Date(), contentHash: existing.contentHash ?? newHash)
             items.insert(existing, at: 0)
+            // CLIP-1: the monitor writes the image file BEFORE the store sees
+            // the item (saveImage completion → addItem). On a dedup hit the
+            // new entry is discarded; delete its just-written file as well,
+            // or every re-copy of an already-seen image leaks an orphaned
+            // file until the next startup orphan sweep. Guard on differing
+            // filenames so the kept entry's file can never be removed.
+            if newItem.type == .image, newItem.content != existing.content {
+                ImageStorage.shared.deleteImage(filename: newItem.content)
+            }
         } else {
             items.insert(newItem, at: 0)
         }

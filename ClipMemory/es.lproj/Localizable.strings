@@ -136,6 +136,7 @@
 "batch.selected" = "%#@count@";
 "app.send.feedback" = "Comentarios";
 "alert.encrypt.failed" = "Error al cifrar datos sensibles. El elemento no se guardó.";
+"alert.encrypt.failed.count" = "Error al cifrar datos sensibles. No se guardaron %d elementos.";
 
 /* Welcome View */
 "welcome.title" = "Bienvenido a ClipMemory";

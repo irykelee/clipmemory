@@ -15,8 +15,8 @@ on:
 # REL-1 (2026-07-24 audit): concurrency group is FIXED `release`, not
 # `${{ github.ref }}`. Per-ref groups let two tags pushed minutes apart run
 # concurrently; both then race on the appcast `git push --force-with-lease`
-# (line 198), and the faster push silently truncates the slower tag's
-# appcast commit out of the source branch. A fixed group serialises every
+# in the 'Publish appcast update' step, and the faster push silently
+# truncates the slower tag's appcast commit out of the source branch. A fixed group serialises every
 # tag push and every PR dry-run against the same lock.
 # `cancel-in-progress: false` is intentional — never cancel a release
 # mid-flight; PR runs against the same group are blocked until the in-flight
@@ -150,6 +150,13 @@ jobs:
         if: github.event_name == 'push'
         run: ./Scripts/package.sh
 
+      # REL-3 (2026-07-24): this step is LOCAL-ONLY — sign the tarball and
+      # insert the <item> into the working-tree appcast.xml. The git
+      # commit/push of appcast.xml and the jsDelivr purge used to live here,
+      # BEFORE 'Pre-release verify' and 'Create GitHub Release', so a failing
+      # verify left the public feed advertising a release that was never
+      # published. The publish half now runs as 'Publish appcast update'
+      # after 'Create GitHub Release'.
       - name: Sign tarball and update appcast
         if: github.event_name == 'push'
         env:
@@ -188,42 +195,10 @@ jobs:
           SIGNATURE=$(/tmp/sparkle/bin/sign_update --ed-key-file "$KEY_FILE" -p Releases/ClipMemory.tar.gz)
           rm -P "$KEY_FILE"
 
-          # Insert the new item into appcast.xml and prepare a commit for it.
-          # The commit will be pushed back to the source branch the tag was
-          # cut from (not always 'main' — see P0-1 fix below).
+          # Insert the new item into the working-tree appcast.xml. The commit
+          # + push of this change is deliberately NOT done here — see the
+          # 'Publish appcast update' step after 'Create GitHub Release'.
           ./Scripts/update_appcast.sh appcast.xml "$VERSION" Releases/ClipMemory.tar.gz "$SIGNATURE"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add appcast.xml
-          git diff --cached --quiet || git commit -m "chore: appcast item for v${VERSION} [skip ci]"
-          # Drop reproducible xcodegen-regenerated files so the source-branch
-          # detection runs against a clean tree (those files are not part of
-          # the appcast commit anyway).
-          git checkout -- .
-
-          # P0-1 fix (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md): a tag
-          # may be cut from a feature branch ahead of main (v2.5.10 was cut
-          # from fix/v2.5.10-hotfix-batch which was 17 commits ahead of main
-          # — `git pull --rebase origin main` then produced 30+ add/add
-          # conflicts and required a force-push to recover). Detect the
-          # actual source branch from the tag commit and push the appcast
-          # commit there instead; --force-with-lease fails loudly if the
-          # branch advanced concurrently, replacing the silent overwrite path.
-          SOURCE_BRANCH="main"
-          if git rev-parse --verify "${GITHUB_REF_NAME}^{commit}" >/dev/null 2>&1; then
-            DETECTED=$(git branch --all --contains "${GITHUB_REF_NAME}^{commit}" \
-                      2>/dev/null | sed -E 's|^[* ]+||; s|^remotes/origin/||' \
-                      | grep -v 'HEAD' | head -1 || true)
-            if [[ -n "$DETECTED" ]]; then
-              SOURCE_BRANCH="$DETECTED"
-            fi
-          fi
-          echo "Pushing appcast commit for ${GITHUB_REF_NAME} -> origin/${SOURCE_BRANCH}"
-          git push --force-with-lease origin "HEAD:refs/heads/${SOURCE_BRANCH}"
-
-          # Best-effort: refresh the jsDelivr mirror of the fallback feed
-          curl -sf "https://purge.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml" || true
 
       # C1 (2026-07-23 ship-review): pre-release verify, BEFORE the GitHub
       # Release is published. P0-3 (post-release verify) only catches
@@ -325,6 +300,54 @@ jobs:
           body_path: ${{ steps.notes.outputs.body_path }}
           # Don't auto-generate notes — we supply body_path from release-notes file.
           generate_release_notes: false
+
+      # REL-3 (2026-07-24): appcast publish moved here, AFTER the GitHub
+      # Release exists. Previously the commit/push + jsDelivr purge ran
+      # inside 'Sign tarball and update appcast', before 'Pre-release
+      # verify' — a failing verify then left appcast.xml publicly
+      # advertising a release that was never published (Sparkle clients
+      # would offer an update whose download URL 404s).
+      - name: Publish appcast update
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # Commit the working-tree appcast.xml updated by
+          # 'Sign tarball and update appcast' and push it back to the source
+          # branch the tag was cut from (not always 'main' — see P0-1 fix
+          # below).
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git diff --cached --quiet || git commit -m "chore: appcast item for v${VERSION} [skip ci]"
+          # Drop reproducible xcodegen-regenerated files so the source-branch
+          # detection runs against a clean tree (those files are not part of
+          # the appcast commit anyway).
+          git checkout -- .
+
+          # P0-1 fix (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md): a tag
+          # may be cut from a feature branch ahead of main (v2.5.10 was cut
+          # from fix/v2.5.10-hotfix-batch which was 17 commits ahead of main
+          # — `git pull --rebase origin main` then produced 30+ add/add
+          # conflicts and required a force-push to recover). Detect the
+          # actual source branch from the tag commit and push the appcast
+          # commit there instead; --force-with-lease fails loudly if the
+          # branch advanced concurrently, replacing the silent overwrite path.
+          SOURCE_BRANCH="main"
+          if git rev-parse --verify "${GITHUB_REF_NAME}^{commit}" >/dev/null 2>&1; then
+            DETECTED=$(git branch --all --contains "${GITHUB_REF_NAME}^{commit}" \
+                      2>/dev/null | sed -E 's|^[* ]+||; s|^remotes/origin/||' \
+                      | grep -v 'HEAD' | head -1 || true)
+            if [[ -n "$DETECTED" ]]; then
+              SOURCE_BRANCH="$DETECTED"
+            fi
+          fi
+          echo "Pushing appcast commit for ${GITHUB_REF_NAME} -> origin/${SOURCE_BRANCH}"
+          git push --force-with-lease origin "HEAD:refs/heads/${SOURCE_BRANCH}"
+
+          # Best-effort: refresh the jsDelivr mirror of the fallback feed
+          curl -sf "https://purge.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml" || true
 
       - name: Update Homebrew tap
         if: github.event_name == 'push'

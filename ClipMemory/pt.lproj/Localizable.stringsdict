@@ -11,9 +11,9 @@
 			<key>NSStringFormatSpecTypeKey</key>
 			<string>NSStringPluralRuleType</string>
 			<key>one</key>
-			<string>%d selected</string>
+			<string>%d selecionado</string>
 			<key>other</key>
-			<string>%d selected</string>
+			<string>%d selecionados</string>
 		</dict>
 	</dict>
 	<key>quickbar.recent</key>
@@ -39,9 +39,9 @@
 			<key>NSStringFormatSpecTypeKey</key>
 			<string>NSStringPluralRuleType</string>
 			<key>one</key>
-			<string>%d item será be permanently deleted. This action cannot be undone.</string>
+			<string>%d item será apagado permanentemente. Esta ação não pode ser desfeita.</string>
 			<key>other</key>
-			<string>%d itens serão be permanently deleted. This action cannot be undone.</string>
+			<string>%d itens serão apagados permanentemente. Esta ação não pode ser desfeita.</string>
 		</dict>
 	</dict>
 	<key>alert.clear.message</key>
@@ -53,11 +53,11 @@
 			<key>NSStringFormatSpecTypeKey</key>
 			<string>NSStringPluralRuleType</string>
 			<key>one</key>
-			<string>Are you sure you want to clear %d item?
-Pinned items will not be deleted.</string>
+			<string>Tem certeza de que deseja limpar %d item?
+Itens fixados não serão apagados.</string>
 			<key>other</key>
-			<string>Are you sure you want to clear %d itens?
-Pinned itens serão not be deleted.</string>
+			<string>Tem certeza de que deseja limpar %d itens?
+Itens fixados não serão apagados.</string>
 		</dict>
 	</dict>
 	<key>settings.max.items.count</key>
@@ -83,9 +83,9 @@ Pinned itens serão not be deleted.</string>
 			<key>NSStringFormatSpecTypeKey</key>
 			<string>NSStringPluralRuleType</string>
 			<key>one</key>
-			<string>%d item será be deleted (pinned kept, moved to the Trash)</string>
+			<string>%d item será apagado (fixados mantidos, movido para a lixeira)</string>
 			<key>other</key>
-			<string>%d itens serão be deleted (pinned kept, moved to the Trash)</string>
+			<string>%d itens serão apagados (fixados mantidos, movidos para a lixeira)</string>
 		</dict>
 	</dict>
 </dict>

@@ -135,6 +135,7 @@
 "batch.selected" = "%#@count@";
 "app.send.feedback" = "피드백";
 "alert.encrypt.failed" = "민감 데이터 암호화에 실패했습니다. 저장되지 않았습니다.";
+"alert.encrypt.failed.count" = "민감 데이터 암호화에 실패했습니다. %d개 항목이 저장되지 않았습니다.";
 
 /* Welcome View */
 "welcome.title" = "ClipMemory에 오신 것을 환영합니다";

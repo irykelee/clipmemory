@@ -16,6 +16,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var languageObserver: NSObjectProtocol?
     private var encryptionFailedObserver: NSObjectProtocol?
     private var welcomeWindow: NSWindow?
+    // CLIP-3 (2026-07-24): debounce .encryptionFailed alerts — see throttler doc.
+    private let encryptionAlertThrottler = EncryptionFailedAlertThrottler()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupWindowManager()
@@ -137,14 +139,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         languageObserver = NotificationCenter.default.addObserver(forName: Notification.Name("LanguageDidChange"), object: nil, queue: .main) { [weak self] _ in
             self?.statusItem?.button?.toolTip = L10n.appName
         }
-        encryptionFailedObserver = NotificationCenter.default.addObserver(forName: .encryptionFailed, object: nil, queue: .main) { _ in
+        encryptionFailedObserver = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed, object: nil, queue: .main
+        ) { [weak self] note in
             // XCTest injects into the real app, so this observer is live
             // during tests — and tests deliberately post .encryptionFailed
             // (OCRTests encrypt-failure fixtures). A modal runModal there
             // blocks the test process forever (2026-07-24 CI hang: Test
             // step stuck >60 min). Same guard as CryptoService.isRunningTests.
             guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
-            let a = NSAlert(); a.messageText = L10n.error; a.informativeText = L10n.alertEncryptFailed; a.alertStyle = .warning; a.addButton(withTitle: L10n.buttonConfirm); a.runModal()
+            // CLIP-3 (2026-07-24): batch failure paths (OCR backfill, bulk
+            // tag encryption) post one notification per item — one modal per
+            // notification is an alert storm. Throttle per H-3 source tag;
+            // suppressed failures are counted into the next alert's text.
+            guard let self else { return }
+            let source = EncryptionFailedAlertThrottler.sourceKey(for: note)
+            let decision = encryptionAlertThrottler.recordFailure(source: source)
+            guard decision.shouldShowAlert else { return }
+            let a = NSAlert()
+            a.messageText = L10n.error
+            a.informativeText = decision.failureCount > 1
+                ? L10n.alertEncryptFailedCount(decision.failureCount)
+                : L10n.alertEncryptFailed
+            a.alertStyle = .warning
+            a.addButton(withTitle: L10n.buttonConfirm)
+            a.runModal()
         }
     }
 

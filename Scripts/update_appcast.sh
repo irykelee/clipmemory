@@ -11,6 +11,9 @@ set -euo pipefail
 # --- Pure functions (testable) ---
 
 # Insert a new <item> for $2 into the appcast at $1, right before </channel>.
+# Idempotent: if an item for $2 already exists, this is a no-op (exit 0).
+# Fails (exit 1) when the appcast has no </channel> tag instead of silently
+# rewriting the file unchanged.
 # Args:
 #   $1 — absolute path to appcast.xml
 #   $2 — version string (e.g. "2.4.0")
@@ -21,6 +24,22 @@ insert_appcast_item() {
     local version="$2"
     local tarball_path="$3"
     local ed_signature="$4"
+
+    # REL-4: a missing </channel> used to make the awk below a silent no-op
+    # (pattern never matched, file rewritten unchanged, "Inserted" logged) —
+    # the release workflow then pushed an appcast WITHOUT the new item.
+    if ! grep -qF '</channel>' "$appcast_path"; then
+        echo "ERROR: ${appcast_path} has no </channel> tag; refusing to update a malformed appcast" >&2
+        return 1
+    fi
+
+    # REL-4: idempotency — re-running the release workflow (or this script)
+    # for the same version must not insert a duplicate <item>; Sparkle
+    # clients tolerate it but the feed grows a stale duplicate pubDate/sig.
+    if grep -qF "<sparkle:version>${version}</sparkle:version>" "$appcast_path"; then
+        echo "appcast already has an item for v${version}; skipping (idempotent)"
+        return 0
+    fi
 
     local length pub_date url tmp
     length=$(stat -f %z "$tarball_path")

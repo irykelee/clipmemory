@@ -99,5 +99,34 @@ for needle in \
     fi
 done
 
-echo "PASS: insert_appcast_item inserts version + length + signature + URL and accumulates items"
+# --- Assertion 6 (REL-4): idempotent — re-inserting an existing version is a no-op ---
+insert_appcast_item "$FAKE_APPCAST" "9.9.10" "$FAKE_TARBALL" "SIG_DIFFERENT=" > /dev/null
+item_count=$(grep -c "<item>" "$FAKE_APPCAST")
+if [ "$item_count" -ne 2 ]; then
+    echo "FAIL: idempotent re-insert added a duplicate <item> (expected 2, got $item_count)" >&2
+    exit 1
+fi
+if grep -qF "SIG_DIFFERENT=" "$FAKE_APPCAST"; then
+    echo "FAIL: idempotent re-insert overwrote/duplicated the existing 9.9.10 item" >&2
+    exit 1
+fi
+
+# --- Assertion 7 (REL-4): missing </channel> fails loudly, file untouched ---
+BROKEN_APPCAST="$TEST_DIR/appcast-broken.xml"
+cat > "$BROKEN_APPCAST" <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>ClipMemory Updates</title>
+EOF
+if insert_appcast_item "$BROKEN_APPCAST" "9.9.11" "$FAKE_TARBALL" "SIG_CCC=" 2>/dev/null; then
+    echo "FAIL: expected non-zero exit for appcast without </channel>" >&2
+    exit 1
+fi
+if grep -qF "<item>" "$BROKEN_APPCAST"; then
+    echo "FAIL: malformed appcast was modified despite missing </channel>" >&2
+    exit 1
+fi
+
+echo "PASS: insert_appcast_item inserts version + length + signature + URL, accumulates items, is idempotent, and fails on missing </channel>"
 exit 0

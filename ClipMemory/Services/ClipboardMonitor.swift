@@ -343,6 +343,18 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         return nil
     }
 
+    /// CLIP-1: deterministic dedup fingerprint for captured image bytes.
+    /// Keyed HMAC-SHA256 over the base64 of the raw data — same style as the
+    /// text-item contentHash (`CryptoService.hmacHex`), so the hash can't
+    /// serve as an offline dictionary oracle. The base64 hop keeps the
+    /// CryptoServiceProtocol surface unchanged (string in, hex out). Static
+    /// so tests can call it directly with an injected ServiceContainer.crypto.
+    /// Returns nil on crypto failure; callers then store without a dedup
+    /// fingerprint, same contract as text items.
+    static func imageContentHash(for imageData: Data) -> String? {
+        ServiceContainer.crypto.hmacHex(for: imageData.base64EncodedString())
+    }
+
     private func detectType(_ content: String) -> ClipboardItemType {
         // L-1 (2026-07-24 audit): mailto:/ftp:/file:/www. were silently
         // downgraded to .text, losing the link styling (and any downstream
@@ -363,6 +375,12 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         // Images are not auto-expired by size; storage is controlled by maxItems and manual clearing.
         let isSensitive = false
         let expiresAt: Date? = nil
+        // CLIP-1: fingerprint the image bytes BEFORE saving so the item
+        // carries a contentHash into ClipboardStore.addItem. Without it the
+        // store's dedup branch can never match images — the item's `content`
+        // is a fresh UUID filename that differs on every capture — and each
+        // re-copy of the same image produced a new file + a new list entry.
+        let contentHash = Self.imageContentHash(for: imageData)
 
         ImageStorage.shared.saveImage(imageData, id: id) { [weak self] filename in
             guard let filename = filename else { return }
@@ -371,7 +389,8 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
                 content: filename,
                 type: .image,
                 isSensitive: isSensitive,
-                expiresAt: expiresAt
+                expiresAt: expiresAt,
+                contentHash: contentHash
             )
             // H-13: route through delegate; was `ClipboardStore.shared.addItem(item)`.
             self?.delegate?.monitorDidCaptureItem(item)
