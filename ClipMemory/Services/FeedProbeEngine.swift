@@ -177,15 +177,34 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
     private func fetchBody(url: URL, timeout: TimeInterval) async -> String? {
         do {
             let request = URLRequest(url: url, timeoutInterval: timeout)
-            let (data, response) = try await urlSession.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            // H-20 (2026-07-24 audit): cap response body at 1 MB. Without this,
-            // a malicious or compromised CDN could serve a multi-GB body and
-            // OOM the process. appcast.xml is typically <50 KB; 1 MB is a
-            // generous ceiling well above any legitimate feed.
-            guard data.count <= Self.maxResponseBytes else {
-                DefaultFeedProbeEngine.logger.warning("Feed body exceeded \(Self.maxResponseBytes) bytes (got \(data.count)) — refusing")
+            // UPD-2 (2026-07-24 audit): H-20 added the 1 MB cap but checked it
+            // only AFTER `data(for:)` had buffered the whole response — a
+            // malicious or compromised CDN could still serve a multi-GB body
+            // and OOM the process before the guard ran. `bytes(for:)` hands
+            // us the response headers first and streams the body, so the cap
+            // is enforced before/while bytes arrive, never after.
+            let (bytes, response) = try await urlSession.bytes(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else { return nil }
+            // Precheck: a declared Content-Length over the cap fails fast
+            // without consuming a single body byte.
+            if httpResponse.expectedContentLength > Int64(Self.maxResponseBytes) {
+                DefaultFeedProbeEngine.logger.warning("Feed Content-Length \(httpResponse.expectedContentLength) exceeds \(Self.maxResponseBytes) bytes — refusing before download")
                 return nil
+            }
+            // Content-Length absent or chunked (expectedContentLength == -1):
+            // accumulate and cancel the stream the moment we cross the cap.
+            // Abandoning the iterator tears down the underlying task.
+            var data = Data()
+            if httpResponse.expectedContentLength > 0 {
+                data.reserveCapacity(Int(httpResponse.expectedContentLength))
+            }
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count > Self.maxResponseBytes {
+                    DefaultFeedProbeEngine.logger.warning("Feed body exceeded \(Self.maxResponseBytes) bytes mid-stream — cancelling")
+                    return nil
+                }
             }
             // L-20 (2026-07-24 audit): log parse failures distinctly from
             // transport errors so an operator can tell "feed returned 200 but
@@ -220,6 +239,8 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
 
     /// H-20 (2026-07-24 audit): 1 MB cap on feed body size. appcast.xml feeds
     /// are typically <50 KB; 1 MB leaves 20x headroom while preventing the
-    /// OOM path from a malicious CDN response.
+    /// OOM path from a malicious CDN response. UPD-2: enforced via the
+    /// Content-Length precheck and the streaming accumulator in `fetchBody`,
+    /// never after a full in-memory buffer.
     static let maxResponseBytes = 1_000_000
 }
