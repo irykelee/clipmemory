@@ -188,6 +188,44 @@ final class BackupPackage {
     private static func unzipArchive(_ archive: URL, to destination: URL) throws {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         try runDitto(args: ["-x", "-k", archive.path, destination.path])
+        try validateExtractedTree(at: destination)
+    }
+
+    /// BKP-2 (2026-07-24 audit): `ditto -x` extracts whatever the zip
+    /// declares, with no sanity checks — a hostile `.clipmemory` can carry
+    /// symbolic links (later `Data(contentsOf:)` follows them and reads
+    /// arbitrary files outside the sandbox of the staging dir, e.g. an
+    /// Images/ entry pointing at ~/Library) or `../` member paths that
+    /// escape the staging root entirely. Enumerate the extracted tree
+    /// BEFORE any file is consumed and reject the package as corrupt when
+    /// any entry is a symlink or resolves outside `staging`.
+    private static func validateExtractedTree(at staging: URL) throws {
+        guard let enumerator = FileManager.default.enumerator(
+            at: staging,
+            includingPropertiesForKeys: [.isSymbolicLinkKey]
+        ) else {
+            throw BackupPackageError.corruptedData("extracted package not enumerable", .manifest)
+        }
+        // resolvingSymlinksInPath so a `staging` path that itself sits under
+        // a symlinked temp dir (common on macOS: /var → /private/var) still
+        // compares correctly against resolved children.
+        let stagingRoot = staging.standardizedFileURL.resolvingSymlinksInPath().path
+        while let entry = enumerator.nextObject() as? URL {
+            let values = try entry.resourceValues(forKeys: [.isSymbolicLinkKey])
+            if values.isSymbolicLink == true {
+                logger.error("Backup package contains symbolic link: \(entry.lastPathComponent)")
+                throw BackupPackageError.corruptedData(
+                    "symbolic link in package: \(entry.lastPathComponent)", .manifest
+                )
+            }
+            let resolved = entry.standardizedFileURL.resolvingSymlinksInPath().path
+            guard resolved == stagingRoot || resolved.hasPrefix(stagingRoot + "/") else {
+                logger.error("Backup package entry escapes staging dir: \(entry.path)")
+                throw BackupPackageError.corruptedData(
+                    "package entry escapes staging dir: \(entry.lastPathComponent)", .manifest
+                )
+            }
+        }
     }
 
     /// Runs `/usr/bin/ditto` with the given args and blocks the caller until
