@@ -41,6 +41,7 @@
 		54EB58BA9A8F29C3E48C7DE6 /* ImageStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3153EAFCF0B2690D5DEB113 /* ImageStorage.swift */; };
 		54F261AE8D07081366242530 /* SidebarTagFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5EAC4F5E1486DD5DCF3E690 /* SidebarTagFilterTests.swift */; };
 		59D61E03E4E6198114B5F856 /* HangDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB46D62ED9B13AFDE0196EFF /* HangDetector.swift */; };
+		5A9909E0285A0BB374808436 /* TagSuggestionEmailBoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495C5B38EB5958470DBF2E7C /* TagSuggestionEmailBoundaryTests.swift */; };
 		5BB09752788915D2A6BD51EC /* WelcomeViewSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BABA881418F0A51EC332780 /* WelcomeViewSnapshotTests.swift */; };
 		5D57DABDB70335AA7EABF65A /* ClipboardStoreRTFCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A9BEBF6532DD5C9551E963 /* ClipboardStoreRTFCacheTests.swift */; };
 		5F166E081C5C54406638AB80 /* HangDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D006CCE0E8AC47CF7B7413 /* HangDetectorTests.swift */; };
@@ -169,6 +170,7 @@
 		443EB217154D9B586C055F7D /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
 		4499CFF1A5F60ED377D402EB /* ClipboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStore.swift; sourceTree = "<group>"; };
 		45B25AAEAD7B96A95D89746C /* TagSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagSuggestion.swift; sourceTree = "<group>"; };
+		495C5B38EB5958470DBF2E7C /* TagSuggestionEmailBoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagSuggestionEmailBoundaryTests.swift; sourceTree = "<group>"; };
 		4C63DA186B15CCC8937235FB /* ImagePreviewPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewPanel.swift; sourceTree = "<group>"; };
 		4D555CA30882227C142B6A55 /* CryptoKeyPreparationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoKeyPreparationTests.swift; sourceTree = "<group>"; };
 		4DEE0209000FB7DCDF7C7D7C /* WindowManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManagerTests.swift; sourceTree = "<group>"; };
@@ -358,6 +360,7 @@
 				09A31D744B299F2270708CBD /* TagChipStackTests.swift */,
 				D3AD63BCFD147D053894F30A /* TagPickerLogicTests.swift */,
 				1F6F06C2DED554D16098D76D /* TagPickerSheetSubmitTests.swift */,
+				495C5B38EB5958470DBF2E7C /* TagSuggestionEmailBoundaryTests.swift */,
 				F7DDF8601E51F10DA99AD713 /* TagSuggestionTagNamesTests.swift */,
 				C732B2DADEA223B75739B44E /* TagTests.swift */,
 				F64CD6E92070A29D73CED4C2 /* TrashItemRowSnapshotTests.swift */,
@@ -638,6 +641,7 @@
 				055A727AD6959252460C8B34 /* TagChipStackTests.swift in Sources */,
 				138C340D07ADB674B5C48BE0 /* TagPickerLogicTests.swift in Sources */,
 				BE3DDE35CD4BED9CB046EB7D /* TagPickerSheetSubmitTests.swift in Sources */,
+				5A9909E0285A0BB374808436 /* TagSuggestionEmailBoundaryTests.swift in Sources */,
 				8ECDCFA7D7981743A08719DC /* TagSuggestionTagNamesTests.swift in Sources */,
 				269F1A9BFA88C2439590FF02 /* TagTests.swift in Sources */,
 				AF45961FCAE09F6D67B04365 /* TrashItemRowSnapshotTests.swift in Sources */,
