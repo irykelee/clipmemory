@@ -49,6 +49,12 @@ enum BackupFileSource: String, Equatable, Sendable {
     case trash
     case tags
     case image
+    /// M-7 (2026-07-24 audit): distinguish "manifest file missing or
+    /// unreadable" / "manifest JSON corrupt" from the generic .invalidPackage
+    /// the import path used to throw, so logs and tests can pinpoint the
+    /// failing file rather than collapsing every early-stage failure into
+    /// the same error case.
+    case manifest
 }
 
 struct BackupManifest: Codable {
@@ -333,16 +339,22 @@ final class BackupPackage {
         defer { try? FileManager.default.removeItem(at: staging) }
         try unzipArchive(archive, to: staging)
 
-        guard let manifestData = try? Data(contentsOf: staging.appendingPathComponent("manifest.json")),
-              let manifest = try? JSONDecoder().decode(BackupManifest.self, from: manifestData) else {
-            throw BackupPackageError.invalidPackage
+        guard let manifestData = try? Data(contentsOf: staging.appendingPathComponent("manifest.json")) else {
+            // M-7: distinguish "manifest file missing" from later corruption.
+            throw BackupPackageError.corruptedData("manifest.json missing or unreadable", .manifest)
+        }
+        guard let manifest = try? JSONDecoder().decode(BackupManifest.self, from: manifestData) else {
+            throw BackupPackageError.corruptedData("manifest.json decode failed", .manifest)
         }
         guard manifest.formatVersion <= currentFormatVersion else {
             throw BackupPackageError.unsupportedFormatVersion(manifest.formatVersion)
         }
-        guard let salt = Data(base64Encoded: manifest.keySalt),
-              let sealedKeyData = try? Data(contentsOf: staging.appendingPathComponent("key.enc")) else {
+        guard let salt = Data(base64Encoded: manifest.keySalt) else {
             throw BackupPackageError.invalidPackage
+        }
+        guard let sealedKeyData = try? Data(contentsOf: staging.appendingPathComponent("key.enc")) else {
+            // M-7: same pattern — surface which file is the offender.
+            throw BackupPackageError.corruptedData("key.enc missing or unreadable", .manifest)
         }
 
         // Passphrase check: GCM open fails on wrong passphrase.
