@@ -44,23 +44,6 @@ class WindowManager: NSObject, NSWindowDelegate {
             guard let contentView = mainContentView else { return }
             let window = NSWindow(
                 contentRect: savedWindowFrame,
-                // Reverted (2026-07-24, was .fullScreen): adding the
-                // NSFullScreenTransition on an LSUIElement (menu-bar-only) app
-                // shows the screen filled, but:
-                //   - The system status menu bar (Apple/Control Center/Clock)
-                //     overlays the window instead of auto-hiding.
-                //   - Traffic lights disappear (so user has no visible exit
-                //     affordance).
-                //   - The window refuses to shrink (correct fullscreen behavior,
-                //     but combined with the missing traffic lights feels
-                //     "trapped in fullscreen").
-                // Net effect: the regression the previous `.fullScreen` fix
-                // introduced felt worse than the legacy-zoom behavior it was
-                // trying to replace. Reverting to legacy zoom (window grows to
-                // its userFrame via the green button's standard-frame toggle)
-                // keeps traffic lights visible AND lets the user drag any edge
-                // to untrap. A proper fullscreen toggle can be re-introduced via
-                // a custom menu item + `.toggleFullScreen(_:)` if needed.
                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                 backing: .buffered, defer: false
             )
