@@ -44,14 +44,33 @@ class WindowManager: NSObject, NSWindowDelegate {
             guard let contentView = mainContentView else { return }
             let window = NSWindow(
                 contentRect: savedWindowFrame,
-                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                // Bug "全屏无法返回" (2026-07-24): the `.fullScreen` style
+                // bit tells AppKit "this window supports the system full-screen
+                // transition". Without it the green traffic-light button just
+                // zooms the window to screen size (legacy zoom behavior), so:
+                //   - The top-of-screen "Exit Full Screen" affordance never
+                //     installs (AppKit thinks the window isn't really fullscreen).
+                //   - ⌃⌘F / Esc exit shortcuts no-op.
+                //   - User sees a "fullscreen-looking" window with no escape.
+                // Adding `.fullScreen` makes green = enter full screen (real
+                // NSFullScreenTransition), green again / ⌃⌘F = exit.
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullScreen],
                 backing: .buffered, defer: false
             )
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.toolbarStyle = .unified
+            // Belt-and-suspenders: tell AppKit which screen full-screen entry
+            // should target on a multi-monitor setup (default = primary). Only
+            // takes effect when the window is also fullScreen-capable in its
+            // styleMask, which is now true.
+            window.collectionBehavior = [.fullScreenPrimary]
             window.delegate = self
             window.isReleasedWhenClosed = false
+            // Re-apply the titlebar-overlay look (was previously in styleMask)
+            // AFTER collectionBehavior so `.fullSizeContentView` doesn't
+            // conflict with `.fullScreen` resolution.
+            window.styleMask.insert(.fullSizeContentView)
             window.contentView = NSHostingView(rootView: contentView)
             window.makeKeyAndOrderFront(nil)
             mainWindow = window
