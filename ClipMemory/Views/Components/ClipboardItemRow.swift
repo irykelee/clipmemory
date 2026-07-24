@@ -101,7 +101,14 @@ struct ClipboardItemRow: View, Equatable {
         lhs.item.isPinned == rhs.item.isPinned &&
         lhs.item.tagIds == rhs.item.tagIds &&
         lhs.item.createdAt == rhs.item.createdAt &&
-        lhs.item.decryptionFailed == rhs.item.decryptionFailed
+        lhs.item.decryptionFailed == rhs.item.decryptionFailed &&
+        // H-19 (2026-07-24 audit): isSensitive + ocrText were missing — when
+        // OCR attaches text in the background or sensitive classification
+        // flips, SwiftUI saw the row as unchanged and skipped re-render. The
+        // orange "sensitive" badge appeared late and the context menu's
+        // "Copy OCR" stayed disabled until the row scrolled off + on.
+        lhs.item.isSensitive == rhs.item.isSensitive &&
+        lhs.item.ocrText == rhs.item.ocrText
     }
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     private var iconSize: CGFloat { fontScale * 13 }

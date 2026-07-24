@@ -64,6 +64,48 @@ final class ClipboardItemRowTests: XCTestCase {
         XCTAssertNotEqual(rowA, rowC, "Rows should differ when decryptionFailed differs")
     }
 
+    // MARK: - H-19 (2026-07-24 audit): Equatable must include isSensitive + ocrText
+    // Background OCR attaches ocrText; sensitive classification flips isSensitive
+    // without changing id/createdAt/decryptionFailed. Without these fields in
+    // ==, SwiftUI's diff sees the row as unchanged and skips re-render — the
+    // orange "sensitive" badge appears late (or never) after the underlying
+    // item has been marked sensitive.
+
+    func testEquatableIncludesIsSensitive() {
+        let id = UUID()
+        let base = ClipboardItem(
+            id: id, content: "secret", type: .text,
+            createdAt: Date(timeIntervalSince1970: 1000),
+            isPinned: false, isSensitive: false
+        )
+        let nowSensitive = ClipboardItem(
+            id: id, content: "secret", type: .text,
+            createdAt: Date(timeIntervalSince1970: 1000),
+            isPinned: false, isSensitive: true
+        )
+        let rowA = ClipboardItemRow(item: base, isRevealed: false, onPin: {}, onDelete: {}, onToggleReveal: {})
+        let rowB = ClipboardItemRow(item: nowSensitive, isRevealed: false, onPin: {}, onDelete: {}, onToggleReveal: {})
+        XCTAssertNotEqual(rowA, rowB, "Rows should differ when isSensitive flips (orange badge must re-render)")
+    }
+
+    func testEquatableIncludesOcrText() {
+        let id = UUID()
+        let base = ClipboardItem(
+            id: id, content: "img.png", type: .image,
+            createdAt: Date(timeIntervalSince1970: 1000),
+            isPinned: false, isSensitive: false
+        )
+        let withOcr = ClipboardItem(
+            id: id, content: "img.png", type: .image,
+            createdAt: Date(timeIntervalSince1970: 1000),
+            isPinned: false, isSensitive: false,
+            ocrText: "encrypted-ocr-blob"
+        )
+        let rowA = ClipboardItemRow(item: base, isRevealed: false, onPin: {}, onDelete: {}, onToggleReveal: {})
+        let rowB = ClipboardItemRow(item: withOcr, isRevealed: false, onPin: {}, onDelete: {}, onToggleReveal: {})
+        XCTAssertNotEqual(rowA, rowB, "Rows should differ when ocrText attaches (context menu 'Copy OCR' must enable)")
+    }
+
     // MARK: - H-7/H-8 (2026-07-24 audit)
 
     /// Minimum-valid RTF containing plaintext "Hello" after parsing. Mirrors
