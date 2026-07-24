@@ -52,6 +52,15 @@ class CryptoService: CryptoServiceProtocol {
     // - `prepareKey` resets customKey on regenerate and reloads into the cache.
     private let cachedLoadedKeyLock = NSLock()
     private var cachedLoadedKey: SymmetricKey?
+    /// H-2 (2026-07-24 audit): once the first load attempt completes — success
+    /// OR failure — this flips to true and `getKey()` returns nil on a cache
+    /// miss instead of re-querying the Keychain / key file. Without this, a
+    /// transient Keychain state (.interactionLocked pre-unlock, missing key
+    /// file, deleted item) would trigger one Keychain round-trip per
+    /// encrypt/decrypt call (1–10ms each), pinning the main thread.
+    /// Recovery requires process restart — intentional: the prepared-key
+    /// path already surfaces a user-visible alert on the same conditions.
+    private var keyLoadAttempted = false
 
     private func withCachedLoadedKey<R>(_ block: () throws -> R) rethrows -> R {
         cachedLoadedKeyLock.lock()
@@ -299,9 +308,15 @@ class CryptoService: CryptoServiceProtocol {
 
     private func getKey() -> SymmetricKey? {
         if let customKey { return customKey }
-        // H-2: Hit cache before touching Keychain / disk. The cache is only
-        // populated after a successful load below.
-        if let cached = withCachedLoadedKey({ cachedLoadedKey }) { return cached }
+        // H-2 (2026-07-24 audit): snapshot cache state under the lock so we
+        // can short-circuit on repeated misses without re-querying Keychain.
+        // Set on first encounter (customKey bypass — `keyLoadAttempted` does
+        // not apply to the custom-key fast path).
+        let (cached, attempted) = withCachedLoadedKey {
+            (cachedLoadedKey, keyLoadAttempted)
+        }
+        if let cached { return cached }
+        if attempted { return nil }
         // C1: Keychain is canonical; the pre-C1 key file remains a read-only
         // fallback until prepareKey's migration removes it. Under XCTest,
         // read only the file — never prompt for the real Keychain item.
@@ -313,7 +328,12 @@ class CryptoService: CryptoServiceProtocol {
         } else {
             loaded = nil
         }
-        if let loaded { withCachedLoadedKey { cachedLoadedKey = loaded } }
+        // Commit the load result AND mark attempted so subsequent misses
+        // short-circuit instead of re-querying Keychain / disk.
+        withCachedLoadedKey {
+            cachedLoadedKey = loaded
+            keyLoadAttempted = true
+        }
         return loaded
     }
 
