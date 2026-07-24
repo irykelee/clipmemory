@@ -1,4 +1,7 @@
 import SwiftUI
+import os.log
+
+private let colorHexLogger = Logger(subsystem: "com.clipmemory.app", category: "ColorHex")
 
 /// Parses "#RRGGBB" (or "RRGGBB") hex strings into SwiftUI Colors.
 /// Returns black on parse failure (rather than crashing) so chips stay visible
@@ -32,7 +35,14 @@ extension Color {
     /// tags are rendered as small opaque chips.
     func toHex() -> String {
         guard let components = NSColor(self).usingColorSpace(.deviceRGB) else {
-            return "#000000"
+            // L-16 (2026-07-24 audit): the previous fallback was pure
+            // black (#000000), which looks intentional to users and hides
+            // the bug. Fall back to a distinguishable medium gray (#808080)
+            // and log the conversion failure so a developer can spot the
+            // bad input via Console.app / `log stream` filter on the
+            // "ColorHex" subsystem+category.
+            colorHexLogger.warning("toHex: NSColor conversion to deviceRGB failed; returning #808080 fallback")
+            return "#808080"
         }
         let r = Int(round(components.redComponent * 255))
         let g = Int(round(components.greenComponent * 255))

@@ -51,6 +51,10 @@ final class Audit20260720RegressionTests: XCTestCase {
     /// from disk. The fix keeps all pinned items; non-pinned is what gets
     /// shrunk.
     func testTrimToMaxItemsPreservesPinnedOverflow() {
+        // maxItems persists to UserDefaults via didSet — restore it so later
+        // tests (and the host app's own defaults domain) are unaffected.
+        let originalMaxItems = store.maxItems
+        defer { store.maxItems = originalMaxItems }
         store.maxItems = 50
         var pinnedIDs = Set<UUID>()
         for i in 0..<60 {

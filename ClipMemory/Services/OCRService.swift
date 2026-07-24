@@ -1,6 +1,7 @@
 import Foundation
 import Vision
 import AppKit
+import os
 
 /// OCR abstraction so tests can inject a fake recognizer.
 protocol OCRServiceProtocol {
@@ -79,6 +80,19 @@ final class VisionOCRService: OCRServiceProtocol {
     /// indication that a config mismatch is the cause. Falling back to
     /// "en" only when NONE of the requested langs are supported keeps
     /// every supported locale working and degrades gracefully otherwise.
+    ///
+    /// M-23 (2026-07-24 audit): log when the fallback to "en" actually
+    /// fires — the audit pointed out that silent downgrade gives no
+    /// signal when a future macOS drops a locale that's still in our
+    /// requested list. Operators (and the on-call for transcripts) can
+    /// `log show --predicate 'subsystem == "com.clipmemory.app"'` and
+    /// see exactly which locales were dropped. Avoids guess-debug loop
+    /// when users report "OCR doesn't recognize my language".
+    private static let ocrLanguageLogger = Logger(
+        subsystem: "com.clipmemory.app",
+        category: "OCR.supportedLanguages"
+    )
+
     private static func supportedRecognitionLanguages(from requested: [String]) -> [String] {
         if #available(macOS 13.0, *) {
             // The 2-arg overload is deprecated in macOS 12+ in favor of the
@@ -91,7 +105,14 @@ final class VisionOCRService: OCRServiceProtocol {
                     revision: VNRecognizeTextRequestRevision3
                 )) ?? []
             let filtered = requested.filter { supported.contains($0) }
-            return filtered.isEmpty ? ["en"] : filtered
+            if filtered.isEmpty {
+                let dropped = requested.filter { !supported.contains($0) }
+                ocrLanguageLogger.error(
+                    "No requested OCR language is supported by Revision3 on this macOS; requested=\(requested, privacy: .public) supported=\(supported, privacy: .public) dropped=\(dropped, privacy: .public). Falling back to en."
+                )
+                return ["en"]
+            }
+            return filtered
         }
         return requested
     }

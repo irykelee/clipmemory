@@ -11,7 +11,17 @@ import AppKit
 /// collapse into an `@StateObject` ViewModel is out of scope here, see
 /// `docs/superpowers/specs/2026-07-21-contentview-split-plan.md`).
 struct ItemListView: View {
-    let store: ClipboardStore
+    // H-12 (2026-07-24 audit): was `let store`. ListView reads many computed
+    // properties backed by @Published values (`store.items`, `store.trashedItems`,
+    // `store.todayCount`, etc.) — without `@ObservedObject`, ItemListView had
+    // no subscription of its own and relied entirely on ContentView re-rendering
+    // and re-pushing bindings. Today this happens to work (ContentView observes
+    // ClipboardStore), but it was a fragile implicit dependency: any refactor
+    // that memoized ContentView's body (ViewModel extraction, post NEW-7 Phase 5)
+    // would silently break ItemListView's refresh path. Add the subscription
+    // here so the view re-renders directly when store changes, independent of
+    // the parent's pipeline.
+    @ObservedObject var store: ClipboardStore
     /// Read-only context the list branch keys off (all/text/trash/etc.).
     let selectedTab: SidebarTab
     /// Result of ContentView's `filterItems` — pre-filtered, already grouped.
@@ -131,48 +141,132 @@ struct ItemListView: View {
                 .animation(.easeInOut(duration: 0.15), value: selectedItems.isEmpty)
             }
         }
-        .alert(L10n.alertDeleteTitle, isPresented: $showingDeleteAlert) {
-            Button(L10n.buttonCancel, role: .cancel) {}
-            Button(L10n.buttonDelete, role: .destructive) {
-                if let item = itemToDelete { store.deleteItem(item) }
-            }
-        } message: {
-            Text(L10n.alertDeleteMessage)
-        }
-        .alert(L10n.alertClearTitle, isPresented: Binding(
-            get: { pendingTypeClear != nil },
-            set: { if !$0 { pendingTypeClear = nil } }
-        )) {
-            Button(L10n.buttonCancel, role: .cancel) { pendingTypeClear = nil }
-            Button(L10n.buttonClear, role: .destructive) {
-                if let type = pendingTypeClear {
-                    store.clearItems(type: type, range: .all)
+        // M-11 (2026-07-24 audit): 4 stacked `.alert` modifiers without a
+        // runtime exclusivity check. Replaced with a single `.alert(...)`
+        // driven by an enum. The four source @Binding flags from
+        // ContentView remain unchanged — we derive the active alert from
+        // them in a computed property, then reset all four sources when
+        // the alert dismisses (via `activeAlertBool.wrappedValue = false`
+        // in the binding setter). Priority order: per-item delete >
+        // type clear > group clear > empty trash.
+        //
+        // We use the `isPresented:` Bool overload with both `actions:` and
+        // `message:` trailing closures because the `item:` overload on
+        // macOS 13 (our deployment target) only supports `actions:` — no
+        // `message:`. The `_:item:_:message:` overload with both was added
+        // in macOS 14.
+        .alert(activeAlert?.title ?? Text(""), isPresented: activeAlertBool) {
+            switch activeAlert {
+            case .deleteSingle:
+                Button(L10n.buttonCancel, role: .cancel) {}
+                Button(L10n.buttonDelete, role: .destructive) {
+                    if let item = itemToDelete { store.deleteItem(item) }
                 }
-                pendingTypeClear = nil
+            case .clearType:
+                Button(L10n.buttonCancel, role: .cancel) { pendingTypeClear = nil }
+                Button(L10n.buttonClear, role: .destructive) {
+                    if let type = pendingTypeClear {
+                        store.clearItems(type: type, range: .all)
+                    }
+                    pendingTypeClear = nil
+                }
+            case .clearMode:
+                Button(L10n.buttonCancel, role: .cancel) { pendingClearMode = nil }
+                Button(L10n.buttonClear, role: .destructive) { confirmClear() }
+            case .emptyTrash:
+                Button(L10n.buttonCancel, role: .cancel) { showingEmptyTrashAlert = false }
+                Button(L10n.buttonClear, role: .destructive) {
+                    store.emptyTrash()
+                    showingEmptyTrashAlert = false
+                }
+            case .none:
+                Button(L10n.buttonCancel, role: .cancel) {}
             }
         } message: {
-            if let type = pendingTypeClear {
-                Text(L10n.clearTypeConfirm(typeLabel(type), store.items.filter { $0.type == type && !$0.isPinned }.count))
+            if let kind = activeAlert {
+                switch kind {
+                case .deleteSingle:
+                    Text(L10n.alertDeleteMessage)
+                case .clearType:
+                    if let type = pendingTypeClear {
+                        Text(L10n.clearTypeConfirm(typeLabel(type), store.items.filter { $0.type == type && !$0.isPinned }.count))
+                    }
+                case .clearMode:
+                    Text(clearAlertText)
+                case .emptyTrash:
+                    Text(L10n.trashEmptyConfirmMessage(store.trashedItems.count))
+                }
             }
         }
-        .alert(L10n.alertClearTitle, isPresented: Binding(
-            get: { pendingClearMode != nil },
-            set: { if !$0 { pendingClearMode = nil } }
-        )) {
-            Button(L10n.buttonCancel, role: .cancel) { pendingClearMode = nil }
-            Button(L10n.buttonClear, role: .destructive) { confirmClear() }
-        } message: {
-            Text(clearAlertText)
-        }
-        .alert(L10n.trashEmptyConfirmTitle, isPresented: $showingEmptyTrashAlert) {
-            Button(L10n.buttonCancel, role: .cancel) { showingEmptyTrashAlert = false }
-            Button(L10n.buttonClear, role: .destructive) {
-                store.emptyTrash()
-                showingEmptyTrashAlert = false
+    }
+
+    /// M-11 binding helper: Bool binding that toggles `activeAlert` on/off.
+    /// When the user dismisses the alert (sets the binding to `false`),
+    /// we reset all four source @Bindings so a stale state can't re-show.
+    /// Reset only `itemToDelete` when the active kind was `.deleteSingle`,
+    /// otherwise we leak the deleted-item reference into the next session
+    /// of the view. (M-11 post-audit fix: previous reset-all path silently
+    /// kept `itemToDelete` pinned.)
+    private var activeAlertBool: Binding<Bool> {
+        Binding(
+            get: { activeAlert != nil },
+            set: { newValue in
+                guard !newValue else { return }
+                // Only reset `itemToDelete` when that was the active alert;
+                // resetting it unconditionally would clobber a pending
+                // delete the user just opened from a different source.
+                switch activeAlert {
+                case .deleteSingle:
+                    itemToDelete = nil
+                    showingDeleteAlert = false
+                case .clearType:
+                    pendingTypeClear = nil
+                case .clearMode:
+                    pendingClearMode = nil
+                case .emptyTrash:
+                    showingEmptyTrashAlert = false
+                case .none:
+                    break
+                }
             }
-        } message: {
-            Text(L10n.trashEmptyConfirmMessage(store.trashedItems.count))
+        )
+    }
+
+    // MARK: - Active-alert model (M-11)
+    //
+    // Encodes which of the four dialogs the view should currently show.
+    // Only one case is ever non-nil because the four source @Bindings are
+    // mutually exclusive in practice (different buttons), and the priority
+    // order in `activeAlert` guarantees we never try to render two alerts
+    // at once even if some upstream code path did flip two flags.
+
+    private enum ActiveAlert: String, Identifiable {
+        case deleteSingle
+        case clearType
+        case clearMode
+        case emptyTrash
+        var id: String { rawValue }
+
+        /// M-11 (2026-07-24 audit): title for the unified `.alert(...)` modifier.
+        /// The `_ :isPresented:_ :message:` overload on macOS 13 takes a
+        /// `Text` title — we derive it from the alert kind so each dialog
+        /// keeps its original copy.
+        var title: Text {
+            switch self {
+            case .deleteSingle: return Text(L10n.alertDeleteTitle)
+            case .clearType:    return Text(L10n.alertClearTitle)
+            case .clearMode:    return Text(L10n.alertClearTitle)
+            case .emptyTrash:   return Text(L10n.trashEmptyConfirmTitle)
+            }
         }
+    }
+
+    private var activeAlert: ActiveAlert? {
+        if showingDeleteAlert { return .deleteSingle }
+        if pendingTypeClear != nil { return .clearType }
+        if pendingClearMode != nil { return .clearMode }
+        if showingEmptyTrashAlert { return .emptyTrash }
+        return nil
     }
 
     // MARK: - Trash sub-view
@@ -209,10 +303,24 @@ struct ItemListView: View {
 
     // MARK: - Empty state
 
-    private var emptyState: some View {
+    /// M-10 (2026-07-24 audit): the empty-state analytics event used to live
+    /// inside the computed property, so every body re-render logged it
+    /// (even when nothing relevant changed). Now fire it from a `.task(id:)`
+    /// keyed on the visible-shape signature — `displayedItems.isEmpty` plus
+    /// the underlying store items count — so it only runs when the empty
+    /// state actually appears or the empty class flips.
+    @State private var lastEmptyEventKey: String = ""
+    private func logEmptyStateIfNeeded() {
         let name = store.items.isEmpty ? "no_items_overall" : "filter_no_match"
-        UIObservability.logEmptyStateRender(name: name, itemCount: store.items.count)
-        return VStack(spacing: 12) {
+        let key = "\(name)|\(store.items.count)"
+        if key != lastEmptyEventKey {
+            lastEmptyEventKey = key
+            UIObservability.logEmptyStateRender(name: name, itemCount: store.items.count)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
             Spacer()
             Image(systemName: selectedTab == .pinned ? "star" : "tray")
                 .font(.system(size: sz(40)))
@@ -234,6 +342,12 @@ struct ItemListView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // M-10 (2026-07-24 audit): fire the analytics event from a task
+        // keyed on the visible-shape signature so it only runs when the
+        // empty class actually changes — not on every body re-render.
+        .task(id: "\(store.items.isEmpty ? 1 : 0)|\(store.items.count)") {
+            logEmptyStateIfNeeded()
+        }
     }
 
     // MARK: - Row builder + helpers

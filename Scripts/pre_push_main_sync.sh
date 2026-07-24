@@ -45,6 +45,17 @@ if [[ "$LOCAL" == "$REMOTE" ]]; then
     exit 0
 fi
 
+# Normal push: remote is ancestor of local — user has local commits to push.
+# This is the intended flow for a single-author repo with squash-merge:
+# main tracks origin/main but has extra work on top.
+if git merge-base --is-ancestor "$REMOTE" "$LOCAL"; then
+    LOCAL_SHORT=$(git rev-parse --short "$LOCAL")
+    REMOTE_SHORT=$(git rev-parse --short "$REMOTE")
+    echo "→ local main ($LOCAL_SHORT) is ahead of origin/main ($REMOTE_SHORT)"
+    echo "→ normal push scenario — allowing to proceed"
+    exit 0
+fi
+
 # Try fast-forward: local is ancestor of remote → safe to FF
 if git merge-base --is-ancestor "$LOCAL" "$REMOTE"; then
     LOCAL_SHORT=$(git rev-parse --short "$LOCAL")

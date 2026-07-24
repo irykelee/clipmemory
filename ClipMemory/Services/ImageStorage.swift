@@ -239,15 +239,20 @@ class ImageStorage {
     // choice: counters reset on launch so a stale "5 events" reading from
     // 2 weeks ago can't mask new corruption).
     //
-    // OSAllocatedUnfairLock because imageStatus may be called from the
-    // statusQueue (background) and counter reads from any thread; Int is not
-    // atomic across threads without a lock.
-    private static let corruptionCountLock = OSAllocatedUnfairLock<Int>(initialState: 0)
+    // NSLock because imageStatus may be called from the statusQueue (background)
+    // and counter reads from any thread; Int is not atomic across threads
+    // without a lock. Originally OSAllocatedUnfairLock but C-1 (2026-07-24
+    // audit) flagged it as macOS 14+ only; this is a single Int increment
+    // path so NSLock has no measurable cost.
+    private static let corruptionCountLock = NSLock()
+    private static var corruptionCount: Int = 0
 
     /// Number of times `imageStatus(for:)` has returned `.decryptionFailed`
     /// since process start. Reset on each launch (in-memory only). P1-4.
     static var corruptionEventCount: Int {
-        corruptionCountLock.withLock { $0 }
+        corruptionCountLock.lock()
+        defer { corruptionCountLock.unlock() }
+        return corruptionCount
     }
 
     /// Saves image data asynchronously on a background queue to avoid blocking the main thread.
@@ -271,7 +276,14 @@ class ImageStorage {
             // Encrypt image data before writing to disk (N2)
             guard let encryptedData = ServiceContainer.crypto.encryptData(data) else {
                 self.logger.error("Failed to encrypt image data — image not saved")
-                NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+                // M-8 (2026-07-24 audit): the observer chain (AppDelegate,
+                // Settings diagnostics) expects main-thread delivery. Post
+                // via main async so any future observer that doesn't pass
+                // `queue: .main` still sees the notification on the right
+                // queue.
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+                }
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
@@ -297,6 +309,19 @@ class ImageStorage {
     private let statusQueue = DispatchQueue(label: "com.clipmemory.imageStorage.status", qos: .userInitiated)
 
     func loadImage(filename: String) -> Data? {
+        // M-5 (2026-07-24 audit) was a `precondition(!Thread.isMainThread)`
+        // that surfaced a contract: loadImage blocks for legacy migration
+        // and main-thread callers should use imageStatusAsync. Post-audit
+        // scan caught a real second caller — ClipboardStore.copyToClipboard
+        // (called from main-thread UI handlers in ContentView /
+        // ItemListView / QuickBarView) — that ignores the contract and
+        // would crash the app on a cold-cache image. The condition was
+        // right about the performance cost but wrong about the API
+        // surface — main-thread callers are not optional, they are the
+        // actual production call site. Removed the precondition; new
+        // main-thread callers that want non-blocking should wrap in
+        // `Task.detached` + `imageStatusAsync` themselves. Future cleanup
+        // opportunity: make `loadImage` itself `async`.
         guard case .available(let data) = imageStatus(for: filename) else {
             return nil
         }
@@ -330,56 +355,62 @@ class ImageStorage {
     func imageStatus(for filename: String) -> ImageLoadStatus {
         guard isValidFilename(filename) else { return .fileMissing }
         let fileURL = imagesDirectory.appendingPathComponent(filename)
-        guard fileManager.fileExists(atPath: fileURL.path),
-              let encryptedData = try? Data(contentsOf: fileURL) else {
-            return .fileMissing
-        }
+        // C-3 (2026-07-24 audit): the prior implementation read the file
+        // OUTSIDE migrationQueue (Data(contentsOf:) at line 334) and only
+        // serialized the re-encrypted write. Two threads racing on the same
+        // legacy PNG could both read pre-migration bytes, both enter the
+        // legacy-decrypt path, and produce inconsistent on-disk state with
+        // .decryptionFailed returned to the UI for files that are actually
+        // fine. Wrap read + process + write in a single migrationQueue.sync
+        // so concurrent calls for the same file serialize end-to-end.
+        return Self.migrationQueue.sync {
+            guard fileManager.fileExists(atPath: fileURL.path),
+                  let encryptedData = try? Data(contentsOf: fileURL) else {
+                return .fileMissing
+            }
 
-        // Detect format by prefix BEFORE calling decryptData — otherwise the
-        // v2 path's internal legacy fallback silently succeeds on legacy
-        // blobs, masking them from the migration branch below.
-        let isV2 = encryptedData.count >= 2 && encryptedData.prefix(2) == Data("v2".utf8)
+            // Detect format by prefix BEFORE calling decryptData — otherwise the
+            // v2 path's internal legacy fallback silently succeeds on legacy
+            // blobs, masking them from the migration branch below.
+            let isV2 = encryptedData.count >= 2 && encryptedData.prefix(2) == Data("v2".utf8)
 
-        // Try new v2 format directly (no legacy fallback needed)
-        if isV2, let data = ServiceContainer.crypto.decryptData(encryptedData) {
-            return .available(data)
-        }
+            // Try new v2 format directly (no legacy fallback needed)
+            if isV2, let data = ServiceContainer.crypto.decryptData(encryptedData) {
+                return .available(data)
+            }
 
-        // Try legacy format; if successful, re-encrypt and save with new format
-        if let legacyData = try? legacyDecryptImage(encryptedData) {
-            // Re-encrypt with new format and atomically overwrite the file.
-            // Serialize the write through migrationQueue to avoid concurrent
-            // threads racing on the same legacy PNG (per gate 1b Medium #4 fix).
-            if let newEncrypted = ServiceContainer.crypto.encryptData(legacyData) {
-                Self.migrationQueue.sync {
+            // Try legacy format; if successful, re-encrypt and save with new format
+            if let legacyData = try? legacyDecryptImage(encryptedData) {
+                // Already inside migrationQueue.sync — write directly here.
+                if let newEncrypted = ServiceContainer.crypto.encryptData(legacyData) {
                     try? newEncrypted.write(to: fileURL, options: .atomic)
                 }
+                return .available(legacyData)
             }
-            return .available(legacyData)
-        }
 
-        // Last resort: raw/unencrypted PNG on disk (pre-encryption history).
-        // Detected by PNG magic bytes 89 50 4E 47. Re-encrypt opportunistically
-        // so subsequent loads take the v2 fast path.
-        if encryptedData.count >= 4 &&
-            encryptedData[0] == 0x89 && encryptedData[1] == 0x50 &&
-            encryptedData[2] == 0x4E && encryptedData[3] == 0x47 {
-            if let newEncrypted = ServiceContainer.crypto.encryptData(encryptedData) {
-                Self.migrationQueue.sync {
+            // Last resort: raw/unencrypted PNG on disk (pre-encryption history).
+            // Detected by PNG magic bytes 89 50 4E 47. Re-encrypt opportunistically
+            // so subsequent loads take the v2 fast path.
+            if encryptedData.count >= 4 &&
+                encryptedData[0] == 0x89 && encryptedData[1] == 0x50 &&
+                encryptedData[2] == 0x4E && encryptedData[3] == 0x47 {
+                if let newEncrypted = ServiceContainer.crypto.encryptData(encryptedData) {
                     try? newEncrypted.write(to: fileURL, options: .atomic)
                 }
+                return .available(encryptedData)
             }
-            return .available(encryptedData)
-        }
 
-        // P1-4 (2026-07-23 audit): every terminal .decryptionFailed now bumps
-        // the corruption counter + emits a log line. The log lets a user grep
-        // Console.app for "imageCorrupted" to find which filenames are
-        // affected; the counter gives Settings/diagnostics a current rate
-        // without forcing users to dig through the system log.
-        Self.corruptionCountLock.withLock { $0 += 1 }
-        logger.error("imageCorrupted filename=\(filename, privacy: .public) bytes=\(encryptedData.count)")
-        return .decryptionFailed
+            // P1-4 (2026-07-23 audit): every terminal .decryptionFailed now bumps
+            // the corruption counter + emits a log line. The log lets a user grep
+            // Console.app for "imageCorrupted" to find which filenames are
+            // affected; the counter gives Settings/diagnostics a current rate
+            // without forcing users to dig through the system log.
+            Self.corruptionCountLock.lock()
+            Self.corruptionCount += 1
+            Self.corruptionCountLock.unlock()
+            logger.error("imageCorrupted filename=\(filename, privacy: .public) bytes=\(encryptedData.count)")
+            return .decryptionFailed
+        }
     }
 
     /// Decrypts image data using legacy AES-CBC+HMAC format (pre-v2).

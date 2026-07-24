@@ -37,16 +37,10 @@ protocol ClipboardMonitorDelegate: AnyObject {
     func monitorDidRecognizeText(_ text: String, forImageItemId id: UUID)
 }
 
-// Default implementations let `ClipboardMonitorDelegate` stay optional —
-// callers that only care about sensitivity don't have to implement the
-// new methods. Both defaults match the previous "off" behavior so a
-// partial delegate won't crash.
-extension ClipboardMonitorDelegate {
-    func captureRichTextSettingForMonitor() -> Bool { true }
-    var captureRichTextPublisher: AnyPublisher<Bool, Never> {
-        Just(true).eraseToAnyPublisher()
-    }
-    func monitorDidCaptureItem(_ item: ClipboardItem) {}
-    func ocrEnabledForMonitor() -> Bool { false }
-    func monitorDidRecognizeText(_ text: String, forImageItemId id: UUID) {}
-}
+// L-2 (2026-07-24 audit): the previous default-implementation extension
+// silently no-op'd `monitorDidCaptureItem` / `monitorDidRecognizeText` /
+// `ocrEnabledForMonitor`, hiding the absence of a real delegate behind
+// a successful compile — a partial conformer would capture items and
+// then drop them on the floor. All current conformers (ClipboardStore)
+// already provide full implementations; making every method required
+// surfaces that requirement at the type level.

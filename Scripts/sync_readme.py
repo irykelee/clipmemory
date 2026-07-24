@@ -81,7 +81,40 @@ def previous_section(text):
     return text[start:nxt.start() if nxt else len(text)].strip()
 
 
+def remove_existing_section(text, version):
+    """Strip any existing `### v{version}` block from `text`.
+
+    Walks from the `### vX.Y.Z` header through the next sibling
+    `### vX.Y.Z` (or end of text). The v2.5.10 + v2.5.11 ship cycles
+    previously appended a duplicate `### vX.Y.Z` block instead of
+    replacing — see 2026-07-23 ship review.
+    """
+    pattern = re.compile(
+        r"^### v" + re.escape(version) + r".*?(?=^### v\d+\.\d+\.\d+|\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    new, count = pattern.subn("", text)
+    return new, count
+
+
+def section_version(section):
+    """Extract the vX.Y.Z version from a `### vX.Y.Z (...) ...` heading."""
+    m = re.match(r"^### v(\d+\.\d+\.\d+)", section.lstrip())
+    if not m:
+        raise ValueError("section has no vX.Y.Z heading")
+    return m.group(1)
+
+
 def insert_section(text, section):
+    # 2026-07-23 ship review: sync used to just append, leaving duplicate
+    # `### v2.5.11` blocks in the README. Caller is expected to call
+    # `remove_existing_section(text, version)` first; this function now
+    # asserts the precondition rather than silently appending.
+    if re.search(r"^### v" + re.escape(section_version(section)) + r"\b", text, re.MULTILINE):
+        raise ValueError(
+            "insert_section called with version that already exists in text; "
+            "call remove_existing_section first"
+        )
     offset = first_section_offset(text)
     return text[:offset] + section.strip() + "\n\n" + text[offset:]
 
@@ -179,6 +212,10 @@ def main():
             with open(path, encoding="utf-8") as handle:
                 text = handle.read()
             text = bump_title(text, args.version)
+            # 2026-07-23 ship review: previously just appended, leaving
+            # duplicate `### v2.5.11` blocks. Strip any existing block
+            # for this version before inserting the new translation.
+            text, _ = remove_existing_section(text, args.version)
             text = insert_section(text, outputs[lang])
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(text)

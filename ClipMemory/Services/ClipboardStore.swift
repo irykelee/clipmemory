@@ -16,6 +16,13 @@ extension Notification.Name {
     static let encryptionFailed = Notification.Name("ClipboardStore.encryptionFailed")
     static let showSettingsTab = Notification.Name("ClipMemory.showSettingsTab")
     static let cmdFFindAction = Notification.Name("ClipMemory.cmdFFindAction")
+    /// M-9 (2026-07-24 audit): tag backend decode / write failed. Posted
+    /// from `ClipboardStore.loadTags()` / `saveTags()` after the logger
+    /// line so observers (Settings diagnostics, future status banner) can
+    /// surface the failure to the user. Carries no payload — the next
+    /// `loadTags()` / `saveTags()` attempt may succeed and overwrite the
+    /// signal; consumers should debounce.
+    static let tagBackendCorrupted = Notification.Name("ClipboardStore.tagBackendCorrupted")
 }
 
 extension ClipboardStore: ClipboardMonitorDelegate {
@@ -77,9 +84,19 @@ class ClipboardStore: ObservableObject {
                 maxItems = clamped
                 return
             }
+            // M-4 (2026-07-24 audit): keep `contentCache.countLimit` in sync
+            // with `maxItems`. A fixed `500` cap was half-empty when a user
+            // chose `maxItems = 10000`, wasting the upper half of the cache.
+            // `rtfPlaintextCache` shares the same shape; tune both.
+            contentCache.countLimit = max(maxItems, Self.minCacheCountLimit)
+            rtfPlaintextCache.countLimit = max(maxItems, Self.minCacheCountLimit)
             UserDefaults.standard.set(maxItems, forKey: maxItemsKey)
         }
     }
+    /// M-4: lower bound for the cache `countLimit` so a user with a small
+    /// `maxItems` (e.g. 50) still gets the original 500-entry cache headroom
+    /// rather than an undersized cache.
+    static let minCacheCountLimit = 500
 
     @Published var sensitiveClearHours: Int {
         didSet { UserDefaults.standard.set(sensitiveClearHours, forKey: sensitiveClearHoursKey) }
@@ -150,6 +167,28 @@ class ClipboardStore: ObservableObject {
     private let captureRichTextKey = "captureRichText"
     private let excludedBundleIdsKey = "excludedBundleIds"
     private let trashRetentionDaysKey = "trashRetentionDays"
+
+    /// Quarantine a corrupt UserDefaults blob: copy it under
+    /// `<key>.corrupt-<ISO8601-ts>` then remove the original. Without this,
+    /// the next `saveItems` / `saveTags` / `saveTrashedItems` would
+    /// overwrite the corrupt blob with `[]`, permanently destroying the
+    /// user's history. Quarantining lets recovery tooling (or a future
+    /// "restore from backup" affordance) attempt repair.
+    /// Post-audit-scan fix: previously `loadItems()` / `loadTrashedItems()`
+    /// / `loadTags()` silently swallowed the error and continued with an
+    /// empty in-memory collection — the very next save wiped the persist
+    /// layer permanently.
+    private func quarantineCorruptBlob(key: String, error: Error) {
+        let defaults = UserDefaults.standard
+        guard let blob = defaults.data(forKey: key) else { return }
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let quarantineKey = "\(key).corrupt-\(timestamp)"
+        defaults.set(blob, forKey: quarantineKey)
+        defaults.removeObject(forKey: key)
+        logger.error("Corrupt blob \(key) quarantined to \(quarantineKey). First-decoder error: \(error.localizedDescription). The next save will overwrite the original key with the current (empty) in-memory collection; recover from the quarantined copy or a backup before saving.")
+    }
+    /// UserDefaults key for persisted items.
+    static let itemsStorageKey = "ClipboardItems"
     /// UserDefaults key for persisted trashed items.
     static let trashedItemsStorageKey = "ClipboardTrashedItems"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
@@ -191,16 +230,28 @@ class ClipboardStore: ObservableObject {
         self.tagBackend = tagBackend
         self.trashBackend = trashBackend
 
-        let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
-        // Clamp to valid range [50, 100, 200, 500] to handle corrupted/migrated UserDefaults
-        // Note: didSet is NOT called during init, so we must write to UserDefaults directly
-        let validMaxItems = [50, 100, 200, 500]
-        if validMaxItems.contains(savedMaxItems) {
-            maxItems = savedMaxItems
-        } else {
-            maxItems = 100
-            UserDefaults.standard.set(100, forKey: maxItemsKey)
+        // M-3 (2026-07-24 audit): init validation must match didSet's clamp
+        // range [minMaxItems, maxMaxItems]. Previously init used an enum of
+        // [50, 100, 200, 500] — any other integer (250, 1000, 1_000_000 from
+        // a corrupt UserDefaults or future-migrated value) silently fell
+        // back to 100 even when didSet would have accepted it. Clamp with
+        // the same bounds as didSet; migrate out-of-range values forward.
+        // Absent key must default to 100, NOT clamp: integer(forKey:)
+        // returns 0 for a missing key, and clamping 0 yields minMaxItems
+        // (1) — fresh installs would silently cap history at a single item.
+        let savedMaxItems = UserDefaults.standard.object(forKey: maxItemsKey) as? Int
+        let clampedInit = savedMaxItems.map { max(Self.minMaxItems, min($0, Self.maxMaxItems)) } ?? 100
+        if savedMaxItems != nil && clampedInit != savedMaxItems {
+            UserDefaults.standard.set(clampedInit, forKey: maxItemsKey)
         }
+        // M-4: tune the caches to match the resolved value. Done BEFORE the
+        // `maxItems =` write because Swift's definite-init rules forbid
+        // touching `self.maxItems` from init body while any stored property
+        // is still uninitialized — and we compute the same value either way.
+        let initialCacheLimit = max(clampedInit, Self.minCacheCountLimit)
+        contentCache.countLimit = initialCacheLimit
+        rtfPlaintextCache.countLimit = initialCacheLimit
+        maxItems = clampedInit
 
         if UserDefaults.standard.object(forKey: sensitiveClearHoursKey) != nil {
             sensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
@@ -342,6 +393,7 @@ class ClipboardStore: ObservableObject {
         do {
             savedItems = try backend.load()
         } catch {
+            quarantineCorruptBlob(key: Self.itemsStorageKey, error: error)
             items = []
             return
         }
@@ -591,7 +643,14 @@ class ClipboardStore: ObservableObject {
             let loaded = decryptTagNames(try tagBackend.loadTags())
             tags = Dictionary(loaded.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         } catch {
+            quarantineCorruptBlob(key: Self.tagStorageKey, error: error)
             logger.error("Failed to load tags: \(error.localizedDescription)")
+            // M-9 (2026-07-24 audit): the previous path was silent beyond
+            // an os_log entry — the user saw an empty tag sidebar with no
+            // explanation. Surface the failure via .tagBackendCorrupted so
+            // Settings diagnostics can render a banner / a future observer
+            // can offer a "retry + restore from backup" affordance.
+            NotificationCenter.default.post(name: .tagBackendCorrupted, object: nil)
             tags = [:]
         }
     }
@@ -765,10 +824,22 @@ class ClipboardStore: ObservableObject {
                     deletedAt: item.deletedAt
                 )
             } else {
-                // N2: Encrypt failed — do NOT store as plaintext (security violation)
-                // Discard item to protect sensitive data instead
-                logger.error("Encryption failed for sensitive item, discarding to protect data")
-                NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+                // N2: Encrypt failed — do NOT store as plaintext (security violation).
+                // Discard the item (any non-image type — M3 encrypts text + link
+                // unconditionally). H-3 (2026-07-24 audit) audit-checks for log +
+                // notify on this path; the bare notification is now tagged with
+                // `source = "addItem"` and the item type so observers can
+                // distinguish addItem from HMAC / OCR / ImageStorage failures
+                // and the user-facing alert can be debounced across sources.
+                logger.error("Encryption failed for non-image item (type: \(item.type.rawValue, privacy: .public)), discarding to protect data")
+                NotificationCenter.default.post(
+                    name: .encryptionFailed,
+                    object: nil,
+                    userInfo: [
+                        "source": "addItem",
+                        "itemType": item.type.rawValue
+                    ]
+                )
                 return
             }
         }
@@ -996,6 +1067,7 @@ class ClipboardStore: ObservableObject {
         do {
             trashedItems = try trashBackend.load()
         } catch {
+            quarantineCorruptBlob(key: Self.trashedItemsStorageKey, error: error)
             logger.error("Failed to load trashed items: \(error.localizedDescription)")
             trashedItems = []
         }
@@ -1012,9 +1084,14 @@ class ClipboardStore: ObservableObject {
 
     /// Move a single item to the recycle bin. The item is removed from the
     /// active list but its image file is kept until permanent deletion.
+    ///
+    /// L-6 (2026-07-24 audit): cache eviction drops both the decrypted-content
+    /// entry and the RTF plaintext entry so a later `restoreFromTrash` cannot
+    /// accidentally serve stale plaintext from before encryption or format
+    /// changes, and so the bin doesn't pin memory for items that may sit here
+    /// for weeks (NSCache would otherwise hold them under `cost` accounting).
     func moveToTrash(_ item: ClipboardItem) {
-        contentCache.removeObject(forKey: item.id.uuidString as NSString)
-        rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
+        evictCaches(for: item)
         var trashed = item
         trashed.deletedAt = Date()
         trashedItems.insert(trashed, at: 0)
@@ -1025,12 +1102,18 @@ class ClipboardStore: ObservableObject {
     }
 
     /// Move multiple items to the recycle bin.
+    ///
+    /// L-5 (2026-07-24 audit): capture one `Date()` and reuse it for every
+    /// item in the batch — the previous per-iteration `Date()` produced
+    /// independent instants for items trashed in the same logical operation
+    /// (visible in `deletedAt` ordering and in `purgeExpiredTrash` boundary
+    /// behavior). Also see L-6 above for cache eviction rationale.
     func moveToTrash(_ itemsToMove: [ClipboardItem]) {
+        let now = Date()
         for item in itemsToMove {
-            contentCache.removeObject(forKey: item.id.uuidString as NSString)
-            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
+            evictCaches(for: item)
             var trashed = item
-            trashed.deletedAt = Date()
+            trashed.deletedAt = now
             trashedItems.insert(trashed, at: 0)
         }
         let idsToMove = Set(itemsToMove.map { $0.id })
@@ -1038,6 +1121,12 @@ class ClipboardStore: ObservableObject {
         updatePinnedItems()
         scheduleSave()
         scheduleTrashSave()
+    }
+
+    /// Drops both per-item plaintext caches; see `moveToTrash` (L-6).
+    private func evictCaches(for item: ClipboardItem) {
+        contentCache.removeObject(forKey: item.id.uuidString as NSString)
+        rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
     }
 
     /// Restore an item from the recycle bin to the top of the active list.

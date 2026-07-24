@@ -67,14 +67,7 @@ enum StartupHealth {
         defaults: UserDefaults = .standard
     ) -> Snapshot {
         let dir = imagesDirectory ?? ImageStorage.shared.imagesDirectoryURL
-        // BUG-038 (2026-07-21): contentsOfDirectory returns ALL files
-        // (.DS_Store, temp files, etc.). Filter by image extensions to
-        // report an accurate image count for the health snapshot.
-        let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "tiff", "tif", "gif", "webp", "heic"]
-        let imgCount = (try? fileManager
-            .contentsOfDirectory(atPath: dir.path)
-            .filter { imageExtensions.contains(($0 as NSString).pathExtension.lowercased()) }
-            .count) ?? 0
+        let imageCount = Self.imageCountSync(directory: dir, fileManager: fileManager)
         return Snapshot(
             version: AppVersion.current,
             macosVersion: ProcessInfo.processInfo.operatingSystemVersionString,
@@ -82,15 +75,45 @@ enum StartupHealth {
             itemsCount: counts.items,
             trashedCount: counts.trashed,
             tagsCount: counts.tags,
-            imagesCount: imgCount,
+            imagesCount: imageCount,
             lastLaunchTime: defaults.object(forKey: lastLaunchKey) as? Date
         )
     }
 
-    /// Build a snapshot, log it once, and persist `Date()` as the new
-    /// `lastLaunchTime` so the *next* launch can report "previous launch was
-    /// N seconds ago". Order matters: snapshot reads existing `lastLaunchTime`
-    /// BEFORE the write — otherwise every log would claim lastLaunch = now.
+    /// Enumerate image files away from the main thread, then invoke the
+    /// completion on the main thread with the result. Startup callers that
+    /// need a non-blocking health log can use this overload.
+    static func imageCount(
+        directory: URL,
+        fileManager: FileManager = .default,
+        completion: @escaping (Int) -> Void
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            let count = Self.imageCountSync(directory: directory, fileManager: fileManager)
+            DispatchQueue.main.async {
+                completion(count)
+            }
+        }
+    }
+
+    private static func imageCountSync(directory: URL, fileManager: FileManager) -> Int {
+        let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "tiff", "tif", "gif", "webp", "heic"]
+        return (try? fileManager
+            .contentsOfDirectory(atPath: directory.path)
+            .filter { imageExtensions.contains(($0 as NSString).pathExtension.lowercased()) }
+            .count) ?? 0
+    }
+
+    /// Emit the startup-health log line(s) without ever calling
+    /// `snapshot(...)` from the main thread. Post-audit scan caught that
+    /// `snapshot` itself calls `imageCountSync` (which calls
+    /// `contentsOfDirectory` synchronously) — so the previous
+    /// `logSnapshot` re-introduced the very main-thread block the M-21
+    /// audit fix tried to remove. This version builds a partial Snapshot
+    /// inline (imagesCount = 0) for the first log line, kicks off the
+    /// async image count, and emits a corrected second line when the
+    /// dispatch returns. AppDelegate no longer blocks on image-dir
+    /// enumeration at launch.
     static func logSnapshot(
         counts: Counts = .zero,
         keyStore: any KeyStoring = KeychainKeyStore(),
@@ -98,14 +121,36 @@ enum StartupHealth {
         fileManager: FileManager = .default,
         defaults: UserDefaults = .standard
     ) {
-        let snap = snapshot(
-            counts: counts,
-            keyStore: keyStore,
-            imagesDirectory: imagesDirectory,
-            fileManager: fileManager,
-            defaults: defaults
+        let dir = imagesDirectory ?? ImageStorage.shared.imagesDirectoryURL
+        // First log line: all fields except imagesCount, which lands async.
+        // `lastLaunchTime` read BEFORE the write so the next launch's log
+        // shows this launch correctly as "previous launch was N seconds ago".
+        let lastLaunch = defaults.object(forKey: lastLaunchKey) as? Date
+        let partial = Snapshot(
+            version: AppVersion.current,
+            macosVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            keychainKeyExists: keyStore.load() != nil,
+            itemsCount: counts.items,
+            trashedCount: counts.trashed,
+            tagsCount: counts.tags,
+            imagesCount: 0,
+            lastLaunchTime: lastLaunch
         )
-        logger.info("\(snap.description, privacy: .public)")
+        logger.info("\(partial.description, privacy: .public) imagesCount=pending")
         defaults.set(Date(), forKey: lastLaunchKey)
+        imageCount(directory: dir, fileManager: fileManager) { count in
+            let resolved = Snapshot(
+                version: partial.version,
+                macosVersion: partial.macosVersion,
+                keychainKeyExists: partial.keychainKeyExists,
+                itemsCount: partial.itemsCount,
+                trashedCount: partial.trashedCount,
+                tagsCount: partial.tagsCount,
+                imagesCount: count,
+                lastLaunchTime: partial.lastLaunchTime
+            )
+            logger.info("\(resolved.description, privacy: .public)")
+        }
     }
+
 }

@@ -9,6 +9,15 @@ struct ConditionalClearSheet: View {
     @State private var selectedType: ClipboardItemType?
     @State private var selectedRange: ClipboardStore.ClearRange = .all
 
+    /// H-14 (2026-07-24 audit): the sheet's body previously consumed
+    /// `matchingCount` twice (the count-preview `Text` line and the destructive
+    /// button's `.disabled` modifier). Each body render evaluated the O(n)
+    /// `store.items.filter` twice with identical inputs. Cache the result
+    /// in a `let` inside body so SwiftUI evaluates it once per render
+    /// instead of twice. Future optimization: promote to `@State` with
+    /// `.onChange(of: store.items.count)` to skip recomputation entirely
+    /// when the store changes but the type/range selection hasn't —
+    /// out of scope for this fix.
     private var matchingCount: Int {
         store.items.filter { item in
             !item.isPinned
@@ -38,7 +47,11 @@ struct ConditionalClearSheet: View {
             }
             .formStyle(.grouped)
 
-            Text(L10n.clearConditionalConfirm(matchingCount))
+            // H-14: compute once, reuse. `let` declaration inside a view
+            // builder is supported in SwiftUI (works on macOS 13+).
+            let count = matchingCount
+
+            Text(L10n.clearConditionalConfirm(count))
                 .font(.system(size: sz(12)))
                 .foregroundColor(.secondary)
 
@@ -50,7 +63,7 @@ struct ConditionalClearSheet: View {
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(matchingCount == 0)
+                .disabled(count == 0)
             }
         }
         .padding(20)

@@ -39,7 +39,13 @@ struct SidebarTagRow: View {
                 Label(L10n.sidebarDeleteTag, systemImage: "trash")
             }
         }
-        .accessibilityLabel(Text("\(tag.name), \(count)"))
+        // L-17 (2026-07-24 audit): the previous label read "Work, 5" with
+        // no context. Now VoiceOver hears "Tag Work, 5 items" plus the
+        // selection state as a separate accessibilityValue, so screen-reader
+        // users get the same context that sighted users get from the dot +
+        // checkmark visuals. L10n keys live in LocalizationService.swift.
+        .accessibilityLabel(Text(L10n.sidebarTagAccessibilityLabel(tag.name, count)))
+        .accessibilityValue(Text(isSelected ? L10n.sidebarTagAccessibilitySelected : L10n.sidebarTagAccessibilityUnselected))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

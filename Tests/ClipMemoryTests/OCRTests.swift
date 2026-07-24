@@ -48,6 +48,93 @@ final class OCRTests: XCTestCase {
         XCTAssertEqual(decoded.first?.ocrText, "v2cipher")
     }
 
+    // MARK: - H-4 (2026-07-24 audit): encrypt-fail path must log + notify
+
+    /// H-4: when OCR text encryption fails, the path used to silently return.
+    /// Verify (a) `.encryptionFailed` is posted so AppDelegate can surface it,
+    /// (b) the item's ocrText stays nil (no half-attached blob), and
+    /// (c) ocrAttempted stays false so the backfill retry still works.
+    func testAttachOCRText_encryptFailure_logsAndNotifies() {
+        let item = ClipboardItem(content: "A.png", type: .image)
+        store.addItem(item)
+        // Swap in a crypto stub that returns nil from encrypt() — simulates
+        // the rare "key unavailable" failure mode.
+        let originalCrypto = ServiceContainer.crypto
+        let failingCrypto = FailingEncryptCrypto()
+        ServiceContainer.crypto = failingCrypto
+        defer { ServiceContainer.crypto = originalCrypto }
+
+        var notificationFired = false
+        // nil queue = synchronous delivery on the posting thread. A .main
+        // queue makes the assertion race the main runloop (test must yield
+        // before the block runs) — flaky/hang-prone in CI environments.
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed, object: nil, queue: nil
+        ) { _ in notificationFired = true }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        store.attachOCRText(to: item.id, text: "截图里的文字")
+
+        XCTAssertTrue(notificationFired, "Encrypt failure must post .encryptionFailed")
+        let stored = store.items.first { $0.id == item.id }
+        XCTAssertNil(stored?.ocrText, "OCR text must not be attached on encrypt failure")
+        XCTAssertFalse(stored?.ocrAttempted ?? true,
+                       "ocrAttempted must stay false so backfill retries")
+    }
+
+    /// H-4 (negative control): when the item was deleted between OCR start
+    /// and finish, the path must NOT log/notif — that failure is normal
+    /// race timing, not an encryption problem.
+    func testAttachOCRText_itemMissing_doesNotNotify() {
+        let deletedItemId = UUID()
+        var notificationFired = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed, object: nil, queue: .main
+        ) { _ in notificationFired = true }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        store.attachOCRText(to: deletedItemId, text: "no such item")
+
+        XCTAssertFalse(notificationFired, "Item-missing path must not post .encryptionFailed")
+    }
+
+    // MARK: - H-3 (2026-07-24 audit): encrypt-fail in addItem must log + tag the notification
+
+    /// H-3: when addItem fails to encrypt the content (rare — key
+    /// unavailable, per H-2 / C-2), the path must (a) post .encryptionFailed
+    /// and (b) tag it with `source = "addItem"` so observers can debounce /
+    /// render context-aware alerts independently of HMAC / OCR / ImageStorage
+    /// failures. The item must NOT be inserted (N2: storing plaintext when
+    /// encryption fails is a security violation).
+    func testAddItem_encryptFailure_logsAndTagsNotification() {
+        let item = ClipboardItem(content: "secret note", type: .text)
+        var capturedUserInfo: [AnyHashable: Any]?
+        // nil queue = synchronous delivery on the posting thread (same
+        // runloop-race rationale as the H-4 fixture above).
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed, object: nil, queue: nil
+        ) { note in capturedUserInfo = note.userInfo }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        // Swap in a crypto stub whose encrypt() returns nil — simulates
+        // the rare "key unavailable" failure mode (same fixture as H-4).
+        let originalCrypto = ServiceContainer.crypto
+        let failingCrypto = FailingEncryptCrypto()
+        ServiceContainer.crypto = failingCrypto
+        defer { ServiceContainer.crypto = originalCrypto }
+
+        store.addItem(item)
+
+        XCTAssertNotNil(capturedUserInfo,
+                        "Encrypt failure in addItem must post .encryptionFailed (H-3)")
+        XCTAssertEqual(capturedUserInfo?["source"] as? String, "addItem",
+                       "Notification must tag the source so observers can debounce")
+        XCTAssertEqual(capturedUserInfo?["itemType"] as? String, "text",
+                       "Notification must include itemType for context-aware alerts")
+        XCTAssertTrue(store.items.isEmpty,
+                      "Item must be discarded (NOT stored as plaintext) on encrypt failure (N2)")
+    }
+
     // MARK: - Encrypted storage round-trip
 
     func testAttachOCRTextEncryptsAndDecrypts() {
@@ -175,4 +262,19 @@ final class OCRTests: XCTestCase {
         image.unlockFocus()
         return image
     }
+}
+
+// H-4 (2026-07-24 audit): test stub. Conforms to CryptoServiceProtocol so
+// ServiceContainer.crypto can be swapped in tests. encrypt / encryptData
+// always return nil to simulate the rare "key unavailable" failure mode
+// (e.g. Keychain locked during launchd start, per C-2). Other methods
+/// are not exercised by the H-4 path so they return harmless defaults.
+private struct FailingEncryptCrypto: CryptoServiceProtocol {
+    func encrypt(_ string: String) -> String? { nil }
+    func decrypt(_ base64String: String) -> String? { nil }
+    func encryptData(_ data: Data) -> Data? { nil }
+    func decryptData(_ combined: Data) -> Data? { nil }
+    func isOldFormat(_ base64String: String) -> Bool { false }
+    func migrateToV2(_ base64String: String) -> String? { nil }
+    func hmacHex(for string: String) -> String? { nil }
 }

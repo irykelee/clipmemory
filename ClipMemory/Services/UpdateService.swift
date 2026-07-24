@@ -13,14 +13,25 @@ enum FeedConsent {
 /// Supplies the fallback feed URL to Sparkle when the primary feed failed
 /// the launch probe. Returning nil makes Sparkle use the Info.plist SUFeedURL.
 private final class FeedURLProvider: NSObject, SPUUpdaterDelegate {
-    // BUG-031 (2026-07-21): wrap in OSAllocatedUnfairLock — Sparkle's
-    // feedURLString(for:) delegate callback can run on any thread, while
-    // the setter is invoked on @MainActor. String? is not atomic across
-    // threads; lock fixes the data race.
-    private let resolvedFeedLock = OSAllocatedUnfairLock<String?>(initialState: nil)
+    // BUG-031 (2026-07-21): wrap in NSLock — Sparkle's feedURLString(for:)
+    // delegate callback can run on any thread, while the setter is invoked
+    // on @MainActor. String? is not atomic across threads; lock fixes the
+    // data race. Originally OSAllocatedUnfairLock but C-1 (2026-07-24
+    // audit) flagged it as macOS 14+ only; write-once read-sparse pattern
+    // means NSLock has no measurable cost.
+    private let resolvedFeedLock = NSLock()
+    private var resolvedFeedStringBacking: String?
     var resolvedFeedString: String? {
-        get { resolvedFeedLock.withLock { $0 } }
-        set { resolvedFeedLock.withLock { $0 = newValue } }
+        get {
+            resolvedFeedLock.lock()
+            defer { resolvedFeedLock.unlock() }
+            return resolvedFeedStringBacking
+        }
+        set {
+            resolvedFeedLock.lock()
+            defer { resolvedFeedLock.unlock() }
+            resolvedFeedStringBacking = newValue
+        }
     }
 
     func feedURLString(for updater: SPUUpdater) -> String? {
@@ -77,13 +88,14 @@ final class UpdateService {
     private let gentleReminder = GentleUpdateReminder()
     private let updaterController: SPUStandardUpdaterController
     private let probeEngine: FeedProbeEngine
-    // BUG-033 (2026-07-21): lazy var + MainActor.assumeIsolated so the
-    // @MainActor UpdateStatus() init runs on first access. Callers always
-    // access via @MainActor methods (setPolicy, triggerProbe), so the
-    // main-thread assertion is safe.
-    lazy var status: UpdateStatus = MainActor.assumeIsolated {
-        UpdateStatus()
-    }
+    // BUG-033 (2026-07-21) + M-18 (2026-07-24 audit): lazy var with @MainActor
+    // annotation. The @MainActor attribute moves the main-thread guarantee
+    // from a runtime `assumeIsolated` check to a compile-time one — Swift
+    // rejects any access from a non-main context. SettingsView
+    // (`UpdateService.shared.status`) reads from a SwiftUI view body, which
+    // is implicitly @MainActor, so the access compiles unchanged.
+    @MainActor
+    lazy var status: UpdateStatus = UpdateStatus()
 
     /// Monotonic token for in-flight probes. Incrementing on every
     /// `triggerProbe()` cancels the prior probe's write-back so a slower
@@ -180,12 +192,21 @@ final class UpdateService {
         return fallback
     }
 
+    /// M-17 (2026-07-24 audit): DateFormatter instantiation is expensive
+    /// (~5–10 ms cold, ~1 ms warm) and was rebuilt on every `latestItemDate`
+    /// call. The format string and POSIX locale are constants for the
+    /// lifetime of the process — instantiate once.
+    private static let appcastDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        return f
+    }()
+
     /// Newest `<pubDate>` among appcast items, or nil when nothing parses.
     /// Pure for tests (H1 staleness guard).
     static func latestItemDate(inAppcastXML xml: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        let formatter = appcastDateFormatter
         var latest: Date?
         var rest = xml[...]
         while let open = rest.range(of: "<pubDate>"),
@@ -230,11 +251,15 @@ final class UpdateService {
     @MainActor
     func setPolicy(_ policy: UpdateFeedPolicy) {
         Self.feedPolicy = policy
-        // L-2: store the Task so `triggerProbe` can cancel the prior probe
-        // before starting a new one. Matches init's `currentProbeTask =`
-        // pattern (line 88). probeGeneration already prevents stale-result
-        // overwrites; this prevents Task resource accumulation under
-        // rapid policy switches.
+        // Post-audit-scan fix: cancel the prior task BEFORE assigning the
+        // new one. The prior L-2 placement cancelled inside `triggerProbe`,
+        // which ran AFTER the previous Task had already been orphaned —
+        // and at init time, the startup task cancelled itself on first
+        // dispatch (because the post-init call to `currentProbeTask =`
+        // inside triggerProbe had nothing to cancel). Cancelling here
+        // (1) makes rapid policy switches cleanly chain (no orphan probe)
+        // and (2) keeps the startup path from racing itself.
+        currentProbeTask?.cancel()
         currentProbeTask = Task { await triggerProbe() }
     }
 
@@ -247,7 +272,15 @@ final class UpdateService {
     func triggerProbe() async {
         probeGeneration += 1
         let myGeneration = probeGeneration
-        currentProbeTask?.cancel()
+        // UPD-1 (2026-07-24 audit): do NOT cancel `currentProbeTask` here —
+        // every production caller (init's startAfterFeedProbe at line 123 and
+        // setPolicy at line 263) runs `triggerProbe()` INSIDE the Task stored
+        // in `currentProbeTask`. The prior `currentProbeTask?.cancel()` aborted
+        // the very Task it was running on, so every URLSession fetch threw
+        // URLError(.cancelled) before going out — H1 mirror-fallback was
+        // silently dead at runtime. The generation-token check below and the
+        // cancel in `setPolicy` provide the race protection that was thought
+        // to be missing here.
         let channels = UpdateFeedPolicies.knownChannels
         let policy = Self.feedPolicy
         let lastKnown = Self.lastPrimaryItemDate

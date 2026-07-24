@@ -208,6 +208,9 @@
 "sidebar.deleteTag" = "タグを削除";
 "sidebar.deleteTag.confirm.title" = "タグを削除しますか？";
 "sidebar.deleteTag.confirm.message" = "タグ「%@」は %d 件の項目から削除されます";
+"sidebar.tag.accessibility.label" = "タグ %@、%d 件";
+"sidebar.tag.accessibility.selected" = "選択中";
+"sidebar.tag.accessibility.unselected" = "未選択";
 "newTag.title" = "新しいタグ";
 "newTag.create" = "作成";
 "newTag.customColor" = "カスタムカラー";

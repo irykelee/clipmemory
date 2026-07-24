@@ -49,6 +49,12 @@ enum BackupFileSource: String, Equatable, Sendable {
     case trash
     case tags
     case image
+    /// M-7 (2026-07-24 audit): distinguish "manifest file missing or
+    /// unreadable" / "manifest JSON corrupt" from the generic .invalidPackage
+    /// the import path used to throw, so logs and tests can pinpoint the
+    /// failing file rather than collapsing every early-stage failure into
+    /// the same error case.
+    case manifest
 }
 
 struct BackupManifest: Codable {
@@ -170,16 +176,24 @@ final class BackupPackage {
 
     // MARK: - ditto helpers
 
+    /// L-10 (2026-07-24 audit): callers pass argv *without* the executable
+    /// prefix. Previously `runDitto` accepted `["ditto", "-c", ...]` and used
+    /// `arguments.dropFirst()` to strip it — fragile if a caller added an
+    /// extra leading element, and obscured the contract. The executable is
+    /// owned by `runDitto` itself; callers describe only the args.
     private static func zipDirectory(_ source: URL, to destination: URL) throws {
-        try runDitto(["ditto", "-c", "-k", "--sequesterRsrc", source.path, destination.path])
+        try runDitto(args: ["-c", "-k", "--sequesterRsrc", source.path, destination.path])
     }
 
     private static func unzipArchive(_ archive: URL, to destination: URL) throws {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-        try runDitto(["ditto", "-x", "-k", archive.path, destination.path])
+        try runDitto(args: ["-x", "-k", archive.path, destination.path])
     }
 
-    private static func runDitto(_ arguments: [String]) throws {
+    /// Runs `/usr/bin/ditto` with the given args and blocks the caller until
+    /// completion or the 30 s safety-net timeout. See L-14 below for the
+    /// timeout / SIGKILL policy.
+    private static func runDitto(args: [String]) throws {
         // 30s safety net (LOW, 2026-07-20 audit): without a timeout a stuck
         // `ditto` (broken pipe, SMB stall, sandbox entitlement missing on a
         // future macOS release) could block the main thread forever — UI
@@ -192,10 +206,11 @@ final class BackupPackage {
         // is racy (process.isRunning read from a non-atomic getter).
         // terminationHandler signals a semaphore the instant ditto exits, so
         // we wake immediately on success or failure. The 30 s timeout is kept
-        // as a safety net; on timeout we still terminate + SIGKILL.
+        // as a safety net; on timeout we still terminate and verify before
+        // any escalation (L-14 below).
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = Array(arguments.dropFirst())
+        process.arguments = args
         let semaphore = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in
             semaphore.signal()
@@ -203,10 +218,24 @@ final class BackupPackage {
         try process.run()
         let timedOut = semaphore.wait(timeout: .now() + 30) == .timedOut
         if timedOut {
-            process.terminate()
-            // SIGTERM is async — give it a beat, then SIGKILL if needed.
-            DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            // L-14 (2026-07-24 audit): capture the pid now — by the time the
+            // grace-period block runs below, the kernel may have reused the
+            // PID for an unrelated process, and SIGKILL on the wrong process
+            // is far worse than leaving an orphaned `ditto` to be reaped.
+            let pid = process.processIdentifier
+            process.terminate()  // async SIGTERM
+            // SIGTERM is async — give ditto up to 5 s to flush and exit on
+            // its own. After the grace period, use `kill(pid, 0)` as a soft
+            // existence check: ESRCH means the child is gone (nothing to do);
+            // a successful probe means the PID is alive but may now belong to
+            // a *different* process, so we DO NOT escalate to SIGKILL —
+            // log the situation and let the OS reap on shutdown instead.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5.0) {
+                let stillAlive = (kill(pid, 0) == 0)
+                guard stillAlive else { return }
+                BackupPackage.logger.warning(
+                    "runDitto: child pid \(pid) did not exit within 5 s SIGTERM grace period; skipping SIGKILL to avoid hitting a reused PID"
+                )
             }
             throw BackupPackageError.archiveFailed
         }
@@ -218,6 +247,19 @@ final class BackupPackage {
     private static func onMain<T>(_ work: () throws -> T) rethrows -> T {
         if Thread.isMainThread { return try work() }
         return try DispatchQueue.main.sync(execute: work)
+    }
+
+    /// L-11 (2026-07-24 audit): maps the UserDefaults key used in the export
+    /// manifest loop to the `BackupFileSource` enum so the `corruptedData`
+    /// error pinpoints the failing file rather than collapsing every parse
+    /// failure into a generic message.
+    private static func source(forKey key: String) -> BackupFileSource {
+        switch key {
+        case "ClipboardItems": return .items
+        case "ClipMemoryTags": return .tags
+        case "ClipboardTrashedItems": return .trash
+        default: return .items  // unreachable in current caller, defensive default
+        }
     }
 
     // MARK: - Export
@@ -241,14 +283,30 @@ final class BackupPackage {
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
 
         // Store blobs (still encrypted with the machine key)
+        //
+        // L-11 (2026-07-24 audit): silently coerced `try?` decode failures to
+        // a count of 0, so a corrupt items/tags/trash blob produced a manifest
+        // claiming the package is smaller than it actually is — the on-disk
+        // data and the manifest then disagreed, and a future `importPackage`
+        // would use the wrong counts. Now: log + throw `corruptedData`, the
+        // existing package-corruption error, so the export fails loudly
+        // instead of producing a misleading manifest.
         var counts = (items: 0, tags: 0, trash: 0)
         for (filename, key) in [("items.json", "ClipboardItems"), ("tags.json", "ClipMemoryTags"), ("trash.json", "ClipboardTrashedItems")] {
             guard let data = defaults.data(forKey: key) else { continue }
             try data.write(to: staging.appendingPathComponent(filename), options: .atomic)
-            switch key {
-            case "ClipboardItems": counts.items = (try? JSONDecoder().decode([ClipboardItem].self, from: data).count) ?? 0
-            case "ClipMemoryTags": counts.tags = (try? JSONDecoder().decode([Tag].self, from: data).count) ?? 0
-            default: counts.trash = (try? JSONDecoder().decode([ClipboardItem].self, from: data).count) ?? 0
+            do {
+                switch key {
+                case "ClipboardItems":
+                    counts.items = try JSONDecoder().decode([ClipboardItem].self, from: data).count
+                case "ClipMemoryTags":
+                    counts.tags = try JSONDecoder().decode([Tag].self, from: data).count
+                default:
+                    counts.trash = try JSONDecoder().decode([ClipboardItem].self, from: data).count
+                }
+            } catch {
+                Self.logger.error("Backup manifest count decode failed for \(key): \(error.localizedDescription)")
+                throw BackupPackageError.corruptedData("\(key) count decode failed", source(forKey: key))
             }
         }
 
@@ -309,6 +367,17 @@ final class BackupPackage {
 
     /// Imports a `.clipmemory` package, re-encrypting every item with the local
     /// machine key and merging into the store (dedupe by id, then contentHash).
+    ///
+    /// H-5 (2026-07-24 audit): **no internal transaction / no rollback.**
+    /// The function merges `items.json` + `trash.json` into the store FIRST,
+    /// then `tags.json`, then attempts each image. If the image loop throws
+    /// (decrypt-auth failure, file I/O error), the previously-merged items
+    /// and tags are NOT reverted — the caller is responsible for guaranteeing
+    /// a rollback point beforehand. The only existing caller
+    /// (`ContentView.importBackup`) does this via `backupService.backupNow()`
+    /// on the call site; if a second caller is added it MUST do the same, or
+    /// a mid-import image failure will silently leave the user with a
+    /// half-overwritten clipboard history and no recovery point.
     static func importPackage(
         from archive: URL,
         passphrase: String,
@@ -322,16 +391,22 @@ final class BackupPackage {
         defer { try? FileManager.default.removeItem(at: staging) }
         try unzipArchive(archive, to: staging)
 
-        guard let manifestData = try? Data(contentsOf: staging.appendingPathComponent("manifest.json")),
-              let manifest = try? JSONDecoder().decode(BackupManifest.self, from: manifestData) else {
-            throw BackupPackageError.invalidPackage
+        guard let manifestData = try? Data(contentsOf: staging.appendingPathComponent("manifest.json")) else {
+            // M-7: distinguish "manifest file missing" from later corruption.
+            throw BackupPackageError.corruptedData("manifest.json missing or unreadable", .manifest)
+        }
+        guard let manifest = try? JSONDecoder().decode(BackupManifest.self, from: manifestData) else {
+            throw BackupPackageError.corruptedData("manifest.json decode failed", .manifest)
         }
         guard manifest.formatVersion <= currentFormatVersion else {
             throw BackupPackageError.unsupportedFormatVersion(manifest.formatVersion)
         }
-        guard let salt = Data(base64Encoded: manifest.keySalt),
-              let sealedKeyData = try? Data(contentsOf: staging.appendingPathComponent("key.enc")) else {
+        guard let salt = Data(base64Encoded: manifest.keySalt) else {
             throw BackupPackageError.invalidPackage
+        }
+        guard let sealedKeyData = try? Data(contentsOf: staging.appendingPathComponent("key.enc")) else {
+            // M-7: same pattern — surface which file is the offender.
+            throw BackupPackageError.corruptedData("key.enc missing or unreadable", .manifest)
         }
 
         // Passphrase check: GCM open fails on wrong passphrase.
@@ -413,9 +488,18 @@ final class BackupPackage {
             let target = imagesDirectory.appendingPathComponent(file)
             guard !FileManager.default.fileExists(atPath: target.path) else { continue }
             let fileURL = packageImages.appendingPathComponent(file)
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-               let size = attrs[.size] as? Int,
-               size > maxImageBytes {
+            // C-4 (2026-07-24 audit): the prior `if let attrs = try?` chain
+            // silently bypassed the size cap whenever `attributesOfItem`
+            // failed (permissions, broken symlink, network FS error) — a
+            // hostile or corrupted package could then `Data(contentsOf:)`
+            // a 500 MB entry and crash the app with OOM. Fail closed: skip
+            // the file rather than risk unbounded memory.
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+                  let size = attrs[.size] as? Int else {
+                logger.warning("Cannot determine size of image in backup (skipping): \(file)")
+                continue
+            }
+            guard size <= maxImageBytes else {
                 logger.warning("Skipping oversized image in backup: \(file) (\(size) bytes > \(maxImageBytes))")
                 continue
             }

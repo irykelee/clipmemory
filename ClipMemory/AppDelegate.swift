@@ -138,6 +138,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.statusItem?.button?.toolTip = L10n.appName
         }
         encryptionFailedObserver = NotificationCenter.default.addObserver(forName: .encryptionFailed, object: nil, queue: .main) { _ in
+            // XCTest injects into the real app, so this observer is live
+            // during tests — and tests deliberately post .encryptionFailed
+            // (OCRTests encrypt-failure fixtures). A modal runModal there
+            // blocks the test process forever (2026-07-24 CI hang: Test
+            // step stuck >60 min). Same guard as CryptoService.isRunningTests.
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
             let a = NSAlert(); a.messageText = L10n.error; a.informativeText = L10n.alertEncryptFailed; a.alertStyle = .warning; a.addButton(withTitle: L10n.buttonConfirm); a.runModal()
         }
     }

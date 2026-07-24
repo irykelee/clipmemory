@@ -41,7 +41,28 @@ enum HangDetector {
         )
     }
 
-    private static let state = OSAllocatedUnfairLock<State>(initialState: .initial)
+    // NSLock because state may be touched from main queue (heartbeat timer +
+// stack timer + checker timer .utility queue). Originally
+// OSAllocatedUnfairLock but C-1 (2026-07-24 audit) flagged it as
+// macOS 14+ only; per-tick interaction (~once per 1s/5s/30s) is below
+// any contention threshold where NSLock vs unfair lock is measurable.
+    private static let stateLock = NSLock()
+    private static var state: State = State(
+        lastHeartbeat: Date(),
+        lastMainStack: [],
+        lastDetectedAt: nil,
+        firstDetectedAt: nil,
+        detectionCount: 0
+    )
+
+    /// Single-lock access to the State struct. Mirrors the API surface of
+    /// `OSAllocatedUnfairLock.withLock` so call sites only need a
+    /// receiver-name swap (withStateLock { ... } → withStateLock { ... }).
+    private static func withStateLock<R>(_ block: (inout State) throws -> R) rethrows -> R {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return try block(&state)
+    }
     // 3 timer refs split as individual optionals (avoids Large-Tuple lint rule)
     private static var heartbeatTimer: DispatchSourceTimer?
     private static var stackTimer: DispatchSourceTimer?
@@ -121,7 +142,7 @@ enum HangDetector {
     /// `static let` lazy single-eval freezing `lastHeartbeat` across test cases.
     /// MUST be called in setUp. MUST NOT be called concurrently with start() / stop().
     internal static func _resetForTesting() {
-        state.withLock { $0 = State(lastHeartbeat: Date(), lastMainStack: [], lastDetectedAt: nil, firstDetectedAt: nil, detectionCount: 0) }
+        withStateLock { $0 = State(lastHeartbeat: Date(), lastMainStack: [], lastDetectedAt: nil, firstDetectedAt: nil, detectionCount: 0) }
         heartbeatTimer?.cancel(); heartbeatTimer = nil
         stackTimer?.cancel();     stackTimer = nil
         checkerTimer?.cancel();   checkerTimer = nil
@@ -139,14 +160,14 @@ enum HangDetector {
         detectionCount: Int,
         lastMainStack: [String]
     ) {
-        state.withLock { s in
+        withStateLock { s in
             (s.lastHeartbeat, s.lastDetectedAt, s.firstDetectedAt, s.detectionCount, s.lastMainStack)
         }
     }
 
     /// Test-only. Seed `lastHeartbeat` to a fixed instant for staleness tests.
     internal static func _seedLastHeartbeatForTesting(_ date: Date) {
-        state.withLock { $0.lastHeartbeat = date }
+        withStateLock { $0.lastHeartbeat = date }
     }
     // swiftlint:enable identifier_name large_tuple
 
@@ -155,7 +176,7 @@ enum HangDetector {
     /// Refresh `state.lastHeartbeat` to the current `Date()`.
     /// Invoked by the heartbeat timer (main queue, 1s).
     static func recordHeartbeat() {
-        state.withLock { $0.lastHeartbeat = Date() }
+        withStateLock { $0.lastHeartbeat = Date() }
     }
 
     // MARK: - Mutation API: staleness check (spec §4.2 / §4.3 / §7)
@@ -171,7 +192,7 @@ enum HangDetector {
     /// the cap-at-5 + firstDetectedAt-once writes).
     static func checkStaleness(now: Date) {
         // swiftlint:disable:next large_tuple
-        let snapshot = state.withLock { s -> (elapsed: TimeInterval, count: Int, firstDetectedAt: Date?, stack: [String]) in
+        let snapshot = withStateLock { s -> (elapsed: TimeInterval, count: Int, firstDetectedAt: Date?, stack: [String]) in
             (now.timeIntervalSince(s.lastHeartbeat), s.detectionCount, s.firstDetectedAt, s.lastMainStack)
         }
         guard snapshot.elapsed >= thresholdSeconds, snapshot.count < maxDetectionCount else {
@@ -193,7 +214,7 @@ enum HangDetector {
         // spurious `hang.detected` log at the recovery moment. Self-heals within
         // ≤5s on the next stack-timer fire (which re-emits `hang.recovered` for
         // the freshly-cleared state).
-        state.withLock { s in
+        withStateLock { s in
             guard s.detectionCount < maxDetectionCount else { return }
             s.lastDetectedAt = now
             s.firstDetectedAt = s.firstDetectedAt ?? now
@@ -217,6 +238,16 @@ enum HangDetector {
     /// locked write.
     static func recordStackCaptureAndMaybeRecover() {
         let now = Date()
+        // L-8 (2026-07-24 audit) was a `DispatchQueue.global.async` capture
+        // to avoid the 50-200 ms `Thread.callStackSymbols` cost. Post-audit
+        // scan caught the regression: `Thread.callStackSymbols` reports the
+        // CURRENT thread's symbols — dispatching it to a utility queue
+        // records the utility thread's stack, not the captured main stack.
+        // The watchdog's diagnostic value vanished. Reverted to sync
+        // capture on main. The 50-200 ms cost now lands on the 5-second
+        // stack timer, which is acceptable: (a) this only runs when a hang
+        // is in progress, not every 5 s on a healthy machine, and (b) it
+        // runs on the watchdog's own timer, separate from UI renders.
         let newStack = Thread.callStackSymbols
         // Empty-stack rule (spec §4.2 reviewer #3): if `newStack` is empty, leave
         // `lastMainStack` untouched (preserve pre-hang frames for diagnosis).
@@ -228,7 +259,7 @@ enum HangDetector {
         // Per gate 1b Mc: collapse the original 3 separate `withLock` calls (snapshot +
         // stack-write + recovery-clear) into a single post-snapshot lock so stack-write
         // and recovery-clear are atomic relative to a concurrent checker read.
-        let recoveryDowntime: TimeInterval? = state.withLock { s -> TimeInterval? in
+        let recoveryDowntime: TimeInterval? = withStateLock { s -> TimeInterval? in
             if !newStack.isEmpty {
                 s.lastMainStack = newStack
             }
@@ -290,9 +321,17 @@ enum HangDetector {
     /// entry point directly instead.
     static func start() {
         guard !isStarted else { return }
-        state.withLock { $0 = .initial }
-        // NOTE: `isStarted = true` is set at the END of this function (after all 3 timer
-        // resume() calls), per gate 1b Ma — see the final line of `start()`.
+        // L-9 (2026-07-24 audit): previous design set `isStarted = true` at the very
+        // end of `start()`, AFTER all 3 timer `resume()` calls. The narrow
+        // window between the first `resume()` and the final assignment allowed
+        // a re-entrant call (e.g. a concurrent `recordHeartbeat()` triggered by
+        // a 1-second tick that landed before `start()` returned) to read
+        // `isStarted == false`. Setting the flag immediately after the re-entry
+        // guard closes the window. `stop()` still unconditionally resets it,
+        // so the cycle invariant — `isStarted == true` ⇔ `start()` ran without
+        // a matching `stop()` — is preserved.
+        isStarted = true
+        withStateLock { $0 = .initial }
 
         let mainQueue = DispatchQueue.main
         let utilityQueue = DispatchQueue.global(qos: .utility)
@@ -324,12 +363,11 @@ enum HangDetector {
         ch.resume()
         checkerTimer = ch
 
-        // Per gate 1b Ma: set `isStarted = true` AFTER all 3 timer `resume()` calls (and
-        // their timer field assignments) so any exception / future-throwing API call
-        // in the timer-setup path leaves `start()` re-callable. `stop()` per spec §10.2
-        // deliberately does NOT clear `isStarted`, so a failure mid-setup before this line
-        // would otherwise make the watchdog permanently inert for the rest of the process.
-        isStarted = true
+        // L-9 fix already set `isStarted = true` immediately after the
+        // re-entry guard at the top of start(); no need to set again here.
+        // (Original code had a duplicate assignment to close a tiny race
+        // window; L-9 closed it earlier in the function and stop() still
+        // unconditionally clears the flag in its terminator.)
     }
 
     /// Cancel all 3 timers in reverse-start order. Idempotent: no-op if

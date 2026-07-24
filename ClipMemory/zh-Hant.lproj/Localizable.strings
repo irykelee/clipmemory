@@ -207,6 +207,9 @@
 "sidebar.deleteTag" = "刪除標籤";
 "sidebar.deleteTag.confirm.title" = "刪除標籤？";
 "sidebar.deleteTag.confirm.message" = "標籤「%@」將從 %d 個項目移除";
+"sidebar.tag.accessibility.label" = "標籤 %@，%d 項";
+"sidebar.tag.accessibility.selected" = "已選中";
+"sidebar.tag.accessibility.unselected" = "未選中";
 "newTag.title" = "新建標籤";
 "newTag.create" = "建立";
 "newTag.customColor" = "自訂顏色";

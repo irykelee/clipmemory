@@ -100,8 +100,35 @@ struct HotKeyConfig: Codable, Equatable {
 class HotKeyManager {
     private var eventHandler: EventHandlerRef?
     var hotKeyRef: EventHotKeyRef?
-    private var showWindowHandler: (() -> Void)?
+    // H-18 (2026-07-24 audit): showWindowHandler is read from the Carbon
+    // event thread (handler dispatch) and written from the main thread
+    // (AppDelegate wiring). A `var` closure isn't atomic across threads; a
+    // concurrent read+write tears the reference (or sees a half-updated
+    // closure context). NSLock + backing var + computed-property accessors
+    // mirror the H-15 retainedSelfPtr pattern.
+    private let showWindowHandlerLock = NSLock()
+    private var showWindowHandlerBacking: (() -> Void)?
+    private var showWindowHandler: (() -> Void)? {
+        get {
+            showWindowHandlerLock.lock()
+            defer { showWindowHandlerLock.unlock() }
+            return showWindowHandlerBacking
+        }
+        set {
+            showWindowHandlerLock.lock()
+            defer { showWindowHandlerLock.unlock() }
+            showWindowHandlerBacking = newValue
+        }
+    }
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "HotKeyManager")
+    // H-15 (2026-07-24 audit): opaque pointer to `self` retained by Carbon's
+    // InstallEventHandler. Originally created with `passUnretained(self)` — if
+    // self deinits while the Carbon thread is mid-callback, the handler reads
+    // a dangling pointer (use-after-free). Fix: `passRetained(self)` so the
+    // retain holds self alive until `unregister()` consumes it. The handler
+    // still uses `takeUnretainedValue()` (no retain change per call) — the
+    // retain is balanced entirely on the register/unregister pair.
+    private var retainedSelfPtr: UnsafeMutableRawPointer?
 
     private(set) var config: HotKeyConfig = .load()
     /// Whether a registration attempt was made this launch (lets UI read the
@@ -134,7 +161,8 @@ class HotKeyManager {
                 return noErr
             }
 
-            let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+            let selfPtr = Unmanaged.passRetained(self).toOpaque()
+            retainedSelfPtr = selfPtr
             let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), handler, 1, &eventType, selfPtr, &eventHandler)
             if handlerStatus != noErr {
                 logger.error("Failed to install keyboard event handler: \(handlerStatus)")
@@ -175,7 +203,7 @@ class HotKeyManager {
     }
 
     func setShowWindowHandler(_ handler: @escaping () -> Void) {
-        self.showWindowHandler = handler
+        showWindowHandler = handler
     }
 
     func unregister() {
@@ -186,6 +214,13 @@ class HotKeyManager {
         if let eventHandler = eventHandler {
             RemoveEventHandler(eventHandler)
             self.eventHandler = nil
+        }
+        // H-15: balance the `passRetained(self)` from register(). Consume
+        // the opaque pointer (which decrements the retain count by 1) so
+        // self can deinit if no other references remain.
+        if let retainedSelfPtr {
+            Unmanaged<HotKeyManager>.fromOpaque(retainedSelfPtr).release()
+            self.retainedSelfPtr = nil
         }
     }
 
