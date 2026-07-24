@@ -62,49 +62,93 @@ KEYS = [
     ),
 ]
 
-# Per-locale plural category translations of the English singular/other
-# forms. For locales with no grammatical plural (ja/ko/zh) only "other"
-# is needed; for es/pt we add a 2-form split (one/other) — CLDR "many"
-# is omitted because the only "many" rule (10^6+) doesn't apply to
-# clipboard item counts users will realistically see.
-LOCALES = {
-    "en": {
-        "one": lambda one, other: one,
-        "other": lambda one, other: other,
-    },
-    "zh-Hans": {
-        "other": lambda one, other: other,
-    },
-    "zh-Hant": {
-        "other": lambda one, other: other,
-    },
-    "ja": {
-        "other": lambda one, other: other,
-    },
-    "ko": {
-        "other": lambda one, other: other,
-    },
-    # Spanish: 1 = un/una elemento, >1 = elementos
+# Per-locale plural categories. Locales with no grammatical plural
+# (ja/ko/zh) only need "other"; en/es/pt get a 2-form split (one/other)
+# — CLDR "many" is omitted because the only "many" rule (10^6+) doesn't
+# apply to clipboard item counts users will realistically see.
+LOCALE_CATEGORIES = {
+    "en": ["one", "other"],
+    "zh-Hans": ["other"],
+    "zh-Hant": ["other"],
+    "ja": ["other"],
+    "ko": ["other"],
+    "es": ["one", "other"],
+    "pt": ["one", "other"],
+}
+
+# Explicit per-key translations for es/pt.
+#
+# REL-5 (2026-07-24): these used to be produced by chained
+# str.replace() calls on the English source (e.g. "%d item" ->
+# "%d elemento" ran BEFORE "item will" -> "elemento será", so the
+# longer pattern never matched). The order-dependent chain shipped
+# broken mixed-language strings in es.lproj ("...elemento will be
+# permanently deleted", "Pinned elementos serán not be deleted").
+# An explicit table has no ordering pitfalls and is reviewable by a
+# native speaker without reading replace logic.
+TRANSLATIONS = {
     "es": {
-        "one": lambda one, other: one
-            .replace("%d item", "%d elemento")
-            .replace("item will", "elemento será")
-            .replace("items will", "elementos serán")
-            .replace(" item ", " elemento "),
-        "other": lambda one, other: other
-            .replace("items", "elementos")
-            .replace("item will", "elementos serán"),
+        "batch.selected": {
+            "one": "%d seleccionado",
+            "other": "%d seleccionados",
+        },
+        "quickbar.recent": {
+            "one": "%d elemento",
+            "other": "%d elementos",
+        },
+        "trash.emptyConfirm.message": {
+            "one": "%d elemento será eliminado permanentemente. Esta acción no se puede deshacer.",
+            "other": "%d elementos serán eliminados permanentemente. Esta acción no se puede deshacer.",
+        },
+        "alert.clear.message": {
+            "one": "¿Seguro que quieres borrar %d elemento?\nLos elementos fijados no se borrarán.",
+            "other": "¿Seguro que quieres borrar %d elementos?\nLos elementos fijados no se borrarán.",
+        },
+        "settings.max.items.count": {
+            "one": "%d elemento",
+            "other": "%d elementos",
+        },
+        "clear.conditional.confirm": {
+            "one": "%d elemento será eliminado (los fijados se conservan, movido a la papelera)",
+            "other": "%d elementos serán eliminados (los fijados se conservan, movidos a la papelera)",
+        },
     },
-    # Portuguese: 1 = item, >1 = itens
     "pt": {
-        "one": lambda one, other: one
-            .replace("item will", "item será")
-            .replace("%d item", "%d item"),
-        "other": lambda one, other: other
-            .replace("items will", "itens serão")
-            .replace("items", "itens"),
+        "batch.selected": {
+            "one": "%d selecionado",
+            "other": "%d selecionados",
+        },
+        "quickbar.recent": {
+            "one": "%d item",
+            "other": "%d itens",
+        },
+        "trash.emptyConfirm.message": {
+            "one": "%d item será apagado permanentemente. Esta ação não pode ser desfeita.",
+            "other": "%d itens serão apagados permanentemente. Esta ação não pode ser desfeita.",
+        },
+        "alert.clear.message": {
+            "one": "Tem certeza de que deseja limpar %d item?\nItens fixados não serão apagados.",
+            "other": "Tem certeza de que deseja limpar %d itens?\nItens fixados não serão apagados.",
+        },
+        "settings.max.items.count": {
+            "one": "%d item",
+            "other": "%d itens",
+        },
+        "clear.conditional.confirm": {
+            "one": "%d item será apagado (fixados mantidos, movido para a lixeira)",
+            "other": "%d itens serão apagados (fixados mantidos, movidos para a lixeira)",
+        },
     },
 }
+
+
+def resolve(locale: str, category: str, key: str, one: str, other: str) -> str:
+    """Resolve the format string for one locale/category/key."""
+    if locale in TRANSLATIONS:
+        return TRANSLATIONS[locale][key][category]
+    # en keeps the authored one/other forms; ja/ko/zh use the single
+    # "other" form for every count.
+    return one if category == "one" else other
 
 
 def generate_for_locale(locale: str, keys: list) -> str:
@@ -116,7 +160,6 @@ def generate_for_locale(locale: str, keys: list) -> str:
         '<dict>',
     ]
     for key, one, other in keys:
-        translations = LOCALES[locale]
         lines.append(f"\t<key>{key}</key>")
         lines.append("\t<dict>")
         lines.append("\t\t<key>NSStringLocalizedFormatKey</key>")
@@ -128,8 +171,8 @@ def generate_for_locale(locale: str, keys: list) -> str:
         lines.append("\t\t<dict>")
         lines.append("\t\t\t<key>NSStringFormatSpecTypeKey</key>")
         lines.append("\t\t\t<string>NSStringPluralRuleType</string>")
-        for cat, fn in translations.items():
-            value = fn(one, other)
+        for cat in LOCALE_CATEGORIES[locale]:
+            value = resolve(locale, cat, key, one, other)
             lines.append(f"\t\t\t<key>{cat}</key>")
             lines.append(f"\t\t\t<string>{value}</string>")
         lines.append("\t\t</dict>")
@@ -143,7 +186,7 @@ def generate_for_locale(locale: str, keys: list) -> str:
 
 def main():
     repo_root = Path(__file__).parent.parent
-    for locale in LOCALES:
+    for locale in LOCALE_CATEGORIES:
         out_path = repo_root / "ClipMemory" / f"{locale}.lproj" / "Localizable.stringsdict"
         content = generate_for_locale(locale, KEYS)
         out_path.write_text(content, encoding="utf-8")
