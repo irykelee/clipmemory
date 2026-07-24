@@ -261,6 +261,14 @@ struct TagPickerSheet: View {
             TextField(L10n.tagPickerCreate, text: $newName)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: sz(12)))
+                // Secondary CLIP-2 (2026-07-24 audit): without .onSubmit,
+                // pressing Return inside the field fell through to the
+                // header's Done button (`.keyboardShortcut(.defaultAction)`)
+                // and dismissed the sheet, discarding the in-progress tag
+                // draft. Route Return through the same submit path as the
+                // Create / Use-existing button. An empty (whitespace-only)
+                // name keeps the draft open instead of closing the sheet.
+                .onSubmit { submitNewTag() }
 
             if let candidates = autocompleteCandidates, !candidates.isEmpty {
                 FlowLayout(spacing: 6) {
@@ -331,16 +339,32 @@ struct TagPickerSheet: View {
     }
 
     private func submitNewTag() {
-        if let conflict = nameConflict {
-            // Reuse existing tag — just attach.
-            store.addTag(to: item.id, tagId: conflict.id)
-        } else {
-            let tag = TagPickerLogic.makeTagManual(name: trimmedName, colorHex: newColor)
-            store.addTag(tag)
-            store.addTag(to: item.id, tagId: tag.id)
+        guard Self.submitNewTag(name: newName, colorHex: newColor, itemId: item.id, store: store) else {
+            return
         }
         newName = ""
         isCreating = false
+    }
+
+    /// Secondary CLIP-2: single submit implementation shared by the Create /
+    /// Use-existing button and the TextField's `.onSubmit` (Return key).
+    /// Extracted as a static so the regression test can drive it without a
+    /// SwiftUI view tree.
+    /// - Returns: `true` when a tag was attached (created or reused);
+    ///   `false` when the trimmed name is empty — the caller keeps the
+    ///   draft open so Return doesn't silently discard typed state.
+    static func submitNewTag(name: String, colorHex: String, itemId: UUID, store: ClipboardStore) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if let conflict = store.tags.values.first(where: { $0.name.lowercased() == trimmed.lowercased() }) {
+            // Reuse existing tag — just attach.
+            store.addTag(to: itemId, tagId: conflict.id)
+        } else {
+            let tag = TagPickerLogic.makeTagManual(name: trimmed, colorHex: colorHex)
+            store.addTag(tag)
+            store.addTag(to: itemId, tagId: tag.id)
+        }
+        return true
     }
 
     // MARK: - onAppear
