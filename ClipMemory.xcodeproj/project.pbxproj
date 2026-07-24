@@ -59,6 +59,7 @@
 		7B94EA436B48E0E9CCCA9C91 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63B98DB67D54A9850C61262 /* IntegrationTests.swift */; };
 		7D06F010CEA290AA290A0335 /* ClipboardStoreTrashTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4E6D5E6E7DBF88457A6077 /* ClipboardStoreTrashTests.swift */; };
 		7F23EF5F15D0EE3F180A79E3 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AB1C7BD0454681ABF687DF9 /* main.swift */; };
+		80CA63DE26FA32AD4DD8DB0B /* EncryptionFailedAlertThrottler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28996AE01C5C1C22507EFA6D /* EncryptionFailedAlertThrottler.swift */; };
 		81520509F9D37309F19E9B2B /* TagPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9CFDA4DE370490B4369B899 /* TagPickerSheet.swift */; };
 		82AADDBEE61C7A4905FE8D65 /* UpdateStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21CBEF1E7589EC16754CAF0 /* UpdateStatus.swift */; };
 		83892A798C8F07BCB2A87488 /* LanguageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B185E481A34967FB1CC7F192 /* LanguageManager.swift */; };
@@ -96,6 +97,7 @@
 		C431096E0E6E1E3109E5BB97 /* TagSuggestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B25AAEAD7B96A95D89746C /* TagSuggestion.swift */; };
 		C47E38577908698BFCED810A /* FontScaling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7027A04305067DB8A8656FC9 /* FontScaling.swift */; };
 		CA65D74CB492C0091B80457F /* QuickBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F26B268CA5CF8662C3C930 /* QuickBarView.swift */; };
+		CCCC9FFCF1EB417F74198F26 /* EncryptionFailedAlertThrottlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C6F13182E51140986AB1201 /* EncryptionFailedAlertThrottlerTests.swift */; };
 		CFAB8A339B7A88AA06E4FF28 /* LocalizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1258099BA9879D8EF6A6F980 /* LocalizationService.swift */; };
 		D30B948C6C153685A64D6053 /* Audit20260720RegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A5663AC4E8DBEB2E909A774 /* Audit20260720RegressionTests.swift */; };
 		D61C7E8F6FA342BE56F5DB3D /* ImagePreviewPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C63DA186B15CCC8937235FB /* ImagePreviewPanel.swift */; };
@@ -139,10 +141,12 @@
 		162510951570AB9FC4207B0F /* ClipboardMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitorTests.swift; sourceTree = "<group>"; };
 		16A024F483BDCDB740392F8A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		1A8ED97CA49FF8F747A96CBF /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		1C6F13182E51140986AB1201 /* EncryptionFailedAlertThrottlerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptionFailedAlertThrottlerTests.swift; sourceTree = "<group>"; };
 		1E73A6EE834EA648971BFC98 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
 		1F09A4A042BBC01BB5C0D59F /* StartupHealthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupHealthTests.swift; sourceTree = "<group>"; };
 		1FF6C216A30DEB3F4C1D7E37 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = pt; path = pt.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
 		237CA88DED2CB364143484CA /* ClearItemsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearItemsTests.swift; sourceTree = "<group>"; };
+		28996AE01C5C1C22507EFA6D /* EncryptionFailedAlertThrottler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptionFailedAlertThrottler.swift; sourceTree = "<group>"; };
 		2AB1C7BD0454681ABF687DF9 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		31278F99C0DD9994F135038A /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
 		328C384747141E7DB4D8F7C3 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -310,6 +314,7 @@
 				4D555CA30882227C142B6A55 /* CryptoKeyPreparationTests.swift */,
 				B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */,
 				C4DF9D5EC30A4297B53974BF /* DecryptionFailedLoopTests.swift */,
+				1C6F13182E51140986AB1201 /* EncryptionFailedAlertThrottlerTests.swift */,
 				C8D006CCE0E8AC47CF7B7413 /* HangDetectorTests.swift */,
 				E25EBD3BBAD32C1A9B6ADFDA /* HotKeyManagerTests.swift */,
 				043D7BEC02F3AB2D812024BD /* ImagePreviewPanelTests.swift */,
@@ -407,6 +412,7 @@
 				4499CFF1A5F60ED377D402EB /* ClipboardStore.swift */,
 				6173144B0E0698A4915528BA /* ClipboardStore+OCR.swift */,
 				8F250C19E7199E18D95521A3 /* CryptoService.swift */,
+				28996AE01C5C1C22507EFA6D /* EncryptionFailedAlertThrottler.swift */,
 				D52B7E6165B766117D1BC7F2 /* FeedProbeEngine.swift */,
 				CB46D62ED9B13AFDE0196EFF /* HangDetector.swift */,
 				57CCB6D91997FD344D04495D /* HotKeyManager.swift */,
@@ -581,6 +587,7 @@
 				660D636D6FF6727E1CDA08C0 /* CryptoKeyPreparationTests.swift in Sources */,
 				17DD4FBBF0E756DA8D26C43C /* CryptoServiceTests.swift in Sources */,
 				77C11312B197598CD4632E49 /* DecryptionFailedLoopTests.swift in Sources */,
+				CCCC9FFCF1EB417F74198F26 /* EncryptionFailedAlertThrottlerTests.swift in Sources */,
 				5F166E081C5C54406638AB80 /* HangDetectorTests.swift in Sources */,
 				A0EB5CF9B762950F8A8B0842 /* HotKeyManagerTests.swift in Sources */,
 				9F76B639D19195A92EC01DC5 /* ImagePreviewPanelTests.swift in Sources */,
@@ -631,6 +638,7 @@
 				EC9B8E180D5B18F679F1E86D /* CryptoService.swift in Sources */,
 				E4E018508855F4D12CE92115 /* DateFilterButton.swift in Sources */,
 				BB9FF1079BD872DBDAC1B04E /* DateHelpers.swift in Sources */,
+				80CA63DE26FA32AD4DD8DB0B /* EncryptionFailedAlertThrottler.swift in Sources */,
 				9A73423E412F9A346C0D59BE /* FeedProbeEngine.swift in Sources */,
 				4D21B894BBC408664F1CF2D4 /* FlowLayout.swift in Sources */,
 				C47E38577908698BFCED810A /* FontScaling.swift in Sources */,

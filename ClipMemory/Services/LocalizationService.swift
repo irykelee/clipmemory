@@ -266,6 +266,9 @@ struct L10n {
     static var sendFeedback: String { string("app.send.feedback") }
     static var viewWelcomeGuide: String { string("app.view.welcome.guide") }
     static var alertEncryptFailed: String { string("alert.encrypt.failed") }
+    // CLIP-3 (2026-07-24): coalesced variant used when the throttler
+    // suppressed repeat failures inside its window — reports the total count.
+    static func alertEncryptFailedCount(_ count: Int) -> String { string("alert.encrypt.failed.count", count) }
 
     // MARK: - Trim Alert
     static var alertTrimTitle: String { string("alert.trim.title") }

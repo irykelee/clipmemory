@@ -135,6 +135,7 @@
 "batch.selected" = "%#@count@";
 "app.send.feedback" = "Feedback";
 "alert.encrypt.failed" = "Failed to encrypt sensitive data. Item was not saved.";
+"alert.encrypt.failed.count" = "Failed to encrypt sensitive data. %d items were not saved.";
 
 /* Welcome View */
 "welcome.title" = "Welcome to ClipMemory";
