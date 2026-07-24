@@ -292,4 +292,43 @@ final class HotKeyManagerTests: XCTestCase {
         XCTAssertEqual(loaded, .defaultConfig,
                        "Out-of-range keyCode must fall back to defaultConfig")
     }
+
+    // MARK: - H-15 (2026-07-24 audit): Carbon handler retain balance
+
+    /// H-15: the Carbon InstallEventHandler callback uses `Unmanaged.passUnretained(self)`.
+    /// If `self` deinits while the Carbon thread is mid-callback, the handler
+    /// reads a dangling pointer → use-after-free crash. The fix is to use
+    /// `passRetained` so the retain holds `self` alive until `unregister`
+    /// releases it. This test verifies the retain is balanced: after
+    /// `register()` + `unregister()` the retain count returns to baseline.
+    func testRegister_unregister_balancesRetainCount() {
+        let manager = HotKeyManager()
+        let baseline = CFGetRetainCount(manager)
+        XCTAssertGreaterThanOrEqual(baseline, 1, "manager must have at least 1 retain at baseline")
+
+        manager.register()
+        let afterRegister = CFGetRetainCount(manager)
+        XCTAssertGreaterThan(afterRegister, baseline,
+                             "register must retain self via passRetained (H-15 audit)")
+
+        manager.unregister()
+        let afterUnregister = CFGetRetainCount(manager)
+        XCTAssertEqual(afterUnregister, baseline,
+                       "unregister must release the passRetained balance (H-15 audit)")
+    }
+
+    /// H-15: register → unregister cycle must not leak a retain. A second
+    /// register/unregister cycle must return to the same baseline as the
+    /// first (no growing delta). Without balance, this would grow linearly.
+    func testRegister_unregisterCycle_doesNotLeak() {
+        let manager = HotKeyManager()
+        let baseline = CFGetRetainCount(manager)
+        for _ in 0..<3 {
+            manager.register()
+            manager.unregister()
+        }
+        let final = CFGetRetainCount(manager)
+        XCTAssertEqual(final, baseline,
+                       "Repeated register/unregister cycles must not leak retains (H-15 audit)")
+    }
 }
