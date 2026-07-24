@@ -9,6 +9,10 @@ on:
 jobs:
   build-and-test:
     runs-on: macos-latest
+    # 2026-07-24: a modal NSAlert on the test host once hung this job for
+    # 60+ min with zero output (healthy baseline is 2-3 min). Hard-cap so
+    # any future hang fails fast instead of silently burning runner time.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
