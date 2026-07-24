@@ -100,7 +100,26 @@ struct HotKeyConfig: Codable, Equatable {
 class HotKeyManager {
     private var eventHandler: EventHandlerRef?
     var hotKeyRef: EventHotKeyRef?
-    private var showWindowHandler: (() -> Void)?
+    // H-18 (2026-07-24 audit): showWindowHandler is read from the Carbon
+    // event thread (handler dispatch) and written from the main thread
+    // (AppDelegate wiring). A `var` closure isn't atomic across threads; a
+    // concurrent read+write tears the reference (or sees a half-updated
+    // closure context). NSLock + backing var + computed-property accessors
+    // mirror the H-15 retainedSelfPtr pattern.
+    private let showWindowHandlerLock = NSLock()
+    private var showWindowHandlerBacking: (() -> Void)?
+    private var showWindowHandler: (() -> Void)? {
+        get {
+            showWindowHandlerLock.lock()
+            defer { showWindowHandlerLock.unlock() }
+            return showWindowHandlerBacking
+        }
+        set {
+            showWindowHandlerLock.lock()
+            defer { showWindowHandlerLock.unlock() }
+            showWindowHandlerBacking = newValue
+        }
+    }
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "HotKeyManager")
     // H-15 (2026-07-24 audit): opaque pointer to `self` retained by Carbon's
     // InstallEventHandler. Originally created with `passUnretained(self)` — if
@@ -184,7 +203,7 @@ class HotKeyManager {
     }
 
     func setShowWindowHandler(_ handler: @escaping () -> Void) {
-        self.showWindowHandler = handler
+        showWindowHandler = handler
     }
 
     func unregister() {
