@@ -77,9 +77,19 @@ class ClipboardStore: ObservableObject {
                 maxItems = clamped
                 return
             }
+            // M-4 (2026-07-24 audit): keep `contentCache.countLimit` in sync
+            // with `maxItems`. A fixed `500` cap was half-empty when a user
+            // chose `maxItems = 10000`, wasting the upper half of the cache.
+            // `rtfPlaintextCache` shares the same shape; tune both.
+            contentCache.countLimit = max(maxItems, Self.minCacheCountLimit)
+            rtfPlaintextCache.countLimit = max(maxItems, Self.minCacheCountLimit)
             UserDefaults.standard.set(maxItems, forKey: maxItemsKey)
         }
     }
+    /// M-4: lower bound for the cache `countLimit` so a user with a small
+    /// `maxItems` (e.g. 50) still gets the original 500-entry cache headroom
+    /// rather than an undersized cache.
+    static let minCacheCountLimit = 500
 
     @Published var sensitiveClearHours: Int {
         didSet { UserDefaults.standard.set(sensitiveClearHours, forKey: sensitiveClearHoursKey) }
@@ -192,15 +202,24 @@ class ClipboardStore: ObservableObject {
         self.trashBackend = trashBackend
 
         let savedMaxItems = UserDefaults.standard.integer(forKey: maxItemsKey)
-        // Clamp to valid range [50, 100, 200, 500] to handle corrupted/migrated UserDefaults
-        // Note: didSet is NOT called during init, so we must write to UserDefaults directly
-        let validMaxItems = [50, 100, 200, 500]
-        if validMaxItems.contains(savedMaxItems) {
-            maxItems = savedMaxItems
-        } else {
-            maxItems = 100
-            UserDefaults.standard.set(100, forKey: maxItemsKey)
+        // M-3 (2026-07-24 audit): init validation must match didSet's clamp
+        // range [minMaxItems, maxMaxItems]. Previously init used an enum of
+        // [50, 100, 200, 500] — any other integer (250, 1000, 1_000_000 from
+        // a corrupt UserDefaults or future-migrated value) silently fell
+        // back to 100 even when didSet would have accepted it. Clamp with
+        // the same bounds as didSet; migrate out-of-range values forward.
+        let clampedInit = max(Self.minMaxItems, min(savedMaxItems, Self.maxMaxItems))
+        if clampedInit != savedMaxItems {
+            UserDefaults.standard.set(clampedInit, forKey: maxItemsKey)
         }
+        // M-4: tune the caches to match the resolved value. Done BEFORE the
+        // `maxItems =` write because Swift's definite-init rules forbid
+        // touching `self.maxItems` from init body while any stored property
+        // is still uninitialized — and we compute the same value either way.
+        let initialCacheLimit = max(clampedInit, Self.minCacheCountLimit)
+        contentCache.countLimit = initialCacheLimit
+        rtfPlaintextCache.countLimit = initialCacheLimit
+        maxItems = clampedInit
 
         if UserDefaults.standard.object(forKey: sensitiveClearHoursKey) != nil {
             sensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
