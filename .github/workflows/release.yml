@@ -12,13 +12,17 @@ on:
     paths:
       - '.github/workflows/release.yml'
 
-# D1 (2026-07-23 ship-review): concurrency group prevents two tags racing on
-# the appcast push (which would fail with non-fast-forward). `cancel-in-progress:
-# false` is intentional — never cancel a release mid-flight; PR runs against the
-# same group are blocked until the in-flight tag finishes, which is acceptable
-# since PRs are infrequent.
+# REL-1 (2026-07-24 audit): concurrency group is FIXED `release`, not
+# `${{ github.ref }}`. Per-ref groups let two tags pushed minutes apart run
+# concurrently; both then race on the appcast `git push --force-with-lease`
+# (line 198), and the faster push silently truncates the slower tag's
+# appcast commit out of the source branch. A fixed group serialises every
+# tag push and every PR dry-run against the same lock.
+# `cancel-in-progress: false` is intentional — never cancel a release
+# mid-flight; PR runs against the same group are blocked until the in-flight
+# tag finishes.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
