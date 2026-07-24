@@ -65,8 +65,11 @@ final class OCRTests: XCTestCase {
         defer { ServiceContainer.crypto = originalCrypto }
 
         var notificationFired = false
+        // nil queue = synchronous delivery on the posting thread. A .main
+        // queue makes the assertion race the main runloop (test must yield
+        // before the block runs) — flaky/hang-prone in CI environments.
         let observer = NotificationCenter.default.addObserver(
-            forName: .encryptionFailed, object: nil, queue: .main
+            forName: .encryptionFailed, object: nil, queue: nil
         ) { _ in notificationFired = true }
         defer { NotificationCenter.default.removeObserver(observer) }
 
@@ -106,8 +109,10 @@ final class OCRTests: XCTestCase {
     func testAddItem_encryptFailure_logsAndTagsNotification() {
         let item = ClipboardItem(content: "secret note", type: .text)
         var capturedUserInfo: [AnyHashable: Any]?
+        // nil queue = synchronous delivery on the posting thread (same
+        // runloop-race rationale as the H-4 fixture above).
         let observer = NotificationCenter.default.addObserver(
-            forName: .encryptionFailed, object: nil, queue: .main
+            forName: .encryptionFailed, object: nil, queue: nil
         ) { note in capturedUserInfo = note.userInfo }
         defer { NotificationCenter.default.removeObserver(observer) }
 
