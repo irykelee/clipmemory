@@ -433,21 +433,15 @@ struct ContentView: View {
     var body: some View {
         withKeyAndSheets(splitViewWithLifecycle)
             .onChange(of: store.items) { _ in
-                // Prune selectedItems to live IDs (defensive against any
-                // delete path that forgets to clean it — pre-fix stale-UUID
-                // bug left the bulk-select toolbar visible).
-                // Audit-fix #1 (2026-07-20): defer @State writes to the next
-                // main-actor hop — synchronous writes here triggered
-                // SwiftUI "Modifying state during view update" warnings.
-                // BUG-005 (2026-07-21): watch `store.items` not `.count` —
-                // tag add/remove changes item content but not count, leaving
-                // sidebar tag badges stale until an item is added/removed.
+                // H-9: prune selectedItems to live IDs (defensive against any
+                // delete path that forgets to clean it). Also refresh caches.
+                // Deferred via Task to avoid "Modifying state during view update".
                 let liveIDs = Set(store.items.map(\.id))
                 let pruned = selectedItems.intersection(liveIDs)
                 Task { @MainActor in
                     selectedItems = pruned
-                    // I-9: refresh cached tab/tag counts (avoids recompute on every body).
                     refreshUsageCountCache()
+                    refreshDisplayedItemsCacheSoon(source: "store.items")
                 }
             }
             // BUG-004 (2026-07-21): @State didSet bypassed by Binding writes
@@ -550,7 +544,6 @@ struct ContentView: View {
                 UIObservability.logTagSelectionChange(count: newValue.count)
                 refreshDisplayedItemsCacheSoon(source: "selectedTagIds")
             }
-            .onChange(of: store.items) { _ in refreshDisplayedItemsCacheSoon(source: "store.items") }
             .onChange(of: store.tags) { _ in
                 DispatchQueue.main.async {
                     UIObservability.logRefreshTrigger(source: "store.tags")
