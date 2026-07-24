@@ -30,6 +30,10 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
+    # Normal release is 10-20 min; cap at 40 so a hung step (see the
+    # 2026-07-24 ci.yml modal-alert hang) fails loudly instead of running
+    # up to the 6-hour GitHub default.
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -116,7 +120,15 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" ci-signing.keychain-db
 
       - name: Build Release
-        run: xcodebuild -scheme ClipMemory -configuration Release build
+        # PR dry-run: the cert-import step is push-only, so PR builds must
+        # sign ad-hoc (same CODE_SIGN_IDENTITY="-" as ci.yml) — otherwise
+        # xcodebuild fails with "No signing certificate found".
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            xcodebuild -scheme ClipMemory -configuration Release build CODE_SIGN_IDENTITY="-"
+          else
+            xcodebuild -scheme ClipMemory -configuration Release build
+          fi
 
       # B2 (2026-07-23 ship-review): run unit tests before packaging. Previously
       # the release workflow only ran `xcodebuild build` — a failing test would
@@ -124,9 +136,18 @@ jobs:
       # job before we burn 5-10 min on package + EdDSA sign + GitHub Release +
       # tap push.
       - name: Run tests
-        run: xcodebuild test -scheme ClipMemory -destination 'platform=macOS'
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' CODE_SIGN_IDENTITY="-"
+          else
+            xcodebuild test -scheme ClipMemory -destination 'platform=macOS'
+          fi
 
       - name: Package and update local Cask
+        # Package is publish-adjacent (tarball + verify_package) and its
+        # Release build needs the signing cert — push-only, same as the
+        # other publish steps. PR dry-run coverage stops at build + tests.
+        if: github.event_name == 'push'
         run: ./Scripts/package.sh
 
       - name: Sign tarball and update appcast
