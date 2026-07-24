@@ -254,4 +254,93 @@ final class BackupServiceTests: XCTestCase {
         let postEntries = (try? FileManager.default.contentsOfDirectory(atPath: isolatedBackups.path)) ?? []
         XCTAssertEqual(postEntries, [], "no partial backup dir should appear under the blocked parent")
     }
+
+    // MARK: - H-6 (2026-07-24 audit): `.incomplete` marker for crash consistency
+
+    /// After a successful backup the produced dir must NOT contain `.incomplete`
+    /// — the marker indicates a previous in-progress backup that crashed before
+    /// completing. The success path removes the marker; absence is observable as
+    /// "safe to use this dir for restore".
+    func testBackupNowRemovesIncompleteMarkerOnSuccess() throws {
+        seedStoreData()
+        let dir = try service.backupNow()
+        let marker = dir.appendingPathComponent(".incomplete")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: marker.path),
+            "successful backup must not leave the .incomplete marker in place"
+        )
+    }
+
+    /// An orphan `.incomplete` dir (left behind by an in-progress backup whose
+    /// host app crashed or was killed) must be pruned unconditionally — even
+    /// when the total backup count is below `keepCount`, because the dir is
+    /// unusable for restore and its presence would otherwise be counted as a
+    /// valid backup by the count-based pruning logic.
+    func testPruneRemovesIncompleteDirsUnconditionally() throws {
+        service.keepCount = 5
+        // Seed one incomplete (the bug scenario) and one valid dir.
+        let incompleteName = "2026-07-25_120000.000"
+        let validName = "2026-07-26_120000.000"
+        let incompleteDir = backupsDir.appendingPathComponent(incompleteName, isDirectory: true)
+        let validDir = backupsDir.appendingPathComponent(validName, isDirectory: true)
+        try? FileManager.default.createDirectory(at: incompleteDir, withIntermediateDirectories: true)
+        try? Data("".utf8).write(to: incompleteDir.appendingPathComponent(".incomplete"))
+        try? Data("".utf8).write(to: incompleteDir.appendingPathComponent("items.json"))
+        try? FileManager.default.createDirectory(at: validDir, withIntermediateDirectories: true)
+        try? Data("".utf8).write(to: validDir.appendingPathComponent("items.json"))
+
+        service.pruneOldBackups()
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: incompleteDir.path),
+            "H-6: orphan .incomplete dir must be removed even when total < keepCount"
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: validDir.path),
+            "valid (non-incomplete) backup must survive when total is below keepCount"
+        )
+    }
+
+    /// When the backup dir set is a mix of valid + incomplete AND overflows
+    /// `keepCount`, pruning must (a) remove ALL incomplete dirs regardless of
+    /// position in the sorted list and (b) only count valid dirs toward
+    /// `keepCount`. Otherwise the count-based logic would delete recent valid
+    /// backups to keep incomplete ones, which is exactly the audit's failure
+    /// scenario ("complete backups get pruned, incomplete kept").
+    func testPruneSeparatesIncompleteFromValidCount() throws {
+        service.keepCount = 3
+        // 4 valid + 2 incomplete = 6 total entries; only 3 valid should survive.
+        let validNames = [
+            "2026-07-20_120000.000",
+            "2026-07-21_120000.000",
+            "2026-07-22_120000.000",
+            "2026-07-23_120000.000"
+        ]
+        let incompleteNames = [
+            "2026-07-19_120000.000",
+            "2026-07-24_120000.000"
+        ]
+        for name in validNames {
+            let dir = backupsDir.appendingPathComponent(name, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try? Data("".utf8).write(to: dir.appendingPathComponent("items.json"))
+        }
+        for name in incompleteNames {
+            let dir = backupsDir.appendingPathComponent(name, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try? Data("".utf8).write(to: dir.appendingPathComponent(".incomplete"))
+        }
+
+        service.pruneOldBackups()
+
+        let remaining = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        XCTAssertEqual(remaining.count, 3, "prune must keep keepCount=3 valid AND remove all incomplete")
+        for name in remaining {
+            let marker = backupsDir.appendingPathComponent(name).appendingPathComponent(".incomplete").path
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: marker),
+                "H-6: \(name) survived prune but contains .incomplete marker"
+            )
+        }
+    }
 }
