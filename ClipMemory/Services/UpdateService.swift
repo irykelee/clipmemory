@@ -272,7 +272,15 @@ final class UpdateService {
     func triggerProbe() async {
         probeGeneration += 1
         let myGeneration = probeGeneration
-        currentProbeTask?.cancel()
+        // UPD-1 (2026-07-24 audit): do NOT cancel `currentProbeTask` here —
+        // every production caller (init's startAfterFeedProbe at line 123 and
+        // setPolicy at line 263) runs `triggerProbe()` INSIDE the Task stored
+        // in `currentProbeTask`. The prior `currentProbeTask?.cancel()` aborted
+        // the very Task it was running on, so every URLSession fetch threw
+        // URLError(.cancelled) before going out — H1 mirror-fallback was
+        // silently dead at runtime. The generation-token check below and the
+        // cancel in `setPolicy` provide the race protection that was thought
+        // to be missing here.
         let channels = UpdateFeedPolicies.knownChannels
         let policy = Self.feedPolicy
         let lastKnown = Self.lastPrimaryItemDate

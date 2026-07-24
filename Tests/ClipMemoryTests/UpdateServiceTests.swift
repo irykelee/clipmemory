@@ -296,6 +296,52 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(UpdateService.feedPolicy, .fallback)
     }
 
+    // MARK: - UPD-1 (2026-07-24 audit): triggerProbe must not cancel itself
+
+    /// UPD-1: triggerProbe() cancels `currentProbeTask?.cancel()` on the very
+    /// Task that's running it. Both production call paths (init's startAfterFeedProbe
+    /// and setPolicy) run triggerProbe INSIDE the Task stored in `currentProbeTask`,
+    /// so the cancellation flag is set before the `await probeEngine.resolve(...)`
+    /// at line 279 — meaning every URLSession fetch in production aborts with
+    /// URLError(.cancelled) before it even goes out. The H1 mirror-fallback feature
+    /// has been silently dead at runtime.
+    ///
+    /// This test reproduces the production call path through setPolicy and asserts
+    /// that the stub sees an uncancelled Task at resolve time. Before the fix,
+    /// the bug cancels the surrounding Task between line 275 and the await, so
+    /// `Task.isCancelled` is true inside the resolve callback. After the fix, the
+    /// Task is alive until completion.
+    ///
+    /// The StubProbeEngine itself doesn't simulate URLSession cooperative
+    /// cancellation (resolve returns its queued decision regardless), but it CAN
+    /// observe the surrounding Task's cancellation flag — that's the
+    /// production-realistic surface this test pins.
+    @MainActor
+    func testTriggerProbeDoesNotCancelItself() async {
+        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        MockURLProtocol.stubResponses = [:]
+        let stub = StubProbeEngine()
+        await stub.setNextDecision(automaticPrimaryDecision)
+        let service = UpdateService(probeEngine: stub, autoStart: false)
+
+        let probeReached = expectation(description: "stub.resolve was reached")
+        // Inverted: we EXPECT this NOT to be fulfilled — the surrounding Task
+        // must still be alive when resolve is called.
+        let sawSurroundingTaskCancelled = expectation(description: "Task was cancelled at resolve time")
+        sawSurroundingTaskCancelled.isInverted = true
+
+        await stub.setOnResolve { _ in
+            probeReached.fulfill()
+            if Task.isCancelled {
+                sawSurroundingTaskCancelled.fulfill()
+            }
+        }
+        service.setPolicy(.automatic)
+
+        await fulfillment(of: [probeReached], timeout: 2)
+        await fulfillment(of: [sawSurroundingTaskCancelled], timeout: 0.5)
+    }
+
     // MARK: - Concurrency (Important #1 race)
 
     /// A slow startup probe must NOT overwrite a faster post-setPolicy probe.
