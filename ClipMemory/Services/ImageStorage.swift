@@ -276,7 +276,14 @@ class ImageStorage {
             // Encrypt image data before writing to disk (N2)
             guard let encryptedData = ServiceContainer.crypto.encryptData(data) else {
                 self.logger.error("Failed to encrypt image data — image not saved")
-                NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+                // M-8 (2026-07-24 audit): the observer chain (AppDelegate,
+                // Settings diagnostics) expects main-thread delivery. Post
+                // via main async so any future observer that doesn't pass
+                // `queue: .main` still sees the notification on the right
+                // queue.
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+                }
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
@@ -302,6 +309,19 @@ class ImageStorage {
     private let statusQueue = DispatchQueue(label: "com.clipmemory.imageStorage.status", qos: .userInitiated)
 
     func loadImage(filename: String) -> Data? {
+        // M-5 (2026-07-24 audit): the inner `migrationQueue.sync` (legacy
+        // image migration) can block the caller for hundreds of ms when
+        // cold-loading many legacy PNGs. UI callers must use
+        // `imageStatusAsync` instead. Today the only production caller is
+        // the OCR backfill pipeline (ClipboardStore+OCR.swift), which runs
+        // on a detached task — but a future main-thread caller would freeze
+        // the app for the duration of every cold image. Surface the contract
+        // loudly so the next caller picks the async path on purpose.
+        // XCTest owns its main thread for free, so tests are exempt.
+        precondition(
+            !Thread.isMainThread || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil,
+            "loadImage blocks the caller for legacy migrations; use imageStatusAsync on the main thread"
+        )
         guard case .available(let data) = imageStatus(for: filename) else {
             return nil
         }
