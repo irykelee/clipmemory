@@ -1,9 +1,15 @@
 import Foundation
+import os
 
 /// OCR-related ClipboardStore extension (kept out of the main file per the
 /// project's small-file guideline). See OCRService.swift for recognition.
 extension ClipboardStore {
     private static let ocrEnabledKey = "ocrEnabled"
+
+    // H-4 (2026-07-24 audit): logger for OCR-specific failures. Mirrors the
+    // category pattern used elsewhere (e.g. ImageStorage uses subsystem
+    // "com.clipmemory.app" with its own category).
+    private static let logger = Logger(subsystem: "com.clipmemory.app", category: "OCR")
 
     /// Whether on-device OCR runs for newly captured images. Default on.
     var ocrEnabled: Bool {
@@ -15,9 +21,20 @@ extension ClipboardStore {
     /// Called from background OCR pipelines; hops to main for the @Published write.
     func attachOCRText(to itemId: UUID, text: String) {
         let apply = { [weak self] in
-            guard let self = self,
-                  let encrypted = ServiceContainer.crypto.encrypt(text),
-                  let index = self.items.firstIndex(where: { $0.id == itemId }) else { return }
+            guard let self = self else { return }
+            // H-4 (2026-07-24 audit): split the combined guard so encrypt
+            // failure logs + posts .encryptionFailed. Previously the chained
+            // guard made "encrypt failed" indistinguishable from "item
+            // missing", so OCR text silently disappeared with no diagnostic
+            // trail (the user saw "no text recognized" for every image).
+            // Item-missing (race after delete) is NOT a crypto failure —
+            // don't notify in that case.
+            guard let encrypted = ServiceContainer.crypto.encrypt(text) else {
+                Self.logger.error("OCR text encryption failed; dropping OCR result")
+                NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+                return
+            }
+            guard let index = self.items.firstIndex(where: { $0.id == itemId }) else { return }
             self.items[index].ocrText = encrypted
             self.items[index].ocrAttempted = true
             self.saveImmediately()
