@@ -238,7 +238,27 @@ enum HangDetector {
     /// locked write.
     static func recordStackCaptureAndMaybeRecover() {
         let now = Date()
-        let newStack = Thread.callStackSymbols
+        // L-8 (2026-07-24 audit): `Thread.callStackSymbols` may block the
+        // caller 50-200 ms while it walks the active thread stack. This
+        // function runs from the 5 s main-queue stack timer, so blocking
+        // here shows up as exactly the kind of hang this watchdog is
+        // trying to detect (false positives). Move the capture to a
+        // utility queue and hop back to main for the state write — the
+        // lock-protected state mutation must stay on a consistent thread
+        // (main) so `recordHeartbeat` and `checkStaleness` observe a
+        // consistent snapshot.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let newStack = Thread.callStackSymbols
+            DispatchQueue.main.async {
+                Self.applyStackAndMaybeRecover(newStack: newStack, now: now)
+            }
+        }
+    }
+
+    /// Internal: apply the captured stack + check recovery. Always runs on
+    /// main; called from `recordStackCaptureAndMaybeRecover` after the
+    /// `Thread.callStackSymbols` capture completes off-main.
+    private static func applyStackAndMaybeRecover(newStack: [String], now: Date) {
         // Empty-stack rule (spec §4.2 reviewer #3): if `newStack` is empty, leave
         // `lastMainStack` untouched (preserve pre-hang frames for diagnosis).
         // Breadcrumb emitted OUTSIDE any lock per MEDIUM #8 (gate 1b Md: this debug
@@ -311,9 +331,17 @@ enum HangDetector {
     /// entry point directly instead.
     static func start() {
         guard !isStarted else { return }
+        // L-9 (2026-07-24 audit): previous design set `isStarted = true` at the very
+        // end of `start()`, AFTER all 3 timer `resume()` calls. The narrow
+        // window between the first `resume()` and the final assignment allowed
+        // a re-entrant call (e.g. a concurrent `recordHeartbeat()` triggered by
+        // a 1-second tick that landed before `start()` returned) to read
+        // `isStarted == false`. Setting the flag immediately after the re-entry
+        // guard closes the window. `stop()` still unconditionally resets it,
+        // so the cycle invariant — `isStarted == true` ⇔ `start()` ran without
+        // a matching `stop()` — is preserved.
+        isStarted = true
         withStateLock { $0 = .initial }
-        // NOTE: `isStarted = true` is set at the END of this function (after all 3 timer
-        // resume() calls), per gate 1b Ma — see the final line of `start()`.
 
         let mainQueue = DispatchQueue.main
         let utilityQueue = DispatchQueue.global(qos: .utility)
