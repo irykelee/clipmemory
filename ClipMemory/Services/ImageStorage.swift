@@ -71,44 +71,85 @@ class ImageStorage {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             return
         }
-        migrateFromLegacyIfNeeded()
+        // STOR-3 (2026-07-24): was a synchronous migrateFromLegacyIfNeeded()
+        // call here — the singleton is first touched on the main thread at
+        // startup (AppDelegate.setupClipboardMonitor), so every legacy file's
+        // read/encrypt/write ran inline and large legacy libraries froze
+        // launch. Dispatch to a utility queue; the completion-notification
+        // contract (posted async on main, after ClipboardStore registered
+        // its observer) is unchanged.
+        scheduleLegacyMigration()
+    }
+
+    /// STOR-3: runs the legacy-image migration on a utility queue so startup
+    /// never blocks on disk I/O + per-file encryption. `completion` fires on
+    /// the same background queue after the pass finishes — used by tests to
+    /// await the async pass without polling UserDefaults.
+    func scheduleLegacyMigration(
+        legacyDirectory: URL? = nil,
+        defaults: UserDefaults = .standard,
+        maxFileSize: Int? = nil,
+        completion: (() -> Void)? = nil
+    ) {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else {
+                completion?()
+                return
+            }
+            self.migrateFromLegacyIfNeeded(
+                legacyDirectory: legacyDirectory,
+                defaults: defaults,
+                maxFileSize: maxFileSize
+            )
+            completion?()
+        }
     }
 
     /// Migrates unencrypted PNG images from legacy ClipPaste/Images/ to encrypted ClipMemory/Images/.
     /// Tracks migrated filenames so a partially-failed run can resume on the
     /// next launch without re-copying successes. The global completion flag is
     /// only set once every eligible file has been processed successfully.
-    private func migrateFromLegacyIfNeeded() {
-        guard UserDefaults.standard.bool(forKey: migrationCompleteKey) == false else { return }
-        guard fileManager.fileExists(atPath: legacyImagesDirectory.path) else {
-            UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+    ///
+    /// STOR-3: invoked via `scheduleLegacyMigration()` (utility queue) from
+    /// init; tests may call it directly on any thread. The parameters exist
+    /// for test injection — production uses the defaults.
+    func migrateFromLegacyIfNeeded(
+        legacyDirectory: URL? = nil,
+        defaults: UserDefaults = .standard,
+        maxFileSize: Int? = nil
+    ) {
+        let legacyDirectory = legacyDirectory ?? self.legacyImagesDirectory
+        let maxFileSize = maxFileSize ?? self.maxImageSize
+        guard defaults.bool(forKey: migrationCompleteKey) == false else { return }
+        guard fileManager.fileExists(atPath: legacyDirectory.path) else {
+            defaults.set(true, forKey: migrationCompleteKey)
             return
         }
 
         logger.info("Migrating images from legacy ClipPaste/Images/ to ClipMemory/Images/")
 
-        guard let legacyFiles = try? fileManager.contentsOfDirectory(atPath: legacyImagesDirectory.path) else {
+        guard let legacyFiles = try? fileManager.contentsOfDirectory(atPath: legacyDirectory.path) else {
             // Directory exists but could not be read; leave flag false so the
             // next launch retries instead of silently dropping images.
             return
         }
 
         var migratedFilenames: [String] = []
-        var migratedSet = Set(UserDefaults.standard.stringArray(forKey: migratedFilenamesKey) ?? [])
+        var migratedSet = Set(defaults.stringArray(forKey: migratedFilenamesKey) ?? [])
         var hadFailure = false
 
         for filename in legacyFiles {
             guard filename.hasSuffix(".png"), UUID(uuidString: String(filename.dropLast(4))) != nil else { continue }
             guard !migratedSet.contains(filename) else { continue }
 
-            let legacyPath = legacyImagesDirectory.appendingPathComponent(filename)
+            let legacyPath = legacyDirectory.appendingPathComponent(filename)
             // BUG-028 (2026-07-21): check size via attributesOfItem BEFORE
             // Data(contentsOf:) — avoids allocating a potentially-GB-sized
             // buffer for a corrupted/expanded legacy file. L-4 previously
             // checked after the load (50MB cap, but still allocates).
             let fileAttrs = try? fileManager.attributesOfItem(atPath: legacyPath.path)
             let fileSize = (fileAttrs?[.size] as? NSNumber)?.intValue ?? 0
-            guard fileSize > 0, fileSize <= maxImageSize else {
+            guard fileSize > 0, fileSize <= maxFileSize else {
                 logger.warning("Skipping oversized legacy image: \(filename) (\(fileSize) bytes)")
                 hadFailure = true
                 continue
@@ -139,7 +180,7 @@ class ImageStorage {
             if success {
                 migratedFilenames.append(filename)
                 migratedSet.insert(filename)
-                UserDefaults.standard.set(Array(migratedSet), forKey: migratedFilenamesKey)
+                defaults.set(Array(migratedSet), forKey: migratedFilenamesKey)
             } else {
                 hadFailure = true
             }
@@ -148,7 +189,7 @@ class ImageStorage {
         // Only mark migration complete when every eligible file has been
         // processed. If anything failed, the next launch will retry the rest.
         if !hadFailure {
-            UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+            defaults.set(true, forKey: migrationCompleteKey)
             // M-3 + 2.1 (2026-07-23 audit): post-migration cleanup. Originally
             // `removeItem(at: legacyImagesDirectory)` deleted the whole dir
             // — but the legacy dir belongs to the old ClipPaste app and may
@@ -165,7 +206,7 @@ class ImageStorage {
             // the pre-M-3 state.
             for filename in migratedFilenames {
                 try? fileManager.removeItem(
-                    at: legacyImagesDirectory.appendingPathComponent(filename)
+                    at: legacyDirectory.appendingPathComponent(filename)
                 )
             }
         }
