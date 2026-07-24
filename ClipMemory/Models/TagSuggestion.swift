@@ -82,9 +82,18 @@ enum TagSuggestion {
     /// - Returns: a `Set<String>` of tag names derived from `kind`. Empty when
     ///   `kind == .plain`.
     static func suggest(for type: ClipboardItemType, content: String) -> Set<String> {
-        let f = detect(for: type, content: content)
+        tagNames(for: detect(for: type, content: content).kind)
+    }
+
+    /// Secondary CLIP-3 (2026-07-24 audit): kind → tag-name mapping lifted
+    /// out of the suggest(...) shim so callers that already ran `detect`
+    /// (e.g. TagPickerSheet.loadSuggestions) can derive the names from the
+    /// facets they hold instead of re-running the whole regex + NLTagger
+    /// pipeline a second time. `suggest` delegates here; the two paths
+    /// cannot drift apart.
+    static func tagNames(for kind: KindFacet) -> Set<String> {
         var out = Set<String>()
-        switch f.kind {
+        switch kind {
         case .code:        out.insert(L10n.tagSuggestionKindCode)
         case .email:       out.insert(L10n.tagSuggestionKindEmail)
         case .credential:  out.insert(L10n.tagSuggestionKindCredential)

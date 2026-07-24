@@ -373,8 +373,12 @@ struct TagPickerSheet: View {
         let content = store.getDecryptedContent(item) ?? item.content
         let facets = TagSuggestion.detect(for: item.type, content: content)
         let existing = Array(store.tags.values)
-        // kind-derived tag names from the suggest(...) shim — same source as before
-        let names = TagSuggestion.suggest(for: item.type, content: content)
+        // Secondary CLIP-3 (2026-07-24 audit): derive kind tag names from the
+        // facets already computed above. Previously this called
+        // `TagSuggestion.suggest(for:content:)`, which re-runs the entire
+        // detect pipeline (trim + language/kind/name heuristics + NLTagger)
+        // a second time on the main thread every time the sheet opens.
+        let names = TagSuggestion.tagNames(for: facets.kind)
         // BUG-040 (2026-07-21): previously this loop silently called
         // `store.addTag(...)` for every suggested name that matched an
         // existing tag — opening the picker modified data without the user
