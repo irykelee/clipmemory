@@ -55,6 +55,19 @@ final class KeyCaptureNSView: NSView {
     private func setupMonitor() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
+            // CLIP-1 secondary (2026-07-24 audit): window affinity guard.
+            // NSEvent.addLocalMonitorForEvents delivers a keyDown to EVERY
+            // registered local monitor in the app - it does not respect which
+            // NSWindow is key. When the main window and QuickBar popover are
+            // both alive, both KeyCaptureNSView instances get every keyDown,
+            // and one monitor returning nil does NOT prevent the other from
+            // running. Result: pressing Return on a QuickBar selection ALSO
+            // fires the main window's onReturn handler, and the wrong item
+            // can land on the pasteboard. Returning event unchanged when
+            // our window is not key confines the monitor to its own window.
+            guard self.window == nil || self.window == NSApp.keyWindow else {
+                return event
+            }
             // During IME composition, pass all keys through to IME
             if let fr = NSApp.keyWindow?.firstResponder as? NSTextView, fr.hasMarkedText() {
                 return event
