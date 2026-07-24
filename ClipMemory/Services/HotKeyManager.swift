@@ -161,11 +161,25 @@ class HotKeyManager {
                 return noErr
             }
 
+            // INFRA-1 (2026-07-24 audit): a previous failed attempt may have
+            // left a retained pointer in retainedSelfPtr (see the failure
+            // paths below). Releasing it before the overwrite guarantees a
+            // retry never strands an unreleased retain.
+            if let retainedSelfPtr {
+                Unmanaged<HotKeyManager>.fromOpaque(retainedSelfPtr).release()
+                self.retainedSelfPtr = nil
+            }
             let selfPtr = Unmanaged.passRetained(self).toOpaque()
             retainedSelfPtr = selfPtr
             let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), handler, 1, &eventType, selfPtr, &eventHandler)
             if handlerStatus != noErr {
                 logger.error("Failed to install keyboard event handler: \(handlerStatus)")
+                // INFRA-1: balance the passRetained above before returning.
+                // Without this, the retain leaked for the process lifetime,
+                // and the next register() retry overwrote the pointer and
+                // leaked a second one.
+                Unmanaged<HotKeyManager>.fromOpaque(selfPtr).release()
+                retainedSelfPtr = nil
                 return
             }
         }
@@ -178,6 +192,15 @@ class HotKeyManager {
             // never fires — leaks for process lifetime. Remove it.
             RemoveEventHandler(eventHandler)
             eventHandler = nil
+            // INFRA-1 (2026-07-24 audit): the handler is gone, so the
+            // H-15 retained self pointer no longer protects a live Carbon
+            // callback. Release it here — leaving it set meant the next
+            // register() retry overwrote retainedSelfPtr and permanently
+            // leaked one retain per failed attempt.
+            if let retainedSelfPtr {
+                Unmanaged<HotKeyManager>.fromOpaque(retainedSelfPtr).release()
+                self.retainedSelfPtr = nil
+            }
             if hotKeyStatus == eventHotKeyExistsErr {
                 logger.error("Hotkey \(self.config.displayString) is already registered by another app or ClipMemory instance — global hotkey inactive")
             } else {

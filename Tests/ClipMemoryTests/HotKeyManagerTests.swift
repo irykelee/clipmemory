@@ -301,17 +301,31 @@ final class HotKeyManagerTests: XCTestCase {
     /// `passRetained` so the retain holds `self` alive until `unregister`
     /// releases it. This test verifies the retain is balanced: after
     /// `register()` + `unregister()` the retain count returns to baseline.
+    ///
+    /// INFRA-1 (2026-07-24 audit) follow-up: in environments where Carbon
+    /// refuses the registration (no usable event target / hotkey already
+    /// held — the common case under xcodebuild), `register()` takes a
+    /// failure path and the +1 passRetained never applies. Pre-INFRA-1 this
+    /// test passed anyway ONLY because the failure path leaked the retain
+    /// (count stayed +1). The success/failure branches are now asserted
+    /// separately so the test validates the retain contract in both
+    /// environments instead of depending on the leak.
     func testRegister_unregister_balancesRetainCount() {
         let manager = HotKeyManager()
         let baseline = CFGetRetainCount(manager)
         XCTAssertGreaterThanOrEqual(baseline, 1, "manager must have at least 1 retain at baseline")
 
-        manager.register()
+        autoreleasepool { manager.register() }
         let afterRegister = CFGetRetainCount(manager)
-        XCTAssertGreaterThan(afterRegister, baseline,
-                             "register must retain self via passRetained (H-15 audit)")
+        if manager.hotKeyRef != nil {
+            XCTAssertGreaterThan(afterRegister, baseline,
+                                 "successful register must retain self via passRetained (H-15 audit)")
+        } else {
+            XCTAssertEqual(afterRegister, baseline,
+                           "failed register must not leak the passRetained retain (INFRA-1)")
+        }
 
-        manager.unregister()
+        autoreleasepool { manager.unregister() }
         let afterUnregister = CFGetRetainCount(manager)
         XCTAssertEqual(afterUnregister, baseline,
                        "unregister must release the passRetained balance (H-15 audit)")
