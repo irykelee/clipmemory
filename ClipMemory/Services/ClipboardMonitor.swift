@@ -284,7 +284,15 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
 
         if let rtfData = pasteboard.data(forType: .rtf), !rtfData.isEmpty, self.captureRichText {
             processRichText(rtfData)
-        } else if let content = pasteboard.string(forType: .string), !content.isEmpty {
+        } else if let rawContent = pasteboard.string(forType: .string), !rawContent.isEmpty {
+            // CLIP-2 (2026-07-24): cap capture size BEFORE detectType /
+            // detectSensitive / ClipboardItem construction — an unbounded
+            // paste (multi-GB log dump) used to flow whole into memory,
+            // encryption and the JSON persistence pass. Truncate + log.
+            let (content, wasTruncated) = Self.truncateToCaptureLimit(rawContent)
+            if wasTruncated {
+                logger.warning("CLIP-2: clipboard text exceeded \(Self.maxTextCaptureBytes) bytes; truncated to capture limit")
+            }
             let itemType = detectType(content)
             let isSensitive = detectSensitive(content)
             var expiresAt: Date?
@@ -321,6 +329,26 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
     /// first non-empty hit. JPEG screenshots from Preview/Safari and
     /// HEIC phone photos copied via AirDrop were silently dropped
     /// before — they're capturable now.
+    /// CLIP-2 (2026-07-24): hard cap on captured plain-text size in UTF-8
+    /// bytes. Previously `checkClipboard` accepted `pasteboard.string` of ANY
+    /// length — copying a multi-GB log dump or a whole database export pulled
+    /// the entire payload into memory (and then into the encrypt + dedup +
+    /// JSON persistence pipeline) on every 0.5s poll tick. 10 MB is far
+    /// beyond any legitimate text paste (a full novel is ~1 MB) while still
+    /// bounding worst-case memory per capture.
+    static let maxTextCaptureBytes = 10 * 1024 * 1024
+
+    /// CLIP-2: truncate `content` to `maxTextCaptureBytes` of UTF-8, at a
+    /// scalar-safe boundary. `String(decoding:as:)` never traps and repairs a
+    /// clipped trailing scalar; the replacement character only appears when
+    /// the cut lands mid-scalar. Returns the (possibly unchanged) text and
+    /// whether truncation happened so the caller can log once.
+    static func truncateToCaptureLimit(_ content: String) -> (text: String, wasTruncated: Bool) {
+        guard content.utf8.count > maxTextCaptureBytes else { return (content, false) }
+        let clipped = String(decoding: content.utf8.prefix(maxTextCaptureBytes), as: UTF8.self)
+        return (clipped, true)
+    }
+
     static let imagePasteboardTypes: [NSPasteboard.PasteboardType] = [
         .png,
         .tiff,
