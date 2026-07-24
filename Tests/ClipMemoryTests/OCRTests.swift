@@ -155,6 +155,60 @@ final class OCRTests: XCTestCase {
         XCTAssertNil(store.getDecryptedOcrText(store.items[0]))
     }
 
+    // MARK: - STOR-2: ocrText/ocrAttempted must survive member-wise rebuilds
+
+    /// The `with(...)` helper is the anti-STOR-2 contract: overriding one
+    /// field must keep every other field — especially ocrText/ocrAttempted,
+    /// which six rebuild sites silently dropped before 2026-07-25.
+    func testWithHelperPreservesOcrAndAllUntouchedFields() {
+        let original = ClipboardItem(
+            content: "A.png", type: .image,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            isPinned: true, isSensitive: true,
+            isEncrypted: true, contentHash: "hash",
+            decryptionFailed: true, tagIds: [UUID()],
+            deletedAt: Date(timeIntervalSince1970: 1_700_000_100),
+            ocrText: "v2:ciphertext", ocrAttempted: true
+        )
+        let copy = original.with(isEncrypted: false)
+
+        XCTAssertEqual(copy.id, original.id)
+        XCTAssertEqual(copy.content, original.content)
+        XCTAssertEqual(copy.type, original.type)
+        XCTAssertEqual(copy.createdAt, original.createdAt)
+        XCTAssertTrue(copy.isPinned)
+        XCTAssertTrue(copy.isSensitive)
+        XCTAssertEqual(copy.contentHash, "hash")
+        XCTAssertTrue(copy.decryptionFailed)
+        XCTAssertEqual(copy.tagIds, original.tagIds)
+        XCTAssertEqual(copy.deletedAt, original.deletedAt)
+        XCTAssertEqual(copy.ocrText, "v2:ciphertext", "STOR-2: ocrText must survive rebuild")
+        XCTAssertTrue(copy.ocrAttempted, "STOR-2: ocrAttempted must survive rebuild")
+        XCTAssertFalse(copy.isEncrypted, "the overridden field must actually change")
+    }
+
+    /// loadItems repairs legacy image items (isEncrypted/decryptionFailed were
+    /// wrongly set by an old code path). The repair rebuild must not erase OCR
+    /// data — previously it rebuilt the item member-by-member without ocrText.
+    func testLoadItemsRepairPreservesOcrFields() throws {
+        let legacy = ClipboardItem(
+            content: "B.png", type: .image,
+            isEncrypted: true,           // legacy broken flag — repair resets it
+            decryptionFailed: true,      // ditto
+            ocrText: "v2:encrypted-ocr", ocrAttempted: true
+        )
+        try backend.save([legacy])
+
+        store.loadItems()
+
+        XCTAssertEqual(store.items.count, 1)
+        let repaired = store.items[0]
+        XCTAssertFalse(repaired.isEncrypted, "repair must reset isEncrypted")
+        XCTAssertFalse(repaired.decryptionFailed, "repair must reset decryptionFailed")
+        XCTAssertEqual(repaired.ocrText, "v2:encrypted-ocr", "STOR-2: repair must keep ocrText")
+        XCTAssertTrue(repaired.ocrAttempted, "STOR-2: repair must keep ocrAttempted")
+    }
+
     // MARK: - Search matching
 
     func testImageItemMatchesByOcrText() {

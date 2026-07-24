@@ -355,20 +355,7 @@ class ClipboardStore: ObservableObject {
 
         var didMigrateAny = false
         for (index, item) in items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
-            items[index] = ClipboardItem(
-                id: item.id,
-                content: item.content,
-                type: item.type,
-                createdAt: item.createdAt,
-                isPinned: item.isPinned,
-                isSensitive: item.isSensitive,
-                expiresAt: item.expiresAt,
-                isEncrypted: true,
-                contentHash: item.contentHash,
-                decryptionFailed: item.decryptionFailed,
-                tagIds: item.tagIds,
-                deletedAt: item.deletedAt
-            )
+            items[index] = item.with(isEncrypted: true)
             didMigrateAny = true
         }
 
@@ -407,20 +394,7 @@ class ClipboardStore: ObservableObject {
         var repairedImages = false
         for (index, item) in repairedItems.enumerated() where item.type == .image {
             if item.isEncrypted || item.decryptionFailed {
-                repairedItems[index] = ClipboardItem(
-                    id: item.id,
-                    content: item.content,
-                    type: item.type,
-                    createdAt: item.createdAt,
-                    isPinned: item.isPinned,
-                    isSensitive: item.isSensitive,
-                    expiresAt: item.expiresAt,
-                    isEncrypted: false,
-                    contentHash: item.contentHash,
-                    decryptionFailed: false,
-                    tagIds: item.tagIds,
-                    deletedAt: item.deletedAt
-                )
+                repairedItems[index] = item.with(isEncrypted: false, decryptionFailed: false)
                 repairedImages = true
             }
         }
@@ -476,21 +450,7 @@ class ClipboardStore: ObservableObject {
                 var changed = false
                 for (id, newContent) in migratedContents {
                     guard let index = self.items.firstIndex(where: { $0.id == id }) else { continue }
-                    let item = self.items[index]
-                    self.items[index] = ClipboardItem(
-                        id: item.id,
-                        content: newContent,
-                        type: item.type,
-                        createdAt: item.createdAt,
-                        isPinned: item.isPinned,
-                        isSensitive: item.isSensitive,
-                        expiresAt: item.expiresAt,
-                        isEncrypted: true,
-                        contentHash: item.contentHash,
-                        decryptionFailed: item.decryptionFailed,
-                        tagIds: item.tagIds,
-                        deletedAt: item.deletedAt
-                    )
+                    self.items[index] = self.items[index].with(content: newContent, isEncrypted: true)
                     changed = true
                 }
                 for (id, hash) in hashes {
@@ -809,20 +769,7 @@ class ClipboardStore: ObservableObject {
                     NotificationCenter.default.post(name: .encryptionFailed, object: nil)
                 }
                 newHash = computedHash
-                newItem = ClipboardItem(
-                    id: item.id,
-                    content: encrypted,
-                    type: item.type,
-                    createdAt: item.createdAt,
-                    isPinned: item.isPinned,
-                    isSensitive: item.isSensitive,
-                    expiresAt: item.expiresAt,
-                    isEncrypted: true,
-                    contentHash: newHash,
-                    decryptionFailed: item.decryptionFailed,
-                    tagIds: item.tagIds,
-                    deletedAt: item.deletedAt
-                )
+                newItem = item.with(content: encrypted, isEncrypted: true, contentHash: newHash)
             } else {
                 // N2: Encrypt failed — do NOT store as plaintext (security violation).
                 // Discard the item (any non-image type — M3 encrypts text + link
@@ -862,24 +809,10 @@ class ClipboardStore: ObservableObject {
             var existing = items.remove(at: existingIndex)
             // Backfill contentHash on legacy items that lack it, so future
             // dedup checks take the fast hash-compare path instead of O(n) decrypts.
-            let backfilledHash = existing.contentHash ?? newHash
-            existing = ClipboardItem(
-                id: existing.id,
-                content: existing.content,
-                type: existing.type,
-                createdAt: Date(),
-                isPinned: existing.isPinned,
-                isSensitive: existing.isSensitive,
-                expiresAt: existing.expiresAt,
-                isEncrypted: existing.isEncrypted,
-                contentHash: backfilledHash,
-                // HIGH-1 fix (a00da7c follow-up): preserve decryptionFailed flag
-                // through dedup rebuild — otherwise the a00da7c perf fix is
-                // silently undone every time the same corrupt content is re-copied.
-                decryptionFailed: existing.decryptionFailed,
-                tagIds: existing.tagIds,
-                deletedAt: existing.deletedAt
-            )
+            // with() also preserves decryptionFailed (HIGH-1: otherwise the
+            // a00da7c perf fix is undone on every re-copy of corrupt content)
+            // and ocrText/ocrAttempted (STOR-2).
+            existing = existing.with(createdAt: Date(), contentHash: existing.contentHash ?? newHash)
             items.insert(existing, at: 0)
         } else {
             items.insert(newItem, at: 0)
@@ -1444,20 +1377,7 @@ class ClipboardStore: ObservableObject {
     private func moveToTop(_ item: ClipboardItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         var moved = items.remove(at: index)
-        moved = ClipboardItem(
-            id: moved.id,
-            content: moved.content,
-            type: moved.type,
-            createdAt: Date(),
-            isPinned: moved.isPinned,
-            isSensitive: moved.isSensitive,
-            expiresAt: moved.expiresAt,
-            isEncrypted: moved.isEncrypted,
-            contentHash: moved.contentHash,
-            decryptionFailed: moved.decryptionFailed,
-            tagIds: moved.tagIds,
-            deletedAt: moved.deletedAt
-        )
+        moved = moved.with(createdAt: Date())
         items.insert(moved, at: 0)
         scheduleSave()
     }
