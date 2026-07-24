@@ -309,6 +309,17 @@ final class BackupPackage {
 
     /// Imports a `.clipmemory` package, re-encrypting every item with the local
     /// machine key and merging into the store (dedupe by id, then contentHash).
+    ///
+    /// H-5 (2026-07-24 audit): **no internal transaction / no rollback.**
+    /// The function merges `items.json` + `trash.json` into the store FIRST,
+    /// then `tags.json`, then attempts each image. If the image loop throws
+    /// (decrypt-auth failure, file I/O error), the previously-merged items
+    /// and tags are NOT reverted — the caller is responsible for guaranteeing
+    /// a rollback point beforehand. The only existing caller
+    /// (`ContentView.importBackup`) does this via `backupService.backupNow()`
+    /// on the call site; if a second caller is added it MUST do the same, or
+    /// a mid-import image failure will silently leave the user with a
+    /// half-overwritten clipboard history and no recovery point.
     static func importPackage(
         from archive: URL,
         passphrase: String,
