@@ -49,6 +49,15 @@ enum TimeGroup: String, CaseIterable {
     }
 }
 
+/// H-13 (2026-07-24 audit): replaced `(old: Int, new: Int)?` tuple with this
+/// explicit Equatable struct. @State storage of tuples was undocumented and
+/// could silently break SwiftUI diffing (no Equatable conformance). Members
+/// are `let` so the value is immutable after construction.
+struct PendingMaxItemsReduction: Equatable {
+    let old: Int
+    let new: Int
+}
+
 struct ContentView: View {
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
@@ -100,7 +109,7 @@ struct ContentView: View {
     @State private var keyEventMonitor: Any?
     @State private var showingAppPicker = false
     @State private var showingTips = false
-    @State private var pendingMaxItemsReduction: (old: Int, new: Int)?
+    @State private var pendingMaxItemsReduction: PendingMaxItemsReduction?
     @State private var appPickerSearch = ""
     @State private var appPickerSearchDebounced = ""
     @State private var searchDebounce: DispatchWorkItem?

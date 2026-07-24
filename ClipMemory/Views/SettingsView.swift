@@ -28,7 +28,7 @@ struct SettingsView: View {
     @Binding var isRecordingHotKey: Bool
     @Binding var showingAppPicker: Bool
     @Binding var showingTips: Bool
-    @Binding var pendingMaxItemsReduction: (old: Int, new: Int)?
+    @Binding var pendingMaxItemsReduction: PendingMaxItemsReduction?
 
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @State private var hotkeyRefresh = false
@@ -90,7 +90,7 @@ struct SettingsView: View {
             Section {
                 Picker(L10n.settingsMaxItems, selection: Binding(get: { store.maxItems }, set: { newValue in
                     if newValue < store.maxItems, store.items.count > newValue {
-                        pendingMaxItemsReduction = (old: store.maxItems, new: newValue)
+                        pendingMaxItemsReduction = PendingMaxItemsReduction(old: store.maxItems, new: newValue)
                     } else {
                         store.maxItems = newValue
                     }
