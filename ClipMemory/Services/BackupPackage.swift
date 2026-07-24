@@ -631,20 +631,7 @@ final class BackupPackage {
             newContent = encrypted
             newHash = localCrypto.hmacHex(for: plaintext)
         }
-        return ClipboardItem(
-            id: item.id,
-            content: newContent,
-            type: item.type,
-            createdAt: item.createdAt,
-            isPinned: item.isPinned,
-            isSensitive: item.isSensitive,
-            expiresAt: item.expiresAt,
-            isEncrypted: item.isEncrypted,
-            contentHash: newHash,
-            decryptionFailed: item.decryptionFailed,
-            tagIds: item.tagIds,
-            deletedAt: item.deletedAt
-        )
+        return item.with(content: newContent, contentHash: newHash)
     }
 
     /// Tag names persist as "v2:<ciphertext>" under the source machine's key.

@@ -92,6 +92,38 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         return Date() > expiresAt
     }
 
+    /// Member-wise copy: override only the given fields, keep everything else
+    /// (including ocrText/ocrAttempted and any field added later).
+    ///
+    /// STOR-2 (2026-07-24 audit): six call sites rebuilt items member-by-member
+    /// via `ClipboardItem(id:…)` and silently dropped ocrText/ocrAttempted —
+    /// copying an image entry erased its OCR text forever. ALWAYS mutate an
+    /// existing item through this helper so future fields cannot be lost the
+    /// same way. `contentHash` is double-optional: outer nil keeps the current
+    /// value, inner nil explicitly clears it.
+    func with(content: String? = nil,
+              createdAt: Date? = nil,
+              isEncrypted: Bool? = nil,
+              contentHash: String?? = nil,
+              decryptionFailed: Bool? = nil) -> ClipboardItem {
+        ClipboardItem(
+            id: id,
+            content: content ?? self.content,
+            type: type,
+            createdAt: createdAt ?? self.createdAt,
+            isPinned: isPinned,
+            isSensitive: isSensitive,
+            expiresAt: expiresAt,
+            isEncrypted: isEncrypted ?? self.isEncrypted,
+            contentHash: contentHash ?? self.contentHash,
+            decryptionFailed: decryptionFailed ?? self.decryptionFailed,
+            tagIds: tagIds,
+            deletedAt: deletedAt,
+            ocrText: ocrText,
+            ocrAttempted: ocrAttempted
+        )
+    }
+
     /// O(1) read of the memoized decryption outcome. Set by ClipboardStore
     /// on first decrypt attempt; not re-computed.
     var isDecryptionFailed: Bool {
