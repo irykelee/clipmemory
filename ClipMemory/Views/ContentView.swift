@@ -285,9 +285,16 @@ struct ContentView: View {
                 if dateFilter == .yesterday || dateFilter == .older { return false }
             }
             // search filter
+            // CLIP-1 main (2026-07-24 audit): use store.getRTFPlaintext for
+            // richText items. The old `item.plainTextFromRTFFallback` parses
+            // the raw (encrypted base64) content directly, returns the
+            // parser's default "Rich Text" string for every encrypted RTF
+            // item, and bypasses rtfPlaintextCache (M-24 contract). After
+            // the fix, search matches the actual RTF plaintext AND respects
+            // the cache (no per-keystroke NSAttributedString parse).
             if !searchTextDebounced.isEmpty {
                 let searchableText = item.type == .richText
-                    ? item.plainTextFromRTFFallback
+                    ? store.getRTFPlaintext(item)
                     : (store.getDecryptedContent(item) ?? "")
                 let ocrText = item.type == .image ? (store.getDecryptedOcrText(item) ?? "") : ""
                 if !searchableText.localizedCaseInsensitiveContains(searchTextDebounced),

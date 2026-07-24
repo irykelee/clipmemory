@@ -43,9 +43,14 @@ struct QuickBarView: View {
             ? Array(store.items.prefix(maxItems))
             : store.items.filter { item in
                 guard !item.isDecryptionFailed else { return false }
-                let rtfText: String? = item.type == .richText ? item.plainTextFromRTFFallback : nil
-                let searchableText = rtfText
-                    ?? (ClipboardStore.shared.getDecryptedContent(item) ?? "")
+                // CLIP-1 main (2026-07-24 audit): use store.getRTFPlaintext
+                // instead of item.plainTextFromRTFFallback so search hits
+                // actual RTF plaintext (not the parser's hardcoded "Rich Text"
+                // placeholder for encrypted items) AND goes through the cache
+                // (M-24 contract).
+                let searchableText = item.type == .richText
+                    ? ClipboardStore.shared.getRTFPlaintext(item)
+                    : (ClipboardStore.shared.getDecryptedContent(item) ?? "")
                 return searchableText.localizedCaseInsensitiveContains(searchTextDebounced)
             }
         return base
@@ -345,7 +350,12 @@ struct QuickBarRow: View {
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 } else if item.type == .richText {
-                    Text(item.plainTextFromRTFFallback)
+                    // CLIP-1 main + CLIP-2 (2026-07-24 audit): use the cached,
+                    // decrypted plaintext path. The prior `plainTextFromRTFFallback`
+                    // returned the parser's hardcoded English "Rich Text" string
+                    // for every encrypted RTF item — both wrong text AND a
+                    // localization bug (L10n.itemRichText was ignored).
+                    Text(ClipboardStore.shared.getRTFPlaintext(item))
                         .font(.system(size: sz(12)))
                         .foregroundColor(.secondary)
                         .lineLimit(1)

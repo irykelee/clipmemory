@@ -451,14 +451,15 @@ Button(action: onDelete) {
         }
     }
 
+    /// CLIP-1 main (2026-07-24 audit): route RTF preview through the cached
+    /// plaintext path. The prior inline decrypt + NSAttributedString parse
+    /// bypassed `rtfPlaintextCache` (M-24 contract), causing every hover-
+    /// triggered body re-render to repeat 20-100 ms of sync work. Now hits
+    /// the cache populated by `loadRichText` (line 489) and degrades to the
+    /// localized placeholder for genuinely unparseable items.
     private var plainTextFallback: String {
         guard item.type == .richText else { return "" }
-        guard let base64 = ClipboardStore.shared.getDecryptedContent(item),
-              let rtfData = Data(base64Encoded: base64),
-              let nsAttr = try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {
-            return L10n.itemRichText
-        }
-        return nsAttr.string
+        return ClipboardStore.shared.getRTFPlaintext(item)
     }
 
     /// The item as it currently exists in the store (the captured row struct
