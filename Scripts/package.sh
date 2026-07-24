@@ -92,13 +92,13 @@ verify_package() {
 
     # 4. Local Cask is reference-only (per P0-4: the live Cask in the tap
     # repo is updated by the Release workflow, not by package.sh). The local
-    # copy exists for human reference and preflight syntax checks only — its
+    # copy exists for human reference and release.sh preflight syntax checks
     # sha256 is intentionally stale by design (tar -czvf embeds gzip mtime
     # so the tarball sha differs every run, and we cannot pre-fill a sha for
     # a tarball that does not exist yet). The previous sha256/version
     # equality gate was unsatisfiable in CI — every tag push would have hung
     # on this check. Check existence + ruby syntax instead, aligned with
-    # preflight.sh:38-46 + pre_push_verify.sh:112-128.
+    # only — checks inlined in Scripts/release.sh (check_cask_template).
     if [[ -f "$cask_path" ]]; then
         if ruby -c "$cask_path" >/dev/null 2>&1; then
             ok "Local Cask present and syntactically valid (reference-only)"

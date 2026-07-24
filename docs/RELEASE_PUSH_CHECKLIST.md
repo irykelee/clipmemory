@@ -5,7 +5,7 @@
 > **Rule**: Before `git push origin vX.Y.Z`, run through every checkbox below. After tag push, run all post-push verifies. Mark each `[x]` in real-time; missing = bug.
 > Sections A–E are per-release. Section **F** is one-time repo setup (branch protection) — run once, not every release.
 >
-> **Automation**: `Scripts/pre_push_verify.sh` automates the local checks below. Even if it returns green, **do not skip the manual sections** (release page content, GH Actions verify, tap repo) — those need eyes.
+> **Automation**: the local checks below are automated inside `Scripts/release.sh` (the single push/release tool since 2026-07-25 — the former `preflight.sh` / `pre_push_verify.sh` / `pre_push_main_sync.sh` / `safe_push.sh` were inlined into it and deleted). Even when green, **do not skip the manual sections** (release page content, GH Actions verify, tap repo) — those need eyes.
 
 ---
 
@@ -44,7 +44,7 @@ For each of: `README.md`, `docs/lang/README_{EN,ZH-HANS,ZH-HANT,JA,KO,ES,PT}.md`
 
 ### A5. Pre-flight (per `docs/RELEASE.md` B1.3)
 
-- [ ] `Scripts/preflight.sh --tests` runs all-green
+- [ ] `Scripts/release.sh` preflight stage (incl. `--tests`) runs all-green
 - [ ] `xcodebuild -scheme ClipMemory -configuration Release build` succeeds
 - [ ] `codesign -dv` on built .app shows correct Authority (e.g. `Apple Development (Personal Team, Team ID ...)`)
 
@@ -172,4 +172,4 @@ gh api repos/irykelee/clipmemory/branches/main/protection --jq '.allow_force_pus
 
 ## Auto-verify script
 
-`Scripts/pre_push_verify.sh` automates: project.yml version check, 8 README H1 sync, Cask version sync, `gh release view` title content. **Run before tagging**. Even when green, **manual sections A2-changelog / A3-translation / D5-tap** still need human eyes (the script doesn't read Chinese nuances).
+Automated inside `Scripts/release.sh`: project.yml version check, 8 README H1 sync, Cask template syntax, `gh release view` title content. **Runs automatically before tagging**. Even when green, **manual sections A2-changelog / A3-translation / D5-tap** still need human eyes (automation doesn't read Chinese nuances).
