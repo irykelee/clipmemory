@@ -144,4 +144,41 @@ final class BackupPackageSecurityTests: XCTestCase {
         XCTAssertEqual(result.itemsImported, 0)
         XCTAssertEqual(result.tagsImported, 0)
     }
+
+    // MARK: - BKP-3: store JSON blob size cap
+
+    /// items.json over the 100 MB cap must be rejected as corrupt BEFORE
+    /// `Data(contentsOf:)` pulls it into memory. Sparse file so the test
+    /// doesn't actually write 100 MB.
+    func testImportRejectsOversizedItemsBlob() throws {
+        let packageURL = try buildPackage(name: "oversized-items.clipmemory") { staging in
+            let itemsURL = staging.appendingPathComponent("items.json")
+            FileManager.default.createFile(atPath: itemsURL.path, contents: Data("[".utf8))
+            let handle = try FileHandle(forWritingTo: itemsURL)
+            // maxStoreBlobBytes is 100 MB (private); +1 byte over the cap.
+            try handle.truncate(atOffset: UInt64(100 * 1024 * 1024 + 1))
+            try handle.close()
+        }
+        XCTAssertThrowsError(try importPackage(packageURL)) { error in
+            guard case BackupPackageError.corruptedData(_, .items) = error else {
+                return XCTFail("expected corruptedData(_, .items), got \(error)")
+            }
+        }
+    }
+
+    /// Same cap applies to tags.json via decodeTags.
+    func testImportRejectsOversizedTagsBlob() throws {
+        let packageURL = try buildPackage(name: "oversized-tags.clipmemory") { staging in
+            let tagsURL = staging.appendingPathComponent("tags.json")
+            FileManager.default.createFile(atPath: tagsURL.path, contents: Data("[".utf8))
+            let handle = try FileHandle(forWritingTo: tagsURL)
+            try handle.truncate(atOffset: UInt64(100 * 1024 * 1024 + 1))
+            try handle.close()
+        }
+        XCTAssertThrowsError(try importPackage(packageURL)) { error in
+            guard case BackupPackageError.corruptedData(_, .tags) = error else {
+                return XCTFail("expected corruptedData(_, .tags), got \(error)")
+            }
+        }
+    }
 }
