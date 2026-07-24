@@ -10,10 +10,12 @@ import SwiftUI
 /// the green button again escapes the screen-size state.
 ///
 /// We don't add `.fullScreen` to the styleMask (so AppKit's built-in
-/// fullscreen machinery stays disengaged) and we override
-/// `canUseWindowFullScreen` to explicitly opt out.
+/// fullscreen machinery stays disengaged) and we set
+/// `collectionBehavior = .fullScreenNone` so the green button falls
+/// back to `performZoom`. Windowed mode, traffic lights
 final class MainWindow: NSWindow {
     private var userFrame: NSRect?
+
     override func performZoom(_ sender: Any?) {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
@@ -77,6 +79,7 @@ class WindowManager: NSObject, NSWindowDelegate {
             )
             window.delegate = self
             window.isReleasedWhenClosed = false
+            window.collectionBehavior = .fullScreenNone
             window.contentView = NSHostingView(rootView: contentView)
             window.makeKeyAndOrderFront(nil)
             mainWindow = window
