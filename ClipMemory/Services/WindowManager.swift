@@ -44,12 +44,22 @@ class WindowManager: NSObject, NSWindowDelegate {
             guard let contentView = mainContentView else { return }
             let window = NSWindow(
                 contentRect: savedWindowFrame,
-                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                // Per user direction (2026-07-24): drop ALL NSWindow
+                // customizations beyond the minimum styleMask. The previous
+                // fullsize-content + transparent-titlebar + hidden-title +
+                // unified-toolbar combo was an attempt at a modern overlay
+                // look, but it interacts badly with the LSUIElement
+                // menu-bar app model: traffic lights float / get hidden, the
+                // green button's zoom toggle becomes the only "fullscreen"
+                // affordance with no visible exit. Using NSWindow defaults
+                // gives us standard red / yellow / green traffic lights,
+                // a real title bar (so window identity + Cmd+W hint are
+                // visible), and a green button that does AppKit's normal
+                // zoom-toggle (which is itself the exit: click again to
+                // shrink).
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered, defer: false
             )
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
-            window.toolbarStyle = .unified
             window.delegate = self
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: contentView)
