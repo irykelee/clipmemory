@@ -464,22 +464,39 @@ Button(action: onDelete) {
 
     private func loadRichText() async {
         guard item.type == .richText else { return }
-        guard let base64 = ClipboardStore.shared.getDecryptedContent(item),
-              let rtfData = Data(base64Encoded: base64),
-              let nsAttr = try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) else {
-            return
-        }
-        let rt = AttributedString(nsAttr)
-        let plain = nsAttr.string
+        guard let base64 = ClipboardStore.shared.getDecryptedContent(item) else { return }
+        // H-7/H-8 (2026-07-24 audit): NSAttributedString RTF parse was inline
+        // before any await, so 20–100ms blocked the main thread on every
+        // richText row. Image path uses Task.detached(priority: .userInitiated)
+        // (L294); mirror that here. `parseRichText` is a pure static helper
+        // (nonisolated by virtue of being a struct static), so wrapping it in
+        // Task.detached moves the parse off-main. After await resumes we're
+        // back on @MainActor for the @State writes.
+        guard let parsed = await Task.detached(priority: .userInitiated) { () -> (attributed: AttributedString, plain: String)? in
+            Self.parseRichText(base64: base64)
+        }.value else { return }
         // M-3 (2026-07-21 audit): bridge to store cache so copyToClipboard
         // hits cache (< 1ms) instead of re-parsing NSAttributedString
         // (20-100ms sync). Cache key matches getRTFPlaintext for symmetric
         // hit/miss.
-        ClipboardStore.shared.cacheRTFPlaintext(item, plain)
-        await MainActor.run {
-            loadedRichText = rt
-            loadedContent = plain
-        }
+        ClipboardStore.shared.cacheRTFPlaintext(item, parsed.plain)
+        loadedRichText = parsed.attributed
+        loadedContent = parsed.plain
+    }
+
+    /// H-7/H-8 (2026-07-24 audit): pure RTF parser extracted from `loadRichText`
+    /// so the parse can run off the main thread via Task.detached. Returns
+    /// nil for any failure (bad base64, bad RTF body, empty input) — the
+    /// caller treats nil as "skip and show placeholder".
+    static func parseRichText(base64: String) -> (attributed: AttributedString, plain: String)? {
+        guard !base64.isEmpty,
+              let rtfData = Data(base64Encoded: base64),
+              let nsAttr = try? NSAttributedString(
+                data: rtfData,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil
+              ) else { return nil }
+        return (AttributedString(nsAttr), nsAttr.string)
     }
 
     /// Copies the OCR-recognized text of this image item to the pasteboard.
