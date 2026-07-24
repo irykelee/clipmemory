@@ -187,8 +187,33 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
                 DefaultFeedProbeEngine.logger.warning("Feed body exceeded \(Self.maxResponseBytes) bytes (got \(data.count)) — refusing")
                 return nil
             }
-            return String(data: data, encoding: .utf8)
+            // L-20 (2026-07-24 audit): log parse failures distinctly from
+            // transport errors so an operator can tell "feed returned 200 but
+            // body wasn't valid UTF-8" (a CDN corruption signal) from
+            // "connection refused" (a network signal). Both still surface
+            // as nil upstream; the split is for triage only.
+            guard let body = String(data: data, encoding: .utf8) else {
+                DefaultFeedProbeEngine.logger.error("Feed body returned 200 but failed UTF-8 decode (bytes=\(data.count))")
+                return nil
+            }
+            return body
+        } catch let urlError as URLError {
+            // L-20: separate timeout (often transient, keep .automatic
+            // patience) from other transport errors (DNS, refused, etc.)
+            // so a brief outage doesn't look like a hard failure.
+            switch urlError.code {
+            case .timedOut:
+                DefaultFeedProbeEngine.logger.notice("Feed probe timed out after \(timeout, privacy: .public)s url=\(url.absoluteString, privacy: .public)")
+            case .cancelled:
+                // Probe was cancelled by a newer probe winning the race —
+                // expected behavior, don't surface to operators.
+                break
+            default:
+                DefaultFeedProbeEngine.logger.error("Feed probe URLError code=\(urlError.code.rawValue, privacy: .public) desc=\(urlError.localizedDescription, privacy: .public) url=\(url.absoluteString, privacy: .public)")
+            }
+            return nil
         } catch {
+            DefaultFeedProbeEngine.logger.error("Feed probe non-URL error: \(String(describing: error), privacy: .public) url=\(url.absoluteString, privacy: .public)")
             return nil
         }
     }
