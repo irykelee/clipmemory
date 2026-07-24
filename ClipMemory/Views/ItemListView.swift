@@ -11,7 +11,17 @@ import AppKit
 /// collapse into an `@StateObject` ViewModel is out of scope here, see
 /// `docs/superpowers/specs/2026-07-21-contentview-split-plan.md`).
 struct ItemListView: View {
-    let store: ClipboardStore
+    // H-12 (2026-07-24 audit): was `let store`. ListView reads many computed
+    // properties backed by @Published values (`store.items`, `store.trashedItems`,
+    // `store.todayCount`, etc.) — without `@ObservedObject`, ItemListView had
+    // no subscription of its own and relied entirely on ContentView re-rendering
+    // and re-pushing bindings. Today this happens to work (ContentView observes
+    // ClipboardStore), but it was a fragile implicit dependency: any refactor
+    // that memoized ContentView's body (ViewModel extraction, post NEW-7 Phase 5)
+    // would silently break ItemListView's refresh path. Add the subscription
+    // here so the view re-renders directly when store changes, independent of
+    // the parent's pipeline.
+    @ObservedObject var store: ClipboardStore
     /// Read-only context the list branch keys off (all/text/trash/etc.).
     let selectedTab: SidebarTab
     /// Result of ContentView's `filterItems` — pre-filtered, already grouped.
