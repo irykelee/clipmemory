@@ -307,11 +307,40 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
                 // multi-store replay, etc.) works without touching this file.
                 delegate?.monitorDidCaptureItem(item)
             }
-        } else if let imageData = pasteboard.data(forType: .png), !imageData.isEmpty {
-            processImageData(imageData)
-        } else if let imageData = pasteboard.data(forType: .tiff), !imageData.isEmpty {
+        } else if let imageData = Self.firstImageData(read: { pasteboard.data(forType: $0) }) {
             processImageData(imageData)
         }
+    }
+
+    /// H-1 (2026-07-24 audit): the pasteboard image UTIs to probe, in
+    /// priority order. PNG/TIFF win via their built-in `.png` / `.tiff`
+    /// constants; JPEG / HEIC / GIF / JPEG-2000 / BMP don't have
+    /// NSPasteboard.PasteboardType constants (only PNG and TIFF do —
+    /// confirmed via Apple docs 2026-07-24) so they're built from raw
+    /// UTI strings. The capture path iterates this list and takes the
+    /// first non-empty hit. JPEG screenshots from Preview/Safari and
+    /// HEIC phone photos copied via AirDrop were silently dropped
+    /// before — they're capturable now.
+    static let imagePasteboardTypes: [NSPasteboard.PasteboardType] = [
+        .png,
+        .tiff,
+        NSPasteboard.PasteboardType("public.jpeg"),
+        NSPasteboard.PasteboardType("public.heic"),
+        NSPasteboard.PasteboardType("com.compuserve.gif"),
+        NSPasteboard.PasteboardType("public.jpeg-2000"),
+        NSPasteboard.PasteboardType("com.microsoft.bmp")
+    ]
+
+    /// H-1 (2026-07-24 audit): extract image data from a pasteboard across
+    /// all common image UTI types. First non-empty hit wins. `read` is
+    /// injected so tests can stub the pasteboard without touching the host.
+    static func firstImageData(read: (NSPasteboard.PasteboardType) -> Data?) -> Data? {
+        for type in imagePasteboardTypes {
+            if let data = read(type), !data.isEmpty {
+                return data
+            }
+        }
+        return nil
     }
 
     private func detectType(_ content: String) -> ClipboardItemType {
