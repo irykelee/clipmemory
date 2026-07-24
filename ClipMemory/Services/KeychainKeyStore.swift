@@ -88,6 +88,12 @@ struct KeychainKeyStore: KeyStoring {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
+        // L-4 (2026-07-24 audit): prevent the system from showing an
+        // authentication prompt on a miss / mismatch — the root key item
+        // is `AfterFirstUnlockThisDeviceOnly` (no user auth) and an
+        // unexpected prompt indicates something is wrong; fail fast
+        // instead of blocking the calling thread on a modal.
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         switch status {

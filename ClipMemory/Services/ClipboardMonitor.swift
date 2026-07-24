@@ -344,7 +344,14 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
     }
 
     private func detectType(_ content: String) -> ClipboardItemType {
-        if content.hasPrefix("http://") || content.hasPrefix("https://") {
+        // L-1 (2026-07-24 audit): mailto:/ftp:/file:/www. were silently
+        // downgraded to .text, losing the link styling (and any downstream
+        // link-aware affordances). www. is bare (no scheme) and commonly
+        // copied from browsers / chat; treat it as a link so the user can
+        // click through after the OS auto-completes the scheme.
+        if content.hasPrefix("http://") || content.hasPrefix("https://")
+            || content.hasPrefix("mailto:") || content.hasPrefix("ftp://")
+            || content.hasPrefix("file://") || content.hasPrefix("www.") {
             return .link
         }
         return .text
@@ -418,12 +425,15 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         // Very long strings (> 50 KB) skip keyword/regex scanning and only check size.
         guard content.utf8.count <= 50_000 else { return false }
 
-        let lowercased = content.lowercased()
         let range = NSRange(content.startIndex..., in: content)
 
-        // Plain keyword check (non-regex)
+        // Plain keyword check (non-regex) — M-1 (2026-07-24 audit): the prior
+        // implementation built `content.lowercased()` (a second O(n) scan +
+        // full-string allocation) only to call `.contains(pattern)` on it.
+        // Case-insensitive substring search on the original string produces
+        // identical matches without the intermediate allocation.
         for (pattern, isRegex) in sensitivePatterns {
-            if !isRegex && lowercased.contains(pattern) {
+            if !isRegex && content.range(of: pattern, options: .caseInsensitive) != nil {
                 return true
             }
         }

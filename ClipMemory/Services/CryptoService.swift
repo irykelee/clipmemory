@@ -92,7 +92,17 @@ class CryptoService: CryptoServiceProtocol {
         if Self.isRunningTests {
             Self.prepareLegacyFileKeyForTests()
         } else {
-            Self.prepareKey()
+            // M-2 (2026-07-24 audit): defer prepareKey to a background task so
+            // the first access to `CryptoService.shared` doesn't block on a
+            // Keychain round-trip (~1–10ms) + ACL check + file migration.
+            // `getKey()` independently loads from Keychain/keyfile via the
+            // cache, so callers don't need to wait for migration before
+            // encrypting — `prepareKeyIfNeeded()` is the explicit async
+            // barrier for callers that care (tests asserting the file is
+            // gone, etc.).
+            Task.detached(priority: .utility) {
+                _ = Self.prepareKey()
+            }
         }
     }
 
@@ -166,6 +176,17 @@ class CryptoService: CryptoServiceProtocol {
     /// so no alert is shown and no termination happens.
     static var keyFailureHandler: (CryptoKeyFailure) -> KeyFailureAction = { failure in
         CryptoService.defaultKeyFailureHandler(failure)
+    }
+
+    /// M-2 (2026-07-24 audit): async barrier for the one-time prepareKey
+    /// migration. Awaitable from any task; production encrypt/decrypt paths
+    /// don't need to wait — `getKey()` reads from Keychain/keyfile directly
+    /// via the cache. Use this when a caller must observe migration
+    /// completion (e.g. tests asserting the legacy key file has been
+    /// removed, or a startup path that wants Keychain canonicality before
+    /// the first encrypt).
+    static func prepareKeyIfNeeded() async {
+        _ = Self.prepareKey()
     }
 
     /// Prepares the app key: Keychain first, then one-time migration of the
@@ -458,7 +479,13 @@ class CryptoService: CryptoServiceProtocol {
     private func decryptLegacy(from combined: Data) -> [UInt8]? {
         guard let key = getKey() else { return nil }
 
-        // New format (v2) with HMAC: minimum 16 (IV) + 1 + 32 (HMAC) = 49 bytes
+        // L-3 (2026-07-24 audit): the old comment labeled this branch
+        // "New format (v2) with HMAC" but we're inside `decryptLegacy` —
+        // the IV + ciphertext + 32-byte HMAC layout is the legacy (pre-v2)
+        // AES-CBC+HMAC format. CommonCrypto AES-CBC is still in use here
+        // for backwards-compatible reads; only the pre-1.2.0 unauthenticated
+        // CBC branch (no HMAC) was removed at C4.
+        // Legacy AES-CBC+HMAC: minimum 16 (IV) + 1 + 32 (HMAC) = 49 bytes.
         if combined.count >= 49 {
             let hmacSize = 32
             // Wrap slice with Data(...) so constantTimeCompare's 0-based loop
