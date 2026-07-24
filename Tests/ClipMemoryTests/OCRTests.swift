@@ -95,6 +95,41 @@ final class OCRTests: XCTestCase {
         XCTAssertFalse(notificationFired, "Item-missing path must not post .encryptionFailed")
     }
 
+    // MARK: - H-3 (2026-07-24 audit): encrypt-fail in addItem must log + tag the notification
+
+    /// H-3: when addItem fails to encrypt the content (rare — key
+    /// unavailable, per H-2 / C-2), the path must (a) post .encryptionFailed
+    /// and (b) tag it with `source = "addItem"` so observers can debounce /
+    /// render context-aware alerts independently of HMAC / OCR / ImageStorage
+    /// failures. The item must NOT be inserted (N2: storing plaintext when
+    /// encryption fails is a security violation).
+    func testAddItem_encryptFailure_logsAndTagsNotification() {
+        let item = ClipboardItem(content: "secret note", type: .text)
+        var capturedUserInfo: [AnyHashable: Any]?
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed, object: nil, queue: .main
+        ) { note in capturedUserInfo = note.userInfo }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        // Swap in a crypto stub whose encrypt() returns nil — simulates
+        // the rare "key unavailable" failure mode (same fixture as H-4).
+        let originalCrypto = ServiceContainer.crypto
+        let failingCrypto = FailingEncryptCrypto()
+        ServiceContainer.crypto = failingCrypto
+        defer { ServiceContainer.crypto = originalCrypto }
+
+        store.addItem(item)
+
+        XCTAssertNotNil(capturedUserInfo,
+                        "Encrypt failure in addItem must post .encryptionFailed (H-3)")
+        XCTAssertEqual(capturedUserInfo?["source"] as? String, "addItem",
+                       "Notification must tag the source so observers can debounce")
+        XCTAssertEqual(capturedUserInfo?["itemType"] as? String, "text",
+                       "Notification must include itemType for context-aware alerts")
+        XCTAssertTrue(store.items.isEmpty,
+                      "Item must be discarded (NOT stored as plaintext) on encrypt failure (N2)")
+    }
+
     // MARK: - Encrypted storage round-trip
 
     func testAttachOCRTextEncryptsAndDecrypts() {

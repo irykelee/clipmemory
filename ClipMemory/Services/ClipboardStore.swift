@@ -765,10 +765,22 @@ class ClipboardStore: ObservableObject {
                     deletedAt: item.deletedAt
                 )
             } else {
-                // N2: Encrypt failed — do NOT store as plaintext (security violation)
-                // Discard item to protect sensitive data instead
-                logger.error("Encryption failed for sensitive item, discarding to protect data")
-                NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+                // N2: Encrypt failed — do NOT store as plaintext (security violation).
+                // Discard the item (any non-image type — M3 encrypts text + link
+                // unconditionally). H-3 (2026-07-24 audit) audit-checks for log +
+                // notify on this path; the bare notification is now tagged with
+                // `source = "addItem"` and the item type so observers can
+                // distinguish addItem from HMAC / OCR / ImageStorage failures
+                // and the user-facing alert can be debounced across sources.
+                logger.error("Encryption failed for non-image item (type: \(item.type.rawValue, privacy: .public)), discarding to protect data")
+                NotificationCenter.default.post(
+                    name: .encryptionFailed,
+                    object: nil,
+                    userInfo: [
+                        "source": "addItem",
+                        "itemType": item.type.rawValue
+                    ]
+                )
                 return
             }
         }
