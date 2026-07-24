@@ -6,10 +6,16 @@ import XCTest
 /// thread at startup (AppDelegate.setupClipboardMonitor first-touches the
 /// ImageStorage singleton), while the observable contract — per-file resume
 /// tracking, global completion flag, plaintext cleanup — is unchanged.
+///
+/// STOR-4 (2026-07-24) regression tests: permanently ineligible legacy
+/// files (empty / over the size cap) are recorded in a skip list — never
+/// retried, never blocking the global completion flag — while transient
+/// failures still leave the flag false so the next launch retries.
 final class LegacyImageMigrationTests: XCTestCase {
 
     private let migrationKey = "ImageStorageMigrationComplete"
     private let migratedFilenamesKey = "ImageStorageMigratedFilenames"
+    private let skippedFilenamesKey = "ImageStorageSkippedLegacyFilenames"
 
     private var storage: ImageStorage!
     private var legacyDir: URL!
@@ -156,5 +162,106 @@ final class LegacyImageMigrationTests: XCTestCase {
         let missing = legacyDir.appendingPathComponent("does-not-exist", isDirectory: true)
         storage.migrateFromLegacyIfNeeded(legacyDirectory: missing, defaults: suite)
         XCTAssertTrue(suite.bool(forKey: migrationKey))
+    }
+
+    // MARK: - STOR-4: permanently ineligible files vs transient failures
+
+    /// Regression: an oversized legacy file must NOT block the whole
+    /// migration. Pre-fix, an over-cap file set hadFailure = true on every
+    /// launch, so the global completion flag stayed false forever and the
+    /// plaintext of SUCCESSFULLY migrated files was never cleaned up.
+    /// Post-fix the file lands in the skip list and the pass completes.
+    func testOversizedLegacyFileIsSkippedAndDoesNotBlockCompletion() {
+        let smallCap = 128 // bytes — keeps fixtures tiny; the cap is injectable
+        let goodUUID = newMigratedUUID()
+        let goodFilename = writeLegacyFile(makeLegacyPNGBytes(), uuid: goodUUID)
+        let oversizedUUID = UUID()
+        let oversizedFilename = "\(oversizedUUID.uuidString).png"
+        try? Data(repeating: 0xAB, count: smallCap + 100)
+            .write(to: legacyDir.appendingPathComponent(oversizedFilename))
+
+        storage.migrateFromLegacyIfNeeded(
+            legacyDirectory: legacyDir, defaults: suite, maxFileSize: smallCap
+        )
+
+        XCTAssertTrue(suite.bool(forKey: migrationKey),
+                      "STOR-4: an over-cap file must not block the global completion flag")
+        XCTAssertEqual(suite.stringArray(forKey: skippedFilenamesKey), [oversizedFilename],
+                       "STOR-4: over-cap file must be recorded in the permanent skip list")
+        XCTAssertEqual(suite.stringArray(forKey: migratedFilenamesKey), [goodFilename],
+                       "STOR-4: the eligible file must still migrate in the same pass")
+
+        // The skipped file stays in the legacy dir (we never delete files we
+        // didn't migrate); the migrated file's plaintext is cleaned up.
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: legacyDir.appendingPathComponent(oversizedFilename).path),
+            "Skipped file must remain in the legacy dir — not our file to delete")
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: legacyDir.appendingPathComponent(goodFilename).path),
+            "STOR-4: plaintext of migrated files must be cleaned up once the pass completes")
+    }
+
+    /// Regression: empty (0-byte) legacy files are also permanently
+    /// ineligible and take the skip-list path, not the failure path.
+    func testZeroByteLegacyFileIsSkippedAndDoesNotBlockCompletion() {
+        let emptyUUID = UUID()
+        let emptyFilename = "\(emptyUUID.uuidString).png"
+        try? Data().write(to: legacyDir.appendingPathComponent(emptyFilename))
+
+        storage.migrateFromLegacyIfNeeded(
+            legacyDirectory: legacyDir, defaults: suite, maxFileSize: 128
+        )
+
+        XCTAssertTrue(suite.bool(forKey: migrationKey))
+        XCTAssertEqual(suite.stringArray(forKey: skippedFilenamesKey), [emptyFilename])
+    }
+
+    /// Contract: once a filename is in the skip list it is never retried —
+    /// even if the on-disk file later becomes eligible-sized. This is what
+    /// stops the migrator from re-examining the same poison file on every
+    /// launch.
+    func testSkippedFileIsNotRetriedOnLaterPasses() {
+        let uuid = UUID()
+        let filename = "\(uuid.uuidString).png"
+        let fileURL = legacyDir.appendingPathComponent(filename)
+        try? Data(repeating: 0xAB, count: 256).write(to: fileURL)
+
+        // First pass: file over the injected cap → skip-listed, pass completes.
+        storage.migrateFromLegacyIfNeeded(
+            legacyDirectory: legacyDir, defaults: suite, maxFileSize: 128
+        )
+        XCTAssertEqual(suite.stringArray(forKey: skippedFilenamesKey), [filename])
+
+        // Shrink the file to an eligible size; second pass must NOT migrate it.
+        try? makeLegacyPNGBytes().write(to: fileURL)
+        storage.migrateFromLegacyIfNeeded(
+            legacyDirectory: legacyDir, defaults: suite, maxFileSize: 128
+        )
+
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: storage.imagesDirectoryURL.appendingPathComponent(filename).path),
+            "STOR-4: skip-listed file must never be retried, even after it becomes eligible-sized")
+        XCTAssertNil(suite.stringArray(forKey: migratedFilenamesKey),
+                     "No file should have been migrated across either pass")
+    }
+
+    /// Contract: a TRANSIENT failure (file unreadable mid-pass) is not
+    /// skip-listed and keeps the completion flag false so the next launch
+    /// retries. Simulated with a directory named like a legacy PNG —
+    /// attributes succeed (passes the size gate) but Data(contentsOf:) throws.
+    func testTransientReadFailureLeavesMigrationIncompleteAndNotSkipped() {
+        let uuid = UUID()
+        let filename = "\(uuid.uuidString).png"
+        try? FileManager.default.createDirectory(
+            at: legacyDir.appendingPathComponent(filename),
+            withIntermediateDirectories: false
+        )
+
+        storage.migrateFromLegacyIfNeeded(legacyDirectory: legacyDir, defaults: suite)
+
+        XCTAssertFalse(suite.bool(forKey: migrationKey),
+                       "STOR-4: transient failures must keep the completion flag false for retry")
+        XCTAssertNil(suite.stringArray(forKey: skippedFilenamesKey),
+                     "STOR-4: transient failures must NOT enter the permanent skip list")
     }
 }

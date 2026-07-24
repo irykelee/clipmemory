@@ -51,6 +51,12 @@ class ImageStorage {
     /// Tracks individual filenames that have already been migrated so a
     /// partially-failed migration can resume without re-copying successes.
     private let migratedFilenamesKey = "ImageStorageMigratedFilenames"
+    /// STOR-4 (2026-07-24): filenames that are permanently ineligible for
+    /// migration (empty, or over the size cap that saveImage enforces).
+    /// Such a file can NEVER become eligible, so it is recorded here once,
+    /// never retried, and — crucially — does NOT count as a failure that
+    /// blocks the global completion flag.
+    private let skippedFilenamesKey = "ImageStorageSkippedLegacyFilenames"
 
     enum ImageLoadStatus: Equatable {
         case available(Data)
@@ -136,11 +142,14 @@ class ImageStorage {
 
         var migratedFilenames: [String] = []
         var migratedSet = Set(defaults.stringArray(forKey: migratedFilenamesKey) ?? [])
+        var skippedSet = Set(defaults.stringArray(forKey: skippedFilenamesKey) ?? [])
         var hadFailure = false
 
         for filename in legacyFiles {
             guard filename.hasSuffix(".png"), UUID(uuidString: String(filename.dropLast(4))) != nil else { continue }
             guard !migratedSet.contains(filename) else { continue }
+            // STOR-4: permanently ineligible files are never retried.
+            guard !skippedSet.contains(filename) else { continue }
 
             let legacyPath = legacyDirectory.appendingPathComponent(filename)
             // BUG-028 (2026-07-21): check size via attributesOfItem BEFORE
@@ -148,13 +157,29 @@ class ImageStorage {
             // buffer for a corrupted/expanded legacy file. L-4 previously
             // checked after the load (50MB cap, but still allocates).
             let fileAttrs = try? fileManager.attributesOfItem(atPath: legacyPath.path)
-            let fileSize = (fileAttrs?[.size] as? NSNumber)?.intValue ?? 0
-            guard fileSize > 0, fileSize <= maxFileSize else {
-                logger.warning("Skipping oversized legacy image: \(filename) (\(fileSize) bytes)")
+            guard let fileSize = (fileAttrs?[.size] as? NSNumber)?.intValue else {
+                // Attributes unreadable — transient (permissions, race with
+                // another process writing the file); retry on next launch.
                 hadFailure = true
                 continue
             }
+            // STOR-4 (2026-07-24): an empty file or one over the cap can
+            // NEVER become eligible (saveImage enforces the same cap, so the
+            // file could never have been captured by us at that size).
+            // Previously this set hadFailure = true, which left the global
+            // completion flag false forever: the migration "failed" on every
+            // launch and the successfully migrated plaintext files were never
+            // cleaned up. Now record the filename in the skip list — not a
+            // failure, not retried, not blocking completion.
+            guard fileSize > 0, fileSize <= maxFileSize else {
+                logger.warning("Permanently skipping ineligible legacy image: \(filename) (\(fileSize) bytes)")
+                skippedSet.insert(filename)
+                defaults.set(Array(skippedSet), forKey: skippedFilenamesKey)
+                continue
+            }
             guard let imageData = try? Data(contentsOf: legacyPath) else {
+                // Read failure is transient (I/O error, file being replaced)
+                // — leave it out of the skip list so the next launch retries.
                 hadFailure = true
                 continue
             }
@@ -223,7 +248,7 @@ class ImageStorage {
             }
         }
 
-        logger.info("Image migration complete: \(migratedFilenames.count) files migrated, hadFailure=\(hadFailure)")
+        logger.info("Image migration complete: \(migratedFilenames.count) files migrated, \(skippedSet.count) permanently skipped, hadFailure=\(hadFailure)")
     }
 
     /// Encrypt and write one unencrypted legacy PNG. Returns true on success.
