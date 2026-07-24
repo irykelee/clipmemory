@@ -191,12 +191,21 @@ final class UpdateService {
         return fallback
     }
 
+    /// M-17 (2026-07-24 audit): DateFormatter instantiation is expensive
+    /// (~5–10 ms cold, ~1 ms warm) and was rebuilt on every `latestItemDate`
+    /// call. The format string and POSIX locale are constants for the
+    /// lifetime of the process — instantiate once.
+    private static let appcastDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        return f
+    }()
+
     /// Newest `<pubDate>` among appcast items, or nil when nothing parses.
     /// Pure for tests (H1 staleness guard).
     static func latestItemDate(inAppcastXML xml: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        let formatter = appcastDateFormatter
         var latest: Date?
         var rest = xml[...]
         while let open = rest.range(of: "<pubDate>"),
