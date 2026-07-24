@@ -309,6 +309,14 @@ jobs:
       # would offer an update whose download URL 404s).
       - name: Publish appcast update
         if: github.event_name == 'push'
+        env:
+          # appcast 推送需要绕过 main 的分支保护（必需 PR + status check）。
+          # GITHUB_TOKEN 不是 admin 无法 bypass；TAP_GITHUB_TOKEN 是所有者
+          # PAT（admin），保护已设 enforce_admins: false 允许 admin 直推
+          # （2026-07-25 dry-run push 实测通过）。规则集 bypass 方案不可行：
+          # GitHub 不允许 personal repo 把 GitHub Actions app 设为 bypass
+          # actor（HTTP 422 "must be part of the owner organization"）。
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
@@ -364,7 +372,12 @@ jobs:
             exit 1
           fi
           echo "Pushing appcast commit for ${GITHUB_REF_NAME} -> origin/${SOURCE_BRANCH}"
-          git push --force-with-lease origin "HEAD:refs/heads/${SOURCE_BRANCH}"
+          # Push with the owner's PAT (admin bypass) via extraheader — the
+          # checkout's GITHUB_TOKEN credential is per-command overridden
+          # without writing the PAT into the remote URL (REL-10).
+          AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${TAP_GITHUB_TOKEN}" | base64)"
+          git -c "http.https://github.com/.extraheader=${AUTH_HEADER}" \
+              push --force-with-lease origin "HEAD:refs/heads/${SOURCE_BRANCH}"
 
           # REL-6 (2026-07-24): purge the jsDelivr mirror of the branch we
           # ACTUALLY pushed, not always @main. The old code purged only
@@ -373,17 +386,17 @@ jobs:
           # content did not change) was pointlessly re-fetched.
           #
           # Also syncing the appcast commit to main was considered and
-          # REJECTED: main is now protected — required status check
-          # `build-and-test`, required PR reviews, enforce_admins,
-          # allow_force_pushes=false (verified 2026-07-24 via
-          # `gh api repos/irykelee/clipmemory/branches/main/protection`).
-          # The workflow's GITHUB_TOKEN cannot cherry-pick/commit onto
-          # main directly, and a bypass PAT would weaken the protection
-          # for everyone. Safest behaviour: when the source branch is not
-          # main, warn loudly that the @main fallback feed stays stale
-          # until the branch is merged (Sparkle's primary feed is the
-          # GitHub Release asset, which IS current), and purge only the
-          # mirror of the branch just updated.
+          # REJECTED (2026-07-24): at the time main had enforce_admins: true
+          # so no token could push. Since 2026-07-25 the protection allows
+          # admin bypass (enforce_admins: false) and this step pushes with
+          # the owner's PAT — so a main sync would now be technically
+          # possible, but it is intentionally NOT done: tags are cut from
+          # main in the standard flow (Scripts/release.sh enforces it), and
+          # the non-main path exists only as a hotfix fallback. When the
+          # source branch is not main, warn loudly that the @main fallback
+          # feed stays stale until the branch is merged (Sparkle's primary
+          # feed is the GitHub Release asset, which IS current), and purge
+          # only the mirror of the branch just updated.
           if [[ "$SOURCE_BRANCH" != "main" ]]; then
             echo "::warning::appcast.xml was pushed to '${SOURCE_BRANCH}', not main. The jsDelivr @main fallback feed stays STALE until '${SOURCE_BRANCH}' is merged into main."
           fi
