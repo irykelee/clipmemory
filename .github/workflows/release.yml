@@ -299,7 +299,11 @@ jobs:
           files: |
             Releases/ClipMemory.tar.gz
             appcast.xml
-          title: ${{ steps.notes.outputs.title }}
+          # NB: the input is `name:`, NOT `title:` — v3 rejects unknown
+          # inputs with a warning and silently falls back to the tag name,
+          # which is why v2.5.12 first shipped with stub title "v2.5.12"
+          # even though the notes-extract step produced the bilingual H1.
+          name: ${{ steps.notes.outputs.title }}
           body_path: ${{ steps.notes.outputs.body_path }}
           # Don't auto-generate notes — we supply body_path from release-notes file.
           generate_release_notes: false
