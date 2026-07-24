@@ -68,9 +68,15 @@ final class CryptoKeyPreparationTests: XCTestCase {
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("CryptoKeyPreparationTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        // STOR-1 (2026-07-24 audit): prepareKey now publishes to the shared
+        // cache. Reset before each test so a key cached by a previous test
+        // doesn't bleed into the next (would also pollute CryptoServiceTests
+        // run in the same process).
+        CryptoService.resetForTesting()
     }
 
     override func tearDownWithError() throws {
+        CryptoService.resetForTesting()
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempDir.path)
         try? FileManager.default.removeItem(at: tempDir)
     }
@@ -205,6 +211,46 @@ final class CryptoKeyPreparationTests: XCTestCase {
         XCTAssertNotNil(key, "regenerate must retry the Keychain store")
         XCTAssertEqual(recorder.failures, [.keyStorageFailed])
         XCTAssertEqual(store.stored?.count, 32)
+    }
+
+    // MARK: - STOR-1 (2026-07-24 audit): prepareKey must publish to shared cache
+
+    /// STOR-1: prepareKey's success path must populate `shared.cachedLoadedKey`.
+    /// Regression: the cache was previously only populated by `getKey()`'s own
+    /// first-call path and `loadKeyData()`. If `getKey()` ran and missed (cold
+    /// Keychain + no file = fresh install), it latched `keyLoadAttempted = true`,
+    /// then `prepareKey()` succeeded silently in the background — and every
+    /// subsequent `encrypt()` for the rest of the session returned nil.
+    ///
+    /// Verified via a public-for-testing cache probe (added alongside the fix
+    /// per the audit's "lock is private and not resettable — fixing makes it
+    /// testable" note). This avoids `getKey()`'s production-path read of
+    /// `CryptoService.keyFileURL` (which would silently inherit state across
+    /// tests and risk touching production data per test-never-touch-prod-data).
+    func testPrepareKeyPublishesSuccessToSharedCache() throws {
+        CryptoService.resetForTesting()
+        let store = MockKeyStore() // initially notFound
+        let keyData = Data((0..<32).map { UInt8($0) })
+        try keyData.write(to: keyURL, options: .atomic)
+
+        XCTAssertFalse(CryptoService.hasCachedKeyForTesting(),
+                       "cache should be empty after reset")
+
+        let key = CryptoService.prepareKey(
+            keyURL: keyURL,
+            keyStore: store,
+            failureHandler: { _ in .quit }
+        )
+        XCTAssertNotNil(key, "prepareKey should migrate the file to the Keychain")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keyURL.path),
+                       "successful migration must remove the legacy key file")
+        XCTAssertEqual(store.stored?.count, 32, "Keychain must hold the migrated key")
+
+        XCTAssertTrue(CryptoService.hasCachedKeyForTesting(),
+                      "prepareKey's success must populate shared.cachedLoadedKey")
+
+        // Clean up so subsequent tests don't inherit the cached key.
+        CryptoService.resetForTesting()
     }
 
     // MARK: - C-2 (2026-07-24 audit): Keychain locked must not trigger regeneration

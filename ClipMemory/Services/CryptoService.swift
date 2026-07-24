@@ -189,6 +189,27 @@ class CryptoService: CryptoServiceProtocol {
         _ = Self.prepareKey()
     }
 
+    /// STOR-1 (2026-07-24 audit): clear the shared in-memory cache + latch
+    /// so a test can exercise the prepareKey/getKey race deterministically.
+    /// Production code never calls this — init's `Task.detached { prepareKey() }`
+    /// runs exactly once per process, after which the cache is the source of
+    /// truth until the next process launch.
+    static func resetForTesting() {
+        shared.withCachedLoadedKey {
+            shared.cachedLoadedKey = nil
+            shared.keyLoadAttempted = false
+        }
+    }
+
+    /// STOR-1 (2026-07-24 audit): test-only probe for `cachedLoadedKey`.
+    /// Avoids routing through `getKey()` (which reads the production
+    /// `keyFileURL` and would leak state across tests). Returns true iff
+    /// `prepareKey` (or `loadKeyData` on cache miss) has populated the cache
+    /// at least once this process.
+    static func hasCachedKeyForTesting() -> Bool {
+        shared.withCachedLoadedKey { shared.cachedLoadedKey } != nil
+    }
+
     /// Prepares the app key: Keychain first, then one-time migration of the
     /// pre-C1 key file, then fresh generation into the Keychain (C1).
     /// A corrupt key file is never silently overwritten (H6): the failure
@@ -211,7 +232,7 @@ class CryptoService: CryptoServiceProtocol {
         // user's real key and permanently destroying all encrypted history.
         switch keyStore.loadStatus() {
         case .found(let data) where data.count == 32:
-            return SymmetricKey(data: data)
+            return publishToSharedCache(SymmetricKey(data: data))
         case .found:
             logger.error("Keychain contains invalid key (not 32 bytes); treating as absent")
             // fall through to file migration / fresh generation
@@ -234,7 +255,7 @@ class CryptoService: CryptoServiceProtocol {
                     logger.error("Keychain migration failed; keeping key file until next launch")
                     try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
                 }
-                return SymmetricKey(data: keyData)
+                return publishToSharedCache(SymmetricKey(data: keyData))
             }
             // Corrupt or tampered key file — ask before destroying it.
             guard failureHandler(.corruptExistingKey) == .regenerate else { return nil }
@@ -242,6 +263,19 @@ class CryptoService: CryptoServiceProtocol {
         }
         // 3. Fresh generation into the Keychain.
         return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
+    }
+
+    /// STOR-1 (2026-07-24 audit): prepareKey's success path must publish the
+    /// key to the shared cache + set the latch, otherwise getKey()'s prior
+    /// miss (which latched `keyLoadAttempted = true`) would permanently strand
+    /// the session keyless. Routes through the same lock as `getKey()`'s own
+    /// write (BUG-018) so the invariants live in one place.
+    private static func publishToSharedCache(_ key: SymmetricKey) -> SymmetricKey {
+        shared.withCachedLoadedKey {
+            shared.cachedLoadedKey = key
+            shared.keyLoadAttempted = true
+        }
+        return key
     }
 
     private static func generateAndStoreKey(
@@ -267,7 +301,7 @@ class CryptoService: CryptoServiceProtocol {
             guard failureHandler(.keyStorageFailed) == .regenerate else { return nil }
             return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
         }
-        return SymmetricKey(data: keyData)
+        return publishToSharedCache(SymmetricKey(data: keyData))
     }
 
     private static func defaultKeyFailureHandler(_ failure: CryptoKeyFailure) -> KeyFailureAction {

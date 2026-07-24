@@ -6,6 +6,19 @@ import Security
 final class CryptoServiceTests: XCTestCase {
     private var crypto: CryptoService { CryptoService.shared }
 
+    // STOR-1 (2026-07-24 audit): prepareKey now publishes to the shared
+    // cache. CryptoKeyPreparationTests populates it with mock-keyed test
+    // data; reset on entry so this class's tests see a clean cache and
+    // the file-backed key from `CryptoService.keyFileURL` is the source
+    // of truth (replicating production semantics for legacy v1 blobs).
+    override func setUp() {
+        CryptoService.resetForTesting()
+    }
+
+    override func tearDown() {
+        CryptoService.resetForTesting()
+    }
+
     // MARK: - C.1 AES-GCM Encryption/Decryption Round-Trip
 
     func testEncryptDecryptRoundTrip() {
