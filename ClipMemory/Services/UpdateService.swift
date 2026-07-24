@@ -88,13 +88,14 @@ final class UpdateService {
     private let gentleReminder = GentleUpdateReminder()
     private let updaterController: SPUStandardUpdaterController
     private let probeEngine: FeedProbeEngine
-    // BUG-033 (2026-07-21): lazy var + MainActor.assumeIsolated so the
-    // @MainActor UpdateStatus() init runs on first access. Callers always
-    // access via @MainActor methods (setPolicy, triggerProbe), so the
-    // main-thread assertion is safe.
-    lazy var status: UpdateStatus = MainActor.assumeIsolated {
-        UpdateStatus()
-    }
+    // BUG-033 (2026-07-21) + M-18 (2026-07-24 audit): lazy var with @MainActor
+    // annotation. The @MainActor attribute moves the main-thread guarantee
+    // from a runtime `assumeIsolated` check to a compile-time one — Swift
+    // rejects any access from a non-main context. SettingsView
+    // (`UpdateService.shared.status`) reads from a SwiftUI view body, which
+    // is implicitly @MainActor, so the access compiles unchanged.
+    @MainActor
+    lazy var status: UpdateStatus = UpdateStatus()
 
     /// Monotonic token for in-flight probes. Incrementing on every
     /// `triggerProbe()` cancels the prior probe's write-back so a slower
