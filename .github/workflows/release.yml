@@ -334,20 +334,60 @@ jobs:
           # actual source branch from the tag commit and push the appcast
           # commit there instead; --force-with-lease fails loudly if the
           # branch advanced concurrently, replacing the silent overwrite path.
-          SOURCE_BRANCH="main"
+          # REL-6 (2026-07-24): deterministic source-branch resolution.
+          # The old `git branch --all --contains ... | head -1` picked the
+          # ALPHABETICALLY FIRST branch containing the tag commit. When a
+          # tag commit sits on several branches (e.g. a hotfix branch that
+          # was later merged to main) that could silently push the appcast
+          # commit to the wrong branch. Now: prefer main when the tag is
+          # reachable from main; use the single candidate when there is
+          # exactly one; FAIL LOUDLY with the candidate list when there are
+          # several non-main candidates or none — never guess.
+          SOURCE_BRANCH=""
           if git rev-parse --verify "${GITHUB_REF_NAME}^{commit}" >/dev/null 2>&1; then
-            DETECTED=$(git branch --all --contains "${GITHUB_REF_NAME}^{commit}" \
-                      2>/dev/null | sed -E 's|^[* ]+||; s|^remotes/origin/||' \
-                      | grep -v 'HEAD' | head -1 || true)
-            if [[ -n "$DETECTED" ]]; then
-              SOURCE_BRANCH="$DETECTED"
+            CANDIDATES=$(git branch --all --contains "${GITHUB_REF_NAME}^{commit}" \
+                        2>/dev/null | sed -E 's|^[* ]+||; s|^remotes/origin/||' \
+                        | grep -v 'HEAD' | sort -u || true)
+            if echo "$CANDIDATES" | grep -qx 'main'; then
+              SOURCE_BRANCH="main"
+            elif [[ "$(echo "$CANDIDATES" | grep -c . || true)" -eq 1 ]]; then
+              SOURCE_BRANCH="$CANDIDATES"
+            else
+              echo "❌ Cannot determine a unique source branch for ${GITHUB_REF_NAME}."
+              echo "   Candidate branches containing the tag commit:"
+              echo "$CANDIDATES" | sed 's/^/   - /'
+              echo "   Merge the tag commit to main (or re-tag from main) and re-run."
+              exit 1
             fi
+          else
+            echo "❌ Tag commit ${GITHUB_REF_NAME}^{commit} not found locally — cannot determine source branch."
+            exit 1
           fi
           echo "Pushing appcast commit for ${GITHUB_REF_NAME} -> origin/${SOURCE_BRANCH}"
           git push --force-with-lease origin "HEAD:refs/heads/${SOURCE_BRANCH}"
 
-          # Best-effort: refresh the jsDelivr mirror of the fallback feed
-          curl -sf "https://purge.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml" || true
+          # REL-6 (2026-07-24): purge the jsDelivr mirror of the branch we
+          # ACTUALLY pushed, not always @main. The old code purged only
+          # @main, so when the source branch was not main the branch that
+          # changed kept serving a cached stale appcast while @main (whose
+          # content did not change) was pointlessly re-fetched.
+          #
+          # Also syncing the appcast commit to main was considered and
+          # REJECTED: main is now protected — required status check
+          # `build-and-test`, required PR reviews, enforce_admins,
+          # allow_force_pushes=false (verified 2026-07-24 via
+          # `gh api repos/irykelee/clipmemory/branches/main/protection`).
+          # The workflow's GITHUB_TOKEN cannot cherry-pick/commit onto
+          # main directly, and a bypass PAT would weaken the protection
+          # for everyone. Safest behaviour: when the source branch is not
+          # main, warn loudly that the @main fallback feed stays stale
+          # until the branch is merged (Sparkle's primary feed is the
+          # GitHub Release asset, which IS current), and purge only the
+          # mirror of the branch just updated.
+          if [[ "$SOURCE_BRANCH" != "main" ]]; then
+            echo "::warning::appcast.xml was pushed to '${SOURCE_BRANCH}', not main. The jsDelivr @main fallback feed stays STALE until '${SOURCE_BRANCH}' is merged into main."
+          fi
+          curl -sf "https://purge.jsdelivr.net/gh/irykelee/clipmemory@${SOURCE_BRANCH}/appcast.xml" || true
 
       - name: Update Homebrew tap
         if: github.event_name == 'push'
