@@ -122,6 +122,14 @@ final class BackupPackage {
     /// iterations (OWASP 2023) — ~10⁵× slower than HKDF for weak passphrases.
     private static let pbkdf2Iterations = 600_000
 
+    /// BKP-3 (2026-07-24 audit): cap on items.json / trash.json / tags.json
+    /// blob size inside a package. These are JSON arrays of encrypted store
+    /// entries — orders of magnitude below 100 MB in practice. A larger file
+    /// means a hostile or corrupt package that would OOM the process via
+    /// `Data(contentsOf:)` before the decoder ever runs. Same fail-closed
+    /// style as the M-2 image cap (50 MB) below.
+    private static let maxStoreBlobBytes = 100 * 1024 * 1024
+
     static func deriveKey(passphrase: String, salt: Data, version: Int = 2) throws -> SymmetricKey {
         switch version {
         case 1:
@@ -188,6 +196,44 @@ final class BackupPackage {
     private static func unzipArchive(_ archive: URL, to destination: URL) throws {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         try runDitto(args: ["-x", "-k", archive.path, destination.path])
+        try validateExtractedTree(at: destination)
+    }
+
+    /// BKP-2 (2026-07-24 audit): `ditto -x` extracts whatever the zip
+    /// declares, with no sanity checks — a hostile `.clipmemory` can carry
+    /// symbolic links (later `Data(contentsOf:)` follows them and reads
+    /// arbitrary files outside the sandbox of the staging dir, e.g. an
+    /// Images/ entry pointing at ~/Library) or `../` member paths that
+    /// escape the staging root entirely. Enumerate the extracted tree
+    /// BEFORE any file is consumed and reject the package as corrupt when
+    /// any entry is a symlink or resolves outside `staging`.
+    private static func validateExtractedTree(at staging: URL) throws {
+        guard let enumerator = FileManager.default.enumerator(
+            at: staging,
+            includingPropertiesForKeys: [.isSymbolicLinkKey]
+        ) else {
+            throw BackupPackageError.corruptedData("extracted package not enumerable", .manifest)
+        }
+        // resolvingSymlinksInPath so a `staging` path that itself sits under
+        // a symlinked temp dir (common on macOS: /var → /private/var) still
+        // compares correctly against resolved children.
+        let stagingRoot = staging.standardizedFileURL.resolvingSymlinksInPath().path
+        while let entry = enumerator.nextObject() as? URL {
+            let values = try entry.resourceValues(forKeys: [.isSymbolicLinkKey])
+            if values.isSymbolicLink == true {
+                logger.error("Backup package contains symbolic link: \(entry.lastPathComponent)")
+                throw BackupPackageError.corruptedData(
+                    "symbolic link in package: \(entry.lastPathComponent)", .manifest
+                )
+            }
+            let resolved = entry.standardizedFileURL.resolvingSymlinksInPath().path
+            guard resolved == stagingRoot || resolved.hasPrefix(stagingRoot + "/") else {
+                logger.error("Backup package entry escapes staging dir: \(entry.path)")
+                throw BackupPackageError.corruptedData(
+                    "package entry escapes staging dir: \(entry.lastPathComponent)", .manifest
+                )
+            }
+        }
     }
 
     /// Runs `/usr/bin/ditto` with the given args and blocks the caller until
@@ -535,6 +581,22 @@ final class BackupPackage {
         return count
     }
 
+    /// BKP-3 (2026-07-24 audit): reject a store blob larger than
+    /// `maxStoreBlobBytes` BEFORE `Data(contentsOf:)` pulls it into memory —
+    /// a hostile package could otherwise ship a multi-GB items.json and OOM
+    /// the process. Only enforced when the size is determinable: a missing
+    /// file (legal empty state, spec risk §3) has no attributes and falls
+    /// through to the existing no-such-file → `[]` path in the caller.
+    private static func guardStoreBlobSize(url: URL, name: String, source: BackupFileSource) throws {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int,
+              size > maxStoreBlobBytes else { return }
+        logger.error("\(name) is \(size) bytes, exceeds \(maxStoreBlobBytes) cap — treating package as corrupt")
+        throw BackupPackageError.corruptedData(
+            "\(name) exceeds \(maxStoreBlobBytes) byte size cap", source
+        )
+    }
+
     /// Re-encrypts each item with the local key, dropping entries whose
     /// ciphertext fails GCM auth (BUG-024 per-entry corruption). Returns
     /// the successfully re-encrypted items and a count of dropped entries.
@@ -562,6 +624,7 @@ final class BackupPackage {
         source: BackupFileSource
     ) throws -> [ClipboardItem] {
         let url = directory.appendingPathComponent(name)
+        try guardStoreBlobSize(url: url, name: name, source: source)
         let data: Data
         do {
             data = try Data(contentsOf: url)
@@ -588,6 +651,7 @@ final class BackupPackage {
         source: BackupFileSource
     ) throws -> [Tag] {
         let url = directory.appendingPathComponent(name)
+        try guardStoreBlobSize(url: url, name: name, source: source)
         let data: Data
         do {
             data = try Data(contentsOf: url)
