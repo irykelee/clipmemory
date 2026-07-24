@@ -167,6 +167,28 @@ class ClipboardStore: ObservableObject {
     private let captureRichTextKey = "captureRichText"
     private let excludedBundleIdsKey = "excludedBundleIds"
     private let trashRetentionDaysKey = "trashRetentionDays"
+
+    /// Quarantine a corrupt UserDefaults blob: copy it under
+    /// `<key>.corrupt-<ISO8601-ts>` then remove the original. Without this,
+    /// the next `saveItems` / `saveTags` / `saveTrashedItems` would
+    /// overwrite the corrupt blob with `[]`, permanently destroying the
+    /// user's history. Quarantining lets recovery tooling (or a future
+    /// "restore from backup" affordance) attempt repair.
+    /// Post-audit-scan fix: previously `loadItems()` / `loadTrashedItems()`
+    /// / `loadTags()` silently swallowed the error and continued with an
+    /// empty in-memory collection — the very next save wiped the persist
+    /// layer permanently.
+    private func quarantineCorruptBlob(key: String, error: Error) {
+        let defaults = UserDefaults.standard
+        guard let blob = defaults.data(forKey: key) else { return }
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let quarantineKey = "\(key).corrupt-\(timestamp)"
+        defaults.set(blob, forKey: quarantineKey)
+        defaults.removeObject(forKey: key)
+        logger.error("Corrupt blob \(key) quarantined to \(quarantineKey). First-decoder error: \(error.localizedDescription). The next save will overwrite the original key with the current (empty) in-memory collection; recover from the quarantined copy or a backup before saving.")
+    }
+    /// UserDefaults key for persisted items.
+    static let itemsStorageKey = "ClipboardItems"
     /// UserDefaults key for persisted trashed items.
     static let trashedItemsStorageKey = "ClipboardTrashedItems"
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
@@ -368,6 +390,7 @@ class ClipboardStore: ObservableObject {
         do {
             savedItems = try backend.load()
         } catch {
+            quarantineCorruptBlob(key: Self.itemsStorageKey, error: error)
             items = []
             return
         }
@@ -617,6 +640,7 @@ class ClipboardStore: ObservableObject {
             let loaded = decryptTagNames(try tagBackend.loadTags())
             tags = Dictionary(loaded.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         } catch {
+            quarantineCorruptBlob(key: Self.tagStorageKey, error: error)
             logger.error("Failed to load tags: \(error.localizedDescription)")
             // M-9 (2026-07-24 audit): the previous path was silent beyond
             // an os_log entry — the user saw an empty tag sidebar with no
@@ -1040,6 +1064,7 @@ class ClipboardStore: ObservableObject {
         do {
             trashedItems = try trashBackend.load()
         } catch {
+            quarantineCorruptBlob(key: Self.trashedItemsStorageKey, error: error)
             logger.error("Failed to load trashed items: \(error.localizedDescription)")
             trashedItems = []
         }

@@ -203,15 +203,31 @@ struct ItemListView: View {
     /// M-11 binding helper: Bool binding that toggles `activeAlert` on/off.
     /// When the user dismisses the alert (sets the binding to `false`),
     /// we reset all four source @Bindings so a stale state can't re-show.
+    /// Reset only `itemToDelete` when the active kind was `.deleteSingle`,
+    /// otherwise we leak the deleted-item reference into the next session
+    /// of the view. (M-11 post-audit fix: previous reset-all path silently
+    /// kept `itemToDelete` pinned.)
     private var activeAlertBool: Binding<Bool> {
         Binding(
             get: { activeAlert != nil },
             set: { newValue in
                 guard !newValue else { return }
-                showingDeleteAlert = false
-                pendingTypeClear = nil
-                pendingClearMode = nil
-                showingEmptyTrashAlert = false
+                // Only reset `itemToDelete` when that was the active alert;
+                // resetting it unconditionally would clobber a pending
+                // delete the user just opened from a different source.
+                switch activeAlert {
+                case .deleteSingle:
+                    itemToDelete = nil
+                    showingDeleteAlert = false
+                case .clearType:
+                    pendingTypeClear = nil
+                case .clearMode:
+                    pendingClearMode = nil
+                case .emptyTrash:
+                    showingEmptyTrashAlert = false
+                case .none:
+                    break
+                }
             }
         )
     }

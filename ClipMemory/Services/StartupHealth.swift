@@ -104,17 +104,16 @@ enum StartupHealth {
             .count) ?? 0
     }
 
-    /// Build a snapshot, log it once, and persist `Date()` as the new
-    /// `lastLaunchTime` so the *next* launch can report "previous launch was
-    /// N seconds ago". Order matters: snapshot reads existing `lastLaunchTime`
-    /// BEFORE the write — otherwise every log would claim lastLaunch = now.
-    ///
-    /// M-21 (2026-07-24 audit): image count is dispatched to a utility queue
-    /// via `imageCount`. Two log lines emitted: the first carries
-    /// `imagesCount=pending`; the second carries the resolved count once
-    /// `contentsOfDirectory` returns. Both are still synchronous from the
-    /// caller's perspective — `logSnapshot` returns as soon as the dispatch
-    /// is queued, so AppDelegate's main thread is not blocked.
+    /// Emit the startup-health log line(s) without ever calling
+    /// `snapshot(...)` from the main thread. Post-audit scan caught that
+    /// `snapshot` itself calls `imageCountSync` (which calls
+    /// `contentsOfDirectory` synchronously) — so the previous
+    /// `logSnapshot` re-introduced the very main-thread block the M-21
+    /// audit fix tried to remove. This version builds a partial Snapshot
+    /// inline (imagesCount = 0) for the first log line, kicks off the
+    /// async image count, and emits a corrected second line when the
+    /// dispatch returns. AppDelegate no longer blocks on image-dir
+    /// enumeration at launch.
     static func logSnapshot(
         counts: Counts = .zero,
         keyStore: any KeyStoring = KeychainKeyStore(),
@@ -123,40 +122,34 @@ enum StartupHealth {
         defaults: UserDefaults = .standard
     ) {
         let dir = imagesDirectory ?? ImageStorage.shared.imagesDirectoryURL
-        var snap = snapshot(
-            counts: counts,
-            keyStore: keyStore,
-            imagesDirectory: imagesDirectory,
-            fileManager: fileManager,
-            defaults: defaults
-        )
-        // First log: imagesCount=0 placeholder (real value lands via callback).
-        // Marking the place explicitly so a log reader knows why the count is
-        // off — the second line replaces it within ~1 ms for typical sizes.
-        let pending = Snapshot(
-            version: snap.version,
-            macosVersion: snap.macosVersion,
-            keychainKeyExists: snap.keychainKeyExists,
-            itemsCount: snap.itemsCount,
-            trashedCount: snap.trashedCount,
-            tagsCount: snap.tagsCount,
+        // First log line: all fields except imagesCount, which lands async.
+        // `lastLaunchTime` read BEFORE the write so the next launch's log
+        // shows this launch correctly as "previous launch was N seconds ago".
+        let lastLaunch = defaults.object(forKey: lastLaunchKey) as? Date
+        let partial = Snapshot(
+            version: AppVersion.current,
+            macosVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            keychainKeyExists: keyStore.load() != nil,
+            itemsCount: counts.items,
+            trashedCount: counts.trashed,
+            tagsCount: counts.tags,
             imagesCount: 0,
-            lastLaunchTime: snap.lastLaunchTime
+            lastLaunchTime: lastLaunch
         )
-        logger.info("\(pending.description, privacy: .public) imagesCount=pending")
+        logger.info("\(partial.description, privacy: .public) imagesCount=pending")
         defaults.set(Date(), forKey: lastLaunchKey)
         imageCount(directory: dir, fileManager: fileManager) { count in
-            snap = Snapshot(
-                version: snap.version,
-                macosVersion: snap.macosVersion,
-                keychainKeyExists: snap.keychainKeyExists,
-                itemsCount: snap.itemsCount,
-                trashedCount: snap.trashedCount,
-                tagsCount: snap.tagsCount,
+            let resolved = Snapshot(
+                version: partial.version,
+                macosVersion: partial.macosVersion,
+                keychainKeyExists: partial.keychainKeyExists,
+                itemsCount: partial.itemsCount,
+                trashedCount: partial.trashedCount,
+                tagsCount: partial.tagsCount,
                 imagesCount: count,
-                lastLaunchTime: snap.lastLaunchTime
+                lastLaunchTime: partial.lastLaunchTime
             )
-            logger.info("\(snap.description, privacy: .public)")
+            logger.info("\(resolved.description, privacy: .public)")
         }
     }
 

@@ -309,19 +309,19 @@ class ImageStorage {
     private let statusQueue = DispatchQueue(label: "com.clipmemory.imageStorage.status", qos: .userInitiated)
 
     func loadImage(filename: String) -> Data? {
-        // M-5 (2026-07-24 audit): the inner `migrationQueue.sync` (legacy
-        // image migration) can block the caller for hundreds of ms when
-        // cold-loading many legacy PNGs. UI callers must use
-        // `imageStatusAsync` instead. Today the only production caller is
-        // the OCR backfill pipeline (ClipboardStore+OCR.swift), which runs
-        // on a detached task — but a future main-thread caller would freeze
-        // the app for the duration of every cold image. Surface the contract
-        // loudly so the next caller picks the async path on purpose.
-        // XCTest owns its main thread for free, so tests are exempt.
-        precondition(
-            !Thread.isMainThread || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil,
-            "loadImage blocks the caller for legacy migrations; use imageStatusAsync on the main thread"
-        )
+        // M-5 (2026-07-24 audit) was a `precondition(!Thread.isMainThread)`
+        // that surfaced a contract: loadImage blocks for legacy migration
+        // and main-thread callers should use imageStatusAsync. Post-audit
+        // scan caught a real second caller — ClipboardStore.copyToClipboard
+        // (called from main-thread UI handlers in ContentView /
+        // ItemListView / QuickBarView) — that ignores the contract and
+        // would crash the app on a cold-cache image. The condition was
+        // right about the performance cost but wrong about the API
+        // surface — main-thread callers are not optional, they are the
+        // actual production call site. Removed the precondition; new
+        // main-thread callers that want non-blocking should wrap in
+        // `Task.detached` + `imageStatusAsync` themselves. Future cleanup
+        // opportunity: make `loadImage` itself `async`.
         guard case .available(let data) = imageStatus(for: filename) else {
             return nil
         }

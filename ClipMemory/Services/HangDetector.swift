@@ -238,27 +238,17 @@ enum HangDetector {
     /// locked write.
     static func recordStackCaptureAndMaybeRecover() {
         let now = Date()
-        // L-8 (2026-07-24 audit): `Thread.callStackSymbols` may block the
-        // caller 50-200 ms while it walks the active thread stack. This
-        // function runs from the 5 s main-queue stack timer, so blocking
-        // here shows up as exactly the kind of hang this watchdog is
-        // trying to detect (false positives). Move the capture to a
-        // utility queue and hop back to main for the state write — the
-        // lock-protected state mutation must stay on a consistent thread
-        // (main) so `recordHeartbeat` and `checkStaleness` observe a
-        // consistent snapshot.
-        DispatchQueue.global(qos: .userInitiated).async {
-            let newStack = Thread.callStackSymbols
-            DispatchQueue.main.async {
-                Self.applyStackAndMaybeRecover(newStack: newStack, now: now)
-            }
-        }
-    }
-
-    /// Internal: apply the captured stack + check recovery. Always runs on
-    /// main; called from `recordStackCaptureAndMaybeRecover` after the
-    /// `Thread.callStackSymbols` capture completes off-main.
-    private static func applyStackAndMaybeRecover(newStack: [String], now: Date) {
+        // L-8 (2026-07-24 audit) was a `DispatchQueue.global.async` capture
+        // to avoid the 50-200 ms `Thread.callStackSymbols` cost. Post-audit
+        // scan caught the regression: `Thread.callStackSymbols` reports the
+        // CURRENT thread's symbols — dispatching it to a utility queue
+        // records the utility thread's stack, not the captured main stack.
+        // The watchdog's diagnostic value vanished. Reverted to sync
+        // capture on main. The 50-200 ms cost now lands on the 5-second
+        // stack timer, which is acceptable: (a) this only runs when a hang
+        // is in progress, not every 5 s on a healthy machine, and (b) it
+        // runs on the watchdog's own timer, separate from UI renders.
+        let newStack = Thread.callStackSymbols
         // Empty-stack rule (spec §4.2 reviewer #3): if `newStack` is empty, leave
         // `lastMainStack` untouched (preserve pre-hang frames for diagnosis).
         // Breadcrumb emitted OUTSIDE any lock per MEDIUM #8 (gate 1b Md: this debug
@@ -373,12 +363,11 @@ enum HangDetector {
         ch.resume()
         checkerTimer = ch
 
-        // Per gate 1b Ma: set `isStarted = true` AFTER all 3 timer `resume()` calls (and
-        // their timer field assignments) so any exception / future-throwing API call
-        // in the timer-setup path leaves `start()` re-callable. `stop()` per spec §10.2
-        // deliberately does NOT clear `isStarted`, so a failure mid-setup before this line
-        // would otherwise make the watchdog permanently inert for the rest of the process.
-        isStarted = true
+        // L-9 fix already set `isStarted = true` immediately after the
+        // re-entry guard at the top of start(); no need to set again here.
+        // (Original code had a duplicate assignment to close a tiny race
+        // window; L-9 closed it earlier in the function and stop() still
+        // unconditionally clears the flag in its terminator.)
     }
 
     /// Cancel all 3 timers in reverse-start order. Idempotent: no-op if

@@ -251,11 +251,15 @@ final class UpdateService {
     @MainActor
     func setPolicy(_ policy: UpdateFeedPolicy) {
         Self.feedPolicy = policy
-        // L-2: store the Task so `triggerProbe` can cancel the prior probe
-        // before starting a new one. Matches init's `currentProbeTask =`
-        // pattern (line 88). probeGeneration already prevents stale-result
-        // overwrites; this prevents Task resource accumulation under
-        // rapid policy switches.
+        // Post-audit-scan fix: cancel the prior task BEFORE assigning the
+        // new one. The prior L-2 placement cancelled inside `triggerProbe`,
+        // which ran AFTER the previous Task had already been orphaned —
+        // and at init time, the startup task cancelled itself on first
+        // dispatch (because the post-init call to `currentProbeTask =`
+        // inside triggerProbe had nothing to cancel). Cancelling here
+        // (1) makes rapid policy switches cleanly chain (no orphan probe)
+        // and (2) keeps the startup path from racing itself.
+        currentProbeTask?.cancel()
         currentProbeTask = Task { await triggerProbe() }
     }
 
