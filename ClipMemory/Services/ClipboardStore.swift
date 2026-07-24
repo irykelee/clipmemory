@@ -1365,7 +1365,19 @@ class ClipboardStore: ObservableObject {
 
         switch item.type {
         case .image:
-            preparedImage = ImageStorage.shared.loadImageObject(filename: item.content)
+            // M-5 (2026-07-24 audit): `loadImageObject` runs legacy-migration
+            // disk I/O inside `migrationQueue.sync` — on a cold image that
+            // blocked the main thread (this handler runs from UI actions in
+            // ContentView / ItemListView / QuickBarView). Warm cache (the
+            // common case — the row already rendered the thumbnail) copies
+            // synchronously; a cold image loads via `imageStatusAsync` on the
+            // status queue and finishes the pasteboard write on main.
+            if let cached = ImageStorage.shared.cachedImageObject(filename: item.content) {
+                preparedImage = cached
+            } else {
+                copyColdImageToClipboard(item)
+                return
+            }
         case .richText:
             if let base64 = getDecryptedContent(item), let data = Data(base64Encoded: base64) {
                 preparedRtfData = data
@@ -1407,6 +1419,28 @@ class ClipboardStore: ObservableObject {
         }
 
         moveToTop(item)
+    }
+
+    /// M-5 (2026-07-24 audit): cold-image copy path. Loads via
+    /// `imageStatusAsync` (status queue) so legacy-migration disk I/O never
+    /// touches the main thread, then finishes the copy on main. Ordering
+    /// contracts are preserved: `recordOwnWrite()` still runs BEFORE
+    /// `clearContents()` (M-4) and `moveToTop` still mutates `@Published`
+    /// items on the main thread.
+    private func copyColdImageToClipboard(_ item: ClipboardItem) {
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let status = await ImageStorage.shared.imageStatusAsync(for: item.content)
+            guard case .available(let data) = status,
+                  let image = NSImage(data: data) else { return }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.clipboardMonitor?.recordOwnWrite()
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.writeObjects([image])
+                self.moveToTop(item)
+            }
+        }
     }
 
     // Injected by AppDelegate so copyToClipboard can break the re-capture loop

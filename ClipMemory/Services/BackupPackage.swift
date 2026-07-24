@@ -239,6 +239,11 @@ final class BackupPackage {
     /// Runs `/usr/bin/ditto` with the given args and blocks the caller until
     /// completion or the 30 s safety-net timeout. See L-14 below for the
     /// timeout / SIGKILL policy.
+    /// M-6 (2026-07-24 audit): the block is a `DispatchSemaphore.wait`, so
+    /// callers MUST already be on a background thread. Both production call
+    /// sites (`ContentView.exportBackup` / `importBackup`) dispatch to a
+    /// `.userInitiated` global queue first — keep that contract if a new
+    /// caller is added.
     private static func runDitto(args: [String]) throws {
         // 30s safety net (LOW, 2026-07-20 audit): without a timeout a stuck
         // `ditto` (broken pipe, SMB stall, sandbox entitlement missing on a

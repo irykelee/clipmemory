@@ -375,19 +375,13 @@ class ImageStorage {
     private let statusQueue = DispatchQueue(label: "com.clipmemory.imageStorage.status", qos: .userInitiated)
 
     func loadImage(filename: String) -> Data? {
-        // M-5 (2026-07-24 audit) was a `precondition(!Thread.isMainThread)`
-        // that surfaced a contract: loadImage blocks for legacy migration
-        // and main-thread callers should use imageStatusAsync. Post-audit
-        // scan caught a real second caller — ClipboardStore.copyToClipboard
-        // (called from main-thread UI handlers in ContentView /
-        // ItemListView / QuickBarView) — that ignores the contract and
-        // would crash the app on a cold-cache image. The condition was
-        // right about the performance cost but wrong about the API
-        // surface — main-thread callers are not optional, they are the
-        // actual production call site. Removed the precondition; new
-        // main-thread callers that want non-blocking should wrap in
-        // `Task.detached` + `imageStatusAsync` themselves. Future cleanup
-        // opportunity: make `loadImage` itself `async`.
+        // M-5 (2026-07-24 audit): this blocks the caller on legacy-migration
+        // disk I/O (`migrationQueue.sync` inside `imageStatus`). Main-thread
+        // callers must use `imageStatusAsync` instead — the last production
+        // main-thread caller (`ClipboardStore.copyToClipboard`) now hops to
+        // the async path on a cache miss; remaining sync callers already run
+        // on detached/background threads (ClipboardItemRow / TrashItemRow /
+        // ClipboardStore+OCR backfill).
         guard case .available(let data) = imageStatus(for: filename) else {
             return nil
         }
@@ -553,11 +547,18 @@ class ImageStorage {
         return Data(decryptedBytes.prefix(numBytesDecrypted))
     }
 
+    /// Cache-only variant of `loadImageObject` — returns nil on a cache miss
+    /// without touching disk. `ClipboardStore.copyToClipboard` uses it to
+    /// stay synchronous for warm images (M-5, 2026-07-24 audit).
+    func cachedImageObject(filename: String) -> NSImage? {
+        guard isValidFilename(filename) else { return nil }
+        return imageCache.object(forKey: filename as NSString)
+    }
+
     /// Loads image as NSImage, checking memory cache first for fast repeated access.
     func loadImageObject(filename: String) -> NSImage? {
-        guard isValidFilename(filename) else { return nil }
         // Check memory cache first
-        if let cached = imageCache.object(forKey: filename as NSString) {
+        if let cached = cachedImageObject(filename: filename) {
             return cached
         }
         // Load from disk and cache
