@@ -1056,9 +1056,14 @@ class ClipboardStore: ObservableObject {
 
     /// Move a single item to the recycle bin. The item is removed from the
     /// active list but its image file is kept until permanent deletion.
+    ///
+    /// L-6 (2026-07-24 audit): cache eviction drops both the decrypted-content
+    /// entry and the RTF plaintext entry so a later `restoreFromTrash` cannot
+    /// accidentally serve stale plaintext from before encryption or format
+    /// changes, and so the bin doesn't pin memory for items that may sit here
+    /// for weeks (NSCache would otherwise hold them under `cost` accounting).
     func moveToTrash(_ item: ClipboardItem) {
-        contentCache.removeObject(forKey: item.id.uuidString as NSString)
-        rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
+        evictCaches(for: item)
         var trashed = item
         trashed.deletedAt = Date()
         trashedItems.insert(trashed, at: 0)
@@ -1069,12 +1074,18 @@ class ClipboardStore: ObservableObject {
     }
 
     /// Move multiple items to the recycle bin.
+    ///
+    /// L-5 (2026-07-24 audit): capture one `Date()` and reuse it for every
+    /// item in the batch — the previous per-iteration `Date()` produced
+    /// independent instants for items trashed in the same logical operation
+    /// (visible in `deletedAt` ordering and in `purgeExpiredTrash` boundary
+    /// behavior). Also see L-6 above for cache eviction rationale.
     func moveToTrash(_ itemsToMove: [ClipboardItem]) {
+        let now = Date()
         for item in itemsToMove {
-            contentCache.removeObject(forKey: item.id.uuidString as NSString)
-            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
+            evictCaches(for: item)
             var trashed = item
-            trashed.deletedAt = Date()
+            trashed.deletedAt = now
             trashedItems.insert(trashed, at: 0)
         }
         let idsToMove = Set(itemsToMove.map { $0.id })
@@ -1082,6 +1093,12 @@ class ClipboardStore: ObservableObject {
         updatePinnedItems()
         scheduleSave()
         scheduleTrashSave()
+    }
+
+    /// Drops both per-item plaintext caches; see `moveToTrash` (L-6).
+    private func evictCaches(for item: ClipboardItem) {
+        contentCache.removeObject(forKey: item.id.uuidString as NSString)
+        rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
     }
 
     /// Restore an item from the recycle bin to the top of the active list.

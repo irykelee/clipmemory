@@ -50,6 +50,15 @@ final class BackupService {
     /// failure scenario).
     static let incompleteMarkerName = ".incomplete"
 
+    /// L-13 (2026-07-24 audit): single source of truth for the backup
+    /// directory timestamp format. Used by `performBackupUnlocked` to format
+    /// the new dir name and by `isBackupDirName` to recognize its own prior
+    /// timestamps. `yyyy-MM-dd_HHmmss.SSS` is 21 chars — bumping to
+    /// millisecond precision (BUG-021, 2026-07-21) raised it from 17 chars;
+    /// the previous second-precision stamp produced name collisions on rapid
+    /// "Backup Now" clicks.
+    private static let backupDirTimestampFormat = "yyyy-MM-dd_HHmmss.SSS"
+
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "BackupService")
     private let fileManager = FileManager.default
     private let defaults: UserDefaults
@@ -142,7 +151,10 @@ final class BackupService {
         // same directory name and `copyItem` would fail because the
         // destination already exists. Append `.SSS` for millisecond
         // precision — still human-sortable, still unique within a year.
-        formatter.dateFormat = "yyyy-MM-dd_HHmmss.SSS"
+        // L-13 (2026-07-24 audit): the format literal now lives in
+        // `backupDirTimestampFormat` so the formatter and the dir-name
+        // recognizer (`isBackupDirName`) share one source of truth.
+        formatter.dateFormat = Self.backupDirTimestampFormat
         let destination = backupsDirectory.appendingPathComponent(formatter.string(from: Date()), isDirectory: true)
 
         do {
@@ -231,21 +243,48 @@ final class BackupService {
     /// (otherwise a partial dir is kept while a recent valid backup is
     /// pruned, the audit's failure scenario).
     func pruneOldBackups() {
-        guard let entries = try? fileManager.contentsOfDirectory(atPath: backupsDirectory.path) else { return }
+        // L-12 (2026-07-24 audit): every `try?` here was silently coerced to
+        // a no-op return, hiding FS-level errors (permissions, disk gone,
+        // sandboxes). Surface them via logger.error so an operator can
+        // diagnose "Backups/ grows unboundedly" instead of guessing.
+        //
+        // Capture `backupsDirectory.path` outside the `do/catch` so the
+        // catch closures don't implicitly capture `self.backupsDirectory`.
+        // Swift 6 strict concurrency flags the implicit capture in the
+        // interpolation even when the property is `let`; hoisting the
+        // String sidesteps the diagnostic without a `self.` qualifier.
+        let backupsPath = backupsDirectory.path
+        let entries: [String]
+        do {
+            entries = try fileManager.contentsOfDirectory(atPath: backupsPath)
+        } catch {
+            logger.error("pruneOldBackups: failed to list \(backupsPath): \(error.localizedDescription)")
+            return
+        }
         // Only prune our own timestamped backup dirs — stray files (.DS_Store,
         // anything the user placed here) are left alone.
         let backupNames = entries.filter(Self.isBackupDirName)
         pruneIncompleteBackups(among: backupNames)
         // Re-read the surviving names after the incomplete sweep so
         // count-based prune uses the right set.
-        guard let surviving = try? fileManager.contentsOfDirectory(atPath: backupsDirectory.path) else { return }
+        let surviving: [String]
+        do {
+            surviving = try fileManager.contentsOfDirectory(atPath: backupsPath)
+        } catch {
+            logger.error("pruneOldBackups: failed to re-list \(backupsPath) after incomplete sweep: \(error.localizedDescription)")
+            return
+        }
         let validNames = surviving.filter(Self.isBackupDirName)
         // Timestamped names sort chronologically as plain strings.
         let sorted = validNames.sorted()
         let excess = sorted.count - keepCount
         guard excess > 0 else { return }
         for name in sorted.prefix(excess) {
-            try? fileManager.removeItem(at: backupsDirectory.appendingPathComponent(name))
+            do {
+                try fileManager.removeItem(at: backupsDirectory.appendingPathComponent(name))
+            } catch {
+                logger.error("pruneOldBackups: failed to remove \(name): \(error.localizedDescription)")
+            }
         }
         logger.info("Pruned \(excess) old backup(s), keeping \(self.keepCount)")
     }
@@ -255,16 +294,29 @@ final class BackupService {
     /// from `pruneOldBackups` before the count-based logic runs.
     private func pruneIncompleteBackups(among backupNames: [String]) {
         var removed = 0
+        var failures = 0
         for name in backupNames {
             let dir = backupsDirectory.appendingPathComponent(name)
             let markerURL = dir.appendingPathComponent(Self.incompleteMarkerName)
             if fileManager.fileExists(atPath: markerURL.path) {
-                try? fileManager.removeItem(at: dir)
-                removed += 1
+                do {
+                    try fileManager.removeItem(at: dir)
+                    removed += 1
+                } catch {
+                    // L-12 (2026-07-24 audit): previously `try?` here too —
+                    // an FS failure on the incomplete sweep left the half-
+                    // written dir on disk, the very thing the sweep exists
+                    // to clean up. Log + skip, continue with the rest.
+                    failures += 1
+                    logger.error("pruneIncompleteBackups: failed to remove \(dir.path): \(error.localizedDescription)")
+                }
             }
         }
         if removed > 0 {
             logger.info("H-6: pruned \(removed) incomplete backup(s) (crash leftovers)")
+        }
+        if failures > 0 {
+            logger.error("H-6: \(failures) incomplete backup(s) could not be removed")
         }
     }
 
@@ -275,6 +327,12 @@ final class BackupService {
     /// `pruneOldBackups` matched 0 production dirs and the `Backups/` tree
     /// grew unboundedly. Cross-check the two sites together when changing
     /// either.
+    ///
+    /// L-13 (2026-07-24 audit): both the format literal and the char-position
+    /// validation now derive from `backupDirTimestampFormat`; the length `21`
+    /// is still a magic literal here because `Character.count` matches the
+    /// visible char count of the format string — keep both in sync if either
+    /// changes.
     private static func isBackupDirName(_ name: String) -> Bool {
         let chars = Array(name)
         guard chars.count == 21 else { return false }
