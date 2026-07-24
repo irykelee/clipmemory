@@ -16,6 +16,13 @@ extension Notification.Name {
     static let encryptionFailed = Notification.Name("ClipboardStore.encryptionFailed")
     static let showSettingsTab = Notification.Name("ClipMemory.showSettingsTab")
     static let cmdFFindAction = Notification.Name("ClipMemory.cmdFFindAction")
+    /// M-9 (2026-07-24 audit): tag backend decode / write failed. Posted
+    /// from `ClipboardStore.loadTags()` / `saveTags()` after the logger
+    /// line so observers (Settings diagnostics, future status banner) can
+    /// surface the failure to the user. Carries no payload — the next
+    /// `loadTags()` / `saveTags()` attempt may succeed and overwrite the
+    /// signal; consumers should debounce.
+    static let tagBackendCorrupted = Notification.Name("ClipboardStore.tagBackendCorrupted")
 }
 
 extension ClipboardStore: ClipboardMonitorDelegate {
@@ -611,6 +618,12 @@ class ClipboardStore: ObservableObject {
             tags = Dictionary(loaded.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         } catch {
             logger.error("Failed to load tags: \(error.localizedDescription)")
+            // M-9 (2026-07-24 audit): the previous path was silent beyond
+            // an os_log entry — the user saw an empty tag sidebar with no
+            // explanation. Surface the failure via .tagBackendCorrupted so
+            // Settings diagnostics can render a banner / a future observer
+            // can offer a "retry + restore from backup" affordance.
+            NotificationCenter.default.post(name: .tagBackendCorrupted, object: nil)
             tags = [:]
         }
     }
