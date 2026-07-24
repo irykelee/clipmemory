@@ -375,10 +375,15 @@ jobs:
             exit 1
           fi
           echo "Pushing appcast commit for ${GITHUB_REF_NAME} -> origin/${SOURCE_BRANCH}"
-          # Push with the owner's PAT (admin bypass) via extraheader — the
-          # checkout's GITHUB_TOKEN credential is per-command overridden
-          # without writing the PAT into the remote URL (REL-10).
+          # Push with the owner's PAT (admin bypass) via extraheader — never
+          # in the remote URL (REL-10). actions/checkout already wrote its
+          # GITHUB_TOKEN extraheader into the local git config; extraheader
+          # is multi-valued, so ADDING ours too sends two Authorization
+          # headers and GitHub rejects the request with 400 "Duplicate
+          # header" (first seen on v2.5.12). Unset the checkout's header
+          # first so ours is the only one.
           AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${TAP_GITHUB_TOKEN}" | base64)"
+          git config --unset-all http.https://github.com/.extraheader || true
           git -c "http.https://github.com/.extraheader=${AUTH_HEADER}" \
               push --force-with-lease origin "HEAD:refs/heads/${SOURCE_BRANCH}"
 
