@@ -90,28 +90,24 @@ verify_package() {
         return $fails
     fi
 
-    # 4. Cask sha256 + version match tarball / expected (reference-only Cask —
-    # the live one in the tap repo is updated by the Release workflow per P0-4,
-    # but this catches a drifted local template before the workflow runs).
+    # 4. Local Cask is reference-only (per P0-4: the live Cask in the tap
+    # repo is updated by the Release workflow, not by package.sh). The local
+    # copy exists for human reference and preflight syntax checks only — its
+    # sha256 is intentionally stale by design (tar -czvf embeds gzip mtime
+    # so the tarball sha differs every run, and we cannot pre-fill a sha for
+    # a tarball that does not exist yet). The previous sha256/version
+    # equality gate was unsatisfiable in CI — every tag push would have hung
+    # on this check. Check existence + ruby syntax instead, aligned with
+    # preflight.sh:38-46 + pre_push_verify.sh:112-128.
     if [[ -f "$cask_path" ]]; then
-        local tarball_sha cask_sha
-        tarball_sha=$(shasum -a 256 "$tarball_path" | awk '{print $1}')
-        cask_sha=$(awk -F'"' '/sha256 "[^"]+"/ {print $2; exit}' "$cask_path")
-        if [[ -z "$cask_sha" ]]; then
-            fail "Cask ${cask_path} has no sha256 stanza — re-run update_cask_sha"
-        elif [[ "$tarball_sha" != "$cask_sha" ]]; then
-            fail "Cask sha256 ($cask_sha) != tarball sha256 ($tarball_sha) — Cask is stale"
+        if ruby -c "$cask_path" >/dev/null 2>&1; then
+            ok "Local Cask present and syntactically valid (reference-only)"
         else
-            ok "Cask sha256 matches tarball ($tarball_sha)"
-        fi
-        local cask_version
-        cask_version=$(awk -F'"' '/^[[:space:]]*version "[^"]+"/ {print $2; exit}' "$cask_path")
-        if [[ "$cask_version" == "$expected_version" ]]; then
-            ok "Cask version matches expected ($cask_version)"
-        else
-            fail "Cask version ($cask_version) != expected ($expected_version) — Cask is stale"
+            fail "Local Cask ${cask_path} has Ruby syntax errors — fix before next release"
         fi
     else
+        # Missing local Cask is not fatal — it is reference-only. Warn so a
+        # future branch removal doesn't go unnoticed.
         echo "  ⚠ Cask ${cask_path} not found (reference-only — live Cask lives in tap repo)"
     fi
 
