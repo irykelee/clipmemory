@@ -96,15 +96,28 @@ enum TagSuggestion {
 
     // MARK: - Language detection
 
+    /// M-19 (2026-07-24 audit): NLTagger loads the language model on first
+    /// construction (~10–30 ms). Reuse a static instance per scheme instead
+    /// of rebuilding on every detect. The `string` property is `var`; we
+    /// rely on callers (TagPickerSheet.loadSuggestions, called on the
+    /// SwiftUI main thread) running serially to avoid a data race on the
+    /// assignment. If a future caller crosses threads, switch to a pool
+    /// or a synchronized wrapper.
+    private static let languageTagger: NLTagger = {
+        NLTagger(tagSchemes: [.language])
+    }()
+    private static let namesTagger: NLTagger = {
+        NLTagger(tagSchemes: [.nameType])
+    }()
+
     /// Detect the dominant language of `s`. Uses NLTagger when it returns a
     /// usable language code; falls back to the legacy `containsCJK` /
     /// `containsLatinWord` heuristics when NLTagger returns nil (which has
     /// historically been observed for short CJK snippets on macOS 13).
     private static func detectLanguage(_ s: String) -> LanguageFacet {
         guard !s.isEmpty else { return .other }
-        let tagger = NLTagger(tagSchemes: [.language])
-        tagger.string = s
-        if let lang = tagger.dominantLanguage {
+        languageTagger.string = s
+        if let lang = languageTagger.dominantLanguage {
             return LanguageFacet.from(rawCode: lang.rawValue)
         }
         // Fallback: detect any CJK ideograph (covers simplified + traditional
@@ -136,12 +149,11 @@ enum TagSuggestion {
     /// present them as a "Suggested names" section behind an opt-in toggle.
     private static func detectNames(_ s: String) -> [String] {
         guard !s.isEmpty else { return [] }
-        let tagger = NLTagger(tagSchemes: [.nameType])
-        tagger.string = s
+        namesTagger.string = s
         var seen = Set<String>()
         var ordered: [String] = []
         let range = s.startIndex..<s.endIndex
-        tagger.enumerateTags(in: range, unit: .word, scheme: .nameType) { tag, tokenRange in
+        namesTagger.enumerateTags(in: range, unit: .word, scheme: .nameType) { tag, tokenRange in
             guard tag != nil, !tokenRange.isEmpty else { return true }
             // Skip single-character "names" — they're usually false positives
             // (initials, lone Latin letters) from the NER model on short snippets.
