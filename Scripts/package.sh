@@ -36,6 +36,95 @@ update_cask_sha() {
     echo "Updated Cask ${cask_path}: version=${new_version}, sha256=${new_sha}"
 }
 
+# D4 (2026-07-23 ship-review): post-package self-check. Catches the v2.5.11
+# class of "package succeeded but tarball / Cask / Info.plist are inconsistent"
+# regressions before they reach the release workflow. Pure function so it
+# can be sourced and exercised from tests.
+# Args:
+#   $1 — absolute path to the .app bundle inside /tmp
+#   $2 — absolute path to the tarball in Releases/
+#   $3 — absolute path to the reference Casks/clipmemory.rb
+#   $4 — expected version string (MARKETING_VERSION)
+# Returns: 0 on all checks pass; non-zero with diagnostic output otherwise.
+verify_package() {
+    local app_path="$1"
+    local tarball_path="$2"
+    local cask_path="$3"
+    local expected_version="$4"
+    local fails=0
+
+    fail() { echo "  ✗ $*"; fails=$((fails + 1)); }
+    ok()   { echo "  ✓ $*"; }
+
+    echo "=== Self-check ==="
+
+    # 1. .app bundle exists.
+    if [[ -d "$app_path" ]]; then
+        ok ".app bundle exists at ${app_path}"
+    else
+        fail ".app bundle missing at ${app_path}"
+        return $fails
+    fi
+
+    # 2. Info.plist CFBundleShortVersionString matches expected.
+    local info_plist="${app_path}/Contents/Info.plist"
+    if [[ -f "$info_plist" ]]; then
+        local bundle_version
+        bundle_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$info_plist" 2>/dev/null || echo "")
+        if [[ "$bundle_version" == "$expected_version" ]]; then
+            ok "Info.plist CFBundleShortVersionString matches ($bundle_version)"
+        else
+            fail "Info.plist CFBundleShortVersionString ($bundle_version) != expected ($expected_version)"
+        fi
+    else
+        fail "Info.plist missing at ${info_plist}"
+    fi
+
+    # 3. Tarball exists and is non-empty.
+    if [[ -s "$tarball_path" ]]; then
+        local tarball_size
+        tarball_size=$(stat -f%z "$tarball_path" 2>/dev/null || stat -c%s "$tarball_path")
+        ok "tarball exists (size=${tarball_size} bytes)"
+    else
+        fail "tarball missing or empty at ${tarball_path}"
+        return $fails
+    fi
+
+    # 4. Cask sha256 + version match tarball / expected (reference-only Cask —
+    # the live one in the tap repo is updated by the Release workflow per P0-4,
+    # but this catches a drifted local template before the workflow runs).
+    if [[ -f "$cask_path" ]]; then
+        local tarball_sha cask_sha
+        tarball_sha=$(shasum -a 256 "$tarball_path" | awk '{print $1}')
+        cask_sha=$(awk -F'"' '/sha256 "[^"]+"/ {print $2; exit}' "$cask_path")
+        if [[ -z "$cask_sha" ]]; then
+            fail "Cask ${cask_path} has no sha256 stanza — re-run update_cask_sha"
+        elif [[ "$tarball_sha" != "$cask_sha" ]]; then
+            fail "Cask sha256 ($cask_sha) != tarball sha256 ($tarball_sha) — Cask is stale"
+        else
+            ok "Cask sha256 matches tarball ($tarball_sha)"
+        fi
+        local cask_version
+        cask_version=$(awk -F'"' '/^[[:space:]]*version "[^"]+"/ {print $2; exit}' "$cask_path")
+        if [[ "$cask_version" == "$expected_version" ]]; then
+            ok "Cask version matches expected ($cask_version)"
+        else
+            fail "Cask version ($cask_version) != expected ($expected_version) — Cask is stale"
+        fi
+    else
+        echo "  ⚠ Cask ${cask_path} not found (reference-only — live Cask lives in tap repo)"
+    fi
+
+    if [[ $fails -gt 0 ]]; then
+        echo ""
+        echo "❌ ${fails} self-check failure(s). Do NOT push the tag — fix and re-run package.sh."
+        return 1
+    fi
+    echo ""
+    echo "✅ All self-check checks passed."
+    return 0
+}
+
 # --- Main body: only runs when executed, not sourced ---
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     VERSION=${1:-$(get_marketing_version)}
@@ -82,4 +171,14 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     echo "      homebrew-clipmemory tap repo and is updated by the Release workflow"
     echo "      (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md P0-4). To verify the"
     echo "      local Cask template still parses: ruby -c Casks/clipmemory.rb"
+
+    # D4 (2026-07-23 ship-review): post-package self-check. Fail the script
+    # (exit 1) if the .app / tarball / Cask / Info.plist are inconsistent.
+    # Prevents the v2.5.11 class of "package silently succeeded but the
+    # Release workflow then publishes a broken release" regressions.
+    verify_package \
+        "/tmp/${APP_NAME}.app" \
+        "${OUTPUT_DIR}/${APP_NAME}.tar.gz" \
+        "${PROJECT_DIR}/Casks/clipmemory.rb" \
+        "${VERSION}" || exit 1
 fi
