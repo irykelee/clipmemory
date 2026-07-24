@@ -244,9 +244,12 @@ struct ContentView: View {
 
     private func debounceSearch(_ text: String) {
         searchTextDebounce?.cancel()
-        let work = DispatchWorkItem { [self] in
-            self.searchTextDebounced = text
-        }
+        // H-11 (2026-07-24 audit): match QuickBarView's implicit-self
+        // `DispatchWorkItem { var = value }` form — the prior `{ [self] in
+        // self.x = y }` was functionally identical but read as if self
+        // capture was doing something unusual, inviting future readers to
+        // second-guess the [self] capture semantics.
+        let work = DispatchWorkItem { searchTextDebounced = text }
         searchTextDebounce = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
