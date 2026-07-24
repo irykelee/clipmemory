@@ -15,6 +15,21 @@ protocol StorageBackend {
 
     /// Saves the full list of tags. Default impl no-ops; mirrors `loadTags()`.
     func saveTags(_ tags: [Tag]) throws
+
+    /// Saves a pre-encoded JSON blob of the item list. CLIP-2 (2026-07-24):
+    /// lets ClipboardStore run `JSONEncoder.encode` off the calling thread and
+    /// hand only the finished `Data` back for the write, instead of the
+    /// backend encoding a full item array on the main thread. The default
+    /// implementation decodes and routes through `save(_:)` so item-array
+    /// backends (in-memory test doubles) keep their existing semantics.
+    func saveBlob(_ data: Data) throws
+}
+
+extension StorageBackend {
+    func saveBlob(_ data: Data) throws {
+        let items = try JSONDecoder().decode([ClipboardItem].self, from: data)
+        try save(items)
+    }
 }
 
 // MARK: - File Storage (UserDefaults)
@@ -38,6 +53,13 @@ final class FileStorageBackend: StorageBackend {
 
     func save(_ items: [ClipboardItem]) throws {
         let data = try JSONEncoder().encode(items)
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+
+    /// CLIP-2: persist an already-encoded blob — the write itself is a single
+    /// UserDefaults set; the expensive JSONEncoder pass happened on the
+    /// caller's encoding queue.
+    func saveBlob(_ data: Data) throws {
         UserDefaults.standard.set(data, forKey: storageKey)
     }
 

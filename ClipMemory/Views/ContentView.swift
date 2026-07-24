@@ -522,6 +522,50 @@ struct ContentView: View {
                     Text(L10n.sidebarDeleteTagConfirmMessage(tag.name, count))
                 }
             }
+            // CLIP-3 (2026-07-24 audit): this alert used to hang on `itemList`,
+            // which is NOT in the view tree while the Settings tab is active
+            // (the detail pane swaps to `settingsDetail`). Since the trigger —
+            // Settings's maxItems picker — only fires from the Settings tab,
+            // the alert could never appear and the pending reduction was left
+            // dangling. Present it here, alongside the tag-delete alert, on a
+            // view that exists for every tab.
+            .alert(L10n.alertTrimTitle, isPresented: Binding(
+                get: { pendingMaxItemsReduction != nil },
+                set: { if !$0 { pendingMaxItemsReduction = nil } }
+            )) {
+                Button(L10n.alertTrimCancel, role: .cancel) {
+                    guard let pair = pendingMaxItemsReduction else { return }
+                    Self.applyTrimCancellation(pair: pair, store: store)
+                    pendingMaxItemsReduction = nil
+                    selectedTab = .settings
+                }
+                Button(L10n.alertTrimConfirm) {
+                    guard let pair = pendingMaxItemsReduction else { return }
+                    pendingMaxItemsReduction = nil
+                    Self.applyTrimConfirmation(pair: pair, store: store)
+                }
+            } message: {
+                if let pair = pendingMaxItemsReduction {
+                    Text(L10n.alertTrimMessage(store.items.count, pair.new))
+                }
+            }
+    }
+
+    /// CLIP-3: trim-alert cancel path, extracted so the regression tests can
+    /// drive it without a SwiftUI view tree. Restores the pre-picker limit;
+    /// the history stays untouched.
+    static func applyTrimCancellation(pair: PendingMaxItemsReduction, store: ClipboardStore) {
+        store.maxItems = pair.old
+    }
+
+    /// CLIP-3: trim-alert confirm path. Applies the reduced limit, evicts
+    /// the overflow (pinned items survive — see `trimToMaxItems`), and
+    /// persists synchronously so a quit right after confirming can't lose
+    /// the trimmed state.
+    static func applyTrimConfirmation(pair: PendingMaxItemsReduction, store: ClipboardStore) {
+        store.maxItems = pair.new
+        store.trimToMaxItems()
+        store.flushPendingSaves()
     }
 
     /// Defer cache rebuilds out of the current view-update cycle. Writing
@@ -687,10 +731,6 @@ struct ContentView: View {
     /// NEW-7 Phase 4: passes the list-related @State through to ItemListView.
     /// ContentView keeps ownership so filterItems / search debouncing / day
     /// rollover stay in one place — the ViewModel collapse is Phase 5+ scope.
-    ///
-    /// The trim alert (pendingMaxItemsReduction) stays here because it was
-    /// not part of the list rendering — it's owned by Settings's maxItems
-    /// picker and only happens to be presented from the list detail pane.
     private var itemList: some View {
         ItemListView(
             store: store,
@@ -713,28 +753,6 @@ struct ContentView: View {
             showingEmptyTrashAlert: $showingEmptyTrashAlert,
             tagPickerItem: $tagPickerItem
         )
-        .alert(L10n.alertTrimTitle, isPresented: Binding(
-            get: { pendingMaxItemsReduction != nil },
-            set: { if !$0 { pendingMaxItemsReduction = nil } }
-        )) {
-            Button(L10n.alertTrimCancel, role: .cancel) {
-                guard let pair = pendingMaxItemsReduction else { return }
-                store.maxItems = pair.old
-                pendingMaxItemsReduction = nil
-                selectedTab = .settings
-            }
-            Button(L10n.alertTrimConfirm) {
-                guard let pair = pendingMaxItemsReduction else { return }
-                pendingMaxItemsReduction = nil
-                store.maxItems = pair.new
-                store.trimToMaxItems()
-                store.flushPendingSaves()
-            }
-        } message: {
-            if let pair = pendingMaxItemsReduction {
-                Text(L10n.alertTrimMessage(store.items.count, pair.new))
-            }
-        }
     }
 
     private func startRecording() {

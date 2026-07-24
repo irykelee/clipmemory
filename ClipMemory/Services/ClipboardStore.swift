@@ -464,9 +464,28 @@ class ClipboardStore: ObservableObject {
         }
     }
 
+    /// CLIP-2 (2026-07-24): serial queue for JSON-encoding the item array.
+    /// `saveItems()` used to run the full-array JSONEncoder pass on the main
+    /// thread on every clipboard ingestion (addItem → saveImmediately); with a
+    /// large history that blocked the UI per capture. The encode now runs here
+    /// at utility QoS; only the encoded Data crosses back for the write.
+    private let itemEncodingQueue = DispatchQueue(label: "com.clipmemory.itemencode", qos: .utility)
+
     func saveItems() {
+        // CLIP-2: the `.sync` hop is deliberate — saveImmediately()'s
+        // write-through contract (clipboard ingestion must be durable before
+        // addItem returns, so kill -9 / power loss after the fact can't lose
+        // it) and flushPendingSaves()' terminate-path guarantee both depend on
+        // saveItems() staying synchronous. Only the encoding CPU moves off
+        // the calling thread; the durability semantics are unchanged.
+        // Deadlock-free: saveItems() is main-thread only and nothing else
+        // dispatches to this queue.
+        let snapshot = items
         do {
-            try backend.save(items)
+            let data = try itemEncodingQueue.sync {
+                try JSONEncoder().encode(snapshot)
+            }
+            try backend.saveBlob(data)
         } catch {
             logger.error("Failed to save items: \(error.localizedDescription)")
         }

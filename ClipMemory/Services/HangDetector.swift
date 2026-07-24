@@ -7,7 +7,9 @@ import os.log
 ///
 /// Architecture (3 timers, per spec §4.1):
 /// - heartbeat (main, 1s) — refreshes `state.lastHeartbeat`
-/// - stack (main, 5s)     — captures `Thread.callStackSymbols`; checks recovery
+/// - stack (main, 5s)     — checks recovery; captures `Thread.callStackSymbols`
+///   ONLY when a hang is suspected (detection active or heartbeat stale past
+///   threshold). See INFRA-2 note on `recordStackCaptureAndMaybeRecover`.
 /// - checker (.utility, 30s) — reads `elapsed` and emits detection log when stale
 ///
 /// Mirrors `UIObservability`'s split (per spec §2): pure `formatXxx` helpers +
@@ -225,7 +227,10 @@ enum HangDetector {
     // MARK: - Mutation API: stack capture + recovery (spec §4.2 + §7)
 
     /// Captures `Thread.callStackSymbols` (this thread is the main queue per
-    /// the timer setup in `start()`, so the captured frames belong to main).
+    /// the timer setup in `start()`, so the captured frames belong to main) —
+    /// but ONLY when a hang is suspected (INFRA-2 gating, see inline note):
+    /// with a fresh heartbeat and no active detection this returns early
+    /// without walking the stack.
     /// Empty-stack rule (reviewer #3, spec §4.2): if the captured stack is
     /// empty, do NOT overwrite `lastMainStack` — preserve the previously-captured
     /// (pre-hang) frames so the diagnostic value survives.
@@ -235,19 +240,35 @@ enum HangDetector {
     /// detection (`firstDetectedAt != nil`), compute `downtime = now - firstDetectedAt`,
     /// emit `logger.info("hang.recovered downtime=...")`, and clear
     /// `lastDetectedAt` / `firstDetectedAt` / `detectionCount` in a single
-    /// locked write.
+    /// locked write. Recovery still runs under the gate: an active detection
+    /// always satisfies the capture condition.
     static func recordStackCaptureAndMaybeRecover() {
         let now = Date()
+        // INFRA-2 (2026-07-24 audit): gate the capture. The L-8 comment below
+        // claimed the 50-200 ms `Thread.callStackSymbols` cost "only runs when
+        // a hang is in progress, not every 5 s on a healthy machine" — false:
+        // the capture ran unconditionally on every 5 s tick, so the watchdog
+        // itself was a source of periodic main-thread jank. Now the stack is
+        // walked only when a hang is suspected: either the checker already
+        // flagged one (firstDetectedAt != nil) or the heartbeat is stale past
+        // the threshold (checker hasn't fired yet — capture BEFORE the first
+        // detection is exactly the frames we want for post-mortem diagnosis).
+        // When healthy there is nothing to recover (firstDetectedAt == nil
+        // implies the recovery block below is a no-op), so we return early.
+        let hangSuspected = withStateLock { s in
+            s.firstDetectedAt != nil || now.timeIntervalSince(s.lastHeartbeat) >= thresholdSeconds
+        }
+        guard hangSuspected else { return }
         // L-8 (2026-07-24 audit) was a `DispatchQueue.global.async` capture
         // to avoid the 50-200 ms `Thread.callStackSymbols` cost. Post-audit
         // scan caught the regression: `Thread.callStackSymbols` reports the
         // CURRENT thread's symbols — dispatching it to a utility queue
         // records the utility thread's stack, not the captured main stack.
         // The watchdog's diagnostic value vanished. Reverted to sync
-        // capture on main. The 50-200 ms cost now lands on the 5-second
-        // stack timer, which is acceptable: (a) this only runs when a hang
-        // is in progress, not every 5 s on a healthy machine, and (b) it
-        // runs on the watchdog's own timer, separate from UI renders.
+        // capture on main. The 50-200 ms cost is acceptable because INFRA-2
+        // (above) gates it: it only runs while a hang is suspected, not
+        // every 5 s on a healthy machine, and it runs on the watchdog's own
+        // timer, separate from UI renders.
         let newStack = Thread.callStackSymbols
         // Empty-stack rule (spec §4.2 reviewer #3): if `newStack` is empty, leave
         // `lastMainStack` untouched (preserve pre-hang frames for diagnosis).

@@ -508,10 +508,27 @@ Button(action: onDelete) {
     }
 
     /// Copies the OCR-recognized text of this image item to the pasteboard.
-    /// The app's own copy-loop interception means this won't create a new
-    /// history entry.
+    /// Goes through `writeOcrTextToPasteboard`, which tells our own
+    /// ClipboardMonitor first — so this won't create a new history entry.
     private func copyOcrText() {
         guard let text = ClipboardStore.shared.getDecryptedOcrText(liveItem), !text.isEmpty else { return }
+        Self.writeOcrTextToPasteboard(text, store: ClipboardStore.shared)
+    }
+
+    /// CLIP-2 (2026-07-24 audit): the OCR copy path wrote the pasteboard
+    /// directly without `recordOwnWrite()`, so the monitor's next poll saw
+    /// the changeCount bump and re-captured our own OCR text as a brand-new
+    /// history entry. Mirrors the M-4 ordering contract in
+    /// `ClipboardStore.copyToClipboard`: recordOwnWrite() MUST run BEFORE
+    /// clearContents() — clearContents increments changeCount immediately,
+    /// and a monitor tick landing in the window between clear and
+    /// recordOwnWrite would re-capture the write.
+    /// Static + store-injected so tests can exercise it against a
+    /// MemoryStorageBackend store without touching ClipboardStore.shared.
+    static func writeOcrTextToPasteboard(_ text: String, store: ClipboardStore) {
+        if let monitor = store.clipboardMonitor {
+            monitor.recordOwnWrite()
+        }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)

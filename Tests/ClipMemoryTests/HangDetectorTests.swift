@@ -196,9 +196,16 @@ final class HangDetectorTests: XCTestCase {
         // Per gate 1b H2: this test now actually asserts what its name promises. The
         // _snapshotStateForTesting() helper was widened in Task 1 Step 4 to expose
         // `lastMainStack` (5 fields instead of 4) so we can verify the population.
+        //
+        // INFRA-2 (2026-07-24 audit): capture is now gated on a suspected hang —
+        // with a fresh heartbeat the call is a deliberate no-op. Seed a stale
+        // heartbeat so the gate opens and the capture actually runs (the
+        // healthy-heartbeat no-op path is covered by
+        // HangDetectorCaptureGatingTests).
+        HangDetector._seedLastHeartbeatForTesting(Date().addingTimeInterval(-70))
         HangDetector.recordStackCaptureAndMaybeRecover()
         let s = HangDetector._snapshotStateForTesting()
-        XCTAssertGreaterThan(s.lastMainStack.count, 0, "recordStackCaptureAndMaybeRecover must populate lastMainStack from Thread.callStackSymbols")
+        XCTAssertGreaterThan(s.lastMainStack.count, 0, "recordStackCaptureAndMaybeRecover must populate lastMainStack from Thread.callStackSymbols when a hang is suspected")
         // Sanity: no detection triggered, so the recovery path doesn't run either.
         XCTAssertNil(s.lastDetectedAt, "no detection → recovery path must not clear nonexistent state")
         XCTAssertEqual(s.detectionCount, 0)
