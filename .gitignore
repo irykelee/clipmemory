@@ -34,6 +34,8 @@ docs/superpowers/
 docs/roadmap.md
 docs/DEVELOPMENT.md
 docs/RELEASE.md
+docs/RELEASE_PROCESS_AUDIT_2026-07-22.md
+docs/RELEASE_PUSH_FOLLOWUPS_2026-07-23.md
 docs/release-notes-template.md
 __pycache__/
 *.pyc

@@ -14,8 +14,8 @@ silently reappear.
 import os
 import sys
 
-# Allow running from project root or from Scripts/
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Allow running from project root, Scripts/, or Scripts/test/
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "Scripts"))
 from sync_readme import (  # noqa: E402
     remove_existing_section,
