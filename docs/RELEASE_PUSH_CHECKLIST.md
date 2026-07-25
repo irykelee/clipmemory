@@ -102,11 +102,12 @@ For each of: `README.md`, `docs/lang/README_{EN,ZH-HANS,ZH-HANT,JA,KO,ES,PT}.md`
 Repo → Settings → Branches → main → **Add rule** / **Edit**:
 - [ ] Branch name pattern: `main`
 - [ ] ☑ **Require a pull request before merging**
-  - [ ] Required approving reviews: **1**
+  - [ ] Required approving reviews: **0**（solo dev 必须 0——GitHub 不允许自评自己的 PR，≥1 卡死所有 PR）
   - [ ] ☑ Dismiss stale pull request approvals when new commits are pushed
 - [ ] ☑ **Require status checks to pass before merging**
   - [ ] Required status checks: search and add **`build-and-test`** (matches the `build-and-test:` job in `.github/workflows/ci.yml`; the workflow file's `name: CI` is the workflow display name, NOT the status-check context — GitHub uses the **job name** as the context)
   - [ ] ☑ Require branches to be up to date before merging
+- [ ] ☐ **Do not allow bypassing the above settings**（= `enforce_admins`）**必须保持关闭**——release.yml 的 appcast 推送用所有者 PAT（admin）直推 main，admin bypass 是唯一可行路径（personal repo 不能把 Actions app 设为 bypass actor）；打开它发布会挂在 Publish appcast update 步骤（v2.5.12 事故 #16）
 - [ ] ☑ **Do not allow force pushes**
 - [ ] ☑ **Do not allow deletions**
 
@@ -120,11 +121,11 @@ gh api -X PUT repos/irykelee/clipmemory/branches/main/protection \
     "strict": true,
     "contexts": ["build-and-test"]
   },
-  "enforce_admins": true,
+  "enforce_admins": false,
   "required_pull_request_reviews": {
     "dismiss_stale_reviews": true,
     "require_code_owner_reviews": false,
-    "required_approving_review_count": 1
+    "required_approving_review_count": 0
   },
   "restrictions": null,
   "allow_force_pushes": false,
@@ -137,11 +138,14 @@ EOF
 
 Verify it landed:
 ```bash
-gh api repos/irykelee/clipmemory/branches/main/protection --jq '.required_status_checks.contexts'
-# Expected: ["build-and-test"]
+gh api repos/irykelee/clipmemory/branches/main/protection --jq '.required_status_checks.checks[].context'
+# Expected: build-and-test
 
 gh api repos/irykelee/clipmemory/branches/main/protection --jq '.required_pull_request_reviews.required_approving_review_count'
-# Expected: 1
+# Expected: 0
+
+gh api repos/irykelee/clipmemory/branches/main/protection --jq '.enforce_admins.enabled'
+# Expected: false
 
 gh api repos/irykelee/clipmemory/branches/main/protection --jq '.allow_force_pushes.enabled // false'
 # Expected: false
@@ -150,10 +154,9 @@ gh api repos/irykelee/clipmemory/branches/main/protection --jq '.allow_force_pus
 ### F3. Caveats and interactions with existing flow
 
 - **Status check context = JOB name, not workflow name**: GitHub uses the job name from the workflow YAML as the status-check context. `.github/workflows/ci.yml` has `name: CI` (workflow display) + `jobs: build-and-test:` (job = context). If you rename the job → must update the `contexts` list. If you only rename the workflow file → context unchanged. Verify with `gh pr checks <N> --json name,workflow` to see the exact context names currently in use.
-- **Solo dev + 1 review = blocker**: GH does not allow self-approving your own PR if `required_approving_review_count >= 1`. For true solo dev, set `count: 0` (still gets PR + status check + no-force-push protection); rely on CI for gate. The "1 review" target assumes external reviewer.
-- **Release workflow force-push**: per P0-1 (commit `5dbf45b`), the appcast commit is now pushed via `--force-with-lease` to the **source branch** (e.g. `fix/v2.5.x-hotfix`), NOT to `main`. So this protection does **not** conflict with the release pipeline.
-- **Hotfix / emergency direct-push to main is BLOCKED**: any urgent fix to `main` must go through a PR. This is intentional — it's the protection. If truly blocking, set `enforce_admins: false` and admins can bypass (use sparingly).
-- **`Release` workflow is NOT in status checks**: it only runs on tag push (per workflow trigger `on: push: tags`). Tag pushes don't open PRs, so adding `Release` to contexts would block tag pushes. Only `CI` is appropriate here.
+- **Solo dev → `required_approving_review_count: 0` (已配置)**: GH does not allow self-approving your own PR, so `count >= 1` blocks every PR for a solo dev. `0` still keeps PR + status check + no-force-push protection; CI is the gate. Only raise it if an external reviewer exists.
+- **Release workflow pushes appcast directly to `main` via owner PAT (admin bypass)**: per REL-10/#16 (v2.5.12), the appcast commit goes to `main` using `TAP_GITHUB_TOKEN` (owner identity) with `http.extraheader` — GitHub does not allow a personal repo to grant the Actions app a bypass role, so admin bypass is the only viable path. This is exactly why `enforce_admins` **must stay `false`**: with it `true`, the appcast push is rejected and the release dies at "Publish appcast update". Direct pushes to main from the owner (e.g. `Scripts/release.sh`) also rely on this.
+- **`Release` workflow is NOT in status checks**: it only runs on tag push (per workflow trigger `on: push: tags`). Tag pushes don't open PRs, so adding `Release` to contexts would block tag pushes. Only `build-and-test` is appropriate here.
 
 ---
 
