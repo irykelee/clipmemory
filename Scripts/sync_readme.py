@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.request
 
@@ -123,6 +124,29 @@ def glossary_block(lang):
     return "\n".join(f"- {zh} → {targets[lang]}" for zh, targets in GLOSSARY.items())
 
 
+KEYCHAIN_SERVICE = "clipmemory-readme-sync"
+
+
+def keychain_api_key():
+    """Fall back to the macOS login Keychain when no env key is set.
+
+    Setup once: security add-generic-password -U -s clipmemory-readme-sync \\
+        -a deepseek -w <key>
+    Any lookup failure (non-macOS, item missing, user denies access) is
+    silent and returns "" so env-based flows and CI are unaffected.
+    """
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return ""
+
+
 def llm_config():
     """Resolve the OpenAI-compatible endpoint/model/key from the environment.
 
@@ -135,10 +159,13 @@ def llm_config():
     deepseek-v4-pro / deepseek-v4-flash, discovered the hard way during the
     v2.5.13 release). Set README_SYNC_MODEL=deepseek-v4-pro for higher
     translation quality.
+
+    Key resolution order: README_SYNC_API_KEY → DEEPSEEK_API_KEY → macOS
+    Keychain item `clipmemory-readme-sync` (see keychain_api_key()).
     """
     base_url = os.environ.get("README_SYNC_BASE_URL", "https://api.deepseek.com/chat/completions")
     model = os.environ.get("README_SYNC_MODEL", "deepseek-v4-flash")
-    key = os.environ.get("README_SYNC_API_KEY") or os.environ.get("DEEPSEEK_API_KEY", "")
+    key = os.environ.get("README_SYNC_API_KEY") or os.environ.get("DEEPSEEK_API_KEY") or keychain_api_key()
     return base_url, model, key
 
 
