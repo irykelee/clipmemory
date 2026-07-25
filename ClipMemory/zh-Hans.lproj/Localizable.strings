@@ -264,6 +264,12 @@
 "settings.updateSource.option.primary" = "主源（GitHub）";
 "settings.updateSource.option.fallback" = "镜像（jsDelivr）";
 "settings.updateSource.statusPanel" = "当前源：%1$@ · 上次检查：%2$@ · 上次切换：%3$@";
+"settings.updateSource.reason.automaticReachable" = "自动（主源可达）";
+"settings.updateSource.reason.automaticPrimaryDown" = "自动（主源不可达，已切换到镜像）";
+"settings.updateSource.reason.bothDownKeepPrimary" = "自动（所有源均不可达，保持主源）";
+"settings.updateSource.reason.mirrorStaleRejected" = "自动（镜像版本过旧，保持主源）";
+"settings.updateSource.reason.userForced" = "手动（仅主源）";
+"settings.updateSource.reason.userForcedFallback" = "手动（镜像）";
 
 /* 备份 UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "用于加密备份文件。恢复时需要再次输入。";

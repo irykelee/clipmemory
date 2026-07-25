@@ -266,6 +266,12 @@
 "settings.updateSource.option.primary" = "기본 (GitHub)";
 "settings.updateSource.option.fallback" = "미러 (jsDelivr)";
 "settings.updateSource.statusPanel" = "소스: %1$@ · 마지막 확인: %2$@ · 마지막 전환: %3$@";
+"settings.updateSource.reason.automaticReachable" = "자동 (기본 소스 연결 가능)";
+"settings.updateSource.reason.automaticPrimaryDown" = "자동 (기본 소스에 연결할 수 없어 미러 사용)";
+"settings.updateSource.reason.bothDownKeepPrimary" = "자동 (모든 소스에 연결할 수 없어 기본 소스 유지)";
+"settings.updateSource.reason.mirrorStaleRejected" = "자동 (미러가 오래되어 기본 소스 유지)";
+"settings.updateSource.reason.userForced" = "수동 (기본 소스만)";
+"settings.updateSource.reason.userForcedFallback" = "수동 (미러)";
 
 /* 백업 UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "백업 파일을 암호화하는 데 사용됩니다. 복원할 때 다시 필요합니다.";

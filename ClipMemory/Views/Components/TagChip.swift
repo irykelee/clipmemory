@@ -5,6 +5,14 @@ import SwiftUI
 struct TagChip: View {
     let tag: Tag
 
+    // CLIP-6 (2026-07-24 review): invalidation trigger only. The chip's
+    // `tag` input doesn't change when the user switches font size, and
+    // TagChipStack passes a plain `Tag` value — without an @AppStorage
+    // dependency SwiftUI may skip recomputing body, leaving the chip at
+    // the stale size. The actual scaling still goes through sz()'s
+    // NaN/Inf/clamp guards; this value is never read directly.
+    @AppStorage("fontScale") private var fontScale: Double = 1.0
+
     var body: some View {
         HStack(spacing: 3) {
             Circle()

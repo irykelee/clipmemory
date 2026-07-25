@@ -6,22 +6,24 @@ import os.log
 // swiftlint:disable file_length
 // (1) Justification: ClipboardStore is the central coordinator of clipboard flow
 // (addItem / dedup / persistence / migration). Splitting risks cross-cutting
-// regressions. Tracking a 1250-line ceiling explicitly via disable so the
-// discipline is visible in code review.
-// (2) Code added per Critical fix on 2026-07-20 (HMAC silent data loss) made
-// the file 1258 lines, exceeding the project's file_length 1250 threshold.
-// Move logic into a separate file in a future refactor pass.
+// regressions — the god-object breakup is a deliberate defer. Tracking the
+// 1250-line ceiling explicitly via disable so the discipline is visible in
+// code review.
+// (2) As of the 2026-07-24 low-audit batch the file is ~1480 lines, well past
+// the 1250 threshold. Move logic into separate files in a future refactor pass.
 
 extension Notification.Name {
     static let encryptionFailed = Notification.Name("ClipboardStore.encryptionFailed")
     static let showSettingsTab = Notification.Name("ClipMemory.showSettingsTab")
     static let cmdFFindAction = Notification.Name("ClipMemory.cmdFFindAction")
     /// M-9 (2026-07-24 audit): tag backend decode / write failed. Posted
-    /// from `ClipboardStore.loadTags()` / `saveTags()` after the logger
-    /// line so observers (Settings diagnostics, future status banner) can
-    /// surface the failure to the user. Carries no payload — the next
-    /// `loadTags()` / `saveTags()` attempt may succeed and overwrite the
-    /// signal; consumers should debounce.
+    /// from `ClipboardStore.loadTags()` only (saveTags logs but does not
+    /// post) after the logger line.
+    /// CLIP-7 (2026-07-24 review): there is currently NO observer for this
+    /// notification — it's a reserved channel for a future Settings
+    /// diagnostics banner. Carries no payload — the next `loadTags()`
+    /// attempt may succeed and overwrite the signal; consumers should
+    /// debounce.
     static let tagBackendCorrupted = Notification.Name("ClipboardStore.tagBackendCorrupted")
 }
 
@@ -141,12 +143,11 @@ class ClipboardStore: ObservableObject {
     private var groupCounts: GroupCounts {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
-        // BUG-016 (2026-07-21): misleading variable name. startOfDayBeforeYesterday
-        // was computed with value: -1 (= yesterday, not before yesterday). The
-        // variable is consumed by unpinOlder (L1164) which clearly intends
-        // "older than yesterday". Fix: value: -2 to match the name + intent.
-        guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday),
-              let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -2, to: startOfToday) else {
+        // CLIP-8 (2026-07-24 review): removed the dead
+        // `startOfDayBeforeYesterday` binding — nothing in this function
+        // consumed it (the old BUG-016 comment claimed unpinOlder did, but
+        // unpinOlder computes its own date at ~L1272).
+        guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else {
             return GroupCounts(today: 0, yesterday: 0, older: 0)
         }
         var today = 0, yesterday = 0, older = 0
@@ -626,9 +627,10 @@ class ClipboardStore: ObservableObject {
             logger.error("Failed to load tags: \(error.localizedDescription)")
             // M-9 (2026-07-24 audit): the previous path was silent beyond
             // an os_log entry — the user saw an empty tag sidebar with no
-            // explanation. Surface the failure via .tagBackendCorrupted so
-            // Settings diagnostics can render a banner / a future observer
-            // can offer a "retry + restore from backup" affordance.
+            // explanation. Surface the failure via .tagBackendCorrupted.
+            // CLIP-7 (2026-07-24 review): nothing observes this yet — the
+            // post is the deliberate M-9 hook for a future Settings
+            // diagnostics banner / "restore from backup" affordance.
             NotificationCenter.default.post(name: .tagBackendCorrupted, object: nil)
             tags = [:]
         }

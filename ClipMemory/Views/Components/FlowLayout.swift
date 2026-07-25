@@ -28,7 +28,14 @@ struct FlowLayout: Layout {
 
         for (index, subview) in subviews.enumerated() {
             let size = sizes[index]
-            if point.x + size.width > bounds.maxX && lineHeight > 0 {
+            // CLIP-7 (2026-07-24 review): wrap condition must match
+            // layoutSize's `lineWidth > 0` — i.e. "not the first subview on
+            // this line". The old `lineHeight > 0` test refused to wrap
+            // after a zero-height first subview, so sizeThatFits reported
+            // more lines than placeSubviews actually produced. `point.x`
+            // advances by (width + spacing) per placed subview, so
+            // `point.x > bounds.minX` is the placement-side equivalent.
+            if point.x + size.width > bounds.maxX && point.x > bounds.minX {
                 point.x = bounds.minX
                 point.y += lineHeight + spacing
                 lineHeight = 0

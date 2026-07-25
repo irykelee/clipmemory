@@ -308,11 +308,18 @@ final class UpdateService {
         // awaiting — its decision wins, drop ours silently.
         guard myGeneration == probeGeneration else { return }
         guard let decision else { return }
+        // UPD-3 (2026-07-24 review): only record a "switch" when the channel
+        // actually changed. Previously every probe overwrote
+        // lastSwitchReason/lastSwitchAt, so the status panel's "Last switch"
+        // lied after each periodic re-probe that kept the same source.
+        let didSwitch = decision.usedChannelID != status.currentSource
         feedProvider.resolvedFeedString = decision.chosenURL.absoluteString
         status.currentSource = decision.usedChannelID
         status.lastCheck = Date()
-        status.lastSwitchReason = decision.reason.rawValue
-        status.lastSwitchAt = Date()
+        if didSwitch {
+            status.lastSwitchReason = decision.reason.rawValue
+            status.lastSwitchAt = Date()
+        }
         // Per spec §3.1: only update lastPrimaryItemDate when primary actually
         // fetched (decision carries the body — no second URLSession call).
         // Use `max(old, new)` so out-of-order responses can only ever raise

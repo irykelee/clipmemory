@@ -110,10 +110,30 @@ final class VisionOCRService: OCRServiceProtocol {
                 ocrLanguageLogger.error(
                     "No requested OCR language is supported by Revision3 on this macOS; requested=\(requested, privacy: .public) supported=\(supported, privacy: .public) dropped=\(dropped, privacy: .public). Falling back to en."
                 )
-                return ["en"]
+                // CLIP-5 (2026-07-24 review): "en" itself is not guaranteed
+                // to be in `supported` (a future macOS could drop it, and
+                // `supported` can even be empty when the query throws).
+                // Setting an unsupported language makes handler.perform
+                // throw — the exact failure this function exists to avoid.
+                return supported.contains("en") ? ["en"] : Array(supported.prefix(1))
             }
             return filtered
         }
-        return requested
+        // CLIP-5 (2026-07-24 review): the pre-13 path passed `requested`
+        // through unfiltered — an unsupported entry would make
+        // handler.perform throw and OCR silently return nil. Run the same
+        // supported-filter + verified fallback as the 13+ path. (Dead on
+        // this project's macOS 13 deployment target; kept compiling for
+        // correctness if the target ever drops.)
+        let supported = (try? VNRecognizeTextRequest
+            .supportedRecognitionLanguages(
+                for: VNRequestTextRecognitionLevel.accurate,
+                revision: VNRecognizeTextRequestRevision2
+            )) ?? []
+        let filtered = requested.filter { supported.contains($0) }
+        if filtered.isEmpty {
+            return supported.contains("en") ? ["en"] : Array(supported.prefix(1))
+        }
+        return filtered
     }
 }

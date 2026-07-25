@@ -444,6 +444,80 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(UpdateService.lastPrimaryItemDate, newer,
                        "baseline must be max(old, new); older observation must not roll back")
     }
+
+    // MARK: - UPD-3 (2026-07-24 review): switch recorded only on real channel changes
+
+    /// UPD-3: every probe used to unconditionally overwrite
+    /// lastSwitchReason/lastSwitchAt, so the status panel's "Last switch"
+    /// showed the latest PROBE rather than the latest channel change. The
+    /// reason + timestamp must be written only when `usedChannelID` differs
+    /// from the current source.
+    @MainActor
+    func testSwitchReasonRecordedOnlyWhenChannelChanges() async {
+        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        let stub = StubProbeEngine()
+        let service = UpdateService(probeEngine: stub, autoStart: false)
+
+        // Probe 1 keeps the initial channel (github-release) → not a switch.
+        await stub.setNextDecision(automaticPrimaryDecision)
+        await service.triggerProbe()
+        XCTAssertEqual(service.status.currentSource, "github-release")
+        XCTAssertNil(service.status.lastSwitchReason,
+                     "re-probing the same channel must not record a switch")
+        XCTAssertNil(service.status.lastSwitchAt)
+
+        // Probe 2 changes the channel → recorded.
+        await stub.setNextDecision(forcedFallbackDecision)
+        await service.triggerProbe()
+        XCTAssertEqual(service.status.currentSource, "jsdelivr-mirror")
+        XCTAssertEqual(service.status.lastSwitchReason, ProbeReason.userForcedFallback.rawValue)
+        let firstSwitchAt = service.status.lastSwitchAt
+        XCTAssertNotNil(firstSwitchAt)
+
+        // Probe 3 stays on the mirror with a different reason → NOT overwritten.
+        let mirrorAgain = FeedProbeDecision(
+            chosenURL: URL(string: "https://example.com/fallback.xml")!,
+            usedChannelID: "jsdelivr-mirror",
+            reason: .automaticPrimaryDown,
+            primaryAppcastXML: nil,
+            primaryLatestDate: nil
+        )
+        await stub.setNextDecision(mirrorAgain)
+        try? await Task.sleep(nanoseconds: 20_000_000) // make a timestamp bump observable
+        await service.triggerProbe()
+        XCTAssertEqual(service.status.lastSwitchReason, ProbeReason.userForcedFallback.rawValue,
+                       "same-channel probe must not overwrite the original switch reason")
+        XCTAssertEqual(service.status.lastSwitchAt, firstSwitchAt,
+                       "same-channel probe must not bump the switch timestamp")
+    }
+
+    // MARK: - UPD-3: status panel label mapping
+
+    func testStatusPanelSourceLabelMapsKnownChannels() {
+        XCTAssertEqual(UpdateStatusPanelView.sourceLabel("github-release"),
+                       L10n.string("settings.updateSource.option.primary"))
+        XCTAssertEqual(UpdateStatusPanelView.sourceLabel("jsdelivr-mirror"),
+                       L10n.string("settings.updateSource.option.fallback"))
+        XCTAssertEqual(UpdateStatusPanelView.sourceLabel("future-channel"), "future-channel",
+                       "unknown channel ids fall back to the raw id")
+    }
+
+    func testStatusPanelReasonLabelLocalizesAllProbeReasons() {
+        let allReasons: [ProbeReason] = [
+            .automaticReachable, .automaticPrimaryDown, .bothDownKeepPrimary,
+            .mirrorStaleRejected, .userForced, .userForcedFallback
+        ]
+        for reason in allReasons {
+            let label = UpdateStatusPanelView.reasonLabel(reason.rawValue)
+            XCTAssertNotEqual(label, reason.rawValue,
+                              "\(reason) must render localized text, not the raw enum value")
+            XCTAssertFalse(label.hasPrefix("settings.updateSource.reason."),
+                           "\(reason)'s labelKey must resolve to translated text in the bundle")
+        }
+        XCTAssertEqual(UpdateStatusPanelView.reasonLabel(nil), "—")
+        XCTAssertEqual(UpdateStatusPanelView.reasonLabel("bogus"), "—",
+                       "unpersistable/garbage rawValues render the placeholder")
+    }
 }
 
 // MARK: - StubProbeEngine (file scope; outside UpdateServiceTests class)

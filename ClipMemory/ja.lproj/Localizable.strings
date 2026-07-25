@@ -266,6 +266,12 @@
 "settings.updateSource.option.primary" = "プライマリ（GitHub）";
 "settings.updateSource.option.fallback" = "ミラー（jsDelivr）";
 "settings.updateSource.statusPanel" = "ソース: %1$@ · 最終確認: %2$@ · 切替: %3$@";
+"settings.updateSource.reason.automaticReachable" = "自動（プライマリに接続可能）";
+"settings.updateSource.reason.automaticPrimaryDown" = "自動（プライマリに接続できないためミラーを使用）";
+"settings.updateSource.reason.bothDownKeepPrimary" = "自動（すべてのソースに接続できないためプライマリを維持）";
+"settings.updateSource.reason.mirrorStaleRejected" = "自動（ミラーが古いためプライマリを維持）";
+"settings.updateSource.reason.userForced" = "手動（プライマリのみ）";
+"settings.updateSource.reason.userForcedFallback" = "手動（ミラー）";
 
 /* バックアップ UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "バックアップファイルを暗号化するために使用されます。復元時に再度必要です。";

@@ -49,7 +49,8 @@ final class SettingsViewSnapshotTests: XCTestCase {
             onShowBackupError: {},
             onShowLaunchAtLoginError: {},
             onShowWelcomeGuide: {},
-            onStartHotKeyRecording: {}
+            onStartHotKeyRecording: {},
+            onCancelHotKeyRecording: {}
         )
         let image = renderToImage(view, size: CGSize(width: 720, height: 1200))
         assertImageSnapshot(

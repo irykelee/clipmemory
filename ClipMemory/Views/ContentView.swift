@@ -424,12 +424,6 @@ struct ContentView: View {
         }
     }
 
-    enum DateFilter: String, CaseIterable {
-        case all, today, yesterday, older
-        var label: String {
-            switch self { case .all: return L10n.dateFilterAll; case .today: return L10n.groupToday; case .yesterday: return L10n.groupYesterday; case .older: return L10n.groupOlder }
-        }
-    }
     private var groupedItemsWithIndex: [(group: TimeGroup, items: [(item: ClipboardItem, globalIndex: Int)])] {
         cachedGroupedItemsWithIndex
     }
@@ -811,7 +805,8 @@ struct ContentView: View {
             onShowBackupError: { showBackupInfo(L10n.settingsBackupError) },
             onShowLaunchAtLoginError: showLaunchAtLoginError,
             onShowWelcomeGuide: { (NSApp.delegate as? AppDelegate)?.showWelcomeView() },
-            onStartHotKeyRecording: startRecording
+            onStartHotKeyRecording: startRecording,
+            onCancelHotKeyRecording: stopKeyEventMonitor
         )
     }
 

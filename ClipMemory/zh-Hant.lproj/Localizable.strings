@@ -268,6 +268,12 @@
 "settings.updateSource.option.primary" = "主來源（GitHub）";
 "settings.updateSource.option.fallback" = "鏡像（jsDelivr）";
 "settings.updateSource.statusPanel" = "目前來源：%1$@ · 上次檢查：%2$@ · 上次切換：%3$@";
+"settings.updateSource.reason.automaticReachable" = "自動（主來源可連線）";
+"settings.updateSource.reason.automaticPrimaryDown" = "自動（主來源無法連線，已切換至鏡像）";
+"settings.updateSource.reason.bothDownKeepPrimary" = "自動（所有來源皆無法連線，維持主來源）";
+"settings.updateSource.reason.mirrorStaleRejected" = "自動（鏡像版本過舊，維持主來源）";
+"settings.updateSource.reason.userForced" = "手動（僅主來源）";
+"settings.updateSource.reason.userForcedFallback" = "手動（鏡像）";
 
 /* 備份 UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "用於加密備份檔案。還原時需要再次輸入。";

@@ -61,6 +61,11 @@ struct SettingsView: View {
     let onShowLaunchAtLoginError: () -> Void
     let onShowWelcomeGuide: () -> Void
     let onStartHotKeyRecording: () -> Void
+    // CLIP-6 (2026-07-24 review): the Cancel button below only flipped
+    // isRecordingHotKey to false, leaving ContentView's key event monitor
+    // installed and spinning until the view disappeared. This callback lets
+    // Cancel also tear the monitor down (Esc already does both).
+    let onCancelHotKeyRecording: () -> Void
 
     var body: some View {
         Form {
@@ -70,7 +75,7 @@ struct SettingsView: View {
                         if isRecordingHotKey {
                             Text(L10n.settingsHotkeyRecording).foregroundColor(.orange)
                             Spacer()
-                            Button(L10n.buttonCancel) { isRecordingHotKey = false }.buttonStyle(.link)
+                            Button(L10n.buttonCancel) { isRecordingHotKey = false; onCancelHotKeyRecording() }.buttonStyle(.link)
                         } else {
                             Text(hk.config.displayString).fontDesign(.monospaced).id(hotkeyRefresh)
                             Spacer()
@@ -296,14 +301,19 @@ struct SettingsView: View {
             .filter { !$0.isEmpty }
         var seen = Set<String>()
         let excludedIds = rawIds.filter { seen.insert($0).inserted }
-        excludedApps = excludedIds.compactMap { bundleId in
+        excludedApps = excludedIds.map { bundleId in
             if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleId }) {
                 return (app.localizedName ?? bundleId, bundleId)
             }
             if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
                 return (url.deletingPathExtension().lastPathComponent, bundleId)
             }
-            return nil
+            // CLIP-4 (2026-07-24 review): an id that resolves nowhere (e.g.
+            // the app was uninstalled) must NOT be dropped — it stays in
+            // excludedBundleIdsString and keeps taking effect invisibly.
+            // Render the raw bundle id as the chip label so it stays
+            // visible and removable.
+            return (bundleId, bundleId)
         }
     }
 

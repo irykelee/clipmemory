@@ -41,12 +41,12 @@ final class UIObservabilityTests: XCTestCase {
     // MARK: - DateFilter
 
     func testFormatDateFilterChangeAllToToday() {
-        let s = UIObservability.formatDateFilterChange(from: ContentView.DateFilter.all, to: ContentView.DateFilter.today)
+        let s = UIObservability.formatDateFilterChange(from: DateFilter.all, to: DateFilter.today)
         XCTAssertEqual(s, "date_filter=all→today")
     }
 
     func testFormatDateFilterChangeTodayToYesterday() {
-        let s = UIObservability.formatDateFilterChange(from: ContentView.DateFilter.today, to: ContentView.DateFilter.yesterday)
+        let s = UIObservability.formatDateFilterChange(from: DateFilter.today, to: DateFilter.yesterday)
         XCTAssertEqual(s, "date_filter=today→yesterday")
     }
 

@@ -79,4 +79,37 @@ final class LocalizationKeysTests: XCTestCase {
             )
         }
     }
+
+    /// UPD-3 (2026-07-24 review): the status panel's switch-reason keys must
+    /// exist in all 7 shipping language files — same parity rationale as the
+    /// backup keys above (a missing locale silently degrades to English).
+    func testUpdateSourceReasonKeysExistInAllSevenLanguageFiles() throws {
+        let keys = [
+            "settings.updateSource.reason.automaticReachable",
+            "settings.updateSource.reason.automaticPrimaryDown",
+            "settings.updateSource.reason.bothDownKeepPrimary",
+            "settings.updateSource.reason.mirrorStaleRejected",
+            "settings.updateSource.reason.userForced",
+            "settings.updateSource.reason.userForcedFallback"
+        ]
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appResDir = projectRoot.appendingPathComponent("ClipMemory", isDirectory: true)
+
+        let languages = ["en", "es", "ja", "ko", "pt", "zh-Hans", "zh-Hant"]
+        for lang in languages {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            for key in keys {
+                XCTAssertTrue(
+                    content.contains("\"\(key)\""),
+                    "\(lang).lproj/Localizable.strings is missing key '\(key)'"
+                )
+            }
+        }
+    }
 }

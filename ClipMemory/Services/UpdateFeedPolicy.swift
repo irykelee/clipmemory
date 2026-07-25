@@ -29,15 +29,26 @@ enum UpdateFeedPolicies {
     static let knownChannels: [FeedChannel] = [
         FeedChannel(
             id: "github-release",
-            url: URL(string: "https://github.com/irykelee/clipmemory/releases/latest/download/appcast.xml")!,
+            url: requireURL("https://github.com/irykelee/clipmemory/releases/latest/download/appcast.xml"),
             kind: .primary,
             labelKey: "settings.updateSource.option.primary"
         ),
         FeedChannel(
             id: "jsdelivr-mirror",
-            url: URL(string: "https://cdn.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml")!,
+            url: requireURL("https://cdn.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml"),
             kind: .fallback,
             labelKey: "settings.updateSource.option.fallback"
         )
     ]
+
+    // L-19 (2026-07-24 review): no bare `URL(string:)!`. A typo'd hardcoded
+    // feed URL now traps with the offending string in the message instead of
+    // an opaque force-unwrap crash — these URLs are compile-time constants,
+    // so a failure here is a programmer error, hence preconditionFailure.
+    private static func requireURL(_ string: String) -> URL {
+        guard let url = URL(string: string) else {
+            preconditionFailure("UpdateFeedPolicies: invalid hardcoded feed URL '\(string)'")
+        }
+        return url
+    }
 }

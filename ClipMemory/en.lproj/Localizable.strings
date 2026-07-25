@@ -266,6 +266,12 @@
 "settings.updateSource.option.primary" = "Primary (GitHub)";
 "settings.updateSource.option.fallback" = "Mirror (jsDelivr)";
 "settings.updateSource.statusPanel" = "Source: %1$@ · Last check: %2$@ · Last switch: %3$@";
+"settings.updateSource.reason.automaticReachable" = "Automatic (primary reachable)";
+"settings.updateSource.reason.automaticPrimaryDown" = "Automatic (primary unreachable, using mirror)";
+"settings.updateSource.reason.bothDownKeepPrimary" = "Automatic (all sources unreachable, keeping primary)";
+"settings.updateSource.reason.mirrorStaleRejected" = "Automatic (mirror outdated, keeping primary)";
+"settings.updateSource.reason.userForced" = "Manual (primary only)";
+"settings.updateSource.reason.userForcedFallback" = "Manual (mirror)";
 
 /* Backup UX (H-2/H-3, 2026-07-23) — push requires 7-lang native speaker review per RELEASE_PUSH_CHECKLIST.md §7 */
 "settings.backup.passphrase.info" = "Used to encrypt the backup file. You'll need it again to restore.";

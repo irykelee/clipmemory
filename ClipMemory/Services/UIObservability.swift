@@ -29,15 +29,16 @@ enum UIObservability {
         "cache.rebuild groups=\(groups) items=\(items) duration_ms=\(String(format: "%.2f", durationMs))"
     }
 
-    static func formatDateFilterChange(from: ContentView.DateFilter, to: ContentView.DateFilter) -> String {
+    static func formatDateFilterChange(from: DateFilter, to: DateFilter) -> String {
         // Use String(describing:) so we get raw enum cases ("all"/"today"/...)
         // instead of L10n-localized strings (which break grep across languages).
         // NOTE: if DateFilter ever gains an associated value, String(describing:)
         // would emit "caseName(value)" and break this format. Add rawValue handling
         // or a custom property then. Today DateFilter is `String, CaseIterable`
         // with no associated values — safe.
-        // DateFilter is currently nested inside ContentView; the full path keeps
-        // the helper here without forcing a top-level relocation.
+        // CLIP-10 (2026-07-24 review): DateFilter moved from a ContentView
+        // nested type to Models/DateFilter.swift, removing the
+        // Services→Views reverse dependency.
         "date_filter=\(String(describing: from))→\(String(describing: to))"
     }
 
@@ -71,7 +72,7 @@ enum UIObservability {
         logger.info("\(formatCacheRebuild(groups: groups, items: items, durationMs: durationMs), privacy: .public)")
     }
 
-    static func logDateFilterChange(from: ContentView.DateFilter, to: ContentView.DateFilter) {
+    static func logDateFilterChange(from: DateFilter, to: DateFilter) {
         logger.info("\(formatDateFilterChange(from: from, to: to), privacy: .public)")
     }
 

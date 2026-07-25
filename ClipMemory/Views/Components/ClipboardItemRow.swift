@@ -110,8 +110,11 @@ struct ClipboardItemRow: View, Equatable {
         lhs.item.isSensitive == rhs.item.isSensitive &&
         lhs.item.ocrText == rhs.item.ocrText
     }
+    // CLIP-3 (2026-07-24 review): @AppStorage stays only as the invalidation
+    // trigger (re-render on setting change). All sizing must go through
+    // sz()'s NaN/Inf/clamp guards — never multiply by the raw stored value.
     @AppStorage("fontScale") private var fontScale: Double = 1.0
-    private var iconSize: CGFloat { fontScale * 13 }
+    private var iconSize: CGFloat { sz(13) }
 
     /// Explicit memberwise initializer so callers (ContentView) can name
     /// every prop including `onEditTags`. Kept identical to Swift's auto
@@ -257,10 +260,10 @@ struct ClipboardItemRow: View, Equatable {
                                         let status = imageLoadStatus ?? .fileMissing
                                         VStack(spacing: 4) {
                                             Image(systemName: status == .decryptionFailed ? "lock.slash" : "exclamationmark.triangle")
-                                                .font(.system(size: fontScale * 22))
+                                                .font(.system(size: sz(22)))
                                                 .foregroundColor(status == .decryptionFailed ? .secondary : .orange)
                                             Text(status == .decryptionFailed ? L10n.imageDecryptionFailed : L10n.imageMissing)
-                                                .font(.system(size: fontScale * 11))
+                                                .font(.system(size: sz(11)))
                                                 .foregroundColor(.secondary)
                                         }
                                         // (delete button removed — the per-row trash icon at the end of
@@ -269,7 +272,7 @@ struct ClipboardItemRow: View, Equatable {
                                         //  120×80 badge frame)
                                     } else {
                                         VStack(spacing: 4) {
-                                            Image(systemName: "photo").font(.system(size: fontScale * 24)).foregroundColor(.secondary)
+                                            Image(systemName: "photo").font(.system(size: sz(24))).foregroundColor(.secondary)
                                             ProgressView().scaleEffect(0.5).frame(height: 8)
                                         }
                                     }
@@ -325,7 +328,7 @@ struct ClipboardItemRow: View, Equatable {
                     } else if item.type == .richText {
                         if item.isSensitive && !isRevealed {
                             Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)
-                                .font(.system(size: fontScale * 13)).lineLimit(3)
+                                .font(.system(size: sz(13))).lineLimit(3)
                                 .overlay(PressableImage { pressed in longPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
                         } else {
                             Group {
@@ -336,7 +339,7 @@ struct ClipboardItemRow: View, Equatable {
                                         .transition(.opacity)
                                 } else {
                                     Text(plainTextFallback)
-                                        .font(.system(size: fontScale * 12)).foregroundColor(.secondary)
+                                        .font(.system(size: sz(12))).foregroundColor(.secondary)
                                         .lineLimit(3)
                                 }
                             }
@@ -345,18 +348,18 @@ struct ClipboardItemRow: View, Equatable {
                         }
                     } else if item.isSensitive && !isRevealed {
                         Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)
-                            .font(.system(size: fontScale * 13)).lineLimit(3)
+                            .font(.system(size: sz(13))).lineLimit(3)
                             .overlay(PressableImage { pressed in longPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
                     } else {
                         Text(showFullContent ? AttributedString(decryptedContent) : cachedHighlighted)
-                            .font(.system(size: fontScale * 12)).foregroundColor(Color(nsColor: .controlTextColor))
+                            .font(.system(size: sz(12))).foregroundColor(Color(nsColor: .controlTextColor))
                             .lineLimit(showFullContent ? nil : 3)
                             .overlay(PressableImage { pressed in showFullContent = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
                     }
                     Spacer()
                 }
                 .contentShape(Rectangle())
-                HStack(spacing: 8) { Text(formattedDate).font(.system(size: fontScale * 11)).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: fontScale * 11)).foregroundColor(.orange) }; if !item.tagIds.isEmpty { TagChipStack(tagIds: item.tagIds, store: ClipboardStore.shared) } }
+                HStack(spacing: 8) { Text(formattedDate).font(.system(size: sz(11))).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: sz(11))).foregroundColor(.orange) }; if !item.tagIds.isEmpty { TagChipStack(tagIds: item.tagIds, store: ClipboardStore.shared) } }
             }
             .contentShape(Rectangle())
             .gesture(ExclusiveGesture(TapGesture(count: 2).onEnded { onPin() }, TapGesture().onEnded { onCopyWithFeedback?() }))
@@ -369,7 +372,7 @@ struct ClipboardItemRow: View, Equatable {
                         .overlay(alignment: .topTrailing) {
                             if !item.tagIds.isEmpty {
                                 Text("\(item.tagIds.count)")
-                                    .font(.system(size: fontScale * 8))
+                                    .font(.system(size: sz(8)))
                                     .padding(2)
                                     .background(Color.accentColor, in: Circle())
                                     .foregroundColor(.white)

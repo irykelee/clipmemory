@@ -14,6 +14,11 @@ enum ProbeReason: String, Equatable {
     case mirrorStaleRejected      // .automatic + primary down + fallback stale → keep primary
     case userForced               // .primary mode (regardless of network)
     case userForcedFallback       // .fallback mode (bypasses stale guard, user informed consent)
+
+    /// UPD-3 (2026-07-24 review): L10n key for the settings status panel.
+    /// The raw enum rawValue used to be interpolated straight into
+    /// user-visible text; the view now resolves this key via L10n instead.
+    var labelKey: String { "settings.updateSource.reason.\(rawValue)" }
 }
 
 struct FeedProbeDecision: Equatable {

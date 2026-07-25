@@ -65,7 +65,18 @@ enum ImagePreviewPanel {
         panel.level = .floating
         panel.backgroundColor = .windowBackgroundColor
         panel.hasShadow = true
-        panel.center()
+        // CLIP-5 (2026-07-24 review): NSPanel.center() always centers on the
+        // MAIN screen, ignoring the `screen` argument used for sizing above.
+        // Center manually within the target screen's visibleFrame so the
+        // panel lands where the image actually is on multi-display setups.
+        if let visibleFrame = screen?.visibleFrame {
+            panel.setFrameOrigin(NSPoint(
+                x: visibleFrame.midX - layout.panelSize.width / 2,
+                y: visibleFrame.midY - layout.panelSize.height / 2
+            ))
+        } else {
+            panel.center()
+        }
         panel.orderFront(nil)
         self.panel = panel
     }

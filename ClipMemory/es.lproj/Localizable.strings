@@ -266,6 +266,12 @@
 "settings.updateSource.option.primary" = "Principal (GitHub)";
 "settings.updateSource.option.fallback" = "Espejo (jsDelivr)";
 "settings.updateSource.statusPanel" = "Fuente: %1$@ · Última verificación: %2$@ · Último cambio: %3$@";
+"settings.updateSource.reason.automaticReachable" = "Automático (fuente principal accesible)";
+"settings.updateSource.reason.automaticPrimaryDown" = "Automático (fuente principal inaccesible, usando el espejo)";
+"settings.updateSource.reason.bothDownKeepPrimary" = "Automático (todas las fuentes inaccesibles, se mantiene la principal)";
+"settings.updateSource.reason.mirrorStaleRejected" = "Automático (espejo desactualizado, se mantiene la principal)";
+"settings.updateSource.reason.userForced" = "Manual (solo la principal)";
+"settings.updateSource.reason.userForcedFallback" = "Manual (espejo)";
 
 /* Respaldo UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "Usada para cifrar el archivo de copia. La necesitarás de nuevo para restaurar.";
