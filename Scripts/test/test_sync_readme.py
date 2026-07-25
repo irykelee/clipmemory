@@ -66,7 +66,9 @@ class TestLlmConfig(unittest.TestCase):
             os.environ.pop(var, None)
         base, model, _ = sync_readme.llm_config()
         self.assertIn("deepseek", base)
-        self.assertEqual(model, "deepseek-chat")
+        # Legacy "deepseek-chat" is rejected by the current DeepSeek API
+        # (HTTP 400); the v4 names are the supported defaults.
+        self.assertEqual(model, "deepseek-v4-flash")
 
     def test_env_overrides(self):
         os.environ["README_SYNC_BASE_URL"] = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"

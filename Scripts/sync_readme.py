@@ -129,9 +129,15 @@ def llm_config():
     Defaults to DeepSeek; override for any compatible provider, e.g. Alibaba
     DashScope: README_SYNC_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
     README_SYNC_MODEL=qwen-plus README_SYNC_API_KEY=$BAILIAN_KEY
+
+    Default model is deepseek-v4-flash: the legacy `deepseek-chat` name is
+    rejected by the current DeepSeek API (HTTP 400 — supported names are
+    deepseek-v4-pro / deepseek-v4-flash, discovered the hard way during the
+    v2.5.13 release). Set README_SYNC_MODEL=deepseek-v4-pro for higher
+    translation quality.
     """
     base_url = os.environ.get("README_SYNC_BASE_URL", "https://api.deepseek.com/chat/completions")
-    model = os.environ.get("README_SYNC_MODEL", "deepseek-chat")
+    model = os.environ.get("README_SYNC_MODEL", "deepseek-v4-flash")
     key = os.environ.get("README_SYNC_API_KEY") or os.environ.get("DEEPSEEK_API_KEY", "")
     return base_url, model, key
 
