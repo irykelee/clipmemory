@@ -1,4 +1,4 @@
-# ClipMemory v2.5.13
+# ClipMemory v2.6.0
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.6.0 (2026-07-25) — Standalone Settings Window
+
+- **⚙️ Brand new standalone settings window** — Settings moved out of main window sidebar into a dedicated window, with four tabs at the top: "General / History & Capture / Backup / Update & About"; accessible via `⌘,`, menu bar icon, and Quick Bar menu; the window no longer closes when the main window is opened/closed
+- **🖥 Full adaption for macOS 26 Tahoe** — Main window title bar restores frosted glass blending with sidebar (no more jarring white strip); fixed the system `stringsdict` rendering issue where dropdown menu options in Tahoe all displayed `(null)`
+- **🔤 Font size changes take effect immediately** — After switching between Small/Medium/Large, all list, tag, and popup text reflows instantly without requiring an App restart
+- **🛡 34 audit fixes landed** — First copy on a fresh install no longer drops entries due to key initialization race conditions; OCR results are now saved in sync with the save rhythm, preventing batch loss on power failure; backup import validates the manifest before merging data, giving earlier error reporting for corrupt packages
+- **Standalone settings window (4 tabs)** — Settings are grouped by topic, pages no longer grow endlessly; supports `⌘,` keyboard shortcut and menu bar entry
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.6.0
 
 ### v2.5.13 (2026-07-25) — Audit Fix Wrap-up
 

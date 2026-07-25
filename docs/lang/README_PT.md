@@ -1,4 +1,4 @@
-# ClipMemory v2.5.13
+# ClipMemory v2.6.0
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.6.0 (2026-07-25) — Janela de Configurações Independente
+
+- **⚙️ Nova janela de configurações independente** — As configurações foram movidas da barra lateral da janela principal para uma janela independente, com quatro abas no topo: «Geral / Histórico e Captura / Cópia de Segurança / Atualização e Sobre»; acessível diretamente por `⌘,`, ícone da barra de menus e menus da Quick Bar; a janela não é mais perdida ao abrir/fechar a janela principal
+- **🖥 Compatibilidade total com macOS 26 Tahoe** — a barra de título da janela principal recuperou a textura fosca integrada com a barra lateral (não mais uma faixa branca abrupta); corrigido o problema de renderização do stringsdict do sistema onde todas as opções do menu suspenso de configurações no Tahoe exibiam `(null)`
+- **🔤 Configuração do tamanho da fonte entra em vigor imediatamente** — após alternar entre pequeno/médio/grande, todo o texto em listas, etiquetas e janelas pop‑up é reorganizado instantaneamente, sem necessidade de reiniciar o App
+- **🛡 34 correções de auditoria implementadas** — a primeira cópia após uma instalação limpa não perde mais entradas devido a uma condição de corrida na inicialização da chave; os resultados do OCR são gravados no disco conforme o ritmo de salvamento, evitando perda em lote durante uma queda de energia; a importação de cópia de segurança verifica a lista antes de mesclar os dados, e pacotes corrompidos geram erro mais cedo
+- **Janela de configurações independente (4 abas)** — os itens de configuração são agrupados por tema, a página não fica infinitamente longa; suporta o atalho `⌘,` e entrada pela barra de menus
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.6.0
 
 ### v2.5.13 (2026-07-25) — Correções Finais de Auditoria
 

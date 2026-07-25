@@ -1,4 +1,4 @@
-# ClipMemory v2.5.13
+# ClipMemory v2.6.0
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.6.0 (2026-07-25) — Ventana de configuración independiente
+
+- **⚙️ Nueva ventana de configuración independiente** — La configuración se ha trasladado de la barra lateral de la ventana principal a una ventana independiente, dividida en cuatro pestañas en la parte superior: «General / Historial y captura / Copia de seguridad / Actualización y acerca de»; se puede acceder directamente mediante `⌘,`, el icono de la barra de menú o el menú de Quick Bar, y la ventana ya no se pierde al cerrar la ventana principal.
+- **🖥 Adaptación completa a macOS 26 Tahoe** — La barra de título de la ventana principal recupera el aspecto esmerilado fusionado con la barra lateral (ya no es una franja blanca discordante); se corrige el problema de renderizado de `stringsdict` en Tahoe que mostraba `(null)` en todas las opciones de los menús desplegables de configuración.
+- **🔤 El cambio de tamaño de fuente se aplica al instante** — Al alternar entre pequeño/mediano/grande, todas las listas, etiquetas y textos de ventanas emergentes se reorganizan inmediatamente, sin necesidad de reiniciar la aplicación.
+- **🛡 34 correcciones de auditoría implementadas** — La primera copia tras una instalación nueva ya no pierde entradas debido a condiciones de carrera en la inicialización de claves; los resultados del OCR ahora se guardan en disco según el ritmo de guardado, evitando pérdidas masivas ante cortes de energía; la importación de copias de seguridad ahora verifica el manifiesto antes de fusionar los datos, mostrando errores más tempranos para paquetes dañados.
+- **Ventana de configuración independiente (4 pestañas)** — Los elementos de configuración se agrupan por tema, la página ya no se extiende infinitamente; admite el acceso directo `⌘,` y entrada desde la barra de menú.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.6.0
 
 ### v2.5.13 (2026-07-25) — Correcciones finales de la auditoría
 
