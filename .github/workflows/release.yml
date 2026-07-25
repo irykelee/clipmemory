@@ -177,7 +177,15 @@ jobs:
           # and pulling latest silently breaks CI mid-release. Pin matches
           # `packages.Sparkle.from: "2.9.4"` in project.yml. Bump both
           # together when Sparkle 2.x API breaks.
-          gh release download --repo sparkle-project/Sparkle 2.9.4 --pattern 'Sparkle-*.tar.xz' --dir /tmp/sparkle-dl --clobber
+          # REL-11 (2026-07-24 review): skip the download when the actions/cache
+          # above already restored the tarball (/tmp/sparkle-dl is cached) —
+          # `--clobber` used to re-download Sparkle on every release run.
+          mkdir -p /tmp/sparkle-dl
+          if compgen -G "/tmp/sparkle-dl/Sparkle-*.tar.xz" > /dev/null; then
+            echo "Sparkle tarball already cached in /tmp/sparkle-dl — skipping download"
+          else
+            gh release download --repo sparkle-project/Sparkle 2.9.4 --pattern 'Sparkle-*.tar.xz' --dir /tmp/sparkle-dl --clobber
+          fi
           mkdir -p /tmp/sparkle
           tar -xf /tmp/sparkle-dl/Sparkle-*.tar.xz -C /tmp/sparkle
 
@@ -425,8 +433,12 @@ jobs:
 
           echo "Updating tap to ClipMemory v${VERSION} (sha256: ${SHA256})"
 
-          # Clone the tap repository using a dedicated token that can write to it.
-          git clone "https://${TAP_GITHUB_TOKEN}@github.com/irykelee/homebrew-clipmemory.git" tap-repo
+          # REL-10 (2026-07-24 review): clone anonymously — the token used to
+          # be embedded in the remote URL, persisting in tap-repo/.git/config
+          # and the clone's process argv. Auth is supplied only at push time
+          # via a one-shot extraheader (same pattern as the appcast push
+          # above; `-c` applies to that one command and is not persisted).
+          git clone "https://github.com/irykelee/homebrew-clipmemory.git" tap-repo
           mkdir -p tap-repo/Casks
 
           cat > tap-repo/Casks/clipmemory.rb <<CASK
@@ -464,7 +476,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/clipmemory.rb
           git diff --cached --quiet || git commit -m "chore: update clipmemory to v${VERSION}"
-          git push origin main
+          # REL-10 (2026-07-24 review): the anonymous clone above carries no
+          # credentials, so authenticate the push with a one-shot extraheader
+          # (never persisted into tap-repo/.git/config).
+          AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${TAP_GITHUB_TOKEN}" | base64)"
+          git -c "http.https://github.com/.extraheader=${AUTH_HEADER}" push origin main
 
       - name: Verify post-release state
         if: github.event_name == 'push'

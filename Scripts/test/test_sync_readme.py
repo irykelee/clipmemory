@@ -2,8 +2,11 @@
 """Offline unit tests for Scripts/sync_readme.py (no network, no API key)."""
 
 import os
+import shutil
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import sync_readme  # noqa: E402
@@ -73,6 +76,85 @@ class TestLlmConfig(unittest.TestCase):
         self.assertIn("dashscope", base)
         self.assertEqual(model, "qwen-plus")
         self.assertEqual(key, "test-key")
+
+
+class TestTranslateErrorContext(unittest.TestCase):
+    """REL-12 (2026-07-24 review): HTTP/JSON failures must name the target
+    language instead of surfacing as a bare exception."""
+
+    def test_network_error_names_language(self):
+        with mock.patch("urllib.request.urlopen", side_effect=OSError("boom")):
+            with self.assertRaises(RuntimeError) as ctx:
+                sync_readme.translate("src", "ja", "style", "https://x", "m", "k")
+        self.assertIn("ja", str(ctx.exception))
+        self.assertIn("boom", str(ctx.exception))
+
+    def test_malformed_payload_names_language(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"unexpected": true}'
+
+        with mock.patch("urllib.request.urlopen", return_value=FakeResponse()):
+            with self.assertRaises(RuntimeError) as ctx:
+                sync_readme.translate("src", "ko", "style", "https://x", "m", "k")
+        self.assertIn("ko", str(ctx.exception))
+
+
+class TestAtomicWrite(unittest.TestCase):
+    """REL-12 (2026-07-24 review): a failure during the in-memory build
+    phase must leave every README on disk untouched."""
+
+    GOOD = "# ClipMemory v2.5.0\n\n## Changelog\n\n### v2.5.0 (2026-07-20) — old\n\n- a\n"
+    BAD = "# ClipMemory no version\n\n## Changelog\n\n### v2.5.0 (2026-07-20) — old\n\n- a\n"
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self._saved = (sync_readme.ROOT, sync_readme.FILES,
+                       sync_readme.translate, sys.argv[:])
+        sync_readme.ROOT = self.tmp
+        sync_readme.translate = lambda *a: "### v2.5.1 (2026-07-25) — EN\n\n- x"
+        changelog = os.path.join(self.tmp, "changelog.md")
+        with open(changelog, "w", encoding="utf-8") as handle:
+            handle.write("### v2.5.1 (2026-07-25) — new\n\n- x\n")
+        sys.argv = ["sync_readme.py", "--version", "2.5.1", "--changelog", changelog]
+        os.environ["README_SYNC_API_KEY"] = "test-key"
+
+    def tearDown(self):
+        sync_readme.ROOT, sync_readme.FILES, sync_readme.translate, sys.argv = self._saved
+        os.environ.pop("README_SYNC_API_KEY", None)
+        shutil.rmtree(self.tmp)
+
+    def _write(self, name, content):
+        with open(os.path.join(self.tmp, name), "w", encoding="utf-8") as handle:
+            handle.write(content)
+
+    def _read(self, name):
+        with open(os.path.join(self.tmp, name), encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_build_failure_writes_nothing(self):
+        self._write("good.md", self.GOOD)
+        self._write("bad.md", self.BAD)  # bump_title raises: no version title
+        sync_readme.FILES = {"zh-Hans": ["good.md"], "en": ["bad.md"]}
+        with self.assertRaises(ValueError):
+            sync_readme.main()
+        self.assertEqual(self._read("good.md"), self.GOOD)
+        self.assertEqual(self._read("bad.md"), self.BAD)
+
+    def test_success_writes_all_files(self):
+        self._write("a.md", self.GOOD)
+        self._write("b.md", self.GOOD)
+        sync_readme.FILES = {"zh-Hans": ["a.md"], "en": ["b.md"]}
+        sync_readme.main()
+        for name in ("a.md", "b.md"):
+            self.assertIn("# ClipMemory v2.5.1", self._read(name))
+            self.assertIn("### v2.5.1", self._read(name))
 
 
 if __name__ == "__main__":

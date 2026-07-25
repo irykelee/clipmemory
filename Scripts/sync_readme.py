@@ -167,9 +167,15 @@ def translate(source, lang, style_ref, base_url, model, deepseek_key):
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {deepseek_key}"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=120) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    return payload["choices"][0]["message"]["content"].strip()
+    # REL-12 (2026-07-24 review): wrap HTTP/JSON failures with the target
+    # language — a bare URLError/KeyError gave no clue which of the 6
+    # translations failed.
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return payload["choices"][0]["message"]["content"].strip()
+    except Exception as exc:
+        raise RuntimeError(f"translation to {lang} failed: {exc}") from exc
 
 
 def main():
@@ -206,6 +212,13 @@ def main():
             print(f"\n===== {lang} =====\n{section}")
         return
 
+    # REL-12 (2026-07-24 review): build all 7 new file contents in memory
+    # first and only write to disk once every bump/remove/insert succeeded.
+    # Previously files were written one at a time, so a mid-loop failure
+    # (e.g. bump_title on an out-of-pattern README) left a partially synced
+    # set of READMEs. All translations above already completed before this
+    # point — keep that order.
+    pending = []
     for lang, paths in FILES.items():
         for relative in paths:
             path = os.path.join(ROOT, relative)
@@ -217,9 +230,12 @@ def main():
             # for this version before inserting the new translation.
             text, _ = remove_existing_section(text, args.version)
             text = insert_section(text, outputs[lang])
-            with open(path, "w", encoding="utf-8") as handle:
-                handle.write(text)
-            print(f"updated {relative}", file=sys.stderr)
+            pending.append((path, relative, text))
+
+    for path, relative, text in pending:
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        print(f"updated {relative}", file=sys.stderr)
 
     print("\nDone. 请用 `git diff --stat` 核对后再提交。", file=sys.stderr)
 

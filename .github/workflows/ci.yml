@@ -23,7 +23,14 @@ jobs:
         run: xcodebuild -version
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        # REL-11 (2026-07-24 review): skip brew install when the binary is
+        # already on PATH (same guard as release.yml's Install XcodeGen step).
+        run: |
+          if which xcodegen >/dev/null 2>&1; then
+            echo "xcodegen already installed: $(xcodegen --version)"
+          else
+            brew install xcodegen
+          fi
 
       - name: Generate Xcode project
         run: xcodegen generate

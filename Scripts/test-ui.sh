@@ -37,7 +37,7 @@ sleep 2
 
 # Check process is running
 echo "[3/6] Checking process..."
-PID=$(pgrep -x "$APP_NAME" || echo "")
+PID=$(pgrep -x "$APP_NAME" | head -1 || echo "")
 if [ -z "$PID" ]; then
     echo "❌ FAIL: App not running"
     exit 1
@@ -46,7 +46,10 @@ echo "✓ App running (PID: $PID)"
 
 # Check CPU usage (should not be 99%)
 echo "[4/6] Checking CPU usage..."
-CPU=$(ps aux | grep -i "$APP_NAME" | grep -v grep | awk '{print $3}' | head -1 | cut -d. -f1)
+# REL-13 (2026-07-24 review): sample the exact PID pgrep found above —
+# `ps aux | grep -i "$APP_NAME"` could match a different process (any path
+# containing "ClipMemory", e.g. a helper or another build).
+CPU=$(ps -p "$PID" -o %cpu= | tr -d ' ' | cut -d. -f1)
 echo "CPU: ${CPU}%"
 if [ -n "$CPU" ] && [ "$CPU" -gt 50 ]; then
     echo "❌ FAIL: CPU stuck at ${CPU}%"
