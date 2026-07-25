@@ -19,6 +19,8 @@ struct TrashItemRow: View, Equatable {
     @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
     @State private var imageLongPressing = false
     @State private var pendingDelete = false
+    // CLIP-3 (2026-07-24 review): same guard as ClipboardItemRow — fontScale
+    // is only the invalidation trigger; all sizing goes through sz().
     @AppStorage("fontScale") private var fontScale: Double = 1.0
 
     static func == (lhs: TrashItemRow, rhs: TrashItemRow) -> Bool {
@@ -65,15 +67,15 @@ struct TrashItemRow: View, Equatable {
                                         let status = imageLoadStatus ?? .fileMissing
                                         VStack(spacing: 4) {
                                             Image(systemName: status == .decryptionFailed ? "lock.slash" : "exclamationmark.triangle")
-                                                .font(.system(size: fontScale * 22))
+                                                .font(.system(size: sz(22)))
                                                 .foregroundColor(status == .decryptionFailed ? .secondary : .orange)
                                             Text(status == .decryptionFailed ? L10n.imageDecryptionFailed : L10n.imageMissing)
-                                                .font(.system(size: fontScale * 11))
+                                                .font(.system(size: sz(11)))
                                                 .foregroundColor(.secondary)
                                         }
                                     } else {
                                         VStack(spacing: 4) {
-                                            Image(systemName: "photo").font(.system(size: fontScale * 24)).foregroundColor(.secondary)
+                                            Image(systemName: "photo").font(.system(size: sz(24))).foregroundColor(.secondary)
                                             ProgressView().scaleEffect(0.5).frame(height: 8)
                                         }
                                     }
@@ -125,27 +127,27 @@ struct TrashItemRow: View, Equatable {
                         }
                     } else if item.type == .richText {
                         Text(plainTextFallback)
-                            .font(.system(size: fontScale * 12)).foregroundColor(.secondary)
+                            .font(.system(size: sz(12))).foregroundColor(.secondary)
                             .lineLimit(3)
                     } else {
                         Text(decryptedContent)
-                            .font(.system(size: fontScale * 12)).foregroundColor(Color(nsColor: .controlTextColor))
+                            .font(.system(size: sz(12))).foregroundColor(Color(nsColor: .controlTextColor))
                             .lineLimit(3)
                     }
                 }
                 HStack {
                     if item.isSensitive {
                         Label(L10n.itemSensitive, systemImage: "exclamationmark.triangle.fill")
-                            .font(.system(size: fontScale * 10))
+                            .font(.system(size: sz(10)))
                             .foregroundColor(.orange)
                     }
                     if item.isPinned {
                         Image(systemName: "star.fill")
-                            .font(.system(size: fontScale * 10))
+                            .font(.system(size: sz(10)))
                             .foregroundColor(.orange)
                     }
                     Text(formattedDeletedAt)
-                        .font(.system(size: fontScale * 11))
+                        .font(.system(size: sz(11)))
                         .foregroundColor(.secondary)
                 }
             }
@@ -153,7 +155,7 @@ struct TrashItemRow: View, Equatable {
             HStack(spacing: 8) {
                 Button(action: onRestore) {
                     Label(L10n.trashRestore, systemImage: "arrow.uturn.left")
-                        .font(.system(size: fontScale * 12))
+                        .font(.system(size: sz(12)))
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.accentColor)
@@ -171,7 +173,7 @@ struct TrashItemRow: View, Equatable {
                     pendingDelete = true
                 } label: {
                     Image(systemName: "trash.fill")
-                        .font(.system(size: fontScale * 12))
+                        .font(.system(size: sz(12)))
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.red)
