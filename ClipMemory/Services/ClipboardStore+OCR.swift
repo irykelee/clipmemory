@@ -37,7 +37,12 @@ extension ClipboardStore {
             guard let index = self.items.firstIndex(where: { $0.id == itemId }) else { return }
             self.items[index].ocrText = encrypted
             self.items[index].ocrAttempted = true
-            self.saveImmediately()
+            // H-1 (2026-07-25 audit): OCR text is derived metadata. Using
+            // saveImmediately() here caused every backfilled image to trigger a
+            // full JSON encode of all items on the main thread; with hundreds
+            // of images this froze the UI on first launch. Debounce through
+            // scheduleSave() so concurrent OCR results coalesce into one write.
+            self.scheduleSave()
         }
         if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }
     }

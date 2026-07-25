@@ -4,6 +4,15 @@ import CryptoKit
 import CommonCrypto
 import os.log
 
+extension Notification.Name {
+    /// H-2 (2026-07-25 audit): posted once `CryptoService.prepareKey()` has
+    /// finished, regardless of success or failure. Observers (e.g.
+    /// ClipboardStore's deferred-capture queue) can flush pending items when
+    /// the key becomes available, or drop them and surface an error when key
+    /// preparation definitively failed.
+    static let cryptoKeyPrepared = Notification.Name("CryptoService.keyPrepared")
+}
+
 /// Why the app encryption key could not be prepared (H6).
 enum CryptoKeyFailure {
     /// Key file exists but is unreadable or not 32 bytes. Regenerating
@@ -238,6 +247,7 @@ class CryptoService: CryptoServiceProtocol {
             // fall through to file migration / fresh generation
         case .interactionLocked:
             logger.error("Keychain interaction not allowed (locked); deferring key prep until unlock")
+            notifyKeyPreparationFailed()
             return nil
         case .notFound, .otherError:
             break // fall through to file migration / fresh generation
@@ -258,7 +268,10 @@ class CryptoService: CryptoServiceProtocol {
                 return publishToSharedCache(SymmetricKey(data: keyData))
             }
             // Corrupt or tampered key file — ask before destroying it.
-            guard failureHandler(.corruptExistingKey) == .regenerate else { return nil }
+            guard failureHandler(.corruptExistingKey) == .regenerate else {
+                notifyKeyPreparationFailed()
+                return nil
+            }
             try? fileManager.removeItem(at: keyURL)
         }
         // 3. Fresh generation into the Keychain.
@@ -275,7 +288,31 @@ class CryptoService: CryptoServiceProtocol {
             shared.cachedLoadedKey = key
             shared.keyLoadAttempted = true
         }
+        NotificationCenter.default.post(
+            name: .cryptoKeyPrepared,
+            object: nil,
+            userInfo: ["success": true]
+        )
         return key
+    }
+
+    /// H-2 (2026-07-25 audit): probe used by ClipboardStore.addItem to decide
+    /// whether a capture should be deferred because the detached `prepareKey()`
+    /// task is still running on first launch.
+    static func isKeyLoadAttemptedAndMissing() -> Bool {
+        shared.withCachedLoadedKey {
+            shared.cachedLoadedKey == nil && shared.keyLoadAttempted
+        }
+    }
+
+    /// H-2 (2026-07-25 audit): signal that key preparation definitively failed
+    /// so any deferred captures can be dropped rather than waiting forever.
+    private static func notifyKeyPreparationFailed() {
+        NotificationCenter.default.post(
+            name: .cryptoKeyPrepared,
+            object: nil,
+            userInfo: ["success": false]
+        )
     }
 
     private static func generateAndStoreKey(
@@ -291,6 +328,7 @@ class CryptoService: CryptoServiceProtocol {
             // A CSPRNG failure cannot be fixed by regenerating; the default
             // handler quits the app after alerting. Never fatalError (H6).
             _ = failureHandler(.secureRandomUnavailable)
+            notifyKeyPreparationFailed()
             return nil
         }
         let status = keyStore.store(keyData)
@@ -298,7 +336,10 @@ class CryptoService: CryptoServiceProtocol {
             logger.error("Failed to store encryption key in Keychain: \(status)")
             // Offer regenerate (e.g. keychain was locked) or an informed
             // quit — never crash (H6).
-            guard failureHandler(.keyStorageFailed) == .regenerate else { return nil }
+            guard failureHandler(.keyStorageFailed) == .regenerate else {
+                notifyKeyPreparationFailed()
+                return nil
+            }
             return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
         }
         return publishToSharedCache(SymmetricKey(data: keyData))
@@ -383,13 +424,19 @@ class CryptoService: CryptoServiceProtocol {
         } else {
             loaded = nil
         }
-        // Commit the load result AND mark attempted so subsequent misses
-        // short-circuit instead of re-querying Keychain / disk.
-        withCachedLoadedKey {
-            cachedLoadedKey = loaded
+        // M-3 (2026-07-25 audit): while we were doing I/O, the detached
+        // `prepareKey()` task may have generated/successfully migrated a key
+        // and populated the cache. Never overwrite a now-populated cache with
+        // our (possibly stale) nil/missing result; only record the miss if the
+        // cache is still empty. The latch still flips so repeated calls skip
+        // the expensive Keychain/disk round-trip.
+        return withCachedLoadedKey {
+            if cachedLoadedKey == nil {
+                cachedLoadedKey = loaded
+            }
             keyLoadAttempted = true
+            return cachedLoadedKey
         }
-        return loaded
     }
 
     // MARK: - Public API

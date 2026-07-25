@@ -483,9 +483,23 @@ final class BackupPackage {
 
         var result = BackupImportResult()
 
-        // Items + trash: re-encrypt content with the local key, then merge.
+        // Items + trash: decode before any store mutation so a corrupt/tampered
+        // manifest can be rejected without leaving a half-merged state.
         let packageItems = try decodeItems(from: staging, name: "items.json", source: .items)
         let packageTrash = try decodeItems(from: staging, name: "trash.json", source: .trash)
+        let packageTags = try decodeTags(from: staging, name: "tags.json", source: .tags)
+
+        // M-9 (2026-07-25 audit): validate manifest counts BEFORE merging data
+        // into the store or importing images. Previously the validation ran
+        // after the merge, so a manifest/item-count mismatch left the local
+        // store partially modified with no rollback path.
+        try validateManifestCounts(
+            manifest: manifest,
+            staging: staging,
+            decodedItems: packageItems.count + packageTrash.count,
+            decodedTags: packageTags.count
+        )
+
         // BUG-024 (2026-07-22): single-entry GCM auth failures stay per-entry,
         // surfaced via `itemsSkippedCorrupt` so the UI shows "corrupt N" rather
         // than silently dropping them.
@@ -506,7 +520,6 @@ final class BackupPackage {
         // + ciphertext under the SOURCE machine's key) — decrypt them with the
         // package key so the local store holds plaintext (re-encrypted with
         // the local key on the next saveTags).
-        let packageTags = try decodeTags(from: staging, name: "tags.json", source: .tags)
         let localizedTags = packageTags.map { reencryptTagName($0, from: packageCrypto) }
         result.tagsImported = onMain { store.importBackupTags(localizedTags) }
 
@@ -519,19 +532,6 @@ final class BackupPackage {
         )
 
         logger.info("Imported backup: \(result.itemsImported) items, \(result.tagsImported) tags")
-        // BKP-4 (2026-07-24 review): cross-check the manifest's declared
-        // counts against the payload actually found in the package. Compared
-        // against the decoded/file counts — NOT the merge result — because
-        // dedupe-skips and already-present images legitimately make the
-        // imported counts smaller. A mismatch means a corrupt or tampered
-        // manifest. (Throws after the merge like the image pass does — see
-        // the H-5 no-rollback contract above.)
-        try validateManifestCounts(
-            manifest: manifest,
-            staging: staging,
-            decodedItems: packageItems.count,
-            decodedTags: packageTags.count
-        )
         return result
     }
 

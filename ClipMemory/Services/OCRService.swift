@@ -93,17 +93,40 @@ final class VisionOCRService: OCRServiceProtocol {
         category: "OCR.supportedLanguages"
     )
 
+    /// M-7 (2026-07-25 audit): the Vision-supported language list for a given
+    /// revision is invariant at runtime, but we previously queried it on every
+    /// OCR invocation. Cache the result per revision to avoid repeated
+    /// framework round-trips during backfills.
+    private static var cachedSupportedLanguages: [Int: [String]] = [:]
+    private static let cachedSupportedLanguagesLock = NSLock()
+
+    private static func supportedRecognitionLanguages(for revision: Int) -> [String] {
+        cachedSupportedLanguagesLock.lock()
+        if let cached = cachedSupportedLanguages[revision] {
+            cachedSupportedLanguagesLock.unlock()
+            return cached
+        }
+        cachedSupportedLanguagesLock.unlock()
+
+        let supported = (try? VNRecognizeTextRequest
+            .supportedRecognitionLanguages(
+                for: VNRequestTextRecognitionLevel.accurate,
+                revision: revision
+            )) ?? []
+
+        cachedSupportedLanguagesLock.lock()
+        cachedSupportedLanguages[revision] = supported
+        cachedSupportedLanguagesLock.unlock()
+        return supported
+    }
+
     private static func supportedRecognitionLanguages(from requested: [String]) -> [String] {
         if #available(macOS 13.0, *) {
             // The 2-arg overload is deprecated in macOS 12+ in favor of the
             // parameterless form (introduced macOS 15). Suppress the warning
             // here — we explicitly want to query Revision3 since the rest of
             // the file pins that revision for reproducibility (BUG-045).
-            let supported = (try? VNRecognizeTextRequest
-                .supportedRecognitionLanguages(
-                    for: VNRequestTextRecognitionLevel.accurate,
-                    revision: VNRecognizeTextRequestRevision3
-                )) ?? []
+            let supported = supportedRecognitionLanguages(for: VNRecognizeTextRequestRevision3)
             let filtered = requested.filter { supported.contains($0) }
             if filtered.isEmpty {
                 let dropped = requested.filter { !supported.contains($0) }
@@ -125,11 +148,7 @@ final class VisionOCRService: OCRServiceProtocol {
         // supported-filter + verified fallback as the 13+ path. (Dead on
         // this project's macOS 13 deployment target; kept compiling for
         // correctness if the target ever drops.)
-        let supported = (try? VNRecognizeTextRequest
-            .supportedRecognitionLanguages(
-                for: VNRequestTextRecognitionLevel.accurate,
-                revision: VNRecognizeTextRequestRevision2
-            )) ?? []
+        let supported = supportedRecognitionLanguages(for: VNRecognizeTextRequestRevision2)
         let filtered = requested.filter { supported.contains($0) }
         if filtered.isEmpty {
             return supported.contains("en") ? ["en"] : Array(supported.prefix(1))

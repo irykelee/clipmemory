@@ -174,7 +174,9 @@ class ImageStorage {
             guard fileSize > 0, fileSize <= maxFileSize else {
                 logger.warning("Permanently skipping ineligible legacy image: \(filename) (\(fileSize) bytes)")
                 skippedSet.insert(filename)
-                defaults.set(Array(skippedSet), forKey: skippedFilenamesKey)
+                // M-8 (2026-07-25 audit): batch UserDefaults writes until after
+                // the loop to avoid O(n²) serialization of the growing set on
+                // every iteration.
                 continue
             }
             guard let imageData = try? Data(contentsOf: legacyPath) else {
@@ -205,10 +207,22 @@ class ImageStorage {
             if success {
                 migratedFilenames.append(filename)
                 migratedSet.insert(filename)
-                defaults.set(Array(migratedSet), forKey: migratedFilenamesKey)
+                // M-8 (2026-07-25 audit): batch UserDefaults writes until after
+                // the loop to avoid O(n²) serialization of the growing set on
+                // every iteration.
             } else {
                 hadFailure = true
             }
+        }
+
+        // M-8 (2026-07-25 audit): write the accumulated migrated/skipped sets
+        // once now that the loop is done. This preserves resume state across
+        // launches while avoiding per-iteration serialization cost.
+        if !migratedSet.isEmpty {
+            defaults.set(Array(migratedSet), forKey: migratedFilenamesKey)
+        }
+        if !skippedSet.isEmpty {
+            defaults.set(Array(skippedSet), forKey: skippedFilenamesKey)
         }
 
         // Only mark migration complete when every eligible file has been

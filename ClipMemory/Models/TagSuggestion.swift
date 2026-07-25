@@ -237,9 +237,15 @@ enum TagSuggestion {
         // token embedded in Chinese text (e.g. 密钥abc123def456ghi789)
         // goes undetected. Use lookarounds instead of \b — match a run
         // of [A-Za-z0-9] not preceded or followed by another alnum.
-        s.range(of: #"(?<![A-Za-z0-9])[A-Za-z0-9]{16,}(?![A-Za-z0-9])"#,
-                options: .regularExpression) != nil
+        // M-6 (2026-07-25 audit): compile the regex once instead of on every
+        // suggestion call. `NSRegularExpression` is thread-safe for matching.
+        accountLikeTokenRegex.firstMatch(in: s, options: [], range: NSRange(s.startIndex..., in: s)) != nil
     }
+
+    private static let accountLikeTokenRegex: NSRegularExpression = {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"(?<![A-Za-z0-9])[A-Za-z0-9]{16,}(?![A-Za-z0-9])"#, options: [])
+    }()
 
     /// Lightweight keyword check. False positives accepted — user filters at acceptance.
     private static func containsSensitiveKeyword(_ s: String) -> Bool {

@@ -30,16 +30,12 @@ extension Notification.Name {
 extension ClipboardStore: ClipboardMonitorDelegate {
     func sensitiveClearHoursForMonitor() -> Int {
         // Audit-fix #3 (2026-07-20): ClipboardMonitor calls this delegate
-        // from background queues (timer at ClipboardMonitor.swift:268,
-        // userInitiated at :344 after H-11). Reading `@Published var
-        // sensitiveClearHours` directly is a data race — the @Published
-        // wrapper does not synchronize the backing storage. The writer is
-        // main-thread only (UI sets it via SwiftUI binding), so we lock
-        // only the reader and let the main-thread write land atomically
-        // for 64-bit Int. Matches the ClipboardMonitor `withLock` idiom.
-        sensitiveClearHoursLock.lock()
-        defer { sensitiveClearHoursLock.unlock() }
-        return sensitiveClearHours
+        // from background queues. Reading `sensitiveClearHours` directly
+        // is a data race — the @Published wrapper does not synchronize the
+        // backing storage. M-4 (2026-07-25) extended the lock to cover writes
+        // as well; read the private backing variable directly to avoid
+        // deadlocking with the computed property's own lock.
+        return withSensitiveClearHoursLock { _sensitiveClearHours }
     }
     // H-13 (2026-07-20 audit): explicit overrides of the protocol defaults
     // so the monitor never has to know `ClipboardStore.shared` again. The
@@ -100,13 +96,31 @@ class ClipboardStore: ObservableObject {
     /// rather than an undersized cache.
     static let minCacheCountLimit = 500
 
-    @Published var sensitiveClearHours: Int {
-        didSet { UserDefaults.standard.set(sensitiveClearHours, forKey: sensitiveClearHoursKey) }
+    // M-4 (2026-07-25 audit): `sensitiveClearHours` is read from the
+    // clipboard monitor's background timer and written from the SwiftUI main
+    // thread. A plain `@Published` Int has no synchronization on the backing
+    // storage. Use a private locked backing variable + computed property so
+    // reads and writes share one lock; `objectWillChange.send()` keeps SwiftUI
+    // observing changes because the class is an `ObservableObject`.
+    var sensitiveClearHours: Int {
+        get { withSensitiveClearHoursLock { _sensitiveClearHours } }
+        set {
+            let changed = withSensitiveClearHoursLock {
+                let old = _sensitiveClearHours
+                _sensitiveClearHours = newValue
+                return old != newValue
+            }
+            UserDefaults.standard.set(newValue, forKey: sensitiveClearHoursKey)
+            if changed { objectWillChange.send() }
+        }
     }
-    // Audit-fix #3 (2026-07-20): see `sensitiveClearHoursForMonitor()` for
-    // why the delegate-method reader needs a lock. Writer remains main-thread
-    // (UI binding); the lock only guards the cross-thread read.
+    private var _sensitiveClearHours: Int = 24
     private let sensitiveClearHoursLock = NSLock()
+    private func withSensitiveClearHoursLock<R>(_ block: () throws -> R) rethrows -> R {
+        sensitiveClearHoursLock.lock()
+        defer { sensitiveClearHoursLock.unlock() }
+        return try block()
+    }
 
     @Published var captureRichText: Bool = true {
         didSet { UserDefaults.standard.set(captureRichText, forKey: captureRichTextKey) }
@@ -254,10 +268,13 @@ class ClipboardStore: ObservableObject {
         rtfPlaintextCache.countLimit = initialCacheLimit
         maxItems = clampedInit
 
+        // M-4 (2026-07-25 audit): `sensitiveClearHours` is now a computed
+        // property over `_sensitiveClearHours`. Initialize the backing stored
+        // property directly here to satisfy Swift's definite-init rules.
         if UserDefaults.standard.object(forKey: sensitiveClearHoursKey) != nil {
-            sensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
+            _sensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
         } else {
-            sensitiveClearHours = 24
+            _sensitiveClearHours = 24
         }
 
         excludedBundleIdsString = UserDefaults.standard.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
@@ -276,6 +293,14 @@ class ClipboardStore: ObservableObject {
             self,
             selector: #selector(handleImageMigrationCompleted(_:)),
             name: Notification.Name("ImageStorageMigrationCompleted"),
+            object: nil
+        )
+        // H-2 (2026-07-25 audit): flush captures that were deferred while the
+        // encryption key was still being prepared on first launch.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCryptoKeyPrepared(_:)),
+            name: .cryptoKeyPrepared,
             object: nil
         )
 
@@ -321,8 +346,19 @@ class ClipboardStore: ObservableObject {
 
     private var cleanupTimer: DispatchSourceTimer?
     private var saveTimer: DispatchSourceTimer?
+    /// M-2 (2026-07-25 audit): reuse a single serial queue for the save timer
+    /// instead of creating a new `DispatchQueue` on every `scheduleSave()` call.
+    private let saveTimerQueue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
     private var needsSave = false
     private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
+
+    /// H-2 (2026-07-25 audit): captures that arrive before the detached
+    /// `CryptoService.prepareKey()` task finishes on first launch are held here
+    /// instead of being dropped. Once `.cryptoKeyPrepared` fires with success,
+    /// they are re-processed through `addItem(_:)`. Protected by its own lock
+    /// because the notification may arrive on any queue.
+    private var pendingKeyItems: [ClipboardItem] = []
+    private let pendingKeyItemsLock = NSLock()
 
     /// C5: IDs whose decryption already failed, pending batched write-back into
     /// `items`. The read path (getDecryptedContent) never mutates @Published
@@ -362,6 +398,36 @@ class ClipboardStore: ObservableObject {
 
         if didMigrateAny {
             scheduleSave()
+        }
+    }
+
+    /// H-2 (2026-07-25 audit): retry captures that were deferred while the
+    /// encryption key was still being prepared. On success, re-feed every
+    /// pending item through `addItem(_:)` (dedup and ordering are preserved).
+    /// On failure, drop them with the same encryption-failed notification that
+    /// an immediate failure would have posted.
+    @objc private func handleCryptoKeyPrepared(_ notification: Notification) {
+        let success = notification.userInfo?["success"] as? Bool ?? false
+        pendingKeyItemsLock.lock()
+        let pending = pendingKeyItems
+        pendingKeyItems.removeAll()
+        pendingKeyItemsLock.unlock()
+
+        guard !pending.isEmpty else { return }
+        if success {
+            for item in pending {
+                addItem(item)
+            }
+        } else {
+            logger.error("Encryption key preparation failed; dropping \(pending.count) deferred clipboard capture(s)")
+            NotificationCenter.default.post(
+                name: .encryptionFailed,
+                object: nil,
+                userInfo: [
+                    "source": "addItem",
+                    "itemType": "deferred"
+                ]
+            )
         }
     }
 
@@ -481,6 +547,10 @@ class ClipboardStore: ObservableObject {
         // the calling thread; the durability semantics are unchanged.
         // Deadlock-free: saveItems() is main-thread only and nothing else
         // dispatches to this queue.
+        // M-5 (2026-07-25 audit): converting this to async would break the
+        // write-through contract tested by IntegrationTests and
+        // ClipboardCaptureLimitTests. Deferred to a future refactor that can
+        // plumb async completion through the call sites.
         let snapshot = items
         do {
             let data = try itemEncodingQueue.sync {
@@ -496,17 +566,23 @@ class ClipboardStore: ObservableObject {
     /// The actual write happens after `saveDebounceInterval` seconds of inactivity.
     func scheduleSave() {
         needsSave = true
-        saveTimer?.cancel()
-        let queue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
-        saveTimer = DispatchSource.makeTimerSource(queue: queue)
-        saveTimer?.schedule(deadline: .now() + saveDebounceInterval)
-        saveTimer?.setEventHandler { [weak self] in
-            // Hop to main before touching @Published `items` — the timer fires on a
-            // utility queue, and encoding the array from there races with main-thread
-            // mutations (insert/remove) and is UB.
-            DispatchQueue.main.async { self?.flushSave() }
+        // M-2 (2026-07-25 audit): lazily create and reuse the timer source.
+        // Repeated scheduleSave() calls previously allocated a new DispatchQueue
+        // + DispatchSource on every keystroke / tag change, which showed up in
+        // Instruments as allocation churn. `schedule(deadline:)` restarts the
+        // existing source's fire time.
+        if saveTimer == nil {
+            let timer = DispatchSource.makeTimerSource(queue: saveTimerQueue)
+            timer.setEventHandler { [weak self] in
+                // Hop to main before touching @Published `items` — the timer fires on a
+                // utility queue, and encoding the array from there races with main-thread
+                // mutations (insert/remove) and is UB.
+                DispatchQueue.main.async { self?.flushSave() }
+            }
+            timer.resume()
+            saveTimer = timer
         }
-        saveTimer?.resume()
+        saveTimer?.schedule(deadline: .now() + saveDebounceInterval)
     }
 
     /// Write-through for clipboard ingestion. New clipboard content is the one
@@ -530,7 +606,8 @@ class ClipboardStore: ObservableObject {
         guard needsSave else { return }
         needsSave = false
         saveTimer?.cancel()
-        saveTimer = nil
+        // M-2 (2026-07-25 audit): keep the timer source alive for reuse rather
+        // than nil-ing it out after every flush.
         saveItems()
     }
 
@@ -792,6 +869,16 @@ class ClipboardStore: ObservableObject {
                 newHash = computedHash
                 newItem = item.with(content: encrypted, isEncrypted: true, contentHash: newHash)
             } else {
+                // H-2 (2026-07-25 audit): on a fresh install the encryption key
+                // is prepared in a detached task; captures that arrive before it
+                // finishes would otherwise be silently dropped. Defer them and
+                // retry once `.cryptoKeyPrepared` signals success.
+                if CryptoService.isKeyLoadAttemptedAndMissing() {
+                    pendingKeyItemsLock.lock()
+                    pendingKeyItems.append(item)
+                    pendingKeyItemsLock.unlock()
+                    return
+                }
                 // N2: Encrypt failed — do NOT store as plaintext (security violation).
                 // Discard the item (any non-image type — M3 encrypts text + link
                 // unconditionally). H-3 (2026-07-24 audit) audit-checks for log +

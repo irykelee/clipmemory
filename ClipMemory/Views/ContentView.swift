@@ -1030,14 +1030,22 @@ ForEach(filtered, id: \.bundleId) { app in
         .frame(width: 400, height: 450)
     }
 
+    /// M-10 (2026-07-25 audit): the static app cache is read on the main
+    /// thread but written from a `DispatchQueue.main.async` callback. Use a
+    /// lock so a future caller can't race the read/write even though both
+    /// currently land on the same queue.
     private static var cachedApps: [AppPickerItem]?
+    private static let cachedAppsLock = NSLock()
 
     /// Kick off a background fetch of installed applications. Icons are loaded
     /// lazily by AppPickerRow via NSImage, so only the directory scan and bundle
     /// ID lookup run on the background queue. Results are cached statically.
     private func loadInstalledAppsIfNeeded() {
         guard installedApps.isEmpty, !isLoadingApps else { return }
-        if let cached = Self.cachedApps {
+        Self.cachedAppsLock.lock()
+        let cached = Self.cachedApps
+        Self.cachedAppsLock.unlock()
+        if let cached = cached {
             installedApps = cached
             return
         }
@@ -1058,7 +1066,9 @@ ForEach(filtered, id: \.bundleId) { app in
                 }
             }
             DispatchQueue.main.async {
+                Self.cachedAppsLock.lock()
                 Self.cachedApps = results
+                Self.cachedAppsLock.unlock()
                 self.installedApps = results
                 self.isLoadingApps = false
             }

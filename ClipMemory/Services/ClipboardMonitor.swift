@@ -304,7 +304,16 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         lastChangeCount = currentCount
 
         if let rtfData = pasteboard.data(forType: .rtf), !rtfData.isEmpty, self.captureRichText {
-            processRichText(rtfData)
+            // M-1 (2026-07-25 audit): plain-text capture already caps at
+            // `maxTextCaptureBytes`, but RTF data had no guard. Parsing a
+            // multi-GB RTF into an NSAttributedString blocks the poll queue
+            // and can exhaust memory. Drop oversized RTF and fall through to
+            // the plaintext path, which truncates safely.
+            if rtfData.count <= Self.maxTextCaptureBytes {
+                processRichText(rtfData)
+            } else {
+                logger.warning("CLIP-2: clipboard RTF data exceeded \(Self.maxTextCaptureBytes) bytes; falling back to plaintext")
+            }
         } else if let rawContent = pasteboard.string(forType: .string), !rawContent.isEmpty {
             // CLIP-2 (2026-07-24): cap capture size BEFORE detectType /
             // detectSensitive / ClipboardItem construction — an unbounded
