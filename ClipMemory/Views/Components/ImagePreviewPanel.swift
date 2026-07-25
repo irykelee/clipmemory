@@ -30,10 +30,17 @@ enum ImagePreviewPanel {
         return Layout(panelSize: cap, imageSize: imageSize, scrollable: true)
     }
 
+    // L-18 (2026-07-25 audit): `panel` is a static mutable shared across the
+    // main thread and any background callers that touch the preview. Guard
+    // read/write with a lock so `show()` and `hide()` cannot race and leak or
+    // double-close a panel.
     private static var panel: NSPanel?
+    private static let panelLock = NSLock()
 
     static func show(image: NSImage, screen: NSScreen? = NSScreen.main) {
-        hide()
+        panelLock.lock()
+        defer { panelLock.unlock() }
+        hideUnlocked()
         let screenSize = screen?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
         let layout = layout(imageSize: image.size, screenSize: screenSize)
 
@@ -82,6 +89,12 @@ enum ImagePreviewPanel {
     }
 
     static func hide() {
+        panelLock.lock()
+        defer { panelLock.unlock() }
+        hideUnlocked()
+    }
+
+    private static func hideUnlocked() {
         panel?.close()
         panel = nil
     }

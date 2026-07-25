@@ -65,7 +65,12 @@ final class KeyCaptureNSView: NSView {
             // fires the main window's onReturn handler, and the wrong item
             // can land on the pasteboard. Returning event unchanged when
             // our window is not key confines the monitor to its own window.
-            guard self.window == nil || self.window == NSApp.keyWindow else {
+            //
+            // L-19 (2026-07-25 audit): require the view's window to actually
+            // be the key window. The previous `window == nil` short-circuit
+            // let a detached/transitioning view process events meant for the
+            // real key window.
+            guard self.window == NSApp.keyWindow else {
                 return event
             }
             // During IME composition, pass all keys through to IME

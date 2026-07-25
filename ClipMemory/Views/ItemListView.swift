@@ -289,6 +289,7 @@ struct ItemListView: View {
                     ForEach(store.trashedItems) { item in
                         TrashItemRow(
                             item: item,
+                            store: store,
                             onRestore: { store.restoreFromTrash(item) },
                             onDeletePermanently: { store.deletePermanently(item) }
                         )
@@ -399,6 +400,7 @@ struct ItemListView: View {
         let revealAction: () -> Void = { self.toggleReveal(itemId) }
         let editTagsAction: () -> Void = { self.tagPickerItem = item }
         ClipboardItemRow(item: item,
+            store: store,
             isRevealed: revealed,
             isKeyboardSelected: kbSelected,
             isCopied: copied,

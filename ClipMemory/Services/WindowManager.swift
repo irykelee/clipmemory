@@ -55,6 +55,7 @@ struct WindowFrame: Codable, Equatable {
 class WindowManager: NSObject, NSWindowDelegate {
     private(set) var mainWindow: NSWindow?
     private var quickBarPopover: NSPopover?
+    private var quickBarHostingController: NSHostingController<QuickBarView>?
     private var statusItem: NSStatusItem?
     private let windowFrameKey = "WindowFrame"
     /// C2 fix: keep a stable ContentView instance to preserve @State across window show/hide cycles
@@ -72,9 +73,15 @@ class WindowManager: NSObject, NSWindowDelegate {
         }
         guard let popover = quickBarPopover, let button = statusItem?.button else { return }
         if popover.isShown { popover.close(); return }
-        popover.contentViewController = NSHostingController(rootView: QuickBarView(onDismiss: { [weak self] in
-            self?.quickBarPopover?.close()
-        }))
+        // L-3 (2026-07-25 audit): create the hosting controller once and reuse
+        // it so QuickBarView's @State (search text, selection) survives across
+        // show/hide cycles instead of resetting on every popover open.
+        if quickBarHostingController == nil {
+            quickBarHostingController = NSHostingController(rootView: QuickBarView(onDismiss: { [weak self] in
+                self?.quickBarPopover?.close()
+            }))
+        }
+        popover.contentViewController = quickBarHostingController
         // L-21 (2026-07-24 audit): sync SwiftUI content to current
         // NSApp.appearance BEFORE show() so the popover window opens with
         // the correct colorScheme on its first frame. Setting

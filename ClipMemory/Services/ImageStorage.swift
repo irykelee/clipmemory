@@ -10,6 +10,9 @@ class ImageStorage {
 
     private let fileManager = FileManager.default
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ImageStorage")
+    /// L-11 (2026-07-25 audit): use a Bool probe instead of string-matching
+    /// the XCTest environment variable in multiple places.
+    private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     /// Memory cache for loaded images — avoids repeated disk I/O for items visible in the list or copied shortly after
     private let imageCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
@@ -29,7 +32,10 @@ class ImageStorage {
         // every ClipboardStore(...) in a test runs loadItems -> cleanup —
         // against the real directory that wiped the user's actual image
         // files on every test run (root cause of "screenshots vanish").
-        let dirname = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        // L-11 (2026-07-25 audit): use the static Bool probe, but reference
+        // it via the concrete type name — `Self` in a stored-property
+        // initializer of a non-final class is not allowed.
+        let dirname = ImageStorage.isRunningTests
             ? "ClipMemory/Images-Tests"
             : "ClipMemory/Images"
         let dir = appSupport.appendingPathComponent(dirname, isDirectory: true)
@@ -74,7 +80,7 @@ class ImageStorage {
         // permanently disable the user's real migration. The new test fixture
         // is responsible for setting up its own source/destination if it
         // needs to exercise the migration path.
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+        if Self.isRunningTests {
             return
         }
         // STOR-3 (2026-07-24): was a synchronous migrateFromLegacyIfNeeded()

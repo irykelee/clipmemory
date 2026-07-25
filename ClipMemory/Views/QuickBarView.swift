@@ -90,12 +90,19 @@ struct QuickBarView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: sz(13)))
                     .focused($isSearchFocused)
+                    // I-1 (2026-07-25 audit): writing @State synchronously
+                    // inside `.onChange` can trigger SwiftUI's "Modifying state
+                    // during view update" warning when the TextField binding
+                    // changes during a view update. Defer the writes to the
+                    // next runloop tick, matching `ContentView`'s pattern.
                     .onChange(of: searchText) { newValue in
-                        keyboardSelectedIndex = nil
-                        searchDebounce?.cancel()
-                        let item = DispatchWorkItem { searchTextDebounced = newValue }
-                        searchDebounce = item
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
+                        DispatchQueue.main.async {
+                            keyboardSelectedIndex = nil
+                            searchDebounce?.cancel()
+                            let item = DispatchWorkItem { searchTextDebounced = newValue }
+                            searchDebounce = item
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
+                        }
                     }
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }, label: {
@@ -146,6 +153,7 @@ struct QuickBarView: View {
                             ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
                                 QuickBarRow(
                                     item: item,
+                                    store: store,
                                     isSelected: keyboardSelectedIndex == index,
                                     isCopied: lastCopiedId == item.id,
                                     searchText: searchText,
@@ -349,6 +357,10 @@ private func highlightedText(_ text: String, highlight: String, fontSize: CGFloa
 
 struct QuickBarRow: View {
     let item: ClipboardItem
+    // L-15 (2026-07-25 audit): inject the store instead of reaching for the
+    // singleton, with a default fallback to `.shared` so existing call sites
+    // and previews keep working. Tests can pass a mock/observed instance.
+    let store: ClipboardStore
     let isSelected: Bool
     let isCopied: Bool
     let searchText: String
@@ -391,7 +403,7 @@ struct QuickBarRow: View {
                     // returned the parser's hardcoded English "Rich Text" string
                     // for every encrypted RTF item — both wrong text AND a
                     // localization bug (L10n.itemRichText was ignored).
-                    Text(ClipboardStore.shared.getRTFPlaintext(item))
+                    Text(store.getRTFPlaintext(item))
                         .font(.system(size: sz(12)))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -406,7 +418,7 @@ struct QuickBarRow: View {
                             .lineLimit(1)
                     }
                 } else {
-                    highlightedText((ClipboardStore.shared.getDecryptedContent(item) ?? "").replacingOccurrences(of: "\n", with: " "), highlight: searchText, fontSize: sz(12))
+                    highlightedText((store.getDecryptedContent(item) ?? "").replacingOccurrences(of: "\n", with: " "), highlight: searchText, fontSize: sz(12))
                         .lineLimit(1)
                 }
             }

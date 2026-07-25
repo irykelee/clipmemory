@@ -107,17 +107,17 @@ enum TagSuggestion {
 
     /// M-19 (2026-07-24 audit): NLTagger loads the language model on first
     /// construction (~10–30 ms). Reuse a static instance per scheme instead
-    /// of rebuilding on every detect. The `string` property is `var`; we
-    /// rely on callers (TagPickerSheet.loadSuggestions, called on the
-    /// SwiftUI main thread) running serially to avoid a data race on the
-    /// assignment. If a future caller crosses threads, switch to a pool
-    /// or a synchronized wrapper.
+    /// of rebuilding on every detect.
+    /// L-10 (2026-07-25 audit): the `string` property is `var` and NLTagger
+    /// is not thread-safe. Guard both taggers with one lock so concurrent
+    /// callers serialize without requiring a MainActor context.
     private static let languageTagger: NLTagger = {
         NLTagger(tagSchemes: [.language])
     }()
     private static let namesTagger: NLTagger = {
         NLTagger(tagSchemes: [.nameType])
     }()
+    private static let taggerLock = NSLock()
 
     /// Detect the dominant language of `s`. Uses NLTagger when it returns a
     /// usable language code; falls back to the legacy `containsCJK` /
@@ -125,6 +125,8 @@ enum TagSuggestion {
     /// historically been observed for short CJK snippets on macOS 13).
     private static func detectLanguage(_ s: String) -> LanguageFacet {
         guard !s.isEmpty else { return .other }
+        taggerLock.lock()
+        defer { taggerLock.unlock() }
         languageTagger.string = s
         if let lang = languageTagger.dominantLanguage {
             return LanguageFacet.from(rawCode: lang.rawValue)
@@ -158,6 +160,8 @@ enum TagSuggestion {
     /// present them as a "Suggested names" section behind an opt-in toggle.
     private static func detectNames(_ s: String) -> [String] {
         guard !s.isEmpty else { return [] }
+        taggerLock.lock()
+        defer { taggerLock.unlock() }
         namesTagger.string = s
         var seen = Set<String>()
         var ordered: [String] = []
@@ -250,14 +254,11 @@ enum TagSuggestion {
     /// Lightweight keyword check. False positives accepted — user filters at acceptance.
     private static func containsSensitiveKeyword(_ s: String) -> Bool {
         let lower = s.lowercased()
-        // L-24 (2026-07-24 audit): pre-lowercase keywords once at module
-        // load instead of per-call. The audit flagged the per-iteration
-        // `.lowercased()` inside `keywords.contains { ... }` — this was
-        // re-running the Unicode caseless-fold for every keyword every time
-        // `detectKind` walked the clipboard contents. For a 1 KB snippet
-        // with 1 sensitive keyword match, that's 7 case folds per
-        // suggestion. `lowercasedKeywords` is built once at static-init.
-        return Self.lowercasedSensitiveKeywords.contains { lower.contains($0) }
+        // L-20 (2026-07-25 audit): replace the O(n·m) substring scan over
+        // every keyword with one static regex match. `sensitiveKeywordRegex`
+        // is built once from the lowercased, escaped keyword list.
+        let range = NSRange(lower.startIndex..., in: lower)
+        return sensitiveKeywordRegex.firstMatch(in: lower, options: [], range: range) != nil
     }
 
     /// L-24 (2026-07-24 audit): pre-lowercased keyword list, built once
@@ -275,6 +276,17 @@ enum TagSuggestion {
         "token"
     ]
     private static let lowercasedSensitiveKeywords: [String] = sensitiveKeywords.map { $0.lowercased() }
+
+    /// L-20 (2026-07-25 audit): single regex built once from the lowercased
+    /// keyword list. Each keyword is regex-escaped so literal spaces (e.g.
+    /// "private key") and CJK terms stay literal in the alternation.
+    private static let sensitiveKeywordRegex: NSRegularExpression = {
+        let pattern = lowercasedSensitiveKeywords
+            .map { NSRegularExpression.escapedPattern(for: $0) }
+            .joined(separator: "|")
+        // swiftlint:disable:next force_try
+        return try! NSRegularExpression(pattern: pattern, options: [])
+    }()
 
     /// CJK Unified Ideographs U+4E00..U+9FFF + Extension A U+3400..U+4DBF.
     /// Used as fallback for language detection when NLTagger declines to label.

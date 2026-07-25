@@ -738,11 +738,14 @@ class ClipboardStore: ObservableObject {
     /// `saveTags()` doesn't overwrite the on-disk ciphertext with the placeholder.
     private var encryptedTagNamesBackup: [UUID: String] = [:]
 
-    /// Encrypt tag names for disk storage. Already-encrypted names are skipped
-    /// to avoid double-encryption if a save is called twice in a row.  A name
-    /// that merely *looks* encrypted (it starts with the marker prefix) but
-    /// fails to decrypt is treated as plaintext and encrypted, so user-created
-    /// names such as "v2:work" do not become permanently locked.
+    /// Encrypt tag names for disk storage. Names are plaintext in memory
+    /// (decrypted by `loadTags`); the only encrypted names on disk are the
+    /// locked placeholders, whose original ciphertext is restored from the
+    /// backup map. A name that happens to start with the marker prefix (e.g.
+    /// a user-created tag literally named "v2:work") is encrypted like any
+    /// other plaintext — the old decrypt probe was unnecessary because
+    /// `loadTags` already separates real ciphertext from accidental prefixes.
+    /// L-2 (2026-07-25 audit): removed the per-tag AES-GCM decrypt on save.
     private func encryptTagNames(_ tags: [Tag]) -> [Tag] {
         tags.map { tag in
             // Restore original ciphertext for tags whose names failed to decrypt.
@@ -755,14 +758,6 @@ class ClipboardStore: ObservableObject {
                     isAutoSuggested: tag.isAutoSuggested,
                     createdAt: tag.createdAt
                 )
-            }
-            // If the name already carries the marker, verify it is real ciphertext.
-            if tag.name.hasPrefix(Self.encryptedNamePrefix) {
-                let ciphertext = String(tag.name.dropFirst(Self.encryptedNamePrefix.count))
-                if ServiceContainer.crypto.decrypt(ciphertext) != nil {
-                    return tag
-                }
-                // Prefix is accidental (e.g. user-named "v2:..."); fall through to encrypt.
             }
             guard let encryptedName = ServiceContainer.crypto.encrypt(tag.name) else {
                 // I-3 fix (2026-07-20 audit): tag encryption failure must NOT

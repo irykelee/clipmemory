@@ -200,16 +200,28 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
             // Content-Length absent or chunked (expectedContentLength == -1):
             // accumulate and cancel the stream the moment we cross the cap.
             // Abandoning the iterator tears down the underlying task.
+            // L-8 (2026-07-25 audit): accumulating one byte at a time into Data
+            // triggers a potential allocation per byte. Buffer into a small
+            // chunk and append batches instead.
             var data = Data()
             if httpResponse.expectedContentLength > 0 {
                 data.reserveCapacity(Int(httpResponse.expectedContentLength))
             }
+            var chunk: [UInt8] = []
+            chunk.reserveCapacity(4096)
             for try await byte in bytes {
-                data.append(byte)
-                if data.count > Self.maxResponseBytes {
+                chunk.append(byte)
+                if chunk.count >= 4096 {
+                    data.append(contentsOf: chunk)
+                    chunk.removeAll(keepingCapacity: true)
+                }
+                if data.count + chunk.count > Self.maxResponseBytes {
                     DefaultFeedProbeEngine.logger.warning("Feed body exceeded \(Self.maxResponseBytes) bytes mid-stream — cancelling")
                     return nil
                 }
+            }
+            if !chunk.isEmpty {
+                data.append(contentsOf: chunk)
             }
             // L-20 (2026-07-24 audit): log parse failures distinctly from
             // transport errors so an operator can tell "feed returned 200 but

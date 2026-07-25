@@ -572,10 +572,16 @@ struct ContentView: View {
 
     private func attachLifecycle<V: View>(_ v: V) -> some View {
         v
+            // L-13 (2026-07-25 audit): attachLifecycle previously registered
+            // two separate `.onAppear` modifiers. SwiftUI applies both, but
+            // they express related lifecycle work and are clearer as a single
+            // appear block. Consolidated here: menu shortcut, appearance,
+            // displayed-items cache, and the midnight rollover check.
             .onAppear {
                 (NSApp.delegate as? AppDelegate)?.disableFindMenuShortcut()
                 applyAppearance()
                 updateDisplayedItemsCache()
+                handleDayRolloverIfNeeded()
             }
             .onChange(of: searchText) { newValue in
                 UIObservability.logSearchChange(length: newValue.count)
@@ -620,11 +626,6 @@ struct ContentView: View {
                 for: Notification.Name(rawValue: "NSCalendarDayChangedNotification")
             )) { _ in
                 handleDayRollover()
-            }
-            // Initial-fire: on first appear, refresh cache so today/yesterday groups are
-            // accurate even if NSCalendarDayChanged was already posted earlier today.
-            .onAppear {
-                handleDayRolloverIfNeeded()
             }
     }
 
@@ -752,7 +753,10 @@ struct ContentView: View {
     private func startRecording() {
         isRecordingHotKey = true
         stopKeyEventMonitor()
-        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+        // I-2 (2026-07-25 audit): `ContentView` is a value type (struct), so
+        // explicit `[self]` capture is unnecessary here — the closure captures
+        // the view's value semantics the same way without it.
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard isRecordingHotKey else { return event }
             // Esc cancels recording and is returned to the responder chain so the
             // user can dismiss the sheet / settings panel as expected.

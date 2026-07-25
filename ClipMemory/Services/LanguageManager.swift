@@ -6,21 +6,32 @@ class LanguageManager: ObservableObject {
 
     @Published var selectedLanguage: String {
         didSet {
-            UserDefaults.standard.set(selectedLanguage, forKey: "appLanguage")
-            applyLanguage()
-            NotificationCenter.default.post(name: Notification.Name("LanguageDidChange"), object: nil)
+            // L-7 (2026-07-25 audit): `selectedLanguage` may in theory be set
+            // from a background queue (e.g. a future settings import or
+            // command-line override). UserDefaults and AppleLanguages must be
+            // touched on the main thread. Keep the synchronous fast path when
+            // already on main, otherwise hop.
+            let apply = { [weak self] in
+                guard let self = self else { return }
+                UserDefaults.standard.set(self.selectedLanguage, forKey: "appLanguage")
+                self.applyLanguage()
+                NotificationCenter.default.post(name: Notification.Name("LanguageDidChange"), object: nil)
+            }
+            if Thread.isMainThread {
+                apply()
+            } else {
+                DispatchQueue.main.async(execute: apply)
+            }
         }
     }
 
     private init() {
         // BUG-050 (2026-07-21): simplify init — nil/non-nil branch split
         // wrote to UserDefaults inconsistently (only the nil branch).
-        // Both branches now converge: derive the language, assign, persist
-        // (idempotent if UserDefaults already had it), apply.
+        // Both branches now converge: derive the language, assign; didSet
+        // handles persistence and application. Init runs on main in production.
         let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? Self.getSystemLanguage()
         self.selectedLanguage = lang
-        UserDefaults.standard.set(lang, forKey: "appLanguage")
-        applyLanguage()
     }
 
     static func getSystemLanguage() -> String {
@@ -75,13 +86,11 @@ class LanguageManager: ObservableObject {
     }
 }
 
-struct SensitiveClearOption: Identifiable {
-    let id: Int  // Use hours as stable identity for SwiftUI ForEach
+struct SensitiveClearOption {
     let hours: Int
 
     init(hours: Int) {
         self.hours = hours
-        self.id = hours
     }
 
     var label: String {

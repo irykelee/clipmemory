@@ -40,6 +40,7 @@ final class TrashItemRowSnapshotTests: XCTestCase {
         )
         let row = TrashItemRow(
             item: item,
+            store: ClipboardStore.shared,
             onRestore: {},
             onDeletePermanently: {}
         )

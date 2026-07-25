@@ -63,6 +63,10 @@ class LongPressView: NSView {
 
 struct ClipboardItemRow: View, Equatable {
     let item: ClipboardItem
+    // L-17 (2026-07-25 audit): inject the store instead of reaching for the
+    // singleton. Defaults to `.shared` so existing UI call sites and previews
+    // keep working; tests can pass a mock / observed instance.
+    let store: ClipboardStore
     let isRevealed: Bool
     var isKeyboardSelected = false
     var isCopied = false
@@ -121,6 +125,7 @@ struct ClipboardItemRow: View, Equatable {
     /// memberwise init; just declared here for clarity and to avoid
     /// @ViewBuilder inferring a no-arg init when used inline.
     init(item: ClipboardItem,
+         store: ClipboardStore = .shared,
          isRevealed: Bool,
          isKeyboardSelected: Bool = false,
          isCopied: Bool = false,
@@ -133,6 +138,7 @@ struct ClipboardItemRow: View, Equatable {
          onToggleReveal: @escaping () -> Void,
          onEditTags: @escaping () -> Void = {}) {
         self.item = item
+        self.store = store
         self.isRevealed = isRevealed
         self.isKeyboardSelected = isKeyboardSelected
         self.isCopied = isCopied
@@ -151,7 +157,7 @@ struct ClipboardItemRow: View, Equatable {
     }
     private var pinText: String { item.isPinned ? L10n.actionUnpin : L10n.actionPin }
     private var decryptedContent: String {
-        loadedContent ?? ClipboardStore.shared.getDecryptedContent(item) ?? ""
+        loadedContent ?? store.getDecryptedContent(item) ?? ""
     }
     private var formattedDate: String {
         cachedAbsoluteDateFormatter(for: LanguageManager.shared.selectedLanguage).string(from: item.createdAt)
@@ -359,7 +365,7 @@ struct ClipboardItemRow: View, Equatable {
                     Spacer()
                 }
                 .contentShape(Rectangle())
-                HStack(spacing: 8) { Text(formattedDate).font(.system(size: sz(11))).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: sz(11))).foregroundColor(.orange) }; if !item.tagIds.isEmpty { TagChipStack(tagIds: item.tagIds, store: ClipboardStore.shared) } }
+                HStack(spacing: 8) { Text(formattedDate).font(.system(size: sz(11))).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: sz(11))).foregroundColor(.orange) }; if !item.tagIds.isEmpty { TagChipStack(tagIds: item.tagIds, store: store) } }
             }
             .contentShape(Rectangle())
             .gesture(ExclusiveGesture(TapGesture(count: 2).onEnded { onPin() }, TapGesture().onEnded { onCopyWithFeedback?() }))
@@ -444,7 +450,7 @@ Button(action: onDelete) {
             guard item.type != .richText, item.type != .image else { return }
             if loadedContent != nil { return }
             let result = await Task.detached(priority: .utility) {
-                ClipboardStore.shared.getDecryptedContent(item) ?? ""
+                store.getDecryptedContent(item) ?? ""
             }.value
             // I-8 fix (2026-07-20 audit): same cancellation-isolation as the
             // image `.task`. Drop the decrypted text when the row has been
@@ -462,20 +468,20 @@ Button(action: onDelete) {
     /// localized placeholder for genuinely unparseable items.
     private var plainTextFallback: String {
         guard item.type == .richText else { return "" }
-        return ClipboardStore.shared.getRTFPlaintext(item)
+        return store.getRTFPlaintext(item)
     }
 
     /// The item as it currently exists in the store (the captured row struct
     /// can be stale right after OCR attaches text in the background).
     private var liveItem: ClipboardItem {
-        ClipboardStore.shared.items.first(where: { $0.id == item.id }) ?? item
+        store.items.first(where: { $0.id == item.id }) ?? item
     }
 
     private var liveOcrText: String? { liveItem.ocrText }
 
     private func loadRichText() async {
         guard item.type == .richText else { return }
-        guard let base64 = ClipboardStore.shared.getDecryptedContent(item) else { return }
+        guard let base64 = store.getDecryptedContent(item) else { return }
         // H-7/H-8 (2026-07-24 audit): NSAttributedString RTF parse was inline
         // before any await, so 20–100ms blocked the main thread on every
         // richText row. Image path uses Task.detached(priority: .userInitiated)
@@ -490,7 +496,7 @@ Button(action: onDelete) {
         // hits cache (< 1ms) instead of re-parsing NSAttributedString
         // (20-100ms sync). Cache key matches getRTFPlaintext for symmetric
         // hit/miss.
-        ClipboardStore.shared.cacheRTFPlaintext(item, parsed.plain)
+        store.cacheRTFPlaintext(item, parsed.plain)
         loadedRichText = parsed.attributed
         loadedContent = parsed.plain
     }
@@ -514,8 +520,8 @@ Button(action: onDelete) {
     /// Goes through `writeOcrTextToPasteboard`, which tells our own
     /// ClipboardMonitor first — so this won't create a new history entry.
     private func copyOcrText() {
-        guard let text = ClipboardStore.shared.getDecryptedOcrText(liveItem), !text.isEmpty else { return }
-        Self.writeOcrTextToPasteboard(text, store: ClipboardStore.shared)
+        guard let text = store.getDecryptedOcrText(liveItem), !text.isEmpty else { return }
+        Self.writeOcrTextToPasteboard(text, store: store)
     }
 
     /// CLIP-2 (2026-07-24 audit): the OCR copy path wrote the pasteboard

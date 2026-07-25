@@ -96,6 +96,17 @@ enum HangDetector {
         "__libdispatch_source_mgr_invoke"
     ]
 
+    /// L-4 (2026-07-25 audit): pre-compile the noise filter into one regex so
+    /// each frame is searched once instead of once per noise symbol.
+    /// Patterns are escaped so dispatch symbol underscores/dots stay literal.
+    private static let noiseFilterRegex: NSRegularExpression = {
+        let pattern = noiseFilter
+            .map { NSRegularExpression.escapedPattern(for: $0) }
+            .joined(separator: "|")
+        // swiftlint:disable:next force_try
+        return try! NSRegularExpression(pattern: pattern, options: [])
+    }()
+
     /// Returns the first 20 frames of `stack` joined with `\n`, with `"(empty)"` for
     /// empty/no-usable input and a `"...(truncated N more)"` marker if there are more
     /// than 20 frames. Filters known dispatch noise so the surviving frames are useful
@@ -110,7 +121,8 @@ enum HangDetector {
         // module + address + offset, so bare-symbol whole-string match never matches
         // production frames. Per gate 1b post-review fix.
         let filtered = stack.filter { frame in
-            !noiseFilter.contains { noise in frame.contains(noise) }
+            let range = NSRange(frame.startIndex..., in: frame)
+            return noiseFilterRegex.firstMatch(in: frame, options: [], range: range) == nil
         }
         if filtered.isEmpty {
             return "(empty)"

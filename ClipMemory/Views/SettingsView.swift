@@ -100,7 +100,15 @@ struct SettingsView: View {
                 Picker(L10n.string("settings.font.picker"), selection: $fontScale) { Text(L10n.fontSizeSmall).tag(1.0); Text(L10n.fontSizeMedium).tag(1.2); Text(L10n.fontSizeLarge).tag(1.4) }
             } header: { Text(L10n.settingsFontSize) }
             Section {
-                Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) { ForEach(SensitiveClearOption.options) { Text($0.label).tag($0.hours) } }.id(languageManager.selectedLanguage)
+                Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) {
+                    // L-5 (2026-07-25 audit): use array index as ForEach identity
+                    // rather than the semantic `hours` value, so two options can
+                    // never collide even if the list ever maps different labels
+                    // to the same hour.
+                    ForEach(Array(SensitiveClearOption.options.enumerated()), id: \.offset) { _, option in
+                        Text(option.label).tag(option.hours)
+                    }
+                }.id(languageManager.selectedLanguage)
             } header: { Text(L10n.settingsSectionSensitive) } footer: { Text(L10n.settingsSensitiveHint).foregroundColor(.secondary) }
             Section {
                 Picker(L10n.settingsMaxItems, selection: Binding(get: { store.maxItems }, set: { newValue in
@@ -257,15 +265,20 @@ struct SettingsView: View {
     /// remove. The lookup table (`excludedApps`) is cached in `@State` and
     /// refreshed only on appear + when `store.excludedBundleIdsString`
     /// changes — see `refreshExcludedApps()`.
+    ///
+    /// L-14 (2026-07-25 audit): this used `AnyView` to paper over the two
+    /// branch types (`EmptyView` vs `FlowLayout`). `@ViewBuilder` gives the
+    /// same conditional composition without type erasure, preserving SwiftUI's
+    /// identity and diffing information.
+    @ViewBuilder
     private var excludedAppsTags: some View {
         if excludedApps.isEmpty {
-            return AnyView(EmptyView())
-        }
-        let excludedIds = store.excludedBundleIdsString
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        return AnyView(
+            EmptyView()
+        } else {
+            let excludedIds = store.excludedBundleIdsString
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
             FlowLayout(spacing: 6) {
                 ForEach(excludedApps, id: \.bundleId) { app in
                     HStack(spacing: 4) {
@@ -286,7 +299,7 @@ struct SettingsView: View {
                     .cornerRadius(6)
                 }
             }
-        )
+        }
     }
 
     /// M-12 (2026-07-24 audit): rebuild the cached `excludedApps` array from

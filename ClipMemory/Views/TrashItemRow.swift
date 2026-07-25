@@ -5,6 +5,10 @@ import AppKit
 /// timestamp, and offers Restore / Permanently Delete actions.
 struct TrashItemRow: View, Equatable {
     let item: ClipboardItem
+    // L-16 (2026-07-25 audit): inject the store instead of reaching for the
+    // singleton. Defaults to `.shared` so existing UI call sites and previews
+    // keep working; tests can pass a mock instance.
+    let store: ClipboardStore
     let onRestore: () -> Void
     let onDeletePermanently: () -> Void
 
@@ -45,7 +49,7 @@ struct TrashItemRow: View, Equatable {
     }
 
     private var decryptedContent: String {
-        ClipboardStore.shared.getDecryptedContent(item) ?? ""
+        store.getDecryptedContent(item) ?? ""
     }
 
     var body: some View {
@@ -217,9 +221,9 @@ struct TrashItemRow: View, Equatable {
         case .image:
             return L10n.itemImage
         case .richText:
-            return ClipboardStore.shared.getRTFPlaintext(item).prefix(80).description
+            return store.getRTFPlaintext(item).prefix(80).description
         default:
-            return ClipboardStore.shared.getDecryptedContent(item).map {
+            return store.getDecryptedContent(item).map {
                 String($0.prefix(80))
             } ?? ""
         }

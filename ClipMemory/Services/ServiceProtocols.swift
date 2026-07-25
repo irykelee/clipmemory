@@ -43,6 +43,13 @@ enum ServiceContainer {
     /// production swap would silently bypass the guard. Bumping to
     /// `preconditionFailure` closes that hole without expanding scope
     /// (still no DI refactor).
+    ///
+    /// L-6 (2026-07-25 audit): `preconditionFailure` here is intentional
+    /// fail-fast. A production crypto-swap is a catastrophic programming
+    /// error; crashing immediately is safer than continuing with split-brain
+    /// encryption keys. It is not converted to a recoverable error because
+    /// there is no safe recovery path once two code paths hold different
+    /// `CryptoService` instances.
     static var crypto: CryptoServiceProtocol = CryptoService.shared {
         didSet {
             let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil

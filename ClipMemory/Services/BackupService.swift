@@ -62,6 +62,16 @@ final class BackupService {
     /// "Backup Now" clicks.
     private static let backupDirTimestampFormat = "yyyy-MM-dd_HHmmss.SSS"
 
+    /// L-9 (2026-07-25 audit): DateFormatter creation is ~1–2 ms. Backup runs
+    /// are serialized by `backupLock`, so a static formatter is safe and avoids
+    /// allocating one per backup / prune operation.
+    private static let backupFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = backupDirTimestampFormat
+        return formatter
+    }()
+
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "BackupService")
     private let fileManager: FileManager
     private let defaults: UserDefaults
@@ -147,21 +157,9 @@ final class BackupService {
     /// The actual backup work, factored out so `backupNow()` can wrap it
     /// with the concurrency lock without mixing lock and logic.
     private func performBackupUnlocked() throws -> URL {
-        let formatter = DateFormatter()
-        // POSIX locale keeps `yyyy` Gregorian regardless of the user's calendar
-        // (Buddhist/Japanese eras would otherwise break name-sort = time-sort).
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        // BUG-021 (2026-07-21): `yyyy-MM-dd_HHmmss` has second precision —
-        // a manual "Backup Now" landing in the same second as the daily
-        // auto-backup, or two rapid manual triggers, would produce the
-        // same directory name and `copyItem` would fail because the
-        // destination already exists. Append `.SSS` for millisecond
-        // precision — still human-sortable, still unique within a year.
-        // L-13 (2026-07-24 audit): the format literal now lives in
-        // `backupDirTimestampFormat` so the formatter and the dir-name
-        // recognizer (`isBackupDirName`) share one source of truth.
-        formatter.dateFormat = Self.backupDirTimestampFormat
-        let destination = backupsDirectory.appendingPathComponent(formatter.string(from: Date()), isDirectory: true)
+        // L-9 (2026-07-25 audit): use the cached static formatter instead of
+        // creating a new DateFormatter on every backup.
+        let destination = backupsDirectory.appendingPathComponent(Self.backupFormatter.string(from: Date()), isDirectory: true)
 
         do {
             try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
@@ -320,6 +318,9 @@ final class BackupService {
         var failures = 0
         for name in backupNames {
             let dir = backupsDirectory.appendingPathComponent(name)
+            // L-12 (2026-07-25 audit): a regular file that happens to match the
+            // timestamp format must not be deleted. Only act on directories.
+            guard Self.isBackupDirectory(at: dir, fileManager: fileManager) else { continue }
             let markerURL = dir.appendingPathComponent(Self.incompleteMarkerName)
             if fileManager.fileExists(atPath: markerURL.path) {
                 do {
@@ -341,6 +342,15 @@ final class BackupService {
         if failures > 0 {
             logger.error("H-6: \(failures) incomplete backup(s) could not be removed")
         }
+    }
+
+    /// L-12 (2026-07-25 audit): a regular file that happens to match the
+    /// backup timestamp format must not be treated as a backup directory.
+    /// Only directories are valid targets for pruning.
+    private static func isBackupDirectory(at url: URL, fileManager: FileManager) -> Bool {
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
+        return isDir.boolValue
     }
 
     /// Matches the `yyyy-MM-dd_HHmmss.SSS` backup directory format (21 chars).
