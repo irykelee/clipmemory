@@ -276,3 +276,10 @@
 /* 백업 UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "백업 파일을 암호화하는 데 사용됩니다. 복원할 때 다시 필요합니다.";
 "settings.backup.error.missingEncryptionKey" = "내보낼 수 없음: 암호화 키를 찾을 수 없습니다. 설정에서 암호화를 재설정하세요.";
+
+/* 설정 창 탭 (2026-07-25 독립 설정 창) */
+"settings.window.title" = "설정";
+"settings.tab.general" = "일반";
+"settings.tab.history" = "기록 및 캡처";
+"settings.tab.backup" = "백업";
+"settings.tab.update" = "업데이트 및 정보";

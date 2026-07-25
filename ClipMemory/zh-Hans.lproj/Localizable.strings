@@ -274,3 +274,10 @@
 /* 备份 UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "用于加密备份文件。恢复时需要再次输入。";
 "settings.backup.error.missingEncryptionKey" = "无法导出：加密密钥缺失。请到「设置」中重置加密。";
+
+/* 设置窗口标签页（2026-07-25 独立设置窗口） */
+"settings.window.title" = "设置";
+"settings.tab.general" = "常规";
+"settings.tab.history" = "历史与捕获";
+"settings.tab.backup" = "备份";
+"settings.tab.update" = "更新与关于";

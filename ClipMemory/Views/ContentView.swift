@@ -105,16 +105,6 @@ struct ContentView: View {
     /// Anchor used for "today"/"yesterday" grouping.  Updated by a timer so
     /// items move to the correct section if the app stays open across midnight.
     @State private var currentDate = Date()
-    @State private var isRecordingHotKey = false
-    @State private var keyEventMonitor: Any?
-    @State private var showingAppPicker = false
-    @State private var showingTips = false
-    @State private var pendingMaxItemsReduction: PendingMaxItemsReduction?
-    @State private var appPickerSearch = ""
-    @State private var appPickerSearchDebounced = ""
-    @State private var searchDebounce: DispatchWorkItem?
-    @State private var installedApps: [AppPickerItem] = []
-    @State private var isLoadingApps = false
     @State private var tagPickerItem: ClipboardItem?
     @State private var selectedTagIds: Set<UUID> = []
     @State private var showNewTagSheet: Bool = false
@@ -229,17 +219,6 @@ struct ContentView: View {
         guard let data = try? JSONEncoder().encode(arr) else { return }
         guard let str = String(data: data, encoding: .utf8) else { return }
         UserDefaults.standard.set(str, forKey: "collapsedGroups")
-    }
-
-    @ViewBuilder private var appPickerSheetContent: some View {
-        appPickerSheet.onAppear {
-            appPickerSearchDebounced = appPickerSearch
-            loadInstalledAppsIfNeeded()
-        }
-    }
-
-    @ViewBuilder private var tipsSheet: some View {
-        TipsView(onClose: { showingTips = false })
     }
 
     private func debounceSearch(_ text: String) {
@@ -480,9 +459,6 @@ struct ContentView: View {
                 onEscape: { self.handleKeyEscape() },
                 onCommandF: { self.focusSearchField() }
             ).frame(width: 0, height: 0) }
-            .onDisappear { stopKeyEventMonitor() }
-            .sheet(isPresented: $showingAppPicker) { self.appPickerSheetContent }
-            .sheet(isPresented: $showingTips) { self.tipsSheet }
             .sheet(isPresented: $showingConditionalClear) { ConditionalClearSheet(store: store) }
             .sheet(item: $tagPickerItem) { item in
                 TagPickerSheet(item: item, store: store)
@@ -514,33 +490,6 @@ struct ContentView: View {
                 if let tag = tagPendingDelete {
                     let count = store.items.filter { $0.tagIds.contains(tag.id) }.count
                     Text(L10n.sidebarDeleteTagConfirmMessage(tag.name, count))
-                }
-            }
-            // CLIP-3 (2026-07-24 audit): this alert used to hang on `itemList`,
-            // which is NOT in the view tree while the Settings tab is active
-            // (the detail pane swaps to `settingsDetail`). Since the trigger —
-            // Settings's maxItems picker — only fires from the Settings tab,
-            // the alert could never appear and the pending reduction was left
-            // dangling. Present it here, alongside the tag-delete alert, on a
-            // view that exists for every tab.
-            .alert(L10n.alertTrimTitle, isPresented: Binding(
-                get: { pendingMaxItemsReduction != nil },
-                set: { if !$0 { pendingMaxItemsReduction = nil } }
-            )) {
-                Button(L10n.alertTrimCancel, role: .cancel) {
-                    guard let pair = pendingMaxItemsReduction else { return }
-                    Self.applyTrimCancellation(pair: pair, store: store)
-                    pendingMaxItemsReduction = nil
-                    selectedTab = .settings
-                }
-                Button(L10n.alertTrimConfirm) {
-                    guard let pair = pendingMaxItemsReduction else { return }
-                    pendingMaxItemsReduction = nil
-                    Self.applyTrimConfirmation(pair: pair, store: store)
-                }
-            } message: {
-                if let pair = pendingMaxItemsReduction {
-                    Text(L10n.alertTrimMessage(store.items.count, pair.new))
                 }
             }
     }
@@ -612,11 +561,6 @@ struct ContentView: View {
             }
             .onChange(of: collapsedGroups) { val in
                 self.saveCollapsedGroups(val)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { _ in
-                // Defer to next runloop to avoid "Modifying state during view update"
-                // (writing @State inside an onReceive handler triggers SwiftUI warning).
-                DispatchQueue.main.async { selectedTab = .settings }
             }
             .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in self.focusSearchField() }
             // M8 fix: use NSCalendarDayChanged notification (fires at midnight) instead of
@@ -750,333 +694,20 @@ struct ContentView: View {
         )
     }
 
-    private func startRecording() {
-        isRecordingHotKey = true
-        stopKeyEventMonitor()
-        // I-2 (2026-07-25 audit): `ContentView` is a value type (struct), so
-        // explicit `[self]` capture is unnecessary here — the closure captures
-        // the view's value semantics the same way without it.
-        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard isRecordingHotKey else { return event }
-            // Esc cancels recording and is returned to the responder chain so the
-            // user can dismiss the sheet / settings panel as expected.
-            if event.keyCode == 53 {
-                isRecordingHotKey = false
-                stopKeyEventMonitor()
-                return event
-            }
-            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            guard !mods.isEmpty else { return nil }
-            let keyCode = UInt32(event.keyCode)
-            var modifiers: UInt32 = 0
-            if mods.contains(.command) { modifiers |= UInt32(cmdKey) }
-            if mods.contains(.control) { modifiers |= UInt32(controlKey) }
-            if mods.contains(.option) { modifiers |= UInt32(optionKey) }
-            if mods.contains(.shift) { modifiers |= UInt32(shiftKey) }
-            isRecordingHotKey = false
-            stopKeyEventMonitor()
-            // H-1: hotKeyManager is optional — skip the rebind if the
-            // AppDelegate hasn't initialized it yet (race on first launch).
-            (NSApp.delegate as? AppDelegate)?.hotKeyManager?.updateHotKey(keyCode: keyCode, modifiers: modifiers)
-            return nil
-        }
-    }
-
-    private func stopKeyEventMonitor() {
-        if let m = keyEventMonitor { NSEvent.removeMonitor(m); keyEventMonitor = nil }
-    }
-
+    /// The sidebar's "Settings" entry now opens the independent settings
+    /// window (2026-07-25 refactor) instead of swapping the detail pane.
+    /// This placeholder only exists so the tab selection has somewhere to
+    /// land for the instant before we bounce back to the item list.
     private var settingsDetail: some View {
-        SettingsView(
-            languageManager: languageManager,
-            themeAppearance: $themeAppearance,
-            isRecordingHotKey: $isRecordingHotKey,
-            showingAppPicker: $showingAppPicker,
-            showingTips: $showingTips,
-            pendingMaxItemsReduction: $pendingMaxItemsReduction,
-            hotKeyManager: (NSApp.delegate as? AppDelegate)?.hotKeyManager,
-            store: store,
-            backupService: backupService,
-            onApplyAppearance: applyAppearance,
-            onExportBackup: exportBackup,
-            onImportBackup: importBackup,
-            // F-4 (2026-07-23 audit): surface backupNow() errors
-            // via the same `showBackupInfo` channel used by export /
-            // import / pre-import safety-snapshot failures. Reusing
-            // the generic "operation failed" message — BackupError's
-            // specific cases (directory creation vs copy) are internal
-            // and don't change the user's remediation.
-            onShowBackupError: { showBackupInfo(L10n.settingsBackupError) },
-            onShowLaunchAtLoginError: showLaunchAtLoginError,
-            onShowWelcomeGuide: { (NSApp.delegate as? AppDelegate)?.showWelcomeView() },
-            onStartHotKeyRecording: startRecording,
-            onCancelHotKeyRecording: stopKeyEventMonitor
-        )
-    }
-
-    private func showLaunchAtLoginError() {
-        let alert = NSAlert()
-        alert.messageText = L10n.error
-        alert.informativeText = L10n.settingsLaunchAtLoginErrorBody
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L10n.buttonConfirm)
-        alert.runModal()
-    }
-
-    // MARK: - Backup / Export / Import
-
-    private let backupService = BackupService.shared
-
-    private func showBackupInfo(_ text: String) {
-        let alert = NSAlert()
-        alert.messageText = text
-        alert.addButton(withTitle: L10n.buttonConfirm)
-        alert.runModal()
-    }
-
-    /// Prompts for the backup passphrase (min 6 chars). Returns nil on cancel,
-    /// or a valid passphrase on confirm. Loops with a warning if the user
-    /// tries to confirm a too-short input — previously this silently
-    /// returned nil which made Export look broken (3.1, 2026-07-23 audit).
-    private func promptBackupPassphrase() -> String? {
-        while true {
-            let alert = NSAlert()
-            alert.messageText = L10n.settingsBackupPassphrase
-            // H-2 (2026-07-23, per audit-2026-07-23-3subagent-findings §②):
-            // NSAlert's informativeText shows below the title in secondary smaller
-            // text. Without it, users see only "Backup passphrase (min 6 chars)"
-            // and have no idea what the password is for. Explains the round-trip
-            // requirement so they save the password somewhere recoverable.
-            alert.informativeText = L10n.settingsBackupPassphraseInfo
-            let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-            alert.accessoryView = field
-            alert.addButton(withTitle: L10n.buttonConfirm)
-            alert.addButton(withTitle: L10n.buttonCancel)
-
-            guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-            let value = field.stringValue
-            if value.count >= 6 { return value }
-
-            // 3.1 (2026-07-23 audit): short input re-prompts with an
-            // explicit "Passphrase too short" warning. The previous
-            // `return value.count >= 6 ? value : nil` silently swallowed
-            // the bad input — user clicked Export, alert closed, nothing
-            // happened, looked like the button was broken.
-            let warning = NSAlert()
-            warning.messageText = L10n.passphraseTooShortTitle
-            warning.informativeText = L10n.passphraseTooShortMessage
-            warning.alertStyle = .warning
-            warning.addButton(withTitle: L10n.buttonConfirm)
-            warning.runModal()
-        }
-    }
-
-    private func exportBackup() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "clipmemory")].compactMap { $0 }
-        panel.nameFieldStringValue = "ClipMemory-backup.clipmemory"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let passphrase = promptBackupPassphrase() else { return }
-        // H-3 (2026-07-23, per audit-2026-07-23-3subagent-findings §②):
-        // Previously routed to the generic `settingsBackupError` ("operation
-        // failed, please try again"), which sent users hunting for transport
-        // / disk / permission causes when the actual issue is a missing root
-        // encryption key (Keychain empty + .encryption_key fallback file
-        // gone). The dedicated message tells them to reset encryption from
-        // Settings — the only correct remediation.
-        guard let keyData = CryptoService.loadKeyData() else {
-            showBackupInfo(L10n.settingsBackupErrorMissingEncryptionKey)
-            return
-        }
-        // Flush the 500ms debounce so the package includes the very latest items.
-        ClipboardStore.shared.flushPendingSaves()
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try BackupPackage.exportPackage(
-                    to: url,
-                    passphrase: passphrase,
-                    imagesDirectory: ImageStorage.shared.imagesDirectoryURL,
-                    keyData: keyData
-                )
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupExportDone) }
-            } catch {
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
-            }
-        }
-    }
-
-    private func importBackup() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "clipmemory")].compactMap { $0 }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let passphrase = promptBackupPassphrase() else { return }
-        // Flush + safety snapshot of current data before mutating.
-        ClipboardStore.shared.flushPendingSaves()
-        // Heavy work (unzip, re-keying, image copies) off the main thread;
-        // BackupPackage hops to main for the @Published merges itself.
-        DispatchQueue.global(qos: .userInitiated).async {
-            // M-2 (2026-07-23): backupNow now throws. Pre-import
-            // safety snapshot is REQUIRED before mutating user data.
-            // If it fails we must NOT proceed with the import —
-            // silently overwriting the user's current clipboard
-            // history with no rollback point is a data-loss bug.
-            do {
-                _ = try backupService.backupNow()
-            } catch {
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
-                return
-            }
-            do {
-                let result = try BackupPackage.importPackage(
-                    from: url,
-                    passphrase: passphrase,
-                    store: ClipboardStore.shared,
-                    localCrypto: ServiceContainer.crypto,
-                    imagesDirectory: ImageStorage.shared.imagesDirectoryURL
-                )
+        Color.clear
+            .onAppear {
+                // Defer to next runloop to avoid "Modifying state during
+                // view update" (the selectedTab write inside onAppear).
                 DispatchQueue.main.async {
-                    showBackupInfo(L10n.settingsBackupImportResult(
-                        result.itemsImported,
-                        result.itemsSkipped,
-                        result.itemsSkippedCorrupt,
-                        result.imagesImported
-                    ))
-                }
-            } catch BackupPackageError.wrongPassword {
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPassphraseWrong) }
-            } catch BackupPackageError.corruptedData {
-                // Route corrupted-package errors to a generic 'operation failed'
-                // notice rather than the 'wrong passphrase' one. The
-                // `passphrase.wrong` L10n key is intentionally ambiguous
-                // (covers "or corrupted") for users with a valid passphrase
-                // who entered it correctly; for actual corruption we want
-                // them to recognize "file problem, not password problem" and
-                // try a different backup instead of retrying the passphrase.
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
-            } catch {
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
-            }
-        }
-    }
-
-    private var appPickerSheet: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(L10n.settingsAddExcludedApp).font(.system(size: sz(14), weight: .semibold))
-                Spacer()
-                Button(L10n.buttonDone) { showingAppPicker = false }
-                    .buttonStyle(.plain)
-                    .font(.system(size: sz(12)))
-                    .foregroundColor(.accentColor)
-            }
-            .padding()
-            Color.clear.frame(height: 1)
-            TextField(L10n.settingsAppPickerSearch, text: $appPickerSearch)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .onChange(of: appPickerSearch) { newValue in
-                    DispatchQueue.main.async {
-                        searchDebounce?.cancel()
-                        let item = DispatchWorkItem { appPickerSearchDebounced = newValue }
-                        searchDebounce = item
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
-                    }
-                }
-            Color.clear.frame(height: 1)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    let excludedIds = Set(store.excludedBundleIdsString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
-                    let allApps = installedApps.sorted { $0.name < $1.name }
-
-                    let search = appPickerSearchDebounced.lowercased()
-                    let filtered = allApps.filter {
-                        search.isEmpty || $0.name.lowercased().contains(search)
-                    }
-
-                    if isLoadingApps {
-                        HStack {
-                            Spacer()
-                            ProgressView().scaleEffect(0.8)
-                            Spacer()
-                        }
-                        .padding()
-                    } else if filtered.isEmpty {
-                        Text(L10n.settingsAppPickerNoResults).font(.system(size: sz(12))).foregroundColor(.secondary).padding()
-                    } else {
-                        // BUG-006 (2026-07-21): use \.bundleId (stable across re-filter), not
-// \.self on indices. When an app launches/quits mid-picker, indices
-// are reused and AppPickerRow's @State (isHovered, resolvedIcon)
-// jumps to the wrong app. Matches the established pattern at L1131
-// (ForEach(apps, id: \.bundleId)).
-ForEach(filtered, id: \.bundleId) { app in
-                            AppPickerRow(
-                                name: app.name,
-                                bundleId: app.bundleId,
-                                icon: app.icon,
-                                isExcluded: excludedIds.contains(app.bundleId),
-                                onToggle: {
-                                    var ids = Array(excludedIds)
-                                    if excludedIds.contains(app.bundleId) {
-                                        ids.removeAll { $0 == app.bundleId }
-                                    } else {
-                                        ids.append(app.bundleId)
-                                    }
-                                    store.excludedBundleIdsString = ids.joined(separator: ",")
-                                }
-                            )
-                            Divider().padding(.leading, 60)
-                        }
-                    }
+                    (NSApp.delegate as? AppDelegate)?.showSettingsWindow()
+                    selectedTab = .all
                 }
             }
-        }
-        .frame(width: 400, height: 450)
-    }
-
-    /// M-10 (2026-07-25 audit): the static app cache is read on the main
-    /// thread but written from a `DispatchQueue.main.async` callback. Use a
-    /// lock so a future caller can't race the read/write even though both
-    /// currently land on the same queue.
-    private static var cachedApps: [AppPickerItem]?
-    private static let cachedAppsLock = NSLock()
-
-    /// Kick off a background fetch of installed applications. Icons are loaded
-    /// lazily by AppPickerRow via NSImage, so only the directory scan and bundle
-    /// ID lookup run on the background queue. Results are cached statically.
-    private func loadInstalledAppsIfNeeded() {
-        guard installedApps.isEmpty, !isLoadingApps else { return }
-        Self.cachedAppsLock.lock()
-        let cached = Self.cachedApps
-        Self.cachedAppsLock.unlock()
-        if let cached = cached {
-            installedApps = cached
-            return
-        }
-        isLoadingApps = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            var results: [AppPickerItem] = []
-            let fileManager = FileManager.default
-            let appDirs = ["/Applications", NSHomeDirectory() + "/Applications"]
-
-            for appDir in appDirs {
-                guard let apps = try? fileManager.contentsOfDirectory(atPath: appDir) else { continue }
-                for app in apps where app.hasSuffix(".app") {
-                    let appPath = (appDir as NSString).appendingPathComponent(app)
-                    let name = (app as NSString).deletingPathExtension
-                    if let bundleId = Bundle(url: URL(fileURLWithPath: appPath))?.bundleIdentifier {
-                        results.append(AppPickerItem(name: name, bundleId: bundleId, icon: nil, isRunning: false))
-                    }
-                }
-            }
-            DispatchQueue.main.async {
-                Self.cachedAppsLock.lock()
-                Self.cachedApps = results
-                Self.cachedAppsLock.unlock()
-                self.installedApps = results
-                self.isLoadingApps = false
-            }
-        }
     }
 
     }

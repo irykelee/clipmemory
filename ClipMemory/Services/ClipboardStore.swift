@@ -14,7 +14,6 @@ import os.log
 
 extension Notification.Name {
     static let encryptionFailed = Notification.Name("ClipboardStore.encryptionFailed")
-    static let showSettingsTab = Notification.Name("ClipMemory.showSettingsTab")
     static let cmdFFindAction = Notification.Name("ClipMemory.cmdFFindAction")
     /// M-9 (2026-07-24 audit): tag backend decode / write failed. Posted
     /// from `ClipboardStore.loadTags()` only (saveTags logs but does not

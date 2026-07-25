@@ -276,3 +276,10 @@
 /* Backup UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "Usada para criptografar o arquivo de backup. Você precisará dela novamente para restaurar.";
 "settings.backup.error.missingEncryptionKey" = "Não é possível exportar: chave de criptografia ausente. Redefina a criptografia em Ajustes.";
+
+/* Abas da janela de ajustes (2026-07-25 janela de ajustes independente) */
+"settings.window.title" = "Configurações";
+"settings.tab.general" = "Geral";
+"settings.tab.history" = "Histórico e captura";
+"settings.tab.backup" = "Backup";
+"settings.tab.update" = "Atualização e sobre";

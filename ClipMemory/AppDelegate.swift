@@ -16,6 +16,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var languageObserver: NSObjectProtocol?
     private var encryptionFailedObserver: NSObjectProtocol?
     private var welcomeWindow: NSWindow?
+    // Independent settings window (2026-07-25 plan): separate from the main
+    // window, opened via menu `⌘,` or the sidebar "Settings" tab. Same
+    // `isReleasedWhenClosed = false` pattern as welcomeWindow so SwiftUI
+    // @State survives close/reopen.
+    private var settingsWindow: NSWindow?
     // CLIP-3 (2026-07-24): debounce .encryptionFailed alerts — see throttler doc.
     private let encryptionAlertThrottler = EncryptionFailedAlertThrottler()
 
@@ -34,6 +39,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         StartupHealth.logSnapshot(counts: startupCounts)
         setupHotKey()
         setupLanguageObserver()
+        setupSettingsMenuItem()
         NSApp.setActivationPolicy(.accessory)
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
         // Start Sparkle: daily background check per SUEnableAutomaticChecks.
@@ -61,6 +67,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyManager?.unregister()
         clipboardMonitor?.stopMonitoring()
         welcomeWindow?.close()
+        settingsWindow?.close()
         HangDetector.stop()
     }
 
@@ -135,6 +142,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         windowManager?.showQuickBar()
     }
 
+    /// Inserts the "设置…" (⌘,) menu item into the app menu.
+    /// Uses title-based lookup rather than a hardcoded index so the insert
+    /// position is stable regardless of system language or future menu changes.
+    /// Falls back to `item(at: 1)` if title matching fails.
+    private func setupSettingsMenuItem() {
+        guard let appMenu = NSApp.mainMenu?.items.first(where: { $0.title == "ClipMemory" })?.submenu
+            ?? NSApp.mainMenu?.item(at: 1)?.submenu
+        else { return }
+
+        // Insert after the first separator (below About / Preferences area).
+        let settingsItem = NSMenuItem(
+            title: L10n.settingsWindowTitle,
+            action: #selector(showSettings),
+            keyEquivalent: ","
+        )
+        settingsItem.keyEquivalentModifierMask = .command
+        settingsItem.target = self
+
+        // Find the index of the "About" item (or first separator) to insert after.
+        if let aboutIndex = appMenu.items.firstIndex(where: { $0.action == #selector(NSApplication.orderFrontStandardAboutPanel(_:)) }) {
+            appMenu.insertItem(NSMenuItem.separator(), at: aboutIndex + 1)
+            appMenu.insertItem(settingsItem, at: aboutIndex + 2)
+        } else {
+            // Fallback: append to the menu.
+            appMenu.addItem(NSMenuItem.separator())
+            appMenu.addItem(settingsItem)
+        }
+    }
+
     private func setupLanguageObserver() {
         languageObserver = NotificationCenter.default.addObserver(forName: Notification.Name("LanguageDidChange"), object: nil, queue: .main) { [weak self] _ in
             self?.statusItem?.button?.toolTip = L10n.appName
@@ -172,9 +208,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         windowManager?.showMainWindow()
     }
 
+    /// Independent settings window (2026-07-25 plan). Replaces the previous
+    /// main-window-embedded settings tab. Both the menu `⌘,` entry and the
+    /// sidebar "Settings" tab call this method.
+    @objc func showSettingsWindow() {
+        // Close any existing settings window before opening a new one so
+        // repeated invocations don't stack windows and leak the old reference.
+        settingsWindow?.close()
+        settingsWindow = nil
+
+        let rootView = SettingsRootView(
+            hotKeyManager: hotKeyManager,
+            store: ClipboardStore.shared,
+            backupService: BackupService.shared
+        )
+        let win = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 540),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered, defer: false
+        )
+        win.title = L10n.settingsWindowTitle
+        win.isReleasedWhenClosed = false
+        win.center()
+        win.contentView = NSHostingView(rootView: rootView)
+        win.makeKeyAndOrderFront(nil)
+        settingsWindow = win
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Menu `⌘,` handler. Delegates to the independent settings window
+    /// instead of the previous main-window tab switch.
     @objc private func showSettings() {
-        windowManager?.showMainWindow()
-        NotificationCenter.default.post(name: .showSettingsTab, object: nil)
+        showSettingsWindow()
     }
 
     @objc private func quitApp() { NSApp.terminate(nil) }
@@ -219,5 +284,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyManager?.unregister()
         clipboardMonitor?.stopMonitoring()
         welcomeWindow?.close()
+        settingsWindow?.close()
     }
 }

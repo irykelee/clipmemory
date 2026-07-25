@@ -4,6 +4,14 @@ import ServiceManagement
 
 /// Settings page extracted from ContentView (NEW-7 Phase 2).
 ///
+/// **Deprecated (2026-07-25):** superseded by the independent settings
+/// window (`Views/Settings/SettingsRootView` + four tab subviews, presented
+/// via `AppDelegate.showSettingsWindow()`). This view is no longer
+/// instantiated by ContentView; it is kept only because
+/// `SettingsViewSnapshotTests` still renders it as a layout baseline.
+/// Do not add new settings here — add them to the appropriate tab under
+/// `Views/Settings/` instead.
+///
 /// Originally lived as `ContentView.settingsDetail` (lines 893-1039 of
 /// ContentView.swift before this refactor). Extracted into a standalone
 /// view to reduce ContentView's 1336-line file size; the surrounding

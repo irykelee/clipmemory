@@ -276,3 +276,10 @@
 /* バックアップ UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "バックアップファイルを暗号化するために使用されます。復元時に再度必要です。";
 "settings.backup.error.missingEncryptionKey" = "エクスポートできません: 暗号化キーが見つかりません。設定から暗号化をリセットしてください。";
+
+/* 設定ウィンドウのタブ（2026-07-25 独立設定ウィンドウ） */
+"settings.window.title" = "設定";
+"settings.tab.general" = "一般";
+"settings.tab.history" = "履歴とキャプチャ";
+"settings.tab.backup" = "バックアップ";
+"settings.tab.update" = "アップデートと情報";

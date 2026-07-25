@@ -332,6 +332,13 @@ struct L10n {
     static var themeAppearanceLight: String { string("theme.appearance.light") }
     static var themeAppearanceDark: String { string("theme.appearance.dark") }
 
+    // MARK: - Settings Window (2026-07-25)
+    static var settingsWindowTitle: String { string("settings.window.title") }
+    static var settingsTabGeneral: String { string("settings.tab.general") }
+    static var settingsTabHistory: String { string("settings.tab.history") }
+    static var settingsTabBackup: String { string("settings.tab.backup") }
+    static var settingsTabUpdate: String { string("settings.tab.update") }
+
     // MARK: - Time Groups
     static var groupToday: String { string("group.today") }
     static var groupYesterday: String { string("group.yesterday") }
