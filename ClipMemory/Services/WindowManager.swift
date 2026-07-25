@@ -122,6 +122,16 @@ class WindowManager: NSObject, NSWindowDelegate {
             )
             window.delegate = self
             window.isReleasedWhenClosed = false
+            // 2026-07-25: on macOS 26 (Tahoe) the title bar layer renders
+            // as an opaque white band across the window, no matter what
+            // SwiftUI `toolbarBackground` says — that modifier only affects
+            // the toolbar layer stacked on top. Extending the content view
+            // into a transparent title bar lets the sidebar material reach
+            // the top edge (traffic lights float over it), restoring the
+            // pre-Tahoe unified look and matching Tahoe's own split-view
+            // apps (Finder/Notes).
+            window.titlebarAppearsTransparent = true
+            window.styleMask.insert(.fullSizeContentView)
             // 2026-07-25: add .moveToActiveSpace so a reopened window lands
             // on the user's CURRENT Space. Without it, a window closed on
             // Space A and reopened while the user sits on Space B stays on

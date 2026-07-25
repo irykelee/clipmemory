@@ -586,7 +586,16 @@ struct ContentView: View {
         }
         .frame(minWidth: 640, minHeight: 440)
         .toolbar { self.toolbarContent }
-        .toolbarBackground(.visible, for: .windowToolbar))
+        // 2026-07-25: `.visible` forced an opaque toolbar background. On
+        // macOS 15 that rendered as a unified material blended with the
+        // sidebar; on macOS 26 (Tahoe) the title bar + toolbar stack renders
+        // as an opaque white band with a separator. This modifier only
+        // controls the toolbar layer — the actual culprit is the title bar
+        // layer underneath, which WindowManager fixes via
+        // `titlebarAppearsTransparent` + `.fullSizeContentView`. `.hidden`
+        // here keeps the toolbar layer itself from painting a background
+        // so the two layers stay transparent together.
+        .toolbarBackground(.hidden, for: .windowToolbar))
     }
 
     @ToolbarContentBuilder
