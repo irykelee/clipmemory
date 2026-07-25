@@ -201,9 +201,9 @@ struct ContentView: View {
     }
 
     private func handleKeyEscape() {
-        if selectedTab == .settings {
-            selectedTab = .all
-        } else if !searchText.isEmpty {
+        // selectedTab can no longer be .settings (sidebar binding intercepts
+        // it), so Escape only handles search-clear and window close.
+        if !searchText.isEmpty {
             searchText = ""
         } else {
             NSApp.keyWindow?.close()
@@ -578,11 +578,10 @@ struct ContentView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 190, ideal: 210)
         } detail: {
-            if selectedTab == .settings {
-                settingsDetail
-            } else {
-                itemList
-            }
+            // 2026-07-25: selectedTab can no longer be .settings (the sidebar
+            // binding intercepts it and opens the settings window instead),
+            // so the detail pane is always the item list.
+            itemList
         }
         .frame(minWidth: 640, minHeight: 440)
         .toolbar { self.toolbarContent }
@@ -643,23 +642,36 @@ struct ContentView: View {
             }
         }
         ToolbarItemGroup(placement: .principal) {
-            if selectedTab != .settings {
-                HStack(spacing: 4) {
-                    ForEach(DateFilter.allCases, id: \.self) { filter in
-                        DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
-                            dateFilter = filter
-                        }
+            HStack(spacing: 4) {
+                ForEach(DateFilter.allCases, id: \.self) { filter in
+                    DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
+                        dateFilter = filter
                     }
                 }
-                .padding(.horizontal, 4)
             }
+            .padding(.horizontal, 4)
         }
     }
 
     private var sidebar: some View {
         SidebarView(
             store: store,
-            selectedTab: $selectedTab,
+            // 2026-07-25: intercept the settings row so it never becomes a
+            // real tab selection. Routing it through selectedTab swapped the
+            // detail pane to a placeholder and back within one runloop tick,
+            // producing a visible flash in the main content area. Now the
+            // click opens the independent settings window directly and the
+            // current tab stays put.
+            selectedTab: Binding(
+                get: { selectedTab },
+                set: { newValue in
+                    if newValue == .settings {
+                        (NSApp.delegate as? AppDelegate)?.showSettingsWindow()
+                    } else {
+                        selectedTab = newValue
+                    }
+                }
+            ),
             selectedTagIds: selectedTagIds,
             tabCounts: tabCounts,
             tagCounts: tagCounts,
@@ -701,22 +713,6 @@ struct ContentView: View {
             showingEmptyTrashAlert: $showingEmptyTrashAlert,
             tagPickerItem: $tagPickerItem
         )
-    }
-
-    /// The sidebar's "Settings" entry now opens the independent settings
-    /// window (2026-07-25 refactor) instead of swapping the detail pane.
-    /// This placeholder only exists so the tab selection has somewhere to
-    /// land for the instant before we bounce back to the item list.
-    private var settingsDetail: some View {
-        Color.clear
-            .onAppear {
-                // Defer to next runloop to avoid "Modifying state during
-                // view update" (the selectedTab write inside onAppear).
-                DispatchQueue.main.async {
-                    (NSApp.delegate as? AppDelegate)?.showSettingsWindow()
-                    selectedTab = .all
-                }
-            }
     }
 
     }
