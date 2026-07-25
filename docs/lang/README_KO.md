@@ -189,7 +189,7 @@
 - **이미지 민감 판단 수정** — 이미지가 크기(50KB)로 자동 마크되지 않도록 수정, 저장은 maxItems 및 수동 정리로 제어
 - **컴포넌트 추출** — ContentView를 FlowLayout, LogoView, DateFilterButton, AppPickerRow, ClipboardItemRow로 분리
 - **공유 유틸리티** — FontScaling.swift(sz()) 및 DateHelpers.swift(날짜 포맷) 추출
-- **NSCache 메모리 압력 처리** — 시스템 메모리 경고 옵저버 추가, 압력 시 캐시をクリア
+- **NSCache 메모리 압력 처리** — 시스템 메모리 경고 옵저버 추가, 압력 시 캐시 비우기
 
 ### v2.2.0 (2026-05-15) — Rich Text 지원
 
@@ -350,4 +350,4 @@ xcodebuild -scheme ClipMemory -configuration Release
 ## 문의
 
 - GitHub: https://github.com/irykelee/clipmemory
-- 피드백: 설정 → 이 Appについて → 피드백 보내기 → GitHub Issues
+- 피드백: 설정 → 정보 → 피드백 보내기 → GitHub Issues
