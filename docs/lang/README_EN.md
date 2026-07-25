@@ -1,4 +1,4 @@
-# ClipMemory v2.5.12
+# ClipMemory v2.5.13
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.5.13 (2026-07-25) — Audit Fix Wrap-up
+
+- **🛡 History data more resilient** — After future versions add new item types, opening them with older versions no longer clears the entire history (unknown types are downgraded and kept as plain text); backup archive manifest now validates count, salt length, and minimum version to clearly error on corrupt packages instead of silently importing only half
+- **🔒 Password manager content no longer captured** — Recognizes `ConcealedType`/`TransientType` clipboard flags and skips content copied by apps like 1Password per system conventions
+- **⚡ Copying images no longer causes lag** — When copying uncached images, disk reads and decryption are moved to the background so the main thread is no longer blocked
+- **🌐 Update feed status panel speaks human** — "Recently switched" no longer shows raw English enum values; replaced with localized text in 7 languages, and only recorded when an actual switch occurs
+- **🇰🇷 Korean README fix** — Two leftover Japanese sentences corrected back to Korean
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.5.13
 
 ### v2.5.12 (2026-07-24) — Stability & Data Safety Overhaul
 

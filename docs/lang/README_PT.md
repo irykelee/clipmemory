@@ -1,4 +1,4 @@
-# ClipMemory v2.5.12
+# ClipMemory v2.5.13
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.5.13 (2026-07-25) — Correções Finais de Auditoria
+
+- **🛡 Dados históricos mais resistentes a danos** — Ao abrir uma versão antiga após a adição de novos tipos de itens em versões futuras, o histórico não será mais completamente limpo (tipos desconhecidos são reduzidos a texto simples e mantidos); a lista do pacote de cópia de segurança agora inclui verificação de contagem, comprimento do salt e versão mínima, pacotes danificados informam explicitamente o erro em vez de importar metade silenciosamente
+- **🔒 Conteúdo de gerenciadores de senhas não é mais capturado** — Reconhece os marcadores da área de transferência `ConcealedType`/`TransientType` e ignora diretamente o conteúdo copiado por aplicativos como 1Password, conforme a convenção do sistema
+- **⚡ Copiar imagens não trava mais** — A leitura do disco e a descriptografia ao copiar imagens não armazenadas em cache são movidas para segundo plano, a thread principal não é mais bloqueada
+- **🌐 Painel de status do feed de atualização agora usa linguagem compreensível** — "Alternância recente" não exibe mais a enumeração original em inglês, foi alterado para texto localizado em 7 idiomas, e é registrado apenas quando a alternância realmente ocorre
+- **🇰🇷 Correção do README em coreano** — Duas frases residuais em japonês que estavam misturadas foram corrigidas de volta para coreano
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.5.13
 
 ### v2.5.12 (2026-07-24) — Revisão de Estabilidade e Segurança de Dados
 

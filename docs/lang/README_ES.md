@@ -1,4 +1,4 @@
-# ClipMemory v2.5.12
+# ClipMemory v2.5.13
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.5.13 (2026-07-25) — Correcciones finales de la auditoría
+
+- **🛡 Los datos históricos son más resistentes a la corrupción** — Cuando las versiones futuras añaden nuevos tipos de elementos, las versiones anteriores ya no vacían todo el historial al abrirlas (los tipos desconocidos se degradan a texto plano y se conservan); el manifiesto de la copia de seguridad ahora incluye validaciones de recuento, longitud del salt y versión mínima, y los paquetes dañados muestran un error claro en lugar de importar la mitad silenciosamente.
+- **🔒 El contenido de los gestores de contraseñas ya no se captura** — Se reconocen las marcas de portapapeles `ConcealedType` y `TransientType`, y el contenido copiado por aplicaciones como 1Password se omite directamente según las convenciones del sistema.
+- **⚡ Copiar imágenes ya no causa bloqueos** — La lectura de disco y el descifrado de imágenes no almacenadas en caché se han movido a segundo plano, por lo que el hilo principal ya no se bloquea.
+- **🌐 El panel de estado del feed de actualización ahora es comprensible** — «Cambiado recientemente» ya no muestra el valor de enumeración en inglés; ahora se muestra texto localizado en 7 idiomas, y solo se registra cuando realmente ocurre un cambio.
+- **🇰🇷 Corrección del README en coreano** — Dos fragmentos de texto en japonés que se habían colado se han revertido al coreano.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.5.13
 
 ### v2.5.12 (2026-07-24) — Revisión de estabilidad y seguridad de datos
 
