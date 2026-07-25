@@ -93,6 +93,16 @@ class WindowManager: NSObject, NSWindowDelegate {
     }
 
     func showMainWindow() {
+        // 2026-07-25 fix: the policy switch must PRECEDE window ordering.
+        // On macOS 14+ `activate(ignoringOtherApps:)` is ignored (treated as
+        // plain `activate()`) and `setActivationPolicy(.regular)` is
+        // processed asynchronously by LaunchServices. Ordering the window
+        // front while the app was still .accessory put the window on screen
+        // but left the app un-activated — "Open Clipboard" looked like a
+        // no-op: the window was visible behind other apps and the app never
+        // became frontmost (reproduced: close main window, reopen → window
+        // appears but WorkBuddy/Finder stays active).
+        NSApp.setActivationPolicy(.regular)
         if let window = mainWindow {
             window.makeKeyAndOrderFront(nil)
         } else {
@@ -112,13 +122,27 @@ class WindowManager: NSObject, NSWindowDelegate {
             )
             window.delegate = self
             window.isReleasedWhenClosed = false
-            window.collectionBehavior = .fullScreenNone
+            // 2026-07-25: add .moveToActiveSpace so a reopened window lands
+            // on the user's CURRENT Space. Without it, a window closed on
+            // Space A and reopened while the user sits on Space B stays on
+            // Space A — combined with macOS 14+ ignoring activate() from
+            // non-foreground apps, "Open Clipboard" looked like a no-op
+            // (the window was ordered front, just on another Space).
+            window.collectionBehavior = [.fullScreenNone, .moveToActiveSpace]
             window.contentView = NSHostingView(rootView: contentView)
             window.makeKeyAndOrderFront(nil)
             mainWindow = window
         }
-        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        // The policy change lands asynchronously in LaunchServices, so the
+        // synchronous activate above can still be dropped right after an
+        // accessory → regular transition. Re-assert on the next runloop
+        // tick — standard menu-bar-app practice.
+        DispatchQueue.main.async { [weak self] in
+            guard let window = self?.mainWindow else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     private var saveFrameWorkItem: DispatchWorkItem?
