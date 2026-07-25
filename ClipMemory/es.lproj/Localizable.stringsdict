@@ -1,92 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 2026-07-25: intentionally empty. The %#@count@ plural mechanism was
+     retired (ambiguous shared format key, missing value-type keys, system-
+     locale lookup ignoring the in-app language override, "(null)" rendering
+     for keys missing from the bundled copy). Plural handling now lives in
+     L10n.plural(_:_:) with "<key>.one" entries in Localizable.strings.
+     The file is kept (empty) so the Xcode project references stay valid. -->
 <plist version="1.0">
-<dict>
-	<key>batch.selected</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@count@</string>
-		<key>count</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>one</key>
-			<string>%d seleccionado</string>
-			<key>other</key>
-			<string>%d seleccionados</string>
-		</dict>
-	</dict>
-	<key>quickbar.recent</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@count@</string>
-		<key>count</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>one</key>
-			<string>%d elemento</string>
-			<key>other</key>
-			<string>%d elementos</string>
-		</dict>
-	</dict>
-	<key>trash.emptyConfirm.message</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@count@</string>
-		<key>count</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>one</key>
-			<string>%d elemento será eliminado permanentemente. Esta acción no se puede deshacer.</string>
-			<key>other</key>
-			<string>%d elementos serán eliminados permanentemente. Esta acción no se puede deshacer.</string>
-		</dict>
-	</dict>
-	<key>alert.clear.message</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@count@</string>
-		<key>count</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>one</key>
-			<string>¿Seguro que quieres borrar %d elemento?
-Los elementos fijados no se borrarán.</string>
-			<key>other</key>
-			<string>¿Seguro que quieres borrar %d elementos?
-Los elementos fijados no se borrarán.</string>
-		</dict>
-	</dict>
-	<key>settings.max.items.count</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@count@</string>
-		<key>count</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>one</key>
-			<string>%d elemento</string>
-			<key>other</key>
-			<string>%d elementos</string>
-		</dict>
-	</dict>
-	<key>clear.conditional.confirm</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@count@</string>
-		<key>count</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>one</key>
-			<string>%d elemento será eliminado (los fijados se conservan, movido a la papelera)</string>
-			<key>other</key>
-			<string>%d elementos serán eliminados (los fijados se conservan, movidos a la papelera)</string>
-		</dict>
-	</dict>
-</dict>
+<dict/>
 </plist>

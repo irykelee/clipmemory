@@ -48,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "履歴をクリア";
-"alert.clear.message" = "%#@count@";
+"alert.clear.message" = "%d 件の項目をすべて消去しますか？\nピン留めされた項目は削除されません。";
 "alert.clear.none" = "削除する履歴がありません。";
 "alert.delete.title" = "ごみ箱に移動";
 "alert.delete.message" = "この項目をごみ箱に移動しますか？";
@@ -59,7 +59,7 @@
 "settings.section.language" = "言語";
 "settings.section.about" = "このアプリについて";
 "settings.max.items" = "最大保存数";
-"settings.max.items.count" = "%#@count@";
+"settings.max.items.count" = "%d 件";
 "settings.auto.clear" = "自動削除";
 "settings.sensitive.hint" = "パスワード、APIキーなどの重要な情報を自動削除するまでの時間";
 "settings.section.hotkey" = "ホットキー";
@@ -93,7 +93,7 @@
 "clear.conditional.title" = "条件で削除";
 "clear.conditional.type" = "タイプ";
 "clear.conditional.range" = "期間";
-"clear.conditional.confirm" = "%#@count@";
+"clear.conditional.confirm" = "%d 件の項目が削除されます（ピン留めは保持し、ごみ箱に移動）";
 "tag.delete.onlytag" = "タグのみ削除";
 "tag.delete.withcontent" = "タグと内容を削除";
 "settings.app.picker.search" = "アプリを検索";
@@ -132,7 +132,7 @@
 "app.launch.at.login" = "ログイン時に起動";
 "settings.launch.at.login.error.body" = "ログイン時起動設定を変更できません。システム権限を確認してください。";
 "app.error" = "エラー";
-"batch.selected" = "%#@count@";
+"batch.selected" = "%d 件選択中";
 "app.send.feedback" = "フィードバック";
 "alert.encrypt.failed" = "機密データの暗号化に失敗しました。保存されませんでした。";
 "alert.encrypt.failed.count" = "機密データの暗号化に失敗しました。%d 件保存されませんでした。";
@@ -157,7 +157,7 @@
 "theme.appearance.dark" = "ダーク";
 
 /* QuickBar */
-"quickbar.recent" = "%#@count@";
+"quickbar.recent" = "%d 件";
 "quickbar.open.full" = "完全なウィンドウを開く";
 "quickbar.no.results" = "結果なし";
 
@@ -236,7 +236,7 @@
 "trash.empty" = "ごみ箱は空です";
 "trash.restore" = "復元";
 "trash.emptyConfirm.title" = "ごみ箱を空にする";
-"trash.emptyConfirm.message" = "%#@count@";
+"trash.emptyConfirm.message" = "%d 件の項目が完全に削除されます。この操作は取り消せません。";
 "trash.retentionDays" = "ごみ箱の保持日数";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "この項目を完全に削除しますか？";

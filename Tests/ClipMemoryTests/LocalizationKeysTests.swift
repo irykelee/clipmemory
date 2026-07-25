@@ -112,4 +112,89 @@ final class LocalizationKeysTests: XCTestCase {
             }
         }
     }
+
+    /// 2026-07-25 plural-mechanism regression. The retired .stringsdict
+    /// (`%#@count@`) path rendered "(null)" for any key missing from the
+    /// bundled stringsdict (observed: settings maxItems picker on macOS 26).
+    /// Pin the six count-bearing accessors against that failure mode: output
+    /// must embed the count and must not contain the raw plural marker or a
+    /// "(null)" substitution, for both plural and singular counts.
+    func testPluralAccessorsRenderCountWithoutNullOrMarker() {
+        let cases: [(String, (Int) -> String)] = [
+            ("alertClearMessage", L10n.alertClearMessage),
+            ("trashEmptyConfirmMessage", L10n.trashEmptyConfirmMessage),
+            ("settingsMaxItemsCount", L10n.settingsMaxItemsCount),
+            ("clearConditionalConfirm", L10n.clearConditionalConfirm),
+            ("batchSelected", L10n.batchSelected),
+            ("quickbarRecent", L10n.quickbarRecent)
+        ]
+        for (name, accessor) in cases {
+            for n in [1, 50] {
+                let rendered = accessor(n)
+                XCTAssertTrue(
+                    rendered.contains("\(n)"),
+                    "\(name)(\(n)) must embed the count, got: \(rendered)"
+                )
+                XCTAssertFalse(
+                    rendered.contains("%#@"),
+                    "\(name)(\(n)) must not contain the raw plural marker, got: \(rendered)"
+                )
+                XCTAssertFalse(
+                    rendered.contains("(null)"),
+                    "\(name)(\(n)) must not contain a (null) substitution, got: \(rendered)"
+                )
+            }
+        }
+    }
+
+    /// Parity pin for the plural migration: no shipping .strings file may
+    /// reintroduce a `%#@` marker (the retired .stringsdict mechanism), and
+    /// the en/es/pt singular variants must exist for the five keys that can
+    /// render a count of 1 (settings.max.items.count is always >= 50).
+    func testPluralKeysHaveNoMarkersAndSingularVariantsExist() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appResDir = projectRoot.appendingPathComponent("ClipMemory", isDirectory: true)
+
+        let pluralKeys = [
+            "alert.clear.message",
+            "trash.emptyConfirm.message",
+            "settings.max.items.count",
+            "clear.conditional.confirm",
+            "batch.selected",
+            "quickbar.recent"
+        ]
+        let singularKeys = pluralKeys.filter { $0 != "settings.max.items.count" }
+        let languages = ["en", "es", "ja", "ko", "pt", "zh-Hans", "zh-Hant"]
+        for lang in languages {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            XCTAssertFalse(
+                content.contains("%#@"),
+                "\(lang).lproj/Localizable.strings must not use the retired %#@ plural marker"
+            )
+            for key in pluralKeys {
+                XCTAssertTrue(
+                    content.contains("\"\(key)\""),
+                    "\(lang).lproj/Localizable.strings is missing key '\(key)'"
+                )
+            }
+        }
+        for lang in ["en", "es", "pt"] {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            for key in singularKeys {
+                XCTAssertTrue(
+                    content.contains("\"\(key).one\""),
+                    "\(lang).lproj/Localizable.strings is missing singular key '\(key).one'"
+                )
+            }
+        }
+    }
 }

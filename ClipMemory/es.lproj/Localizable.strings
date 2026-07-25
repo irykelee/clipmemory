@@ -48,7 +48,8 @@
 
 /* Alerts */
 "alert.clear.title" = "Vaciar historial";
-"alert.clear.message" = "%#@count@";
+"alert.clear.message" = "¿Seguro que quieres borrar %d elementos?\nLos elementos fijados no se eliminarán.";
+"alert.clear.message.one" = "¿Seguro que quieres borrar 1 elemento?\nLos elementos fijados no se eliminarán.";
 "alert.clear.none" = "No hay nada que vaciar.";
 "alert.delete.title" = "Mover a la papelera";
 "alert.delete.message" = "¿Mover este elemento a la papelera?";
@@ -60,7 +61,7 @@
 "settings.section.theme" = "Tema";
 "settings.section.about" = "Acerca de";
 "settings.max.items" = "Máximo de elementos";
-"settings.max.items.count" = "%#@count@";
+"settings.max.items.count" = "%d elementos";
 "settings.auto.clear" = "Borrado automático";
 "settings.sensitive.hint" = "Tiempo hasta borrar automáticamente contraseñas, claves API, etc.";
 "settings.section.hotkey" = "Atajo";
@@ -94,7 +95,8 @@
 "clear.conditional.title" = "Eliminar por condición";
 "clear.conditional.type" = "Tipo";
 "clear.conditional.range" = "Periodo";
-"clear.conditional.confirm" = "%#@count@";
+"clear.conditional.confirm" = "%d elementos serán eliminados (los fijados se conservan, movidos a la papelera)";
+"clear.conditional.confirm.one" = "1 elemento será eliminado (los fijados se conservan, movido a la papelera)";
 "tag.delete.onlytag" = "Eliminar solo etiqueta";
 "tag.delete.withcontent" = "Eliminar etiqueta y contenido";
 "settings.app.picker.search" = "Buscar aplicaciones";
@@ -133,7 +135,8 @@
 "app.launch.at.login" = "Iniciar al iniciar sesión";
 "settings.launch.at.login.error.body" = "No se puede modificar el inicio de sesión. Comprueba los permisos del sistema.";
 "app.error" = "Error";
-"batch.selected" = "%#@count@";
+"batch.selected" = "%d seleccionados";
+"batch.selected.one" = "1 seleccionado";
 "app.send.feedback" = "Comentarios";
 "alert.encrypt.failed" = "Error al cifrar datos sensibles. El elemento no se guardó.";
 "alert.encrypt.failed.count" = "Error al cifrar datos sensibles. No se guardaron %d elementos.";
@@ -157,7 +160,8 @@
 "theme.appearance.dark" = "Oscuro";
 
 /* QuickBar */
-"quickbar.recent" = "%#@count@";
+"quickbar.recent" = "%d elementos";
+"quickbar.recent.one" = "1 elemento";
 "quickbar.open.full" = "Abrir ventana completa";
 "quickbar.no.results" = "Sin resultados";
 
@@ -236,7 +240,8 @@
 "trash.empty" = "La papelera está vacía";
 "trash.restore" = "Restaurar";
 "trash.emptyConfirm.title" = "Vaciar papelera";
-"trash.emptyConfirm.message" = "%#@count@";
+"trash.emptyConfirm.message" = "%d elementos serán eliminados permanentemente. Esta acción no se puede deshacer.";
+"trash.emptyConfirm.message.one" = "1 elemento será eliminado permanentemente. Esta acción no se puede deshacer.";
 "trash.retentionDays" = "Días de retención de la papelera";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "¿Eliminar este elemento permanentemente?";

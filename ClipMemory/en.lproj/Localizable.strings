@@ -48,7 +48,8 @@
 
 /* Alerts */
 "alert.clear.title" = "Clear History";
-"alert.clear.message" = "%#@count@";
+"alert.clear.message" = "Are you sure you want to clear %d items?\nPinned items will not be deleted.";
+"alert.clear.message.one" = "Are you sure you want to clear 1 item?\nPinned items will not be deleted.";
 "alert.clear.none" = "No history to clear.";
 "alert.delete.title" = "Move to Trash";
 "alert.delete.message" = "Move this item to the Trash?";
@@ -61,7 +62,7 @@
 "settings.section.excluded.apps" = "Excluded Apps";
 "settings.section.about" = "About";
 "settings.max.items" = "Max Items";
-"settings.max.items.count" = "%#@count@";
+"settings.max.items.count" = "%d items";
 "settings.auto.clear" = "Auto-Clear";
 "settings.sensitive.hint" = "Automatically clears sensitive content (passwords, API keys, etc.) after the selected time.";
 "settings.hotkey.change" = "Change";
@@ -93,7 +94,8 @@
 "clear.conditional.title" = "Clear by Condition";
 "clear.conditional.type" = "Type";
 "clear.conditional.range" = "Time Range";
-"clear.conditional.confirm" = "%#@count@";
+"clear.conditional.confirm" = "%d items will be deleted (pinned kept, moved to the Trash)";
+"clear.conditional.confirm.one" = "1 item will be deleted (pinned kept, moved to the Trash)";
 "tag.delete.onlytag" = "Delete Tag Only";
 "tag.delete.withcontent" = "Delete Tag & Items";
 "settings.app.picker.search" = "Search applications";
@@ -132,7 +134,8 @@
 "app.launch.at.login" = "Launch at Login";
 "settings.launch.at.login.error.body" = "Unable to modify Launch at Login setting. Please check system permissions.";
 "app.error" = "Error";
-"batch.selected" = "%#@count@";
+"batch.selected" = "%d selected";
+"batch.selected.one" = "1 selected";
 "app.send.feedback" = "Feedback";
 "alert.encrypt.failed" = "Failed to encrypt sensitive data. Item was not saved.";
 "alert.encrypt.failed.count" = "Failed to encrypt sensitive data. %d items were not saved.";
@@ -157,7 +160,8 @@
 "theme.appearance.dark" = "Dark";
 
 /* QuickBar */
-"quickbar.recent" = "%#@count@";
+"quickbar.recent" = "%d items";
+"quickbar.recent.one" = "1 item";
 "quickbar.open.full" = "Open Clipboard";
 "quickbar.no.results" = "No results";
 
@@ -236,7 +240,8 @@
 "trash.empty" = "Trash is empty";
 "trash.restore" = "Restore";
 "trash.emptyConfirm.title" = "Empty Trash";
-"trash.emptyConfirm.message" = "%#@count@";
+"trash.emptyConfirm.message" = "%d items will be permanently deleted. This action cannot be undone.";
+"trash.emptyConfirm.message.one" = "1 item will be permanently deleted. This action cannot be undone.";
 "trash.retentionDays" = "Trash retention days";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "Permanently delete this item?";

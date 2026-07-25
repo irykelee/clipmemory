@@ -48,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "清除歷史";
-"alert.clear.message" = "%#@count@";
+"alert.clear.message" = "確定要清除全部 %d 條記錄嗎？\n已釘選的內容不會被刪除。";
 "alert.clear.none" = "沒有可清除的記錄。";
 "alert.delete.title" = "移至垃圾桶";
 "alert.delete.message" = "確定將該內容移至垃圾桶嗎？";
@@ -63,7 +63,7 @@
 "settings.hotkey.recording" = "請按下新的快捷鍵...";
 "settings.section.about" = "關於";
 "settings.max.items" = "最大筆記數";
-"settings.max.items.count" = "%#@count@";
+"settings.max.items.count" = "%d 條";
 "settings.auto.clear" = "自動清理";
 "settings.sensitive.hint" = "偵測到密碼、API金鑰等敏感內容時，自動清理前的等待時間";
 "settings.section.excluded.apps" = "排除的應用程式";
@@ -94,7 +94,7 @@
 "clear.conditional.title" = "按條件刪除";
 "clear.conditional.type" = "類型";
 "clear.conditional.range" = "時間範圍";
-"clear.conditional.confirm" = "%#@count@";
+"clear.conditional.confirm" = "將刪除 %d 條記錄（已釘選的保留，並移至垃圾桶）";
 "tag.delete.onlytag" = "僅刪除標籤";
 "tag.delete.withcontent" = "刪除標籤與內容";
 "settings.app.picker.search" = "搜尋應用程式";
@@ -132,7 +132,7 @@
 "app.quit" = "退出 ClipMemory";
 "app.launch.at.login" = "登入時啟動";
 "app.error" = "錯誤";
-"batch.selected" = "%#@count@";
+"batch.selected" = "已選擇 %d 項";
 "app.send.feedback" = "回饋";
 "alert.encrypt.failed" = "敏感資料加密失敗，內容未儲存。";
 "alert.encrypt.failed.count" = "敏感資料加密失敗，%d 筆內容未儲存。";
@@ -156,7 +156,7 @@
 "theme.appearance.dark" = "深色";
 
 /* QuickBar */
-"quickbar.recent" = "%#@count@";
+"quickbar.recent" = "%d 條";
 "quickbar.open.full" = "打開完整視窗";
 "quickbar.no.results" = "無結果";
 
@@ -238,7 +238,7 @@
 "trash.empty" = "垃圾桶是空的";
 "trash.restore" = "復原";
 "trash.emptyConfirm.title" = "清空垃圾桶";
-"trash.emptyConfirm.message" = "%#@count@";
+"trash.emptyConfirm.message" = "%d 條記錄將被永久刪除，此操作無法撤銷。";
 "trash.retentionDays" = "垃圾桶保留天數";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "永久刪除此條目？";

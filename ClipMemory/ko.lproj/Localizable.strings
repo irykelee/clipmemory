@@ -48,7 +48,7 @@
 
 /* Alerts */
 "alert.clear.title" = "기록 비우기";
-"alert.clear.message" = "%#@count@";
+"alert.clear.message" = "%d개의 항목을 모두 지우시겠습니까?\n고정된 항목은 삭제되지 않습니다.";
 "alert.clear.none" = "비울 기록이 없습니다.";
 "alert.delete.title" = "휴지통으로 이동";
 "alert.delete.message" = "이 항목을 휴지통으로 이동하시겠습니까?";
@@ -59,7 +59,7 @@
 "settings.section.language" = "언어";
 "settings.section.about" = "정보";
 "settings.max.items" = "최대 개수";
-"settings.max.items.count" = "%#@count@";
+"settings.max.items.count" = "%d개";
 "settings.auto.clear" = "자동 삭제";
 "settings.sensitive.hint" = "비밀번호, API 키 등 민감정보 자동 삭제까지의 대기 시간";
 "settings.section.hotkey" = "단축키";
@@ -93,7 +93,7 @@
 "clear.conditional.title" = "조건별 삭제";
 "clear.conditional.type" = "유형";
 "clear.conditional.range" = "기간";
-"clear.conditional.confirm" = "%#@count@";
+"clear.conditional.confirm" = "%d개의 항목이 삭제됩니다(고정된 항목은 유지하고 휴지통으로 이동)";
 "tag.delete.onlytag" = "태그만 삭제";
 "tag.delete.withcontent" = "태그 및 내용 삭제";
 "settings.app.picker.search" = "앱 검색";
@@ -132,7 +132,7 @@
 "app.launch.at.login" = "로그인 시 시작";
 "settings.launch.at.login.error.body" = "로그인 시 시작 설정을 수정할 수 없습니다. 시스템 권한을 확인하세요.";
 "app.error" = "오류";
-"batch.selected" = "%#@count@";
+"batch.selected" = "%d개 선택됨";
 "app.send.feedback" = "피드백";
 "alert.encrypt.failed" = "민감 데이터 암호화에 실패했습니다. 저장되지 않았습니다.";
 "alert.encrypt.failed.count" = "민감 데이터 암호화에 실패했습니다. %d개 항목이 저장되지 않았습니다.";
@@ -157,7 +157,7 @@
 "theme.appearance.dark" = "다크";
 
 /* QuickBar */
-"quickbar.recent" = "%#@count@";
+"quickbar.recent" = "%d개";
 "quickbar.open.full" = "전체 창 열기";
 "quickbar.no.results" = "결과 없음";
 
@@ -236,7 +236,7 @@
 "trash.empty" = "휴지통이 비어 있습니다";
 "trash.restore" = "복원";
 "trash.emptyConfirm.title" = "휴지통 비우기";
-"trash.emptyConfirm.message" = "%#@count@";
+"trash.emptyConfirm.message" = "%d개의 항목이 영구적으로 삭제됩니다. 이 작업은 취소할 수 없습니다.";
 "trash.retentionDays" = "휴지통 보관 일수";
 // F-1 (2026-07-23 audit): per-row permanent delete confirmation
 "trash.deleteConfirm.title" = "이 항목을 영구적으로 삭제하시겠습니까?";

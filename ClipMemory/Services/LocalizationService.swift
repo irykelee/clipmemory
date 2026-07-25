@@ -23,16 +23,34 @@ struct L10n {
     /// - Returns: The formatted localized string
     static func string(_ key: String, _ args: CVarArg...) -> String {
         let template = string(key)
-        // F-7 (2026-07-23 audit): when the Localizable.strings entry uses
-        // the .stringsdict plural marker `%#@var@`, plain `String(format:)`
-        // can't resolve the right plural form — Foundation needs
-        // `String.localizedStringWithFormat` for that. Detect the marker
-        // and route accordingly; other keys keep the cheap `String(format:)`
-        // path so we don't pay the .stringsdict lookup cost on every call.
-        if template.contains("%#@") {
-            return String.localizedStringWithFormat(template, args)
-        }
         return String(format: template, arguments: args)
+    }
+
+    /// Plural-aware variant for count-bearing messages. Picks "<key>.one"
+    /// when count == 1 and the current language defines that key (en/es/pt
+    /// have singular forms; the CJK languages intentionally omit it and
+    /// always use the base form). Falls back to the base key when ".one"
+    /// is absent — `string()` returns the key verbatim for missing keys,
+    /// which is how the fallback is detected.
+    ///
+    /// 2026-07-25: replaces the .stringsdict (`%#@count@`) mechanism, which
+    /// was broken on multiple levels: all six keys shared ONE format key
+    /// (ambiguous rule lookup), every entry lacked
+    /// NSStringFormatValueTypeKey, `String.localizedStringWithFormat`
+    /// resolves rules against the main bundle's SYSTEM localization
+    /// (ignoring the in-app language override), and any key missing from
+    /// the bundled stringsdict rendered as "(null)" — observed in the
+    /// settings maxItems picker on macOS 26. Plain `%d` formatting routes
+    /// through the proven `String(format:)` path in the correct bundle.
+    static func plural(_ key: String, _ count: Int) -> String {
+        if count == 1 {
+            let singularKey = key + ".one"
+            let singular = string(singularKey)
+            if singular != singularKey {
+                return String(format: singular, count)
+            }
+        }
+        return String(format: string(key), count)
     }
 
     // MARK: - Private
@@ -155,7 +173,7 @@ struct L10n {
     static var newTagCustomColor: String { string("newTag.customColor") }
 
     static var alertClearTitle: String { string("alert.clear.title") }
-    static func alertClearMessage(_ count: Int) -> String { string("alert.clear.message", count) }
+    static func alertClearMessage(_ count: Int) -> String { plural("alert.clear.message", count) }
     static var alertClearNone: String { string("alert.clear.none") }
     static var alertDeleteTitle: String { string("alert.delete.title") }
     static var alertDeleteMessage: String { string("alert.delete.message") }
@@ -167,7 +185,7 @@ struct L10n {
     static var trashEmpty: String { string("trash.empty") }
     static var trashRestore: String { string("trash.restore") }
     static var trashEmptyConfirmTitle: String { string("trash.emptyConfirm.title") }
-    static func trashEmptyConfirmMessage(_ count: Int) -> String { string("trash.emptyConfirm.message", count) }
+    static func trashEmptyConfirmMessage(_ count: Int) -> String { plural("trash.emptyConfirm.message", count) }
     static var trashRetentionDays: String { string("trash.retentionDays") }
     // F-1 (2026-07-23 audit): per-row permanent-delete confirmation. The
     // bulk `trashEmptyConfirmTitle` reads "Empty Trash" which is wrong
@@ -182,7 +200,7 @@ struct L10n {
     static var settingsSectionExcludedApps: String { string("settings.section.excluded.apps") }
     static var settingsSectionAbout: String { string("settings.section.about") }
     static var settingsMaxItems: String { string("settings.max.items") }
-    static func settingsMaxItemsCount(_ count: Int) -> String { string("settings.max.items.count", count) }
+    static func settingsMaxItemsCount(_ count: Int) -> String { plural("settings.max.items.count", count) }
     static var settingsAutoClear: String { string("settings.auto.clear") }
     static var settingsCaptureRichText: String { string("settings.capture.richtext") }
     static var settingsCaptureRichTextHint: String { string("settings.capture.richtext.hint") }
@@ -231,7 +249,7 @@ struct L10n {
     static var clearConditionalTitle: String { string("clear.conditional.title") }
     static var clearConditionalType: String { string("clear.conditional.type") }
     static var clearConditionalRange: String { string("clear.conditional.range") }
-    static func clearConditionalConfirm(_ count: Int) -> String { string("clear.conditional.confirm", count) }
+    static func clearConditionalConfirm(_ count: Int) -> String { plural("clear.conditional.confirm", count) }
     static var tagDeleteOnlyTag: String { string("tag.delete.onlytag") }
     static var tagDeleteWithContent: String { string("tag.delete.withcontent") }
     static var settingsAppPickerSearch: String { string("settings.app.picker.search") }
@@ -262,7 +280,7 @@ struct L10n {
     static var quitApp: String { string("app.quit") }
     static var launchAtLogin: String { string("app.launch.at.login") }
     static var error: String { string("app.error") }
-    static func batchSelected(_ count: Int) -> String { string("batch.selected", count) }
+    static func batchSelected(_ count: Int) -> String { plural("batch.selected", count) }
     static var sendFeedback: String { string("app.send.feedback") }
     static var viewWelcomeGuide: String { string("app.view.welcome.guide") }
     static var alertEncryptFailed: String { string("alert.encrypt.failed") }
@@ -355,7 +373,7 @@ struct L10n {
     static var unpinAll: String { string("unpin.all") }
 
     // MARK: - QuickBar
-    static func quickbarRecent(_ count: Int) -> String { string("quickbar.recent", count) }
+    static func quickbarRecent(_ count: Int) -> String { plural("quickbar.recent", count) }
     static var quickbarNoResults: String { string("quickbar.no.results") }
     static var quickbarOpenFull: String { string("quickbar.open.full") }
 
