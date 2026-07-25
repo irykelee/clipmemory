@@ -97,6 +97,23 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertNil(UpdateService.latestItemDate(inAppcastXML: "<pubDate>yesterday</pubDate>"))
     }
 
+    /// UPD-4 (2026-07-24 review): RFC 822 also permits NAMED timezones. A
+    /// pubDate like "... GMT" must parse via the `zzz` fallback formatter —
+    /// before the fix it returned nil and `fallbackIsStale` failed open.
+    func testLatestItemDateParsesNamedTimezone() {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <rss version="2.0"><channel>
+        <item><title>2.5.6</title><pubDate>Sat, 18 Jul 2026 03:32:59 GMT</pubDate></item>
+        </channel></rss>
+        """
+        let date = UpdateService.latestItemDate(inAppcastXML: xml)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        XCTAssertEqual(date, formatter.date(from: "Sat, 18 Jul 2026 03:32:59 +0000"))
+    }
+
     // MARK: - Staleness guard
 
     func testFallbackIsStaleWhenOlderThanLastPrimary() {

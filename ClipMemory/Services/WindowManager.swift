@@ -17,12 +17,21 @@ final class MainWindow: NSWindow {
     private var userFrame: NSRect?
 
     override func performZoom(_ sender: Any?) {
-        guard let screen = NSScreen.main else { return }
+        // INFRA-5 (2026-07-24 review): zoom against the window's OWN screen —
+        // NSScreen.main is the screen with keyboard focus, which differs when
+        // the window sits on a second display.
+        guard let screen = self.screen ?? NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
         let currentFrame = self.frame
         let isBigEnough = currentFrame.width >= screenFrame.width - 20
             && currentFrame.height >= screenFrame.height - 20
-        if isBigEnough, let saved = userFrame {
+        // INFRA-5 (2026-07-24 review): validate the saved frame is still
+        // on-screen before restoring it (same visibleFrame.intersects check
+        // as WindowManager.savedWindowFrame) — a frame saved on a since-
+        // detached external display would otherwise zoom the window into
+        // unreachable space. Off-screen saved frames are ignored.
+        if isBigEnough, let saved = userFrame,
+           NSScreen.screens.contains(where: { $0.visibleFrame.intersects(saved) }) {
             setFrame(saved, display: true, animate: true)
         } else {
             userFrame = currentFrame

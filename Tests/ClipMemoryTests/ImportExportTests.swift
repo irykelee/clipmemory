@@ -184,7 +184,9 @@ final class ImportExportTests: XCTestCase {
             createdAt: Date(),
             appVersion: "test",
             keySalt: salt.base64EncodedString(),
-            itemCount: 1,
+            // BKP-4 (2026-07-24 review): counts must match the payload —
+            // importPackage now cross-checks them and rejects lying manifests.
+            itemCount: seedItems ? 1 : 0,
             tagCount: seedTags ? 1 : 0,
             imageCount: 0,
             keyDerivationVersion: 1
@@ -205,6 +207,8 @@ final class ImportExportTests: XCTestCase {
     /// Builds a `.clipmemory` archive from a caller-supplied `itemsBlob`,
     /// bypassing the seed/corrupt logic of `constructPackage`. Used by tests
     /// that need per-entry key mismatches (good item + corrupt item).
+    /// `formatVersion` / `saltBytes` / `imageCount` exist so BKP-4 tests can
+    /// build manifests that violate the new import-side validation.
     private func constructPackageWithItemsBlob(
         itemsBlob: Data,
         trashBlob: Data = Data("[]".utf8),
@@ -212,7 +216,10 @@ final class ImportExportTests: XCTestCase {
         passphrase: String = "secret123",
         cryptoForPackage: CryptoService,
         itemCount: Int,
-        tagCount: Int = 0
+        tagCount: Int = 0,
+        formatVersion: Int = 1,
+        saltBytes: Int = 16,
+        imageCount: Int = 0
     ) throws -> URL {
         let pkgTemp = tempRoot.appendingPathComponent("pcbi-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: pkgTemp, withIntermediateDirectories: true)
@@ -227,15 +234,15 @@ final class ImportExportTests: XCTestCase {
         try trashBlob.write(to: pkgStaging.appendingPathComponent("trash.json"))
         try tagsBlob.write(to: pkgStaging.appendingPathComponent("tags.json"))
 
-        let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
+        let salt = Data((0..<saltBytes).map { _ in UInt8.random(in: 0...255) })
         let manifest = BackupManifest(
-            formatVersion: 1,
+            formatVersion: formatVersion,
             createdAt: Date(),
             appVersion: "test",
             keySalt: salt.base64EncodedString(),
             itemCount: itemCount,
             tagCount: tagCount,
-            imageCount: 0,
+            imageCount: imageCount,
             keyDerivationVersion: 1
         )
         let packageURL = tempRoot.appendingPathComponent("per-entry.clipmemory")
@@ -625,5 +632,99 @@ final class ImportExportTests: XCTestCase {
         )
         XCTAssertEqual(result.itemsImported, 1, "good item should import")
         XCTAssertEqual(result.itemsSkippedCorrupt, 1, "wrong-key item should be counted as corrupt")
+    }
+
+    // MARK: - BKP-4 (2026-07-24 review) manifest validation
+
+    private func makePackageCrypto() -> CryptoService {
+        CryptoService(customKeyData: Data((32..<64).map { UInt8($0 & 0xFF) }))
+    }
+
+    /// BKP-4(d): formatVersion 0 must be rejected — only the upper bound
+    /// (`<= current`) was checked before, so 0/negative slid through.
+    func testImportRejectsFormatVersionZero() throws {
+        let packageURL = try constructPackageWithItemsBlob(
+            itemsBlob: Data("[]".utf8),
+            cryptoForPackage: makePackageCrypto(),
+            itemCount: 0,
+            formatVersion: 0
+        )
+        XCTAssertThrowsError(
+            try BackupPackage.importPackage(
+                from: packageURL, passphrase: "secret123",
+                store: store, localCrypto: localCrypto, imagesDirectory: imagesDir
+            )
+        ) { error in
+            XCTAssertEqual(error as? BackupPackageError, .unsupportedFormatVersion(0))
+        }
+    }
+
+    /// BKP-4(c): a keySalt shorter than 16 bytes must be rejected even
+    /// though it is valid base64.
+    func testImportRejectsShortKeySalt() throws {
+        let packageURL = try constructPackageWithItemsBlob(
+            itemsBlob: Data("[]".utf8),
+            cryptoForPackage: makePackageCrypto(),
+            itemCount: 0,
+            saltBytes: 8
+        )
+        XCTAssertThrowsError(
+            try BackupPackage.importPackage(
+                from: packageURL, passphrase: "secret123",
+                store: store, localCrypto: localCrypto, imagesDirectory: imagesDir
+            )
+        ) { error in
+            XCTAssertEqual(error as? BackupPackageError, .invalidPackage)
+        }
+    }
+
+    /// BKP-4(a): a manifest itemCount that disagrees with the items.json
+    /// payload must abort the import as corrupt.
+    func testImportRejectsManifestItemCountMismatch() throws {
+        let packageCrypto = makePackageCrypto()
+        let item = ClipboardItem(
+            content: try XCTUnwrap(packageCrypto.encrypt("payload")),
+            type: .text,
+            isEncrypted: true,
+            contentHash: try XCTUnwrap(packageCrypto.hmacHex(for: "payload"))
+        )
+        let packageURL = try constructPackageWithItemsBlob(
+            itemsBlob: try JSONEncoder().encode([item]),
+            cryptoForPackage: packageCrypto,
+            itemCount: 5  // manifest lies: payload has 1 item
+        )
+        XCTAssertThrowsError(
+            try BackupPackage.importPackage(
+                from: packageURL, passphrase: "secret123",
+                store: store, localCrypto: localCrypto, imagesDirectory: imagesDir
+            )
+        ) { error in
+            guard case BackupPackageError.corruptedData(_, .manifest) = error else {
+                XCTFail("expected .corruptedData(_, .manifest), got \(error)")
+                return
+            }
+        }
+    }
+
+    /// BKP-4(a)+(b): a manifest imageCount that disagrees with the .png
+    /// files actually packaged must abort the import as corrupt.
+    func testImportRejectsManifestImageCountMismatch() throws {
+        let packageURL = try constructPackageWithItemsBlob(
+            itemsBlob: Data("[]".utf8),
+            cryptoForPackage: makePackageCrypto(),
+            itemCount: 0,
+            imageCount: 3  // manifest lies: Images/ is empty
+        )
+        XCTAssertThrowsError(
+            try BackupPackage.importPackage(
+                from: packageURL, passphrase: "secret123",
+                store: store, localCrypto: localCrypto, imagesDirectory: imagesDir
+            )
+        ) { error in
+            guard case BackupPackageError.corruptedData(_, .manifest) = error else {
+                XCTFail("expected .corruptedData(_, .manifest), got \(error)")
+                return
+            }
+        }
     }
 }

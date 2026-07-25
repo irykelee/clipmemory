@@ -68,7 +68,13 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
         self.content = try container.decode(String.self, forKey: .content)
-        self.type = try container.decode(ClipboardItemType.self, forKey: .type)
+        // CLIP-7 (2026-07-24 review): forward compatibility — decode the raw
+        // string and degrade unknown values to .text instead of throwing.
+        // A future version adding a ClipboardItemType raw value must not wipe
+        // an older client's entire history (a bare decode(ClipboardItemType)
+        // throws on the unknown case and fails the whole items array).
+        let rawType = try container.decode(String.self, forKey: .type)
+        self.type = ClipboardItemType(rawValue: rawType) ?? .text
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
         self.isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         // BUG-043 (2026-07-21): use decodeIfPresent ?? false for backward

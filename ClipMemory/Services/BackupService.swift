@@ -351,22 +351,26 @@ final class BackupService {
     /// grew unboundedly. Cross-check the two sites together when changing
     /// either.
     ///
-    /// L-13 (2026-07-24 audit): both the format literal and the char-position
-    /// validation now derive from `backupDirTimestampFormat`; the length `21`
-    /// is still a magic literal here because `Character.count` matches the
-    /// visible char count of the format string — keep both in sync if either
-    /// changes.
+    /// L-13 (2026-07-24 review): the recognizer now parses the name with a
+    /// DateFormatter built from the shared `backupDirTimestampFormat`
+    /// constant (plus a re-format round-trip equality check to stay strict),
+    /// replacing the hand-maintained 21-char / char-position validation that
+    /// had to be kept in sync with the format string by hand.
+    private static let backupDirNameFormatter: DateFormatter = {
+        let f = DateFormatter()
+        // POSIX locale matches performBackupUnlocked: keeps `yyyy` Gregorian
+        // regardless of the user's calendar so name-sort = time-sort.
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = backupDirTimestampFormat
+        return f
+    }()
+
     private static func isBackupDirName(_ name: String) -> Bool {
-        let chars = Array(name)
-        guard chars.count == 21 else { return false }
-        for (index, char) in chars.enumerated() {
-            switch index {
-            case 4, 7: guard char == "-" else { return false }
-            case 10: guard char == "_" else { return false }
-            case 17: guard char == "." else { return false }
-            default: guard char.isNumber else { return false }
-            }
-        }
-        return true
+        guard let date = backupDirNameFormatter.date(from: name) else { return false }
+        // Round-trip: DateFormatter parsing is lenient about digit counts and
+        // out-of-range components (e.g. month 13 rolls over); requiring the
+        // parsed date to format back to the exact input keeps recognition as
+        // strict as the previous per-character check.
+        return backupDirNameFormatter.string(from: date) == name
     }
 }

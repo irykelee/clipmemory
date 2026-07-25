@@ -365,7 +365,12 @@ final class BackupPackage {
         if FileManager.default.fileExists(atPath: imagesDirectory.path) {
             let imagesDestination = staging.appendingPathComponent("Images", isDirectory: true)
             try FileManager.default.copyItem(at: imagesDirectory, to: imagesDestination)
-            imageCount = (try? FileManager.default.contentsOfDirectory(atPath: imagesDestination.path).count) ?? 0
+            // BKP-4 (2026-07-24 review): count only .png files — the import
+            // side only accepts .png, so counting every staged file (stray
+            // .DS_Store etc.) made the manifest disagree with the importable
+            // payload.
+            imageCount = ((try? FileManager.default.contentsOfDirectory(atPath: imagesDestination.path)) ?? [])
+                .filter { $0.hasSuffix(".png") }.count
         }
 
         try sealedKeyData.write(to: staging.appendingPathComponent("key.enc"), options: .atomic)
@@ -449,10 +454,15 @@ final class BackupPackage {
         guard let manifest = try? JSONDecoder().decode(BackupManifest.self, from: manifestData) else {
             throw BackupPackageError.corruptedData("manifest.json decode failed", .manifest)
         }
-        guard manifest.formatVersion <= currentFormatVersion else {
+        // BKP-4 (2026-07-24 review): lower bound too — only `<= current` was
+        // checked before, so formatVersion 0 / negative slid through as
+        // "supported" even though no such format exists.
+        guard manifest.formatVersion >= 1, manifest.formatVersion <= currentFormatVersion else {
             throw BackupPackageError.unsupportedFormatVersion(manifest.formatVersion)
         }
-        guard let salt = Data(base64Encoded: manifest.keySalt) else {
+        // BKP-4 (2026-07-24 review): base64-decodable is not enough — a salt
+        // shorter than 16 bytes weakens the passphrase KDF input.
+        guard let salt = Data(base64Encoded: manifest.keySalt), salt.count >= 16 else {
             throw BackupPackageError.invalidPackage
         }
         guard let sealedKeyData = try? Data(contentsOf: staging.appendingPathComponent("key.enc")) else {
@@ -509,7 +519,51 @@ final class BackupPackage {
         )
 
         logger.info("Imported backup: \(result.itemsImported) items, \(result.tagsImported) tags")
+        // BKP-4 (2026-07-24 review): cross-check the manifest's declared
+        // counts against the payload actually found in the package. Compared
+        // against the decoded/file counts — NOT the merge result — because
+        // dedupe-skips and already-present images legitimately make the
+        // imported counts smaller. A mismatch means a corrupt or tampered
+        // manifest. (Throws after the merge like the image pass does — see
+        // the H-5 no-rollback contract above.)
+        try validateManifestCounts(
+            manifest: manifest,
+            staging: staging,
+            decodedItems: packageItems.count,
+            decodedTags: packageTags.count
+        )
         return result
+    }
+
+    /// BKP-4 (2026-07-24 review): manifest declared counts must match what
+    /// the package payload actually contains.
+    private static func validateManifestCounts(
+        manifest: BackupManifest,
+        staging: URL,
+        decodedItems: Int,
+        decodedTags: Int
+    ) throws {
+        guard decodedItems == manifest.itemCount else {
+            logger.error("Manifest itemCount \(manifest.itemCount) != items.json entries \(decodedItems)")
+            throw BackupPackageError.corruptedData(
+                "manifest itemCount \(manifest.itemCount) != items.json entries \(decodedItems)", .manifest
+            )
+        }
+        guard decodedTags == manifest.tagCount else {
+            logger.error("Manifest tagCount \(manifest.tagCount) != tags.json entries \(decodedTags)")
+            throw BackupPackageError.corruptedData(
+                "manifest tagCount \(manifest.tagCount) != tags.json entries \(decodedTags)", .manifest
+            )
+        }
+        let packageImages = staging.appendingPathComponent("Images", isDirectory: true)
+        let pngCount = ((try? FileManager.default.contentsOfDirectory(atPath: packageImages.path)) ?? [])
+            .filter { $0.hasSuffix(".png") }.count
+        guard pngCount == manifest.imageCount else {
+            logger.error("Manifest imageCount \(manifest.imageCount) != packaged .png files \(pngCount)")
+            throw BackupPackageError.corruptedData(
+                "manifest imageCount \(manifest.imageCount) != packaged .png files \(pngCount)", .manifest
+            )
+        }
     }
 
     // MARK: - Private helpers

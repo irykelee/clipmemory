@@ -252,12 +252,17 @@ class ImageStorage {
     }
 
     /// Encrypt and write one unencrypted legacy PNG. Returns true on success.
-    /// Original logic preserved verbatim (encrypt failure → no logger, silent skip).
+    /// STOR-6 (2026-07-24 review): encrypt failure now logs like its sibling
+    /// paths — a silent skip made a broken CryptoService indistinguishable
+    /// from "nothing left to migrate".
     private func migrateUnencryptedPNG(
         filename: String, imageData: Data, legacyPath: URL
     ) -> Bool {
         // Encrypt and save to new location
-        guard let encryptedData = ServiceContainer.crypto.encryptData(imageData) else { return false }
+        guard let encryptedData = ServiceContainer.crypto.encryptData(imageData) else {
+            logger.error("Failed to encrypt legacy image during migration: \(filename)")
+            return false
+        }
         let newPath = imagesDirectory.appendingPathComponent(filename)
         do {
             try encryptedData.write(to: newPath, options: .atomic)
@@ -424,8 +429,27 @@ class ImageStorage {
         // fine. Wrap read + process + write in a single migrationQueue.sync
         // so concurrent calls for the same file serialize end-to-end.
         return Self.migrationQueue.sync {
-            guard fileManager.fileExists(atPath: fileURL.path),
-                  let encryptedData = try? Data(contentsOf: fileURL) else {
+            guard fileManager.fileExists(atPath: fileURL.path) else { return .fileMissing }
+            // STOR-5 (2026-07-24 review): pre-check the file size BEFORE
+            // Data(contentsOf:) — the 50 MB cap used to cover only the write
+            // path (saveImage) and the legacy-migration path, so a hostile or
+            // corrupted multi-hundred-MB file in Images/ was pulled whole
+            // into memory here. Conservative on stat failure (same fail-closed
+            // pattern as C-4 in BackupPackage.importImages): skip the read
+            // rather than risk an unbounded allocation.
+            guard let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),
+                  let fileSize = attrs[.size] as? Int else {
+                logger.warning("STOR-5: cannot determine size of image (skipping read): \(filename, privacy: .public)")
+                return .fileMissing
+            }
+            guard fileSize <= maxImageSize else {
+                Self.corruptionCountLock.lock()
+                Self.corruptionCount += 1
+                Self.corruptionCountLock.unlock()
+                logger.error("imageCorrupted filename=\(filename, privacy: .public) bytes=\(fileSize) reason=exceeds maxImageSize")
+                return .decryptionFailed
+            }
+            guard let encryptedData = try? Data(contentsOf: fileURL) else {
                 return .fileMissing
             }
 

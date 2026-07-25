@@ -203,6 +203,19 @@ final class UpdateService {
         return f
     }()
 
+    /// UPD-4 (2026-07-24 review): the numeric-offset formatter above is
+    /// narrower than RFC 822, which also permits NAMED timezones ("GMT",
+    /// "PST", ...). A pubDate like "..., 24 Jul 2026 10:00:00 GMT" used to
+    /// parse as nil — and fallbackIsStale treats nil as "not stale"
+    /// (fail-open), so a stale mirror could slip through. Retry with the
+    /// `zzz` (named timezone) pattern before giving up.
+    private static let appcastDateFormatterNamedTZ: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return f
+    }()
+
     /// Newest `<pubDate>` among appcast items, or nil when nothing parses.
     /// Pure for tests (H1 staleness guard).
     static func latestItemDate(inAppcastXML xml: String) -> Date? {
@@ -213,7 +226,8 @@ final class UpdateService {
               let close = rest.range(of: "</pubDate>", range: open.upperBound..<rest.endIndex) {
             let raw = String(rest[open.upperBound..<close.lowerBound])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if let date = formatter.date(from: raw), latest.map({ date > $0 }) ?? true {
+            if let date = formatter.date(from: raw) ?? appcastDateFormatterNamedTZ.date(from: raw),
+               latest.map({ date > $0 }) ?? true {
                 latest = date
             }
             rest = rest[close.upperBound...]

@@ -1097,6 +1097,11 @@ class ClipboardStore: ObservableObject {
     /// Drops both per-item plaintext caches; see `moveToTrash` (L-6).
     private func evictCaches(for item: ClipboardItem) {
         contentCache.removeObject(forKey: item.id.uuidString as NSString)
+        // CLIP-5 (2026-07-24 review): OCR plaintext is cached under a
+        // derived "<id>.ocr" key (see ClipboardStore+OCR.getDecryptedOcrText)
+        // — evict it too, otherwise recognized plaintext lingers in memory
+        // after the item is trashed/trimmed/expired.
+        contentCache.removeObject(forKey: (item.id.uuidString + ".ocr") as NSString)
         rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
     }
 
@@ -1193,6 +1198,8 @@ class ClipboardStore: ObservableObject {
         let removedItems = items.filter { !trimmedIds.contains($0.id) }
         for item in removedItems {
             contentCache.removeObject(forKey: item.id.uuidString as NSString)
+            // CLIP-5 (2026-07-24 review): also drop the derived OCR cache key.
+            contentCache.removeObject(forKey: (item.id.uuidString + ".ocr") as NSString)
             rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
         }
         let removedImages = removedItems.filter { $0.type == .image }
@@ -1468,6 +1475,8 @@ class ClipboardStore: ObservableObject {
         }
         for id in expiredIds {
             contentCache.removeObject(forKey: id.uuidString as NSString)
+            // CLIP-5 (2026-07-24 review): also drop the derived OCR cache key.
+            contentCache.removeObject(forKey: (id.uuidString + ".ocr") as NSString)
             rtfPlaintextCache.removeObject(forKey: id.uuidString as NSString)
         }
         let beforeCount = items.count

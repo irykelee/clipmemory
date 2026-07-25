@@ -129,6 +129,20 @@ final class HangDetectorTests: XCTestCase {
         XCTAssertLessThanOrEqual(s.lastHeartbeat, after.addingTimeInterval(0.1))
     }
 
+    /// INFRA-4 (2026-07-24 review): start() must establish a FRESH heartbeat
+    /// baseline. The old `$0 = .initial` reused a `static let` whose
+    /// `lastHeartbeat: Date()` was frozen at first access — if anything had
+    /// touched `.initial` before start(), the baseline was a stale timestamp
+    /// and the checker could immediately false-report a hang.
+    func testStart_establishesFreshHeartbeatBaseline() {
+        HangDetector._seedLastHeartbeatForTesting(Date().addingTimeInterval(-3600))
+        HangDetector.start()
+        defer { HangDetector.stop() }
+        let s = HangDetector._snapshotStateForTesting()
+        XCTAssertLessThan(Date().timeIntervalSince(s.lastHeartbeat), 5,
+                          "INFRA-4: start() must reset lastHeartbeat to ~now, not a frozen static")
+    }
+
     func testCheckStaleness_recentHeartbeat_noStateChange() {
         let now = Date()
         HangDetector._seedLastHeartbeatForTesting(now.addingTimeInterval(-10))

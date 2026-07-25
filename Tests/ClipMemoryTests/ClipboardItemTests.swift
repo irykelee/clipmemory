@@ -289,4 +289,30 @@ final class ClipboardItemTests: XCTestCase {
         XCTAssertFalse(item.isEncrypted)
         XCTAssertNil(item.contentHash)
     }
+
+    // MARK: - Forward-compatible decoding
+
+    /// CLIP-7 (2026-07-24 review): a persisted item whose `type` raw value
+    /// is unknown (written by a NEWER app version that added a
+    /// ClipboardItemType case) must decode with type degraded to .text
+    /// instead of throwing — a throw would fail the entire persisted items
+    /// array and wipe the user's history on downgrade.
+    func testDecodeItemWithUnknownTypeFallsBackToText() throws {
+        let jsonString = """
+        {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "content": "future content",
+            "type": "hologram",
+            "createdAt": 1000000
+        }
+        """
+        let json = Data(jsonString.utf8)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let item = try decoder.decode(ClipboardItem.self, from: json)
+
+        XCTAssertEqual(item.type, .text, "CLIP-7: unknown type raw value must degrade to .text")
+        XCTAssertEqual(item.content, "future content", "CLIP-7: payload must survive the type downgrade")
+    }
 }

@@ -343,4 +343,30 @@ final class BackupServiceTests: XCTestCase {
             )
         }
     }
+
+    /// L-13 (2026-07-24 review): the recognizer is now a real date parse
+    /// (plus re-format round-trip), not a char-shape check. A name with the
+    /// right shape but an impossible date (month 13) must NOT be treated as
+    /// a backup dir — the old positional digit check accepted it, so prune
+    /// could have counted/removed a foreign directory.
+    func testPruneIgnoresShapeMatchingButInvalidDateNames() {
+        service.keepCount = 3  // keepCount only accepts [3, 7, 14, 30]
+        let validNames = [
+            "2026-07-14_120000.000", "2026-07-15_120000.000",
+            "2026-07-16_120000.000", "2026-07-17_120000.000"
+        ]
+        for name in validNames + ["2026-13-01_120000.000"] {
+            try? FileManager.default.createDirectory(
+                at: backupsDir.appendingPathComponent(name, isDirectory: true),
+                withIntermediateDirectories: true
+            )
+        }
+        service.pruneOldBackups()
+        let remaining = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        XCTAssertEqual(remaining.count, 4, "keepCount=3 valid backups + the invalid-date dir must survive")
+        XCTAssertTrue(remaining.contains("2026-13-01_120000.000"),
+                      "L-13: invalid-date name must not be recognized as a backup dir")
+        XCTAssertFalse(remaining.contains("2026-07-14_120000.000"),
+                       "oldest valid backup must be the one pruned")
+    }
 }

@@ -33,14 +33,6 @@ enum HangDetector {
         var lastDetectedAt: Date?     // nil = healthy; non-nil = currently in a hang
         var firstDetectedAt: Date?    // written once per hang (used to compute downtime accurately)
         var detectionCount: Int       // detection logs emitted for the current hang; capped at `maxDetectionCount`
-
-        static let initial = State(
-            lastHeartbeat: Date(),
-            lastMainStack: [],
-            lastDetectedAt: nil,
-            firstDetectedAt: nil,
-            detectionCount: 0
-        )
     }
 
     // NSLock because state may be touched from main queue (heartbeat timer +
@@ -352,7 +344,13 @@ enum HangDetector {
         // so the cycle invariant — `isStarted == true` ⇔ `start()` ran without
         // a matching `stop()` — is preserved.
         isStarted = true
-        withStateLock { $0 = .initial }
+        // INFRA-4 (2026-07-24 review): do NOT assign `.initial` here — it is a
+        // `static let` whose `lastHeartbeat: Date()` is evaluated once at
+        // first access and frozen. If anything touched `.initial` before
+        // start(), the heartbeat baseline would be a stale timestamp and the
+        // checker could immediately false-report a hang. Construct a fresh
+        // State instead (same pattern as `_resetForTesting`).
+        withStateLock { $0 = State(lastHeartbeat: Date(), lastMainStack: [], lastDetectedAt: nil, firstDetectedAt: nil, detectionCount: 0) }
 
         let mainQueue = DispatchQueue.main
         let utilityQueue = DispatchQueue.global(qos: .utility)

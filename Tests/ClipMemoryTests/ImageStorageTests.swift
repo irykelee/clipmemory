@@ -298,6 +298,27 @@ final class ImageStorageTests: XCTestCase {
                       "P1-4: missing files must not count as corruption")
     }
 
+    /// STOR-5 (2026-07-24 review): a file LARGER than the 50 MB cap must not
+    /// be read into memory — imageStatus must short-circuit on the size
+    /// pre-check and report .decryptionFailed (counted as corruption), never
+    /// .available. Uses a sparse file (FileHandle truncate) so the test
+    /// doesn't actually allocate or write 51 MB.
+    func testImageStatusRejectsOversizedFileWithoutReading() throws {
+        let preCount = ImageStorage.corruptionEventCount
+        let uuid = newTestUUID()
+        let filename = "\(uuid.uuidString).png"
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+        FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: fileURL)
+        try handle.truncate(atOffset: UInt64(51 * 1024 * 1024))
+        try handle.close()
+
+        XCTAssertEqual(storage.imageStatus(for: filename), .decryptionFailed,
+                       "STOR-5: oversized file must surface as .decryptionFailed, never .available")
+        XCTAssertEqual(ImageStorage.corruptionEventCount, preCount + 1,
+                       "STOR-5: oversized rejection must bump the corruption counter")
+    }
+
     /// Negative control: a successful save→load round trip must NOT bump the
     /// counter. Only the .decryptionFailed terminal path counts.
     func testImageCorruptionCounterUnchangedOnValidRoundTrip() {
