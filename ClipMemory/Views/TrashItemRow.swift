@@ -53,6 +53,10 @@ struct TrashItemRow: View, Equatable {
     }
 
     var body: some View {
+        // 2026-07-25: reading fontScale subscribes this view to @AppStorage
+        // invalidation — an unread wrapper creates no dependency, so
+        // font-size changes never re-rendered. See ClipboardItemRow.
+        let _ = fontScale
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .top) {

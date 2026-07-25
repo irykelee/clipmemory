@@ -233,6 +233,11 @@ struct ClipboardItemRow: View, Equatable {
     }
 
     var body: some View {
+        // 2026-07-25: reading fontScale here is what subscribes this view to
+        // @AppStorage invalidation. Declared-but-unread property wrappers
+        // create no SwiftUI dependency, so font-size changes never re-
+        // rendered the row even though every size goes through sz().
+        let _ = fontScale
         HStack(alignment: .center, spacing: 8) {
             Button {
                     onSelect?(!isSelected)

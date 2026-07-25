@@ -14,6 +14,10 @@ struct TagChip: View {
     @AppStorage("fontScale") private var fontScale: Double = 1.0
 
     var body: some View {
+        // 2026-07-25: reading fontScale subscribes this view to @AppStorage
+        // invalidation — an unread wrapper creates no dependency, so
+        // font-size changes never re-rendered. See ClipboardItemRow.
+        let _ = fontScale
         HStack(spacing: 3) {
             Circle()
                 .fill(Color(hex: tag.colorHex))

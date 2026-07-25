@@ -12,6 +12,10 @@ struct TagPickerSheet: View {
     let item: ClipboardItem
     @ObservedObject var store: ClipboardStore
     @Environment(\.dismiss) private var dismiss
+    // 2026-07-25: font-scale invalidation trigger. MUST be read in body —
+    // an unread @AppStorage creates no SwiftUI dependency, so font-size
+    // changes never re-rendered views that size via sz().
+    @AppStorage("fontScale") private var fontScale: Double = 1.0
     @State private var suggestionsToCreate: [String] = []
     @State private var suggestedNames: [String] = []
     @State private var showNameSuggestions = false
@@ -32,6 +36,7 @@ struct TagPickerSheet: View {
     }
 
     var body: some View {
+        let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
         VStack(spacing: 0) {
             header
             Divider()

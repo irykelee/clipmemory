@@ -110,6 +110,10 @@ struct ContentView: View {
     @State private var showNewTagSheet: Bool = false
     @State private var tagPendingDelete: Tag?
     @AppStorage("themeAppearance") private var themeAppearance = "system"
+    // 2026-07-25: font-scale invalidation trigger. MUST be read in body —
+    // an unread @AppStorage creates no SwiftUI dependency, so font-size
+    // changes never re-rendered views that size via sz().
+    @AppStorage("fontScale") private var fontScale: Double = 1.0
 
     // MARK: - Cached Date Calculations
     private var startOfToday: Date {
@@ -414,7 +418,8 @@ struct ContentView: View {
     }
 
     var body: some View {
-        withKeyAndSheets(splitViewWithLifecycle)
+        let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
+        return withKeyAndSheets(splitViewWithLifecycle)
             .onChange(of: store.items) { _ in
                 // H-9: prune selectedItems to live IDs (defensive against any
                 // delete path that forgets to clean it). Also refresh caches.

@@ -11,6 +11,10 @@ import AppKit
 /// search/loading state.
 struct HistoryCaptureSettingsView: View {
     @ObservedObject var store: ClipboardStore
+    // 2026-07-25: font-scale invalidation trigger. MUST be read in body —
+    // an unread @AppStorage creates no SwiftUI dependency, so font-size
+    // changes never re-rendered views that size via sz().
+    @AppStorage("fontScale") private var fontScale: Double = 1.0
 
     @ObservedObject private var languageManager = LanguageManager.shared
 
@@ -27,6 +31,7 @@ struct HistoryCaptureSettingsView: View {
     @State private var isLoadingApps = false
 
     var body: some View {
+        let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
         Form {
             // History
             Section {

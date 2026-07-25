@@ -80,6 +80,10 @@ struct QuickBarView: View {
     }
 
     var body: some View {
+        // 2026-07-25: reading fontScale subscribes this view to @AppStorage
+        // invalidation — an unread wrapper creates no dependency, so
+        // font-size changes never re-rendered. See ClipboardItemRow.
+        let _ = fontScale
         VStack(spacing: 0) {
             // Search bar
             HStack(spacing: 6) {

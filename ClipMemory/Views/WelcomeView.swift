@@ -5,6 +5,10 @@ struct WelcomeView: View {
     let onComplete: () -> Void
 
     @ObservedObject private var languageManager = LanguageManager.shared
+    // 2026-07-25: font-scale invalidation trigger. MUST be read in body —
+    // an unread @AppStorage creates no SwiftUI dependency, so font-size
+    // changes never re-rendered views that size via sz().
+    @AppStorage("fontScale") private var fontScale: Double = 1.0
     @State private var hotKeyConflictDetected = false
     @State private var hotKeyStatus: HotKeyStatus = .checking
 
@@ -40,6 +44,7 @@ struct WelcomeView: View {
     }
 
     var body: some View {
+        let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
         VStack(spacing: 0) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {

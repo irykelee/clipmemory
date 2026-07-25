@@ -6,6 +6,11 @@ struct ConditionalClearSheet: View {
     @ObservedObject var store: ClipboardStore
     @Environment(\.dismiss) private var dismiss
 
+    // 2026-07-25: font-scale invalidation trigger. MUST be read in body —
+    // an unread @AppStorage creates no SwiftUI dependency, so font-size
+    // changes never re-rendered views that size via sz().
+    @AppStorage("fontScale") private var fontScale: Double = 1.0
+
     @State private var selectedType: ClipboardItemType?
     @State private var selectedRange: ClipboardStore.ClearRange = .all
 
@@ -27,6 +32,7 @@ struct ConditionalClearSheet: View {
     }
 
     var body: some View {
+        let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
         VStack(spacing: 16) {
             Text(L10n.clearConditionalTitle)
                 .font(.system(size: sz(14), weight: .semibold))

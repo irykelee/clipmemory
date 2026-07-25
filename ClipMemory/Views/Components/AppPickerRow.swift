@@ -19,6 +19,10 @@ struct AppPickerRow: View {
     @State private var resolvedIcon: NSImage?
 
     var body: some View {
+        // 2026-07-25: reading fontScale subscribes this view to @AppStorage
+        // invalidation — an unread wrapper creates no dependency, so
+        // font-size changes never re-rendered. See ClipboardItemRow.
+        let _ = fontScale
         Button(action: onToggle) {
             HStack(spacing: 12) {
                 if let icon = resolvedIcon ?? icon {
