@@ -192,6 +192,14 @@ struct QuickBarView: View {
                 MacOSMenuItem(icon: "rectangle.expand.vertical", label: L10n.quickbarOpenFull, sz: sz)
                     .onTapGesture { showFullWindow = true }
                 Color.clear.frame(height: 1)
+                // 2026-07-25: settings entry in the Quick Bar menu — same
+                // destination as the sidebar row and the ⌘, menu item.
+                MacOSMenuItem(icon: "gear", label: L10n.buttonSettings, sz: sz)
+                    .onTapGesture {
+                        onDismiss()
+                        (NSApp.delegate as? AppDelegate)?.showSettingsWindow()
+                    }
+                Color.clear.frame(height: 1)
                 MacOSMenuItem(icon: "xmark.circle", label: L10n.quitApp, color: .secondary, shortcut: "⌘Q", sz: sz)
                     .onTapGesture { NSApp.terminate(nil) }
             }

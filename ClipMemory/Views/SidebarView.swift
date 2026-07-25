@@ -17,7 +17,6 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             LogoView()
                 .padding(.horizontal, 8)
-                .padding(.top, 8)
             List(selection: $selectedTab) {
                 ForEach([SidebarTab.all, .text, .image, .link, .richText], id: \.self) { tab in
                     Label(tab.label, systemImage: tab.icon)

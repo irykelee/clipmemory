@@ -31,14 +31,14 @@ struct LogoView: View {
                     .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)
         } else {
             // Single name (English, Japanese, Korean, etc.)
             Text(L10n.appName)
                 .font(.system(size: 16, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
         }
     }
 }
