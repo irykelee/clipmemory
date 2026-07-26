@@ -232,10 +232,11 @@ final class OCRTests: XCTestCase {
             return
         }
         let expectation = expectation(description: "ocr")
-        VisionOCRService.shared.recognizeText(in: tiff) { text in
-            XCTAssertNotNil(text, "Vision should find text in the rendered image")
-            if let text = text {
+        VisionOCRService.shared.recognizeText(in: tiff) { outcome in
+            if case .text(let text) = outcome {
                 XCTAssertTrue(text.contains("HELLO"), "expected HELLO in: \(text)")
+            } else {
+                XCTFail("Vision should find text in the rendered image, got \(outcome)")
             }
             expectation.fulfill()
         }
@@ -247,8 +248,12 @@ final class OCRTests: XCTestCase {
     /// Mock recognizer: returns fixed text for any image data.
     private struct MockOCR: OCRServiceProtocol {
         var result: String?
-        func recognizeText(in imageData: Data, completion: @escaping (String?) -> Void) {
-            completion(result)
+        func recognizeText(in imageData: Data, completion: @escaping (OCROutcome) -> Void) {
+            if let text = result, !text.isEmpty {
+                completion(.text(text))
+            } else {
+                completion(.noText)
+            }
         }
     }
 
@@ -271,20 +276,20 @@ final class OCRTests: XCTestCase {
         store.addItem(item)
 
         // First pass: attaches text + marks attempted
-        store.backfillOCRIfNeeded(using: MockOCR(result: "回填文字"), imageStorage: .shared)
         let exp1 = expectation(description: "backfill attach")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { exp1.fulfill() }
-        wait(for: [exp1], timeout: 10)
+        store.backfillOCRIfNeeded(using: MockOCR(result: "回填文字"), imageStorage: .shared,
+                                  onComplete: { exp1.fulfill() })
+        wait(for: [exp1], timeout: 5)
 
         let after = store.items.first(where: { $0.id == item.id })
         XCTAssertEqual(after?.ocrAttempted, true)
         XCTAssertEqual(after.flatMap { store.getDecryptedOcrText($0) }, "回填文字")
 
         // Second pass must be a no-op (already attempted)
-        store.backfillOCRIfNeeded(using: MockOCR(result: "不应覆盖"), imageStorage: .shared)
         let exp2 = expectation(description: "second pass")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp2.fulfill() }
-        wait(for: [exp2], timeout: 10)
+        store.backfillOCRIfNeeded(using: MockOCR(result: "不应覆盖"), imageStorage: .shared,
+                                  onComplete: { exp2.fulfill() })
+        wait(for: [exp2], timeout: 5)
         XCTAssertEqual(after.flatMap { store.getDecryptedOcrText($0) }, "回填文字")
     }
 
@@ -292,10 +297,10 @@ final class OCRTests: XCTestCase {
         let item = ClipboardItem(content: "\(UUID().uuidString).png", type: .image)
         store.addItem(item) // 无对应文件
 
-        store.backfillOCRIfNeeded(using: MockOCR(result: "x"), imageStorage: .shared)
-        let exp = expectation(description: "wait")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp.fulfill() }
-        wait(for: [exp], timeout: 10)
+        let exp = expectation(description: "backfill complete")
+        store.backfillOCRIfNeeded(using: MockOCR(result: "x"), imageStorage: .shared,
+                                  onComplete: { exp.fulfill() })
+        wait(for: [exp], timeout: 5)
 
         let after = store.items.first(where: { $0.id == item.id })
         XCTAssertEqual(after?.ocrAttempted, false,

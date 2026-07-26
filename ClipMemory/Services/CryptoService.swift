@@ -180,9 +180,20 @@ class CryptoService: CryptoServiceProtocol {
     }
 
     /// Called instead of crashing when the app key cannot be prepared (H6).
-    /// The default shows a critical NSAlert on the main thread and quits the
-    /// app unless the user chooses to regenerate. Tests replace this closure
-    /// so no alert is shown and no termination happens.
+    /// HIGH-3 (2026-07-26 review): pluggable key-failure alert presenter.
+    /// The default calls `presentKeyFailureAlert` on the CryptoService (legacy
+    /// behavior). Set from AppDelegate in `applicationDidFinishLaunching` to
+    /// relocate the AppKit dependency (NSAlert, NSApp.terminate) out of the
+    /// service layer. Tests can replace the broader `keyFailureHandler` instead
+    /// (see below).
+    static var keyFailureAlertPresenter: (CryptoKeyFailure) -> KeyFailureAction = {
+        presentKeyFailureAlert($0)
+    }
+
+    /// H-2 / C-2 (2026-07-25 audit): test-injectable handler for key
+    /// preparation failures. Defaults to calling `defaultKeyFailureHandler`
+    /// which blocks the caller until the user chooses an action (or 5s timeout).
+    /// Tests replace this to return .quit or .regenerate without showing UI.
     static var keyFailureHandler: (CryptoKeyFailure) -> KeyFailureAction = { failure in
         CryptoService.defaultKeyFailureHandler(failure)
     }
@@ -353,14 +364,17 @@ class CryptoService: CryptoServiceProtocol {
         // + semaphore.wait(timeout:). Caller still blocks until the alert
         // returns, but if main is busy for >5s we surface a forced .quit
         // rather than hang the calling thread indefinitely.
+        // HIGH-3 (2026-07-26 review): alert presentation delegates to
+        // `keyFailureAlertPresenter` so AppDelegate can own the NSAlert
+        // without changing the semaphore/blocking contract.
         let action: KeyFailureAction
         if Thread.isMainThread {
-            action = presentKeyFailureAlert(failure)
+            action = keyFailureAlertPresenter(failure)
         } else {
             var captured: KeyFailureAction?
             let semaphore = DispatchSemaphore(value: 0)
             DispatchQueue.main.async {
-                captured = presentKeyFailureAlert(failure)
+                captured = keyFailureAlertPresenter(failure)
                 semaphore.signal()
             }
             _ = semaphore.wait(timeout: .now() + 5)

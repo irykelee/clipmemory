@@ -34,5 +34,6 @@ struct TagChip: View {
                 .stroke(Color(hex: tag.colorHex).opacity(0.5), lineWidth: 0.5)
         )
         .cornerRadius(4)
+        .accessibilityLabel("Tag: \(tag.name)")
     }
 }

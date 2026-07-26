@@ -170,7 +170,6 @@ final class ClipboardStoreTrashTests: XCTestCase {
         let oldItem = ClipboardItem(content: "Old", type: .text, deletedAt: Date().addingTimeInterval(-10 * 24 * 3600))
         let recentItem = ClipboardItem(content: "Recent", type: .text, deletedAt: Date().addingTimeInterval(-1 * 3600))
         store.trashedItems = [oldItem, recentItem]
-        store.saveTrashedItems()
 
         store.trashRetentionDays = 7
         store.purgeExpiredTrash()

@@ -32,6 +32,7 @@ struct LogoView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 4)
+            .accessibilityLabel(L10n.appName)
         } else {
             // Single name (English, Japanese, Korean, etc.)
             Text(L10n.appName)
@@ -39,6 +40,7 @@ struct LogoView: View {
                 .foregroundColor(.primary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
+                .accessibilityLabel(L10n.appName)
         }
     }
 }

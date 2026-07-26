@@ -456,9 +456,10 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
             self?.delegate?.monitorDidCaptureItem(item)
             // On-device OCR for search + text extraction (non-blocking).
             if self?.delegate?.ocrEnabledForMonitor() == true {
-                VisionOCRService.shared.recognizeText(in: imageData) { text in
-                    guard let text = text, !text.isEmpty else { return }
-                    self?.delegate?.monitorDidRecognizeText(text, forImageItemId: id)
+                VisionOCRService.shared.recognizeText(in: imageData) { outcome in
+                    if case .text(let text) = outcome, !text.isEmpty {
+                        self?.delegate?.monitorDidRecognizeText(text, forImageItemId: id)
+                    }
                 }
             }
         }

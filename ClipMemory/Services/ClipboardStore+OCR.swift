@@ -83,33 +83,47 @@ extension ClipboardStore {
     /// backfilled in one burst — Vision is compute-bound and unbounded
     /// concurrency causes UI freezes + memory spikes on first launch.
     /// Behavior is otherwise unchanged; this only adds backpressure.
-    func backfillOCRIfNeeded(using ocr: OCRServiceProtocol = VisionOCRService.shared, imageStorage: ImageStorage = .shared) {
-        guard ocrEnabled else { return }
+    ///
+    /// MED-3 (2026-07-26 review): added `onComplete` callback fired when all
+    /// candidates have been processed, so tests can wait deterministically
+    /// instead of relying on asyncAfter + timeout.
+    func backfillOCRIfNeeded(using ocr: OCRServiceProtocol = VisionOCRService.shared,
+                             imageStorage: ImageStorage = .shared,
+                             onComplete: (() -> Void)? = nil) {
+        guard ocrEnabled else { onComplete?(); return }
         let candidates = items.filter { $0.type == .image && $0.ocrText == nil && !$0.ocrAttempted }
-        guard !candidates.isEmpty else { return }
+        guard !candidates.isEmpty else { onComplete?(); return }
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let semaphore = DispatchSemaphore(value: Self.backfillMaxConcurrentOCR)
+            let group = DispatchGroup()
             for item in candidates {
                 semaphore.wait()  // backpressure: blocks when N OCRs are in flight
                 guard let data = imageStorage.loadImage(filename: item.content) else {
                     semaphore.signal()
                     continue
                 }
-                ocr.recognizeText(in: data) { [weak self] text in
+                group.enter()
+                ocr.recognizeText(in: data) { [weak self] outcome in
                     // BUG-010 (2026-07-21): do NOT mark ocrAttempted before
                     // OCR completes. If `attachOCRText`'s encrypt() failed
                     // (e.g. CryptoService unavailable), ocrAttempted was
                     // already true → item permanently lost OCR retry.
                     // Now: only mark on no-result; successful attach sets
                     // ocrAttempted=true internally (L22).
-                    if let text = text, !text.isEmpty {
+                    switch outcome {
+                    case .text(let text) where !text.isEmpty:
                         self?.attachOCRText(to: item.id, text: text)
-                    } else {
+                    case .text, .noText:
+                        self?.markOCRAttempted(itemId: item.id)
+                    case .failure(let error):
+                        Self.logger.error("OCR backfill failed for \(item.id): \(error.localizedDescription, privacy: .public)")
                         self?.markOCRAttempted(itemId: item.id)
                     }
                     semaphore.signal()  // release slot only after OCR result lands
+                    group.leave()
                 }
             }
+            group.notify(queue: .main) { onComplete?() }
         }
     }
 

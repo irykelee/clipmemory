@@ -153,6 +153,7 @@ struct InstructionRow: View {
                     .foregroundColor(.secondary)
             }
         }
+        .accessibilityLabel("Step \(number): \(title). \(description)")
     }
 }
 

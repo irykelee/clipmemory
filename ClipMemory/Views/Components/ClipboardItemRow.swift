@@ -540,9 +540,7 @@ Button(action: onDelete) {
     /// Static + store-injected so tests can exercise it against a
     /// MemoryStorageBackend store without touching ClipboardStore.shared.
     static func writeOcrTextToPasteboard(_ text: String, store: ClipboardStore) {
-        if let monitor = store.clipboardMonitor {
-            monitor.recordOwnWrite()
-        }
+        store.onRecordOwnWrite?()
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)

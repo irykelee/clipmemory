@@ -19,6 +19,7 @@ struct DateFilterButton: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(title)\(isSelected ? ", selected" : "")")
         .onHover { isHovered = $0 }
     }
 

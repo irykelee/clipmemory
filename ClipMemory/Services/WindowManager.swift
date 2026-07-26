@@ -61,6 +61,15 @@ class WindowManager: NSObject, NSWindowDelegate {
     /// C2 fix: keep a stable ContentView instance to preserve @State across window show/hide cycles
     private(set) var mainContentView: ContentView?
 
+    /// HIGH-2 (2026-07-26 review): factory closures for View instantiation so
+    /// tests can inject mock views without the WindowManager needing to know
+    /// concrete ContentView / QuickBarView signatures. Defaults preserve
+    /// existing production behavior.
+    var mainContentViewFactory: () -> ContentView = { ContentView() }
+    var quickBarViewFactory: (@escaping () -> Void) -> QuickBarView = { onDismiss in
+        QuickBarView(onDismiss: onDismiss)
+    }
+
     override init() { super.init() }
 
     func setStatusItem(_ item: NSStatusItem) { self.statusItem = item }
@@ -77,9 +86,9 @@ class WindowManager: NSObject, NSWindowDelegate {
         // it so QuickBarView's @State (search text, selection) survives across
         // show/hide cycles instead of resetting on every popover open.
         if quickBarHostingController == nil {
-            quickBarHostingController = NSHostingController(rootView: QuickBarView(onDismiss: { [weak self] in
+            quickBarHostingController = NSHostingController(rootView: quickBarViewFactory { [weak self] in
                 self?.quickBarPopover?.close()
-            }))
+            })
         }
         popover.contentViewController = quickBarHostingController
         // L-21 (2026-07-24 audit): sync SwiftUI content to current
@@ -107,7 +116,7 @@ class WindowManager: NSObject, NSWindowDelegate {
             window.makeKeyAndOrderFront(nil)
         } else {
             if mainContentView == nil {
-                mainContentView = ContentView()
+                mainContentView = mainContentViewFactory()
             }
             // NEW-6 (2026-07-21): replace `mainContentView!` with a guard.
             // The property is always set by the `if mainContentView == nil`

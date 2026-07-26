@@ -3,11 +3,19 @@ import Vision
 import AppKit
 import os
 
+/// MED-8 (2026-07-26 review): discriminated OCR outcome so callers can
+/// distinguish "no text found" (normal, non-actionable) from "Vision engine
+/// error" (actionable — logs, diagnostics, or degraded-mode UX).
+enum OCROutcome {
+    case text(String)
+    case noText
+    case failure(Error)
+}
+
 /// OCR abstraction so tests can inject a fake recognizer.
 protocol OCRServiceProtocol {
-    /// Recognizes text in image data (PNG/TIFF). completion(nil) when the image
-    /// contains no readable text or recognition fails.
-    func recognizeText(in imageData: Data, completion: @escaping (String?) -> Void)
+    /// Recognizes text in image data (PNG/TIFF).
+    func recognizeText(in imageData: Data, completion: @escaping (OCROutcome) -> Void)
 }
 
 /// Vision-framework OCR. Runs entirely on-device (Neural Engine on Apple
@@ -23,7 +31,7 @@ final class VisionOCRService: OCRServiceProtocol {
 
     private init() {}
 
-    func recognizeText(in imageData: Data, completion: @escaping (String?) -> Void) {
+    func recognizeText(in imageData: Data, completion: @escaping (OCROutcome) -> Void) {
         queue.async {
             let result = self.performRecognition(imageData: imageData)
             // BUG-044 (2026-07-21): hop completion to main. Callers that
@@ -40,10 +48,10 @@ final class VisionOCRService: OCRServiceProtocol {
         }
     }
 
-    private func performRecognition(imageData: Data) -> String? {
+    private func performRecognition(imageData: Data) -> OCROutcome {
         guard let image = NSImage(data: imageData),
               let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            return nil
+            return .noText
         }
 
         // BUG-045 (2026-07-21): pin revision explicitly. The default
@@ -63,19 +71,17 @@ final class VisionOCRService: OCRServiceProtocol {
         do {
             try handler.perform([request])
         } catch {
-            // MED-8 (2026-07-26 review): previously returned nil on every
-            // Vision throw — indistinguishable from "no text found". Log the
-            // error so operators can diagnose OCR engine failures vs. legit
-            // textless images. A future protocol upgrade to Result<String?,
-            // Error> can make this distinction available to callers.
+            // MED-8 (2026-07-26 review): surface Vision errors as .failure
+            // so callers can log / diagnose / degrade differently from the
+            // normal "image has no text" case.
             Self.ocrLanguageLogger.error("Vision recognition failed: \(error.localizedDescription, privacy: .public)")
-            return nil
+            return .failure(error)
         }
 
         let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
-        guard !lines.isEmpty else { return nil }
+        guard !lines.isEmpty else { return .noText }
         let joined = lines.joined(separator: "\n")
-        return String(joined.prefix(maxCharacters))
+        return .text(String(joined.prefix(maxCharacters)))
     }
 
     /// NEW-1 (2026-07-21): filter the requested languages against the ones

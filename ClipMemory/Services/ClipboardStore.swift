@@ -129,18 +129,24 @@ class ClipboardStore: ObservableObject {
     @Published var excludedBundleIdsString: String {
         didSet {
             UserDefaults.standard.set(excludedBundleIdsString, forKey: excludedBundleIdsKey)
-            updateExcludedAppsOnMonitor()
+            // MED-5: sync excluded apps via closure set by AppDelegate
+            onExcludedAppsChanged?(parseExcludedBundleIds())
         }
     }
 
-    /// Items moved to the recycle bin. Persisted separately from `items`.
-    /// Deleted automatically after `trashRetentionDays` days.
-    @Published var trashedItems: [ClipboardItem] = []
-
-    /// Number of days trashed items are kept before automatic permanent deletion.
-    @Published var trashRetentionDays: Int {
-        didSet { UserDefaults.standard.set(trashRetentionDays, forKey: trashRetentionDaysKey) }
+    /// HIGH-1 (2026-07-26 review): trash subsystem moved to TrashStore.
+    /// Forwarding computed properties preserve existing call-site compatibility.
+    var trashedItems: [ClipboardItem] {
+        get { trashStore.trashedItems }
+        set { trashStore.trashedItems = newValue }
     }
+    var trashRetentionDays: Int {
+        get { trashStore.trashRetentionDays }
+        set { trashStore.trashRetentionDays = newValue }
+    }
+
+    /// HIGH-1 (2026-07-26 review): extracted trash subsystem.
+    let trashStore: TrashStore
 
     /// 各日期分组未读（未固定）项目计数 — computed once per call from a single O(n) filter pass
     var todayCount: Int { groupCounts.today }
@@ -180,7 +186,7 @@ class ClipboardStore: ObservableObject {
     private let sensitiveClearHoursKey = "sensitiveClearHours"
     private let captureRichTextKey = "captureRichText"
     private let excludedBundleIdsKey = "excludedBundleIds"
-    private let trashRetentionDaysKey = "trashRetentionDays"
+    // trashRetentionDaysKey moved to TrashStore (HIGH-1, 2026-07-26)
 
     /// Quarantine a corrupt UserDefaults blob: copy it under
     /// `<key>.corrupt-<ISO8601-ts>` then remove the original. Without this,
@@ -203,8 +209,7 @@ class ClipboardStore: ObservableObject {
     }
     /// UserDefaults key for persisted items.
     static let itemsStorageKey = "ClipboardItems"
-    /// UserDefaults key for persisted trashed items.
-    static let trashedItemsStorageKey = "ClipboardTrashedItems"
+    // trashedItemsStorageKey moved to TrashStore (HIGH-1, 2026-07-26)
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
     /// UserDefaults key for persisted tags. Public so tests can pre-populate or clean up.
@@ -219,10 +224,7 @@ class ClipboardStore: ObservableObject {
     /// definitions, and the item backend stays unaware of the tag schema.
     private let tagBackend: StorageBackend
 
-    /// Separate storage backend for trashed items. Keeping trash independent of
-    /// the active item backend means restoring an item is just a load-and-move
-    /// operation, and clearing active items doesn't accidentally wipe trash.
-    private let trashBackend: StorageBackend
+    // trashBackend moved to TrashStore (HIGH-1, 2026-07-26)
 
     // MARK: - Initializers
 
@@ -231,10 +233,10 @@ class ClipboardStore: ObservableObject {
     convenience init() {
         self.init(backend: FileStorageBackend(),
                   tagBackend: FileStorageBackend(storageKey: ClipboardStore.tagStorageKey),
-                  trashBackend: FileStorageBackend(storageKey: ClipboardStore.trashedItemsStorageKey))
+                  trashBackend: FileStorageBackend(storageKey: TrashStore.trashedItemsStorageKey))
     }
 
-    /// E.1: Designated initializer accepting a StorageBackend for testing.
+    /// E.1: Designated initializer accepting StorageBackend instances for testing.
     /// `tagBackend` and `trashBackend` default to fresh in-memory backends so
     /// existing tests that only care about items don't accidentally hit UserDefaults.
     init(backend: StorageBackend,
@@ -242,7 +244,9 @@ class ClipboardStore: ObservableObject {
          trashBackend: StorageBackend = MemoryStorageBackend()) {
         self.backend = backend
         self.tagBackend = tagBackend
-        self.trashBackend = trashBackend
+        self.trashStore = TrashStore(backend: trashBackend)
+
+        // M-3 ... (clamp logic unchanged)
 
         // M-3 (2026-07-24 audit): init validation must match didSet's clamp
         // range [minMaxItems, maxMaxItems]. Previously init used an enum of
@@ -278,14 +282,7 @@ class ClipboardStore: ObservableObject {
 
         excludedBundleIdsString = UserDefaults.standard.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
 
-        let savedTrashRetentionDays = UserDefaults.standard.integer(forKey: trashRetentionDaysKey)
-        let validTrashRetentionDays = [3, 7, 14, 30]
-        if validTrashRetentionDays.contains(savedTrashRetentionDays) {
-            trashRetentionDays = savedTrashRetentionDays
-        } else {
-            trashRetentionDays = 7
-            UserDefaults.standard.set(7, forKey: trashRetentionDaysKey)
-        }
+        // trashRetentionDays init moved to TrashStore (HIGH-1, 2026-07-26)
 
         // Register notification observer AFTER all properties are initialized
         NotificationCenter.default.addObserver(
@@ -303,11 +300,14 @@ class ClipboardStore: ObservableObject {
             object: nil
         )
 
+        // Wire caches to trashStore so evictCaches can drop stale entries.
+        trashStore.contentCache = contentCache
+        trashStore.rtfPlaintextCache = rtfPlaintextCache
+
         loadItems()
         loadTags()
-        loadTrashedItems()
-        purgeExpiredTrash()
-        updateExcludedAppsOnMonitor()
+        // loadTrashedItems + purgeExpiredTrash moved to TrashStore.init (HIGH-1)
+        // excluded apps sync moved to AppDelegate (MED-5)
         cleanupExpiredItems()
         let queue = DispatchQueue(label: "com.clipmemory.cleanup", qos: .background)
         cleanupTimer = DispatchSource.makeTimerSource(queue: queue)
@@ -351,8 +351,7 @@ class ClipboardStore: ObservableObject {
     /// HIGH-4 (2026-07-26 review): reuse a single serial queue for the tag
     /// save timer, matching the M-2 reuse pattern applied to saveTimerQueue.
     private let tagSaveTimerQueue = DispatchQueue(label: "com.clipmemory.tagsave", qos: .utility)
-    /// HIGH-4 (2026-07-26 review): same reuse pattern for the trash save timer.
-    private let trashSaveTimerQueue = DispatchQueue(label: "com.clipmemory.trashsave", qos: .utility)
+    // trashSaveTimerQueue moved to TrashStore (HIGH-1, 2026-07-26)
     private var needsSave = false
     private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
@@ -380,7 +379,7 @@ class ClipboardStore: ObservableObject {
         cleanupTimer?.cancel()
         saveTimer?.cancel()
         tagSaveTimer?.cancel()
-        trashSaveTimer?.cancel()
+        // trashSaveTimer cancelled in TrashStore.deinit (HIGH-1)
         // I-2 fix (2026-07-20 audit): remove the NotificationCenter observer
         // registered in init(). Without this, the dispatch table keeps the
         // selector entry even after dealloc, which causes stale callbacks in
@@ -445,16 +444,8 @@ class ClipboardStore: ObservableObject {
         }
     }
 
-    /// Sync excluded bundle IDs from settings string to the clipboard monitor.
-    /// Comparisons are case-insensitive because macOS bundle IDs are technically
-    /// case-sensitive, but users frequently mis-type capitalization.
-    func updateExcludedAppsOnMonitor() {
-        let ids = Set(excludedBundleIdsString
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-            .filter { !$0.isEmpty })
-        clipboardMonitor?.excludedBundleIds = ids
-    }
+    // updateExcludedAppsOnMonitor() removed (MED-5, 2026-07-26).
+    // AppDelegate now sets excludedBundleIds on the monitor directly.
 
     func loadItems() {
         let savedItems: [ClipboardItem]
@@ -613,7 +604,7 @@ class ClipboardStore: ObservableObject {
     func flushPendingSaves() {
         flushSave()
         flushTagSave()
-        flushTrashSave()
+        trashStore.flushPendingSave()
     }
 
     private func flushSave() {
@@ -1006,7 +997,7 @@ class ClipboardStore: ObservableObject {
             updatePinnedItems()
             saveImmediately()
         }
-        if trashAdded { scheduleTrashSave() }
+        if trashAdded { trashStore.scheduleSavePublic() }
         return (imported, skipped)
     }
 
@@ -1132,153 +1123,44 @@ class ClipboardStore: ObservableObject {
         )
     }
 
-    // MARK: - Recycle Bin (Trash)
+    // MARK: - Recycle Bin (Trash) — forwarding stubs (HIGH-1, 2026-07-26)
 
-    /// Load trashed items from the trash backend.
-    func loadTrashedItems() {
-        do {
-            trashedItems = try trashBackend.load()
-        } catch {
-            quarantineCorruptBlob(key: Self.trashedItemsStorageKey, error: error)
-            logger.error("Failed to load trashed items: \(error.localizedDescription)")
-            trashedItems = []
-        }
-    }
-
-    /// Persist trashed items to the trash backend.
-    func saveTrashedItems() {
-        do {
-            try trashBackend.save(trashedItems)
-        } catch {
-            logger.error("Failed to save trashed items: \(error.localizedDescription)")
-        }
-    }
-
-    /// Move a single item to the recycle bin. The item is removed from the
-    /// active list but its image file is kept until permanent deletion.
-    ///
-    /// L-6 (2026-07-24 audit): cache eviction drops both the decrypted-content
-    /// entry and the RTF plaintext entry so a later `restoreFromTrash` cannot
-    /// accidentally serve stale plaintext from before encryption or format
-    /// changes, and so the bin doesn't pin memory for items that may sit here
-    /// for weeks (NSCache would otherwise hold them under `cost` accounting).
     func moveToTrash(_ item: ClipboardItem) {
         evictCaches(for: item)
-        var trashed = item
-        trashed.deletedAt = Date()
-        trashedItems.insert(trashed, at: 0)
         items.removeAll { $0.id == item.id }
-        updatePinnedItems()
-        scheduleSave()
-        scheduleTrashSave()
+        trashStore.moveToTrash(item, evictCaches: { _ in }, didMove: { [weak self] in
+            self?.updatePinnedItems()
+            self?.scheduleSave()
+        })
     }
 
-    /// Move multiple items to the recycle bin.
-    ///
-    /// L-5 (2026-07-24 audit): capture one `Date()` and reuse it for every
-    /// item in the batch — the previous per-iteration `Date()` produced
-    /// independent instants for items trashed in the same logical operation
-    /// (visible in `deletedAt` ordering and in `purgeExpiredTrash` boundary
-    /// behavior). Also see L-6 above for cache eviction rationale.
     func moveToTrash(_ itemsToMove: [ClipboardItem]) {
-        let now = Date()
-        for item in itemsToMove {
-            evictCaches(for: item)
-            var trashed = item
-            trashed.deletedAt = now
-            trashedItems.insert(trashed, at: 0)
-        }
+        for item in itemsToMove { evictCaches(for: item) }
         let idsToMove = Set(itemsToMove.map { $0.id })
         items.removeAll { idsToMove.contains($0.id) }
-        updatePinnedItems()
-        scheduleSave()
-        scheduleTrashSave()
+        trashStore.moveToTrash(itemsToMove, evictCaches: { _ in }, didMove: { [weak self] in
+            self?.updatePinnedItems()
+            self?.scheduleSave()
+        })
     }
 
-    /// Drops both per-item plaintext caches; see `moveToTrash` (L-6).
     private func evictCaches(for item: ClipboardItem) {
         contentCache.removeObject(forKey: item.id.uuidString as NSString)
-        // CLIP-5 (2026-07-24 review): OCR plaintext is cached under a
-        // derived "<id>.ocr" key (see ClipboardStore+OCR.getDecryptedOcrText)
-        // — evict it too, otherwise recognized plaintext lingers in memory
-        // after the item is trashed/trimmed/expired.
         contentCache.removeObject(forKey: (item.id.uuidString + ".ocr") as NSString)
         rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
     }
 
-    /// Restore an item from the recycle bin to the top of the active list.
     func restoreFromTrash(_ item: ClipboardItem) {
-        guard let index = trashedItems.firstIndex(where: { $0.id == item.id }) else { return }
-        var restored = trashedItems.remove(at: index)
-        restored.deletedAt = nil
-        items.insert(restored, at: 0)
-        updatePinnedItems()
-        scheduleSave()
-        scheduleTrashSave()
+        trashStore.restoreFromTrash(item, didRestore: { [weak self] restored in
+            self?.items.insert(restored, at: 0)
+            self?.updatePinnedItems()
+            self?.scheduleSave()
+        })
     }
 
-    /// Permanently delete a trashed item and its image file.
-    func deletePermanently(_ item: ClipboardItem) {
-        if item.type == .image {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
-        trashedItems.removeAll { $0.id == item.id }
-        scheduleTrashSave()
-    }
-
-    /// Empty the entire recycle bin, deleting all trashed items and images.
-    func emptyTrash() {
-        for item in trashedItems where item.type == .image {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
-        trashedItems.removeAll()
-        scheduleTrashSave()
-    }
-
-    /// Remove trashed items older than `trashRetentionDays` days.
-    /// Called on startup and periodically to keep the recycle bin bounded.
-    func purgeExpiredTrash() {
-        let cutoff = Date().addingTimeInterval(-TimeInterval(trashRetentionDays * 24 * 60 * 60))
-        let expired = trashedItems.filter { item in
-            guard let deletedAt = item.deletedAt else { return false }
-            return deletedAt < cutoff
-        }
-        guard !expired.isEmpty else { return }
-        for item in expired where item.type == .image {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
-        let expiredIds = Set(expired.map { $0.id })
-        trashedItems.removeAll { expiredIds.contains($0.id) }
-        scheduleTrashSave()
-    }
-
-    // MARK: - Trash persistence debounce
-
-    private var trashSaveTimer: DispatchSourceTimer?
-    private var trashNeedsSave = false
-    private func scheduleTrashSave() {
-        trashNeedsSave = true
-        // HIGH-4 (2026-07-26 review): lazily create the timer once and reuse
-        // it via schedule(deadline:), matching the M-2 pattern in scheduleSave().
-        if trashSaveTimer == nil {
-            let timer = DispatchSource.makeTimerSource(queue: trashSaveTimerQueue)
-            timer.setEventHandler { [weak self] in
-                DispatchQueue.main.async { self?.flushTrashSave() }
-            }
-            timer.resume()
-            trashSaveTimer = timer
-        }
-        trashSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
-    }
-
-    private func flushTrashSave() {
-        guard trashNeedsSave else { return }
-        trashNeedsSave = false
-        trashSaveTimer?.cancel()
-        // HIGH-4 (2026-07-26 review): keep timer alive for reuse, matching
-        // the flushSave() pattern.
-        saveTrashedItems()
-    }
+    func deletePermanently(_ item: ClipboardItem) { trashStore.deletePermanently(item) }
+    func emptyTrash() { trashStore.emptyTrash() }
+    func purgeExpiredTrash() { trashStore.purgeExpiredTrash() }
 
     func trimToMaxItems() {
         guard items.count > maxItems else { return }
@@ -1513,9 +1395,7 @@ class ClipboardStore: ObservableObject {
         // ~ms window between clear and recordOwnWrite saw changeCount bump with
         // skipNextCapture still false, re-captured our own write, and persisted a
         // duplicate item. Setting the flag first closes the window.
-        if let monitor = clipboardMonitor {
-            monitor.recordOwnWrite()
-        }
+        onRecordOwnWrite?()
 
         pasteboard.clearContents()
 
@@ -1546,7 +1426,7 @@ class ClipboardStore: ObservableObject {
                   let image = NSImage(data: data) else { return }
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                self.clipboardMonitor?.recordOwnWrite()
+                self.onRecordOwnWrite?()
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()
                 pasteboard.writeObjects([image])
@@ -1556,7 +1436,17 @@ class ClipboardStore: ObservableObject {
     }
 
     // Injected by AppDelegate so copyToClipboard can break the re-capture loop
-    var clipboardMonitor: ClipboardMonitor?
+    /// MED-5 (2026-07-26 review): closures set by AppDelegate to break the
+    /// bidirectional ClipboardStore ↔ ClipboardMonitor reference.
+    var onRecordOwnWrite: (() -> Void)?
+    var onExcludedAppsChanged: ((Set<String>) -> Void)?
+
+    func parseExcludedBundleIds() -> Set<String> {
+        Set(excludedBundleIdsString
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            .filter { !$0.isEmpty })
+    }
 
     private func moveToTop(_ item: ClipboardItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }

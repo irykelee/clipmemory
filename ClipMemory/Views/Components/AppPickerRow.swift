@@ -43,6 +43,7 @@ struct AppPickerRow: View {
             .background(isHovered ? Color.accentColor.opacity(0.1) : Color.clear)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(isExcluded ? "Remove exclusion for" : "Exclude") \(name)")
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .onHover { hovering in isHovered = hovering }

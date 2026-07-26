@@ -317,6 +317,7 @@ struct MacOSMenuItem: View {
         .padding(.vertical, 5)
         .background(hoverBackground.cornerRadius(appCornerRadius))
         .contentShape(Rectangle())
+        .accessibilityLabel(shortcut.isEmpty ? label : "\(label), shortcut \(shortcut)")
         .onHover { isHovered = $0 }
     }
 
@@ -433,9 +434,23 @@ struct QuickBarRow: View {
         .padding(.vertical, 8)
         .background(rowBackground)
         .contentShape(Rectangle())
+        .accessibilityLabel(clipboardItemAccessibilityLabel)
         .onHover { isHovered = $0 }
         .onTapGesture { onTap() }
         .animation(.easeOut(duration: 0.3), value: isCopied)
+    }
+
+    private var clipboardItemAccessibilityLabel: String {
+        let typeLabel: String = {
+            switch item.type {
+            case .text: return "Text"
+            case .image: return "Image"
+            case .link: return "Link"
+            case .richText: return "Rich text"
+            }
+        }()
+        let preview = store.getDecryptedContent(item)?.prefix(50) ?? ""
+        return "\(typeLabel) clipboard item: \(preview)"
     }
 
     private var formattedDate: String {

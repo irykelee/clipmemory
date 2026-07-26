@@ -25,6 +25,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let encryptionAlertThrottler = EncryptionFailedAlertThrottler()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // HIGH-3 (2026-07-26 review): own the key-failure alert presentation
+        // here instead of in CryptoService so the service layer has no AppKit
+        // dependency (NSAlert, NSApp.terminate).
+        CryptoService.keyFailureAlertPresenter = { [weak self] failure in
+            self?.presentKeyFailureAlert(failure) ?? .quit
+        }
+
         setupWindowManager()
         setupStatusItem()
         setupClipboardMonitor()
@@ -262,8 +269,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.delegate = ClipboardStore.shared
         monitor.startMonitoring()
         clipboardMonitor = monitor
-        ClipboardStore.shared.clipboardMonitor = monitor
-        ClipboardStore.shared.updateExcludedAppsOnMonitor()
+        // MED-5 (2026-07-26 review): wire anti-recapture + excluded-apps via
+        // closures instead of a bidirectional ClipboardStore.clipboardMonitor ref.
+        ClipboardStore.shared.onRecordOwnWrite = { [weak monitor] in
+            monitor?.recordOwnWrite()
+        }
+        ClipboardStore.shared.onExcludedAppsChanged = { [weak monitor] ids in
+            monitor?.excludedBundleIds = ids
+        }
+        // Apply initial excluded-apps state from stored settings.
+        monitor.excludedBundleIds = ClipboardStore.shared.parseExcludedBundleIds()
     }
 
     private func setupHotKey() {
@@ -289,5 +304,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         clipboardMonitor?.stopMonitoring()
         welcomeWindow?.close()
         settingsWindow?.close()
+    }
+
+    // MARK: - Key Failure Alert (moved from CryptoService, HIGH-3)
+
+    /// HIGH-3 (2026-07-26 review): presents the key-failure critical alert.
+    /// Previously a `private static` method on CryptoService — moved here so
+    /// the service layer has no AppKit dependency (NSAlert, NSApp.terminate).
+    /// Must run on the main thread; callers dispatch.
+    private func presentKeyFailureAlert(_ failure: CryptoKeyFailure) -> KeyFailureAction {
+        NSApp.setActivationPolicy(.regular)
+        defer { NSApp.setActivationPolicy(.accessory) }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        switch failure {
+        case .corruptExistingKey:
+            alert.messageText = L10n.alertKeyCorruptTitle
+            alert.informativeText = L10n.alertKeyCorruptMessage
+            alert.addButton(withTitle: L10n.quitApp)
+            alert.addButton(withTitle: L10n.alertKeyButtonReset)
+        case .secureRandomUnavailable:
+            alert.messageText = L10n.alertKeyRandomTitle
+            alert.informativeText = L10n.alertKeyRandomMessage
+            alert.addButton(withTitle: L10n.quitApp)
+        case .keyStorageFailed:
+            alert.messageText = L10n.alertKeyStorageTitle
+            alert.informativeText = L10n.alertKeyStorageMessage
+            alert.addButton(withTitle: L10n.quitApp)
+            alert.addButton(withTitle: L10n.alertKeyButtonRetry)
+        }
+        let response = alert.runModal()
+        if failure == .secureRandomUnavailable { return .quit }
+        return response == .alertSecondButtonReturn ? .regenerate : .quit
     }
 }
