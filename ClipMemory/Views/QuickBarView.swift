@@ -10,7 +10,6 @@ struct QuickBarView: View {
     @State private var searchDebounce: DispatchWorkItem?
     @State private var keyboardSelectedIndex: Int?
     @State private var lastCopiedId: UUID?
-    @State private var showFullWindow = false
     @State private var scrollAnchor: UUID?
     // CLIP-4 (2026-07-24 audit): displayedItems used to be an uncached
     // computed property consumed 4+ times per body evaluation (section
@@ -194,7 +193,10 @@ struct QuickBarView: View {
             // macOS 26 menu style bottom section
             VStack(spacing: 0) {
                 MacOSMenuItem(icon: "rectangle.expand.vertical", label: L10n.quickbarOpenFull, sz: sz)
-                    .onTapGesture { showFullWindow = true }
+                    .onTapGesture {
+                        onDismiss()
+                        (NSApp.delegate as? AppDelegate)?.showMainWindow()
+                    }
                 Color.clear.frame(height: 1)
                 // 2026-07-25: settings entry in the Quick Bar menu — same
                 // destination as the sidebar row and the ⌘, menu item.
@@ -268,20 +270,6 @@ struct QuickBarView: View {
         // field regardless of which route fires.
         .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in
             isSearchFocused = true
-        }
-        .onChange(of: showFullWindow) { newValue in
-            if newValue {
-                // M-14 (2026-07-24 audit): the previous code called
-                // `onDismiss()` then queued `showMainWindow()` on the next
-                // runloop tick. The popover closing + main window showing
-                // happened in two separate AppKit frames, leaving a brief
-                // gap where no window was frontmost (visible flicker on
-                // some macOS 14/15 builds). Invoke both synchronously in
-                // the same tick — onDismiss closes the popover, then
-                // showMainWindow activates the main window immediately.
-                onDismiss()
-                (NSApp.delegate as? AppDelegate)?.showMainWindow()
-            }
         }
         // CLIP-4 (2026-07-24 audit): keep cachedDisplayedItems in sync with
         // its two inputs. onAppear covers popover-open (the view is created
