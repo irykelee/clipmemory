@@ -243,7 +243,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quitApp() { NSApp.terminate(nil) }
-    @objc private func sendFeedback() { NSWorkspace.shared.open(URL(string: "https://github.com/irykelee/clipmemory/issues/new")!) }
+    @objc private func sendFeedback() {
+        // LOW-7 (2026-07-26 review): guard-let instead of force-unwrap.
+        guard let url = URL(string: "https://github.com/irykelee/clipmemory/issues/new") else { return }
+        NSWorkspace.shared.open(url)
+    }
 
     private func setupClipboardMonitor() {
         // Initialize store first so image migration observer is registered

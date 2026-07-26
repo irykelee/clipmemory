@@ -63,6 +63,12 @@ final class VisionOCRService: OCRServiceProtocol {
         do {
             try handler.perform([request])
         } catch {
+            // MED-8 (2026-07-26 review): previously returned nil on every
+            // Vision throw — indistinguishable from "no text found". Log the
+            // error so operators can diagnose OCR engine failures vs. legit
+            // textless images. A future protocol upgrade to Result<String?,
+            // Error> can make this distinction available to callers.
+            Self.ocrLanguageLogger.error("Vision recognition failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
 

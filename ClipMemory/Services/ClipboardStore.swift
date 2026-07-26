@@ -348,6 +348,11 @@ class ClipboardStore: ObservableObject {
     /// M-2 (2026-07-25 audit): reuse a single serial queue for the save timer
     /// instead of creating a new `DispatchQueue` on every `scheduleSave()` call.
     private let saveTimerQueue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
+    /// HIGH-4 (2026-07-26 review): reuse a single serial queue for the tag
+    /// save timer, matching the M-2 reuse pattern applied to saveTimerQueue.
+    private let tagSaveTimerQueue = DispatchQueue(label: "com.clipmemory.tagsave", qos: .utility)
+    /// HIGH-4 (2026-07-26 review): same reuse pattern for the trash save timer.
+    private let trashSaveTimerQueue = DispatchQueue(label: "com.clipmemory.trashsave", qos: .utility)
     private var needsSave = false
     private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
@@ -413,20 +418,30 @@ class ClipboardStore: ObservableObject {
         pendingKeyItemsLock.unlock()
 
         guard !pending.isEmpty else { return }
+        // CRIT-1 (2026-07-26 review): the .cryptoKeyPrepared notification is
+        // posted from CryptoService.prepareKey() which runs on a detached
+        // utility queue — this handler runs on whichever thread the notification
+        // was posted from. addItem(_:) directly mutates @Published var items,
+        // which SwiftUI requires on main thread. Dispatch to main before
+        // touching any @Published or AppKit state.
         if success {
-            for item in pending {
-                addItem(item)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                for item in pending { self.addItem(item) }
             }
         } else {
-            logger.error("Encryption key preparation failed; dropping \(pending.count) deferred clipboard capture(s)")
-            NotificationCenter.default.post(
-                name: .encryptionFailed,
-                object: nil,
-                userInfo: [
-                    "source": "addItem",
-                    "itemType": "deferred"
-                ]
-            )
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.logger.error("Encryption key preparation failed; dropping \(pending.count) deferred clipboard capture(s)")
+                NotificationCenter.default.post(
+                    name: .encryptionFailed,
+                    object: nil,
+                    userInfo: [
+                        "source": "addItem",
+                        "itemType": "deferred"
+                    ]
+                )
+            }
         }
     }
 
@@ -822,23 +837,26 @@ class ClipboardStore: ObservableObject {
     private var tagNeedsSave = false
     private func scheduleTagSave() {
         tagNeedsSave = true
-        tagSaveTimer?.cancel()
-        let queue = DispatchQueue(label: "com.clipmemory.tagsave", qos: .utility)
-        tagSaveTimer = DispatchSource.makeTimerSource(queue: queue)
-        tagSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
-        tagSaveTimer?.setEventHandler { [weak self] in
-            // Same main-queue hop as scheduleSave — @Published `tags` must not be
-            // encoded from a background queue while the main thread mutates it.
-            DispatchQueue.main.async { self?.flushTagSave() }
+        // HIGH-4 (2026-07-26 review): lazily create the timer once and reuse
+        // it via schedule(deadline:), matching the M-2 pattern in scheduleSave().
+        if tagSaveTimer == nil {
+            let timer = DispatchSource.makeTimerSource(queue: tagSaveTimerQueue)
+            timer.setEventHandler { [weak self] in
+                DispatchQueue.main.async { self?.flushTagSave() }
+            }
+            timer.resume()
+            tagSaveTimer = timer
         }
-        tagSaveTimer?.resume()
+        tagSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
     }
 
     private func flushTagSave() {
         guard tagNeedsSave else { return }
         tagNeedsSave = false
         tagSaveTimer?.cancel()
-        tagSaveTimer = nil
+        // HIGH-4 (2026-07-26 review): keep timer alive for reuse, matching
+        // the flushSave() pattern — nil-ing it out would force scheduleTagSave
+        // to reallocate a new DispatchSource on the next call.
         saveTags()
     }
 
@@ -1240,21 +1258,25 @@ class ClipboardStore: ObservableObject {
     private var trashNeedsSave = false
     private func scheduleTrashSave() {
         trashNeedsSave = true
-        trashSaveTimer?.cancel()
-        let queue = DispatchQueue(label: "com.clipmemory.trashsave", qos: .utility)
-        trashSaveTimer = DispatchSource.makeTimerSource(queue: queue)
-        trashSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
-        trashSaveTimer?.setEventHandler { [weak self] in
-            DispatchQueue.main.async { self?.flushTrashSave() }
+        // HIGH-4 (2026-07-26 review): lazily create the timer once and reuse
+        // it via schedule(deadline:), matching the M-2 pattern in scheduleSave().
+        if trashSaveTimer == nil {
+            let timer = DispatchSource.makeTimerSource(queue: trashSaveTimerQueue)
+            timer.setEventHandler { [weak self] in
+                DispatchQueue.main.async { self?.flushTrashSave() }
+            }
+            timer.resume()
+            trashSaveTimer = timer
         }
-        trashSaveTimer?.resume()
+        trashSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
     }
 
     private func flushTrashSave() {
         guard trashNeedsSave else { return }
         trashNeedsSave = false
         trashSaveTimer?.cancel()
-        trashSaveTimer = nil
+        // HIGH-4 (2026-07-26 review): keep timer alive for reuse, matching
+        // the flushSave() pattern.
         saveTrashedItems()
     }
 

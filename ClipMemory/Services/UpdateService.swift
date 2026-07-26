@@ -78,7 +78,15 @@ final class UpdateService {
     /// Used when the primary feed (GitHub release asset) is unreachable,
     /// e.g. GitHub connectivity problems on some networks. H1: switched to
     /// only with explicit user consent plus a staleness guard — never silently.
-    static let fallbackFeedURL = URL(string: "https://cdn.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml")!
+    /// LOW-6 (2026-07-26 review): guard-let instead of force-unwrap. The URL
+    /// is a compile-time literal — if it's ever invalid we want a clear crash
+    /// at startup rather than a mysterious no-op mid-flight.
+    static let fallbackFeedURL: URL = {
+        guard let url = URL(string: "https://cdn.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml") else {
+            fatalError("Invalid fallback feed URL — compile-time constant, should never happen")
+        }
+        return url
+    }()
 
     private static let fallbackConsentKey = "UpdateFallbackFeedConsent"
     private static let lastPrimaryItemDateKey = "LastPrimaryAppcastItemDate"
