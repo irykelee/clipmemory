@@ -1,4 +1,4 @@
-# ClipMemory v2.6.0
+# ClipMemory v2.6.1
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.6.1 (2026-07-26) — Audit Fixes & QuickBar Repair
+
+- **Fixed "Open Full Window" button in QuickBar not responding on second click** — Menu bar experience restored to smooth operation
+- **15 potential issues resolved after comprehensive code audit** — Encryption key failure popup no longer intrudes on underlying services; Recycle Bin now fully modular; OCR errors are diagnosable; settings page visual regressions are guarded
+- **QuickBar "Open Full Window" unresponsive on second click** — `@State` was being reset after window closed; window instance now remains stable, allowing normal opening on each click
+- **Cross‑thread crash could occur when capturing content before encryption key is ready on fresh install** — No longer triggers concurrency exceptions in extreme cases (copying within the first milliseconds of first launch)
+- **Tags and Recycle Bin save each new operation to a background queue** — Batch operations (importing 100 tags, emptying Recycle Bin) no longer cause resource thrashing
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.6.1
 
 ### v2.6.0 (2026-07-25) — Standalone Settings Window
 

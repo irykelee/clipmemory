@@ -1,4 +1,4 @@
-# ClipMemory v2.6.0
+# ClipMemory v2.6.1
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.6.1 (2026-07-26) — Correções de Auditoria & Reparo da QuickBar
+
+- Reparado o problema em que o botão "Abrir janela completa" da QuickBar não respondia ao segundo clique; a experiência da barra de menus agora está fluida novamente
+- Após auditoria completa do código, 15 problemas potenciais foram corrigidos: a janela de erro da chave de criptografia não invade mais os serviços de fundo, a Lixeira foi modularizada de forma independente, erros de OCR agora são diagnosticáveis, e a regressão visual da página de configurações tem proteção
+- **Botão "Abrir janela completa" da QuickBar sem resposta no segundo clique** — após fechar a janela, o @State era redefinido; agora a instância da janela permanece estável e cada clique abre normalmente
+- **Conteúdo capturado antes da chave de criptografia estar pronta em instalação nova pode causar travamento entre threads** — em casos extremos (copiar nos primeiros milissegundos após a primeira inicialização) não dispara mais exceções de concorrência
+- **Salvamento de etiquetas e da Lixeira em fila de fundo para cada nova criação** — operações em lote (importar 100 etiquetas, esvaziar a Lixeira) não geram mais oscilações de recursos
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.6.1
 
 ### v2.6.0 (2026-07-25) — Janela de Configurações Independente
 

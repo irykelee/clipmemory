@@ -1,4 +1,4 @@
-# ClipMemory v2.6.0
+# ClipMemory v2.6.1
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.6.1 (2026-07-26) — Correcciones de auditoría y reparación de QuickBar
+
+- Se corrigió el problema de que el botón «Abrir ventana completa» de la Quick Bar no respondía al segundo clic, la experiencia de la barra de menú vuelve a ser fluida
+- Tras una auditoría completa del código, se corrigieron 15 problemas potenciales: las ventanas emergentes de fallos de clave de cifrado ya no interfieren con los servicios subyacentes, la Papelera se ha modularizado de forma independiente, los errores de OCR ahora son diagnosticables y se ha añadido protección contra regresiones visuales en la página de configuración
+- **El botón «Abrir ventana completa» de la Quick Bar no responde la segunda vez** — Después de cerrar la ventana, @State se restablece; ahora la instancia de la ventana se mantiene estable y cada clic abre correctamente
+- **El contenido capturado antes de que la clave de cifrado esté lista en una instalación nueva podría provocar un bloqueo entre hilos** — En casos extremos (copiar en los primeros milisegundos del primer inicio) ya no se desencadena una excepción de concurrencia
+- **La creación de etiquetas y la Papelera se guardan en una cola en segundo plano cada vez** — Las operaciones por lotes (importar 100 etiquetas, vaciar la Papelera) ya no causan inestabilidad de recursos
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.6.1
 
 ### v2.6.0 (2026-07-25) — Ventana de configuración independiente
 
