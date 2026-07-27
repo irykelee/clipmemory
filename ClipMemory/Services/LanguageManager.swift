@@ -33,6 +33,13 @@ class LanguageManager: ObservableObject {
         // handles persistence and application. Init runs on main in production.
         let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? Self.getSystemLanguage()
         self.selectedLanguage = lang
+        // didSet observers do NOT fire during Swift init, so currentLanguageCode
+        // (the nonisolated mirror added in pilot commit 153d25d) must be seeded
+        // explicitly here. Without this, off-main readers of LocalizationService
+        // observe the default "en" instead of the user's saved language until the
+        // first post-init language change. Same applies to any future cache fields
+        // initialized from selectedLanguage.
+        Self.currentLanguageCode = lang
     }
 
     static func getSystemLanguage() -> String {
