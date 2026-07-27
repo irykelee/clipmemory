@@ -1,4 +1,4 @@
-# ClipMemory v2.6.1
+# ClipMemory v2.6.2
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.6.2 (2026-07-27) — Destaque de pesquisa de imagens e filtragem por etiquetas
+
+- **Resultados da pesquisa de imagens exibem texto OCR diretamente**: na lista principal e na janela de pop-up rápido, fragmentos reconhecidos em destaque ciano aparecem abaixo dos itens de captura de tela, com partes correspondentes ao termo pesquisado visíveis. Em Configurações → Histórico, é possível desativar (apenas a exibição é desativada; a filtragem continua ativa).
+- **Filtragem por etiquetas alterada para semântica "contém todos"**: ao marcar várias etiquetas (ex.: "China continental" + "2026"), apenas os itens que possuem ambas as etiquetas são exibidos, não mais qualquer etiqueta individual.
+- **Barra de dica no topo da lista principal durante filtragem por etiquetas**: as etiquetas ativas são listadas em formato de cápsula, cada uma com um × à direita para remoção individual, e um botão "Limpar tudo" à direita para limpar de uma vez; também exibe "Exibindo X / Total Y", permitindo ver rapidamente que o filtro está ativo.
+- **Botão × para limpar de uma vez adicionado à direita da caixa de pesquisa**: após pesquisar uma palavra-chave, clique em × para limpar diretamente, sem precisar apagar caractere por caractere; a caixa de pesquisa ganha foco automaticamente, permitindo digitar imediatamente a próxima palavra-chave.
+- **Lista atualizada instantaneamente após exclusão na Lixeira**: antes, era necessário acionar outra operação para ver a lista atualizada após excluir itens da Lixeira; agora, clicar em "Excluir permanentemente" / "Esvaziar" tem efeito imediato.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.6.2
 
 ### v2.6.1 (2026-07-26) — Correções de Auditoria & Reparo da QuickBar
 

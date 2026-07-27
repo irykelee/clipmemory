@@ -1,4 +1,4 @@
-# ClipMemory v2.6.1
+# ClipMemory v2.6.2
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.6.2 (2026-07-27) — Image Search Highlight & Tag Filtering
+
+- **OCR text displayed directly in image search results**: In the main list and QuickBar, a cyan-highlighted recognition fragment appears below each screenshot item, with parts matching the search term clearly visible. Can be turned off in Settings → History (only hides display; filtering still applies).
+- **Tag filtering changed to "AND" semantics**: When selecting multiple tags (e.g., "Mainland China" + "2026"), only items tagged with both tags are shown — no longer any single tag matching.
+- **Prompt bar appears at the top of the main list during tag filtering**: Active tags are listed as capsules; each capsule has an × on the right to remove individually, and a "Clear All" button on the right clears everything at once. Also shows "Showing X of Y items" count — at a glance confirm filtering is active.
+- **Added an × clear button to the right of the search box**: After searching a keyword, click × to clear directly — no need to delete character by character. The search box automatically gains focus, ready for the next keyword.
+- **List refreshes instantly after Recycle Bin deletion**: Previously, after deleting Recycle Bin items, other actions were needed to refresh the list. Now clicking "Delete Permanently" / "Empty" takes effect immediately.
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.6.2
 
 ### v2.6.1 (2026-07-26) — Audit Fixes & QuickBar Repair
 

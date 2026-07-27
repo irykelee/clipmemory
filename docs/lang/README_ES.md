@@ -1,4 +1,4 @@
-# ClipMemory v2.6.1
+# ClipMemory v2.6.2
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.6.2 (2026-07-27) — Resaltado de búsqueda de imágenes y filtrado por etiquetas
+
+- **Los resultados de búsqueda de imágenes muestran directamente el texto OCR**: en la lista principal y en la ventana emergente rápida, debajo de cada captura de pantalla aparecen fragmentos de reconocimiento resaltados en cian; las partes que coinciden con el término de búsqueda son visibles de forma destacada. Se puede desactivar en Configuración → Historial (solo se oculta la visualización, el filtrado sigue funcionando).
+- **El filtrado por etiquetas ahora usa la semántica «contiene todas»**: al seleccionar varias etiquetas (por ejemplo, «China continental» + «2026»), solo se muestran los elementos que tienen ambas etiquetas, en lugar de cualquier etiqueta que coincida.
+- **Al filtrar por etiquetas aparece una barra informativa en la parte superior de la lista principal**: las etiquetas activas se muestran en formato de cápsula, cada una con una × a la derecha para eliminar individualmente, y un botón «Borrar todo» a la derecha para limpiar de una vez; también se muestra «Mostrando X / Y total» para ver de un vistazo el efecto del filtro.
+- **Se añadió un botón × de limpieza rápida al lado derecho del campo de búsqueda**: después de buscar una palabra clave, pulse × para borrar al instante sin necesidad de eliminar carácter por carácter; el campo de búsqueda recupera automáticamente el foco para escribir la siguiente palabra clave de inmediato.
+- **La lista se actualiza al instante después de eliminar elementos de la Papelera**: antes, al eliminar elementos de la Papelera era necesario realizar otra acción para ver la lista actualizada; ahora, al pulsar «Eliminar permanentemente» / «Vaciar», el cambio se aplica de inmediato.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.6.2
 
 ### v2.6.1 (2026-07-26) — Correcciones de auditoría y reparación de QuickBar
 
