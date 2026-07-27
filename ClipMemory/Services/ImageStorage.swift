@@ -131,7 +131,7 @@ class ImageStorage {
         maxFileSize: Int? = nil
     ) {
         let legacyDirectory = legacyDirectory ?? self.legacyImagesDirectory
-        let maxFileSize = maxFileSize ?? self.maxImageSize
+        let maxFileSize = maxFileSize ?? Self.maxImageSize
         guard defaults.bool(forKey: migrationCompleteKey) == false else { return }
         guard fileManager.fileExists(atPath: legacyDirectory.path) else {
             defaults.set(true, forKey: migrationCompleteKey)
@@ -318,7 +318,11 @@ class ImageStorage {
         return UUID(uuidString: nameWithoutExt) != nil
     }
 
-    private let maxImageSize = 50 * 1024 * 1024 // 50MB limit
+    /// L-1 (2026-07-27): promoted from `private let` to `static let` so
+    /// `BackupPackage` can reference the same cap. Previously the two
+    /// 50 MB limits in `ImageStorage` and `BackupPackage` were independent
+    /// literals — bumping one would silently let the other go stale.
+    static let maxImageSize = 50 * 1024 * 1024 // 50MB limit
     private let backgroundQueue = DispatchQueue(label: "com.clipmemory.imagestorage", qos: .userInitiated)
 
     // P1-4 (2026-07-23 audit): in-memory counter for silent disk corruption.
@@ -349,7 +353,7 @@ class ImageStorage {
     /// Saves image data asynchronously on a background queue to avoid blocking the main thread.
     /// Encryption and disk I/O happen off the main thread.
     func saveImage(_ data: Data, id: UUID, completion: @escaping (String?) -> Void) {
-        guard data.count <= maxImageSize else {
+        guard data.count <= Self.maxImageSize else {
             logger.warning("Image too large (\(data.count) bytes), skipping save")
             DispatchQueue.main.async { completion(nil) }
             return
@@ -462,7 +466,7 @@ class ImageStorage {
                 logger.warning("STOR-5: cannot determine size of image (skipping read): \(filename, privacy: .public)")
                 return .fileMissing
             }
-            guard fileSize <= maxImageSize else {
+            guard fileSize <= Self.maxImageSize else {
                 Self.corruptionCountLock.lock()
                 Self.corruptionCount += 1
                 Self.corruptionCountLock.unlock()

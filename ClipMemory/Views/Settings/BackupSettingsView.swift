@@ -47,7 +47,18 @@ struct BackupSettingsView: View {
                 Button(L10n.settingsBackupExport) { exportBackup() }.buttonStyle(.link)
                 Button(L10n.settingsBackupImport) { importBackup() }.buttonStyle(.link)
             } header: { Text(L10n.settingsSectionBackup) } footer: {
-                if let last = backupService.lastBackupDate {
+                // N-3 (2026-07-27): when the most recent attempt failed more
+                // recently than the most recent success, surface the failure
+                // in the footer. Otherwise show the last successful backup
+                // time. A success clears the failure record, so manual "Back
+                // Up Now" makes the footer flip back without an app restart.
+                if let errorDate = backupService.lastBackupErrorDate,
+                   (backupService.lastBackupDate ?? .distantPast) < errorDate,
+                   let message = backupService.lastBackupErrorMessage {
+                    Text(L10n.settingsBackupErrorLast(message))
+                        .foregroundColor(.red)
+                        .id(backupRefresh)
+                } else if let last = backupService.lastBackupDate {
                     Text(L10n.settingsBackupLast(last.formatted(date: .abbreviated, time: .shortened)))
                         .foregroundColor(.secondary)
                         .id(backupRefresh)

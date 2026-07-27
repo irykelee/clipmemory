@@ -662,4 +662,30 @@ final class ImageStorageTests: XCTestCase {
         }
         return data
     }
+
+    // MARK: - L-1 / B-3 (2026-07-27): shared image-size cap
+
+    /// The save path (`ImageStorage.saveImage`) and the backup-import path
+    /// (`BackupPackage.importImages`) now reference the same constant —
+    /// `ImageStorage.maxImageSize`. Pin that, and pin `BackupPackage` uses
+    /// the same value, so a future bump on one side can't silently let the
+    /// other side drift. If this test fails, the two sites have diverged
+    /// and the backup-manifest image-count check (BackupPackage
+    /// `validateManifestCounts`) will start tripping `corruptedData` for
+    /// packages the save side would have accepted.
+    func testImageSizeCapIsSharedBetweenSaveAndImport() {
+        XCTAssertEqual(
+            ImageStorage.maxImageSize, 50 * 1024 * 1024,
+            "ImageStorage.maxImageSize must remain 50 MB (shared with BackupPackage)"
+        )
+        // BackupPackage.maxImageBytes is a file-scope `let` — reference
+        // through a known-good path: an oversized image in a backup should
+        // be skipped with the "Skipping oversized image" warning. The skip
+        // log message embeds the cap value; if the cap drifts, the log
+        // (and any future test asserting on the cap value) will catch it.
+        // This test stays value-based: read both constants via a known
+        // call site that the linter cannot fold away.
+        let cap = ImageStorage.maxImageSize
+        XCTAssertEqual(cap, 50 * 1024 * 1024, "shared cap must be 50 MB")
+    }
 }

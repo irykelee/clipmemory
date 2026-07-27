@@ -60,6 +60,13 @@ class WindowManager: NSObject, NSWindowDelegate {
     private let windowFrameKey = "WindowFrame"
     /// C2 fix: keep a stable ContentView instance to preserve @State across window show/hide cycles
     private(set) var mainContentView: ContentView?
+    /// B-6 (2026-07-27): secondary windows (settings, welcome) registered by
+    /// `AppDelegate` so the main-window-close policy switch can leave the
+    /// app activated while any of them is still visible. Without this list
+    /// closing the main window would sink `NSApp` to `.accessory` and strand
+    /// any still-visible window — Dock icon gone, ⌘Tab no longer lists
+    /// ClipMemory, the user has no obvious path back to the stranded window.
+    private var secondaryWindows: [ObjectIdentifier: NSWindow] = [:]
 
     /// HIGH-2 (2026-07-26 review): factory closures for View instantiation so
     /// tests can inject mock views without the WindowManager needing to know
@@ -73,6 +80,19 @@ class WindowManager: NSObject, NSWindowDelegate {
     override init() { super.init() }
 
     func setStatusItem(_ item: NSStatusItem) { self.statusItem = item }
+
+    /// B-6 (2026-07-27): let `AppDelegate` register / unregister secondary
+    /// windows (settings, welcome) so the main-window-close policy switch
+    /// can leave the app activated while any of them is still visible.
+    /// `ObjectIdentifier` is used to deduplicate re-registrations of the same
+    /// window without forcing `NSWindow` to be `Hashable` via subclassing.
+    func registerSecondaryWindow(_ window: NSWindow) {
+        secondaryWindows[ObjectIdentifier(window)] = window
+    }
+
+    func unregisterSecondaryWindow(_ window: NSWindow) {
+        secondaryWindows.removeValue(forKey: ObjectIdentifier(window))
+    }
 
     func showQuickBar() {
         if quickBarPopover == nil {
@@ -173,7 +193,17 @@ class WindowManager: NSObject, NSWindowDelegate {
         if let w = mainWindow { savedWindowFrame = w.frame }
         // Keep mainWindow and mainContentView alive so @State survives close/reopen.
         // isReleasedWhenClosed=false already prevents the window from deallocating.
-        NSApp.setActivationPolicy(.accessory)
+        // B-6 (2026-07-27): only sink to .accessory when no other registered
+        // window is still on screen. Closing the main window while the
+        // settings / welcome window is visible used to strand those windows
+        // (no Dock icon, not in ⌘Tab) — they remained on screen but the app
+        // lost activation, leaving the user no obvious way to bring them
+        // back to the front. Iterating registered windows is more robust
+        // than title-matching and covers any future secondary surface.
+        let otherWindowsVisible = secondaryWindows.values.contains { $0.isVisible }
+        if !otherWindowsVisible {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 
     private func saveWindowFrameDebounced() {

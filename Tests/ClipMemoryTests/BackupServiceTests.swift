@@ -369,4 +369,81 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertFalse(remaining.contains("2026-07-14_120000.000"),
                        "oldest valid backup must be the one pruned")
     }
+
+    // MARK: - N-3 (2026-07-27): auto-backup error observability
+
+    /// The auto-backup path (triggered from `applicationDidFinishLaunching`)
+    /// used to swallow every `BackupError` via `try?` — the only signal was
+    /// a `logger.error` line in Console.app. The settings page now reads
+    /// `lastBackupErrorDate` / `lastBackupErrorMessage` to surface failures
+    /// to the user. Verify the path: trigger a deterministic failure, wait
+    /// for the utility-queue completion, then assert both fields are set
+    /// and the message contains a recognizable failure token.
+    func testPerformBackupIfNeededRecordsFailureWhenBackupNowThrows() throws {
+        // Block backupNow by replacing `backupsDir` with a regular file —
+        // mirrors `testBackupNowThrowsWhenDirectoryCreationFails`.
+        try? FileManager.default.removeItem(at: backupsDir)
+        try? "blocker".write(to: backupsDir, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: backupsDir)
+            try? FileManager.default.createDirectory(at: backupsDir, withIntermediateDirectories: true)
+        }
+        // Make sure performBackupIfNeeded won't be throttled by a stale
+        // lastBackupDate from a sibling test in the same XCTest run.
+        defaults.removeObject(forKey: "lastBackupDate")
+
+        service.performBackupIfNeeded()
+        // `performBackupIfNeeded` dispatches to a utility queue. Wait
+        // until the error is recorded (or fail after a generous timeout).
+        let deadline = Date().addingTimeInterval(2.0)
+        while service.lastBackupErrorDate == nil, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+
+        XCTAssertNotNil(service.lastBackupErrorDate,
+                        "N-3: auto-backup failure must record lastBackupErrorDate")
+        let message = service.lastBackupErrorMessage ?? ""
+        XCTAssertTrue(
+            message.contains("Backup directory creation failed"),
+            "N-3: recorded error must include the directory-creation failure reason, got: \(message)"
+        )
+    }
+
+    /// A successful `backupNow()` must clear any prior failure record so
+    /// the settings page footer flips back to "Last backup: ..." without
+    /// an app restart. Seed a stale failure, run a real backup, assert
+    /// both fields are gone.
+    func testBackupNowClearsLastBackupErrorOnSuccess() throws {
+        seedStoreData()
+        // Plant a stale failure so we can verify the clear path.
+        defaults.set(Date(), forKey: "lastBackupErrorDate")
+        defaults.set("synthetic prior failure", forKey: "lastBackupErrorMessage")
+        XCTAssertNotNil(service.lastBackupErrorDate)
+
+        _ = try service.backupNow()
+
+        XCTAssertNil(service.lastBackupErrorDate,
+                     "N-3: successful backupNow must clear the prior failure date")
+        XCTAssertNil(service.lastBackupErrorMessage,
+                     "N-3: successful backupNow must clear the prior failure message")
+    }
+
+    /// Direct call to `backupNow()` (not the auto path) must NOT silently
+    /// record a failure — that path is exercised by the manual "Back Up
+    /// Now" button, which surfaces errors through the alert. We assert the
+    /// auto-only fields stay clean so a manual retry never overwrites a
+    /// valid "last successful" view with stale data.
+    func testManualBackupNowFailureLeavesErrorFieldsUntouched() {
+        try? FileManager.default.removeItem(at: backupsDir)
+        try? "blocker".write(to: backupsDir, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: backupsDir)
+            try? FileManager.default.createDirectory(at: backupsDir, withIntermediateDirectories: true)
+        }
+
+        XCTAssertThrowsError(try service.backupNow())
+        XCTAssertNil(service.lastBackupErrorDate,
+                     "N-3: manual backupNow must not write to the auto-only error fields")
+        XCTAssertNil(service.lastBackupErrorMessage)
+    }
 }

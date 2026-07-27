@@ -42,6 +42,14 @@ final class BackupService {
     private static let enabledKey = "backupEnabled"
     private static let keepCountKey = "backupKeepCount"
     private static let lastBackupDateKey = "lastBackupDate"
+    // N-3 (2026-07-27): pair with `lastBackupDateKey` to surface failures
+    // from the auto-backup path. `performBackupIfNeeded` used to swallow
+    // every `BackupError` via `try?` — users had no signal that the daily
+    // backup had stopped succeeding (disk full, permissions revoked, Keychain
+    // locked). The settings page now shows "Last backup failed: <reason>"
+    // when the most recent failure is newer than the most recent success.
+    private static let lastBackupErrorDateKey = "lastBackupErrorDate"
+    private static let lastBackupErrorMessageKey = "lastBackupErrorMessage"
     private static let minimumInterval: TimeInterval = 24 * 60 * 60
     /// H-6 (2026-07-24 audit): marker file dropped at the start of every
     /// backup and removed on success. An orphan timestamped dir carrying
@@ -109,6 +117,17 @@ final class BackupService {
         defaults.object(forKey: Self.lastBackupDateKey) as? Date
     }
 
+    // N-3 (2026-07-27): see lastBackupErrorDateKey. Set by the auto-backup
+    // path when `backupNow()` throws; cleared on the next success. Paired
+    // with `lastBackupErrorMessage` for the UI.
+    var lastBackupErrorDate: Date? {
+        defaults.object(forKey: Self.lastBackupErrorDateKey) as? Date
+    }
+
+    var lastBackupErrorMessage: String? {
+        defaults.string(forKey: Self.lastBackupErrorMessageKey)
+    }
+
     /// Daily trigger from app launch. Runs on a utility queue; no-op when
     /// disabled or when the last backup is younger than 24h.
     func performBackupIfNeeded() {
@@ -121,7 +140,20 @@ final class BackupService {
             // best-effort — log + skip on failure. Real user-visible failures
             // surface from the manual UI button path and the import path
             // (both of which inspect the thrown error directly).
-            _ = try? self?.backupNow()
+            // N-3 (2026-07-27): record the failure in UserDefaults so the
+            // settings page can surface "Last backup failed: <reason>" to
+            // the user. Previously `try?` meant the only signal was a log
+            // line in Console.app, invisible to the user.
+            guard let self else { return }
+            do {
+                _ = try self.backupNow()
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                self.defaults.set(Date(), forKey: Self.lastBackupErrorDateKey)
+                self.defaults.set(message, forKey: Self.lastBackupErrorMessageKey)
+                self.logger.error("Auto-backup failed: \(message)")
+            }
         }
     }
 
@@ -232,6 +264,13 @@ final class BackupService {
         try removeIncompleteMarker(in: destination)
 
         defaults.set(Date(), forKey: Self.lastBackupDateKey)
+        // N-3 (2026-07-27): a successful backup clears the previous failure
+        // record. The settings page only shows "Last backup failed" when
+        // lastBackupErrorDate is strictly later than lastBackupDate, so this
+        // clear makes the footer flip back to "Last backup: ..." immediately
+        // after a manual "Back Up Now" succeeds.
+        defaults.removeObject(forKey: Self.lastBackupErrorDateKey)
+        defaults.removeObject(forKey: Self.lastBackupErrorMessageKey)
         pruneOldBackups()
         logger.info("Backup completed at \(destination.path)")
         succeeded = true

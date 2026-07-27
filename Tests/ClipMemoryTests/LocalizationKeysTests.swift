@@ -42,6 +42,39 @@ final class LocalizationKeysTests: XCTestCase {
             L10n.settingsBackupErrorMissingEncryptionKey.isEmpty,
             "L10n.settingsBackupErrorMissingEncryptionKey must not be empty"
         )
+        // B-8 (2026-07-27): the message must give the user a real recovery
+        // path, not just "reset encryption from Settings" (which is a dead
+        // end — there is no in-UI reset). Every locale's copy points the
+        // user at the Keychain item name `com.clipmemory.app` (the literal
+        // bundle id — untranslated by design). Pin that token so a future
+        // copy edit can't silently regress to the unhelpful original "reset
+        // encryption from Settings" wording. The locale-specific "Keychain
+        // Access" / "钥匙串访问" / "鑰匙圈存取" etc. spelling is intentionally
+        // NOT pinned — that's covered by the 7-language file parity test
+        // `testNewBackupKeysExistInAllSevenLanguageFiles`.
+        XCTAssertTrue(
+            L10n.settingsBackupErrorMissingEncryptionKey.contains("com.clipmemory.app"),
+            "B-8: missing-encryption-key message must reference the Keychain item 'com.clipmemory.app' so the user can find and delete it, got: \(L10n.settingsBackupErrorMissingEncryptionKey)"
+        )
+    }
+
+    // N-3 (2026-07-27): the auto-backup error footer key must resolve to
+    // translated text and embed the supplied reason. Without the embed
+    // check, a future refactor that drops the %@ substitution would only
+    // fail at the user's eyes — the test would still pass because
+    // L10n.string() falls back to the English bundle.
+    func testSettingsBackupErrorLastEmbedsReason() {
+        let reason = "Disk full"
+        let rendered = L10n.settingsBackupErrorLast(reason)
+        XCTAssertNotEqual(
+            rendered,
+            "settings.backup.error.last",
+            "L10n.settingsBackupErrorLast must resolve to translated text, not the key string"
+        )
+        XCTAssertTrue(
+            rendered.contains(reason),
+            "L10n.settingsBackupErrorLast must embed the supplied reason, got: \(rendered)"
+        )
     }
 
     /// Walk all 7 shipping language files and confirm both new keys are
@@ -76,6 +109,13 @@ final class LocalizationKeysTests: XCTestCase {
             XCTAssertTrue(
                 content.contains("\"settings.backup.error.missingEncryptionKey\""),
                 "\(lang).lproj/Localizable.strings is missing key 'settings.backup.error.missingEncryptionKey'"
+            )
+            // N-3 (2026-07-27): 7-language parity pin for the auto-backup
+            // error footer. Without this assertion, a missing translation
+            // silently degrades to English rather than failing the build.
+            XCTAssertTrue(
+                content.contains("\"settings.backup.error.last\""),
+                "\(lang).lproj/Localizable.strings is missing key 'settings.backup.error.last'"
             )
         }
     }

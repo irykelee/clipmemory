@@ -137,6 +137,11 @@ class CryptoService: CryptoServiceProtocol {
     /// BUG-018 (2026-07-21): also writes back to cache on miss so
     /// subsequent calls (e.g. multiple BackupPackage exports in one
     /// session) don't re-query the Keychain each time.
+    /// B-7 (2026-07-27): mirror the `getKey()` nil-check guard — never
+    /// overwrite a populated cache. Today both paths always write the same
+    /// bytes (the Keychain is the canonical store and the file is just a
+    /// migration source), so there is no observed bug — but the foot-gun
+    /// is real if a future code path generates a different key on demand.
     static func loadKeyData() -> Data? {
         if let cached = shared.withCachedLoadedKey({ shared.cachedLoadedKey }) {
             return cached.withUnsafeBytes { Data($0) }
@@ -148,7 +153,11 @@ class CryptoService: CryptoServiceProtocol {
             keyData = try? Data(contentsOf: keyFileURL)
         }
         if let keyData, keyData.count == 32 {
-            shared.withCachedLoadedKey { shared.cachedLoadedKey = SymmetricKey(data: keyData) }
+            shared.withCachedLoadedKey {
+                if shared.cachedLoadedKey == nil {
+                    shared.cachedLoadedKey = SymmetricKey(data: keyData)
+                }
+            }
         }
         return keyData
     }

@@ -374,50 +374,20 @@ struct ClipboardItemRow: View, Equatable {
             }
             .contentShape(Rectangle())
             .gesture(ExclusiveGesture(TapGesture(count: 2).onEnded { onPin() }, TapGesture().onEnded { onCopyWithFeedback?() }))
-            HStack(spacing: 6) {
-                Button(action: onEditTags) {
-                    Image(systemName: "tag")
-                        .font(.system(size: iconSize))
-                        .foregroundColor(item.tagIds.isEmpty ? .secondary : .accentColor)
-                        .frame(width: 24, height: 24)
-                        .overlay(alignment: .topTrailing) {
-                            if !item.tagIds.isEmpty {
-                                Text("\(item.tagIds.count)")
-                                    .font(.system(size: sz(8)))
-                                    .padding(2)
-                                    .background(Color.accentColor, in: Circle())
-                                    .foregroundColor(.white)
-                                    .offset(x: 4, y: -4)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .help(L10n.tooltipEditTags)
-                .accessibilityLabel(L10n.tooltipEditTags)
-                // F-20 (2026-07-23 audit): pin + delete were Image-only Buttons with only
-// a `.help()` tooltip — `.help()` does NOT surface to VoiceOver / a11y
-// users. Reusing the same L10n strings keeps the visible label and the
-// VoiceOver announcement in sync (and avoids creating new keys that would
-// need 7-lang review).
-Button(action: onPin) {
-    Image(systemName: item.isPinned ? "star.fill" : "star")
-        .font(.system(size: iconSize))
-        .foregroundColor(item.isPinned ? .orange : .secondary)
-        .frame(width: 24, height: 24)
-}
-.buttonStyle(.plain)
-.help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
-.accessibilityLabel(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
-Button(action: onDelete) {
-    Image(systemName: "trash")
-        .font(.system(size: iconSize))
-        .foregroundColor(.secondary)
-        .frame(width: 24, height: 24)
-}
-.buttonStyle(.plain)
-.help(L10n.tooltipDelete)
-.accessibilityLabel(L10n.tooltipDelete)
-            }
+            // B-1 (2026-07-27): the trailing icon-button column was
+            // previously inlined in `body`, contributing ~45 lines to an
+            // already-large body. Extracted to `RowActions` so the body
+            // focuses on layout + content rendering. `RowActions` is a
+            // private struct (not a method) because ViewBuilder constraints
+            // (icon overlays, topTrailing tag-count badge) are easier to
+            // express as a `body` than as a deeply-nested return chain.
+            RowActions(
+                item: item,
+                iconSize: iconSize,
+                onEditTags: onEditTags,
+                onPin: onPin,
+                onDelete: onDelete
+            )
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle())
         .onHover { isHovered = $0 }
@@ -544,5 +514,69 @@ Button(action: onDelete) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+}
+
+// MARK: - B-1 (2026-07-27): trailing icon-button column extracted
+
+/// Trailing action column of `ClipboardItemRow`: tag (with optional
+/// count badge), pin, delete. Carved out of `body` to keep the row's
+/// layout tree readable. Stateless — receives the item snapshot, icon
+/// size, and the same callbacks the parent uses, so behavior is
+/// unchanged. Pinned to the F-20 a11y audit (2026-07-23) so the three
+/// icon-only buttons keep their `accessibilityLabel` and `.help()`
+/// strings in lockstep with the visible label.
+private struct RowActions: View {
+    let item: ClipboardItem
+    let iconSize: CGFloat
+    let onEditTags: () -> Void
+    let onPin: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: onEditTags) {
+                Image(systemName: "tag")
+                    .font(.system(size: iconSize))
+                    .foregroundColor(item.tagIds.isEmpty ? .secondary : .accentColor)
+                    .frame(width: 24, height: 24)
+                    .overlay(alignment: .topTrailing) {
+                        if !item.tagIds.isEmpty {
+                            Text("\(item.tagIds.count)")
+                                .font(.system(size: sz(8)))
+                                .padding(2)
+                                .background(Color.accentColor, in: Circle())
+                                .foregroundColor(.white)
+                                .offset(x: 4, y: -4)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .help(L10n.tooltipEditTags)
+            .accessibilityLabel(L10n.tooltipEditTags)
+            // F-20 (2026-07-23 audit): pin + delete were Image-only Buttons with only
+            // a `.help()` tooltip — `.help()` does NOT surface to VoiceOver / a11y
+            // users. Reusing the same L10n strings keeps the visible label and the
+            // VoiceOver announcement in sync (and avoids creating new keys that would
+            // need 7-lang review).
+            Button(action: onPin) {
+                Image(systemName: item.isPinned ? "star.fill" : "star")
+                    .font(.system(size: iconSize))
+                    .foregroundColor(item.isPinned ? .orange : .secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .help(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
+            .accessibilityLabel(item.isPinned ? L10n.tooltipUnpin : L10n.tooltipPin)
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.system(size: iconSize))
+                    .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .help(L10n.tooltipDelete)
+            .accessibilityLabel(L10n.tooltipDelete)
+        }
     }
 }

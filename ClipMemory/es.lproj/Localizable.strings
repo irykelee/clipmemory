@@ -280,7 +280,7 @@
 
 /* Respaldo UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "Usada para cifrar el archivo de copia. La necesitarás de nuevo para restaurar.";
-"settings.backup.error.missingEncryptionKey" = "No se puede exportar: falta la clave de cifrado. Restablece el cifrado desde Ajustes.";
+"settings.backup.error.missingEncryptionKey" = "No se puede exportar: falta la clave de cifrado. Cierra ClipMemory, abre Acceso a Llaveros, busca 'com.clipmemory.app', elimina la entrada y vuelve a abrir ClipMemory. Tu historial de portapapeles será ilegible; tendrás que empezar de nuevo.";
 
 /* Pestañas de la ventana de ajustes (2026-07-25 ventana de ajustes independiente) */
 "settings.window.title" = "Configuración";
@@ -288,3 +288,4 @@
 "settings.tab.history" = "Historial y captura";
 "settings.tab.backup" = "Copia de seguridad";
 "settings.tab.update" = "Actualización y acerca de";
+"settings.backup.error.last" = "Last backup failed: %@";

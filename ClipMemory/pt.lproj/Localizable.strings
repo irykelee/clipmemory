@@ -280,7 +280,7 @@
 
 /* Backup UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "Usada para criptografar o arquivo de backup. Você precisará dela novamente para restaurar.";
-"settings.backup.error.missingEncryptionKey" = "Não é possível exportar: chave de criptografia ausente. Redefina a criptografia em Ajustes.";
+"settings.backup.error.missingEncryptionKey" = "Não é possível exportar: chave de criptografia ausente. Feche o ClipMemory, abra o Acesso às Chaves, procure por 'com.clipmemory.app', exclua a entrada e reinicie o ClipMemory. O histórico da área de transferência ficará ilegível; você precisará começar do zero.";
 
 /* Abas da janela de ajustes (2026-07-25 janela de ajustes independente) */
 "settings.window.title" = "Configurações";
@@ -288,3 +288,4 @@
 "settings.tab.history" = "Histórico e captura";
 "settings.tab.backup" = "Backup";
 "settings.tab.update" = "Atualização e sobre";
+"settings.backup.error.last" = "Last backup failed: %@";

@@ -280,7 +280,7 @@
 
 /* Backup UX (H-2/H-3, 2026-07-23) — push requires 7-lang native speaker review per RELEASE_PUSH_CHECKLIST.md §7 */
 "settings.backup.passphrase.info" = "Used to encrypt the backup file. You'll need it again to restore.";
-"settings.backup.error.missingEncryptionKey" = "Cannot export: encryption key missing. Please reset encryption from Settings.";
+"settings.backup.error.missingEncryptionKey" = "Cannot export: encryption key missing. Quit ClipMemory, open Keychain Access, search for 'com.clipmemory.app', delete the entry, then relaunch ClipMemory. Your existing clipboard history will become unreadable; you will need to start fresh.";
 
 /* Settings window tabs (2026-07-25 independent settings window) */
 "settings.window.title" = "Settings";
@@ -288,3 +288,4 @@
 "settings.tab.history" = "History & Capture";
 "settings.tab.backup" = "Backup";
 "settings.tab.update" = "Update & About";
+"settings.backup.error.last" = "Last backup failed: %@";

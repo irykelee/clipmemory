@@ -432,13 +432,15 @@ struct ContentView: View {
                     refreshDisplayedItemsCacheSoon(source: "store.items")
                 }
             }
-            // BUG-004 (2026-07-21): @State didSet bypassed by Binding writes
-            // (TextField sets State.wrappedValue directly, skipping the
-            // setter). Use .onChange to observe via the view layer; matches
-            // QuickBarView.swift:57-58 established pattern.
-            .onChange(of: searchText) { _ in
-                keyboardSelectedIndex = nil
-            }
+            // B-2 (2026-07-27): the `searchText` change that cleared
+            // `keyboardSelectedIndex` was previously registered HERE in
+            // `withKeyAndSheets`, separately from the debounce + log handler
+            // in `attachLifecycle`. SwiftUI dispatches both observers, but
+            // splitting the same signal across two callbacks is fragile —
+            // the BUG-004 handler is now consolidated with the debounce
+            // observer in `attachLifecycle` (see below). The `collapsedGroups`
+            // and `searchTextDebounced` observers stay here because they
+            // are about the visible-index sequence, not the search field.
             // H-10 (2026-07-24 audit): collapsed-groups toggles invalidate the
             // visible-index sequence. Recompute on the next main hop so the
             // keyboard handlers pick up the new sequence immediately.
@@ -538,6 +540,20 @@ struct ContentView: View {
                 handleDayRolloverIfNeeded()
             }
             .onChange(of: searchText) { newValue in
+                // B-2 (2026-07-27): previously the `keyboardSelectedIndex`
+                // clear was registered in `withKeyAndSheets`, separately from
+                // the debounce + log here. Splitting the same signal across
+                // two observers was fragile — if a future refactor calls
+                // `searchText = ""` programmatically, the debounce async
+                // hop would land after the visible-index recompute, leaving
+                // the user on a stale selection for one frame. Now both
+                // side-effects run synchronously in the same callback:
+                // (1) clear the keyboard selection (BUG-004 — Binding
+                // bypasses @State didSet, so we observe via the view layer);
+                // (2) log the change for observability;
+                // (3) schedule the debounce hop (deferred to avoid "modifying
+                // state during view update" runtime warnings).
+                keyboardSelectedIndex = nil
                 UIObservability.logSearchChange(length: newValue.count)
                 DispatchQueue.main.async { self.debounceSearch(newValue) }
             }
@@ -719,5 +735,4 @@ struct ContentView: View {
             tagPickerItem: $tagPickerItem
         )
     }
-
-    }
+}

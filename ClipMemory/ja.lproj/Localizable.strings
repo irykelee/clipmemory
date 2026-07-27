@@ -275,7 +275,7 @@
 
 /* バックアップ UX (H-2/H-3, 2026-07-23) */
 "settings.backup.passphrase.info" = "バックアップファイルを暗号化するために使用されます。復元時に再度必要です。";
-"settings.backup.error.missingEncryptionKey" = "エクスポートできません: 暗号化キーが見つかりません。設定から暗号化をリセットしてください。";
+"settings.backup.error.missingEncryptionKey" = "エクスポートできません: 暗号化キーが見つかりません。ClipMemory を終了し、Keychain Access を開いて「com.clipmemory.app」を検索してエントリを削除し、ClipMemory を再起動してください。既存のクリップボード履歴は読み取れなくなります。新たに開始する必要があります。";
 
 /* 設定ウィンドウのタブ（2026-07-25 独立設定ウィンドウ） */
 "settings.window.title" = "設定";
@@ -283,3 +283,4 @@
 "settings.tab.history" = "履歴とキャプチャ";
 "settings.tab.backup" = "バックアップ";
 "settings.tab.update" = "アップデートと情報";
+"settings.backup.error.last" = "Last backup failed: %@";

@@ -221,7 +221,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showSettingsWindow() {
         // Close any existing settings window before opening a new one so
         // repeated invocations don't stack windows and leak the old reference.
-        settingsWindow?.close()
+        // B-6 (2026-07-27): unregister the old window first so the previous
+        // reference is cleared from WindowManager's secondaryWindows table —
+        // otherwise the closed-but-not-deallocated NSWindow would still be
+        // counted as "visible" and the main-window-close policy would never
+        // sink to .accessory.
+        if let old = settingsWindow {
+            windowManager?.unregisterSecondaryWindow(old)
+            old.close()
+        }
         settingsWindow = nil
 
         let rootView = SettingsRootView(
@@ -240,6 +248,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.contentView = NSHostingView(rootView: rootView)
         win.makeKeyAndOrderFront(nil)
         settingsWindow = win
+        // B-6 (2026-07-27): register so the main-window-close policy switch
+        // keeps the app activated while the settings window is on screen.
+        windowManager?.registerSecondaryWindow(win)
         NSApp.activate(ignoringOtherApps: true)
     }
 

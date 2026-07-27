@@ -588,7 +588,10 @@ final class BackupPackage {
         // would crash us with OOM during Data(contentsOf:). Cap matches
         // ImageStorage.saveImage so import never exceeds what save would have
         // produced.
-        let maxImageBytes = 50 * 1024 * 1024
+        // L-1 (2026-07-27): share the cap with ImageStorage instead of
+        // repeating the literal. The two were independent constants before
+        // and could drift if one was bumped without the other.
+        let maxImageBytes = ImageStorage.maxImageSize
         for file in files where file.hasSuffix(".png") {
             let target = imagesDirectory.appendingPathComponent(file)
             guard !FileManager.default.fileExists(atPath: target.path) else { continue }

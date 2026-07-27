@@ -240,6 +240,11 @@ struct L10n {
     // .encryption_key fallback file gone). Tells them to reset encryption
     // from Settings instead of retrying.
     static var settingsBackupErrorMissingEncryptionKey: String { string("settings.backup.error.missingEncryptionKey") }
+    // N-3 (2026-07-27): surfaces the last auto-backup failure in the
+    // settings footer. Replaces the prior silent `try?` swallow.
+    static func settingsBackupErrorLast(_ reason: String) -> String {
+        string("settings.backup.error.last", reason)
+    }
     static var settingsBackupExportDone: String { string("settings.backup.export.done") }
     static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ corrupt: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, corrupt, images) }
     static func settingsBackupLast(_ date: String) -> String { string("settings.backup.last", date) }
