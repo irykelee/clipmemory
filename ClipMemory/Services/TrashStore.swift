@@ -6,7 +6,7 @@ import os
 /// persistence, retention policy, and debounced save timer.
 ///
 /// All `@Published` writes happen on the main thread — callers must ensure this.
-final class TrashStore {
+final class TrashStore: ObservableObject {
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "Trash")
 
     /// Items moved to the recycle bin. Persisted separately from `items`.

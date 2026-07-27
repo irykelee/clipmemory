@@ -179,6 +179,56 @@ final class ClipboardStoreTrashTests: XCTestCase {
         XCTAssertEqual(d, "Recent")
     }
 
+    // MARK: - Trash refresh (2026-07-27 user-reported)
+
+    /// Trash refresh fix: after HIGH-1 extracted the trash into a separate
+    /// `TrashStore` ObservableObject, mutations to `trashStore.trashedItems`
+    /// stopped re-rendering views that observe `ClipboardStore`. The store
+    /// now forwards trashStore's `objectWillChange` through its own publisher
+    /// so SwiftUI views observing the parent get notified.
+    ///
+    /// We pin the contract here by counting publisher firings on a parent
+    /// `ClipboardStore` instance. Before the fix, `deletePermanently` would
+    /// only mutate `trashStore.trashedItems`, leaving the parent publisher
+    /// silent; after the fix, the parent's publisher fires when trash mutates.
+    func testDeletePermanentlyTriggersParentStorePublisher() {
+        let item = ClipboardItem(content: "to-delete", type: .text, deletedAt: Date())
+        store.trashedItems = [item]
+
+        // Subscribe to the parent's publisher BEFORE the mutation so we
+        // catch the change notification.
+        var parentFirings = 0
+        let cancellable = store.objectWillChange.sink { _ in parentFirings += 1 }
+        defer { _ = cancellable } // keep subscription alive across the mutation
+
+        // Delete the trashed item — the trashStore mutation should now
+        // propagate through the parent's publisher.
+        store.deletePermanently(item)
+
+        XCTAssertGreaterThanOrEqual(parentFirings, 1,
+            "deletePermanently must trigger the parent ClipboardStore publisher so views observing it re-render")
+        XCTAssertEqual(store.trashedItems.count, 0,
+            "sanity: trash must actually be empty after delete")
+    }
+
+    /// Same contract for `emptyTrash`. Pin both call paths.
+    func testEmptyTrashTriggersParentStorePublisher() {
+        store.trashedItems = [
+            ClipboardItem(content: "a", type: .text, deletedAt: Date()),
+            ClipboardItem(content: "b", type: .text, deletedAt: Date())
+        ]
+
+        var parentFirings = 0
+        let cancellable = store.objectWillChange.sink { _ in parentFirings += 1 }
+        defer { _ = cancellable }
+
+        store.emptyTrash()
+
+        XCTAssertGreaterThanOrEqual(parentFirings, 1,
+            "emptyTrash must trigger the parent ClipboardStore publisher")
+        XCTAssertEqual(store.trashedItems.count, 0)
+    }
+
     // MARK: - NEW-C (2026-07-27 review): periodic timer drives trash purge
 
     /// NEW-C: the 60s `cleanupTimer` (ClipboardStore.swift:312-321) now

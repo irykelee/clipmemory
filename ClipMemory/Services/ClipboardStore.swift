@@ -304,6 +304,26 @@ class ClipboardStore: ObservableObject {
         trashStore.contentCache = contentCache
         trashStore.rtfPlaintextCache = rtfPlaintextCache
 
+        // Trash refresh fix (2026-07-27 user-reported): after HIGH-1 extracted
+        // the trash into a separate `TrashStore` ObservableObject, mutations
+        // to `trashStore.trashedItems` (deletePermanently, emptyTrash, restore)
+        // stopped re-rendering views that observe `ClipboardStore`. ItemListView
+        // shows the trash via `store.trashedItems`, but since it only
+        // `@ObservedObject`s the parent `ClipboardStore`, the trashStore's
+        // `@Published var trashedItems` mutation went unobserved — a user
+        // clicking "delete permanently" saw no list refresh until something
+        // else (e.g. a clipboard capture) changed `items`.
+        //
+        // Forward trashStore's change notifications through our own
+        // publisher so any view observing `ClipboardStore` re-renders when
+        // the trash mutates. The lock-free `.sink` is fine here: SwiftUI
+        // dispatches `objectWillChange` on the main thread, which is
+        // exactly the contract `trashStore`'s `@Published` already honors
+        // (per the TrashStore file-level comment).
+        trashStore.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
         loadItems()
         loadTags()
         // loadTrashedItems + purgeExpiredTrash moved to TrashStore.init (HIGH-1)
@@ -354,6 +374,10 @@ class ClipboardStore: ObservableObject {
 
     private var cleanupTimer: DispatchSourceTimer?
     private var saveTimer: DispatchSourceTimer?
+    /// Trash refresh fix (2026-07-27): forwards `trashStore.objectWillChange`
+    /// to our own publisher so views observing `ClipboardStore` re-render
+    /// when the trash mutates (deletePermanently, emptyTrash, restore).
+    private var cancellables: Set<AnyCancellable> = []
     /// M-2 (2026-07-25 audit): reuse a single serial queue for the save timer
     /// instead of creating a new `DispatchQueue` on every `scheduleSave()` call.
     private let saveTimerQueue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
