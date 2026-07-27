@@ -61,6 +61,10 @@ struct HistoryCaptureSettingsView: View {
                     get: { store.ocrEnabled },
                     set: { store.ocrEnabled = $0 }
                 ))
+                Toggle(L10n.settingsHistoryCaptureOcrPreview, isOn: Binding(
+                    get: { ClipboardStore.shared.ocrPreviewEnabled },
+                    set: { ClipboardStore.shared.ocrPreviewEnabled = $0 }
+                ))
             } footer: { Text(L10n.settingsOcrHint).foregroundColor(.secondary) }
 
             // Sensitive content
