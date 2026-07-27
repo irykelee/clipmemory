@@ -16,10 +16,9 @@ class LanguageManager: ObservableObject {
 
     @Published var selectedLanguage: String {
         didSet {
-            // Class is @MainActor (Task 3), so this didSet runs on main.
-            // Publish to the off-main cache before the notification so any
-            // listener that reads `currentLanguageCode` in response sees the
-            // new value.
+            // @MainActor guarantees didSet runs on main; publish to the
+            // off-main cache before the notification so any listener that
+            // reads `currentLanguageCode` in response sees the new value.
             Self.currentLanguageCode = selectedLanguage
             UserDefaults.standard.set(selectedLanguage, forKey: "appLanguage")
             applyLanguage()
