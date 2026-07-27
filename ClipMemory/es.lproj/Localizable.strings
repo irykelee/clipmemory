@@ -289,3 +289,6 @@
 "settings.tab.backup" = "Copia de seguridad";
 "settings.tab.update" = "Actualización y acerca de";
 "settings.backup.error.last" = "Last backup failed: %@";
+"item.ocrProcessing" = "Procesando OCR…";
+"item.ocrUnreadable" = "Texto OCR ilegible";
+"settings.historyCapture.ocrPreview" = "Mostrar texto OCR en resultados de búsqueda de imágenes";

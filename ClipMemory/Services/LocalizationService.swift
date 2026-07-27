@@ -281,6 +281,15 @@ struct L10n {
     static var settingsOcrEnabled: String { string("settings.ocr.enabled") }
     static var settingsOcrHint: String { string("settings.ocr.hint") }
 
+    // MARK: - OCR Search Highlight
+    /// Placeholder shown under image thumbnails while OCR backfill is in progress.
+    static var itemOcrProcessing: String { string("item.ocrProcessing") }
+    /// Placeholder shown when OCR ciphertext is present but decrypt fails (corrupt
+    /// blob or key mismatch). Helps user distinguish "no OCR yet" from "broken OCR".
+    static var itemOcrUnreadable: String { string("item.ocrUnreadable") }
+    /// Settings toggle label — controls whether image search results show OCR
+    /// snippet + highlight. Display-only; filter still uses OCR text.
+    static var settingsHistoryCaptureOcrPreview: String { string("settings.historyCapture.ocrPreview") }
 
     static var quitApp: String { string("app.quit") }
     static var launchAtLogin: String { string("app.launch.at.login") }

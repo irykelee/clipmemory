@@ -284,3 +284,6 @@
 "settings.tab.backup" = "백업";
 "settings.tab.update" = "업데이트 및 정보";
 "settings.backup.error.last" = "Last backup failed: %@";
+"item.ocrProcessing" = "OCR 처리 중…";
+"item.ocrUnreadable" = "OCR 텍스트를 읽을 수 없음";
+"settings.historyCapture.ocrPreview" = "이미지 검색 결과에 OCR 텍스트 표시";

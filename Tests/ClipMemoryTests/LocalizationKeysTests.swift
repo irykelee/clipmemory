@@ -153,6 +153,35 @@ final class LocalizationKeysTests: XCTestCase {
         }
     }
 
+    /// OCR search highlight keys parity pin. Without this assertion, a missing
+    /// translation silently degrades to English rather than failing the build.
+    func testOcrSearchHighlightKeysExistInAllSevenLanguageFiles() throws {
+        let keys = [
+            "item.ocrProcessing",
+            "item.ocrUnreadable",
+            "settings.historyCapture.ocrPreview"
+        ]
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appResDir = projectRoot.appendingPathComponent("ClipMemory", isDirectory: true)
+
+        let languages = ["en", "es", "ja", "ko", "pt", "zh-Hans", "zh-Hant"]
+        for lang in languages {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            for key in keys {
+                XCTAssertTrue(
+                    content.contains("\"\(key)\""),
+                    "\(lang).lproj/Localizable.strings is missing key '\(key)'"
+                )
+            }
+        }
+    }
+
     /// 2026-07-25 plural-mechanism regression. The retired .stringsdict
     /// (`%#@count@`) path rendered "(null)" for any key missing from the
     /// bundled stringsdict (observed: settings maxItems picker on macOS 26).
