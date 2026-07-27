@@ -14,6 +14,7 @@ import SwiftUI
 /// neither has been set, so the row shows the `ProgressView()` loading
 /// state. Capturing the post-load error state requires a test seam and is
 /// deferred to Phase 2 (alongside the ContentView split).
+@MainActor
 final class TrashItemRowSnapshotTests: XCTestCase {
 
     override func setUp() {
@@ -27,7 +28,6 @@ final class TrashItemRowSnapshotTests: XCTestCase {
     }
 
     /// Renders an image-type item in its initial loading state.
-    @MainActor
     func testRendersImageInitialState() {
         let item = ClipboardItem(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,

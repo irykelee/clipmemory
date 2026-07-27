@@ -502,6 +502,7 @@ final class IntegrationTests: XCTestCase {
 
     // MARK: - G.8 Language switching
 
+    @MainActor
     func testLanguageManagerAvailableLanguages() {
         let mgr = LanguageManager.shared
         XCTAssertFalse(mgr.availableLanguages.isEmpty)
@@ -509,6 +510,7 @@ final class IntegrationTests: XCTestCase {
         XCTAssertTrue(mgr.availableLanguages.contains { $0.code == "zh-Hans" })
     }
 
+    @MainActor
     func testLanguageManagerCanChangeAndRevert() {
         let mgr = LanguageManager.shared
         let original = mgr.selectedLanguage

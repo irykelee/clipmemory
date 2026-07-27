@@ -8,6 +8,7 @@ import SwiftUI
 /// Each test uses an isolated ClipboardStore (MemoryStorageBackend) and
 /// deterministic snapshot baseline (fontScale=1.0, language=en) so tests
 /// are independent of global state from other test files (MED-2).
+@MainActor
 final class SettingsTabSnapshotTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
@@ -29,7 +30,6 @@ final class SettingsTabSnapshotTests: XCTestCase {
 
     // MARK: - GeneralSettingsView
 
-    @MainActor
     func testGeneralSettingsTabDefault() {
         let view = GeneralSettingsView(hotKeyManager: nil)
         let image = renderToImage(view, size: CGSize(width: 640, height: 480))
@@ -39,7 +39,6 @@ final class SettingsTabSnapshotTests: XCTestCase {
 
     // MARK: - HistoryCaptureSettingsView
 
-    @MainActor
     func testHistoryCaptureTabDefault() {
         let view = HistoryCaptureSettingsView(store: store)
         let image = renderToImage(view, size: CGSize(width: 640, height: 560))
@@ -49,7 +48,6 @@ final class SettingsTabSnapshotTests: XCTestCase {
 
     // MARK: - BackupSettingsView
 
-    @MainActor
     func testBackupTabDefault() {
         let view = BackupSettingsView(backupService: .shared)
         let image = renderToImage(view, size: CGSize(width: 640, height: 400))
@@ -59,7 +57,6 @@ final class SettingsTabSnapshotTests: XCTestCase {
 
     // MARK: - UpdateAboutSettingsView
 
-    @MainActor
     func testUpdateAboutTabDefault() {
         let view = UpdateAboutSettingsView()
         let image = renderToImage(view, size: CGSize(width: 640, height: 520))
@@ -69,7 +66,6 @@ final class SettingsTabSnapshotTests: XCTestCase {
 
     // MARK: - SettingsRootView
 
-    @MainActor
     func testSettingsRootViewGeneralTab() {
         let view = SettingsRootView(hotKeyManager: nil, store: store,
                                     backupService: .shared)

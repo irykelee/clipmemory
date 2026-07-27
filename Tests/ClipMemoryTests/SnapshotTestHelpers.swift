@@ -179,7 +179,7 @@ func assertImageSnapshot(
 ///
 /// Call from `setUp()` of any test class that calls `assertImageSnapshot`.
 /// Stores the original values and restores them in `tearDown()`.
-func snapshotTestSetUp() {
+@MainActor func snapshotTestSetUp() {
     let defaults = UserDefaults.standard
     snapshotTestSavedFontScale = defaults.double(forKey: "fontScale")
     snapshotTestSavedLanguage = LanguageManager.shared.selectedLanguage
@@ -188,7 +188,7 @@ func snapshotTestSetUp() {
     LanguageManager.shared.selectedLanguage = "en"
 }
 
-func snapshotTestTearDown() {
+@MainActor func snapshotTestTearDown() {
     let defaults = UserDefaults.standard
     if snapshotTestSavedFontScale != nil {
         defaults.set(snapshotTestSavedFontScale, forKey: "fontScale")
