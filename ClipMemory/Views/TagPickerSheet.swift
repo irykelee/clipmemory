@@ -18,7 +18,12 @@ struct TagPickerSheet: View {
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @State private var suggestionsToCreate: [String] = []
     @State private var suggestedNames: [String] = []
-    @State private var showNameSuggestions = false
+    @State private var showNameSuggestions = true
+    // 2026-07-27 (user-requested): default the detected-name panel to ON.
+    // NLTagger results are opt-out rather than opt-in now — users explicitly
+    // disabling is the path that requires the extra click, not enabling.
+    // The toggle is still disabled when suggestedNames is empty so the
+    // visual state matches reality (nothing to show → toggle hidden).
     @State private var isCreating = false
     @State private var newName = ""
     @State private var newColor: String = Tag.presetColors.first ?? "#4ECDC4"
@@ -50,6 +55,8 @@ struct TagPickerSheet: View {
                 }
                 .padding(16)
             }
+            Divider()
+            footer
         }
         .frame(width: 400, height: 500)
         .onAppear(perform: loadSuggestions)
@@ -81,14 +88,29 @@ struct TagPickerSheet: View {
                 .toggleStyle(.checkbox)
                 .font(.system(size: sz(11)))
                 .disabled(suggestedNames.isEmpty)
-            Button(L10n.buttonDone) { dismiss() }
-                .buttonStyle(.plain)
-                .font(.system(size: sz(12)))
-                .foregroundColor(.accentColor)
-                .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    /// 2026-07-27 (user-requested): the Done button used to live in the
+    /// header as a small accent-colored link — too easy to miss when the
+    /// sheet grew tall. Moved to a full-width pill button anchored at
+    /// the bottom of the window, matching macOS sheet conventions
+    /// (e.g. system Print / Save sheets).
+    private var footer: some View {
+        Button(action: { dismiss() }) {
+            Text(L10n.buttonDone)
+                .font(.system(size: sz(13), weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .keyboardShortcut(.defaultAction)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.bar)
     }
 
     // MARK: - Preview
