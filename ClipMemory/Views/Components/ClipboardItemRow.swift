@@ -219,6 +219,69 @@ struct ClipboardItemRow: View, Equatable {
         }
         return a
     }
+    /// Pure function for OCR text snippet + multi-match highlight (spec §4).
+    ///
+    /// Differs from `highlightedContent` in three ways to fix latent bugs:
+    /// 1. Uses `range(of:options:.caseInsensitive)` on the ORIGINAL string — never
+    ///    creates a `lowercased()` copy. BUG-008 (`highlightedContent` L199-206)
+    ///    cross-indexed lowercased() and original, trapping on Unicode case-
+    ///    folding that changes grapheme count (e.g. `İ` → `i̇`).
+    /// 2. Sanitizes NUL + non-newline control chars via `sanitizeOCR()` to
+    ///    prevent `AttributedString` init from crashing on OCR output containing
+    ///    unprintable bytes (review 4.2).
+    /// 3. Returns empty `AttributedString` when no match — caller decides whether
+    ///    to show a snippet at all. Misleading "first 120 chars" fallback was
+    ///    removed (review 4.3).
+    static func highlightedOcrContent(ocrText: String, highlight: String) -> AttributedString {
+        let cleaned = sanitizeOCR(ocrText)
+        if highlight.isEmpty {
+            return AttributedString(String(cleaned.prefix(120)))
+        }
+        // .diacriticInsensitive so Turkish İ/ı, German ß, and other case-fold
+        // pairs where lowercased() grows/drops combining marks still match
+        // (e.g. "İSTANBUL" vs "istanbul"). Operating on the original string —
+        // not a lowercased() copy — means we never cross-index strings of
+        // different grapheme counts, so BUG-008 cannot trap.
+        guard let firstMatch = cleaned.range(of: highlight, options: [.caseInsensitive, .diacriticInsensitive]) else {
+            return AttributedString("")
+        }
+        let matchStart = cleaned.distance(from: cleaned.startIndex, to: firstMatch.lowerBound)
+        let lo = max(0, matchStart - 40)
+        let hi = min(cleaned.count, matchStart + highlight.count + 80)
+        var excerpt = String(cleaned[
+            cleaned.index(cleaned.startIndex, offsetBy: lo)
+            ..< cleaned.index(cleaned.startIndex, offsetBy: hi)
+        ])
+        if lo > 0 { excerpt = "…" + excerpt }
+        if hi < cleaned.count { excerpt += "…" }
+
+        var attr = AttributedString(excerpt)
+        var ss = excerpt.startIndex
+        while let r = excerpt.range(of: highlight, options: [.caseInsensitive, .diacriticInsensitive], range: ss..<excerpt.endIndex) {
+            let startOff = excerpt.distance(from: excerpt.startIndex, to: r.lowerBound)
+            let endOff = excerpt.distance(from: excerpt.startIndex, to: r.upperBound)
+            let si = attr.index(attr.startIndex, offsetByCharacters: startOff)
+            let ei = attr.index(attr.startIndex, offsetByCharacters: min(endOff, excerpt.count))
+            if si < ei {
+                attr[si..<ei].backgroundColor = .cyan.opacity(0.3)
+                attr[si..<ei].foregroundColor = .primary
+            }
+            ss = r.upperBound
+        }
+        return attr
+    }
+
+    /// Strip NUL bytes and non-newline control characters. OCR may emit these;
+    /// `AttributedString` init traps on NUL. The `filter` line keeps any
+    /// character that is a letter/number/punctuation/symbol/whitespace — the
+    /// complement (control chars, format chars, etc.) is dropped. Whitespace
+    /// already includes newlines, so the "except newlines" carve-out falls out
+    /// automatically. No separate `replacingOccurrences("\0", "")` is needed
+    /// (review 3) — `filter` already covers it.
+    private static func sanitizeOCR(_ s: String) -> String {
+        s.filter { $0.isLetter || $0.isNumber || $0.isPunctuation || $0.isSymbol || $0.isWhitespace }
+    }
+
     private func maskContent(_ c: String) -> String { c.count <= 4 ? String(repeating: "\u{2022}", count: c.count) : String(c.prefix(2)) + String(repeating: "\u{2022}", count: c.count - 4) + String(c.suffix(2)) }
     private func maskedHighlightedContent(_ content: String, highlight: String, ctx: Int = 15) -> AttributedString {
         if highlight.isEmpty { var a = AttributedString(maskContent(content)); a.foregroundColor = .orange; return a }
