@@ -8,9 +8,13 @@ import os.log
 /// when the next UI bug or crash shows up, Console.app / `log show` has a
 /// snapshot of "the moment the app started" so we don't have to reconstruct.
 ///
-/// Caller must be on the main thread — `ClipboardStore.shared` is `@MainActor`
-/// bound (via `@Published`). `applicationDidFinishLaunching` runs on main, so
-/// `AppDelegate` is the natural call site.
+/// Caller must be on the main thread — `ClipboardStore.shared` exposes
+/// `@Published` properties which SwiftUI requires be mutated on the main
+/// thread. The 2026-07-27 Apple conformance audit (`docs/superpowers/audits
+/// /2026-07-27-apple-conformance-review.md`, F-1) flagged that the store is
+/// NOT yet annotated `@MainActor`; for now we rely on the same main-thread-
+/// only convention `applicationDidFinishLaunching` already honors
+/// (AppDelegate is the natural call site).
 ///
 /// Tests inject every dependency via parameters so live history stays
 /// untouched (per C1 test-never-touch-prod-data rule): `counts` decouples the
