@@ -119,6 +119,7 @@
 		C47E38577908698BFCED810A /* FontScaling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7027A04305067DB8A8656FC9 /* FontScaling.swift */; };
 		CA65D74CB492C0091B80457F /* QuickBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F26B268CA5CF8662C3C930 /* QuickBarView.swift */; };
 		CCCC9FFCF1EB417F74198F26 /* EncryptionFailedAlertThrottlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C6F13182E51140986AB1201 /* EncryptionFailedAlertThrottlerTests.swift */; };
+		CE551C64250E58C046EC78C3 /* LanguageManagerMainActorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD54AB9BB7B3D33A39561936 /* LanguageManagerMainActorTests.swift */; };
 		CFAB8A339B7A88AA06E4FF28 /* LocalizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1258099BA9879D8EF6A6F980 /* LocalizationService.swift */; };
 		D0C9F9F34B9E362919FC02D0 /* QuickBarViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C423473D7E4BD0CAE37EB7D3 /* QuickBarViewTests.swift */; };
 		D30B948C6C153685A64D6053 /* Audit20260720RegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A5663AC4E8DBEB2E909A774 /* Audit20260720RegressionTests.swift */; };
@@ -301,6 +302,7 @@
 		F7DDF8601E51F10DA99AD713 /* TagSuggestionTagNamesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagSuggestionTagNamesTests.swift; sourceTree = "<group>"; };
 		FA1089F9993E579DFD903B5F /* ClipboardItemRowOCRHighlightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItemRowOCRHighlightTests.swift; sourceTree = "<group>"; };
 		FCD6D7725E44DB26E42915AE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		FD54AB9BB7B3D33A39561936 /* LanguageManagerMainActorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageManagerMainActorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -404,6 +406,7 @@
 				F63B98DB67D54A9850C61262 /* IntegrationTests.swift */,
 				339849815227F36776F365DE /* ItemListViewTests.swift */,
 				36CE7F496DD53367BA7CDB15 /* KeychainKeyStoreTests.swift */,
+				FD54AB9BB7B3D33A39561936 /* LanguageManagerMainActorTests.swift */,
 				6DE0A37C5B380B1D3129ECBA /* LegacyImageMigrationTests.swift */,
 				D308A232E245A43D294015ED /* LocalizationKeysTests.swift */,
 				67B0F06D9FC3DEEF030857E5 /* NewTagLogicTests.swift */,
@@ -698,6 +701,7 @@
 				7B94EA436B48E0E9CCCA9C91 /* IntegrationTests.swift in Sources */,
 				0E128B64BAAE6325C6341781 /* ItemListViewTests.swift in Sources */,
 				41E3E624FF41DFD55E6AB2C6 /* KeychainKeyStoreTests.swift in Sources */,
+				CE551C64250E58C046EC78C3 /* LanguageManagerMainActorTests.swift in Sources */,
 				31D986129C9F15C065BEF82B /* LegacyImageMigrationTests.swift in Sources */,
 				BE8B6E90F6C7908C56E5FE5A /* LocalizationKeysTests.swift in Sources */,
 				F9D0CA5FF9ADDF71F71F9F72 /* NewTagLogicTests.swift in Sources */,
