@@ -328,6 +328,24 @@ final class OCRTests: XCTestCase {
 // always return nil to simulate the rare "key unavailable" failure mode
 // (e.g. Keychain locked during launchd start, per C-2). Other methods
 /// are not exercised by the H-4 path so they return harmless defaults.
+// MARK: - ocrPreviewEnabled (Task 1)
+
+func testOcrPreviewEnabledDefaultsToTrue() {
+    UserDefaults.standard.removeObject(forKey: "ocrPreviewEnabled")
+    let store = ClipboardStore.shared
+    XCTAssertEqual(store.ocrPreviewEnabled, true)
+}
+
+func testOcrPreviewEnabledSetterPersists() {
+    let store = ClipboardStore.shared
+    store.ocrPreviewEnabled = false
+    XCTAssertEqual(ClipboardStore.shared.ocrPreviewEnabled, false)
+    store.ocrPreviewEnabled = true
+    XCTAssertEqual(ClipboardStore.shared.ocrPreviewEnabled, true)
+}
+
+// MARK: - H-4 test stub
+
 private struct FailingEncryptCrypto: CryptoServiceProtocol {
     func encrypt(_ string: String) -> String? { nil }
     func decrypt(_ base64String: String) -> String? { nil }

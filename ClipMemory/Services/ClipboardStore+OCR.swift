@@ -6,6 +6,15 @@ import os
 extension ClipboardStore {
     private static let ocrEnabledKey = "ocrEnabled"
 
+    private static let ocrPreviewEnabledKey = "ocrPreviewEnabled"
+
+    /// Whether image search results show OCR text snippet + highlight under the
+    /// thumbnail. Display-only — filter still uses OCR text even when off. Default on.
+    var ocrPreviewEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: Self.ocrPreviewEnabledKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Self.ocrPreviewEnabledKey) }
+    }
+
     // H-4 (2026-07-24 audit): logger for OCR-specific failures. Mirrors the
     // category pattern used elsewhere (e.g. ImageStorage uses subsystem
     // "com.clipmemory.app" with its own category).
