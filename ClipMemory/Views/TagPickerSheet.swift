@@ -18,13 +18,13 @@ struct TagPickerSheet: View {
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @State private var suggestionsToCreate: [String] = []
     @State private var suggestedNames: [String] = []
-    // 2026-07-27 (user-reported): the detected-name panel is opt-in now
-    // after we concluded NLTagger's Chinese NER is unreliable (it
-    // returns common verbs like "is"/"has"/"this"/"各类"/"复制" as
-    // entities, and no 2026 on-device model closes that gap without
-    // significant startup/memory cost). The toggle stays for users
-    // with mostly-English content where NLTagger still works.
-    @State private var showNameSuggestions = false
+    // 2026-07-27 (user-decision): default ON. The user explicitly chose
+    // opt-out after two flip-flops in the same day; this default is now
+    // the stable answer and should not be changed without re-asking.
+    // Even though NLTagger's Chinese NER is unreliable, the user values
+    // surfacing the signal more than hiding it — and the toggle gives an
+    // immediate escape hatch for users who don't want it.
+    @State private var showNameSuggestions = true
     @State private var isCreating = false
     @State private var newName = ""
     @State private var newColor: String = Tag.presetColors.first ?? "#4ECDC4"
