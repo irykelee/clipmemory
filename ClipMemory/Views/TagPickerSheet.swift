@@ -122,13 +122,26 @@ struct TagPickerSheet: View {
         } else {
             preview = store.getDecryptedContent(item) ?? item.content
         }
-        return HStack(spacing: 8) {
-            Image(systemName: "doc.text").foregroundColor(.secondary)
-            Text(String(preview.prefix(60)))
-                .font(.system(size: sz(11)))
+        // 2026-07-27 (user-requested): the preview used to be truncated
+        // to 60 chars + lineLimit(1) — i.e. long content was completely
+        // hidden. Now shows full content with a 4-line cap + vertical
+        // scrollbar so the user can read enough to pick the right tags.
+        // The `isSensitive` branch still hides raw text (that path is
+        // intentional, not a truncation artifact).
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "doc.text")
                 .foregroundColor(.secondary)
-                .lineLimit(1)
-            Spacer()
+                .frame(width: 16, alignment: .leading)
+                .padding(.top, 2)
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(preview)
+                    .font(.system(size: sz(11)))
+                    .foregroundColor(.secondary)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(maxHeight: 80)
         }
         .padding(8)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
