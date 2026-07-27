@@ -182,6 +182,31 @@ final class TagPickerLogicTests: XCTestCase {
         XCTAssertTrue(store.items.first(where: { $0.id == item.id })?.tagIds.contains(existing.id) ?? false)
     }
 
+    /// Whitespace around a suggestion reuses the canonical existing tag name.
+    func testAttachOrCreateTagTrimsWhitespaceWhenMatchingExisting() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let existing = Tag(name: "abc", colorHex: "#4ECDC4")
+        store.addTag(existing)
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.addItem(item)
+
+        TagPickerLogic.attachOrCreateTag(name: "  abc  ", colorHex: "#FF6B6B", to: item.id, store: store)
+
+        XCTAssertEqual(store.tags.count, 1)
+        XCTAssertEqual(store.tags.values.first?.id, existing.id)
+    }
+
+    /// Whitespace around a new suggestion is removed before persistence.
+    func testAttachOrCreateTagTrimsWhitespaceWhenCreating() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let item = ClipboardItem(content: "hello", type: .text)
+        store.addItem(item)
+
+        TagPickerLogic.attachOrCreateTag(name: "  abc  ", colorHex: "#FF6B6B", to: item.id, store: store)
+
+        XCTAssertEqual(store.tags.values.first?.name, "abc")
+    }
+
     /// Fresh name → creates a new auto-suggested tag and attaches it.
     func testAttachOrCreateTagCreatesWhenMissing() {
         let store = ClipboardStore(backend: MemoryStorageBackend())

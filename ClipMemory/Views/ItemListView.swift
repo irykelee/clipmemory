@@ -49,6 +49,10 @@ struct ItemListView: View {
     @Binding var showingEmptyTrashAlert: Bool
     @Binding var tagPickerItem: ClipboardItem?
 
+    static func shouldToggleGroupHeader(searchText: String) -> Bool {
+        searchText.isEmpty
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if selectedTab == .trash {
@@ -91,7 +95,7 @@ struct ItemListView: View {
                                 // then reveals the user-collapsed state
                                 // unexpectedly. Skip the toggle during search.
                                 .onTapGesture {
-                                    if searchText.isEmpty { toggleGroup(section.group) }
+                                    if Self.shouldToggleGroupHeader(searchText: searchText) { toggleGroup(section.group) }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }

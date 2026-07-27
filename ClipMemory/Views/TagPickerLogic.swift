@@ -85,10 +85,12 @@ enum TagPickerLogic {
     /// auto-suggested tag and attach it. Guards against duplicates if the tag
     /// was created after the sheet's suggestion list was computed.
     static func attachOrCreateTag(name: String, colorHex: String, to itemId: UUID, store: ClipboardStore) {
-        if let existing = store.tags.values.first(where: { $0.name.lowercased() == name.lowercased() }) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if let existing = store.tags.values.first(where: { $0.name.lowercased() == trimmed.lowercased() }) {
             store.addTag(to: itemId, tagId: existing.id)
         } else {
-            let tag = makeTag(from: .create(name), colorHex: colorHex)
+            let tag = makeTag(from: .create(trimmed), colorHex: colorHex)
             store.addTag(tag)
             store.addTag(to: itemId, tagId: tag.id)
         }
