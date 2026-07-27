@@ -140,42 +140,37 @@ struct TagPickerSheet: View {
         }
         // 2026-07-27 (user-requested): the preview used to be truncated
         // to 60 chars + lineLimit(1) — i.e. long content was completely
-        // hidden. Now shows full content with a viewport sized to fit
-        // ~5 lines, persistent scrollbar (via NSScrollView wrapper) when
-        // content overflows, no scrollbar when content fits the viewport.
+        // hidden. Now shows full content with a 5-line viewport cap
+        // (~90pt at 13pt text) and SwiftUI's built-in persistent
+        // scroll indicator (`.scrollIndicators(.visible)` on macOS 13+).
         //
-        // Implementation note: do NOT also set `.lineLimit(N)` on the
-        // inner Text — when Text is hosted inside NSScrollView's
-        // documentView, lineLimit interacts badly with intrinsicContentSize
-        // measurement and the scrollbar thumb shows up at a wrong
-        // fraction. The viewport height alone is the right knob: Text
-        // wraps naturally to the available width and NSScrollView shows
-        // a persistent track + thumb when contentSize > viewportSize.
+        // Earlier attempts (3 commits) wrapped NSScrollView via
+        // NSViewRepresentable. They failed: (a) bare NSHostingView
+        // returns noIntrinsicMetric so NSScrollView can't compute thumb
+        // position; (b) subclass overrides that fix (a) triggered a
+        // crash on sidebar-tag re-tap (recursive fittingSize during
+        // sheet relayout). SwiftUI's native ScrollView with
+        // `.scrollIndicators(.visible)` is the documented macOS 13+
+        // path and avoids the AppKit bridge entirely.
         //
-        // Viewport: 5 lines of 11pt text at ~1.4 line-height ≈ 77pt +
-        // inner padding (~12pt) ≈ 90pt. Long enough for typical clipboard
-        // payloads (URLs, code snippets, error messages, multi-line text)
-        // without forcing scroll, short enough that overflow is obvious
-        // when it does happen.
+        // Viewport: 5 lines of 13pt text at ~1.4 line-height ≈ 91pt +
+        // inner padding ≈ 100pt. Caps are on the viewport (`.frame
+        // (maxHeight: 100)`), NOT on the Text — let Text wrap
+        // naturally to the available width.
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: "doc.text")
                 .foregroundColor(.secondary)
                 .frame(width: 16, alignment: .leading)
                 .padding(.top, 2)
-            ScrollViewWithVisibleIndicator(maxHeight: 90, content: {
-                // Per Apple docs on hosting SwiftUI Text in NSScrollView:
-                // fixedSize(horizontal:false, vertical:true) makes the
-                // Text wrap at the container width AND report its real
-                // intrinsic height — without it, the hosting view can't
-                // tell NSScrollView how tall the content actually is and
-                // the thumb position becomes meaningless.
+            ScrollView(.vertical) {
                 Text(preview)
                     .font(.system(size: sz(13)))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            })
+            }
+            .scrollIndicators(.visible)
+            .frame(maxHeight: 100)
         }
         .padding(8)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
