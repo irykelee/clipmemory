@@ -112,6 +112,7 @@
 		BB9FF1079BD872DBDAC1B04E /* DateHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0241038F2EDC1BDE095706D8 /* DateHelpers.swift */; };
 		BE3DDE35CD4BED9CB046EB7D /* TagPickerSheetSubmitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F6F06C2DED554D16098D76D /* TagPickerSheetSubmitTests.swift */; };
 		BE8B6E90F6C7908C56E5FE5A /* LocalizationKeysTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D308A232E245A43D294015ED /* LocalizationKeysTests.swift */; };
+		BF14526CC2D0A073E761B5AB /* ScrollViewWithVisibleIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82A22AF70613D07A5F6565D7 /* ScrollViewWithVisibleIndicator.swift */; };
 		BF8CC00B3E0A62207FBAE413 /* ClipboardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4499CFF1A5F60ED377D402EB /* ClipboardStore.swift */; };
 		BF99838DB5542B7C90464048 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CCB6D91997FD344D04495D /* HotKeyManager.swift */; };
 		C0EA88C949796FA870B5859B /* FeedProbeSizeCapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C1913FC2DBD92DCBE886654 /* FeedProbeSizeCapTests.swift */; };
@@ -224,6 +225,7 @@
 		77AE865BB02BB4CB6A78CACD /* UIObservabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIObservabilityTests.swift; sourceTree = "<group>"; };
 		7B1E4EEEB18148D99A25B6FD /* RichTextParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextParser.swift; sourceTree = "<group>"; };
 		814FC521762331411B0823A5 /* ClipMemoryTests.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClipMemoryTests.entitlements; sourceTree = "<group>"; };
+		82A22AF70613D07A5F6565D7 /* ScrollViewWithVisibleIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollViewWithVisibleIndicator.swift; sourceTree = "<group>"; };
 		82E1F13FC9F44D0F33F760C5 /* ConditionalClearSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConditionalClearSheet.swift; sourceTree = "<group>"; };
 		839CBF46AA3C928BA9AE620F /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = ko; path = ko.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
 		83F24A9E0B6E2D942D6515B4 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = en; path = en.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
@@ -462,6 +464,7 @@
 				BDF83CE3799A1C6382C0CF3D /* FlowLayout.swift */,
 				4C63DA186B15CCC8937235FB /* ImagePreviewPanel.swift */,
 				39AEF14CE6FF2688FFE2407F /* LogoView.swift */,
+				82A22AF70613D07A5F6565D7 /* ScrollViewWithVisibleIndicator.swift */,
 				D40D56734E97E291C6762F45 /* SidebarTagRow.swift */,
 				A3E34CEE9BF8F658996168D5 /* TagChip.swift */,
 				B24088F3A6601E3C8E2EC1F6 /* TagChipStack.swift */,
@@ -771,6 +774,7 @@
 				20F149EFA2B358945D47AE79 /* OCRService.swift in Sources */,
 				CA65D74CB492C0091B80457F /* QuickBarView.swift in Sources */,
 				FFAC7E103564C9614B82F89B /* RichTextParser.swift in Sources */,
+				BF14526CC2D0A073E761B5AB /* ScrollViewWithVisibleIndicator.swift in Sources */,
 				05B522BBFEF4D65D6406CD6B /* ServiceProtocols.swift in Sources */,
 				6918B08B90FB33A00F652210 /* SettingsRootView.swift in Sources */,
 				75B8EB8E40E9E24D5A74C858 /* SidebarTagFilter.swift in Sources */,

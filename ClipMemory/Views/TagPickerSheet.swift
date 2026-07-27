@@ -140,24 +140,31 @@ struct TagPickerSheet: View {
         }
         // 2026-07-27 (user-requested): the preview used to be truncated
         // to 60 chars + lineLimit(1) — i.e. long content was completely
-        // hidden. Now shows full content with a 4-line cap + vertical
+        // hidden. Now shows full content with a line cap + vertical
         // scrollbar so the user can read enough to pick the right tags.
         // The `isSensitive` branch still hides raw text (that path is
         // intentional, not a truncation artifact).
+        //
+        // Bumped maxHeight 80 → 140 so 4-5 lines of mixed CJK + Latin
+        // (the common clipboard payload shape) fit without forcing the
+        // user to scroll. macOS SwiftUI's `ScrollView` shows its
+        // indicator as an overlay that only appears while scrolling,
+        // so wrapping the ScrollView in a ScrollViewWrapper that draws
+        // a persistent track + thumb is the only way to make the bar
+        // visible without user interaction — see ScrollViewWrapper.
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: "doc.text")
                 .foregroundColor(.secondary)
                 .frame(width: 16, alignment: .leading)
                 .padding(.top, 2)
-            ScrollView(.vertical, showsIndicators: true) {
+            ScrollViewWithVisibleIndicator(maxHeight: 140, content: {
                 Text(preview)
                     .font(.system(size: sz(11)))
                     .foregroundColor(.secondary)
                     .lineLimit(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
-            }
-            .frame(maxHeight: 80)
+            })
         }
         .padding(8)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
