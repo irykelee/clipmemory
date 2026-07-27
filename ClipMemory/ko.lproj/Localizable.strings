@@ -216,6 +216,7 @@
 "tagFilter.clearAll" = "모두 해제";
 "tagFilter.removeTag" = "태그 제거";
 "tagFilter.count" = "%d / 총 %d개 표시 중";
+"tagPicker.done.noChangesHint" = "변경 사항 없음";
 "newTag.title" = "새 태그";
 "newTag.create" = "만들기";
 "newTag.customColor" = "사용자 지정 색상";

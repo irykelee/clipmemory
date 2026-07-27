@@ -220,6 +220,7 @@
 "tagFilter.clearAll" = "全部清除";
 "tagFilter.removeTag" = "移除标签";
 "tagFilter.count" = "显示 %d / 共 %d 条";
+"tagPicker.done.noChangesHint" = "未做任何修改";
 "newTag.title" = "新建标签";
 "newTag.create" = "创建";
 "newTag.customColor" = "自定义颜色";

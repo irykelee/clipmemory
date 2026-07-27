@@ -226,6 +226,7 @@
 "tagFilter.clearAll" = "Clear all";
 "tagFilter.removeTag" = "Remove tag";
 "tagFilter.count" = "Showing %d of %d items";
+"tagPicker.done.noChangesHint" = "No changes to save";
 "newTag.title" = "New Tag";
 "newTag.create" = "Create";
 "newTag.customColor" = "Custom Color";

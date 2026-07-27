@@ -220,6 +220,7 @@
 "tagFilter.clearAll" = "Quitar todo";
 "tagFilter.removeTag" = "Quitar etiqueta";
 "tagFilter.count" = "Mostrando %d de %d elementos";
+"tagPicker.done.noChangesHint" = "Sin cambios para guardar";
 "newTag.title" = "Nueva etiqueta";
 "newTag.create" = "Crear";
 "newTag.customColor" = "Color personalizado";

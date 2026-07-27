@@ -216,6 +216,7 @@
 "tagFilter.clearAll" = "すべて解除";
 "tagFilter.removeTag" = "タグを削除";
 "tagFilter.count" = "%d / 全 %d 件を表示中";
+"tagPicker.done.noChangesHint" = "変更がありません";
 "newTag.title" = "新しいタグ";
 "newTag.create" = "作成";
 "newTag.customColor" = "カスタムカラー";

@@ -215,6 +215,7 @@
 "tagFilter.clearAll" = "全部清除";
 "tagFilter.removeTag" = "移除標籤";
 "tagFilter.count" = "顯示 %d / 共 %d 條";
+"tagPicker.done.noChangesHint" = "未做任何修改";
 "newTag.title" = "新建標籤";
 "newTag.create" = "建立";
 "newTag.customColor" = "自訂顏色";

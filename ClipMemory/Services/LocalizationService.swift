@@ -183,6 +183,11 @@ struct L10n {
     /// that the list is filtered, not truncated.
     static func tagFilterCount(_ shown: Int, _ total: Int) -> String { string("tagFilter.count", shown, total) }
 
+    // MARK: - Tag picker sheet footer (2026-07-27)
+    // Done button tooltip when no changes have been made. Helps users
+    // understand why the button is grey instead of being confused by it.
+    static var tagPickerDoneNoChangesHint: String { string("tagPicker.done.noChangesHint") }
+
     static var alertClearTitle: String { string("alert.clear.title") }
     static func alertClearMessage(_ count: Int) -> String { plural("alert.clear.message", count) }
     static var alertClearNone: String { string("alert.clear.none") }

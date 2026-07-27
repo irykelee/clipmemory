@@ -28,6 +28,11 @@ struct TagPickerSheet: View {
     @State private var newName = ""
     @State private var newColor: String = Tag.presetColors.first ?? "#4ECDC4"
     @State private var pendingDelete: Tag?
+    // 2026-07-27 (user-requested): track whether the user actually
+    // mutated anything in the sheet so the Done button can be disabled
+    // on a no-op close. Set by toggleAttachment / delete-confirmation
+    // paths; cleared never (the user either did something or didn't).
+    @State private var hasChanges = false
 
     private var allTagsSorted: [Tag] {
         store.tags.values.sorted { $0.createdAt > $1.createdAt }
@@ -69,6 +74,7 @@ struct TagPickerSheet: View {
                     store.deleteTag(id: tag.id)
                 }
                 pendingDelete = nil
+                hasChanges = true
             }
         } message: {
             if let tag = pendingDelete {
@@ -98,16 +104,26 @@ struct TagPickerSheet: View {
     /// sheet grew tall. Moved to a full-width pill button anchored at
     /// the bottom of the window, matching macOS sheet conventions
     /// (e.g. system Print / Save sheets).
+    ///
+    /// 2026-07-27 (user-requested): split into Cancel + Done. Done is
+    /// disabled (grey) until the user actually mutates something — a
+    /// user who opens the sheet to *browse* shouldn't get a prominent
+    /// "Done" button that suggests an action was taken. ⌘↩ still
+    /// dismisses via the defaultAction shortcut on Done; Esc dismisses
+    /// via cancel-style close on Cancel.
     private var footer: some View {
-        Button(action: { dismiss() }) {
-            Text(L10n.buttonDone)
-                .font(.system(size: sz(13), weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+        HStack(spacing: 8) {
+            Button(L10n.buttonCancel) { dismiss() }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .keyboardShortcut(.cancelAction)
+            Button(L10n.buttonDone) { dismiss() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(!hasChanges)
+                .keyboardShortcut(.defaultAction)
+                .help(hasChanges ? L10n.buttonDone : L10n.tagPickerDoneNoChangesHint)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-        .keyboardShortcut(.defaultAction)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(.bar)
@@ -262,6 +278,7 @@ struct TagPickerSheet: View {
         } else {
             store.addTag(to: item.id, tagId: tag.id)
         }
+        hasChanges = true
     }
 
     // MARK: - Create new
