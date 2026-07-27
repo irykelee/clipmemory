@@ -333,6 +333,41 @@ struct ClipboardItemRow: View, Equatable {
         return attr
     }
 
+    /// QuickBar variant: 60-char total window (±20 around match) for the 340px
+    /// popover (spec §3.1 review 3.1). Reuses `sanitizeOCR` and the same
+    /// caseInsensitive-on-original rule.
+    static func highlightedOcrContentNarrow(ocrText: String, highlight: String) -> AttributedString {
+        let cleaned = sanitizeOCR(ocrText)
+        if highlight.isEmpty { return AttributedString(String(cleaned.prefix(40))) }
+        guard let firstMatch = cleaned.range(of: highlight, options: .caseInsensitive) else {
+            return AttributedString("")
+        }
+        let matchStart = cleaned.distance(from: cleaned.startIndex, to: firstMatch.lowerBound)
+        let lo = max(0, matchStart - 20)
+        let hi = min(cleaned.count, matchStart + highlight.count + 40)
+        var excerpt = String(cleaned[
+            cleaned.index(cleaned.startIndex, offsetBy: lo)
+            ..< cleaned.index(cleaned.startIndex, offsetBy: hi)
+        ])
+        if lo > 0 { excerpt = "…" + excerpt }
+        if hi < cleaned.count { excerpt += "…" }
+
+        var attr = AttributedString(excerpt)
+        var ss = excerpt.startIndex
+        while let r = excerpt.range(of: highlight, options: .caseInsensitive, range: ss..<excerpt.endIndex) {
+            let startOff = excerpt.distance(from: excerpt.startIndex, to: r.lowerBound)
+            let endOff = excerpt.distance(from: excerpt.startIndex, to: r.upperBound)
+            let si = attr.index(attr.startIndex, offsetByCharacters: startOff)
+            let ei = attr.index(attr.startIndex, offsetByCharacters: min(endOff, excerpt.count))
+            if si < ei {
+                attr[si..<ei].backgroundColor = .cyan.opacity(0.3)
+                attr[si..<ei].foregroundColor = .primary
+            }
+            ss = r.upperBound
+        }
+        return attr
+    }
+
     /// Strip NUL bytes and non-newline control characters. OCR may emit these;
     /// `AttributedString` init traps on NUL. The `filter` line keeps any
     /// character that is a letter/number/punctuation/symbol/whitespace — the

@@ -394,10 +394,19 @@ struct QuickBarRow: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 if item.type == .image {
-                    Text(L10n.itemImage)
-                        .font(.system(size: sz(12)))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                    let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty,
+                       store.ocrPreviewEnabled,
+                       let ocrText = store.getDecryptedOcrText(item) {
+                        Text(ClipboardItemRow.highlightedOcrContentNarrow(ocrText: ocrText, highlight: trimmed))
+                            .font(.system(size: sz(12)))
+                            .lineLimit(1)
+                    } else {
+                        Text(L10n.itemImage)
+                            .font(.system(size: sz(12)))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
                 } else if item.type == .richText {
                     // CLIP-1 main + CLIP-2 (2026-07-24 audit): use the cached,
                     // decrypted plaintext path. The prior `plainTextFromRTFFallback`
