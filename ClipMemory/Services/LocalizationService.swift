@@ -68,7 +68,11 @@ struct L10n {
     private static var cachedBundle: Bundle?
 
     private static var currentBundle: Bundle {
-        let lang = LanguageManager.shared.selectedLanguage
+        // Read the nonisolated mirror instead of the @MainActor-isolated
+        // @Published property. The mirror is updated by LanguageManager.didSet
+        // before the .LanguageDidChange notification fires, so any consumer
+        // reacting to the notification sees a consistent value.
+        let lang = LanguageManager.currentLanguageCode
         cacheLock.lock()
         defer { cacheLock.unlock() }
         if let bundle = cachedBundle, cachedLanguage == lang {
