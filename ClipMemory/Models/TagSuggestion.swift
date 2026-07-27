@@ -174,6 +174,15 @@ enum TagSuggestion {
             guard length >= 2 else { return true }
             let token = String(s[tokenRange]).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !token.isEmpty else { return true }
+            // 2026-07-27 (user-reported): NLTagger over-predicts English
+            // function words as name entities ("is", "has", "this", "that",
+            // "the", "a", etc.). A small bounded stop-list filters the
+            // most common offenders. Bounded deliberately — adding to
+            // this list is a maintenance burden the user explicitly
+            // pushed back on. Cases match so "The" / "THE" / "the" all
+            // hit. The toggle in TagPickerSheet stays opt-in for users
+            // who want this signal at all.
+            if stopwords.contains(token.lowercased()) { return true }
             if seen.insert(token).inserted {
                 ordered.append(token)
             }
@@ -181,6 +190,16 @@ enum TagSuggestion {
         }
         return ordered
     }
+
+    /// Bounded English stop-list for the names channel. Kept short on
+    /// purpose — the user explicitly chose against expanding this into a
+    /// full blacklist. Add only when a real-world false positive shows
+    /// up repeatedly across multiple users; do not pre-populate.
+    private static let stopwords: Set<String> = [
+        "is", "has", "this", "that", "the", "a", "an",
+        "and", "or", "but", "if", "in", "on", "at", "to",
+        "for", "of", "with", "by", "from", "as"
+    ]
 
     // MARK: - Heuristic rules (reused by detectKind; preserved verbatim)
 
