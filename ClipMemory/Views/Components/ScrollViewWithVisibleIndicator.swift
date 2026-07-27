@@ -1,27 +1,32 @@
 import SwiftUI
 import AppKit
 
-/// A vertical scroll view that always shows its scroll indicator, even
-/// when the content fits the visible area. SwiftUI's built-in `ScrollView`
-/// (macOS) only shows the indicator as a transient overlay while the user
-/// is actively scrolling, which makes it invisible at rest — a user looking
-/// for the scrollbar to discover hidden content can't find one.
+/// A vertical scroll view that always shows its scrollbar track when
+/// content overflows the viewport, and hides it cleanly when content
+/// fits — matching macOS standard behavior (Finder, Mail, Xcode all do
+/// this). On macOS 13.0+ deployment target, the canonical path is to
+/// wrap NSScrollView via NSViewRepresentable and host SwiftUI content
+/// in an NSHostingView subclass that reports its measured size via
+/// `intrinsicContentSize` — otherwise NSScrollView can't compute the
+/// thumb position correctly and the user sees the thumb at the wrong
+/// fraction of the track.
 ///
-/// This wrapper wraps an `NSScrollView` via `NSViewRepresentable`, sets
-/// `hasVerticalScroller = true`, and forces the scroller style to
-/// `.legacy` (the always-visible bar). The view fits its content's natural
-/// height up to `maxHeight`, then clips and lets NSScrollView handle the
-/// overflow with a persistent track + thumb on the right edge.
+/// Apple's docs (developer.apple.com/documentation/appkit/nsscrollview)
+/// and the SwiftUI hosting guidance both confirm this is the canonical
+/// pattern: bare `NSHostingView` returns `NSView.noIntrinsicMetric`,
+/// so a subclass must override `intrinsicContentSize` and `fittingSize`
+/// to propagate the wrapped SwiftUI view's measured height to the
+/// containing scroll view.
 ///
-/// Use this in any place where the user needs a visible affordance that
-/// content extends past the visible area — most useful in compact detail
-/// panes where a hidden ScrollView is worse than a clipped one (because
-/// the user can't tell there's more to read).
+/// Use this for any compact detail pane where the user needs to know
+/// whether content extends past the visible area. Pairs with a fixed
+/// `maxHeight` to set the viewport — NSScrollView clips the rest and
+/// the persistent thumb + track signals overflow.
 struct ScrollViewWithVisibleIndicator<Content: View>: NSViewRepresentable {
     let content: () -> Content
     let maxHeight: CGFloat
 
-    init(maxHeight: CGFloat = 140,
+    init(maxHeight: CGFloat = 90,
          @ViewBuilder content: @escaping () -> Content) {
         self.maxHeight = maxHeight
         self.content = content
@@ -31,31 +36,36 @@ struct ScrollViewWithVisibleIndicator<Content: View>: NSViewRepresentable {
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = false
+        scrollView.autohidesScrollers = true   // hide when content fits; show when overflow
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
-        scrollView.scrollerStyle = .legacy  // always-visible track + thumb
-        scrollView.verticalScrollElasticity = .none
 
-        let documentView = NSHostingView<Content>(rootView: content())
-        documentView.translatesAutoresizingMaskIntoConstraints = true
-        documentView.frame = NSRect(x: 0, y: 0, width: 200, height: 200)
+        // SelfSizingHostingView: subclass NSHostingView so its
+        // intrinsicContentSize reflects the wrapped SwiftUI content's
+        // measured height. Without this, NSScrollView has no way to
+        // compute the thumb position relative to content height, and
+        // the user sees a thumb at a fraction that doesn't match the
+        // actual scrollable area. (Apple docs — NSScrollView hosting
+        // SwiftUI guidance.)
+        let documentView = SelfSizingHostingView(rootView: content())
         scrollView.documentView = documentView
 
-        // Listen for content size changes so we can re-clamp the document
-        // view height to the natural intrinsic height (capped by maxHeight).
-        context.coordinator.setupObservation(documentView: documentView, scrollView: scrollView, maxHeight: maxHeight)
+        // Constrain the scroll view's height to maxHeight. NSScrollView's
+        // contentSize is then driven by documentView.intrinsicContentSize
+        // (subclass), which the SwiftUI view computes on layout pass.
+        context.coordinator.maxHeight = maxHeight
+        context.coordinator.scrollView = scrollView
+        context.coordinator.documentView = documentView
 
         return scrollView
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        // Refresh the document view with the latest SwiftUI content and
-        // re-fit its frame.
-        if let documentView = nsView.documentView as? NSHostingView<Content> {
+        // Refresh the document view with the latest SwiftUI content.
+        if let documentView = nsView.documentView as? SelfSizingHostingView<Content> {
             documentView.rootView = content()
             DispatchQueue.main.async {
-                Coordinator.fitDocumentView(documentView: documentView, in: nsView, maxHeight: maxHeight)
+                context.coordinator.refit()
             }
         }
     }
@@ -63,30 +73,50 @@ struct ScrollViewWithVisibleIndicator<Content: View>: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator {
+        weak var scrollView: NSScrollView?
+        weak var documentView: NSView?
+        var maxHeight: CGFloat = 90
         private var observation: NSKeyValueObservation?
 
-        func setupObservation(documentView: NSView, scrollView: NSScrollView, maxHeight: CGFloat) {
-            observation = documentView.observe(\.intrinsicContentSize, options: [.initial, .new]) { _, _ in
-                DispatchQueue.main.async {
-                    Self.fitDocumentView(documentView: documentView, in: scrollView, maxHeight: maxHeight)
-                }
-            }
-        }
-
-        deinit {
-            observation?.invalidate()
-        }
-
-        /// Fit the document view's frame to its natural intrinsic content
-        /// height (clamped to maxHeight) and the scroll view's current
-        /// width, then re-position so the document is anchored at top-left.
-        static func fitDocumentView(documentView: NSView, in scrollView: NSScrollView, maxHeight: CGFloat) {
+        /// Re-fit the document view's frame to its intrinsic height
+        /// (capped by maxHeight) and the scroll view's current width,
+        /// then refresh the scrollers so the thumb reflects the new
+        /// content height.
+        func refit() {
+            guard let scrollView = scrollView, let documentView = documentView else { return }
             let width = scrollView.contentView.bounds.width
             guard width > 0 else { return }
             let naturalHeight = documentView.intrinsicContentSize.height
-            let height = max(0, min(naturalHeight, maxHeight))
-            documentView.frame = NSRect(x: 0, y: 0, width: width, height: max(naturalHeight, height))
+            documentView.frame = NSRect(
+                x: 0, y: 0,
+                width: width,
+                height: max(naturalHeight, maxHeight)
+            )
             scrollView.reflectScrolledClipView(scrollView.contentView)
         }
+    }
+}
+
+/// NSHostingView subclass that reports its intrinsic content height so
+/// NSScrollView can position the thumb correctly. The bare
+/// `NSHostingView` returns `NSView.noIntrinsicMetric` for both axes,
+/// which leaves NSScrollView unable to compute the document's natural
+/// height — see Apple docs on hosting SwiftUI in AppKit scroll views.
+final class SelfSizingHostingView<Content: View>: NSHostingView<Content> {
+    override var intrinsicContentSize: NSSize {
+        // fittingSize runs the SwiftUI layout pass with the current
+        // bounds width and asks for the height the wrapped view needs.
+        // Return that height; width stays unconstrained (noIntrinsicMetric)
+        // because NSScrollView's content view dictates width.
+        let size = self.fittingSize
+        return NSSize(width: NSView.noIntrinsicMetric, height: size.height)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        // Invalidate intrinsicContentSize on width change so the next
+        // layout pass re-measures wrapped Text at the new width. Without
+        // this, dynamic text changes won't reflow.
+        self.invalidateIntrinsicContentSize()
     }
 }

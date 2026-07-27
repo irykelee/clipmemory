@@ -163,8 +163,14 @@ struct TagPickerSheet: View {
                 .frame(width: 16, alignment: .leading)
                 .padding(.top, 2)
             ScrollViewWithVisibleIndicator(maxHeight: 90, content: {
+                // Per Apple docs on hosting SwiftUI Text in NSScrollView:
+                // fixedSize(horizontal:false, vertical:true) makes the
+                // Text wrap at the container width AND report its real
+                // intrinsic height — without it, the hosting view can't
+                // tell NSScrollView how tall the content actually is and
+                // the thumb position becomes meaningless.
                 Text(preview)
-                    .font(.system(size: sz(11)))
+                    .font(.system(size: sz(13)))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
