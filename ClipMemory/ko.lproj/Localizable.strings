@@ -212,6 +212,10 @@
 "sidebar.tag.accessibility.label" = "태그 %@, %d개 항목";
 "sidebar.tag.accessibility.selected" = "선택됨";
 "sidebar.tag.accessibility.unselected" = "선택되지 않음";
+"tagFilter.active.title" = "태그로 필터링";
+"tagFilter.clearAll" = "모두 해제";
+"tagFilter.removeTag" = "태그 제거";
+"tagFilter.count" = "%d / 총 %d개 표시 중";
 "newTag.title" = "새 태그";
 "newTag.create" = "만들기";
 "newTag.customColor" = "사용자 지정 색상";

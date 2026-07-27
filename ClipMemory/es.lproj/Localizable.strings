@@ -216,6 +216,10 @@
 "sidebar.tag.accessibility.label" = "Etiqueta %@, %d elementos";
 "sidebar.tag.accessibility.selected" = "seleccionada";
 "sidebar.tag.accessibility.unselected" = "no seleccionada";
+"tagFilter.active.title" = "Filtrando por etiqueta";
+"tagFilter.clearAll" = "Quitar todo";
+"tagFilter.removeTag" = "Quitar etiqueta";
+"tagFilter.count" = "Mostrando %d de %d elementos";
 "newTag.title" = "Nueva etiqueta";
 "newTag.create" = "Crear";
 "newTag.customColor" = "Color personalizado";

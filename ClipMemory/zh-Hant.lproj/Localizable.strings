@@ -211,6 +211,10 @@
 "sidebar.tag.accessibility.label" = "標籤 %@，%d 項";
 "sidebar.tag.accessibility.selected" = "已選中";
 "sidebar.tag.accessibility.unselected" = "未選中";
+"tagFilter.active.title" = "按標籤過濾";
+"tagFilter.clearAll" = "全部清除";
+"tagFilter.removeTag" = "移除標籤";
+"tagFilter.count" = "顯示 %d / 共 %d 條";
 "newTag.title" = "新建標籤";
 "newTag.create" = "建立";
 "newTag.customColor" = "自訂顏色";

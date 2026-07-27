@@ -738,27 +738,105 @@ struct ContentView: View {
     /// ContentView keeps ownership so filterItems / search debouncing / day
     /// rollover stay in one place — the ViewModel collapse is Phase 5+ scope.
     private var itemList: some View {
-        ItemListView(
-            store: store,
-            selectedTab: selectedTab,
-            displayedItems: displayedItems,
-            groupedItemsWithIndex: groupedItemsWithIndex,
-            batchAllPinned: batchAllPinned,
-            searchText: $searchText,
-            searchTextDebounced: $searchTextDebounced,
-            collapsedGroups: $collapsedGroups,
-            selectedItems: $selectedItems,
-            keyboardSelectedIndex: $keyboardSelectedIndex,
-            lastCopiedId: $lastCopiedId,
-            scrollAnchor: $scrollAnchor,
-            revealedItems: $revealedItems,
-            pendingClearMode: $pendingClearMode,
-            pendingTypeClear: $pendingTypeClear,
-            showingConditionalClear: $showingConditionalClear,
-            showingDeleteAlert: $showingDeleteAlert,
-            itemToDelete: $itemToDelete,
-            showingEmptyTrashAlert: $showingEmptyTrashAlert,
-            tagPickerItem: $tagPickerItem
+        VStack(spacing: 0) {
+            // 2026-07-27 (user-requested): surface the active tag filter at
+            // the top of the list so users don't read a short list as
+            // "missing content". When `selectedTagIds` is empty the chip
+            // strip renders nothing (no extra vertical space). When set,
+            // the strip shows one chip per selected tag with an inline ×,
+            // plus a "clear all" affordance and a count badge.
+            activeTagFilterStrip
+            ItemListView(
+                store: store,
+                selectedTab: selectedTab,
+                displayedItems: displayedItems,
+                groupedItemsWithIndex: groupedItemsWithIndex,
+                batchAllPinned: batchAllPinned,
+                searchText: $searchText,
+                searchTextDebounced: $searchTextDebounced,
+                collapsedGroups: $collapsedGroups,
+                selectedItems: $selectedItems,
+                keyboardSelectedIndex: $keyboardSelectedIndex,
+                lastCopiedId: $lastCopiedId,
+                scrollAnchor: $scrollAnchor,
+                revealedItems: $revealedItems,
+                pendingClearMode: $pendingClearMode,
+                pendingTypeClear: $pendingTypeClear,
+                showingConditionalClear: $showingConditionalClear,
+                showingDeleteAlert: $showingDeleteAlert,
+                itemToDelete: $itemToDelete,
+                showingEmptyTrashAlert: $showingEmptyTrashAlert,
+                tagPickerItem: $tagPickerItem
+            )
+        }
+    }
+
+    /// Active tag filter chip strip + count badge. Renders nothing when
+    /// `selectedTagIds` is empty. See itemList for context.
+    @ViewBuilder
+    private var activeTagFilterStrip: some View {
+        if !selectedTagIds.isEmpty {
+            let activeTags = sortedTags.filter { selectedTagIds.contains($0.id) }
+            HStack(spacing: 8) {
+                Text(L10n.tagFilterActiveTitle)
+                    .font(.system(size: sz(11), weight: .medium))
+                    .foregroundColor(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(activeTags, id: \.id) { tag in
+                            activeTagChip(tag: tag)
+                        }
+                    }
+                }
+                Button(action: { selectedTagIds.removeAll() }) {
+                    Text(L10n.tagFilterClearAll)
+                        .font(.system(size: sz(11), weight: .medium))
+                        .foregroundColor(.accentColor)
+                }
+                .buttonStyle(.plain)
+                .help(L10n.tagFilterClearAll)
+                .accessibilityLabel(L10n.tagFilterClearAll)
+                Spacer(minLength: 8)
+                Text(L10n.tagFilterCount(displayedItems.count, store.items.count))
+                    .font(.system(size: sz(11)))
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+            .overlay(Divider(), alignment: .bottom)
+        }
+    }
+
+    /// Single tag chip in the active-filter strip. Color dot + name + × to
+    /// remove this tag from the filter.
+    private func activeTagChip(tag: Tag) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(Color(hex: tag.colorHex))
+                .frame(width: 8, height: 8)
+            Text(tag.name)
+                .font(.system(size: sz(11)))
+                .lineLimit(1)
+            Button(action: { selectedTagIds.remove(tag.id) }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: sz(10)))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(L10n.tagFilterRemoveTag)
+            .accessibilityLabel(Text(L10n.tagFilterRemoveTag) + Text(", ") + Text(tag.name))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(hex: tag.colorHex).opacity(0.18))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color(hex: tag.colorHex).opacity(0.5), lineWidth: 0.5)
         )
     }
 }

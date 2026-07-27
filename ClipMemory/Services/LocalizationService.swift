@@ -172,6 +172,17 @@ struct L10n {
     static var newTagCreate: String { string("newTag.create") }
     static var newTagCustomColor: String { string("newTag.customColor") }
 
+    // MARK: - Active tag filter chip strip (2026-07-27)
+    // Surfaces the currently-applied tag filter at the top of the item list
+    // so users don't read a short list as "missing content". Each chip has
+    // an inline × to remove the tag, plus a "clear all" affordance.
+    static var tagFilterActiveTitle: String { string("tagFilter.active.title") }
+    static var tagFilterClearAll: String { string("tagFilter.clearAll") }
+    static var tagFilterRemoveTag: String { string("tagFilter.removeTag") }
+    /// "Showing X of Y items" — pins the count so users can see at a glance
+    /// that the list is filtered, not truncated.
+    static func tagFilterCount(_ shown: Int, _ total: Int) -> String { string("tagFilter.count", shown, total) }
+
     static var alertClearTitle: String { string("alert.clear.title") }
     static func alertClearMessage(_ count: Int) -> String { plural("alert.clear.message", count) }
     static var alertClearNone: String { string("alert.clear.none") }

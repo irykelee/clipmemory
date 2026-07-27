@@ -212,6 +212,10 @@
 "sidebar.tag.accessibility.label" = "タグ %@、%d 件";
 "sidebar.tag.accessibility.selected" = "選択中";
 "sidebar.tag.accessibility.unselected" = "未選択";
+"tagFilter.active.title" = "タグで絞り込み";
+"tagFilter.clearAll" = "すべて解除";
+"tagFilter.removeTag" = "タグを削除";
+"tagFilter.count" = "%d / 全 %d 件を表示中";
 "newTag.title" = "新しいタグ";
 "newTag.create" = "作成";
 "newTag.customColor" = "カスタムカラー";

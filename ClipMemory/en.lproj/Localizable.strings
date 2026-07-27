@@ -222,6 +222,10 @@
 "sidebar.tag.accessibility.label" = "Tag %@, %d items";
 "sidebar.tag.accessibility.selected" = "selected";
 "sidebar.tag.accessibility.unselected" = "not selected";
+"tagFilter.active.title" = "Filtering by tag";
+"tagFilter.clearAll" = "Clear all";
+"tagFilter.removeTag" = "Remove tag";
+"tagFilter.count" = "Showing %d of %d items";
 "newTag.title" = "New Tag";
 "newTag.create" = "Create";
 "newTag.customColor" = "Custom Color";
