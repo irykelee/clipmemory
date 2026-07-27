@@ -637,6 +637,24 @@ struct ContentView: View {
                     .font(.system(size: sz(12)))
                     .focused($isSearchFocused)
                     .frame(width: 180)
+                // 2026-07-27 (user-requested): one-tap clear of the search
+                // field instead of backspacing character by character.
+                // Hidden when the field is empty so the toolbar stays
+                // visually quiet when no search is active. Mirrors the
+                // QuickBar × at QuickBarView.swift:110-115 so both search
+                // surfaces have a consistent interaction model.
+                if !searchText.isEmpty {
+                    Button(action: {
+                        searchText = ""
+                        isSearchFocused = true
+                    }, label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: sz(11)))
+                    })
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
