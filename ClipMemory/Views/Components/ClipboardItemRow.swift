@@ -417,7 +417,8 @@ struct ClipboardItemRow: View, Equatable {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .top) {
                     if item.type == .image {
-                        Group {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Group {
                             if let ns = loadedImage {
                                 Image(nsImage: ns)
                                     .resizable().aspectRatio(contentMode: .fit)
@@ -500,12 +501,13 @@ struct ClipboardItemRow: View, Equatable {
                         // when the cached AttributedString is non-empty — the
                         // helper returns empty for unrendered cases
                         // (no search text / no OCR / OCR produced nothing).
-                        if !cachedHighlightedOcr.characters.isEmpty {
-                            Text(cachedHighlightedOcr)
+                        let cached = cachedHighlightedOcr
+                        if !cached.characters.isEmpty {
+                            Text(cached)
                                 .font(.system(size: sz(11)))
                                 .lineLimit(2)
-                                .padding(.top, 2)
                         }
+                        }  // closes VStack wrapping the image branch
                     } else if item.type == .richText {
                         if item.isSensitive && !isRevealed {
                             Text(longPressing ? cachedHighlighted : cachedMaskedHighlighted)
