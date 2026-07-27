@@ -35,6 +35,24 @@ final class WindowManagerTests: XCTestCase {
                       "Re-showing after close should reuse the existing window, not create a new one")
     }
 
+    // MARK: - QuickBar reopen (2026-07-24 fix at QuickBarView:197-198 + WindowManager:108-112)
+    //
+    // The QuickBar reopen fix is two lines at QuickBarView.swift:197-198
+    // (`onTap` calls `onDismiss()` then `showMainWindow()`) plus the
+    // hosting-controller reuse at WindowManager.swift:108-112. Both
+    // private properties (`quickBarPopover`, `quickBarHostingController`,
+    // `statusItem`) are unreachable from `@testable import`, and XCTest's
+    // headless context can't display an NSPopover to assert the visual
+    // reopen path. A meaningful regression test would require either
+    // (a) refactoring WindowManager to expose a thin observer hook for
+    // "hosting controller reused", or (b) a UI test bundle (XCUITest)
+    // that drives the actual popover show/hide cycle.
+    //
+    // Both are out of proportion for the bug class — a 2-line fix whose
+    // correctness is verifiable by inspection of the closure body. The
+    // gap is documented here so a future maintainer can decide whether
+    // the regression risk warrants the refactor or the UI test bundle.
+
     // MARK: - B-6 (2026-07-27): secondary-window registration
 
     /// Closing the main window while a registered secondary window is still

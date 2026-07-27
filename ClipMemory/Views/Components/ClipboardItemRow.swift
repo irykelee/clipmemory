@@ -339,7 +339,11 @@ struct ClipboardItemRow: View, Equatable {
     static func highlightedOcrContentNarrow(ocrText: String, highlight: String) -> AttributedString {
         let cleaned = sanitizeOCR(ocrText)
         if highlight.isEmpty { return AttributedString(String(cleaned.prefix(40))) }
-        guard let firstMatch = cleaned.range(of: highlight, options: .caseInsensitive) else {
+        // NEW-F (2026-07-27 review): QuickBar's narrow variant used only
+        // `.caseInsensitive`, while the main-list `highlightedOcrContent`
+        // adds `.diacriticInsensitive`. The mismatch meant "café" / "CAFE"
+        // could match in the main list but not in QuickBar. Align options.
+        guard let firstMatch = cleaned.range(of: highlight, options: [.caseInsensitive, .diacriticInsensitive]) else {
             return AttributedString("")
         }
         let matchStart = cleaned.distance(from: cleaned.startIndex, to: firstMatch.lowerBound)
@@ -354,7 +358,7 @@ struct ClipboardItemRow: View, Equatable {
 
         var attr = AttributedString(excerpt)
         var ss = excerpt.startIndex
-        while let r = excerpt.range(of: highlight, options: .caseInsensitive, range: ss..<excerpt.endIndex) {
+        while let r = excerpt.range(of: highlight, options: [.caseInsensitive, .diacriticInsensitive], range: ss..<excerpt.endIndex) {
             let startOff = excerpt.distance(from: excerpt.startIndex, to: r.lowerBound)
             let endOff = excerpt.distance(from: excerpt.startIndex, to: r.upperBound)
             let si = attr.index(attr.startIndex, offsetByCharacters: startOff)

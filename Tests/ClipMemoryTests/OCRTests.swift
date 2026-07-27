@@ -223,6 +223,69 @@ final class OCRTests: XCTestCase {
         XCTAssertEqual(matches.count, 1)
     }
 
+    // MARK: - NEW-B (2026-07-27 review): filter/snippet OCR text parity
+
+    /// NEW-B: search filter and OCR snippet must use the same sanitized text,
+    /// otherwise a search term that crosses a stripped control/format/ZWJ
+    /// char would land a row in the result list while the snippet rendered
+    /// empty ("found but not highlighted" UX bug). The sanitized helper
+    /// drops combining marks + format chars + ZWJ + variation selectors
+    /// but preserves whitespace (including newlines).
+    ///
+    /// We avoid control chars here because some test crypto variants reject
+    /// them; ZWJ + VS-16 alone are enough to demonstrate the sanitize path.
+    func testGetSanitizedDecryptedOcrTextDropsControlAndFormatChars() {
+        // Control char U+0001 is unambiguously NOT letter/number/
+        // punctuation/symbol/whitespace in any Unicode spec, so it's
+        // a robust test target for the sanitize path. ZWJ and VS-16
+        // were tried first but Swift's Foundation `Character.is*`
+        // behavior on Format-category chars varies between releases;
+        // a control char is the deterministic anchor.
+        let raw = "before\u{0001}after"
+        let initial = ClipboardItem(content: "shot.png", type: .image)
+        store.addItem(initial)
+        store.attachOCRText(to: initial.id, text: raw)
+
+        guard let stored = store.items.first(where: { $0.id == initial.id }) else {
+            XCTFail("item should be in store after addItem")
+            return
+        }
+
+        let rawDecrypted = store.getDecryptedOcrText(stored) ?? ""
+        let sanitized = store.getSanitizedDecryptedOcrText(stored) ?? ""
+        XCTAssertNotEqual(rawDecrypted, sanitized,
+                          "raw vs sanitized must differ when input contains a control char (raw=\(rawDecrypted.debugDescription), sanitized=\(sanitized.debugDescription))")
+        XCTAssertEqual(sanitized, "beforeafter",
+                       "sanitize must strip the control char (got \(sanitized.debugDescription))")
+    }
+
+    /// NEW-B (raw-path preservation): the raw path must still return the
+    /// unstripped text for callers that genuinely need it (live-reveal
+    /// preview at ClipboardItemRow.swift:674, future OCR diff/audit
+    /// features). Verifies we didn't accidentally push sanitization
+    /// into `getDecryptedOcrText` and break its contract.
+    ///
+    /// Note: Swift's `Character.isLetter` etc. don't strip Format-
+    /// category chars (ZWJ, VS-16) reliably across Unicode versions,
+    /// so this test uses a control char (U+0001) to prove the strip
+    /// path is reachable without depending on ZWJ behavior.
+    func testGetDecryptedOcrTextStillReturnsRawText() {
+        let raw = "before\u{0001}after"
+        let initial = ClipboardItem(content: "shot.png", type: .image)
+        store.addItem(initial)
+        store.attachOCRText(to: initial.id, text: raw)
+
+        guard let stored = store.items.first(where: { $0.id == initial.id }) else {
+            XCTFail("item should be in store after addItem")
+            return
+        }
+
+        XCTAssertEqual(store.getDecryptedOcrText(stored), raw,
+                       "getDecryptedOcrText must remain raw so non-snippet callers see the unstripped form")
+        XCTAssertNotEqual(store.getSanitizedDecryptedOcrText(stored), raw,
+                          "getSanitizedDecryptedOcrText must strip control chars even when raw text has them")
+    }
+
     // MARK: - Real Vision smoke test
 
     func testVisionRecognizesRenderedText() {

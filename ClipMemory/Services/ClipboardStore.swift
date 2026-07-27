@@ -314,7 +314,16 @@ class ClipboardStore: ObservableObject {
         cleanupTimer?.schedule(deadline: .now() + 60, repeating: 60)
         cleanupTimer?.setEventHandler { [weak self] in
             DispatchQueue.main.async { [weak self] in
-                self?.cleanupExpiredItems()
+                guard let self else { return }
+                self.cleanupExpiredItems()
+                // NEW-C (2026-07-27 review): HIGH-1 extracted trash to
+                // TrashStore and `purgeExpiredTrash` is only called from
+                // TrashStore.init. If the app stays running past
+                // trashRetentionDays (default 3), expired trashed items
+                // accumulate until next launch. Drive it from the same
+                // 60s cleanup timer so long-lived sessions don't pile
+                // up old trash on disk.
+                self.trashStore.purgeExpiredTrash()
             }
         }
         cleanupTimer?.resume()
@@ -389,20 +398,28 @@ class ClipboardStore: ObservableObject {
     }
 
     /// Handles image migration completion — updates isEncrypted flags for migrated image items.
-    @objc private func handleImageMigrationCompleted(_ notification: Notification) {
-        guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }
-        let migratedSet = Set(migratedFilenames)
-
+/// NEW-A (2026-07-27 review): the `ImageStorageMigrationCompleted` notification is
+/// posted via `DispatchQueue.main.async` from `ImageStorage.migrateFromLegacyIfNeeded`,
+/// but the observer registration at :288 does not pin the handler to any queue —
+/// it executes on the posting thread. Direct mutation of `@Published var items`
+/// from any non-main thread violates SwiftUI's contract (the same hazard CRIT-1
+/// called out for `.cryptoKeyPrepared`). Pin to main here too so a future caller
+/// that posts the notification from a background queue cannot race the UI.
+@objc private func handleImageMigrationCompleted(_ notification: Notification) {
+    guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }
+    let migratedSet = Set(migratedFilenames)
+    DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
         var didMigrateAny = false
-        for (index, item) in items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
-            items[index] = item.with(isEncrypted: true)
+        for (index, item) in self.items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
+            self.items[index] = item.with(isEncrypted: true)
             didMigrateAny = true
         }
-
         if didMigrateAny {
-            scheduleSave()
+            self.scheduleSave()
         }
     }
+}
 
     /// H-2 (2026-07-25 audit): retry captures that were deferred while the
     /// encryption key was still being prepared. On success, re-feed every
@@ -1460,7 +1477,7 @@ class ClipboardStore: ObservableObject {
         pinnedItems = items.filter { $0.isPinned }
     }
 
-    private func cleanupExpiredItems() {
+    internal func cleanupExpiredItems() {
         let expiredImageFilenames = items.filter { $0.isExpired && $0.type == .image }.map { $0.content }
         let expiredIds = Set(items.filter { $0.isExpired }.map { $0.id })
         if expiredImageFilenames.isEmpty && expiredIds.isEmpty { return }

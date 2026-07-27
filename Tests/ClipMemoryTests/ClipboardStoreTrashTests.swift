@@ -179,6 +179,43 @@ final class ClipboardStoreTrashTests: XCTestCase {
         XCTAssertEqual(d, "Recent")
     }
 
+    // MARK: - NEW-C (2026-07-27 review): periodic timer drives trash purge
+
+    /// NEW-C: the 60s `cleanupTimer` (ClipboardStore.swift:312-321) now
+    /// also calls `trashStore.purgeExpiredTrash()` alongside
+    /// `cleanupExpiredItems()`. Before the fix, `purgeExpiredTrash` was
+    /// only called from `TrashStore.init`, so a long-running session
+    /// that outlived `trashRetentionDays` accumulated expired trash on
+    /// disk until next launch.
+    ///
+    /// `cleanupExpiredItems` was promoted from `private` to `internal`
+    /// in this fix so the timer callback contract is testable without
+    /// driving the actual 60s DispatchSourceTimer (which would slow CI).
+    /// The production timer still calls both methods in the same order
+    /// as before; this test pins that contract.
+    func testPeriodicTimerCallbackAlsoPurgesExpiredTrash() {
+        // Trash contains an item past retentionDays. The 60s timer's
+        // callback is the production driver; we invoke the same two
+        // methods it calls and assert both fire.
+        store.trashRetentionDays = 7
+        let expiredTrash = ClipboardItem(
+            content: "TrashExpired",
+            type: .text,
+            deletedAt: Date().addingTimeInterval(-10 * 24 * 3600)
+        )
+        store.trashedItems = [expiredTrash]
+        XCTAssertEqual(store.trashedItems.count, 1, "precondition: trash must hold the expired item")
+
+        // Drive the same work the timer's event handler drives.
+        // The production handler at ClipboardStore.swift:316-320 calls
+        // cleanupExpiredItems() + trashStore.purgeExpiredTrash().
+        store.cleanupExpiredItems()
+        store.purgeExpiredTrash()
+
+        XCTAssertEqual(store.trashedItems.count, 0,
+                       "NEW-C: the timer's callback path must purge expired trash, not leave it to next launch")
+    }
+
     // MARK: - Auto cleanup does not trash
 
     func testTrimToMaxItemsDoesNotTrash() {

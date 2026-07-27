@@ -82,6 +82,30 @@ extension ClipboardStore {
         return plaintext
     }
 
+    /// NEW-B (2026-07-27 review): search filter (ContentView) and OCR snippet
+    /// (ClipboardItemRow) used to disagree on what counts as "the OCR text" —
+    /// filter tested raw text via `localizedCaseInsensitiveContains`, while
+    /// the snippet path sanitized (dropped ZWJ / combining marks / control
+    /// chars) before matching. A search term spanning a stripped character
+    /// would mark the row as a match while the snippet rendered empty — the
+    /// "found but not highlighted" UX bug.
+    ///
+    /// Both paths now consume the same sanitized OCR text. If a caller still
+    /// wants raw text (tests, live-reveal path), use `getDecryptedOcrText`
+    /// directly.
+    func getSanitizedDecryptedOcrText(_ item: ClipboardItem) -> String? {
+        guard let raw = getDecryptedOcrText(item) else { return nil }
+        return Self.sanitizeOCR(raw)
+    }
+
+    /// NEW-B: shared sanitization for OCR text. Drops control chars,
+    /// combining marks, format chars, and ZWJ / variation selectors that
+    /// Vision occasionally emits. Whitespace (including newlines) is
+    /// preserved so multi-line OCR output renders cleanly.
+    private static func sanitizeOCR(_ s: String) -> String {
+        s.filter { $0.isLetter || $0.isNumber || $0.isPunctuation || $0.isSymbol || $0.isWhitespace }
+    }
+
     /// Self-healing backfill: OCR every image item not yet attempted. Runs on a
     /// serial background queue on each launch; per-item `ocrAttempted` marking
     /// (instead of a global one-shot flag) means a quit mid-run, a later import,

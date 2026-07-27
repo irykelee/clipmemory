@@ -160,6 +160,21 @@ struct QuickBarView: View {
                                     isSelected: keyboardSelectedIndex == index,
                                     isCopied: lastCopiedId == item.id,
                                     searchText: searchText,
+                                    // NEW-E (2026-07-27 review): thread the
+                                    // debounced text into QuickBarRow so the
+                                    // snippet doesn't flash a stale highlight
+                                    // during the 250ms debounce window when
+                                    // `searchText` updates keystroke-by-keystroke
+                                    // but the filter only re-runs after the
+                                    // debounce fires. The filter itself at :48
+                                    // already reads `searchTextDebounced`, but
+                                    // the row body at :397/:431 still used raw
+                                    // `searchText` — so a row could be re-rendered
+                                    // mid-window with a search term the filter
+                                    // hadn't yet applied, producing a brief
+                                    // "highlight on a row that's about to
+                                    // disappear" flash.
+                                    searchTextDebounced: searchTextDebounced,
                                     sz: sz,
                                     onTap: {
                                         lastCopiedId = item.id
@@ -365,6 +380,11 @@ struct QuickBarRow: View {
     let isSelected: Bool
     let isCopied: Bool
     let searchText: String
+    // NEW-E (2026-07-27 review): debounced copy of searchText threaded from
+    // the parent QuickBarView. Row body uses this for snippet rendering so
+    // the highlight doesn't flash during the 250ms filter debounce window.
+    // The filter at :48 already uses the parent's debounced state directly.
+    let searchTextDebounced: String
     let sz: (CGFloat) -> CGFloat
     let onTap: () -> Void
 
@@ -394,7 +414,7 @@ struct QuickBarRow: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 if item.type == .image {
-                    let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let trimmed = searchTextDebounced.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty,
                        store.ocrPreviewEnabled,
                        let ocrText = store.getDecryptedOcrText(item) {
@@ -428,7 +448,7 @@ struct QuickBarRow: View {
                             .lineLimit(1)
                     }
                 } else {
-                    highlightedText((store.getDecryptedContent(item) ?? "").replacingOccurrences(of: "\n", with: " "), highlight: searchText, fontSize: sz(12))
+                    highlightedText((store.getDecryptedContent(item) ?? "").replacingOccurrences(of: "\n", with: " "), highlight: searchTextDebounced, fontSize: sz(12))
                         .lineLimit(1)
                 }
             }

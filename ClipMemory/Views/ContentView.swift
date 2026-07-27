@@ -279,7 +279,14 @@ struct ContentView: View {
                 let searchableText = item.type == .richText
                     ? store.getRTFPlaintext(item)
                     : (store.getDecryptedContent(item) ?? "")
-                let ocrText = item.type == .image ? (store.getDecryptedOcrText(item) ?? "") : ""
+                // NEW-B (2026-07-27 review): match against the same sanitized
+                // OCR text the snippet renders. Previously we used the raw
+                // decrypted text here, but `highlightedOcrContent` strips
+                // control/format/ZWJ chars before matching — a search term
+                // spanning a stripped character would land a row in the
+                // result list while the snippet rendered empty ("found but
+                // not highlighted").
+                let ocrText = item.type == .image ? (store.getSanitizedDecryptedOcrText(item) ?? "") : ""
                 if !searchableText.localizedCaseInsensitiveContains(searchTextDebounced),
                    !ocrText.localizedCaseInsensitiveContains(searchTextDebounced) { return false }
             }
