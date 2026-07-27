@@ -140,30 +140,35 @@ struct TagPickerSheet: View {
         }
         // 2026-07-27 (user-requested): the preview used to be truncated
         // to 60 chars + lineLimit(1) — i.e. long content was completely
-        // hidden. Now shows full content with a line cap + vertical
-        // scrollbar so the user can read enough to pick the right tags.
-        // The `isSensitive` branch still hides raw text (that path is
-        // intentional, not a truncation artifact).
+        // hidden. Now shows full content with a viewport sized to fit
+        // ~5 lines, persistent scrollbar (via NSScrollView wrapper) when
+        // content overflows, no scrollbar when content fits the viewport.
         //
-        // Bumped maxHeight 80 → 140 so 4-5 lines of mixed CJK + Latin
-        // (the common clipboard payload shape) fit without forcing the
-        // user to scroll. macOS SwiftUI's `ScrollView` shows its
-        // indicator as an overlay that only appears while scrolling,
-        // so wrapping the ScrollView in a ScrollViewWrapper that draws
-        // a persistent track + thumb is the only way to make the bar
-        // visible without user interaction — see ScrollViewWrapper.
+        // Implementation note: do NOT also set `.lineLimit(N)` on the
+        // inner Text — when Text is hosted inside NSScrollView's
+        // documentView, lineLimit interacts badly with intrinsicContentSize
+        // measurement and the scrollbar thumb shows up at a wrong
+        // fraction. The viewport height alone is the right knob: Text
+        // wraps naturally to the available width and NSScrollView shows
+        // a persistent track + thumb when contentSize > viewportSize.
+        //
+        // Viewport: 5 lines of 11pt text at ~1.4 line-height ≈ 77pt +
+        // inner padding (~12pt) ≈ 90pt. Long enough for typical clipboard
+        // payloads (URLs, code snippets, error messages, multi-line text)
+        // without forcing scroll, short enough that overflow is obvious
+        // when it does happen.
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: "doc.text")
                 .foregroundColor(.secondary)
                 .frame(width: 16, alignment: .leading)
                 .padding(.top, 2)
-            ScrollViewWithVisibleIndicator(maxHeight: 140, content: {
+            ScrollViewWithVisibleIndicator(maxHeight: 90, content: {
                 Text(preview)
                     .font(.system(size: sz(11)))
                     .foregroundColor(.secondary)
-                    .lineLimit(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             })
         }
         .padding(8)
