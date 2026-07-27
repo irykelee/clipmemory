@@ -2,8 +2,8 @@ import XCTest
 @testable import ClipMemory
 
 /// Validates SidebarTagFilter.apply — the pure helper behind ContentView's
-/// multi-section sidebar (类型 AND 标签段内 OR). Date + search filters
-/// remain in ContentView's filterItems; this helper covers only the
+/// multi-section sidebar (类型 AND 标签段内 AND / intersection). Date + search
+/// filters remain in ContentView's filterItems; this helper covers only the
 /// sidebar-driven filter dimensions so each can be unit-tested in isolation.
 final class SidebarTagFilterTests: XCTestCase {
 
@@ -54,15 +54,21 @@ final class SidebarTagFilterTests: XCTestCase {
         XCTAssertEqual(result.first?.content, "a")
     }
 
-    // MARK: - Multiple tags = OR within section
+    // MARK: - Multiple tags = AND within section (intersection)
 
-    /// Two tags selected → items matching EITHER survive (union).
-    /// This is "段内 OR" per the design — users select multiple tag rows
-    /// in the sidebar to broaden the match.
-    func testMultipleSelectedTagsAreOR() {
+    /// Two tags selected → items must carry BOTH (intersection).
+    /// 2026-07-27 (user-requested): changed from OR (union) to AND. Rationale:
+    /// OR turned "中国大陆" + "2026" into "any tag matches either" — the
+    /// 2026 tag alone matched every 2026 item worldwide, making the
+    /// 中国大陆 selection meaningless. AND treats tag selection as a
+    /// precise filter (must carry every selected tag), matching how
+    /// users compose multi-tag filters in Finder smart folders and
+    /// Gmail multi-label search.
+    func testMultipleSelectedTagsAreAND() {
         let items = [
             makeItem("a", tagIds: [tagA.id]),
             makeItem("b", tagIds: [tagB.id]),
+            makeItem("ab", tagIds: [tagA.id, tagB.id]),
             makeItem("c", tagIds: [tagC.id]),
             makeItem("d", tagIds: [])
         ]
@@ -70,7 +76,26 @@ final class SidebarTagFilterTests: XCTestCase {
                                             typeFilter: nil,
                                             pinnedOnly: false,
                                             selectedTagIds: [tagA.id, tagB.id])
-        XCTAssertEqual(Set(result.map(\.content)), Set(["a", "b"]))
+        // Only "ab" carries both tagA and tagB. Items with just one
+        // tag are filtered out — that was the user's complaint about
+        // "中国大陆" + "2026" widening rather than narrowing.
+        XCTAssertEqual(Set(result.map(\.content)), Set(["ab"]))
+    }
+
+    /// AND boundary: an item with [A, B, C] still matches when filter is
+    /// [A, B] — superset is fine. Only items missing one of the selected
+    /// tags get dropped.
+    func testMultipleSelectedTagsAllowSuperset() {
+        let items = [
+            makeItem("ab", tagIds: [tagA.id, tagB.id]),
+            makeItem("abc", tagIds: [tagA.id, tagB.id, tagC.id]),
+            makeItem("a", tagIds: [tagA.id])
+        ]
+        let result = SidebarTagFilter.apply(items: items,
+                                            typeFilter: nil,
+                                            pinnedOnly: false,
+                                            selectedTagIds: [tagA.id, tagB.id])
+        XCTAssertEqual(Set(result.map(\.content)), Set(["ab", "abc"]))
     }
 
     // MARK: - Type tab AND tag section

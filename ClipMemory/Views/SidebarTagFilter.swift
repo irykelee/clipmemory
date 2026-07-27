@@ -11,7 +11,7 @@ import Foundation
 /// - `typeFilter` (caller passes the tab's `typeFilter` for non-`.all` /
 ///   non-`.pinned` tabs) — item's type must match.
 /// - `selectedTagIds` (any UUID set, possibly empty) — if non-empty,
-///   item must have at least one matching tag id (段内 OR).
+///   item must contain **every** selected tag id (intersection / AND).
 /// - All three are AND-combined: type/pinned AND tags.
 enum SidebarTagFilter {
 
@@ -28,9 +28,16 @@ enum SidebarTagFilter {
                 if item.type != typeFilter { return false }
             }
 
-            // Dimension 2: tag section (段内 OR — empty selection = no filter).
+            // Dimension 2: tag section (AND — empty selection = no filter).
+            // 2026-07-27 (user-requested): changed from OR to AND.
+            // Rationale: OR turned "中国大陆" + "2026" into "any tag matches
+            // either" — the 2026 tag alone matched every 2026 item worldwide,
+            // making the 中国大陆 selection meaningless. AND treats tag
+            // selection as an intersection (must carry every selected tag),
+            // matching how users actually compose filters in tools like
+            // Finder smart folders and Gmail multi-label search.
             if !selectedTagIds.isEmpty {
-                let hit = selectedTagIds.contains { item.tagIds.contains($0) }
+                let hit = selectedTagIds.isSubset(of: Set(item.tagIds))
                 if !hit { return false }
             }
 
