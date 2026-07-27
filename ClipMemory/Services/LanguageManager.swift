@@ -4,24 +4,25 @@ import SwiftUI
 class LanguageManager: ObservableObject {
     static let shared = LanguageManager()
 
+    /// Nonisolated mirror of `selectedLanguage` for off-main readers
+    /// (e.g. `LocalizationService.currentBundle` running inside a
+    /// `Task.detached` `CryptoService.prepareKey` failure handler).
+    /// Written from `didSet` on the main actor; reads are best-effort and
+    /// tolerate one-tick staleness across thread boundaries.
+    /// Marked `nonisolated(unsafe)` because Swift cannot prove the
+    /// single-writer / many-reader discipline at compile time.
+    nonisolated(unsafe) static var currentLanguageCode: String = "en"
+
     @Published var selectedLanguage: String {
         didSet {
-            // L-7 (2026-07-25 audit): `selectedLanguage` may in theory be set
-            // from a background queue (e.g. a future settings import or
-            // command-line override). UserDefaults and AppleLanguages must be
-            // touched on the main thread. Keep the synchronous fast path when
-            // already on main, otherwise hop.
-            let apply = { [weak self] in
-                guard let self = self else { return }
-                UserDefaults.standard.set(self.selectedLanguage, forKey: "appLanguage")
-                self.applyLanguage()
-                NotificationCenter.default.post(name: Notification.Name("LanguageDidChange"), object: nil)
-            }
-            if Thread.isMainThread {
-                apply()
-            } else {
-                DispatchQueue.main.async(execute: apply)
-            }
+            // Class is @MainActor (Task 3), so this didSet runs on main.
+            // Publish to the off-main cache before the notification so any
+            // listener that reads `currentLanguageCode` in response sees the
+            // new value.
+            Self.currentLanguageCode = selectedLanguage
+            UserDefaults.standard.set(selectedLanguage, forKey: "appLanguage")
+            applyLanguage()
+            NotificationCenter.default.post(name: Notification.Name("LanguageDidChange"), object: nil)
         }
     }
 
@@ -32,6 +33,13 @@ class LanguageManager: ObservableObject {
         // handles persistence and application. Init runs on main in production.
         let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? Self.getSystemLanguage()
         self.selectedLanguage = lang
+        // didSet observers do NOT fire during Swift init, so currentLanguageCode
+        // (the nonisolated mirror added in pilot commit 153d25d) must be seeded
+        // explicitly here. Without this, off-main readers of LocalizationService
+        // observe the default "en" instead of the user's saved language until the
+        // first post-init language change. Same applies to any future cache fields
+        // initialized from selectedLanguage.
+        Self.currentLanguageCode = lang
     }
 
     static func getSystemLanguage() -> String {
