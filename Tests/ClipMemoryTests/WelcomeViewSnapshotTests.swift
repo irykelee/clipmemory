@@ -16,6 +16,7 @@ import SwiftUI
 /// change visible state. ImageRenderer does not invoke `.onAppear` during
 /// offscreen rendering, so the snapshot captures the un-conflicted state
 /// deterministically.
+@MainActor
 final class WelcomeViewSnapshotTests: XCTestCase {
 
     override func setUp() {
@@ -28,7 +29,6 @@ final class WelcomeViewSnapshotTests: XCTestCase {
         super.tearDown()
     }
 
-    @MainActor
     func testRendersWelcome() {
         let view = WelcomeView(
             hotKeyManager: HotKeyManager(),

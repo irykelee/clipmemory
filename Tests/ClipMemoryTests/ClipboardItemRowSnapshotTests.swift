@@ -13,6 +13,7 @@ import SwiftUI
 /// ClipboardItem init (line 39 of ClipboardItem.swift): all parameters
 /// after `type:` default to sensible values, so the tests supply only
 /// the four that matter for visual differentiation.
+@MainActor
 final class ClipboardItemRowSnapshotTests: XCTestCase {
 
     override func setUp() {
@@ -28,7 +29,6 @@ final class ClipboardItemRowSnapshotTests: XCTestCase {
     /// Renders a plain text item with `searchText = ""` and
     /// `isRevealed = false`. Captures the default, non-highlighted path
     /// with no selection state.
-    @MainActor
     func testRendersPlainTextItem() {
         let item = ClipboardItem(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
@@ -63,7 +63,6 @@ final class ClipboardItemRowSnapshotTests: XCTestCase {
     /// Renders a sensitive item in the masked (default) state. The masked
     /// path replaces content with bullet characters and tints them orange
     /// (visible regression sentinel for masking logic).
-    @MainActor
     func testRendersSensitiveItemMasked() {
         let item = ClipboardItem(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
