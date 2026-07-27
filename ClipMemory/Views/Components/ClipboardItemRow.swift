@@ -14,6 +14,16 @@ private let maskedHighlightedCache: NSCache<NSString, NSAttributedString> = {
     c.countLimit = 500
     return c
 }()
+// Spec §3.1: OCR highlight cache, count-limited like the existing two caches.
+// FILE-SCOPE (not inside struct) — shared across all ClipboardItemRow
+// instances, mirroring `highlightedCache` / `maskedHighlightedCache` above.
+// Key includes ocrText.hashValue so a fresh OCR result (different ciphertext)
+// invalidates the cache (review 1.3).
+private let highlightedOcrCache: NSCache<NSString, NSAttributedString> = {
+    let c = NSCache<NSString, NSAttributedString>()
+    c.countLimit = 500
+    return c
+}()
 
 // MARK: - AppKit NSPressGestureRecognizer for stable image long-press
 struct PressableImage: NSViewRepresentable {
@@ -72,6 +82,10 @@ struct ClipboardItemRow: View, Equatable {
     var isCopied = false
     var isSelected = false
     var searchText = ""
+    /// Debounced copy of `searchText` (250ms). Used for the OCR snippet so we
+    /// don't flash snippet text on rows that won't survive the next filter
+    /// pass. See `cachedHighlightedOcr` for usage.
+    var searchTextDebounced = ""
     var onCopyWithFeedback: (() -> Void)?
     let onPin: () -> Void
     let onDelete: () -> Void
@@ -102,6 +116,7 @@ struct ClipboardItemRow: View, Equatable {
         lhs.isSelected == rhs.isSelected &&
         lhs.isKeyboardSelected == rhs.isKeyboardSelected &&
         lhs.searchText == rhs.searchText &&
+        lhs.searchTextDebounced == rhs.searchTextDebounced &&
         lhs.item.isPinned == rhs.item.isPinned &&
         lhs.item.tagIds == rhs.item.tagIds &&
         lhs.item.createdAt == rhs.item.createdAt &&
@@ -131,6 +146,7 @@ struct ClipboardItemRow: View, Equatable {
          isCopied: Bool = false,
          isSelected: Bool = false,
          searchText: String = "",
+         searchTextDebounced: String = "",
          onCopyWithFeedback: (() -> Void)? = nil,
          onPin: @escaping () -> Void,
          onDelete: @escaping () -> Void,
@@ -144,6 +160,7 @@ struct ClipboardItemRow: View, Equatable {
         self.isCopied = isCopied
         self.isSelected = isSelected
         self.searchText = searchText
+        self.searchTextDebounced = searchTextDebounced
         self.onCopyWithFeedback = onCopyWithFeedback
         self.onPin = onPin
         self.onDelete = onDelete
@@ -181,6 +198,51 @@ struct ClipboardItemRow: View, Equatable {
         maskedHighlightedCache.setObject(NSAttributedString(result), forKey: key)
         return result
     }
+
+    /// Computes the OCR snippet AttributedString, with NSCache memoization.
+    /// Returns empty AttributedString when conditions don't warrant rendering:
+    /// - `searchTextDebounced` empty / whitespace-only (spec §2 trigger;
+    ///   DEBOUNCED so we don't flash snippets during the 250ms filter window)
+    /// - item is not an image
+    /// - `ocrPreviewEnabled` is off
+    /// - OCR text missing AND `ocrAttempted` true (no text ever produced)
+    ///
+    /// Cache key includes `ocrText.hashValue` so a fresh OCR result (different
+    /// ciphertext) invalidates the cache (review 1.3).
+    private var cachedHighlightedOcr: AttributedString {
+        let trimmed = searchTextDebounced.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              item.type == .image,
+              store.ocrPreviewEnabled else {
+            return AttributedString("")
+        }
+        let ocrHash = item.ocrText?.hashValue ?? 0
+        let key = "\(item.id.uuidString)-\(ocrHash)-\(trimmed)" as NSString
+        if let cached = highlightedOcrCache.object(forKey: key) {
+            return AttributedString(cached)
+        }
+        let result: AttributedString
+        if let ocrText = store.getDecryptedOcrText(item) {
+            result = Self.highlightedOcrContent(ocrText: ocrText, highlight: trimmed)
+        } else if item.ocrText != nil {
+            // Ciphertext present but decrypt failed — show warning placeholder.
+            // AttributedString does NOT have `.with {}`; mutate via subscript.
+            var warnAttr = AttributedString(Self.warningOcrText)
+            warnAttr.foregroundColor = .orange
+            result = warnAttr
+        } else if !item.ocrAttempted {
+            var phAttr = AttributedString(Self.placeholderOcrText)
+            phAttr.foregroundColor = .secondary
+            result = phAttr
+        } else {
+            result = AttributedString("")
+        }
+        highlightedOcrCache.setObject(NSAttributedString(result), forKey: key)
+        return result
+    }
+
+    private static var placeholderOcrText: String { L10n.itemOcrProcessing }
+    private static var warningOcrText: String { L10n.itemOcrUnreadable }
 
     private func highlightedContent(_ text: String, highlight: String) -> AttributedString {
         if highlight.isEmpty { return AttributedString(String(text.prefix(200))) }
@@ -398,6 +460,16 @@ struct ClipboardItemRow: View, Equatable {
                                 imageLoadFailed = true
                                 imageLoadStatus = result.1
                             }
+                        }
+                        // OCR snippet under thumbnail (spec §3). Renders only
+                        // when the cached AttributedString is non-empty — the
+                        // helper returns empty for unrendered cases
+                        // (no search text / no OCR / OCR produced nothing).
+                        if !cachedHighlightedOcr.characters.isEmpty {
+                            Text(cachedHighlightedOcr)
+                                .font(.system(size: sz(11)))
+                                .lineLimit(2)
+                                .padding(.top, 2)
                         }
                     } else if item.type == .richText {
                         if item.isSensitive && !isRevealed {

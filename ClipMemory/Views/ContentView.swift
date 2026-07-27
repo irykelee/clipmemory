@@ -720,6 +720,7 @@ struct ContentView: View {
             groupedItemsWithIndex: groupedItemsWithIndex,
             batchAllPinned: batchAllPinned,
             searchText: $searchText,
+            searchTextDebounced: $searchTextDebounced,
             collapsedGroups: $collapsedGroups,
             selectedItems: $selectedItems,
             keyboardSelectedIndex: $keyboardSelectedIndex,

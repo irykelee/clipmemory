@@ -30,6 +30,11 @@ struct ItemListView: View {
     let batchAllPinned: Bool
 
     @Binding var searchText: String
+    /// Debounced copy of `searchText` (250ms after last keystroke). Threaded
+    /// into ClipboardItemRow so the OCR snippet doesn't flash on rows that
+    /// won't survive the next filter pass (raw `searchText` updates on every
+    /// keystroke; `filterItems` only re-runs once the debounce fires).
+    @Binding var searchTextDebounced: String
     @Binding var collapsedGroups: Set<TimeGroup>
     @Binding var selectedItems: Set<UUID>
     @Binding var keyboardSelectedIndex: Int?
@@ -406,6 +411,7 @@ struct ItemListView: View {
             isCopied: copied,
             isSelected: selected,
             searchText: searchText,
+            searchTextDebounced: searchTextDebounced,
             onCopyWithFeedback: copyAction,
             onPin: pinAction,
             onDelete: deleteAction,
