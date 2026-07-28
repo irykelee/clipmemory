@@ -53,7 +53,16 @@ extension ClipboardStore {
             // scheduleSave() so concurrent OCR results coalesce into one write.
             self.scheduleSave()
         }
-        if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }
+        // F-1 phase 3 (2026-07-28): replaced `if Thread.isMainThread`
+        // double-dispatch with Swift Concurrency primitive. Sync path when
+        // caller is already on main thread (XCTest main, SwiftUI views); Task
+        // async hop otherwise (OCR callback pipelines may fire on bg queues).
+        // F-2 sweep future-marker (line 56 in F-2 audit closeout) resolved.
+        if Thread.isMainThread {
+            apply()
+        } else {
+            Task { @MainActor [weak self] in apply() }
+        }
     }
 
     /// Marks an item as OCR-attempted without a result (no text recognized).
@@ -67,7 +76,12 @@ extension ClipboardStore {
             self.items[index].ocrAttempted = true
             self.scheduleSave()
         }
-        if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }
+        // F-1 phase 3 (2026-07-28): see attachOCRText comment above.
+        if Thread.isMainThread {
+            apply()
+        } else {
+            Task { @MainActor [weak self] in apply() }
+        }
     }
 
     /// Decrypts the stored OCR text of an image item (nil when not recognized).
