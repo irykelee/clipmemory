@@ -51,7 +51,7 @@
 ### v2.7.0 (2026-07-28) — F-1 @MainActor 遷移
 
 - **啟動時語言 picker 與 UI 文案一致性修正** — 之前如果儲存的是非英語語言，啟動後 Settings 視窗內的 UI 文案仍然是英文（Language picker 顯示正確）。v2.7.0 修正後，啟動即生效。
-- **核心類別全面 Swift 並行相容** — `LanguageManager` / `TrashStore` / `ClipboardStore` 三個核心類別加上 `@MainActor`，由型別系統保護 main-thread contract，避免未來回歸。
+- **核心類別全面 Swift 並行相容** — `LanguageManager` / `TrashStore` / `ClipboardStore` 三個核心類別加 `@MainActor`，由型別系統保護 main-thread contract，避免未來回歸。
 - **657 個測試全過，0 失敗** — 內部架構加固無功能回歸。
 - **啟動時非英語語言 UI 文案仍顯示英文** — Swift `didSet` 在 `init()` 內不觸發，新增的 `currentLanguageCode` 鏡像需明確 seed 才能從啟動時刻起可用。
 - **`LanguageManager` 改用 `nonisolated` 鏡像** — `L10n.string()` 等 off-main reader（來自 `CryptoService.prepareKey` failure handler 等 `Task.detached`）讀語言代碼不再跨 main-actor 邊界。
