@@ -1,5 +1,6 @@
 import Foundation
 import os
+import AppKit
 
 /// HIGH-1 (2026-07-26 review): trash subsystem extracted from ClipboardStore
 /// (was ~180 lines in the 1594-line god object). Owns the recycle bin, its
@@ -34,6 +35,18 @@ final class TrashStore: ObservableObject {
     /// after init so evictCaches can drop stale entries.
     var contentCache: NSCache<NSString, NSString>?
     var rtfPlaintextCache: NSCache<NSString, NSString>?
+
+    /// Observer for `NSApplication.willTerminateNotification`. Registered in
+    /// `init` so the cleanup logic (cancel timer + flush pending save) runs
+    /// on `.main` and can safely touch `@MainActor`-isolated state. `deinit`
+    /// only removes this opaque token (no isolated access).
+    ///
+    /// Invariant: this observer must fire BEFORE `deinit`. The TrashStore
+    /// lives as long as NSApp (held via `ClipboardStore.shared` singleton),
+    /// so willTerminate always fires first under normal termination.
+    /// SIGKILL / power-loss paths are out of scope (no write-through
+    /// guarantee). See 2026-07-28 F-1 phase 2 spec §4.
+    private var willTerminateObserver: NSObjectProtocol?
 
     init(backend: StorageBackend) {
         self.backend = backend
