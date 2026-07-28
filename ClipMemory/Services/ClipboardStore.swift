@@ -334,10 +334,18 @@ final class ClipboardStore: ObservableObject {
         cleanupTimer = DispatchSource.makeTimerSource(queue: queue)
         cleanupTimer?.schedule(deadline: .now() + 60, repeating: 60)
         cleanupTimer?.setEventHandler { [weak self] in
-            // F-1 phase 3 (2026-07-28): Task 2 removes MainActor.assumeIsolated
-            // wrapper; Task 3 replaces DispatchQueue.main.async with
-            // `Task { @MainActor in ... }` for the actual cleanup logic.
-            DispatchQueue.main.async { [weak self] in
+            // F-1 phase 3 (2026-07-28): collapsed double-hop
+            // (DispatchQueue.main.async + MainActor.assumeIsolated) into single
+            // `Task { @MainActor in ... }`. Behavior identical: 60s repeat, fires
+            // on bg queue, hops to main actor via Swift Concurrency. Sync method
+            // calls inside @MainActor closure don't need `await` (same isolation).
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.cleanupExpiredItems()
+                // NEW-C (2026-07-27 review): drives trash purge on the same
+                // 60s cleanup cadence so long-lived sessions don't pile up old
+                // trash on disk.
+                self.trashStore.purgeExpiredTrash()
             }
         }
         cleanupTimer?.resume()
