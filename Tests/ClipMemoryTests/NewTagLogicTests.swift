@@ -4,7 +4,7 @@ import XCTest
 /// Validates NewTagLogic — pure helpers backing NewTagSheet (sidebar's
 /// "+ 新建标签" entry). The sheet itself is a SwiftUI view; the decision
 /// logic lives here so we can unit-test it.
-final class NewTagLogicTests: XCTestCase {
+@MainActor final class NewTagLogicTests: XCTestCase {
 
     /// Submitting a fresh name → store.addTag with isAutoSuggested=false
     /// and the chosen color. This is the sidebar path, distinct from the

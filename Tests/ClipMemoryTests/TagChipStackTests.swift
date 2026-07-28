@@ -4,7 +4,7 @@ import XCTest
 /// Validates TagChipStack's data-shape logic. We test the helper that
 /// decides which tag ids become chips, rather than walking the SwiftUI view
 /// tree (which has no public introspection).
-final class TagChipStackTests: XCTestCase {
+@MainActor final class TagChipStackTests: XCTestCase {
 
     /// Empty tagIds → empty result list.
     func testEmptyTagIdsReturnsEmpty() {

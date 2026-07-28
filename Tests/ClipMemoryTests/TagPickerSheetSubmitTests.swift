@@ -8,7 +8,7 @@ import XCTest
 /// `.onSubmit` into the same submit path as the Create / Use-existing
 /// button, extracted to `TagPickerSheet.submitNewTag(name:colorHex:itemId:store:)`
 /// so it's testable without a view tree.
-final class TagPickerSheetSubmitTests: XCTestCase {
+@MainActor final class TagPickerSheetSubmitTests: XCTestCase {
 
     private var store: ClipboardStore!
     private var item: ClipboardItem!

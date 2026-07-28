@@ -15,7 +15,7 @@ import XCTest
 ///   files this suite saves are tracked and deleted in tearDown.
 /// - UserDefaults keys the store/ImageStorage may write are saved in setUp
 ///   and restored in tearDown.
-final class ImageDedupTests: XCTestCase {
+@MainActor final class ImageDedupTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
     private var store: ClipboardStore!

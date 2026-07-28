@@ -10,7 +10,7 @@ import XCTest
 /// pattern, H-10). The filter itself is extracted to
 /// `QuickBarView.computeDisplayedItems` so the logic is testable without a
 /// SwiftUI view body.
-final class QuickBarViewTests: XCTestCase {
+@MainActor final class QuickBarViewTests: XCTestCase {
 
     private var store: ClipboardStore!
 

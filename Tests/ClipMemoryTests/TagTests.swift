@@ -100,7 +100,7 @@ final class TagTests: XCTestCase {
 
 // MARK: - ClipboardStore tag dictionary API
 
-final class ClipboardStoreTagTests: XCTestCase {
+@MainActor final class ClipboardStoreTagTests: XCTestCase {
 
     /// Each ClipboardStore instance gets its own in-memory tag dictionary.
     /// Tags are keyed by UUID for O(1) lookup; the store is the source of truth.
@@ -482,7 +482,8 @@ final class TagSuggestionTests: XCTestCase {
 
 // MARK: - ClipboardStore.tags(matchingPrefix:) autocomplete API
 
-final class ClipboardStoreAutocompleteTests: XCTestCase {
+/// F-1 phase 2 (2026-07-28): @MainActor — ClipboardStore init is @MainActor.
+@MainActor final class ClipboardStoreAutocompleteTests: XCTestCase {
 
     /// Empty prefix → empty result. Autocomplete is opt-in; empty input
     /// shouldn't dump the entire tag dictionary into the UI.

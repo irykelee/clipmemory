@@ -10,7 +10,7 @@ import AppKit
 ///
 /// MED-5 (2026-07-26 review): tests updated to use `onRecordOwnWrite` closure
 /// instead of the removed `clipboardMonitor` bidirectional reference.
-final class CopyOcrTextOwnWriteTests: XCTestCase {
+@MainActor final class CopyOcrTextOwnWriteTests: XCTestCase {
 
     override func setUp() {
         super.setUp()

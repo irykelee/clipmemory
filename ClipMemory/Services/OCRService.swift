@@ -34,12 +34,19 @@ final class VisionOCRService: OCRServiceProtocol {
     func recognizeText(in imageData: Data, completion: @escaping (OCROutcome) -> Void) {
         queue.async {
             let result = self.performRecognition(imageData: imageData)
-            // BUG-044 (2026-07-21): hop completion to main. Callers that
-            // mutate @Published properties risk main-thread checker
-            // assertions when invoked from this .utility queue. ClipboardStore
-            // .attachOCRText already self-dispatches, but defensive hop
-            // here makes the API contract explicit and protects future
-            // callers that forget.
+            // BUG-044 (2026-07-21) + 2026-07-28 F-2 audit closeout: hop completion to
+            // main. This is contract enforcement, NOT a defensive patch —
+            // `ClipboardMonitor.processImageData` invokes the completion from a
+            // background queue and immediately calls
+            // `delegate?.monitorDidRecognizeText(...)` with no self-hop at the caller
+            // (see ClipboardMonitor.swift:459-463), so this dispatch is load-bearing.
+            //
+            // Future callers from a non-main context should NOT remove this without
+            // first providing their own main-thread hop (e.g. via
+            // `MainActor.assumeIsolated`). Future F-2 work after F-1 phase 3
+            // (ClipboardStore @MainActor) will sweep `ClipboardStore+OCR.swift:56, 70`
+            // — those are the LAST remaining "if Thread.isMainThread" sites that may
+            // become deletable; this site is not in that set.
             if Thread.isMainThread {
                 completion(result)
             } else {

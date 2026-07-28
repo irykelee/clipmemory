@@ -1,11 +1,16 @@
 import Foundation
 import os
+import AppKit
 
 /// HIGH-1 (2026-07-26 review): trash subsystem extracted from ClipboardStore
 /// (was ~180 lines in the 1594-line god object). Owns the recycle bin, its
 /// persistence, retention policy, and debounced save timer.
 ///
-/// All `@Published` writes happen on the main thread — callers must ensure this.
+/// **F-1 phase 2 (2026-07-28)**: class is now `@MainActor`. The previously
+/// implicit "callers must ensure main thread" contract on `@Published` writes
+/// is now enforced by the type system. See 2026-07-28 F-2 audit closeout
+/// for the F-2 sweep + future-marker notes.
+@MainActor
 final class TrashStore: ObservableObject {
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "Trash")
 
@@ -24,12 +29,26 @@ final class TrashStore: ObservableObject {
     private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
     /// Shared storage key, retained for migration compatibility.
-    static let trashedItemsStorageKey = "ClipboardTrashedItems"
+    /// F-1 phase 2 (2026-07-28): `nonisolated` so callers (incl. @MainActor
+    /// ClipboardStore init) can read this static let from any isolation domain.
+    nonisolated static let trashedItemsStorageKey = "ClipboardTrashedItems"
 
     /// Reference to the content cache and RTF cache from ClipboardStore, set
     /// after init so evictCaches can drop stale entries.
     var contentCache: NSCache<NSString, NSString>?
     var rtfPlaintextCache: NSCache<NSString, NSString>?
+
+    /// Observer for `NSApplication.willTerminateNotification`. Registered in
+    /// `init` so the cleanup logic (cancel timer + flush pending save) runs
+    /// on `.main` and can safely touch `@MainActor`-isolated state. `deinit`
+    /// only removes this opaque token (no isolated access).
+    ///
+    /// Invariant: this observer must fire BEFORE `deinit`. The TrashStore
+    /// lives as long as NSApp (held via `ClipboardStore.shared` singleton),
+    /// so willTerminate always fires first under normal termination.
+    /// SIGKILL / power-loss paths are out of scope (no write-through
+    /// guarantee). See 2026-07-28 F-1 phase 2 spec §4.
+    private var willTerminateObserver: NSObjectProtocol?
 
     init(backend: StorageBackend) {
         self.backend = backend
@@ -44,11 +63,33 @@ final class TrashStore: ObservableObject {
         }
         loadTrashedItems()
         purgeExpiredTrash()
+        willTerminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            // Runs on .main queue → safe to access isolated state.
+            // Delegate to `handleWillTerminate()` (NOT inline duplicate) so
+            // the production path is exactly what tests exercise; any future
+            // bugfix in handleWillTerminate automatically applies here.
+            self?.handleWillTerminate()
+        }
+    }
+
+    /// Internal: the actual willTerminate handler body. Extracted so tests
+    /// can pin the contract without `NotificationCenter.post` global side
+    /// effects (which would fire NSApp + AppDelegate observers).
+    func handleWillTerminate() {
+        saveTimer?.cancel()
+        if needsSave { saveTrashedItems() }
     }
 
     deinit {
-        saveTimer?.cancel()
-        if needsSave { saveTrashedItems() }
+        // Nonisolated deinit reads opaque token (no isolated state touched).
+        // All cleanup that touches `@MainActor` state lives in the
+        // willTerminate handler registered above.
+        if let observer = willTerminateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // MARK: - Persistence

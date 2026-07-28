@@ -3,7 +3,7 @@ import XCTest
 
 /// Pure-logic tests for the tag picker decision helpers.
 /// These exist independent of SwiftUI so we can validate the rules without a view tree.
-final class TagPickerLogicTests: XCTestCase {
+@MainActor final class TagPickerLogicTests: XCTestCase {
 
     // MARK: - defaultColorHex
 

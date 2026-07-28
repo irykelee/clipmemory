@@ -4,7 +4,7 @@ import AppKit
 
 /// OCR pipeline: model field compatibility, encrypted storage round-trip,
 /// search matching, and a real Vision recognition smoke test.
-final class OCRTests: XCTestCase {
+@MainActor final class OCRTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
     private var store: ClipboardStore!

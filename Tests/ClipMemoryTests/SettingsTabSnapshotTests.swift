@@ -8,8 +8,14 @@ import SwiftUI
 /// Each test uses an isolated ClipboardStore (MemoryStorageBackend) and
 /// deterministic snapshot baseline (fontScale=1.0, language=en) so tests
 /// are independent of global state from other test files (MED-2).
-@MainActor
-final class SettingsTabSnapshotTests: XCTestCase {
+/// MED-7 (2026-07-26 review): snapshot tests for the four settings-window
+/// tabs, replacing the deprecated SettingsViewSnapshotTests.
+///
+/// Each test uses an isolated ClipboardStore (MemoryStorageBackend) and
+/// deterministic snapshot baseline (fontScale=1.0, language=en) so tests
+/// are independent of global state from other test files (MED-2).
+/// F-1 phase 2 (2026-07-28): @MainActor — ClipboardStore init is @MainActor.
+@MainActor final class SettingsTabSnapshotTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
     private var store: ClipboardStore!
