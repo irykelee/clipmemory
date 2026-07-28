@@ -570,6 +570,40 @@ final class ImageStorageTests: XCTestCase {
         return FileManager.default.fileExists(atPath: fileURL.path)
     }
 
+    /// Path B failsafe (2026-07-28): cleanupOrphanedImages called with an
+    /// empty keptItems must NOT delete any files. This guards the
+    /// "both loadItems AND loadTrashedItems failed / returned empty"
+    /// scenario on a fresh launch — without this failsafe, an empty keep
+    /// list would call deleteAllExcept([]) and wipe the user's image
+    /// library.
+    ///
+    /// Companion to testCleanupOrphanedImagesFirstCallSetsStartupFlagEvenWhenKeepSetIsEmpty:
+    /// that test exercises the FIRST-CALL branch (flag set, return), and
+    /// this test exercises the SUBSEQUENT-CALL branch (flag already set,
+    /// but keep list is empty). The pre-existing test's setup sets the
+    /// startup flag to true, so this test reaches the empty-keep-list
+    /// decision point — the bug being the missing guard there.
+    func testCleanupOrphanedImagesEmptyKeepListDoesNotDeleteAnyFiles() {
+        let uuid = newTestUUID()
+        let original = makePNGData()
+        let filename = "\(uuid.uuidString).png"
+        _ = saveAndWait(original, uuid: uuid)
+
+        XCTAssertNotNil(storage.loadImage(filename: filename),
+                       "Test fixture: file must exist before cleanup")
+
+        // setUp sets startupCleanupRan=true, so the first-call skip is past.
+        // cleanupOrphanedImages proceeds past the flag check and would
+        // (without the failsafe) call deleteAllExcept([]) which deletes
+        // every file in the directory.
+        storage.cleanupOrphanedImages(keptItems: [])
+
+        XCTAssertNotNil(storage.loadImage(filename: filename),
+                       "Empty keptItems must skip delete (Path B failsafe) — " +
+                       "an empty keep list is a load-failure signal, not a " +
+                       "license to wipe the user's image library")
+    }
+
     // MARK: - RS-6: legacyDecryptImage round-trip via loadImage
     //
     // Synthesizes v1-format encrypted blobs (AES-CBC + HMAC-SHA256) and writes

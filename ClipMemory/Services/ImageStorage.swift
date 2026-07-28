@@ -710,6 +710,19 @@ imageCache.setObject(image, forKey: filename as NSString, cost: data.count)
             UserDefaults.standard.set(true, forKey: startupCleanupKey)
             return
         }
+        // Path B failsafe (2026-07-28): empty keptItems is a load-failure
+        // signal, not a license to wipe the user's image library. The
+        // companion in-flight race fix (pendingFilenames) covers the
+        // writer's race window; this guard covers the case where the
+        // caller passed an empty keep list because both loadItems AND
+        // loadTrashedItems failed or returned empty. Without this guard,
+        // deleteAllExcept([]) would delete every file on disk. We log
+        // at error level so a future "images vanished" report can be
+        // traced and so operators can detect a failing-load pattern.
+        guard !keptItems.isEmpty else {
+            logger.error("cleanupOrphanedImages: keptItems is empty, skipping delete (possible load failure)")
+            return
+        }
         let keptFilenames = Set(keptItems.filter { $0.type == .image }.map { $0.content })
         deleteAllExcept(filenames: keptFilenames)
     }
