@@ -53,15 +53,31 @@ extension ClipboardStore {
             // scheduleSave() so concurrent OCR results coalesce into one write.
             self.scheduleSave()
         }
-        // F-1 phase 3 (2026-07-28): replaced `if Thread.isMainThread`
-        // double-dispatch with Swift Concurrency primitive. Sync path when
-        // caller is already on main thread (XCTest main, SwiftUI views); Task
-        // async hop otherwise (OCR callback pipelines may fire on bg queues).
-        // F-2 sweep future-marker (line 56 in F-2 audit closeout) resolved.
+        // v2.7.0 hotfix (2026-07-28): reverted from `Task { @MainActor in
+        // apply() }` back to `DispatchQueue.main.async` after a production
+        // deadlock was discovered. Root cause: Vision's
+        // `runSuccessReportingBlockSynchronously` calls the OCR success block
+        // via GCD main queue (`dispatch_sync(main_queue, block)`), and the
+        // success block writes `self.items[index]` + `scheduleSave()` which
+        // synchronously modifies a `DispatchSourceTimer`. Swift Concurrency
+        // `Task { @MainActor in ... }` is dispatched via Swift's main actor
+        // executor, NOT the GCD main queue — so Vision's GCD sync never sees
+        // the Task run, the main thread stays inside the Vision success block,
+        // and `DispatchSourceTimer.cancel()` in `scheduleSave()` deadlocks
+        // waiting for the same main thread to drain the timer queue.
+        // The v2.5.10 GCD async pattern survives because Vision's sync invoke
+        // routes through the GCD main queue the same way the original
+        // `apply()` did, and the main runloop drains the block before Vision
+        // returns to its caller.
+        // See lldb captures: thread #10 stuck in
+        // `[VNDetector runSuccessReportingBlockSynchronously:]_block_invoke`
+        // waiting on `dispatch_block_sync_invoke`; thread #11 in
+        // `VNRecognizeTextRequestRevision3` waiting on a semaphore that
+        // thread #10 holds.
         if Thread.isMainThread {
             apply()
         } else {
-            Task { @MainActor [weak self] in apply() }
+            DispatchQueue.main.async(execute: apply)
         }
     }
 
@@ -76,11 +92,12 @@ extension ClipboardStore {
             self.items[index].ocrAttempted = true
             self.scheduleSave()
         }
-        // F-1 phase 3 (2026-07-28): see attachOCRText comment above.
+        // v2.7.0 hotfix (2026-07-28): see attachOCRText comment above for the
+        // full deadlock analysis. Same GCD-async pattern keeps Vision happy.
         if Thread.isMainThread {
             apply()
         } else {
-            Task { @MainActor [weak self] in apply() }
+            DispatchQueue.main.async(execute: apply)
         }
     }
 
