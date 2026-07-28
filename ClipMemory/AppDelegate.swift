@@ -267,7 +267,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(url)
     }
 
-    private func setupClipboardMonitor() {
+    // F-1 phase 3 (2026-07-28): method accesses @MainActor-isolated
+    // ClipboardStore members (onRecordOwnWrite, onExcludedAppsChanged,
+    // parseExcludedBundleIds). Invoked from main-thread
+    // applicationDidFinishLaunching (line 37), which is @MainActor per
+    // NSApplicationDelegate's Swift protocol isolation.
+    @MainActor private func setupClipboardMonitor() {
         // Initialize store first so image migration observer is registered
         _ = ClipboardStore.shared
         // Then trigger ImageStorage migration
@@ -282,14 +287,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         clipboardMonitor = monitor
         // MED-5 (2026-07-26 review): wire anti-recapture + excluded-apps via
         // closures instead of a bidirectional ClipboardStore.clipboardMonitor ref.
-        ClipboardStore.shared.onRecordOwnWrite = { [weak monitor] in
+        ClipboardStore.shared.onRecordOwnWrite = { @MainActor [weak monitor] in
             monitor?.recordOwnWrite()
         }
-        ClipboardStore.shared.onExcludedAppsChanged = { [weak monitor] ids in
+        ClipboardStore.shared.onExcludedAppsChanged = { @MainActor [weak monitor] ids in
             monitor?.excludedBundleIds = ids
         }
         // Apply initial excluded-apps state from stored settings.
-        monitor.excludedBundleIds = ClipboardStore.shared.parseExcludedBundleIds()
+        // F-1 phase 3 (2026-07-28): parseExcludedBundleIds is @MainActor
+        // (inherited from class-level @MainActor on ClipboardStore).
+        // setupClipboardMonitor is invoked from main-thread
+        // applicationDidFinishLaunching, so we can bridge via
+        // MainActor.assumeIsolated.
+        monitor.excludedBundleIds = MainActor.assumeIsolated {
+            ClipboardStore.shared.parseExcludedBundleIds()
+        }
     }
 
     private func setupHotKey() {

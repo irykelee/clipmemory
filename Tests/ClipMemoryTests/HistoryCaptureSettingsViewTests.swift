@@ -2,6 +2,7 @@ import XCTest
 import SwiftUI
 @testable import ClipMemory
 
+@MainActor
 final class HistoryCaptureSettingsViewTests: XCTestCase {
 
     override func setUp() {

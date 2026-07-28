@@ -77,14 +77,14 @@ enum TagPickerLogic {
     /// Pure helper delegating to `ClipboardStore.tags(matchingPrefix:limit:)`
     /// so we can unit-test the prefix/limit/empty behavior without rendering
     /// SwiftUI. Returns at most `limit` tags ordered by createdAt desc.
-    static func autocompleteCandidates(prefix: String, limit: Int = 5, store: ClipboardStore) -> [Tag] {
+    @MainActor static func autocompleteCandidates(prefix: String, limit: Int = 5, store: ClipboardStore) -> [Tag] {
         store.tags(matchingPrefix: prefix, limit: limit)
     }
 
     /// Attach an existing tag with `name` to `itemId`, or create a new
     /// auto-suggested tag and attach it. Guards against duplicates if the tag
     /// was created after the sheet's suggestion list was computed.
-    static func attachOrCreateTag(name: String, colorHex: String, to itemId: UUID, store: ClipboardStore) {
+    @MainActor static func attachOrCreateTag(name: String, colorHex: String, to itemId: UUID, store: ClipboardStore) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if let existing = store.tags.values.first(where: { $0.name.lowercased() == trimmed.lowercased() }) {
