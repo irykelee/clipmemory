@@ -13,7 +13,7 @@ import AppKit
 ///   `UserDefaults` keys (matches `test-never-touch-prod-data` rule).
 /// - fontScale user-default key is set then restored in each test that
 ///   touches it; no permanent user-visible state mutation.
-final class Audit20260720RegressionTests: XCTestCase {
+@MainActor final class Audit20260720RegressionTests: XCTestCase {
 
     // MARK: - Setup / teardown
 

@@ -8,7 +8,7 @@ import XCTest
 /// 2. ClipboardStore persistence encodes the item array off the calling
 ///    thread and hands only the encoded Data to the backend (`saveBlob`),
 ///    while keeping saveImmediately()'s write-through contract synchronous.
-final class ClipboardCaptureLimitTests: XCTestCase {
+@MainActor final class ClipboardCaptureLimitTests: XCTestCase {
 
     private var originalCrypto: CryptoServiceProtocol?
 

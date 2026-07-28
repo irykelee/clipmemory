@@ -16,7 +16,7 @@ import AppKit
 /// `@Published var items` on the posting thread, SwiftUI's runtime contract
 /// check would fire on the test host. The structural guarantee is that
 /// the round-trip completes within a reasonable timeout.
-final class ClipboardStoreCryptoKeyNotificationThreadTests: XCTestCase {
+@MainActor final class ClipboardStoreCryptoKeyNotificationThreadTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
     private var store: ClipboardStore!

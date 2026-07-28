@@ -29,7 +29,9 @@ final class TrashStore: ObservableObject {
     private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
     /// Shared storage key, retained for migration compatibility.
-    static let trashedItemsStorageKey = "ClipboardTrashedItems"
+    /// F-1 phase 2 (2026-07-28): `nonisolated` so callers (incl. @MainActor
+    /// ClipboardStore init) can read this static let from any isolation domain.
+    nonisolated static let trashedItemsStorageKey = "ClipboardTrashedItems"
 
     /// Reference to the content cache and RTF cache from ClipboardStore, set
     /// after init so evictCaches can drop stale entries.
@@ -61,11 +63,33 @@ final class TrashStore: ObservableObject {
         }
         loadTrashedItems()
         purgeExpiredTrash()
+        willTerminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            // Runs on .main queue → safe to access isolated state.
+            // Delegate to `handleWillTerminate()` (NOT inline duplicate) so
+            // the production path is exactly what tests exercise; any future
+            // bugfix in handleWillTerminate automatically applies here.
+            self?.handleWillTerminate()
+        }
+    }
+
+    /// Internal: the actual willTerminate handler body. Extracted so tests
+    /// can pin the contract without `NotificationCenter.post` global side
+    /// effects (which would fire NSApp + AppDelegate observers).
+    func handleWillTerminate() {
+        saveTimer?.cancel()
+        if needsSave { saveTrashedItems() }
     }
 
     deinit {
-        saveTimer?.cancel()
-        if needsSave { saveTrashedItems() }
+        // Nonisolated deinit reads opaque token (no isolated state touched).
+        // All cleanup that touches `@MainActor` state lives in the
+        // willTerminate handler registered above.
+        if let observer = willTerminateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // MARK: - Persistence

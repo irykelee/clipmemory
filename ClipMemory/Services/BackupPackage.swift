@@ -512,7 +512,12 @@ final class BackupPackage {
         result.itemsSkippedCorrupt = itemCorruptCount + trashCorruptCount
         // Store mutations (@Published) must run on main even when the caller
         // invoked us from a background queue for a large package (M2 fix).
-        let merge = onMain { store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash) }
+        // F-1 phase 2 (2026-07-28): importBackupItems is @MainActor; `onMain`
+        // dispatches to main queue but its closure isn't @MainActor-isolated.
+        // Wrap in MainActor.assumeIsolated (we've already verified we're on main).
+        let merge = onMain {
+            MainActor.assumeIsolated { store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash) }
+        }
         result.itemsImported = merge.imported
         result.itemsSkipped = merge.skipped
 

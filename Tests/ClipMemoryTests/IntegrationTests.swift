@@ -3,7 +3,10 @@ import XCTest
 
 /// G.1: CRUD complete flow — addItem → persist → restart → recover
 /// G.3: Deduplication logic verification (contentHash + plaintext fallback)
-final class IntegrationTests: XCTestCase {
+/// F-1 phase 2 (2026-07-28): @MainActor — class-level annotation because
+    /// ClipboardStore init + wrapper methods are @MainActor. Per-method
+    /// @MainActor at L505/513 stays as documentation but is now redundant.
+    @MainActor final class IntegrationTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
     private var store: ClipboardStore!

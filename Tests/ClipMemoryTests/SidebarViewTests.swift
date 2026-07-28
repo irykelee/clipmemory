@@ -2,7 +2,7 @@ import XCTest
 import SwiftUI
 @testable import ClipMemory
 
-final class SidebarViewTests: XCTestCase {
+@MainActor final class SidebarViewTests: XCTestCase {
     func testTypeLabelMapsEveryClipboardItemType() {
         XCTAssertEqual(typeLabel(.text), L10n.filterText)
         XCTAssertEqual(typeLabel(.image), L10n.filterImage)
