@@ -349,6 +349,20 @@ final class ClipboardStore: ObservableObject {
             }
         }
         cleanupTimer?.resume()
+
+        // F-1 phase 3 (2026-07-28): mirror TrashStore willTerminate pattern.
+        // Observer fires on .main queue, safely invokes @MainActor-isolated
+        // handleWillTerminate(). Deinit only removes the opaque token.
+        willTerminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            // Runs on .main queue → safe to access isolated state.
+            // Delegate to `handleWillTerminate()` (NOT inline duplicate) so
+            // the production path is exactly what tests exercise; any future
+            // bugfix in handleWillTerminate automatically applies here.
+            self?.handleWillTerminate()
+        }
     }
 
     /// H2: NSCache for decrypted content — avoids repeated AES decryption on every view render.
@@ -373,6 +387,18 @@ final class ClipboardStore: ObservableObject {
         cache.totalCostLimit = 10 * 1024 * 1024 // 10MB limit
         return cache
     }()
+
+    /// Observer for `NSApplication.willTerminateNotification`. Registered in
+    /// `init` so the flush logic (`flushPendingSaves`) runs on `.main` and
+    /// can safely touch `@MainActor`-isolated state. `deinit` only removes
+    /// this opaque token (no isolated access).
+    ///
+    /// Invariant: this observer must fire BEFORE `deinit`. The ClipboardStore
+    /// lives as long as NSApp (held via `AppDelegate.applicationDidFinishLaunching`
+    /// as the singleton), so willTerminate always fires first under normal
+    /// termination. SIGKILL / power-loss paths are out of scope (no write-through
+    /// guarantee). Mirrors TrashStore pattern (2026-07-28 F-1 phase 2).
+    private var willTerminateObserver: NSObjectProtocol?
 
     private var cleanupTimer: DispatchSourceTimer?
     private var saveTimer: DispatchSourceTimer?
@@ -422,7 +448,11 @@ final class ClipboardStore: ObservableObject {
         NotificationCenter.default.removeObserver(self)
         // F-1 phase 3 (2026-07-28): Task 2 removes MainActor.assumeIsolated
         // flushPendingSaves call; Task 4 moves it to a willTerminate observer
-        // registered in init. Deinit stays nonisolated.
+        // registered in init. Deinit stays nonisolated; only removes the
+        // opaque willTerminateObserver token (no isolated state touched).
+        if let observer = willTerminateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     /// Handles image migration completion — updates isEncrypted flags for migrated image items.
@@ -650,6 +680,13 @@ final class ClipboardStore: ObservableObject {
         flushSave()
         flushTagSave()
         trashStore.flushPendingSave()
+    }
+
+    /// Internal: the actual willTerminate handler body. Extracted so tests
+    /// can pin the contract without `NotificationCenter.post` global side
+    /// effects (which would fire NSApp + AppDelegate observers).
+    func handleWillTerminate() {
+        flushPendingSaves()
     }
 
     private func flushSave() {
