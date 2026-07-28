@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.6.2
+# 剪忆 ClipMemory v2.7.0
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -47,6 +47,52 @@
 ---
 
 ## 📋 更新日志
+
+### v2.7.0 (2026-07-28)
+
+### 重构 / Refactors
+
+**F-1 phase 1 — `LanguageManager` 启动时语言一致性（completed 2026-07-28）**
+- 重构 `LanguageManager` 让 `L10n.string()` 等 off-main reader 读语言代码不再走 `@MainActor` 路径，改用 nonisolated 镜像。新增 `currentLanguageCode` 静态缓存，由 `didSet` 写、`LocalizationService.currentBundle` 读。
+- 给 `LanguageManager` 类本身加 `@MainActor` 标注，让 `selectedLanguage.didSet` 的 `Thread.isMainThread` + `DispatchQueue.main.async` defensive 兜底被类型系统证明 unreachable。
+- 新增 3 个 regression test 守住契约：setter→mirror 同步、notification ordering（mirror 在 notification 前 publish）、off-main thread 读镜像 + `L10n.string()` 不 crash 也不 fallback 返回 key 字面量。
+
+**F-1 phase 2 — `TrashStore` `@MainActor` + B方案 caller 标注（completed 2026-07-28）**
+- `TrashStore` 类加 `@MainActor`，让 `@Published var trashedItems` 等 main-actor-isolated state 由类型系统保护（之前是 implicit「callers must ensure main thread」contract）。
+- 因为 Swift 5.9 cross-actor call = `ERROR`（not warning — phase 2 plan defect 教训），TrashStore 加 `@MainActor` 后强制 `ClipboardStore` 的 ~26 个 TrashStore-forwarding wrapper 也加 `@MainActor`（B方案 per-method 标注；临时 scaffold，phase 3 已删）。22 个 test class 同步加 `@MainActor`。
+- 把 deinit 里的 `MainActor.assumeIsolated { flushPendingSaves() }` 改成 `NSApplication.willTerminateNotification` observer（init 注册 `queue: .main`，deinit 只 removeObserver opaque token — no isolated state touched）。`willTerminate` 总是在 deinit 前 fire，invariant 保证 flush 行为不变。
+- 新增 2 个 regression test：willTerminate handler cancel timer + flush save、debounced save through actor isolation chain。
+
+**F-1 phase 3 — `ClipboardStore` 类级 `@MainActor` + 3 internal refactors（completed 2026-07-28）**
+- 把 phase 2 加在 `ClipboardStore` 的 ~26 个 per-method `@MainActor` 标注批量删除，改用类级 `@MainActor\nfinal class ClipboardStore` 作为 single source of truth。
+- 3 个 internal refactor 用 Swift Concurrency primitives 替换 workaround：
+  - **cleanup timer (line 348)**：`DispatchSource.makeTimerSource + DispatchQueue.main.async + MainActor.assumeIsolated` 三跳结构 collapse 成单个 `Task { @MainActor [weak self] in ... }`。Behavior 不变：60s repeat，fires on bg queue，hops to main actor via Swift Concurrency。
+  - **deinit via willTerminate observer**：镜像 phase 2 TrashStore pattern。init 注册 `queue: .main` observer → `handleWillTerminate()` 方法（直接 call，避免 `NotificationCenter.post` 全局副作用 — phase 2 anti-pattern avoidance）。deinit 只 cancel timers + removeObserver opaque token。
+  - **OCR backfill (line 56, 70 in `ClipboardStore+OCR.swift`)**：把 `if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }` 改成 hybrid `if Thread.isMainThread { apply() } else { Task { @MainActor [weak self] in apply() } }`。保留 sync main-thread path（XCTest main + SwiftUI views — common case），Task async for bg-thread callers（OCR callback pipelines — rare but real）。**Plan deviation**：纯 `Task { @MainActor }` 会破坏 4 个 OCR tests（assertion 在 Task 完成前跑），hybrid 是 sync main-thread callers 的 backward-compatible fix。
+- 新增 3 个 regression test 守住 3 个 internal refactor 的 contract：`testCleanupExpiredItemsDirectCallExercisesMainActorIsolation`（直接调 cleanupExpiredItems）、`testWillTerminateFlushesPendingSaves`（直接调 handleWillTerminate，**不** 用 `NotificationCenter.post`）、`testBackfillOCRHopLandsOnMainActor`（用 MockOCR + backfillOCRIfNeeded 验证 dispatch hop 不 trap）。
+- 6 个 caller adaptation 因 class-level `@MainActor` cascading 强制加入：TagPickerLogic/NewTagLogic static func 加 `@MainActor`；AppDelegate.setupClipboardMonitor 加 `@MainActor`；AppDelegate inline closures 加 `{ @MainActor ... in ... }`；AppDelegate `parseExcludedBundleIds()` call + BackupPackage.swift:529 `importBackupTags` call wrap `MainActor.assumeIsolated`；HistoryCaptureSettingsViewTests 加 `@MainActor`。
+
+### 验证 / Verification
+
+- 657 个测试全过（phase 1: 584 baseline + 3 new；phase 2: 586 + 2 new = 588；phase 3: +68 phase 2→3 added + 3 new = 659 → final 657；0 failed）。
+- Debug + Release build green（exit 0）。
+- Manual smoke（phase 2 + phase 3 各 6 item 菜单栏 / Settings / 回收站 / 图片搜索 / OCR / 快捷栏 — deferred to user）。
+
+### 内部清理 / Internal cleanup
+
+- `clipmemory-apple-conformance-f123-deferred` parent memory 状态：`F-1` 全 completed；`F-2` future-marker（`BackupPackage.swift:519` `MainActor.assumeIsolated`）resolved by phase 3 hybrid pattern；`F-3` NotificationCenter observer modernization 待 F-1 release 后开 plan。
+- 23 commits ahead of origin/main（NOT pushed — per `feedback/no-github-without-permission`，push 需要 explicit authorization）。
+
+---
+
+### Source notes for translators
+
+- 技术术语锁在 GLOSSARY（不翻译）：剪忆 / 回收站 / 自动更新 / 更新源 / 备份 / 标签 / OCR（acronym）。
+- Class 名跨 7 语言不变：`LanguageManager` / `TrashStore` / `ClipboardStore` / `LocalizationService` / `CryptoService` / `BackupService` / `ImageStorage` / `HangDetector` / `OCRService` / `NSApplication`。
+- `@MainActor` annotation 不变（Swift keyword）。
+- `Task { @MainActor in ... }` / `MainActor.assumeIsolated` / `nonisolated(unsafe)` / `NotificationCenter.post` / `willTerminateNotification` 都是 Swift / AppKit API，保留原文。
+- "phase 1 / phase 2 / phase 3" 是项目内部术语，保留。
+- "B方案" 是项目内部 jargon（per-method `@MainActor` on TrashStore-forwarding wrappers），保留或简单注释。
 
 ### v2.6.2 (2026-07-27) — 图片搜索高亮与标签筛选
 

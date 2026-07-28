@@ -1,4 +1,4 @@
-# ClipMemory v2.6.2
+# ClipMemory v2.7.0
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,41 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.7.0 (2026-07-28)
+
+### Refatorações / Refactors
+
+**F-1 fase 1 — Consistência de idioma na inicialização do `LanguageManager` (concluído em 2026-07-28)**
+- Refatorou o `LanguageManager` para que `L10n.string()` e outros leitores off-main que leem o código do idioma não passem mais pelo caminho `@MainActor`, usando em vez disso um espelho nonisolated. Adicionou o cache estático `currentLanguageCode`, escrito por `didSet` e lido por `LocalizationService.currentBundle`.
+- Adicionou a anotação `@MainActor` à própria classe `LanguageManager`, de modo que a defesa `Thread.isMainThread` + `DispatchQueue.main.async` no `selectedLanguage.didSet` se torne inalcançável pelo sistema de tipos.
+- Adicionou 3 testes de regressão para garantir o contrato: sincronização setter→espelho, ordenação de notificações (espelho publica antes da notificação), leitura do espelho em thread off-main + `L10n.string()` sem crash nem fallback que retorne a literal da chave.
+
+**F-1 fase 2 — `TrashStore` `@MainActor` + anotação do chamador do plano B (concluído em 2026-07-28)**
+- Adicionou `@MainActor` à classe `TrashStore`, de modo que estados isolados no main actor como `@Published var trashedItems` sejam protegidos pelo sistema de tipos (antes era um contrato implícito "quem chama deve garantir thread principal").
+- Como chamadas cross-actor em Swift 5.9 = `ERROR` (não warning — lição do defeito do plano fase 2), após adicionar `@MainActor` ao `TrashStore`, forçou os ~26 wrappers de encaminhamento do `TrashStore` no `ClipboardStore` a também receberem `@MainActor` (plano B: anotação por método; scaffold temporário removido na fase 3). 22 classes de teste receberam `@MainActor` simultaneamente.
+- Substituiu `MainActor.assumeIsolated { flushPendingSaves() }` no deinit por um observador `NSApplication.willTerminateNotification` (registrado no init com `queue: .main`, no deinit apenas `removeObserver` com token opaco — sem tocar em estado isolado). O evento `willTerminate` sempre dispara antes do deinit, invariante que garante o comportamento do flush.
+- Adicionou 2 testes de regressão: handler willTerminate cancela timer + flush save; save com debounce através da cadeia de isolamento do actor.
+
+**F-1 fase 3 — `ClipboardStore` com `@MainActor` a nível de classe + 3 refatorações internas (concluído em 2026-07-28)**
+- Removeu em lote as ~26 anotações `@MainActor` por método adicionadas na fase 2 no `ClipboardStore`, substituindo por uma anotação a nível de classe: `@MainActor\nfinal class ClipboardStore` como fonte única da verdade.
+- 3 refatorações internas usando primitivas de Swift Concurrency para substituir workarounds:
+  - **Timer de limpeza (linha 348)**: A estrutura de três saltos `DispatchSource.makeTimerSource + DispatchQueue.main.async + MainActor.assumeIsolated` foi colapsada em um único `Task { @MainActor [weak self] in ... }`. Comportamento mantido: repetição a cada 60s, dispara em bg queue, salta para o main actor via Swift Concurrency.
+  - **Deinit via observador willTerminate**: Espelha o padrão do TrashStore da fase 2. Init registra observador com `queue: .main` → método `handleWillTerminate()` (chamada direta, evitando efeitos colaterais globais de `NotificationCenter.post` — evitação do antipadrão da fase 2). Deinit apenas cancela timers + removeObserver com token opaco.
+  - **Backfill de OCR (linhas 56, 70 em `ClipboardStore+OCR.swift`)**: Substituiu `if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }` por um híbrido `if Thread.isMainThread { apply() } else { Task { @MainActor [weak self] in apply() } }`. Mantém o caminho síncrono para thread principal (XCTest main + SwiftUI views — caso comum) e o Task assíncrono para chamadores em bg thread (pipelines de callback OCR — raro, mas real). **Desvio do plano**: Apenas `Task { @MainActor }` quebraria 4 testes de OCR (assertion executada antes da conclusão da Task); o híbrido é uma correção retrocompatível para chamadores síncronos na thread principal.
+- Adicionou 3 testes de regressão para garantir o contrato das 3 refatorações internas: `testCleanupExpiredItemsDirectCallExercisesMainActorIsolation` (chamada direta a cleanupExpiredItems), `testWillTerminateFlushesPendingSaves` (chamada direta a handleWillTerminate, **sem** usar `NotificationCenter.post`), `testBackfillOCRHopLandsOnMainActor` (usa MockOCR + backfillOCRIfNeeded para verificar que o salto de dispatch não causa trap).
+- 6 adaptações de chamadores forçadas pela anotação `@MainActor` a nível de classe: TagPickerLogic/NewTagLogic static func receberam `@MainActor`; AppDelegate.setupClipboardMonitor recebeu `@MainActor`; closures inline do AppDelegate receberam `{ @MainActor ... in ... }`; chamada `parseExcludedBundleIds()` no AppDelegate + `importBackupTags` em BackupPackage.swift:529 foram envolvidas com `MainActor.assumeIsolated`; HistoryCaptureSettingsViewTests recebeu `@MainActor`.
+
+### Verificação / Verification
+
+- 657 testes passaram (fase 1: 584 baseline + 3 novos; fase 2: 586 + 2 novos = 588; fase 3: +68 adicionados da fase 2→3 + 3 novos = 659 → final 657; 0 falhas).
+- Builds Debug + Release verdes (exit 0).
+- Smoke manual (fase 2 + fase 3: 6 itens cada — menu bar / Settings / Lixeira / pesquisa de imagens / OCR / barra rápida — adiado para o usuário).
+
+### Limpeza interna / Internal cleanup
+
+- Estado da memória pai `clipmemory-apple-conformance-f123-deferred`: `F-1` totalmente concluído; `F-2` marcador futuro (`MainActor.assumeIsolated` em `BackupPackage.swift:519`) resolvido pelo padrão híbrido da fase 3; `F-3` modernização do observador NotificationCenter aguardando plano após o lançamento de F-1.
+- 23 commits à frente de origin/main (NÃO enviados — por `feedback/no-github-without-permission`, push requer autorização explícita).
 
 ### v2.6.2 (2026-07-27) — Destaque de pesquisa de imagens e filtragem por etiquetas
 

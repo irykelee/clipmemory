@@ -1,4 +1,4 @@
-# ClipMemory v2.6.2
+# ClipMemory v2.7.0
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,52 @@
 ---
 
 ## 📋 Changelog
+
+### v2.7.0 (2026-07-28)
+
+### Refactors
+
+**F-1 phase 1 — `LanguageManager` startup language consistency (completed 2026-07-28)**
+- Refactored `LanguageManager` so that off-main readers like `L10n.string()` no longer go through the `@MainActor` path to read the language code, instead using a nonisolated mirror. Added a static cache `currentLanguageCode` written by `didSet` and read by `LocalizationService.currentBundle`.
+- Added `@MainActor` annotation to the `LanguageManager` class itself, making the defensive `Thread.isMainThread` + `DispatchQueue.main.async` fallback in `selectedLanguage.didSet` provably unreachable by the type system.
+- Added 3 regression tests to enforce the contract: setter→mirror synchronization, notification ordering (mirror publishes before notification), off-main thread reading of mirror + `L10n.string()` does not crash or fallback to returning the key literal.
+
+**F-1 phase 2 — `TrashStore` `@MainActor` + Plan B caller annotations (completed 2026-07-28)**
+- Added `@MainActor` to the `TrashStore` class, so that main-actor-isolated state like `@Published var trashedItems` is protected by the type system (previously an implicit contract of "callers must ensure main thread").
+- Because Swift 5.9 cross-actor calls are `ERROR` (not warning — lesson from phase 2 plan defect), adding `@MainActor` to `TrashStore` forced ~26 TrashStore-forwarding wrappers in `ClipboardStore` to also be annotated with `@MainActor` (Plan B: per-method annotation; temporary scaffold, removed in phase 3). 22 test classes were also annotated with `@MainActor`.
+- Changed the deinit's `MainActor.assumeIsolated { flushPendingSaves() }` to an `NSApplication.willTerminateNotification` observer (registered in init with `queue: .main`, deinit only removes the opaque observer token — no isolated state touched). `willTerminate` always fires before deinit, the invariant guarantees flush behavior remains unchanged.
+- Added 2 regression tests: willTerminate handler cancels timer + flushes saves, debounced save through actor isolation chain.
+
+**F-1 phase 3 — `ClipboardStore` class-level `@MainActor` + 3 internal refactors (completed 2026-07-28)**
+- Removed the ~26 per-method `@MainActor` annotations added in phase 2 on `ClipboardStore`, replaced with class-level `@MainActor\nfinal class ClipboardStore` as the single source of truth.
+- 3 internal refactors replaced workarounds with Swift Concurrency primitives:
+  - **cleanup timer (line 348)**: Collapsed the three-hop structure of `DispatchSource.makeTimerSource + DispatchQueue.main.async + MainActor.assumeIsolated` into a single `Task { @MainActor [weak self] in ... }`. Behavior unchanged: 60s repeat, fires on background queue, hops to main actor via Swift Concurrency.
+  - **deinit via willTerminate observer**: Mirrors the phase 2 TrashStore pattern. In init, registers a `queue: .main` observer → `handleWillTerminate()` method (direct call, avoiding `NotificationCenter.post` global side effects — phase 2 anti-pattern avoidance). deinit only cancels timers + removes observer opaque token.
+  - **OCR backfill (line 56, 70 in `ClipboardStore+OCR.swift`)**: Changed `if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }` to a hybrid `if Thread.isMainThread { apply() } else { Task { @MainActor [weak self] in apply() } }`. Preserves the synchronous main-thread path (XCTest main + SwiftUI views — common case), using Task async for background-thread callers (OCR callback pipelines — rare but real). **Plan deviation**: A pure `Task { @MainActor }` would break 4 OCR tests (assertions run before the Task completes), the hybrid is a backward-compatible fix for synchronous main-thread callers.
+- Added 3 regression tests to enforce the contract of the 3 internal refactors: `testCleanupExpiredItemsDirectCallExercisesMainActorIsolation` (directly calls cleanupExpiredItems), `testWillTerminateFlushesPendingSaves` (directly calls handleWillTerminate, **not** using `NotificationCenter.post`), `testBackfillOCRHopLandsOnMainActor` (uses MockOCR + backfillOCRIfNeeded to verify the dispatch hop does not trap).
+- 6 caller adaptations forced by class-level `@MainActor` cascading: TagPickerLogic/NewTagLogic static funcs annotated with `@MainActor`; AppDelegate.setupClipboardMonitor annotated with `@MainActor`; AppDelegate inline closures changed to `{ @MainActor ... in ... }`; AppDelegate `parseExcludedBundleIds()` call and BackupPackage.swift:529 `importBackupTags` call wrapped with `MainActor.assumeIsolated`; HistoryCaptureSettingsViewTests annotated with `@MainActor`.
+
+### Verification
+
+- All 657 tests passed (phase 1: 584 baseline + 3 new; phase 2: 586 + 2 new = 588; phase 3: +68 added from phase 2→3 + 3 new = 659 → final 657; 0 failed).
+- Debug + Release build green (exit 0).
+- Manual smoke (phase 2 + phase 3: 6 items each for menu bar / Settings / Recycle Bin / image search / OCR / QuickBar — deferred to user).
+
+### Internal Cleanup
+
+- `clipmemory-apple-conformance-f123-deferred` parent memory status: `F-1` fully completed; `F-2` future-marker (`BackupPackage.swift:519` `MainActor.assumeIsolated`) resolved by phase 3 hybrid pattern; `F-3` NotificationCenter observer modernization — plan to be opened after F-1 release.
+- 23 commits ahead of origin/main (NOT pushed — per `feedback/no-github-without-permission`, push requires explicit authorization).
+
+---
+
+### Source notes for translators
+
+- Technical terms are locked in GLOSSARY (do not translate): ClipMemory / Recycle Bin / auto-update / update feed / backup / tag / OCR (acronym).
+- Class names remain unchanged across 7 languages: `LanguageManager` / `TrashStore` / `ClipboardStore` / `LocalizationService` / `CryptoService` / `BackupService` / `ImageStorage` / `HangDetector` / `OCRService` / `NSApplication`.
+- `@MainActor` annotation unchanged (Swift keyword).
+- `Task { @MainActor in ... }` / `MainActor.assumeIsolated` / `nonisolated(unsafe)` / `NotificationCenter.post` / `willTerminateNotification` are all Swift / AppKit APIs, keep as-is.
+- "phase 1 / phase 2 / phase 3" are internal project terms, keep.
+- "Plan B" is internal project jargon (per-method `@MainActor` on TrashStore-forwarding wrappers), keep or add a brief comment.
 
 ### v2.6.2 (2026-07-27) — Image Search Highlight & Tag Filtering
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.6.2
+# ClipMemory v2.7.0
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,52 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.7.0 (2026-07-28)
+
+### リファクタリング / Refactors
+
+**F-1 phase 1 — `LanguageManager` 起動時の言語一貫性（completed 2026-07-28）**
+- `LanguageManager` をリファクタリングし、`L10n.string()` などの off-main reader が言語コードを読み取る際に `@MainActor` パスを通らず、代わりに nonisolated ミラーを使用するようにしました。新たに `currentLanguageCode` 静的キャッシュを追加し、`didSet` で書き込み、`LocalizationService.currentBundle` で読み取ります。
+- `LanguageManager` クラス自体に `@MainActor` 属性を追加し、`selectedLanguage.didSet` 内の `Thread.isMainThread` + `DispatchQueue.main.async` による防御的フォールバックが型システムによって到達不可能であることを証明しました。
+- 3 つの regression test を追加して契約を維持：setter→mirror の同期、notification ordering（mirror は notification の前に publish）、off-main thread でのミラー読み取り + `L10n.string()` がクラッシュせず、またキー文字列をフォールバックして返さないことを確認。
+
+**F-1 phase 2 — `TrashStore` `@MainActor` + B方案の呼び出し元アノテーション（completed 2026-07-28）**
+- `TrashStore` クラスに `@MainActor` を追加し、`@Published var trashedItems` などの main-actor-isolated state を型システムで保護（以前は暗黙の「呼び出し元がメインスレッドを保証する」契約）。
+- Swift 5.9 では cross-actor call が `ERROR` となるため（warning ではなく — phase 2 plan defect の教訓）、TrashStore に `@MainActor` を追加した後、`ClipboardStore` の約 26 個の TrashStore-forwarding wrapper にも強制的に `@MainActor` を追加（B方案 per-method 注釈；一時的な scaffold、phase 3 で削除）。22 個の test class も `@MainActor` を追加。
+- deinit 内の `MainActor.assumeIsolated { flushPendingSaves() }` を `NSApplication.willTerminateNotification` observer に変更（init で `queue: .main` を登録、deinit では opaque token の removeObserver のみ — isolate state には触れません）。`willTerminate` は常に deinit より先に発火するため、invariant により flush 動作は変わりません。
+- 2 つの regression test を追加：willTerminate handler が timer をキャンセルし save を flush する動作、actor isolation chain を経由した debounced save の動作。
+
+**F-1 phase 3 — `ClipboardStore` クラスレベル `@MainActor` + 3 つの内部リファクタリング（completed 2026-07-28）**
+- phase 2 で `ClipboardStore` に追加した約 26 個の per-method `@MainActor` 注釈を一括削除し、クラスレベル `@MainActor\nfinal class ClipboardStore` を単一の真実源として使用。
+- 3 つの内部リファクタリングでは、Swift Concurrency プリミティブを使用してワークアラウンドを置き換え：
+  - **cleanup timer (line 348)**：`DispatchSource.makeTimerSource + DispatchQueue.main.async + MainActor.assumeIsolated` の三段ジャンプ構造を単一の `Task { @MainActor [weak self] in ... }` に統合。動作は変わらず：60 秒リピート、bg queue で発火、Swift Concurrency 経由で main actor にホップ。
+  - **deinit via willTerminate observer**：phase 2 TrashStore パターンをミラーリング。init で `queue: .main` observer を登録 → `handleWillTerminate()` メソッド（直接呼び出し、`NotificationCenter.post` のグローバル副作用を回避 — phase 2 anti-pattern 回避）。deinit では timer のキャンセル + removeObserver opaque token のみ。
+  - **OCR backfill (line 56, 70 in `ClipboardStore+OCR.swift`)**：`if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }` をハイブリッド `if Thread.isMainThread { apply() } else { Task { @MainActor [weak self] in apply() } }` に変更。同期 main-thread パス（XCTest main + SwiftUI views — 一般的なケース）を維持し、bg-thread 呼び出し元（OCR コールバックパイプライン — まれだが実際に発生）には Task async を使用。**計画からの逸脱**：純粋な `Task { @MainActor }` は 4 つの OCR test を破壊します（assertion が Task 完了前に実行されるため）。hybrid は sync main-thread callers の backward-compatible fix です。
+- 3 つの regression test を追加して 3 つの内部リファクタリングの契約を維持：`testCleanupExpiredItemsDirectCallExercisesMainActorIsolation`（cleanupExpiredItems を直接呼び出し）、`testWillTerminateFlushesPendingSaves`（handleWillTerminate を直接呼び出し、**not** `NotificationCenter.post`）、`testBackfillOCRHopLandsOnMainActor`（MockOCR + backfillOCRIfNeeded を使用して dispatch hop がトラップしないことを検証）。
+- クラスレベル `@MainActor` のカスケードにより、6 個の呼び出し元に強制適応：TagPickerLogic/NewTagLogic の static func に `@MainActor` を追加；AppDelegate.setupClipboardMonitor に `@MainActor` を追加；AppDelegate のインラインクロージャに `{ @MainActor ... in ... }` を追加；AppDelegate `parseExcludedBundleIds()` 呼び出し + BackupPackage.swift:529 `importBackupTags` 呼び出しを `MainActor.assumeIsolated` でラップ；HistoryCaptureSettingsViewTests に `@MainActor` を追加。
+
+### 検証 / Verification
+
+- 657 のテストがすべて合格（phase 1: 584 baseline + 3 new；phase 2: 586 + 2 new = 588；phase 3: +68 phase 2→3 added + 3 new = 659 → final 657；0 failed）。
+- Debug + Release build が green（exit 0）。
+- Manual smoke（phase 2 + phase 3 各 6 item：メニューバー / Settings / ごみ箱 / 画像検索 / OCR / クイックバー — deferred to user）。
+
+### 内部クリーンアップ / Internal cleanup
+
+- `clipmemory-apple-conformance-f123-deferred` parent memory 状態：`F-1` 全 completed；`F-2` future-marker（`BackupPackage.swift:519` `MainActor.assumeIsolated`）resolved by phase 3 hybrid pattern；`F-3` NotificationCenter observer modernization 待 F-1 release 后开 plan。
+- 23 commits ahead of origin/main（NOT pushed — per `feedback/no-github-without-permission`、push には explicit authorization が必要）。
+
+---
+
+### 翻訳者向け注意事項
+
+- 技術用語は GLOSSARY に固定（翻訳しない）：ClipMemory / ごみ箱 / 自動アップデート / 更新フィード / バックアップ / タグ / OCR（acronym）。
+- クラス名は 7 言語共通で変更なし：`LanguageManager` / `TrashStore` / `ClipboardStore` / `LocalizationService` / `CryptoService` / `BackupService` / `ImageStorage` / `HangDetector` / `OCRService` / `NSApplication`。
+- `@MainActor` アノテーションは変更なし（Swift keyword）。
+- `Task { @MainActor in ... }` / `MainActor.assumeIsolated` / `nonisolated(unsafe)` / `NotificationCenter.post` / `willTerminateNotification` は Swift / AppKit API のため、原文のまま。
+- "phase 1 / phase 2 / phase 3" はプロジェクト内部の用語のため、そのまま。
+- "B方案" はプロジェクト内部の jargon（TrashStore-forwarding wrappers 上の per-method `@MainActor`）のため、そのままにするか簡単な注釈を付けてください。
 
 ### v2.6.2 (2026-07-27) — 画像検索のハイライト表示とタグフィルタリング
 
