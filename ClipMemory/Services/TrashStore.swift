@@ -5,7 +5,11 @@ import os
 /// (was ~180 lines in the 1594-line god object). Owns the recycle bin, its
 /// persistence, retention policy, and debounced save timer.
 ///
-/// All `@Published` writes happen on the main thread — callers must ensure this.
+/// **F-1 phase 2 (2026-07-28)**: class is now `@MainActor`. The previously
+/// implicit "callers must ensure main thread" contract on `@Published` writes
+/// is now enforced by the type system. See 2026-07-28 F-2 audit closeout
+/// for the F-2 sweep + future-marker notes.
+@MainActor
 final class TrashStore: ObservableObject {
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "Trash")
 
