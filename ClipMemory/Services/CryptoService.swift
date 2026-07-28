@@ -32,6 +32,20 @@ enum KeyFailureAction {
     case quit
 }
 
+/// P0-2: 搜索路径解密结果分类。让调用方区分"瞬态" vs "永久"失败，
+/// 是修 MF-2 潜伏 bug（瞬态锁永久标记条目不可解密）的关键。
+enum DecryptResult: Equatable {
+    case success(String)
+    case keyUnavailable      // 瞬态：getKey() == nil，等 prepareKey 后重试
+    case dataCorrupted       // 永久：AES-GCM tag 失败 / legacy HMAC 不匹配
+    case internalError       // 永久：标称加密但结构不可解析（不变量 violation）
+
+    var isTransient: Bool {
+        if case .keyUnavailable = self { return true }
+        return false
+    }
+}
+
 /// Encryption format versions:
 /// - v2 (current): "v2" prefix + AES-GCM sealed box (nonce + ciphertext + tag)
 /// - v1 (legacy): AES-CBC + HMAC-SHA256, no prefix, for backwards compatibility
@@ -41,6 +55,12 @@ class CryptoService: CryptoServiceProtocol {
     static let shared = CryptoService()
 
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
+
+    // P0-2 Task 1 stub: Task 2 replaces this with real implementation
+    // (4-state classification + negativeCache). All current call sites
+    // treat this as "never decryptable" which is safe — no caller yet
+    // depends on the new semantics.
+    func decryptWithReason(_ base64String: String, itemID: UUID) -> DecryptResult { .dataCorrupted }
 
     // H-2 (2026-07-21 audit fix): Cache the loaded Keychain/file key so
     // subsequent encrypt/decrypt skip the Keychain round-trip (~1–10ms each).

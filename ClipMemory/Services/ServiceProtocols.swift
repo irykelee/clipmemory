@@ -10,6 +10,10 @@ protocol CryptoServiceProtocol {
     func isOldFormat(_ base64String: String) -> Bool
     func migrateToV2(_ base64String: String) -> String?
     func hmacHex(for string: String) -> String?
+    /// Decrypts with explicit failure reason. Single chokepoint for search
+    /// path so callers can distinguish transient key unavailability from
+    /// permanent data corruption (P0-2 NR2/NR4).
+    func decryptWithReason(_ base64String: String, itemID: UUID) -> DecryptResult
 }
 
 // MARK: - Sensitive Detection
