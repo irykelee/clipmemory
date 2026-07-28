@@ -44,4 +44,28 @@ final class TrashStoreMainActorTests: XCTestCase {
         XCTAssertEqual(reload.trashedItems.count, 1)
         XCTAssertEqual(reload.trashedItems.first?.content, "trash me")
     }
+
+    /// Pins the debounced-save contract: scheduleSave() fires once after
+    /// 500ms (debounce interval), flushing needsSave → backend.
+    ///
+    /// Future improvement: inject `debounceInterval` so tests can use a
+    /// shorter value and avoid the 500ms wait below.
+    func testScheduleSaveDebouncesAndFlushesToBackend() {
+        let item = ClipboardItem(content: "debounce me", type: .text)
+        store.moveToTrash(item, evictCaches: { _ in }, didMove: {})
+
+        // Wait for 500ms debounce + a small margin; the timer fires on
+        // .main → MainActor.assumeIsolated → flushSave → saveTrashedItems
+        // → backend.save. If any isolation link is broken, flushSave
+        // crashes and the test fails.
+        let exp = expectation(description: "debounced flush")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            // Reload from the SAME backend instance to read what was saved
+            let reload = TrashStore(backend: self.backend)
+            XCTAssertEqual(reload.trashedItems.count, 1)
+            XCTAssertEqual(reload.trashedItems.first?.content, "debounce me")
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 1.5)
+    }
 }
