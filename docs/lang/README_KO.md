@@ -48,40 +48,14 @@
 
 ## 📋 변경 로그
 
-### v2.7.0 (2026-07-28)
+### v2.7.0 (2026-07-28) — F-1 @MainActor 마이그레이션
 
-### 리팩터 / Refactors
-
-**F-1 phase 1 — `LanguageManager` 시작 시 언어 일관성 (completed 2026-07-28)**
-- `LanguageManager` 리팩터: `L10n.string()` 등 off-main reader가 언어 코드를 읽을 때 더 이상 `@MainActor` 경로를 거치지 않도록 `nonisolated` 미러 사용. 새로운 `currentLanguageCode` 정적 캐시 추가, `didSet`에서 쓰고 `LocalizationService.currentBundle`에서 읽음.
-- `LanguageManager` 클래스 자체에 `@MainActor` 어노테이션 추가, `selectedLanguage.didSet`의 `Thread.isMainThread` + `DispatchQueue.main.async` 방어 코드가 타입 시스템에 의해 unreachable임을 증명.
-- 계약을 지키기 위한 회귀 테스트 3개 추가: setter→미러 동기화, notification 순서(미러가 notification보다 먼저 publish), off-main thread에서 미러 + `L10n.string()` 읽기가 crash나 fallback으로 key 리터럴 반환 없이 동작함.
-
-**F-1 phase 2 — `TrashStore` `@MainActor` + B方案 호출자 어노테이션 (completed 2026-07-28)**
-- `TrashStore` 클래스에 `@MainActor` 추가, `@Published var trashedItems` 등 main-actor-isolated 상태를 타입 시스템으로 보호 (이전은 암묵적 '호출자가 메인 스레드 보장' 계약).
-- Swift 5.9에서 cross-actor call = `ERROR` (warning 아님 — phase 2 plan defect 교훈)이므로, `TrashStore`에 `@MainActor`를 추가하면 `ClipboardStore`의 약 26개 TrashStore-forwarding wrapper에도 `@MainActor`를 강제로 추가(B方案 per-method 어노테이션; 임시 스캐폴드, phase 3에서 삭제). 테스트 클래스 22개에 `@MainActor` 동기 추가.
-- deinit의 `MainActor.assumeIsolated { flushPendingSaves() }`를 `NSApplication.willTerminateNotification` observer로 변경 (init에서 `queue: .main` 등록, deinit에서는 opaque token만 removeObserver — isolated state에 접근하지 않음). `willTerminate`는 항상 deinit 전에 발생, invariant로 flush 동작 유지.
-- 회귀 테스트 2개 추가: willTerminate 핸들러가 timer 취소 + flush 저장, actor isolation chain을 통한 debounced save.
-
-**F-1 phase 3 — `ClipboardStore` 클래스 레벨 `@MainActor` + 3개 내부 리팩터 (completed 2026-07-28)**
-- phase 2에서 `ClipboardStore`에 추가했던 약 26개의 per-method `@MainActor` 어노테이션을 일괄 삭제하고, 클래스 레벨 `@MainActor\nfinal class ClipboardStore`를 단일 진실 공급원으로 사용.
-- 3가지 내부 리팩터를 Swift Concurrency 프리미티브로 우회 코드 대체:
-  - **cleanup timer (line 348)**: `DispatchSource.makeTimerSource + DispatchQueue.main.async + MainActor.assumeIsolated` 3-hop 구조를 단일 `Task { @MainActor [weak self] in ... }`로 축소. 동작 변경 없음: 60초 반복, bg 큐에서 발생, Swift Concurrency를 통해 main actor로 이동.
-  - **deinit via willTerminate observer**: phase 2 TrashStore 패턴 미러. init에서 `queue: .main` observer 등록 → `handleWillTerminate()` 메소드 직접 호출 (`NotificationCenter.post` 전역 부작용 방지 — phase 2 anti-pattern 회피). deinit에서는 timer만 취소 + removeObserver opaque token.
-  - **OCR backfill (line 56, 70 in `ClipboardStore+OCR.swift`)**: `if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }`를 hybrid `if Thread.isMainThread { apply() } else { Task { @MainActor [weak self] in apply() } }`로 변경. sync main-thread 경로 유지 (XCTest main + SwiftUI views — 일반적인 경우), bg-thread 호출자(OCR 콜백 파이프라인 — 드물지만 실제 존재)를 위해 Task async 사용. **Plan 이탈**: 순수 `Task { @MainActor }`는 4개의 OCR 테스트를 깨뜨림 (assertion이 Task 완료 전에 실행됨), hybrid는 sync main-thread 호출자에 대한 하위 호환 수정.
-- 3개의 내부 리팩터 계약을 지키기 위한 회귀 테스트 3개 추가: `testCleanupExpiredItemsDirectCallExercisesMainActorIsolation` (cleanupExpiredItems 직접 호출), `testWillTerminateFlushesPendingSaves` (handleWillTerminate 직접 호출, **`NotificationCenter.post` 사용하지 않음**), `testBackfillOCRHopLandsOnMainActor` (MockOCR + backfillOCRIfNeeded로 dispatch hop이 trap되지 않음 확인).
-- 클래스 레벨 `@MainActor`의 캐스케이딩으로 인해 6개 호출자 적응 강제 적용: TagPickerLogic/NewTagLogic static func에 `@MainActor` 추가; AppDelegate.setupClipboardMonitor에 `@MainActor` 추가; AppDelegate 인라인 클로저에 `{ @MainActor ... in ... }` 추가; AppDelegate `parseExcludedBundleIds()` 호출 + BackupPackage.swift:529 `importBackupTags` 호출을 `MainActor.assumeIsolated`로 래핑; HistoryCaptureSettingsViewTests에 `@MainActor` 추가.
-
-### 검증 / Verification
-
-- 657개 테스트 전부 통과 (phase 1: 584 baseline + 3 new; phase 2: 586 + 2 new = 588; phase 3: +68 phase 2→3 added + 3 new = 659 → final 657; 0 failed).
-- Debug + Release 빌드 green (exit 0).
-- 수동 smoke 테스트 (phase 2 + phase 3 각 6개 항목 메뉴바 / Settings / 휴지통 / 이미지 검색 / OCR / 퀵바 — 사용자에게 위임).
-
-### 내부 정리 / Internal cleanup
-
-- `clipmemory-apple-conformance-f123-deferred` 부모 메모리 상태: `F-1` 전부 completed; `F-2` future-marker (`BackupPackage.swift:519` `MainActor.assumeIsolated`) phase 3 hybrid 패턴으로 해결; `F-3` NotificationCenter observer 현대화는 F-1 릴리스 후 plan 수립 예정.
-- origin/main보다 23 commits ahead (NOT pushed — `feedback/no-github-without-permission`에 따라 push는 명시적 허가 필요).
+- **시작 시 언어 선택기와 UI 텍스트 일관성 수정** — 이전에는 영어 이외의 언어가 저장된 경우, 시작 후 Settings 창 내 UI 텍스트가 여전히 영어로 표시됨 (Language 선택기는 올바르게 표시). v2.7.0에서 수정 후, 시작 즉시 적용됨.
+- **핵심 클래스 전체 Swift 동시성 호환** — `LanguageManager` / `TrashStore` / `ClipboardStore` 세 핵심 클래스에 `@MainActor` 추가, 타입 시스템이 main-thread contract을 보호하여 향후 회귀 방지.
+- **657개 테스트 전부 통과, 0 실패** — 내부 아키텍처 강화로 기능 회귀 없음.
+- **시작 시 비영어 언어 UI 텍스트가 여전히 영어로 표시됨** — Swift `didSet`이 `init()` 내에서 트리거되지 않으므로, 새로 추가된 `currentLanguageCode` 미러는 시작 시점부터 사용 가능하도록 명시적 시드가 필요.
+- **`LanguageManager`가 `nonisolated` 미러를 사용하도록 변경** — `L10n.string()` 등 off-main reader( `CryptoService.prepareKey` failure handler 등 `Task.detached`에서 호출)가 언어 코드를 읽을 때 더 이상 main-actor 경계를 넘지 않음.
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.7.0
 
 ### v2.6.2 (2026-07-27) — 이미지 검색 하이라이트 및 태그 필터
 
