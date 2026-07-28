@@ -503,6 +503,73 @@ final class ImageStorageTests: XCTestCase {
                      "for subsequent launches.")
     }
 
+    /// In-flight saveImage race: cleanupOrphanedImages must not delete a file
+    /// that backgroundQueue is currently writing, even if the corresponding
+    /// ClipboardItem has not yet been registered with the store.
+    ///
+    /// Race window (see `cleanupOrphanedImages` source comment at
+    /// ImageStorage.swift:649-655):
+    ///   T0  saveImage dispatched to backgroundQueue
+    ///   T2  saveImage encrypts + writes file to disk
+    ///   T3  ── RACE WINDOW ── file on disk, item not yet in store.items
+    ///   T4  cleanupOrphanedImages runs on main, snapshots items, walks dir
+    ///   T5  saveImage completion fires on main, addItem reaches the store
+    ///
+    /// Without protection, T4 deletes the file from T2 because it is not in
+    /// the main-thread snapshot. The user's image becomes unrecoverable.
+    ///
+    /// This test reproduces the window deterministically: the main-thread
+    /// completion is enqueued via `DispatchQueue.main.async`, which runs AFTER
+    /// this test method's current call stack returns. So when we poll for the
+    /// file to exist on disk and then call cleanupOrphanedImages with an
+    /// empty keep set, we are guaranteed to be in the race window.
+    func testCleanupOrphanedImagesPreservesInFlightSaveImageFile() {
+        let uuid = newTestUUID()
+        let expectedFilename = "\(uuid.uuidString).png"
+        let fileURL = storageDirectoryURL().appendingPathComponent(expectedFilename)
+
+        // Pre-condition: file does not exist yet
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path),
+                       "Test fixture: file must not exist before saveImage")
+
+        // Start saveImage. The file lands on disk in backgroundQueue BEFORE
+        // the main-thread completion is dispatched.
+        let saveExp = expectation(description: "saveImage")
+        storage.saveImage(makePNGData(), id: uuid) { _ in saveExp.fulfill() }
+
+        // Wait for file to exist on disk. The completion is queued via
+        // DispatchQueue.main.async, so it runs AFTER this method returns —
+        // we are now in the race window: file on disk, item not in store.
+        XCTAssertTrue(waitForFile(fileURL: fileURL, timeout: 5.0),
+                      "Test fixture: file must exist on disk before cleanup runs")
+
+        // Run cleanup with empty keptItems — simulates the race window where
+        // the store has no reference to the in-flight image yet.
+        storage.cleanupOrphanedImages(keptItems: [])
+
+        // Wait for saveImage's main-thread completion to confirm the write succeeded.
+        wait(for: [saveExp], timeout: 5.0)
+
+        // The in-flight file must survive.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path),
+                      "In-flight saveImage file must not be deleted by " +
+                      "cleanupOrphanedImages (race protection)")
+    }
+
+    /// Polls for a file to exist on disk. Used to deterministically detect
+    /// the moment saveImage's backgroundQueue write completes, before the
+    /// main-thread completion fires.
+    private func waitForFile(fileURL: URL, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        return FileManager.default.fileExists(atPath: fileURL.path)
+    }
+
     // MARK: - RS-6: legacyDecryptImage round-trip via loadImage
     //
     // Synthesizes v1-format encrypted blobs (AES-CBC + HMAC-SHA256) and writes

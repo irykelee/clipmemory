@@ -325,6 +325,19 @@ class ImageStorage {
     static let maxImageSize = 50 * 1024 * 1024 // 50MB limit
     private let backgroundQueue = DispatchQueue(label: "com.clipmemory.imagestorage", qos: .userInitiated)
 
+    // RACE-FIX (2026-07-28): track filenames currently being written by
+    // `saveImage` on backgroundQueue. cleanupOrphanedImages runs on main
+    // and can otherwise delete a file that saveImage has just written to
+    // disk but whose ClipboardItem has not yet been registered with the
+    // store (the items update happens AFTER the main-thread completion that
+    // follows the backgroundQueue write). deleteAllExcept skips any
+    // filename in this set, then the writer removes it once the write
+    // completes (success OR failure). NSLock matches the existing
+    // corruptionCountLock pattern; the access pattern is one-shot insert
+    // + one-shot remove, so NSLock has no measurable cost.
+    private let pendingLock = NSLock()
+    private var pendingFilenames: Set<String> = []
+
     // P1-4 (2026-07-23 audit): in-memory counter for silent disk corruption.
     // imageStatus(for:) returns .decryptionFailed for the same terminal
     // reasons that previously produced no observability — bad sector, partial
@@ -359,17 +372,34 @@ class ImageStorage {
             return
         }
 
+        // RACE-FIX (2026-07-28): mark filename in-flight BEFORE dispatching to
+        // backgroundQueue. cleanupOrphanedImages can otherwise delete a file
+        // that saveImage wrote but whose ClipboardItem has not yet reached
+        // the store. The pending mark is removed AFTER the main-thread
+        // completion fires (success path) — the completion handler is what
+        // calls addItem, so removing pending there ensures cleanupOrphanedImages
+        // running between the file write and the item-add sees the file as
+        // in-flight and preserves it. Error paths (encryption/write failure,
+        // self deallocated) remove pending immediately because no file was
+        // written or the file is unusable.
+        let filename = "\(id.uuidString).png"
+        addPending(filename)
+
         backgroundQueue.async { [weak self] in
             guard let self = self else {
+                // Unreachable for the singleton, but defensive: pass-through
+                // the cleanup so a hypothetical future non-singleton use
+                // would not leak the pending mark.
+                ImageStorage.shared.removePending(filename)
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
 
-            let filename = "\(id.uuidString).png"
             let fileURL = self.imagesDirectory.appendingPathComponent(filename)
 
             // Encrypt image data before writing to disk (N2)
             guard let encryptedData = ServiceContainer.crypto.encryptData(data) else {
+                self.removePending(filename)
                 self.logger.error("Failed to encrypt image data — image not saved")
                 // M-8 (2026-07-24 audit): the observer chain (AppDelegate,
                 // Settings diagnostics) expects main-thread delivery. Post
@@ -385,13 +415,26 @@ class ImageStorage {
 
             do {
                 try encryptedData.write(to: fileURL, options: .atomic)
-                DispatchQueue.main.async { completion(filename) }
             } catch {
+                self.removePending(filename)
                 self.logger.error("Failed to save encrypted image: \(error.localizedDescription)")
                 DispatchQueue.main.async { completion(nil) }
+                return
+            }
+
+            // File on disk. Defer pending removal until AFTER the main-thread
+            // completion handler runs — the completion handler triggers addItem
+            // (via the ClipboardMonitor delegate chain), so by the time it
+            // returns, the filename is in the store's keep set. Removing
+            // pending here closes the gap between "file exists" and "item in
+            // store" that cleanupOrphanedImages would otherwise exploit.
+            DispatchQueue.main.async {
+                completion(filename)
+                self.removePending(filename)
             }
         }
     }
+
 
     // Serializes legacy-migration writes across threads. Multiple callers
     // invoking imageStatus(for:) concurrently for the same legacy PNG would
@@ -630,13 +673,22 @@ imageCache.setObject(image, forKey: filename as NSString, cost: data.count)
 
     func deleteAllExcept(filenames: Set<String>) {
         guard let files = try? fileManager.contentsOfDirectory(atPath: imagesDirectory.path) else { return }
+        // RACE-FIX (2026-07-28): snapshot pending filenames once, instead of
+        // holding the lock for the whole directory walk. Any saveImage that
+        // starts its write between this snapshot and the actual file removal
+        // will still be safe — the backgroundQueue write takes a few ms and
+        // the lock-free iteration here is even faster, so the window is
+        // negligible. The life-saving property is: a file that saveImage has
+        // ALREADY written to disk but whose ClipboardItem has not yet reached
+        // the store is in this set, and cannot be deleted.
+        let inFlight = pendingSnapshot()
         var deleted = 0
         for file in files {
             guard isValidFilename(file) else { continue }
-            if !filenames.contains(file) {
-                try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(file))
-                deleted += 1
-            }
+            if filenames.contains(file) { continue }
+            if inFlight.contains(file) { continue }
+            try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(file))
+            deleted += 1
         }
         // Bulk deletions used to happen silently — log them so a future
         // "images vanished" report can be traced in the system log.
@@ -660,5 +712,25 @@ imageCache.setObject(image, forKey: filename as NSString, cost: data.count)
         }
         let keptFilenames = Set(keptItems.filter { $0.type == .image }.map { $0.content })
         deleteAllExcept(filenames: keptFilenames)
+    }
+
+    // MARK: - RACE-FIX (2026-07-28): pending-filename tracking
+
+    private func addPending(_ filename: String) {
+        pendingLock.lock()
+        pendingFilenames.insert(filename)
+        pendingLock.unlock()
+    }
+
+    private func removePending(_ filename: String) {
+        pendingLock.lock()
+        pendingFilenames.remove(filename)
+        pendingLock.unlock()
+    }
+
+    private func pendingSnapshot() -> Set<String> {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        return pendingFilenames
     }
 }
