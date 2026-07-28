@@ -294,14 +294,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             monitor?.excludedBundleIds = ids
         }
         // Apply initial excluded-apps state from stored settings.
-        // F-1 phase 3 (2026-07-28): parseExcludedBundleIds is @MainActor
-        // (inherited from class-level @MainActor on ClipboardStore).
-        // setupClipboardMonitor is invoked from main-thread
-        // applicationDidFinishLaunching, so we can bridge via
-        // MainActor.assumeIsolated.
-        monitor.excludedBundleIds = MainActor.assumeIsolated {
-            ClipboardStore.shared.parseExcludedBundleIds()
-        }
+        // F-2 sweep (2026-07-28): dropped MainActor.assumeIsolated wrap.
+        // setupClipboardMonitor is itself @MainActor (per F-1 phase 3 commit
+        // `6a311c8`), so `parseExcludedBundleIds()` (inherited @MainActor from
+        // class-level annotation on ClipboardStore) is directly callable
+        // without runtime bridge.
+        monitor.excludedBundleIds = ClipboardStore.shared.parseExcludedBundleIds()
     }
 
     private func setupHotKey() {
