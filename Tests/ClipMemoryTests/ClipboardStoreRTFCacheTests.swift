@@ -7,7 +7,7 @@ import AppKit
 /// Sandbox pattern follows ImportExportTests (temp dirs + throwaway
 /// CryptoService keys so the real store is untouched). NSPasteboard.general
 /// is cleared in tearDown to avoid test pollution across the system.
-final class ClipboardStoreRTFCacheTests: XCTestCase {
+@MainActor final class ClipboardStoreRTFCacheTests: XCTestCase {
 
     private var tempRoot: URL!
     private var defaults: UserDefaults!

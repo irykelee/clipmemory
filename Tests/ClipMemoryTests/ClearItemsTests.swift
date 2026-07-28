@@ -2,7 +2,7 @@ import XCTest
 @testable import ClipMemory
 
 /// Conditional clear (type × range) and tag deletion with content.
-final class ClearItemsTests: XCTestCase {
+@MainActor final class ClearItemsTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
     private var trashBackend: MemoryStorageBackend!

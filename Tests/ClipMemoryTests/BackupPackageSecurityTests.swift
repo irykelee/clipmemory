@@ -7,7 +7,7 @@ import CryptoKit
 /// symbolic link (BKP-2) or an oversized store JSON blob (BKP-3).
 /// Fully sandboxed: temp dirs + throwaway CryptoService keys; the real
 /// Application Support and the app's key file are never touched.
-final class BackupPackageSecurityTests: XCTestCase {
+@MainActor final class BackupPackageSecurityTests: XCTestCase {
 
     private var tempRoot: URL!
     private var imagesDir: URL!

@@ -2,7 +2,7 @@ import XCTest
 @testable import ClipMemory
 
 /// Tests for the recycle bin (trash) feature.
-final class ClipboardStoreTrashTests: XCTestCase {
+@MainActor final class ClipboardStoreTrashTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
     private var trashBackend: MemoryStorageBackend!

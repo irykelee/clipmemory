@@ -4,7 +4,7 @@ import XCTest
 /// Regression: an encrypted-but-undecryptable item must mark decryptionFailed
 /// exactly once — never re-mark (which published during view updates and
 /// froze the app at 100% CPU when rendering the QuickBar/main window).
-final class DecryptionFailedLoopTests: XCTestCase {
+@MainActor final class DecryptionFailedLoopTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
     private var store: ClipboardStore!

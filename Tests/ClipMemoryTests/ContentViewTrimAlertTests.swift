@@ -8,7 +8,7 @@ import XCTest
 /// confirm/cancel decisions are extracted to static helpers
 /// (`ContentView.applyTrimConfirmation` / `applyTrimCancellation`) so the
 /// logic is testable without rendering the view hierarchy.
-final class ContentViewTrimAlertTests: XCTestCase {
+@MainActor final class ContentViewTrimAlertTests: XCTestCase {
 
     private let maxItemsKey = "maxClipboardItems"
     private var savedMaxItems: Any?

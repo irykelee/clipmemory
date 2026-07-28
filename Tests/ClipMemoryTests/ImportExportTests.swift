@@ -5,7 +5,7 @@ import CryptoKit
 /// BackupPackage export → import round-trip, passphrase check, merge dedupe.
 /// Fully sandboxed: temp dirs + throwaway CryptoService keys; the real
 /// Application Support and the app's key file are never touched.
-final class ImportExportTests: XCTestCase {
+@MainActor final class ImportExportTests: XCTestCase {
 
     private var tempRoot: URL!
     private var imagesDir: URL!
