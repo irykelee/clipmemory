@@ -285,21 +285,33 @@ final class ClipboardStore: ObservableObject {
 
         // trashRetentionDays init moved to TrashStore (HIGH-1, 2026-07-26)
 
-        // Register notification observer AFTER all properties are initialized
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleImageMigrationCompleted(_:)),
-            name: Notification.Name("ImageStorageMigrationCompleted"),
-            object: nil
-        )
+        // Register notification observers AFTER all properties are initialized.
+        // F-3 (2026-07-28): convert from selector-based to block-based with
+        // `queue: .main` so handlers are type-system guaranteed to run on main
+        // thread (SwiftUI @Published mutations + AppKit state). Replaces the
+        // previous defensive `DispatchQueue.main.async` wrap inside each handler.
+        imageMigrationObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("ImageStorageMigrationCompleted"), object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }
+            let migratedSet = Set(migratedFilenames)
+            var didMigrateAny = false
+            for (index, item) in self.items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
+                self.items[index] = item.with(isEncrypted: true)
+                didMigrateAny = true
+            }
+            if didMigrateAny {
+                self.scheduleSave()
+            }
+        }
         // H-2 (2026-07-25 audit): flush captures that were deferred while the
         // encryption key was still being prepared on first launch.
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleCryptoKeyPrepared(_:)),
-            name: .cryptoKeyPrepared,
-            object: nil
-        )
+        cryptoKeyPreparedObserver = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: .main
+        ) { [weak self] notification in
+            self?.handleCryptoKeyPrepared(notification)
+        }
 
         // Wire caches to trashStore so evictCaches can drop stale entries.
         trashStore.contentCache = contentCache
@@ -433,6 +445,16 @@ final class ClipboardStore: ObservableObject {
     private var pendingFailedIDs = Set<UUID>()
     private let pendingFailedIDsLock = NSLock()
 
+    /// F-3 (2026-07-28): opaque tokens for block-based NotificationCenter
+    /// observers. Stored so deinit can `removeObserver(_:)` each one — the
+    /// selector-based `removeObserver(self)` API no longer applies since
+    /// F-3 converted ImageStorageMigrationCompleted + .cryptoKeyPrepared to
+    /// block-based form with `queue: .main`. Handler now guaranteed to run on
+    /// main thread by type system, replacing the previous defensive
+    /// `DispatchQueue.main.async` wrap inside each handler.
+    private var imageMigrationObserver: NSObjectProtocol?
+    private var cryptoKeyPreparedObserver: NSObjectProtocol?
+
     deinit {
         // I-1 fix (2026-07-20 audit): cancel all four DispatchSourceTimers.
         // Previous deinit only cancelled cleanupTimer and saveTimer — tag and
@@ -453,6 +475,17 @@ final class ClipboardStore: ObservableObject {
         if let observer = willTerminateObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        // F-3 (2026-07-28): remove block-based observer tokens. `removeObserver(self)`
+        // above only handles selector-based observers registered with `self` as
+        // target — block-based observers return opaque tokens that need explicit
+        // removal. Without these, the observer chain keeps closures alive after
+        // dealloc (same hazard I-2 fix noted for selector observers).
+        if let observer = imageMigrationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = cryptoKeyPreparedObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     /// Handles image migration completion — updates isEncrypted flags for migrated image items.
@@ -463,19 +496,20 @@ final class ClipboardStore: ObservableObject {
 /// from any non-main thread violates SwiftUI's contract (the same hazard CRIT-1
 /// called out for `.cryptoKeyPrepared`). Pin to main here too so a future caller
 /// that posts the notification from a background queue cannot race the UI.
-@objc private func handleImageMigrationCompleted(_ notification: Notification) {
+///
+/// F-3 (2026-07-28): handler inlined into the block-based observer closure
+/// in init() above (with `queue: .main`). This `@objc` method removed —
+/// no longer needed since observer is block-based.
+private func handleImageMigrationCompleted(_ notification: Notification) {
     guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }
     let migratedSet = Set(migratedFilenames)
-    DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
-        var didMigrateAny = false
-        for (index, item) in self.items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
-            self.items[index] = item.with(isEncrypted: true)
-            didMigrateAny = true
-        }
-        if didMigrateAny {
-            self.scheduleSave()
-        }
+    var didMigrateAny = false
+    for (index, item) in self.items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
+        self.items[index] = item.with(isEncrypted: true)
+        didMigrateAny = true
+    }
+    if didMigrateAny {
+        self.scheduleSave()
     }
 }
 
@@ -484,7 +518,7 @@ final class ClipboardStore: ObservableObject {
     /// pending item through `addItem(_:)` (dedup and ordering are preserved).
     /// On failure, drop them with the same encryption-failed notification that
     /// an immediate failure would have posted.
-    @objc private func handleCryptoKeyPrepared(_ notification: Notification) {
+    private func handleCryptoKeyPrepared(_ notification: Notification) {
         let success = notification.userInfo?["success"] as? Bool ?? false
         pendingKeyItemsLock.lock()
         let pending = pendingKeyItems
@@ -492,30 +526,21 @@ final class ClipboardStore: ObservableObject {
         pendingKeyItemsLock.unlock()
 
         guard !pending.isEmpty else { return }
-        // CRIT-1 (2026-07-26 review): the .cryptoKeyPrepared notification is
-        // posted from CryptoService.prepareKey() which runs on a detached
-        // utility queue — this handler runs on whichever thread the notification
-        // was posted from. addItem(_:) directly mutates @Published var items,
-        // which SwiftUI requires on main thread. Dispatch to main before
-        // touching any @Published or AppKit state.
+        // CRIT-1 (2026-07-26 review): handler now runs on main thread by
+        // type-system guarantee (F-3 queue: .main observer), not by defensive
+        // DispatchQueue.main.async wrap. addItem(_:) directly callable.
         if success {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                for item in pending { self.addItem(item) }
-            }
+            for item in pending { self.addItem(item) }
         } else {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.logger.error("Encryption key preparation failed; dropping \(pending.count) deferred clipboard capture(s)")
-                NotificationCenter.default.post(
-                    name: .encryptionFailed,
-                    object: nil,
-                    userInfo: [
-                        "source": "addItem",
-                        "itemType": "deferred"
-                    ]
-                )
-            }
+            self.logger.error("Encryption key preparation failed; dropping \(pending.count) deferred clipboard capture(s)")
+            NotificationCenter.default.post(
+                name: .encryptionFailed,
+                object: nil,
+                userInfo: [
+                    "source": "addItem",
+                    "itemType": "deferred"
+                ]
+            )
         }
     }
 
