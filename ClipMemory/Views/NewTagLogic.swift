@@ -21,7 +21,7 @@ enum NewTagLogic {
     ///            exists, `.created(id)` if a new tag was added,
     ///            `nil` if the name was empty/whitespace-only.
     /// - Side effect: when `.created`, the new tag is written to `store`.
-    static func submit(name: String,
+    @MainActor static func submit(name: String,
                        colorHex: String,
                        store: ClipboardStore) -> NewTagSubmitResult? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
