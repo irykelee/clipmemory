@@ -274,4 +274,50 @@ final class CryptoKeyPreparationTests: XCTestCase {
         XCTAssertNil(store.stored, "no Keychain write may occur when locked")
         XCTAssertEqual(store.storeCalls, 0, "store() must never be called when Keychain reports locked")
     }
+
+    // MARK: - P0-1 (2026-07-28 audit): retry prepareKey after Keychain unlocks
+
+    /// P0-1: when prepareKey fails because the Keychain is locked
+    /// (errSecInteractionNotAllowed at launchd start), the user must not
+    /// be stranded for the rest of the session. After the Keychain
+    /// unlocks (login / wake), retryPrepareKeyIfLocked() must succeed.
+    func testRetryPrepareKeyIfLockedAfterUnlock() {
+        let store = MockKeyStore()
+        store.lockedStatus = .interactionLocked
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key1 = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+        XCTAssertNil(key1, "First attempt should return nil when Keychain is locked")
+
+        // Simulate Keychain becoming accessible (user logs in / wakes)
+        store.lockedStatus = nil
+        let stored = Data((0..<32).map { UInt8($0 ^ 0xA5) })
+        store.store(stored) // store() on success sets stored = keyData
+
+        let key2 = CryptoService.retryPrepareKeyIfLocked(
+            keyURL: keyURL, keyStore: store, failureHandler: recorder.handler
+        )
+        XCTAssertNotNil(key2, "Retry must succeed after Keychain unlocks")
+    }
+
+    /// P0-1: retry is a no-op when the key is already loaded — does not
+    /// re-store or trigger failure paths. This is what makes the wake /
+    /// unlock observer safe to fire on every system event.
+    func testRetryPrepareKeyIfLockedIsNoopWhenKeyAlreadyLoaded() {
+        let store = MockKeyStore()
+        let existing = Data((0..<32).map { UInt8($0 ^ 0x5A) })
+        store.store(existing)
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key1 = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+        XCTAssertNotNil(key1)
+
+        let storeCallsBefore = store.storeCalls
+        let key2 = CryptoService.retryPrepareKeyIfLocked(
+            keyURL: keyURL, keyStore: store, failureHandler: recorder.handler
+        )
+        XCTAssertNotNil(key2, "Retry on loaded key must return the key")
+        XCTAssertEqual(store.storeCalls, storeCallsBefore,
+                       "Retry must not re-store when key is already loaded")
+    }
 }

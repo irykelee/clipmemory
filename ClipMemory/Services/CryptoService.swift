@@ -298,6 +298,28 @@ class CryptoService: CryptoServiceProtocol {
         return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
     }
 
+    /// P0-1 (2026-07-28 audit): retry prepareKey after a Keychain unlock
+    /// event. The previous behavior stranded the user for the whole session
+    /// when prepareKey failed with `.interactionLocked` (login + Keychain
+    /// locked at launchd start). The retry is idempotent — if the key is
+    /// already loaded, it returns the cached key without re-prep work.
+    /// Wire from `NSWorkspace.didWakeNotification` (system wake) or login
+    /// unlock notifications so the session self-heals without restart.
+    @discardableResult
+    static func retryPrepareKeyIfLocked(
+        keyURL: URL = CryptoService.keyFileURL,
+        keyStore: KeyStoring = KeychainKeyStore(),
+        failureHandler: (CryptoKeyFailure) -> KeyFailureAction = CryptoService.keyFailureHandler
+    ) -> SymmetricKey? {
+        // Idempotency check: if the cache already holds a key, this is a
+        // no-op. Lets the wake observer fire on every system event without
+        // re-running the prep pipeline.
+        guard shared.withCachedLoadedKey({ shared.cachedLoadedKey }) == nil else {
+            return shared.withCachedLoadedKey { shared.cachedLoadedKey }
+        }
+        return prepareKey(keyURL: keyURL, keyStore: keyStore, failureHandler: failureHandler)
+    }
+
     /// STOR-1 (2026-07-24 audit): prepareKey's success path must publish the
     /// key to the shared cache + set the latch, otherwise getKey()'s prior
     /// miss (which latched `keyLoadAttempted = true`) would permanently strand

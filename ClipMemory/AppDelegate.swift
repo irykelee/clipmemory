@@ -15,6 +15,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var windowManager: WindowManager?
     private var languageObserver: NSObjectProtocol?
     private var encryptionFailedObserver: NSObjectProtocol?
+    // P0-1 (2026-07-28 audit): retry CryptoService.prepareKey after
+    // unlock-revealing events (system wake, screen unlock). The original
+    // code stranded the clipboard for the whole session if Keychain was
+    // locked at launchd start.
+    private var keychainUnlockObserver: NSObjectProtocol?
     private var welcomeWindow: NSWindow?
     // Independent settings window (2026-07-25 plan): separate from the main
     // window, opened via menu `⌘,` or the sidebar "Settings" tab. Same
@@ -46,6 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         StartupHealth.logSnapshot(counts: startupCounts)
         setupHotKey()
         setupLanguageObserver()
+        setupKeychainUnlockObserver()
         setupSettingsMenuItem()
         NSApp.setActivationPolicy(.accessory)
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
@@ -215,6 +221,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         windowManager?.showMainWindow()
     }
 
+    // P0-1 (2026-07-28 audit): retry CryptoService.prepareKey when the
+    // system wakes from sleep. `didWakeNotification` is the lowest-friction
+    // proxy for "Keychain may now be unlocked"; the retry itself is
+    // idempotent (no-op if the key is already loaded), so it's safe to
+    // fire on every wake / screen-unlock event.
+    private func setupKeychainUnlockObserver() {
+        keychainUnlockObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            CryptoService.retryPrepareKeyIfLocked()
+        }
+    }
+
     /// Independent settings window (2026-07-25 plan). Replaces the previous
     /// main-window-embedded settings tab. Both the menu `⌘,` entry and the
     /// sidebar "Settings" tab call this method.
@@ -316,6 +337,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     deinit {
         if let o = languageObserver { NotificationCenter.default.removeObserver(o) }
         if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = keychainUnlockObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         // BUG-037 (2026-07-21): deinit was observer-only. Carbon hotkey,
         // clipboard monitor timer, and welcome window are cleaned only
         // in applicationWillTerminate. If AppDelegate is ever deallocated
