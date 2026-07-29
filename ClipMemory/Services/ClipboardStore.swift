@@ -62,6 +62,10 @@ final class ClipboardStore: ObservableObject {
     /// Persistence is handled by `loadTags()` / `saveTags()`.
     @Published var tags: [UUID: Tag] = [:]
 
+    // P0-2: search-path diagnostics aggregation (@Published → ContentView/QuickBarView)
+    // P7: non-private(set) — @testable does not unlock private setter; tests need write access
+    @Published var diagnostics: DecryptionDiagnostics = .init()
+
     /// Min/max bounds for `maxItems`. E-1 (2026-07-23 audit): the setter
     /// previously wrote any value (including negatives or absurdly large
     /// numbers from a corrupted UserDefaults or an out-of-bounds slider)
@@ -536,11 +540,17 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         pendingKeyItems.removeAll()
         pendingKeyItemsLock.unlock()
 
-        guard !pending.isEmpty else { return }
+        guard !pending.isEmpty else {
+            // P0-2 N4: 即便 pending 为空，success 时也复位 dismissed
+            if success { resetDiagnosticsDismissed() }
+            return
+        }
         // CRIT-1 (2026-07-26 review): handler now runs on main thread by
         // type-system guarantee (F-3 queue: .main observer), not by defensive
         // DispatchQueue.main.async wrap. addItem(_:) directly callable.
         if success {
+            // P0-2 N4: 复位 dismiss（H-2 重放前）
+            resetDiagnosticsDismissed()
             for item in pending { self.addItem(item) }
         } else {
             self.logger.error("Encryption key preparation failed; dropping \(pending.count) deferred clipboard capture(s)")
@@ -552,6 +562,23 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                     "itemType": "deferred"
                 ]
             )
+        }
+    }
+
+    /// P0-2: user taps banner ✕ → dismiss until next key event.
+    func dismissDiagnostics() {
+        var d = diagnostics
+        d.dismissed = true
+        diagnostics = d
+    }
+
+    /// P0-2 N4: reset diagnostics.dismissed so the banner reappears after a
+    /// key-preparation event (dismiss is session-scoped; new key = new state).
+    private func resetDiagnosticsDismissed() {
+        if diagnostics.dismissed {
+            var d = diagnostics
+            d.dismissed = false
+            diagnostics = d
         }
     }
 
@@ -1194,20 +1221,87 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         return pendingFailedIDs.contains(id)
     }
 
-    /// P0-2 F4: main.async 合并到 @Published（不允许 view-body 内 publish）。
-    /// Task 3 占位实现：snapshot + dispatch。Task 4 替换为真实 DecryptionDiagnostics.reduce 逻辑。
-    private func mergePendingDiagnostics() {
+    /// P0-2 T5: append a diagnostic from any call path (search, OCR, RTF).
+    /// Internal so extensions in other files (ClipboardStore+OCR) can reach it
+    /// without duplicating the lock/unlock dance.
+    func recordPendingDiagnostic(_ d: PendingDiagnostic) {
+        pendingDiagnosticsLock.lock()
+        pendingDiagnostics.append(d)
+        pendingDiagnosticsLock.unlock()
+    }
+
+    #if DEBUG
+    /// Test-only: directly inject a pending diagnostic without going through
+    /// the getDecryptedContent search path.
+    func testAddPendingDiagnostic(_ d: PendingDiagnostic) {
+        recordPendingDiagnostic(d)
+    }
+    #endif
+
+    /// P0-2 F4: main.async merge into @Published (must not publish inside view-body).
+    /// P3: SET (not +=) per-pass aggregate so counts don't climb across passes.
+    /// N4: no early return on empty snapshot — even an empty snapshot explicitly
+    ///     SETs zero state, resetting a prior pass's diagnostics.
+    func mergePendingDiagnostics() {
         pendingDiagnosticsLock.lock()
         let snapshot = pendingDiagnostics
         pendingDiagnostics.removeAll()
         pendingDiagnosticsLock.unlock()
 
-        guard !snapshot.isEmpty else { return }
-
+        // N4: no guard !snapshot.isEmpty early return. An empty snapshot must
+        // explicitly SET zero state so the banner hides when all failures clear.
+        var passKeyUnavailable = false
+        var passDataCount = 0
+        var passInternalCount = 0
+        for d in snapshot {
+            switch d {
+            case .keyUnavailable:
+                passKeyUnavailable = true
+            case .dataCorrupted:
+                passDataCount += 1
+            case .internalError:
+                passInternalCount += 1
+            }
+        }
+        let snapshotForAsync = (passKeyUnavailable, passDataCount, passInternalCount)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            // Task 4 会替换为 DecryptionDiagnostics.reduce(snapshot)
-            _ = snapshot
+            // P3: SET (not +=) so banner reflects current pass state only
+            let new = DecryptionDiagnostics(
+                keyUnavailable: snapshotForAsync.0,
+                dataCorruptedCount: snapshotForAsync.1,
+                internalErrorCount: snapshotForAsync.2,
+                dismissed: diagnostics.dismissed
+            )
+            if new != diagnostics { diagnostics = new }
+        }
+    }
+
+    /// P0-3: background pre-warm of contentCache + rtfPlaintextCache.
+    /// Iterates items on a utility queue, calling getDecryptedContent (and
+    /// getRTFPlaintext for richText items) for each uncached item. The decrypt
+    /// runs off the main thread; results are stored in NSCache (thread-safe).
+    /// After completion, the search filter path reads from cache (fast path).
+    ///
+    /// Capped at `batchSize` to avoid saturating the utility queue on large
+    /// histories. Call from updateDisplayedItemsCache (ContentView) /
+    /// recomputeDisplayedItems (QuickBarView) after each filter pass.
+    func prewarmDecryptionCache(items: [ClipboardItem], batchSize: Int = 200) {
+        let uncached = items.prefix(batchSize).filter { item in
+            guard !item.decryptionFailed else { return false }
+            let key = item.id.uuidString as NSString
+            return contentCache.object(forKey: key) == nil
+        }
+        guard !uncached.isEmpty else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
+            for item in uncached {
+                _ = self.getDecryptedContent(item)
+                if item.type == .richText { _ = self.getRTFPlaintext(item) }
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.objectWillChange.send()
+            }
         }
     }
 
@@ -1248,13 +1342,44 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// Avoids repeated NSAttributedString RTF parsing in search/filter paths.
     /// Implementation delegates to the pure `RichTextParser` so the parsing
     /// rules live in exactly one place; only the cache wrapper is here.
+    ///
+    /// P0-2 T5: switched from routing through getDecryptedContent (which already
+    /// uses decryptWithReason) to calling decryptWithReason directly. This lets
+    /// the RTF path avoid caching a stale fallback when .keyUnavailable later
+    /// resolves — the old path cached "Rich Text" (the fallback label) and
+    /// returned it forever even after the key became available.
     func getRTFPlaintext(_ item: ClipboardItem) -> String {
         guard item.type == .richText else { return "" }
         let key = item.id.uuidString as NSString
         if let cached = rtfPlaintextCache.object(forKey: key) {
             return cached as String
         }
-        let base64RTF = getDecryptedContent(item) ?? item.content
+        let base64RTF: String
+        if item.isEncrypted {
+            let outcome = ServiceContainer.crypto.decryptWithReason(item.content, itemID: item.id)
+            switch outcome {
+            case .success(let plaintext):
+                base64RTF = plaintext
+            case .keyUnavailable:
+                // N10: transient — do NOT mark decryptionFailed, do NOT cache
+                recordPendingDiagnostic(.keyUnavailable)
+                return L10n.itemRichText
+            case .dataCorrupted:
+                scheduleDecryptionFailedMark(item.id)
+                recordPendingDiagnostic(.dataCorrupted)
+                let result = RichTextParser.plaintext(from: item.content, fallback: L10n.itemRichText)
+                rtfPlaintextCache.setObject(result as NSString, forKey: key)
+                return result
+            case .internalError:
+                scheduleDecryptionFailedMark(item.id)
+                recordPendingDiagnostic(.internalError)
+                let result = RichTextParser.plaintext(from: item.content, fallback: L10n.itemRichText)
+                rtfPlaintextCache.setObject(result as NSString, forKey: key)
+                return result
+            }
+        } else {
+            base64RTF = item.content
+        }
         let result = RichTextParser.plaintext(from: base64RTF, fallback: L10n.itemRichText)
         rtfPlaintextCache.setObject(result as NSString, forKey: key)
         return result

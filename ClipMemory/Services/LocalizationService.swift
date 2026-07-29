@@ -420,4 +420,8 @@ struct L10n {
     /// the ↑↓ keyboard nav was scoped to the most recent 8 items. Actual
     /// behavior navigates the full filtered list.
     static var tipsKeyUpdown: String { string("tips.key.updown") }
+
+    // P0-2: diagnostics banner (see DecryptionDiagnostics)
+    static var bannerKeyUnavailable: String { string("banner.key.unavailable") }
+    static func bannerDataCorruptedCount(_ n: Int) -> String { plural("banner.data.corrupted.count", n) }
 }

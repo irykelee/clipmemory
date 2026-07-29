@@ -300,6 +300,69 @@ final class CryptoKeyPreparationTests: XCTestCase {
         XCTAssertNotNil(key2, "Retry must succeed after Keychain unlocks")
     }
 
+    // MARK: - P0-1 follow-up (2026-07-29)
+
+    /// P0-1 follow-up: .interactionLocked is a retryable state — prepareKey
+    /// must NOT post .cryptoKeyPrepared(success:false), because
+    /// handleCryptoKeyPrepared treats success:false as terminal and
+    /// permanently drops all pendingKeyItems.
+    func testPrepareKeyLockedDoesNotPostTerminalFailureNotification() {
+        let store = MockKeyStore()
+        store.lockedStatus = .interactionLocked
+
+        // Observe the notification — if it fires, the test fails.
+        var posted = false
+        let token = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: nil
+        ) { _ in posted = true }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+
+        XCTAssertNil(key, "Locked Keychain must return nil, not a key")
+        XCTAssertFalse(posted,
+            ".cryptoKeyPrepared must NOT be posted for .interactionLocked — it is retryable, not terminal")
+        XCTAssertEqual(recorder.failures, [],
+            "No user-facing failure when Keychain is locked")
+    }
+
+    /// P0-1 follow-up: verify the full retry lifecycle — locked → retry
+    /// nil → unlock → retry success — does not lose data. After the
+    /// initial lock, deferred captures must survive until the retry
+    /// succeeds; this requires that prepareKey(.interactionLocked) does
+    /// NOT post success:false (tested above).
+    func testRetryAfterLockedPreservesSessionUntilUnlock() {
+        let store = MockKeyStore()
+        store.lockedStatus = .interactionLocked
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key1 = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+        XCTAssertNil(key1, "First attempt returns nil when Keychain is locked")
+
+        // Retry while still locked — must also return nil (not crash, not
+        // regenerate). This simulates didWakeNotification firing before the
+        // user enters their password.
+        let key2 = CryptoService.retryPrepareKeyIfLocked(
+            keyURL: keyURL, keyStore: store, failureHandler: recorder.handler
+        )
+        XCTAssertNil(key2, "Retry while still locked must return nil")
+        XCTAssertEqual(store.storeCalls, 0,
+            "store() must never be called when Keychain reports locked")
+
+        // Now the user unlocks — Keychain becomes accessible.
+        store.lockedStatus = nil
+        let stored = Data((0..<32).map { UInt8($0 ^ 0xA5) })
+        store.store(stored)
+
+        let key3 = CryptoService.retryPrepareKeyIfLocked(
+            keyURL: keyURL, keyStore: store, failureHandler: recorder.handler
+        )
+        XCTAssertNotNil(key3, "Retry must succeed after Keychain unlocks")
+        XCTAssertTrue(CryptoService.hasCachedKeyForTesting(),
+            "Success must populate the shared cache so getKey() works thereafter")
+    }
+
     /// P0-1: retry is a no-op when the key is already loaded — does not
     /// re-store or trigger failure paths. This is what makes the wake /
     /// unlock observer safe to fire on every system event.

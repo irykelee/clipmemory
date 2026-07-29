@@ -320,6 +320,12 @@ struct ContentView: View {
     private func updateDisplayedItemsCache() {
         let start = Date()
         cachedDisplayedItems = filterItems(store.items)
+        // P0-2 P2: merge once per filter pass (not per-item inside .filter closure).
+        store.mergePendingDiagnostics()
+        // P0-3: pre-warm caches in background so the next filter pass reads from
+        // contentCache/rtfPlaintextCache (fast path) instead of doing sync AES-GCM
+        // decrypt on the main thread.
+        store.prewarmDecryptionCache(items: cachedDisplayedItems)
         // H-10 (2026-07-24 audit): items changed → visible indices change too.
         recomputeVisibleGlobalIndices()
         // Update grouped items cache
@@ -591,6 +597,14 @@ struct ContentView: View {
                 self.saveCollapsedGroups(val)
             }
             .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in self.focusSearchField() }
+            // P0-2 F2/F19: view self-observes .cryptoKeyPrepared so the banner
+            // hides on key restore (keyUnavailable→success) and reappears on
+            // terminal failure. guard success==true: failure doesn't need refresh.
+            .onReceive(NotificationCenter.default.publisher(for: .cryptoKeyPrepared)) { note in
+                let success = (note.userInfo?["success"] as? Bool) ?? false
+                guard success else { return }
+                refreshDisplayedItemsCacheSoon(source: "cryptoKeyPrepared")
+            }
             // M8 fix: use NSCalendarDayChanged notification (fires at midnight) instead of
             // Timer.publish(every: 60). Reduces wakeups from 1440/day to 1/day, and removes
             // the synchronous-write-of-@State-in-onReceive pattern that triggered SwiftUI warnings.
@@ -746,6 +760,10 @@ struct ContentView: View {
             // the strip shows one chip per selected tag with an inline ×,
             // plus a "clear all" affordance and a count badge.
             activeTagFilterStrip
+            DiagnosticsBanner(
+                diagnostics: store.diagnostics,
+                onDismiss: { store.dismissDiagnostics() }
+            )
             ItemListView(
                 store: store,
                 selectedTab: selectedTab,

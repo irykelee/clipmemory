@@ -76,6 +76,10 @@ struct QuickBarView: View {
             maxItems: maxItems,
             store: store
         )
+        // P0-2 P2: merge once per filter pass
+        store.mergePendingDiagnostics()
+        // P0-3: pre-warm caches in background for next filter pass.
+        store.prewarmDecryptionCache(items: cachedDisplayedItems)
     }
 
     var body: some View {
@@ -122,6 +126,12 @@ struct QuickBarView: View {
             .cornerRadius(appCornerRadius)
 
             Color.clear.frame(height: 6)
+
+            // P0-2: diagnostics banner (key unavailable / data corrupted)
+            DiagnosticsBanner(
+                diagnostics: store.diagnostics,
+                onDismiss: { store.dismissDiagnostics() }
+            )
 
             // Section label
             Text(L10n.quickbarRecent(displayedItems.count))
@@ -285,6 +295,13 @@ struct QuickBarView: View {
         // field regardless of which route fires.
         .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in
             isSearchFocused = true
+        }
+        // P0-2 F2/F19: QuickBar self-observes .cryptoKeyPrepared so the banner
+        // refreshes on key restore / terminal failure.
+        .onReceive(NotificationCenter.default.publisher(for: .cryptoKeyPrepared)) { note in
+            let success = (note.userInfo?["success"] as? Bool) ?? false
+            guard success else { return }
+            recomputeDisplayedItems()
         }
         // CLIP-4 (2026-07-24 audit): keep cachedDisplayedItems in sync with
         // its two inputs. onAppear covers popover-open (the view is created
