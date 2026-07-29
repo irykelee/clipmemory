@@ -297,3 +297,6 @@
 "item.ocrProcessing" = "Procesando OCR…";
 "item.ocrUnreadable" = "Texto OCR ilegible";
 "settings.historyCapture.ocrPreview" = "Mostrar texto OCR en resultados de búsqueda de imágenes";
+"banner.key.unavailable" = "Inténtalo de nuevo tras desbloquear";
+"banner.data.corrupted.count" = "%d elementos dañados";
+"banner.data.corrupted.count.one" = "%d elemento dañado";

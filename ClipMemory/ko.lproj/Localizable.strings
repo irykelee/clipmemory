@@ -292,3 +292,5 @@
 "item.ocrProcessing" = "OCR 처리 중…";
 "item.ocrUnreadable" = "OCR 텍스트를 읽을 수 없음";
 "settings.historyCapture.ocrPreview" = "이미지 검색 결과에 OCR 텍스트 표시";
+"banner.key.unavailable" = "잠금 해제 후 다시 시도";
+"banner.data.corrupted.count" = "%d개 항목 손상";
