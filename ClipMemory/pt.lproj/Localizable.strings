@@ -293,7 +293,7 @@
 "settings.tab.history" = "Histórico e captura";
 "settings.tab.backup" = "Backup";
 "settings.tab.update" = "Atualização e sobre";
-"settings.backup.error.last" = "Last backup failed: %@";
+"settings.backup.error.last" = "Última cópia falhou: %@";
 "item.ocrProcessing" = "Processando OCR…";
 "item.ocrUnreadable" = "Texto OCR ilegível";
 "settings.historyCapture.ocrPreview" = "Mostrar texto OCR nos resultados de busca de imagens";

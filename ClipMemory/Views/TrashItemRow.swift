@@ -19,6 +19,7 @@ struct TrashItemRow: View, Equatable {
     // focus and reveal the buttons when the row is focused OR hovered.
     @FocusState private var isFocused: Bool
     @State private var loadedImage: NSImage?
+    @State private var loadedContent: String?
     @State private var imageLoadFailed = false
     @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
     @State private var imageLongPressing = false
@@ -143,12 +144,21 @@ struct TrashItemRow: View, Equatable {
                                 imageLoadStatus = result.1
                             }
                         }
+                        .task(id: item.id) {
+                            guard item.type != .richText, item.type != .image else { return }
+                            if loadedContent != nil { return }
+                            let result = await Task.detached(priority: .utility) {
+                                store.getDecryptedContent(item) ?? ""
+                            }.value
+                            if Task.isCancelled { return }
+                            loadedContent = result
+                        }
                     } else if item.type == .richText {
                         Text(plainTextFallback)
                             .font(.system(size: sz(12))).foregroundColor(.secondary)
                             .lineLimit(3)
                     } else {
-                        Text(decryptedContent)
+                        Text(loadedContent ?? "")
                             .font(.system(size: sz(12))).foregroundColor(Color(nsColor: .controlTextColor))
                             .lineLimit(3)
                     }

@@ -286,7 +286,7 @@
 "settings.tab.history" = "历史与捕获";
 "settings.tab.backup" = "备份";
 "settings.tab.update" = "更新与关于";
-"settings.backup.error.last" = "Last backup failed: %@";
+"settings.backup.error.last" = "上次备份失败：%@";
 "item.ocrProcessing" = "OCR 处理中…";
 "item.ocrUnreadable" = "OCR 文本损坏";
 "settings.historyCapture.ocrPreview" = "图片搜索结果显示 OCR 文本";

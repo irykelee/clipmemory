@@ -151,11 +151,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// repeated reads of the same item. Direct calls are appropriate only
     /// for one-shot operations (export, single-row preview).
     var plainTextFromRTFFallback: String {
-        // Preserve the original semantic contract: only RTF items yield a
-        // parsed plaintext; every other type returns "" so SwiftUI views
-        // can fall back to `content`. Otherwise non-RTF items would falsely
-        // render the parser `fallback` ("Rich Text") in lists.
         guard type == .richText else { return "" }
-        return RichTextParser.plaintext(from: content)
+        return RichTextParser.plaintext(from: content, fallback: String(localized: "item.richText", defaultValue: "Rich Text"))
     }
 }

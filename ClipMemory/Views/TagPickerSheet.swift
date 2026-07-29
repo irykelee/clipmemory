@@ -441,30 +441,18 @@ struct TagPickerSheet: View {
     // MARK: - onAppear
 
     private func loadSuggestions() {
-        let content = store.getDecryptedContent(item) ?? item.content
-        let facets = TagSuggestion.detect(for: item.type, content: content)
-        let existing = Array(store.tags.values)
-        // Secondary CLIP-3 (2026-07-24 audit): derive kind tag names from the
-        // facets already computed above. Previously this called
-        // `TagSuggestion.suggest(for:content:)`, which re-runs the entire
-        // detect pipeline (trim + language/kind/name heuristics + NLTagger)
-        // a second time on the main thread every time the sheet opens.
-        let names = TagSuggestion.tagNames(for: facets.kind)
-        // BUG-040 (2026-07-21): previously this loop silently called
-        // `store.addTag(...)` for every suggested name that matched an
-        // existing tag — opening the picker modified data without the user
-        // ever tapping anything. A user opening the picker to *browse*
-        // their tags ended up with several auto-attached ones and no easy
-        // way to know what changed. Removed the auto-attach. Existing tag
-        // matches are no longer surfaced here (they would otherwise appear
-        // as duplicates of already-existing tags), but the user can still
-        // search and attach them manually via the existing picker below.
-        suggestionsToCreate = names.filter { name in
-            !existing.contains(where: { $0.name == name })
+        Task { @MainActor in
+            let rawContent = store.getDecryptedContent(item) ?? item.content
+            let facets = await Task.detached(priority: .userInitiated) {
+                TagSuggestion.detect(for: item.type, content: rawContent)
+            }.value
+            let existing = Array(store.tags.values)
+            let names = TagSuggestion.tagNames(for: facets.kind)
+            suggestionsToCreate = names.filter { name in
+                !existing.contains(where: { $0.name == name })
+            }
+            suggestedNames = facets.names
         }
-        // Name suggestions (person/org/place) from NLTagger — never auto-created;
-        // the user opts in via the showNameSuggestions toggle.
-        suggestedNames = facets.names
     }
 }
 
