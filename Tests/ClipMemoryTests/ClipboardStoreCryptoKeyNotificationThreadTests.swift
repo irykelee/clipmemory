@@ -32,7 +32,7 @@ import AppKit
     override func tearDown() {
         store = nil
         backend = nil
-        if let originalCrypto { ServiceContainer.crypto = originalCrypto }
+        if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         CryptoService.resetForTesting()
         super.tearDown()

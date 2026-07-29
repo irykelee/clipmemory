@@ -761,7 +761,7 @@ class CryptoService: CryptoServiceProtocol {
             let iv = combined.prefix(16)
             let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
             let keyData = key.withUnsafeBytes { Data($0) }
-            return aesDecryptCBC(data: Data(ciphertext), key: keyData, iv: Data(iv))
+            return Self.legacyAESDecryptCBC(data: Data(ciphertext), key: keyData, iv: Data(iv)).map { [UInt8]($0) }
         }
 
         // C4: the pre-1.2.0 branch (16-byte IV + ciphertext, no HMAC) was removed.
@@ -807,7 +807,7 @@ class CryptoService: CryptoServiceProtocol {
         return result == 0
     }
 
-    private func aesDecryptCBC(data: Data, key: Data, iv: Data) -> [UInt8]? {
+    static func legacyAESDecryptCBC(data: Data, key: Data, iv: Data) -> Data? {
         let bufferSize = data.count + kCCBlockSizeAES128
         var decryptedBytes = [UInt8](repeating: 0, count: bufferSize)
         var numBytesDecrypted: size_t = 0
@@ -829,7 +829,7 @@ class CryptoService: CryptoServiceProtocol {
             }
         }
 
-        guard status == kCCSuccess else { return nil }
-        return Array(decryptedBytes.prefix(numBytesDecrypted))
+        guard status == kCCSuccess, numBytesDecrypted > 0 else { return nil }
+        return Data(decryptedBytes.prefix(numBytesDecrypted))
     }
 }

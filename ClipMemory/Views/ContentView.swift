@@ -248,6 +248,10 @@ struct ContentView: View {
 
     // MARK: - Optimized Item Filtering
     private func filterItems(_ items: [ClipboardItem]) -> [ClipboardItem] {
+        filterItemsImpl(items)
+    }
+
+    private func filterItemsImpl(_ items: [ClipboardItem]) -> [ClipboardItem] {
         // Sidebar dimensions (type/pinned + tag section) are pure — delegate
         // to SidebarTagFilter so we can unit-test them. Date + search stay
         // here because they need view-scoped state (startOfToday, debounced
@@ -276,19 +280,34 @@ struct ContentView: View {
             // the fix, search matches the actual RTF plaintext AND respects
             // the cache (no per-keystroke NSAttributedString parse).
             if !searchTextDebounced.isEmpty {
-                let searchableText = item.type == .richText
-                    ? store.getRTFPlaintext(item)
-                    : (store.getDecryptedContent(item) ?? "")
-                // NEW-B (2026-07-27 review): match against the same sanitized
-                // OCR text the snippet renders. Previously we used the raw
-                // decrypted text here, but `highlightedOcrContent` strips
-                // control/format/ZWJ chars before matching — a search term
-                // spanning a stripped character would land a row in the
-                // result list while the snippet rendered empty ("found but
-                // not highlighted").
-                let ocrText = item.type == .image ? (store.getSanitizedDecryptedOcrText(item) ?? "") : ""
-                if !searchableText.localizedCaseInsensitiveContains(searchTextDebounced),
-                   !ocrText.localizedCaseInsensitiveContains(searchTextDebounced) { return false }
+                // P0-3: check caches first instead of sync decrypt.
+                // Cold-cache items are batched for background prewarm and
+                // skipped in this pass; they reappear once caches are warm.
+                let contentKey = item.id.uuidString as NSString
+                let searchableText: String
+                if item.type == .richText {
+                    searchableText = store.getRTFPlaintext(item)
+                } else if let cached = store.contentCache.object(forKey: contentKey) as? String {
+                    searchableText = cached
+                } else if item.decryptionFailed {
+                    return false
+                } else {
+                    return false
+                }
+
+                var ocrMatch = false
+                if item.type == .image {
+                    let ocrKey = (item.id.uuidString + ".ocr") as NSString
+                    if let cachedOCR = store.contentCache.object(forKey: ocrKey) as? String {
+                        ocrMatch = cachedOCR.localizedCaseInsensitiveContains(searchTextDebounced)
+                    } else if item.ocrText != nil, !item.decryptionFailed {
+                        return false
+                    }
+                }
+
+                if !searchableText.localizedCaseInsensitiveContains(searchTextDebounced), !ocrMatch {
+                    return false
+                }
             }
             return true
         }
@@ -551,6 +570,7 @@ struct ContentView: View {
                 applyAppearance()
                 updateDisplayedItemsCache()
                 handleDayRolloverIfNeeded()
+                store.prewarmDecryptionCache(items: store.items)
             }
             .onChange(of: searchText) { newValue in
                 // B-2 (2026-07-27): previously the `keyboardSelectedIndex`

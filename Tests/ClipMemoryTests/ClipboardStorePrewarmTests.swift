@@ -110,7 +110,7 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         store.contentCache.removeAllObjects()
 
         // Pre-warm with cap = 5
-        store.prewarmDecryptionCache(items: store.items, batchSize: 5)
+        store.prewarmDecryptionCache(items: store.items, cap: 5)
         let exp = expectation(description: "prewarm completes")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
         wait(for: [exp], timeout: 2.0)
@@ -211,5 +211,40 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         let store = ClipboardStore.shared
         store.prewarmDecryptionCache(items: [])
         XCTAssertTrue(true, "prewarm with empty array must not crash")
+    }
+
+    // MARK: - OCR Cache
+
+    func testPrewarmPopulatesOCRCacheForImageItems() {
+        let store = ClipboardStore.shared
+        let crypto = CryptoService.shared
+
+        guard let encryptedOCR = crypto.encrypt("ocr-text-in-image") else {
+            XCTFail("failed to encrypt OCR payload")
+            return
+        }
+
+        let imageItem = ClipboardItem(
+            content: "image-file.png",
+            type: .image,
+            isEncrypted: true,
+            ocrText: encryptedOCR,
+            ocrAttempted: true
+        )
+        store.items.insert(imageItem, at: 0)
+        store.contentCache.removeAllObjects()
+
+        let ocrKey = (imageItem.id.uuidString + ".ocr") as NSString
+        XCTAssertNil(store.contentCache.object(forKey: ocrKey), "OCR cache must be cold before prewarm")
+
+        store.prewarmDecryptionCache(items: store.items)
+        let exp = expectation(description: "prewarm completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertNotNil(store.contentCache.object(forKey: ocrKey),
+                        "OCR cache must be populated after prewarm")
+        XCTAssertEqual(store.contentCache.object(forKey: ocrKey) as? String,
+                       "ocr-text-in-image", "cached OCR text must match")
     }
 }

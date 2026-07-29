@@ -30,8 +30,8 @@ final class ClipboardStoreSearchFilterTests: XCTestCase {
         // 注入 mock（real encrypt for addItem, simulated keyUnavailable for decrypt）
         let crypto = ToggleableKeyCrypto()
         let original = ServiceContainer.crypto
-        ServiceContainer.crypto = crypto
-        defer { ServiceContainer.crypto = original }
+        ServiceContainer.setCryptoForTesting(crypto)
+        defer { ServiceContainer.setCryptoForTesting(original) }
 
         // 添加 1 个明文 item（addItem 会用 crypto.encrypt 单次加密存储为 v2）
         let appStore = ClipboardStore.shared

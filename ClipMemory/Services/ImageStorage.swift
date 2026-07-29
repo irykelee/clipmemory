@@ -1,6 +1,5 @@
 import Foundation
 import AppKit
-import CommonCrypto
 import os.log
 
 // CryptoService is in the same module, no import needed
@@ -597,7 +596,7 @@ class ImageStorage {
             let iv = combined.prefix(16)
             let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
 
-            return try aesDecryptCBC(data: Data(ciphertext), key: key, iv: Data(iv))
+            return CryptoService.legacyAESDecryptCBC(data: Data(ciphertext), key: key, iv: Data(iv))
         }
 
         // M-5 (2026-07-21 audit): align with CryptoService C4 strategy. The
@@ -610,32 +609,6 @@ class ImageStorage {
         // corrupt and surfaces as `.decryptionFailed` in the UI like the main
         // path. Upgrade tools in the export path don't exercise this code.
         return nil
-    }
-
-    private func aesDecryptCBC(data: Data, key: Data, iv: Data) throws -> Data? {
-        let bufferSize = data.count + kCCBlockSizeAES128
-        var decryptedBytes = [UInt8](repeating: 0, count: bufferSize)
-        var numBytesDecrypted: size_t = 0
-
-        let status = key.withUnsafeBytes { keyBytes in
-            iv.withUnsafeBytes { ivBytes in
-                data.withUnsafeBytes { dataBytes in
-                    CCCrypt(
-                        CCOperation(kCCDecrypt),
-                        CCAlgorithm(kCCAlgorithmAES),
-                        CCOptions(kCCOptionPKCS7Padding),
-                        keyBytes.baseAddress, 32,
-                        ivBytes.baseAddress,
-                        dataBytes.baseAddress, data.count,
-                        &decryptedBytes, bufferSize,
-                        &numBytesDecrypted
-                    )
-                }
-            }
-        }
-
-        guard status == kCCSuccess, numBytesDecrypted > 0 else { return nil }
-        return Data(decryptedBytes.prefix(numBytesDecrypted))
     }
 
     /// Cache-only variant of `loadImageObject` — returns nil on a cache miss

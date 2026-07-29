@@ -27,12 +27,12 @@ import CryptoKit
         // Route the store's decrypt path through the test key so imported items
         // (re-encrypted with that key) are readable; restored in tearDown.
         originalCrypto = ServiceContainer.crypto
-        ServiceContainer.crypto = localCrypto
+        ServiceContainer.setCryptoForTesting(localCrypto)
         store = ClipboardStore(backend: MemoryStorageBackend())
     }
 
     override func tearDown() {
-        if let originalCrypto { ServiceContainer.crypto = originalCrypto }
+        if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         try? FileManager.default.removeItem(at: tempRoot)
         tempRoot = nil

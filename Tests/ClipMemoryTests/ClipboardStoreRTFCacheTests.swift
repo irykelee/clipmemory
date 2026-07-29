@@ -25,14 +25,14 @@ import AppKit
         localKeyData = Data((0..<32).map { UInt8($0 & 0xFF) })
         localCrypto = CryptoService(customKeyData: localKeyData)
         originalCrypto = ServiceContainer.crypto
-        ServiceContainer.crypto = localCrypto
+        ServiceContainer.setCryptoForTesting(localCrypto)
         store = ClipboardStore(backend: MemoryStorageBackend())
         NSPasteboard.general.clearContents()
     }
 
     override func tearDown() {
         NSPasteboard.general.clearContents()
-        if let originalCrypto { ServiceContainer.crypto = originalCrypto }
+        if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         try? FileManager.default.removeItem(at: tempRoot)
         tempRoot = nil

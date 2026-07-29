@@ -1096,6 +1096,11 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         trimToMaxItems()
         updatePinnedItems()
         saveImmediately()
+        if !isRunningTests, let top = items.first { prewarmDecryptionCache(items: [top], cap: 1) }
+    }
+
+    private var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 
     /// Merges imported backup items into the store. Items arrive already
@@ -1283,24 +1288,34 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// runs off the main thread; results are stored in NSCache (thread-safe).
     /// After completion, the search filter path reads from cache (fast path).
     ///
-    /// Capped at `batchSize` to avoid saturating the utility queue on large
-    /// histories. Call from updateDisplayedItemsCache (ContentView) /
-    /// recomputeDisplayedItems (QuickBarView) after each filter pass.
-    func prewarmDecryptionCache(items: [ClipboardItem], batchSize: Int = 200) {
-        let uncached = items.prefix(batchSize).filter { item in
+    /// Capped at `cap` items to avoid saturating the utility queue on large
+    /// histories. Pass nil to prewarm all items. Call from updateDisplayedItemsCache
+    /// (ContentView) / recomputeDisplayedItems (QuickBarView) after each filter pass.
+    func prewarmDecryptionCache(items: [ClipboardItem], cap: Int? = nil, completion: (() -> Void)? = nil) {
+        let workingSet = cap.map { items.prefix($0) } ?? items.prefix(items.count)
+        let uncached = workingSet.filter { item in
             guard !item.decryptionFailed else { return false }
             let key = item.id.uuidString as NSString
-            return contentCache.object(forKey: key) == nil
+            let contentCold = contentCache.object(forKey: key) == nil
+            let rtfCold = item.type == .richText && contentCold
+            let ocrKey = (item.id.uuidString + ".ocr") as NSString
+            let ocrCold = item.type == .image && item.ocrText != nil && contentCache.object(forKey: ocrKey) == nil
+            return contentCold || rtfCold || ocrCold
         }
-        guard !uncached.isEmpty else { return }
+        guard !uncached.isEmpty else {
+            completion?()
+            return
+        }
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             for item in uncached {
                 _ = self.getDecryptedContent(item)
                 if item.type == .richText { _ = self.getRTFPlaintext(item) }
+                if item.type == .image { _ = self.getDecryptedOcrText(item) }
             }
             DispatchQueue.main.async { [weak self] in
                 self?.objectWillChange.send()
+                completion?()
             }
         }
     }

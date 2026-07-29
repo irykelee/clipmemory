@@ -25,12 +25,12 @@ import CryptoKit
         localCrypto = CryptoService(customKeyData: Data((0..<32).map { UInt8($0 & 0xFF) }))
         // Route the store's decrypt path through the test key; restored in tearDown.
         originalCrypto = ServiceContainer.crypto
-        ServiceContainer.crypto = localCrypto
+        ServiceContainer.setCryptoForTesting(localCrypto)
         store = ClipboardStore(backend: MemoryStorageBackend())
     }
 
     override func tearDown() {
-        if let originalCrypto { ServiceContainer.crypto = originalCrypto }
+        if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         try? FileManager.default.removeItem(at: tempRoot)
         tempRoot = nil

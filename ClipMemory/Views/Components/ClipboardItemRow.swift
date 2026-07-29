@@ -102,6 +102,7 @@ struct ClipboardItemRow: View, Equatable {
     @ObservedObject private var languageManager = LanguageManager.shared
     @State private var loadedImage: NSImage?
     @State private var loadedContent: String?
+    @State private var loadedOCRText: String?
     @State private var loadedRichText: AttributedString?
     @State private var longPressing = false
     @State private var imageLongPressing = false
@@ -174,7 +175,7 @@ struct ClipboardItemRow: View, Equatable {
     }
     private var pinText: String { item.isPinned ? L10n.actionUnpin : L10n.actionPin }
     private var decryptedContent: String {
-        loadedContent ?? store.getDecryptedContent(item) ?? ""
+        loadedContent ?? ""
     }
     private var formattedDate: String {
         cachedAbsoluteDateFormatter(for: LanguageManager.shared.selectedLanguage).string(from: item.createdAt)
@@ -222,7 +223,7 @@ struct ClipboardItemRow: View, Equatable {
             return AttributedString(cached)
         }
         let result: AttributedString
-        if let ocrText = store.getDecryptedOcrText(item) {
+        if let ocrText = loadedOCRText {
             result = Self.highlightedOcrContent(ocrText: ocrText, highlight: trimmed)
         } else if item.ocrText != nil {
             // Ciphertext present but decrypt failed — show warning placeholder.
@@ -598,7 +599,16 @@ struct ClipboardItemRow: View, Equatable {
             })
         }
         .task(id: item.id) {
-            guard item.type != .richText, item.type != .image else { return }
+            if item.type == .image {
+                guard item.ocrText != nil, loadedOCRText == nil else { return }
+                let ocrResult = await Task.detached(priority: .utility) {
+                    store.getDecryptedOcrText(item)
+                }.value
+                if Task.isCancelled { return }
+                loadedOCRText = ocrResult
+                return
+            }
+            guard item.type != .richText else { return }
             if loadedContent != nil { return }
             let result = await Task.detached(priority: .utility) {
                 store.getDecryptedContent(item) ?? ""

@@ -17,6 +17,7 @@ settings:
     MARKETING_VERSION: "2.7.0"
     CURRENT_PROJECT_VERSION: "2.7.0"
     SWIFT_VERSION: "5.9"
+    SWIFT_STRICT_CONCURRENCY: minimal
     MACOSX_DEPLOYMENT_TARGET: "13.0"
     # Personal Team（免费 Apple ID）的 Apple Development 证书——带 Team ID，
     # 钥匙串 ACL 走 teamid partition 机制，跨版本免弹窗（Quinn, Apple Forums
