@@ -1,4 +1,4 @@
-# ClipMemory v2.7.1
+# ClipMemory v2.7.2
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
