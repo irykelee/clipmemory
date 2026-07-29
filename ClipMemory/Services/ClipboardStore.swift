@@ -674,7 +674,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                     hashes[candidate.id] = hash
                 }
             }
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 var changed = false
                 for (id, newContent) in migratedContents {
@@ -711,7 +711,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                 case .decryptionFailed: corrupted.insert(item.id)
                 }
             }
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 self?.imageMissingIds = missing
                 self?.imageCorruptedIds = corrupted
             }
@@ -761,10 +761,9 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         if saveTimer == nil {
             let timer = DispatchSource.makeTimerSource(queue: saveTimerQueue)
             timer.setEventHandler { [weak self] in
-                // Hop to main before touching @Published `items` — the timer fires on a
-                // utility queue, and encoding the array from there races with main-thread
-                // mutations (insert/remove) and is UB.
-                DispatchQueue.main.async { self?.flushSave() }
+                Task { @MainActor [weak self] in
+                    self?.flushSave()
+                }
             }
             timer.resume()
             saveTimer = timer
@@ -1022,7 +1021,9 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         if tagSaveTimer == nil {
             let timer = DispatchSource.makeTimerSource(queue: tagSaveTimerQueue)
             timer.setEventHandler { [weak self] in
-                DispatchQueue.main.async { self?.flushTagSave() }
+                Task { @MainActor [weak self] in
+                    self?.flushTagSave()
+                }
             }
             timer.resume()
             tagSaveTimer = timer
@@ -1303,7 +1304,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             }
         }
         let snapshotForAsync = (passKeyUnavailable, passDataCount, passInternalCount)
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             // P3: SET (not +=) so banner reflects current pass state only
             let new = DecryptionDiagnostics(
@@ -1347,7 +1348,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                 if item.type == .richText { _ = self.getRTFPlaintext(item) }
                 if item.type == .image { _ = self.getDecryptedOcrText(item) }
             }
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 self?.objectWillChange.send()
                 completion?()
             }
@@ -1360,7 +1361,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         let inserted = pendingFailedIDs.insert(id).inserted
         pendingFailedIDsLock.unlock()
         guard inserted else { return }
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             self?.mergePendingDecryptionFailures()
         }
     }
