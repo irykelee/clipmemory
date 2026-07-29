@@ -322,6 +322,10 @@ struct ContentView: View {
         cachedDisplayedItems = filterItems(store.items)
         // P0-2 P2: merge once per filter pass (not per-item inside .filter closure).
         store.mergePendingDiagnostics()
+        // P0-3: pre-warm caches in background so the next filter pass reads from
+        // contentCache/rtfPlaintextCache (fast path) instead of doing sync AES-GCM
+        // decrypt on the main thread.
+        store.prewarmDecryptionCache(items: cachedDisplayedItems)
         // H-10 (2026-07-24 audit): items changed → visible indices change too.
         recomputeVisibleGlobalIndices()
         // Update grouped items cache

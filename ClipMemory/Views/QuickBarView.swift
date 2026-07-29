@@ -78,6 +78,8 @@ struct QuickBarView: View {
         )
         // P0-2 P2: merge once per filter pass
         store.mergePendingDiagnostics()
+        // P0-3: pre-warm caches in background for next filter pass.
+        store.prewarmDecryptionCache(items: cachedDisplayedItems)
     }
 
     var body: some View {

@@ -1277,6 +1277,34 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         }
     }
 
+    /// P0-3: background pre-warm of contentCache + rtfPlaintextCache.
+    /// Iterates items on a utility queue, calling getDecryptedContent (and
+    /// getRTFPlaintext for richText items) for each uncached item. The decrypt
+    /// runs off the main thread; results are stored in NSCache (thread-safe).
+    /// After completion, the search filter path reads from cache (fast path).
+    ///
+    /// Capped at `batchSize` to avoid saturating the utility queue on large
+    /// histories. Call from updateDisplayedItemsCache (ContentView) /
+    /// recomputeDisplayedItems (QuickBarView) after each filter pass.
+    func prewarmDecryptionCache(items: [ClipboardItem], batchSize: Int = 200) {
+        let uncached = items.prefix(batchSize).filter { item in
+            guard !item.decryptionFailed else { return false }
+            let key = item.id.uuidString as NSString
+            return contentCache.object(forKey: key) == nil
+        }
+        guard !uncached.isEmpty else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
+            for item in uncached {
+                _ = self.getDecryptedContent(item)
+                if item.type == .richText { _ = self.getRTFPlaintext(item) }
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.objectWillChange.send()
+            }
+        }
+    }
+
     /// C5: buffer a failed id and schedule exactly one async merge per new id.
     private func scheduleDecryptionFailedMark(_ id: UUID) {
         pendingFailedIDsLock.lock()
