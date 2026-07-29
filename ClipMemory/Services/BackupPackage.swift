@@ -516,7 +516,6 @@ final class BackupPackage {
         // dispatches to main queue but its closure isn't @MainActor-isolated.
         // Wrap in MainActor.assumeIsolated (we've already verified we're on main).
         let merge = onMain {
-        let merge = onMain {
             MainActor.assumeIsolated { store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash) }
         }
         result.itemsImported = merge.imported
