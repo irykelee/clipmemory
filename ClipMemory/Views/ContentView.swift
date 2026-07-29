@@ -299,13 +299,13 @@ struct ContentView: View {
                 if item.type == .image {
                     let ocrKey = (item.id.uuidString + ".ocr") as NSString
                     if let cachedOCR = store.contentCache.object(forKey: ocrKey) as? String {
-                        ocrMatch = cachedOCR.localizedCaseInsensitiveContains(searchTextDebounced)
+                        ocrMatch = FuzzySearchMatcher.matches(content: cachedOCR, searchText: searchTextDebounced)
                     } else if item.ocrText != nil, !item.decryptionFailed {
                         return false
                     }
                 }
 
-                if !searchableText.localizedCaseInsensitiveContains(searchTextDebounced), !ocrMatch {
+                if !FuzzySearchMatcher.matches(content: searchableText, searchText: searchTextDebounced), !ocrMatch {
                     return false
                 }
             }

@@ -62,7 +62,7 @@ struct QuickBarView: View {
             let searchableText = item.type == .richText
                 ? store.getRTFPlaintext(item)
                 : (store.getDecryptedContent(item) ?? "")
-            return searchableText.localizedCaseInsensitiveContains(searchTextDebounced)
+            return FuzzySearchMatcher.matches(content: searchableText, searchText: searchTextDebounced)
         }
     }
 
