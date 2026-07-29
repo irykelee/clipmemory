@@ -62,6 +62,10 @@ final class ClipboardStore: ObservableObject {
     /// Persistence is handled by `loadTags()` / `saveTags()`.
     @Published var tags: [UUID: Tag] = [:]
 
+    // P0-2: search-path diagnostics aggregation (@Published → ContentView/QuickBarView)
+    // P7: non-private(set) — @testable does not unlock private setter; tests need write access
+    @Published var diagnostics: DecryptionDiagnostics = .init()
+
     /// Min/max bounds for `maxItems`. E-1 (2026-07-23 audit): the setter
     /// previously wrote any value (including negatives or absurdly large
     /// numbers from a corrupted UserDefaults or an out-of-bounds slider)
@@ -1194,20 +1198,52 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         return pendingFailedIDs.contains(id)
     }
 
-    /// P0-2 F4: main.async 合并到 @Published（不允许 view-body 内 publish）。
-    /// Task 3 占位实现：snapshot + dispatch。Task 4 替换为真实 DecryptionDiagnostics.reduce 逻辑。
-    private func mergePendingDiagnostics() {
+    #if DEBUG
+    /// Test-only: directly inject a pending diagnostic without going through
+    /// the getDecryptedContent search path.
+    func testAddPendingDiagnostic(_ d: PendingDiagnostic) {
+        pendingDiagnosticsLock.lock()
+        pendingDiagnostics.append(d)
+        pendingDiagnosticsLock.unlock()
+    }
+    #endif
+
+    /// P0-2 F4: main.async merge into @Published (must not publish inside view-body).
+    /// P3: SET (not +=) per-pass aggregate so counts don't climb across passes.
+    /// N4: no early return on empty snapshot — even an empty snapshot explicitly
+    ///     SETs zero state, resetting a prior pass's diagnostics.
+    func mergePendingDiagnostics() {
         pendingDiagnosticsLock.lock()
         let snapshot = pendingDiagnostics
         pendingDiagnostics.removeAll()
         pendingDiagnosticsLock.unlock()
 
-        guard !snapshot.isEmpty else { return }
-
+        // N4: no guard !snapshot.isEmpty early return. An empty snapshot must
+        // explicitly SET zero state so the banner hides when all failures clear.
+        var passKeyUnavailable = false
+        var passDataCount = 0
+        var passInternalCount = 0
+        for d in snapshot {
+            switch d {
+            case .keyUnavailable:
+                passKeyUnavailable = true
+            case .dataCorrupted:
+                passDataCount += 1
+            case .internalError:
+                passInternalCount += 1
+            }
+        }
+        let snapshotForAsync = (passKeyUnavailable, passDataCount, passInternalCount)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            // Task 4 会替换为 DecryptionDiagnostics.reduce(snapshot)
-            _ = snapshot
+            // P3: SET (not +=) so banner reflects current pass state only
+            let new = DecryptionDiagnostics(
+                keyUnavailable: snapshotForAsync.0,
+                dataCorruptedCount: snapshotForAsync.1,
+                internalErrorCount: snapshotForAsync.2,
+                dismissed: diagnostics.dismissed
+            )
+            if new != diagnostics { diagnostics = new }
         }
     }
 
