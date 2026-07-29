@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Carbon.HIToolbox
 import ServiceManagement
+import os.log
 
 // swiftlint:disable file_length
 // Justification: ContentView is the single SwiftUI root for sidebar + content +
@@ -59,6 +60,7 @@ struct PendingMaxItemsReduction: Equatable {
 }
 
 struct ContentView: View {
+    private static let logger = Logger(subsystem: "com.clipmemory.app", category: "ContentView")
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
     @State private var selectedTab: SidebarTab = .all
@@ -98,9 +100,19 @@ struct ContentView: View {
     @State private var scrollAnchor: UUID?
     @State private var selectedItems: Set<UUID> = []
     @State private var collapsedGroups: Set<TimeGroup> = {
-        guard let data = UserDefaults.standard.string(forKey: "collapsedGroups")?.data(using: .utf8),
-              let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
-        return Set(arr.compactMap { TimeGroup(rawValue: $0) })
+        guard let data = UserDefaults.standard.string(forKey: "collapsedGroups")?.data(using: .utf8) else {
+            return []
+        }
+        // ID-06 (2026-07-30 audit): a future TimeGroup rename would make every
+        // user's stored collapsed state silently invalid and reset to "all
+        // expanded". Log the decode failure so the regression is visible.
+        do {
+            let arr = try JSONDecoder().decode([String].self, from: data)
+            return Set(arr.compactMap { TimeGroup(rawValue: $0) })
+        } catch {
+            Self.logger.error("Failed to decode persisted collapsed groups (reset to all expanded): \(error.localizedDescription, privacy: .public)")
+            return []
+        }
     }()
     /// Anchor used for "today"/"yesterday" grouping.  Updated by a timer so
     /// items move to the correct section if the app stays open across midnight.
@@ -220,9 +232,19 @@ struct ContentView: View {
 
     private func saveCollapsedGroups(_ groups: Set<TimeGroup>) {
         let arr = groups.map { $0.rawValue }
-        guard let data = try? JSONEncoder().encode(arr) else { return }
-        guard let str = String(data: data, encoding: .utf8) else { return }
-        UserDefaults.standard.set(str, forKey: "collapsedGroups")
+        // ID-05 (2026-07-30 audit): JSONEncoder on [String] doesn't realistically
+        // fail, but if a future refactor adds non-encodable elements the user's
+        // collapsed-group preference would silently reset on next launch. Log it.
+        do {
+            let data = try JSONEncoder().encode(arr)
+            guard let str = String(data: data, encoding: .utf8) else {
+                Self.logger.error("Failed to convert collapsed-groups JSON to UTF-8 (preference lost)")
+                return
+            }
+            UserDefaults.standard.set(str, forKey: "collapsedGroups")
+        } catch {
+            Self.logger.error("Failed to persist collapsed groups (preference lost on next launch): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func debounceSearch(_ text: String) {

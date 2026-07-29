@@ -533,7 +533,18 @@ class ImageStorage {
             if let legacyData = try? legacyDecryptImage(encryptedData) {
                 // Already inside migrationQueue.sync — write directly here.
                 if let newEncrypted = ServiceContainer.crypto.encryptData(legacyData) {
-                    try? newEncrypted.write(to: fileURL, options: .atomic)
+                    // ID-01 (2026-07-30 audit): don't silently leave the file in
+                    // legacy CBC format. Log + bump corruption counter so the
+                    // diagnostics UI surfaces the stuck file; future loads
+                    // will retry the migration.
+                    do {
+                        try newEncrypted.write(to: fileURL, options: .atomic)
+                    } catch {
+                        logger.error("Failed to upgrade legacy image to v2 GCM (file stays legacy CBC): \(error.localizedDescription, privacy: .public) filename=\(filename, privacy: .public)")
+                        Self.corruptionCountLock.lock()
+                        Self.corruptionCount += 1
+                        Self.corruptionCountLock.unlock()
+                    }
                 }
                 return .available(legacyData)
             }
@@ -545,7 +556,19 @@ class ImageStorage {
                 encryptedData[0] == 0x89 && encryptedData[1] == 0x50 &&
                 encryptedData[2] == 0x4E && encryptedData[3] == 0x47 {
                 if let newEncrypted = ServiceContainer.crypto.encryptData(encryptedData) {
-                    try? newEncrypted.write(to: fileURL, options: .atomic)
+                    // ID-02 (2026-07-30 audit): security-relevant — a failed
+                    // write leaves a PLAINTEXT PNG on disk while every other
+                    // image is encrypted at rest. Log loudly + bump counter
+                    // so the diagnostics UI forces user attention; future
+                    // loads retry the migration.
+                    do {
+                        try newEncrypted.write(to: fileURL, options: .atomic)
+                    } catch {
+                        logger.error("Failed to upgrade plaintext PNG to v2 GCM (PLAINTEXT LEFT ON DISK): \(error.localizedDescription, privacy: .public) filename=\(filename, privacy: .public)")
+                        Self.corruptionCountLock.lock()
+                        Self.corruptionCount += 1
+                        Self.corruptionCountLock.unlock()
+                    }
                 }
                 return .available(encryptedData)
             }
@@ -641,7 +664,15 @@ imageCache.setObject(image, forKey: filename as NSString, cost: data.count)
         guard isValidFilename(filename) else { return }
         imageCache.removeObject(forKey: filename as NSString)
         let fileURL = imagesDirectory.appendingPathComponent(filename)
-        try? fileManager.removeItem(at: fileURL)
+        // ID-03 (2026-07-30 audit): a swallowed removeItem failure leaves
+        // the encrypted file on disk as an orphan. cleanupOrphanedImages
+        // won't pick it up until the next launch, and the user sees
+        // "deleted" while disk usage grows.
+        do {
+            try fileManager.removeItem(at: fileURL)
+        } catch {
+            logger.error("Failed to delete image file (orphan left on disk): \(error.localizedDescription, privacy: .public) filename=\(filename, privacy: .public)")
+        }
     }
 
     func deleteAllExcept(filenames: Set<String>) {

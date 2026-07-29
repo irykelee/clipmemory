@@ -225,7 +225,16 @@ final class BackupService {
         var succeeded = false
         defer {
             if !succeeded {
-                try? fileManager.removeItem(at: destination)
+                // ID-10 (2026-07-30 audit): partial backup dir leak on
+                // backup failure. pruneOldBackups eventually picks it up
+                // if it lacks the .incomplete marker, but a write failure
+                // before the marker is written leaves a fully-formed-
+                // looking orphan that survives until the next prune.
+                do {
+                    try fileManager.removeItem(at: destination)
+                } catch {
+                    logger.error("Failed to clean partial backup directory: \(error.localizedDescription, privacy: .public) path=\(destination.path, privacy: .public)")
+                }
             }
         }
 

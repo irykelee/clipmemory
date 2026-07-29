@@ -336,7 +336,16 @@ final class BackupPackage {
 
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("clipmemory-export-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: staging) }
+        defer {
+            // ID-07 (2026-07-30 audit): staging-dir leak on every export if
+            // removeItem fails (file held open, permissions denied). macOS
+            // cleans /tmp on reboot but session-long users accumulate orphans.
+            do {
+                try FileManager.default.removeItem(at: staging)
+            } catch {
+                Self.logger.warning("Failed to clean export staging directory (orphan in /tmp): \(error.localizedDescription, privacy: .public) path=\(staging.path, privacy: .public)")
+            }
+        }
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
 
         // Store blobs (still encrypted with the machine key)
@@ -405,7 +414,15 @@ final class BackupPackage {
         do {
             try zipDirectory(staging, to: tempDestination)
         } catch {
-            try? FileManager.default.removeItem(at: tempDestination)
+            // ID-09 (2026-07-30 audit): the inner try? swallowed the
+            // cleanup-failure error. The original error is re-thrown, but
+            // the cleanup-failure was invisible. Log it so the user can
+            // see the half-zipped file leaking space.
+            do {
+                try FileManager.default.removeItem(at: tempDestination)
+            } catch {
+                Self.logger.warning("Failed to clean half-zipped export temp file: \(error.localizedDescription, privacy: .public) path=\(tempDestination.path, privacy: .public)")
+            }
             throw error
         }
         if FileManager.default.fileExists(atPath: destination.path) {
@@ -450,7 +467,15 @@ final class BackupPackage {
     ) throws -> BackupImportResult {
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("clipmemory-import-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: staging) }
+        defer {
+            // ID-08 (2026-07-30 audit): same orphan-dir pattern as ID-07 on
+            // the import path. One orphan per import.
+            do {
+                try FileManager.default.removeItem(at: staging)
+            } catch {
+                Self.logger.warning("Failed to clean import staging directory (orphan in /tmp): \(error.localizedDescription, privacy: .public) path=\(staging.path, privacy: .public)")
+            }
+        }
         try unzipArchive(archive, to: staging)
 
         guard let manifestData = try? Data(contentsOf: staging.appendingPathComponent("manifest.json")) else {

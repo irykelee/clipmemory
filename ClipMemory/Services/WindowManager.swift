@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import os.log
 
 /// Main NSWindow subclass that disables AppKit's NSFullScreenTransition
 /// (macOS 13+ green-button → real fullscreen, which has the LSUIElement
@@ -53,6 +54,7 @@ struct WindowFrame: Codable, Equatable {
 }
 
 class WindowManager: NSObject, NSWindowDelegate {
+    private let logger = Logger(subsystem: "com.clipmemory.app", category: "WindowManager")
     private(set) var mainWindow: NSWindow?
     private var quickBarPopover: NSPopover?
     private var quickBarHostingController: NSHostingController<QuickBarView>?
@@ -230,7 +232,16 @@ class WindowManager: NSObject, NSWindowDelegate {
         }
         set {
             let f = WindowFrame(x: newValue.origin.x, y: newValue.origin.y, w: newValue.size.width, h: newValue.size.height)
-            if let data = try? JSONEncoder().encode(f) { UserDefaults.standard.set(data, forKey: windowFrameKey) }
+            // ID-04 (2026-07-30 audit): JSONEncoder on a 4-Double struct
+            // doesn't realistically fail, but if a future refactor adds a
+            // non-encodable field the user's window position/size preference
+            // would silently drop on next launch. Log the failure.
+            do {
+                let data = try JSONEncoder().encode(f)
+                UserDefaults.standard.set(data, forKey: windowFrameKey)
+            } catch {
+                logger.error("Failed to persist window frame (position/size lost on next launch): \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
