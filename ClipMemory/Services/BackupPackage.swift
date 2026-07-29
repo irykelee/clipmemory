@@ -293,11 +293,17 @@ final class BackupPackage {
         guard process.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
     }
 
-    /// Runs `work` synchronously on the main thread when the caller is
-    /// elsewhere — store mutations (@Published) require main.
-    private static func onMain<T>(_ work: () throws -> T) rethrows -> T {
-        if Thread.isMainThread { return try work() }
-        return try DispatchQueue.main.sync(execute: work)
+    /// Runs `work` synchronously on the main thread.
+    ///
+    /// C2 fix (2026-07-29 audit): the previous `DispatchQueue.main.sync`
+    /// was a deadlock hazard if the call graph ever reversed (main →
+    /// background → `onMain`). `MainActor.assumeIsolated` makes the
+    /// "we're on main" requirement a runtime trap instead of a silent
+    /// block, and the closure signature is now `@MainActor` so the type
+    /// system flags misuses at the call site. All current callers are
+    /// verified to run on main; this remains a hard precondition.
+    private static func onMain<T>(_ work: @MainActor () throws -> T) rethrows -> T {
+        return try MainActor.assumeIsolated(work)
     }
 
     /// L-11 (2026-07-24 audit): maps the UserDefaults key used in the export
@@ -510,14 +516,11 @@ final class BackupPackage {
             packageTrash, from: packageCrypto, to: localCrypto
         )
         result.itemsSkippedCorrupt = itemCorruptCount + trashCorruptCount
-        // Store mutations (@Published) must run on main even when the caller
-        // invoked us from a background queue for a large package (M2 fix).
-        // F-1 phase 2 (2026-07-28): importBackupItems is @MainActor; `onMain`
-        // dispatches to main queue but its closure isn't @MainActor-isolated.
-        // Wrap in MainActor.assumeIsolated (we've already verified we're on main).
-        let merge = onMain {
-            MainActor.assumeIsolated { store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash) }
-        }
+        // Store mutations (@Published) must run on main (M2 fix).
+        // C2 fix (2026-07-29): `onMain` is now `@MainActor`-isolated by
+        // signature, so the inner `MainActor.assumeIsolated` is redundant.
+        // Callers MUST be on main — `MainActor.assumeIsolated` traps otherwise.
+        let merge = onMain { store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash) }
         result.itemsImported = merge.imported
         result.itemsSkipped = merge.skipped
 
@@ -526,13 +529,11 @@ final class BackupPackage {
         // package key so the local store holds plaintext (re-encrypted with
         // the local key on the next saveTags).
         let localizedTags = packageTags.map { reencryptTagName($0, from: packageCrypto) }
-        // F-1 phase 3 (2026-07-28): importBackupTags is @MainActor (inherited
-        // from class-level @MainActor on ClipboardStore). `onMain` dispatches
-        // to main queue but its closure isn't @MainActor-isolated; bridge via
-        // MainActor.assumeIsolated (matches the importBackupItems pattern at
-        // :518-519 above). Plan §1.3 leaves BackupPackage:519 untouched;
-        // this line is a sibling requiring the same treatment.
-        result.tagsImported = onMain { MainActor.assumeIsolated { store.importBackupTags(localizedTags) } }
+        // F-1 phase 3 (2026-07-28) + C2 fix (2026-07-29): importBackupTags
+        // is @MainActor (inherited from class-level @MainActor on
+        // ClipboardStore); `onMain` is now `@MainActor`-isolated by
+        // signature, so no inner `MainActor.assumeIsolated` bridge needed.
+        result.tagsImported = onMain { store.importBackupTags(localizedTags) }
 
         // Images: decrypt with package key, re-encrypt with local key.
         // Best-effort — image import failure does not roll back merged items/tags.
