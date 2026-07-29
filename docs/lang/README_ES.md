@@ -1,4 +1,4 @@
-# ClipMemory v2.7.1
+# ClipMemory v2.7.2
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -48,14 +48,16 @@
 
 ## 📋 Registro de cambios
 
-### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+### v2.7.2 (2026-07-29) — Búsqueda Difusa e Integridad de Imágenes + Seguridad Criptográfica
 
-- **Mejora significativa en la velocidad de búsqueda** — El hilo principal ya no descifra sincrónicamente; el calentamiento de la caché cubre la activación de la aplicación, la captura de nuevas entradas y la primera visualización de la lista; la búsqueda en frío ya no se ralentiza.
-- **Diagnóstico de fallos de cifrado** — Cuando el bloqueo de Keychain provoca un fallo de descifrado, la página de búsqueda muestra un banner de diagnóstico amarillo explicando el motivo, en lugar de mostrar un resultado vacío en silencio.
-- **Los fallos de descifrado no marcan permanentemente las entradas** — Se corrigió un error latente: después de un bloqueo transitorio de Keychain, las entradas quedaban marcadas permanentemente como «no descifrables»; ahora, cuando la clave se recupera, se reintenta automáticamente.
-- **Seguridad del contenedor de DI** — `ServiceContainer.crypto` se cambió a `private(set)` para evitar que el código no relacionado con pruebas reemplace el servicio de cifrado por error.
-- **Fusión de implementaciones AES-CBC** — Se eliminó la implementación duplicada de descifrado CBC en ImageStorage, unificándola en la única ruta de CryptoService.
-- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
+- **Búsqueda difusa con soporte de pinyin** — "zhongwen" coincide con "中文文档"; los tokens separados por espacios deben coincidir todos (token AND matching); sin distinción de mayúsculas ni diacríticos
+- **Escaneo de integridad de imágenes al inicio** — Escaneo asíncrono al iniciar la App que marca archivos de imagen faltantes o corruptos; las filas de la lista muestran el estado inmediatamente, sin I/O por clic
+- **Diagnóstico de fallos de cifrado** — Banner amarillo en la página de búsqueda que explica la causa cuando el Keychain está bloqueado
+- **Precalentamiento de caché** — El hilo principal ya no descifra sincrónicamente; cubre activación de la App, captura de nuevas entradas y primera visualización de la lista
+- **Bloqueo transitorio de Keychain ya no marca permanentemente las entradas** — Reintento automático al recuperar la clave
+- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.2
+
+### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 

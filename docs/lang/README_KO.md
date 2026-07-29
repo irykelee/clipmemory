@@ -1,4 +1,4 @@
-# ClipMemory v2.7.1
+# ClipMemory v2.7.2
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -48,14 +48,16 @@
 
 ## 📋 변경 로그
 
-### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+### v2.7.2 (2026-07-29) — Fuzzy Search & Image Integrity + Cryptographic Safety
 
-- **검색 속도 대폭 향상** — 메인 스레드가 더 이상 동기적으로 복호화하지 않음. 캐시 워밍업(App 깨어나기, 새 항목 캡처, 목록 첫 표시)이 적용되어 콜드 스타트 검색 시 끊김 없음
-- **암호화 실패 진단** — Keychain 잠금으로 복호화 실패 시 검색 페이지에 노란색 진단 배너가 원인을 표시, 더 이상 조용히 빈 결과를 반환하지 않음
-- **복호화 실패가 항목을 영구 표시하지 않음** — 잠복 버그 수정: Keychain 일시적 잠금 후 항목이 영구적으로 '복호화 불가'로 표시되던 문제, 이제 키 복구 시 자동 재시도
-- **DI 컨테이너 보안** — `ServiceContainer.crypto`를 `private(set)`으로 변경, 테스트 외 코드가 암호화 서비스를 잘못 교체하지 않도록 방지
-- **AES-CBC 구현 병합** — ImageStorage의 중복 CBC 복호화 구현 제거, CryptoService의 단일 경로로 통일
-- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
+- **Pinyin 인식 퍼지 검색** — "zhongwen"이 "中文文档"에 매치. 공백 구분 토큰은 모두 매치 (token AND matching), 대소문자 및 발음 기호 무시
+- **시작 시 이미지 무결성 스캔** — App 시작 시 모든 이미지를 비동기로 스캔하여 누락/손상 파일을 표시. 목록 항목은 클릭마다 I/O 없이 즉시 상태 표시
+- **암호화 실패 진단** — Keychain 잠금 시 검색 페이지에 노란색 진단 배너로 원인 설명
+- **캐시 프리워밍** — 메인 스레드 동기 복호화 제거. App 기동, 새 항목 캡처, 목록 첫 표시 커버
+- **Keychain 일시 잠금으로 인한 항목 영구 표시 수정** — 키 복구 시 자동 재시도
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.7.2
+
+### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor 마이그레이션
 

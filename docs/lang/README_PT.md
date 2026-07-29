@@ -1,4 +1,4 @@
-# ClipMemory v2.7.1
+# ClipMemory v2.7.2
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -48,14 +48,16 @@
 
 ## 📋 Registro de alterações
 
-### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+### v2.7.2 (2026-07-29) — Busca Difusa e Integridade de Imagem + Segurança Criptográfica
 
-- **Grande melhoria na velocidade de pesquisa** — A thread principal não realiza mais descriptografia síncrona; o pré-carregamento do cache cobre a ativação do App, a captura de novos itens e a primeira exibição da lista, eliminando travamentos na pesquisa a frio.
-- **Diagnóstico de falha de criptografia** — Quando a descriptografia falha devido ao bloqueio do Keychain, a página de pesquisa exibe um banner amarelo de diagnóstico explicando o motivo, em vez de resultados vazios silenciosamente.
-- **Falha de descriptografia não marca itens permanentemente** — Corrigido um bug latente: itens eram marcados permanentemente como "indescriptografáveis" após um bloqueio transitório do Keychain; agora a chave pode ser recuperada automaticamente após restabelecimento.
-- **Segurança do contêiner de DI** — `ServiceContainer.crypto` foi alterado para `private(set)` para evitar que código não relacionado a testes substitua o serviço de criptografia.
-- **Implementação AES-CBC consolidada** — Removida a implementação duplicada de descriptografia CBC em `ImageStorage`, unificando o caminho único via `CryptoService`.
-- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
+- **Busca difusa com suporte a pinyin** — "zhongwen" corresponde a "中文文档"; tokens separados por espaço devem corresponder todos (token AND matching); sem distinção de maiúsculas e sem diacríticos
+- **Verificação de integridade de imagens na inicialização** — Verificação assíncrona ao iniciar o App que marca arquivos de imagem ausentes ou corrompidos; os itens da lista exibem o status imediatamente, sem I/O por clique
+- **Diagnóstico de falha de criptografia** — Banner amarelo na página de pesquisa explicando o motivo quando o Keychain está bloqueado
+- **Pré-aquecimento de cache** — A thread principal não realiza mais descriptografia síncrona; cobre ativação do App, captura de novos itens e primeira exibição da lista
+- **Bloqueio transitório do Keychain não marca mais itens permanentemente** — Tentativa automática ao recuperar a chave
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.2
+
+### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 

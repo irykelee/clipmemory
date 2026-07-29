@@ -48,14 +48,14 @@
 
 ## 📋 Changelog
 
-### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+### v2.7.2 (2026-07-29) — Fuzzy Search & Image Integrity + Cryptographic Safety
 
-- **Search speed greatly improved** — Main thread no longer decrypts synchronously; cache pre-warming covers App wake-up, new item capture, and first list display, cold-start search no longer stutters
-- **Encryption failure diagnostics** — When Keychain lock causes decryption failure, the search page shows a yellow diagnostic banner explaining the reason, instead of silently returning empty results
-- **Decryption failure no longer permanently marks items** — Fixed a latent bug: after a transient Keychain lock, items were permanently marked as "undecryptable"; now automatic retry works once the key is restored
-- **DI container safety** — `ServiceContainer.crypto` changed to `private(set)` to prevent non-test code from accidentally replacing the encryption service
-- **AES-CBC implementation merged** — Removed duplicate CBC decryption implementation in `ImageStorage`, unified to the single path in `CryptoService`
-- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
+- **Pinyin-aware fuzzy search** — "zhongwen" matches "中文文档"; space-separated tokens must all match (token AND matching); case-insensitive and diacritic-insensitive
+- **Startup image integrity scan** — Async scan on app launch marks missing/corrupted image files; list items display status immediately without per-click disk I/O
+- **Decryption failure diagnostics** — Yellow banner explains why search results are empty when Keychain is locked, replacing silent empty results
+- **Cache prewarming** — Decrypts no longer block main thread; prewarming covers app wake, new item capture, and list first-display
+- **Transient Keychain lock no longer permanently marks items** — Fixed latent bug where items were permanently labeled "undecryptable" after a transient Keychain lock
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.2
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 

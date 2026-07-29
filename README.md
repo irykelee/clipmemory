@@ -48,14 +48,14 @@
 
 ## 📋 更新日志
 
-### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+### v2.7.2 (2026-07-29) — Fuzzy Search & Image Integrity + Cryptographic Safety
 
-- **搜索速度大幅提升** — 主线程不再同步解密；缓存预热覆盖 App 唤醒、新条目捕获、列表首次显示，冷启动搜索不再卡顿
-- **加密失败诊断** — 当 Keychain 锁定导致解密失败时，搜索页显示黄色诊断横幅说明原因，不再静默空结果
-- **解密失败不会永久标记条目** — 修了一个潜伏 bug：Keychain 瞬态锁定后条目曾被永久标记为「不可解密」，现在 key 恢复后可自动重试
-- **DI 容器安全性** — `ServiceContainer.crypto` 改为 `private(set)`，防止非测试代码误替换加密服务
-- **AES-CBC 实现合并** — 删除 ImageStorage 中重复的 CBC 解密实现，统一走 CryptoService 的单一路径
-- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
+- **拼音感知模糊搜索** — 「zhongwen」也能匹配「中文文档」；空格分隔的多个词必须全部命中，同时忽略大小写和音调符号
+- **启动时图片完整性扫描** — App 启动后异步扫描所有图片条目，标记缺失/损坏文件，列表项立即显示状态
+- **加密失败诊断** — Keychain 锁定时搜索页显示黄色诊断横幅说明原因，不再静默空结果
+- **缓存预热** — 主线程不再同步解密；预热覆盖 App 唤醒、新条目捕获、列表首次显示
+- **Keychain 临时锁定不再永久标记条目** — 修了一个潜伏 bug：临时锁定后条目曾被永久标记为「不可解密」，现在 key 恢复后可自动重试
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.2
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 
