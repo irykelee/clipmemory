@@ -35,7 +35,7 @@ enum UpdateFeedPolicies {
         ),
         FeedChannel(
             id: "jsdelivr-mirror",
-            url: requireURL("https://cdn.jsdelivr.net/gh/irykelee/clipmemory@main/appcast.xml"),
+            url: UpdateService.fallbackFeedURL,
             kind: .fallback,
             labelKey: "settings.updateSource.option.fallback"
         )
