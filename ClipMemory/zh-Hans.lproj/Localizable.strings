@@ -290,3 +290,5 @@
 "item.ocrProcessing" = "OCR 处理中…";
 "item.ocrUnreadable" = "OCR 文本损坏";
 "settings.historyCapture.ocrPreview" = "图片搜索结果显示 OCR 文本";
+"banner.key.unavailable" = "解锁后重试";
+"banner.data.corrupted.count" = "%d 条损坏";

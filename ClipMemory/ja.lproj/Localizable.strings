@@ -292,3 +292,5 @@
 "item.ocrProcessing" = "OCR 処理中…";
 "item.ocrUnreadable" = "OCR テキストを読み込めません";
 "settings.historyCapture.ocrPreview" = "画像検索結果に OCR テキストを表示";
+"banner.key.unavailable" = "ロック解除後に再試行";
+"banner.data.corrupted.count" = "%d 件破損";

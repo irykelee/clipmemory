@@ -305,8 +305,17 @@ class CryptoService: CryptoServiceProtocol {
             logger.error("Keychain contains invalid key (not 32 bytes); treating as absent")
             // fall through to file migration / fresh generation
         case .interactionLocked:
+            // P0-1 follow-up (2026-07-29): .interactionLocked is retryable — do
+            // NOT post .cryptoKeyPrepared(success:false). Posting a terminal
+            // failure here would cause handleCryptoKeyPrepared to permanently
+            // drop all pendingKeyItems, losing clipboard captures that arrive
+            // between the initial failure and the retry success. The retry
+            // (retryPrepareKeyIfLocked) fires on wake / session-become-active,
+            // and publishToSharedCache posts success:true when it succeeds.
+            // Meanwhile, getKey() independently loads from Keychain/file via
+            // its own short-circuit, so encrypt/decrypt don't depend on this
+            // notification to start working.
             logger.error("Keychain interaction not allowed (locked); deferring key prep until unlock")
-            notifyKeyPreparationFailed()
             return nil
         case .notFound, .otherError:
             break // fall through to file migration / fresh generation

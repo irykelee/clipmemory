@@ -102,15 +102,33 @@ extension ClipboardStore {
     }
 
     /// Decrypts the stored OCR text of an image item (nil when not recognized).
+    /// P0-2 T5: switched from blind `decrypt` to `decryptWithReason` so OCR-path
+    /// failures feed into DecryptionDiagnostics. Per N10, `.keyUnavailable` is
+    /// transient — never marks `decryptionFailed`. Data corruption here also
+    /// does NOT mark `decryptionFailed` on the item because that flag controls
+    /// the search path's retry of `item.content`, not OCR text.
     func getDecryptedOcrText(_ item: ClipboardItem) -> String? {
         guard item.type == .image, let ciphertext = item.ocrText else { return nil }
         let key = (item.id.uuidString + ".ocr") as NSString
         if let cached = contentCache.object(forKey: key) {
             return cached as String
         }
-        guard let plaintext = ServiceContainer.crypto.decrypt(ciphertext) else { return nil }
-        contentCache.setObject(plaintext as NSString, forKey: key)
-        return plaintext
+        let outcome = ServiceContainer.crypto.decryptWithReason(ciphertext, itemID: item.id)
+        switch outcome {
+        case .success(let plaintext):
+            contentCache.setObject(plaintext as NSString, forKey: key)
+            return plaintext
+        case .keyUnavailable:
+            // N10: transient — do NOT mark decryptionFailed
+            recordPendingDiagnostic(.keyUnavailable)
+            return nil
+        case .dataCorrupted:
+            recordPendingDiagnostic(.dataCorrupted)
+            return nil
+        case .internalError:
+            recordPendingDiagnostic(.internalError)
+            return nil
+        }
     }
 
     /// NEW-B (2026-07-27 review): search filter (ContentView) and OCR snippet

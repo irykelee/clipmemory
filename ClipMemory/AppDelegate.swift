@@ -16,10 +16,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var languageObserver: NSObjectProtocol?
     private var encryptionFailedObserver: NSObjectProtocol?
     // P0-1 (2026-07-28 audit): retry CryptoService.prepareKey after
-    // unlock-revealing events (system wake, screen unlock). The original
-    // code stranded the clipboard for the whole session if Keychain was
-    // locked at launchd start.
+    // unlock-revealing events (system wake, session-become-active,
+    // screen unlock). The original code stranded the clipboard for the
+    // whole session if Keychain was locked at launchd start.
+    // P0-1 follow-up (2026-07-29): added sessionDidBecomeActiveNotification
+    // because didWakeNotification alone does not cover fresh-boot + login
+    // or screen-lock → unlock without sleep. Both observers also schedule
+    // a 3s delayed retry — the notification may arrive before the user
+    // enters their password (Keychain still locked).
     private var keychainUnlockObserver: NSObjectProtocol?
+    private var sessionBecomeActiveObserver: NSObjectProtocol?
     private var welcomeWindow: NSWindow?
     // Independent settings window (2026-07-25 plan): separate from the main
     // window, opened via menu `⌘,` or the sidebar "Settings" tab. Same
@@ -222,18 +228,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // P0-1 (2026-07-28 audit): retry CryptoService.prepareKey when the
-    // system wakes from sleep. `didWakeNotification` is the lowest-friction
-    // proxy for "Keychain may now be unlocked"; the retry itself is
-    // idempotent (no-op if the key is already loaded), so it's safe to
-    // fire on every wake / screen-unlock event.
+    // system wakes from sleep or the user session becomes active (login /
+    // screen unlock). Both notifications are proxies for "Keychain may
+    // now be unlocked"; the retry is idempotent (no-op if the key is
+    // already loaded), so it's safe to fire on every event.
+    //
+    // P0-1 follow-up (2026-07-29): added sessionDidBecomeActiveNotification
+    // because didWakeNotification does NOT fire on fresh-boot + first login
+    // or screen-lock → unlock without sleep — the two most common "login
+    // items launch before first unlock" scenarios. Both observers also
+    // schedule a single 3 s delayed retry when the immediate retry returns
+    // nil, covering the race where the notification fires before the user
+    // enters their password (Keychain still locked at notification time).
     private func setupKeychainUnlockObserver() {
-        keychainUnlockObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didWakeNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            CryptoService.retryPrepareKeyIfLocked()
+        let nc = NSWorkspace.shared.notificationCenter
+        let retry: () -> Void = {
+            if CryptoService.retryPrepareKeyIfLocked() == nil {
+                // Immediate retry failed — the Keychain may still be locked
+                // (notification arrived before the user entered their
+                // password). Try once more after a short delay.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    CryptoService.retryPrepareKeyIfLocked()
+                }
+            }
         }
+        keychainUnlockObserver = nc.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil, queue: .main
+        ) { _ in retry() }
+        sessionBecomeActiveObserver = nc.addObserver(
+            forName: NSWorkspace.sessionDidBecomeActiveNotification,
+            object: nil, queue: .main
+        ) { _ in retry() }
     }
 
     /// Independent settings window (2026-07-25 plan). Replaces the previous
@@ -338,6 +364,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let o = languageObserver { NotificationCenter.default.removeObserver(o) }
         if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) }
         if let o = keychainUnlockObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+        if let o = sessionBecomeActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         // BUG-037 (2026-07-21): deinit was observer-only. Carbon hotkey,
         // clipboard monitor timer, and welcome window are cleaned only
         // in applicationWillTerminate. If AppDelegate is ever deallocated

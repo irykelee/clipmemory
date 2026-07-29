@@ -297,3 +297,6 @@
 "item.ocrProcessing" = "OCR processing…";
 "item.ocrUnreadable" = "OCR text unreadable";
 "settings.historyCapture.ocrPreview" = "Show OCR text in image search results";
+"banner.key.unavailable" = "Try again after unlock";
+"banner.data.corrupted.count" = "%d items corrupted";
+"banner.data.corrupted.count.one" = "%d item corrupted";
