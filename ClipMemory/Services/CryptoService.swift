@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import CryptoKit
 import CommonCrypto
+import Security
 import os.log
 
 extension Notification.Name {
@@ -112,6 +113,48 @@ class CryptoService: CryptoServiceProtocol {
         return dir.appendingPathComponent(".encryption_key")
     }
 
+    /// S1 (2026-07-29 audit): securely erase a key file before deletion.
+    /// Overwrites the file with random data before unlinking to prevent
+    /// recovery of the plaintext root key from unallocated disk blocks.
+    private static func secureRemoveKeyFile(at url: URL) {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        do {
+            let attrs = try fileManager.attributesOfItem(atPath: url.path)
+            let fileSize = (attrs[.size] as? UInt64) ?? 0
+            if fileSize > 0 {
+                var random = Data(count: Int(fileSize))
+                random.withUnsafeMutableBytes { ptr in
+                    _ = SecRandomCopyBytes(kSecRandomDefault, Int(fileSize), ptr.baseAddress!)
+                }
+                try random.write(to: url, options: .atomic)
+            }
+            try fileManager.removeItem(at: url)
+        } catch {
+            logger.error("Failed to securely remove key file: \(error.localizedDescription)")
+            try? fileManager.removeItem(at: url)
+        }
+    }
+
+    /// E1 (2026-07-29 audit): read the legacy key file with explicit error
+    /// handling so transient IO errors (permissions, disk hiccup) are logged
+    /// and distinguished from "file does not exist", instead of both
+    /// collapsing to nil via `try?`.
+    private static func readKeyFile(at url: URL, caller: String) -> Data? {
+        do {
+            return try Data(contentsOf: url)
+        } catch {
+            let nsError = error as NSError
+            let domain = nsError.domain
+            let code = nsError.code
+            if domain == NSCocoaErrorDomain && code == NSFileReadNoSuchFileError {
+                return nil
+            }
+            logger.error("[\(caller, privacy: .public)] Key file read error (domain=\(domain, privacy: .public) code=\(code, privacy: .public)): \(nsError.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
     /// When set (import/test instances), this key is used instead of the app key.
     private let customKey: SymmetricKey?
 
@@ -175,7 +218,7 @@ class CryptoService: CryptoServiceProtocol {
         if !isRunningTests, let data = KeychainKeyStore().load(), data.count == 32 {
             keyData = data
         } else {
-            keyData = try? Data(contentsOf: keyFileURL)
+            keyData = readKeyFile(at: keyFileURL, caller: "loadKeyData")
         }
         if let keyData, keyData.count == 32 {
             shared.withCachedLoadedKey {
@@ -323,24 +366,33 @@ class CryptoService: CryptoServiceProtocol {
         // 2. Migrate a pre-C1 key file, then remove it.
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: keyURL.path) {
-            if let keyData = try? Data(contentsOf: keyURL), keyData.count == 32 {
+            // E1 (2026-07-29 audit): distinguish "file exists but unreadable"
+            // (transient IO/permission error — keep file, do not alert) from
+            // "read succeeded but wrong format" (corrupt — alert user).
+            let keyData = readKeyFile(at: keyURL, caller: "prepareKey")
+            if let keyData, keyData.count == 32 {
                 if keyStore.store(keyData) == errSecSuccess, keyStore.load() == keyData {
-                    try? fileManager.removeItem(at: keyURL)
+                    secureRemoveKeyFile(at: keyURL)
                 } else {
-                    // Keychain unusable (locked/denied): keep the file so the
-                    // app still works; migration retries on the next launch.
-                    // Restore owner-only perms as defense in depth meanwhile.
                     logger.error("Keychain migration failed; keeping key file until next launch")
                     try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
                 }
                 return publishToSharedCache(SymmetricKey(data: keyData))
             }
+            // E1: nil from readKeyFile after fileExists confirmed → transient
+            // read error (already logged by readKeyFile). Keep the file and
+            // treat as "key preparation deferred" rather than "corrupt".
+            if keyData == nil {
+                logger.warning("Key file exists but could not be read; deferring key prep until next launch")
+                return nil
+            }
+            // keyData is non-nil but count != 32 → genuinely corrupt.
             // Corrupt or tampered key file — ask before destroying it.
             guard failureHandler(.corruptExistingKey) == .regenerate else {
                 notifyKeyPreparationFailed()
                 return nil
             }
-            try? fileManager.removeItem(at: keyURL)
+            secureRemoveKeyFile(at: keyURL)
         }
         // 3. Fresh generation into the Keychain.
         return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
@@ -517,7 +569,7 @@ class CryptoService: CryptoServiceProtocol {
         let loaded: SymmetricKey?
         if !Self.isRunningTests, let data = KeychainKeyStore().load(), data.count == 32 {
             loaded = SymmetricKey(data: data)
-        } else if let keyData = try? Data(contentsOf: Self.keyFileURL), keyData.count == 32 {
+        } else if let keyData = Self.readKeyFile(at: Self.keyFileURL, caller: "getKey"), keyData.count == 32 {
             loaded = SymmetricKey(data: keyData)
         } else {
             loaded = nil

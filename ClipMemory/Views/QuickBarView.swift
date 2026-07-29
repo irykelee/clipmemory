@@ -43,6 +43,11 @@ struct QuickBarView: View {
     /// reads go through the store's caches (M-24 contract), no cache writes
     /// (BUG-039 — the previous filter wrote to `cacheRTFPlaintext` inside
     /// the getter, which SwiftUI evaluates during view-body updates).
+    ///
+    /// P1 (2026-07-29 audit): check caches first instead of sync decrypt.
+    /// Cold-cache items are skipped in this pass and prewarmed for the next
+    /// one — mirrors ContentView.filterItemsImpl. The caller
+    /// (recomputeDisplayedItems) triggers prewarm after the filter.
     static func computeDisplayedItems(
         items: [ClipboardItem],
         searchTextDebounced: String,
@@ -54,14 +59,19 @@ struct QuickBarView: View {
         }
         return items.filter { item in
             guard !item.isDecryptionFailed else { return false }
-            // CLIP-1 main (2026-07-24 audit): use store.getRTFPlaintext
-            // instead of item.plainTextFromRTFFallback so search hits
-            // actual RTF plaintext (not the parser's hardcoded "Rich Text"
-            // placeholder for encrypted items) AND goes through the cache
-            // (M-24 contract).
-            let searchableText = item.type == .richText
-                ? store.getRTFPlaintext(item)
-                : (store.getDecryptedContent(item) ?? "")
+            let contentKey = item.id.uuidString as NSString
+            let searchableText: String
+            if item.type == .richText {
+                if let cached = store.cachedRtfPlaintext(item) {
+                    searchableText = cached
+                } else {
+                    return false
+                }
+            } else if let cached = store.contentCache.object(forKey: contentKey) as? String {
+                searchableText = cached
+            } else {
+                return false
+            }
             return FuzzySearchMatcher.matches(content: searchableText, searchText: searchTextDebounced)
         }
     }
@@ -406,6 +416,11 @@ struct QuickBarRow: View {
     let onTap: () -> Void
 
     @State private var isHovered = false
+    // P1 (2026-07-29 audit): async-populated cached plaintext to avoid
+    // AES-GCM sync decrypt on the main thread during body evaluation.
+    @State private var loadedContent: String?
+    @State private var loadedRtfPlaintext: String?
+    @State private var loadedOcrText: String?
 
     private var iconName: String {
         switch item.type {
@@ -434,7 +449,7 @@ struct QuickBarRow: View {
                     let trimmed = searchTextDebounced.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty,
                        store.ocrPreviewEnabled,
-                       let ocrText = store.getDecryptedOcrText(item) {
+                       let ocrText = loadedOcrText {
                         Text(ClipboardItemRow.highlightedOcrContentNarrow(ocrText: ocrText, highlight: trimmed))
                             .font(.system(size: sz(12)))
                             .lineLimit(1)
@@ -445,12 +460,7 @@ struct QuickBarRow: View {
                             .lineLimit(1)
                     }
                 } else if item.type == .richText {
-                    // CLIP-1 main + CLIP-2 (2026-07-24 audit): use the cached,
-                    // decrypted plaintext path. The prior `plainTextFromRTFFallback`
-                    // returned the parser's hardcoded English "Rich Text" string
-                    // for every encrypted RTF item — both wrong text AND a
-                    // localization bug (L10n.itemRichText was ignored).
-                    Text(store.getRTFPlaintext(item))
+                    Text(loadedRtfPlaintext ?? L10n.itemRichText)
                         .font(.system(size: sz(12)))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -465,7 +475,7 @@ struct QuickBarRow: View {
                             .lineLimit(1)
                     }
                 } else {
-                    highlightedText((store.getDecryptedContent(item) ?? "").replacingOccurrences(of: "\n", with: " "), highlight: searchTextDebounced, fontSize: sz(12))
+                    highlightedText((loadedContent ?? "").replacingOccurrences(of: "\n", with: " "), highlight: searchTextDebounced, fontSize: sz(12))
                         .lineLimit(1)
                 }
             }
@@ -484,6 +494,34 @@ struct QuickBarRow: View {
         .onHover { isHovered = $0 }
         .onTapGesture { onTap() }
         .animation(.easeOut(duration: 0.3), value: isCopied)
+        .task(id: item.id) {
+            guard item.type != .richText else {
+                if loadedRtfPlaintext == nil {
+                    let rtf = await Task.detached(priority: .utility) {
+                        store.getRTFPlaintext(item)
+                    }.value
+                    if Task.isCancelled { return }
+                    loadedRtfPlaintext = rtf
+                }
+                return
+            }
+            guard item.type != .image else {
+                if loadedOcrText == nil, item.ocrText != nil {
+                    let ocr = await Task.detached(priority: .utility) {
+                        store.getDecryptedOcrText(item)
+                    }.value
+                    if Task.isCancelled { return }
+                    loadedOcrText = ocr
+                }
+                return
+            }
+            if loadedContent != nil { return }
+            let content = await Task.detached(priority: .utility) {
+                store.getDecryptedContent(item) ?? ""
+            }.value
+            if Task.isCancelled { return }
+            loadedContent = content
+        }
     }
 
     private var clipboardItemAccessibilityLabel: String {
@@ -495,7 +533,7 @@ struct QuickBarRow: View {
             case .richText: return "Rich text"
             }
         }()
-        let preview = store.getDecryptedContent(item)?.prefix(50) ?? ""
+        let preview = loadedContent?.prefix(50) ?? ""
         return "\(typeLabel) clipboard item: \(preview)"
     }
 

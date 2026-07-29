@@ -391,8 +391,15 @@ final class ClipboardStore: ObservableObject {
     /// Thread-safety: all `items` mutations (addItem/deleteItem/etc.) are on main thread.
     /// cleanupExpiredItems is dispatched to the main thread from its timer so all
     /// reads and writes of `items` stay on the same queue.
-    /// Memory pressure handling: cache evicts entries under memory pressure via NSCache's built-in behavior.
-    /// Additionally, totalCostLimit caps memory at ~10MB (500 items × ~20KB each).
+    /// P2 (2026-07-29 audit): O(1) contentHash dedup set. Maintained in sync
+    /// with `items` array — each non-nil contentHash maps to one entry.
+    /// Rebuilt after batch mutations (delete, trim, clear, import, backfill).
+    private var dedupHashes: Set<String> = []
+
+    /// P2: rebuild dedupHashes from current items array.
+    private func rebuildDedupHashSet() {
+        dedupHashes = Set(items.compactMap { $0.contentHash })
+    }
 
     let contentCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
@@ -618,6 +625,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         items = repairedItems
         updatePinnedItems()
         trimToMaxItems()
+        rebuildDedupHashSet()
         ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
 
         if repairedImages {
@@ -680,7 +688,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                     self.items[index].contentHash = hash
                     changed = true
                 }
-                if changed { self.scheduleSave() }
+                if changed { self.scheduleSave(); self.rebuildDedupHashSet() }
             }
         }
     }
@@ -1093,40 +1101,29 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             newHash = item.contentHash
         }
 
-        // Use contentHash for fast pre-filter before expensive decryption.
-        // Skip the entire dedup pre-filter when newHash is nil (HMAC failure path) —
-        // the legacy "" fallback used to match any item with an empty hash, collapsing
-        // distinct contents silently. Better to accept a duplicate in this rare path.
-        if let newHash = newHash, let existingIndex = items.firstIndex(where: { existing in
-            // Type must match
-            guard existing.type == newItem.type else { return false }
-            // If both have contentHash, compare hashes first (avoids decryption)
-            if let existingHash = existing.contentHash, existingHash == newHash {
-                return true
-            }
-            // Fall back to decrypt-and-compare for items without contentHash
-            let existingPlaintext = existing.isEncrypted ? (ServiceContainer.crypto.decrypt(existing.content) ?? existing.content) : existing.content
-            return existingPlaintext == plaintextContent
-        }) {
-            var existing = items.remove(at: existingIndex)
-            // Backfill contentHash on legacy items that lack it, so future
-            // dedup checks take the fast hash-compare path instead of O(n) decrypts.
-            // with() also preserves decryptionFailed (HIGH-1: otherwise the
-            // a00da7c perf fix is undone on every re-copy of corrupt content)
-            // and ocrText/ocrAttempted (STOR-2).
-            existing = existing.with(createdAt: Date(), contentHash: existing.contentHash ?? newHash)
-            items.insert(existing, at: 0)
-            // CLIP-1: the monitor writes the image file BEFORE the store sees
-            // the item (saveImage completion → addItem). On a dedup hit the
-            // new entry is discarded; delete its just-written file as well,
-            // or every re-copy of an already-seen image leaks an orphaned
-            // file until the next startup orphan sweep. Guard on differing
-            // filenames so the kept entry's file can never be removed.
-            if newItem.type == .image, newItem.content != existing.content {
-                ImageStorage.shared.deleteImage(filename: newItem.content)
+        // P2 (2026-07-29 audit): O(1) contentHash dedup via Set lookup.
+        // Replaces the previous O(n) firstIndex(where:) scan that degraded
+        // to per-item AES-GCM decrypt for legacy items without contentHash.
+        // Skip dedup when newHash is nil (HMAC failure) — same contract as
+        // before: accept a duplicate rather than risk false collision.
+        if let newHash = newHash, dedupHashes.contains(newHash) {
+            if let existingIndex = items.firstIndex(where: { $0.contentHash == newHash && $0.type == newItem.type }) {
+                var existing = items.remove(at: existingIndex)
+                existing = existing.with(createdAt: Date(), contentHash: existing.contentHash ?? newHash)
+                items.insert(existing, at: 0)
+                if newItem.type == .image, newItem.content != existing.content {
+                    ImageStorage.shared.deleteImage(filename: newItem.content)
+                }
+            } else {
+                // Hash in set but item not found (stale from incomplete
+                // rebuild after a prior mutation). Insert as new and
+                // repair the set below.
+                items.insert(newItem, at: 0)
+                dedupHashes.insert(newHash)
             }
         } else {
             items.insert(newItem, at: 0)
+            if let newHash = newHash { dedupHashes.insert(newHash) }
         }
 
         trimToMaxItems()
@@ -1182,6 +1179,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             trimToMaxItems()
             updatePinnedItems()
             saveImmediately()
+            rebuildDedupHashSet()
         }
         if trashAdded { trashStore.scheduleSavePublic() }
         return (imported, skipped)
@@ -1389,6 +1387,15 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         if changed { scheduleSave() }
     }
 
+    /// P1 (2026-07-29 audit): returns cached RTF plaintext without decrypting.
+    /// Used by filter paths (QuickBarView, ContentView) to check cache warmth
+    /// without blocking the main thread on AES-GCM. Returns nil when the
+    /// rtfPlaintextCache is cold for this item.
+    func cachedRtfPlaintext(_ item: ClipboardItem) -> String? {
+        guard item.type == .richText else { return nil }
+        return rtfPlaintextCache.object(forKey: item.id.uuidString as NSString) as? String
+    }
+
     /// Returns cached RTF plaintext for an item, parsing and caching on first access.
     /// Avoids repeated NSAttributedString RTF parsing in search/filter paths.
     /// Implementation delegates to the pure `RichTextParser` so the parsing
@@ -1459,6 +1466,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             self?.items.removeAll { $0.id == item.id }
             self?.updatePinnedItems()
             self?.scheduleSave()
+            self?.rebuildDedupHashSet()
         })
     }
 
@@ -1469,6 +1477,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             self?.items.removeAll { idsToMove.contains($0.id) }
             self?.updatePinnedItems()
             self?.scheduleSave()
+            self?.rebuildDedupHashSet()
         })
     }
 
@@ -1483,6 +1492,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             self?.items.insert(restored, at: 0)
             self?.updatePinnedItems()
             self?.scheduleSave()
+            self?.rebuildDedupHashSet()
         })
     }
 
@@ -1524,6 +1534,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         items.removeAll { !trimmedIds.contains($0.id) }
         updatePinnedItems()
         scheduleSave()
+        rebuildDedupHashSet()
     }
 
     func deleteItem(_ item: ClipboardItem) {
@@ -1807,6 +1818,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         if items.count != beforeCount {
             updatePinnedItems()
             scheduleSave()
+            rebuildDedupHashSet()
         }
     }
 }

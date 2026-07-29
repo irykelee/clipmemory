@@ -28,6 +28,12 @@ import XCTest
         for content in contents {
             store.addItem(ClipboardItem(content: content, type: .text))
         }
+        // P1 (2026-07-29 audit): populate contentCache synchronously so
+        // computeDisplayedItems can read from cache (fast path). Without
+        // this, encrypted items with cold cache are skipped by the filter.
+        for item in store.items where item.isEncrypted && !item.decryptionFailed {
+            _ = store.getDecryptedContent(item)
+        }
     }
 
     /// No search → the first `maxItems` entries, in store order (newest
@@ -92,6 +98,10 @@ import XCTest
     func testComputeDisplayedItemsSearchExcludesDecryptionFailed() {
         store.addItem(ClipboardItem(content: "needle visible", type: .text))
         store.addItem(ClipboardItem(content: "needle broken", type: .text, decryptionFailed: true))
+        // P1: warm contentCache for the non-failed item so the filter can
+        // read from cache (fast path) — encrypted items with cold cache are
+        // skipped.
+        _ = store.getDecryptedContent(store.items[1])
         let result = QuickBarView.computeDisplayedItems(
             items: store.items,
             searchTextDebounced: "needle",
