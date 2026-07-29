@@ -15,11 +15,11 @@ import XCTest
         backend = MemoryStorageBackend()
         store = ClipboardStore(backend: backend)
         originalCrypto = ServiceContainer.crypto
-        ServiceContainer.crypto = CryptoService(customKeyData: Data((0..<32).map { UInt8($0) }))
+        ServiceContainer.setCryptoForTesting(CryptoService(customKeyData: Data((0..<32).map { UInt8($0) })))
     }
 
     override func tearDown() {
-        if let originalCrypto { ServiceContainer.crypto = originalCrypto }
+        if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         store = nil
         backend = nil

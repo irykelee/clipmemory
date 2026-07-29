@@ -124,8 +124,8 @@ final class ClipboardStoreDiagnosticsTests: XCTestCase {
         // Swap to a mock that returns .dataCorrupted for decryptWithReason
         let mock = OCRCorruptCrypto()
         let originalCrypto = ServiceContainer.crypto
-        ServiceContainer.crypto = mock
-        defer { ServiceContainer.crypto = originalCrypto }
+        ServiceContainer.setCryptoForTesting(mock)
+        defer { ServiceContainer.setCryptoForTesting(originalCrypto) }
 
         // Clear content cache so we bypass the cached success from attachOCRText
         store.contentCache.removeAllObjects()
@@ -210,8 +210,8 @@ final class ClipboardStoreDiagnosticsTests: XCTestCase {
         // Swap to a mock that returns .dataCorrupted
         let mock = OCRCorruptCrypto()
         let originalCrypto = ServiceContainer.crypto
-        ServiceContainer.crypto = mock
-        defer { ServiceContainer.crypto = originalCrypto }
+        ServiceContainer.setCryptoForTesting(mock)
+        defer { ServiceContainer.setCryptoForTesting(originalCrypto) }
 
         let result = store.getRTFPlaintext(store.items.first!)
         XCTAssertFalse(result.isEmpty, "must return fallback on corruption")

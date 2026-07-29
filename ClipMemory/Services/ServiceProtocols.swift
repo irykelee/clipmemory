@@ -54,18 +54,20 @@ enum ServiceContainer {
     /// encryption keys. It is not converted to a recoverable error because
     /// there is no safe recovery path once two code paths hold different
     /// `CryptoService` instances.
-    static var crypto: CryptoServiceProtocol = CryptoService.shared {
+    static private(set) var crypto: CryptoServiceProtocol = CryptoService.shared {
         didSet {
             let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-            // No-op same-instance assignment in tests is fine; any
-            // production swap (oldValue is the production singleton) is
-            // not.
             if !inTest {
                 preconditionFailure(
-                    "ServiceContainer.crypto reassigned outside XCTest — race risk. " +
-                    "Use only in test setUp/tearDown."
+                    "ServiceContainer.crypto reassigned outside XCTest — race risk."
                 )
             }
         }
+    }
+
+    static func setCryptoForTesting(_ service: CryptoServiceProtocol) {
+        let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        precondition(inTest, "setCryptoForTesting called outside XCTest")
+        crypto = service
     }
 }

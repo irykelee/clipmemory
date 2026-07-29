@@ -17,11 +17,11 @@ import AppKit
         store = ClipboardStore(backend: backend)
         testCrypto = CryptoService(customKeyData: Data((0..<32).map { UInt8($0) }))
         originalCrypto = ServiceContainer.crypto
-        ServiceContainer.crypto = testCrypto
+        ServiceContainer.setCryptoForTesting(testCrypto)
     }
 
     override func tearDown() {
-        if let originalCrypto { ServiceContainer.crypto = originalCrypto }
+        if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         testCrypto = nil
         store = nil
@@ -61,8 +61,8 @@ import AppKit
         // the rare "key unavailable" failure mode.
         let originalCrypto = ServiceContainer.crypto
         let failingCrypto = FailingEncryptCrypto()
-        ServiceContainer.crypto = failingCrypto
-        defer { ServiceContainer.crypto = originalCrypto }
+        ServiceContainer.setCryptoForTesting(failingCrypto)
+        defer { ServiceContainer.setCryptoForTesting(originalCrypto) }
 
         var notificationFired = false
         // nil queue = synchronous delivery on the posting thread. A .main
@@ -120,8 +120,8 @@ import AppKit
         // the rare "key unavailable" failure mode (same fixture as H-4).
         let originalCrypto = ServiceContainer.crypto
         let failingCrypto = FailingEncryptCrypto()
-        ServiceContainer.crypto = failingCrypto
-        defer { ServiceContainer.crypto = originalCrypto }
+        ServiceContainer.setCryptoForTesting(failingCrypto)
+        defer { ServiceContainer.setCryptoForTesting(originalCrypto) }
 
         store.addItem(item)
 

@@ -26,6 +26,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // enters their password (Keychain still locked).
     private var keychainUnlockObserver: NSObjectProtocol?
     private var sessionBecomeActiveObserver: NSObjectProtocol?
+    private var didBecomeActiveObserver: NSObjectProtocol?
+    private var lastPrewarmTime: Date = .distantPast
     private var welcomeWindow: NSWindow?
     // Independent settings window (2026-07-25 plan): separate from the main
     // window, opened via menu `⌘,` or the sidebar "Settings" tab. Same
@@ -244,22 +246,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let nc = NSWorkspace.shared.notificationCenter
         let retry: () -> Void = {
             if CryptoService.retryPrepareKeyIfLocked() == nil {
-                // Immediate retry failed — the Keychain may still be locked
-                // (notification arrived before the user entered their
-                // password). Try once more after a short delay.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     CryptoService.retryPrepareKeyIfLocked()
                 }
             }
         }
+        let prewarmIfNeeded: () -> Void = { [weak self] in
+            guard let self else { return }
+            let now = Date()
+            guard now.timeIntervalSince(self.lastPrewarmTime) >= 5 else { return }
+            self.lastPrewarmTime = now
+            MainActor.assumeIsolated {
+                ClipboardStore.shared.prewarmDecryptionCache(items: ClipboardStore.shared.items)
+            }
+        }
         keychainUnlockObserver = nc.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil, queue: .main
-        ) { _ in retry() }
+        ) { _ in retry(); prewarmIfNeeded() }
         sessionBecomeActiveObserver = nc.addObserver(
             forName: NSWorkspace.sessionDidBecomeActiveNotification,
             object: nil, queue: .main
-        ) { _ in retry() }
+        ) { _ in retry(); prewarmIfNeeded() }
+        didBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil, queue: .main
+        ) { _ in prewarmIfNeeded() }
     }
 
     /// Independent settings window (2026-07-25 plan). Replaces the previous
@@ -365,6 +377,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) }
         if let o = keychainUnlockObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = sessionBecomeActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+        if let o = didBecomeActiveObserver { NotificationCenter.default.removeObserver(o) }
         // BUG-037 (2026-07-21): deinit was observer-only. Carbon hotkey,
         // clipboard monitor timer, and welcome window are cleaned only
         // in applicationWillTerminate. If AppDelegate is ever deallocated

@@ -32,7 +32,7 @@ import XCTest
         super.setUp()
         testCrypto = CryptoService(customKeyData: Data((0..<32).map { UInt8($0) }))
         originalCrypto = ServiceContainer.crypto
-        ServiceContainer.crypto = testCrypto
+        ServiceContainer.setCryptoForTesting(testCrypto)
 
         // ClipboardStore init → loadItems → cleanupOrphanedImages and the
         // ImageStorage singleton both touch these UserDefaults keys. Pin
@@ -56,7 +56,7 @@ import XCTest
         restore(startupCleanupKey, savedStartupCleanupValue)
         savedMigrationValue = nil
         savedStartupCleanupValue = nil
-        if let originalCrypto { ServiceContainer.crypto = originalCrypto }
+        if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         testCrypto = nil
         store = nil

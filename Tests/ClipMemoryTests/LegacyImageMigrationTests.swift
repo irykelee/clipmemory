@@ -27,7 +27,7 @@ final class LegacyImageMigrationTests: XCTestCase {
     override func setUp() {
         super.setUp()
         originalCrypto = ServiceContainer.crypto
-        ServiceContainer.crypto = CryptoService(customKeyData: Data((0..<32).map { UInt8($0) }))
+        ServiceContainer.setCryptoForTesting(CryptoService(customKeyData: Data((0..<32).map { UInt8($0) })))
 
         storage = ImageStorage.shared
         legacyDir = FileManager.default.temporaryDirectory
@@ -48,7 +48,7 @@ final class LegacyImageMigrationTests: XCTestCase {
         suiteName = nil
         try? FileManager.default.removeItem(at: legacyDir)
         legacyDir = nil
-        if let originalCrypto { ServiceContainer.crypto = originalCrypto }
+        if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         super.tearDown()
     }
