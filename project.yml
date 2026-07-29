@@ -41,9 +41,12 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
-        # 自签名（无 Developer ID / 公证）下 Hardened Runtime 无意义，关闭。
-        # 历史教训：ad-hoc + Hardened Runtime 会让 dyld 拒载 Sparkle.framework。
-        ENABLE_HARDENED_RUNTIME: NO
+        # Hardened Runtime enabled with library-validation exception for Sparkle.
+        # Historical: ad-hoc + HR broke dyld loading of Sparkle.framework. With
+        # the "Apple Development" certificate (CODE_SIGN_IDENTITY), HR works.
+        # disable-library-validation allows Sparkle to load while keeping the
+        # rest of HR protections (DYLD injection guard, debugger protection).
+        ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: ClipMemory/ClipMemory.entitlements
     preBuildScripts:
       - name: SwiftLint

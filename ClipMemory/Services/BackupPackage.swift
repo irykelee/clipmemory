@@ -537,12 +537,17 @@ final class BackupPackage {
         result.tagsImported = onMain { MainActor.assumeIsolated { store.importBackupTags(localizedTags) } }
 
         // Images: decrypt with package key, re-encrypt with local key.
-        result.imagesImported = try importImages(
-            staging: staging,
-            imagesDirectory: imagesDirectory,
-            packageCrypto: packageCrypto,
-            localCrypto: localCrypto
-        )
+        // Best-effort — image import failure does not roll back merged items/tags.
+        do {
+            result.imagesImported = try importImages(
+                staging: staging,
+                imagesDirectory: imagesDirectory,
+                packageCrypto: packageCrypto,
+                localCrypto: localCrypto
+            )
+        } catch {
+            logger.error("Image import failed (items/tags already merged): \(error.localizedDescription)")
+        }
 
         logger.info("Imported backup: \(result.itemsImported) items, \(result.tagsImported) tags")
         return result

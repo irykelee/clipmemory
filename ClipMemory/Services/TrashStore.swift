@@ -98,9 +98,20 @@ final class TrashStore: ObservableObject {
         do {
             trashedItems = try backend.load()
         } catch {
-            logger.error("Failed to load trashed items: \(error.localizedDescription)")
+            quarantineCorruptBlob(error: error)
             trashedItems = []
         }
+    }
+
+    private func quarantineCorruptBlob(error: Error) {
+        let defaults = UserDefaults.standard
+        let key = Self.trashedItemsStorageKey
+        guard let blob = defaults.data(forKey: key) else { return }
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let quarantineKey = "\(key).corrupt-\(timestamp)"
+        defaults.set(blob, forKey: quarantineKey)
+        defaults.removeObject(forKey: key)
+        logger.error("Corrupt trash blob quarantined to \(quarantineKey): \(error.localizedDescription)")
     }
 
     func saveTrashedItems() {

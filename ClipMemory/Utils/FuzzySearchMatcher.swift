@@ -26,11 +26,10 @@ enum FuzzySearchMatcher {
             .lowercased()
             .folding(options: .diacriticInsensitive, locale: nil)
 
+        var pinyin: String?
         for token in tokens where !normalized.contains(token) {
-            let pinyin = toPinyin(content)
-            if !pinyin.contains(token) {
-                return false
-            }
+            let py = pinyin ?? { let p = toPinyin(content); pinyin = p; return p }()
+            if !py.contains(token) { return false }
         }
         return true
     }

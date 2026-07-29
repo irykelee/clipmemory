@@ -1455,8 +1455,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
 
     func moveToTrash(_ item: ClipboardItem) {
         evictCaches(for: item)
-        items.removeAll { $0.id == item.id }
         trashStore.moveToTrash(item, evictCaches: { _ in }, didMove: { [weak self] in
+            self?.items.removeAll { $0.id == item.id }
             self?.updatePinnedItems()
             self?.scheduleSave()
         })
@@ -1465,8 +1465,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     func moveToTrash(_ itemsToMove: [ClipboardItem]) {
         for item in itemsToMove { evictCaches(for: item) }
         let idsToMove = Set(itemsToMove.map { $0.id })
-        items.removeAll { idsToMove.contains($0.id) }
         trashStore.moveToTrash(itemsToMove, evictCaches: { _ in }, didMove: { [weak self] in
+            self?.items.removeAll { idsToMove.contains($0.id) }
             self?.updatePinnedItems()
             self?.scheduleSave()
         })
