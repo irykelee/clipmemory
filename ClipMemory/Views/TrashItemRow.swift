@@ -100,6 +100,16 @@ struct TrashItemRow: View, Equatable {
                         }
                         .onDisappear { ImagePreviewPanel.hide() }
                         .task(id: item.content) {
+                            if store.imageMissingIds.contains(item.id) {
+                                imageLoadFailed = true
+                                imageLoadStatus = .fileMissing
+                                return
+                            }
+                            if store.imageCorruptedIds.contains(item.id) {
+                                imageLoadFailed = true
+                                imageLoadStatus = .decryptionFailed
+                                return
+                            }
                             imageLoadFailed = false
                             imageLoadStatus = nil
                             let filename = item.content

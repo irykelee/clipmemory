@@ -66,6 +66,12 @@ final class ClipboardStore: ObservableObject {
     // P7: non-private(set) — @testable does not unlock private setter; tests need write access
     @Published var diagnostics: DecryptionDiagnostics = .init()
 
+    /// Items whose image files are missing/corrupt on disk. Populated by the
+    /// startup integrity scan (runImageIntegrityScan). ContentView/QuickBarView
+    /// use these to show immediate status without waiting for per-row disk I/O.
+    @Published var imageMissingIds: Set<UUID> = []
+    @Published var imageCorruptedIds: Set<UUID> = []
+
     /// Min/max bounds for `maxItems`. E-1 (2026-07-23 audit): the setter
     /// previously wrote any value (including negatives or absurdly large
     /// numbers from a corrupted UserDefaults or an out-of-bounds slider)
@@ -618,6 +624,11 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             scheduleSave()
         }
 
+        // P0-3 T2: startup image integrity scan. Async batch-check of all image
+        // files on disk so the UI can show "image missing" immediately when the
+        // user scrolls to a damaged item, without waiting for per-row disk I/O.
+        runImageIntegrityScan()
+
         // C6: crypto-heavy migrations run OFF the startup path. Both the v1→v2
         // re-encryption and the contentHash backfill decrypt per legacy item —
         // hundreds of legacy items on the thread that first touched the store
@@ -670,6 +681,31 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                     changed = true
                 }
                 if changed { self.scheduleSave() }
+            }
+        }
+    }
+
+    /// Startup image integrity scan: checks every image item's file on disk
+    /// and populates `imageMissingIds` / `imageCorruptedIds`. Runs async on a
+    /// utility queue so it never blocks startup. Results merge back on main.
+    func runImageIntegrityScan() {
+        let imageItems = (items + trashedItems).filter { $0.type == .image }
+        guard !imageItems.isEmpty else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
+            var missing: Set<UUID> = []
+            var corrupted: Set<UUID> = []
+            for item in imageItems {
+                let status = ImageStorage.shared.imageStatus(for: item.content)
+                switch status {
+                case .available: break
+                case .fileMissing: missing.insert(item.id)
+                case .decryptionFailed: corrupted.insert(item.id)
+                }
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.imageMissingIds = missing
+                self?.imageCorruptedIds = corrupted
             }
         }
     }
