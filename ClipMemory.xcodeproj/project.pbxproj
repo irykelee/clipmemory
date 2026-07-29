@@ -405,7 +405,10 @@
 				D4B0ED102287F5F6BAD23F2F /* ClipboardItemTests.swift */,
 				162510951570AB9FC4207B0F /* ClipboardMonitorTests.swift */,
 				2A0909DC8593400A7B0EF771 /* ClipboardStoreCryptoKeyNotificationThreadTests.swift */,
+				D0DEC3B7B2D86D84165C1941 /* ClipboardStoreDiagnosticsTests.swift */,
 				8C023CD1C3CEBD75D29150DA /* ClipboardStoreMainActorPhase3Tests.swift */,
+				2FF272B5EF45AD03F36CF559 /* ClipboardStoreNotificationObserverTests.swift */,
+				130616BF434B4287D413CCC5 /* ClipboardStorePrewarmTests.swift */,
 				98A9BEBF6532DD5C9551E963 /* ClipboardStoreRTFCacheTests.swift */,
 				ADA1E87F0A87CB75684291B9 /* ClipboardStoreSearchFilterTests.swift */,
 				5B4E6D5E6E7DBF88457A6077 /* ClipboardStoreTrashTests.swift */,
@@ -711,7 +714,10 @@
 				414FB5F0ACA73DDFF4562450 /* ClipboardItemTests.swift in Sources */,
 				327D4E28765DDBA110807CBC /* ClipboardMonitorTests.swift in Sources */,
 				03BA41D395F89EC1F7622A1B /* ClipboardStoreCryptoKeyNotificationThreadTests.swift in Sources */,
+				3B76557A0E65DEC8567935DB /* ClipboardStoreDiagnosticsTests.swift in Sources */,
 				F3AF850068F5AB107D392944 /* ClipboardStoreMainActorPhase3Tests.swift in Sources */,
+				5A70058CAB63C26218C367FF /* ClipboardStoreNotificationObserverTests.swift in Sources */,
+				D53F9D6DE94F744B8BBFA242 /* ClipboardStorePrewarmTests.swift in Sources */,
 				5D57DABDB70335AA7EABF65A /* ClipboardStoreRTFCacheTests.swift in Sources */,
 				F65D1483820148A8FFF7B762 /* ClipboardStoreSearchFilterTests.swift in Sources */,
 				7D06F010CEA290AA290A0335 /* ClipboardStoreTrashTests.swift in Sources */,
@@ -949,7 +955,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2.7.1;
+				CURRENT_PROJECT_VERSION = 2.7.2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = G59B692W3M;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -963,7 +969,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 2.7.1;
+				MARKETING_VERSION = 2.7.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = ClipMemory;
@@ -1025,7 +1031,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2.7.1;
+				CURRENT_PROJECT_VERSION = 2.7.2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = G59B692W3M;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1045,7 +1051,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 2.7.1;
+				MARKETING_VERSION = 2.7.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
