@@ -467,6 +467,19 @@ struct ClipboardItemRow: View, Equatable {
                         }
                         .onDisappear { ImagePreviewPanel.hide() }
                         .task(id: item.content) {
+                            // P0-3 T2: if the startup integrity scan already knows
+                            // this image is missing/corrupt, show status immediately
+                            // without waiting for async disk I/O.
+                            if store.imageMissingIds.contains(item.id) {
+                                imageLoadFailed = true
+                                imageLoadStatus = .fileMissing
+                                return
+                            }
+                            if store.imageCorruptedIds.contains(item.id) {
+                                imageLoadFailed = true
+                                imageLoadStatus = .decryptionFailed
+                                return
+                            }
                             imageLoadFailed = false
                             imageLoadStatus = nil
                             let filename = item.content
