@@ -65,15 +65,50 @@
 
 ---
 
+## Technical Debt & Infrastructure（2026-07-29 全面代码审查产出）
+
+> 以下项目不属于用户功能，但影响数据安全、可维护性和测试可靠性。来源：`docs/superpowers/audits/2026-07-29-comprehensive-code-review.md`。
+
+### P1 — 数据安全加固（建议 v2.8.x 完成）
+
+| 项 | ID | 说明 | 工作量 |
+|---|---|---|---|
+| **Keychain biometric/ACL** | M6 | `KeychainKeyStore` 仅用 `AfterFirstUnlockThisDeviceOnly`，无 `userPresence`/`biometryAny`。恶意进程可在首次解锁后读根密钥 | 1 天 |
+| **UserDefaults HMAC 完整性** | M7 | 所有持久化 blob 无完整性校验。恶意进程可篡改 `maxItems`/`items`/`excludedBundleIds`。方案：存前 HMAC，取时验证 | 1 天 |
+| **contentHash 去重降级** | M2 | Key 未就绪时 `contentHash=nil` 跳过去重。首次启动窗口内重复捕获堆积 | 0.5 天 |
+| **Developer ID 证书评估** | M8 | 当前用 Apple Development 个人证书，无公证。考虑升级到 $99/yr Developer ID + 公证 | 调研 |
+
+### P2 — 架构优化（建议 v2.9.x 完成）
+
+| 项 | ID | 说明 | 工作量 |
+|---|---|---|---|
+| **ImageStorage 双队列** | M5 | `migrationQueue.sync` 串行化所有图片读取——包括走 v2 快路径的图片。拆分 legacy/current 队列 | 0.5 天 |
+| **测试隔离：Store** | M12 | 10+ 测试文件直用 `ClipboardStore.shared`。跨测试状态污染风险。统一迁移到 `MemoryStorageBackend` | 1 天 |
+| **测试隔离：UserDefaults** | M13 | `ImageStorageTests`/`ImageDedupTests`/`OCRTests` 直写生产 `UserDefaults.standard` migration key。改用 `UserDefaults(suiteName:)` | 0.5 天 |
+
+### P3 — 代码整洁度（非阻塞，可顺带修）
+
+| 项 | ID | 说明 |
+|---|---|---|
+| groupCounts O(n) | M13 (Services) | 每次 body 求值遍历全数组，10000 条目影响明显 |
+| `isPinned` 变 `let` | — | 当前为 `var`，但 pin 操作走 `togglePin()` → `items[index].isPinned.toggle()`，不经过 `with()` |
+| `decryptionFailed` 变 `let` | — | 仅 `ClipboardStore` 通过 `items[index].decryptionFailed = true` 设值，Model 不应 mutable |
+| 移除 `AppDelegate.deinit` | L (AppDelegate) | `deinit` 无法执行（`main.swift` 强引用）。`applicationWillTerminate` 已覆盖 |
+| `DateFilter` 单独测试 | L (Tests) | 无直接测试，仅通过 UIObservability 间接使用 |
+| `RichTextParser` 单独测试 | L (Tests) | 无纯单元测试，仅通过 ClipboardItemRow/RTFCache 间接 |
+
+---
+
 ## 近期建议
 
-按当前进度（v2.7.1），**Phase 1 全部完成** ✅。可以启动 Phase 2：
+按当前进度（v2.7.1），**Phase 1 全部完成** ✅，**Phase 2 模糊搜索已交付** ✅。建议优先方向：
 
-1. **SQLite 迁移**（Phase 2 主项，1-2 周）— `ClipboardStore.swift` ≈ 1800 行，所有读路径都要切；触发条件（卡顿阈值）需先用 Instruments 跑 1000/5000/10000 条样本实测再决定是否上马，**不要因为路线图自荐 TOP 1 就动手**
-2. **模糊搜索**（Phase 2，拼音/模糊匹配/按类型标签时间过滤）— 当前为前缀/包含匹配，大数据量下可精准性不足
+1. **Technical Debt P1** — M6/M7 数据安全加固（2 天），在 Phase 2 大功能前把地基补牢
+2. **SQLite 迁移**（Phase 2 主项，1-2 周）— `ClipboardStore.swift` ≈ 1800 行，所有读路径都要切；触发条件需先用 Instruments 跑 1000/5000/10000 条样本实测
+3. **快捷键粘贴上一条**（Phase 2，`⌘⇧V`）— 低成本高感知，1 天
 
 > **执行原则**：先跑起来再抛光。每项开工前先确认触发条件真实存在（Instruments / 真用户反馈），避免为了"路线图 TOP 1"硬上。
 
 ---
 
-*最后更新：2026-07-29（v2.7.1 发布 + Phase 1 全部完成）*
+*最后更新：2026-07-29（v2.7.1 发布 + Phase 1 完成 + 全面代码审查技术债入库）*
