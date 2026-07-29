@@ -1,4 +1,4 @@
-# ClipMemory v2.7.0
+# ClipMemory v2.7.1
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+
+- **Grande melhoria na velocidade de pesquisa** — A thread principal não realiza mais descriptografia síncrona; o pré-carregamento do cache cobre a ativação do App, a captura de novos itens e a primeira exibição da lista, eliminando travamentos na pesquisa a frio.
+- **Diagnóstico de falha de criptografia** — Quando a descriptografia falha devido ao bloqueio do Keychain, a página de pesquisa exibe um banner amarelo de diagnóstico explicando o motivo, em vez de resultados vazios silenciosamente.
+- **Falha de descriptografia não marca itens permanentemente** — Corrigido um bug latente: itens eram marcados permanentemente como "indescriptografáveis" após um bloqueio transitório do Keychain; agora a chave pode ser recuperada automaticamente após restabelecimento.
+- **Segurança do contêiner de DI** — `ServiceContainer.crypto` foi alterado para `private(set)` para evitar que código não relacionado a testes substitua o serviço de criptografia.
+- **Implementação AES-CBC consolidada** — Removida a implementação duplicada de descriptografia CBC em `ImageStorage`, unificando o caminho único via `CryptoService`.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 

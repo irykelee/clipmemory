@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.7.0
+# 剪憶 ClipMemory v2.7.1
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 更新日誌
+
+### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+
+- **搜尋速度大幅提升** — 主執行緒不再同步解密；快取預熱覆蓋 App 喚醒、新條目捕獲、清單首次顯示，冷啟動搜尋不再卡頓
+- **加密失敗診斷** — 當 Keychain 鎖定導致解密失敗時，搜尋頁顯示黃色診斷橫幅說明原因，不再靜默空結果
+- **解密失敗不會永久標記條目** — 修了一個潛在錯誤：Keychain 瞬態鎖定後條目曾被永久標記為「不可解密」，現在 key 恢復後可自動重試
+- **DI 容器安全性** — `ServiceContainer.crypto` 改為 `private(set)`，防止非測試程式碼誤替換加密服務
+- **AES-CBC 實作合併** — 刪除 ImageStorage 中重複的 CBC 解密實作，統一走 CryptoService 的單一路徑
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor 遷移
 

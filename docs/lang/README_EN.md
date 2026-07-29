@@ -1,4 +1,4 @@
-# ClipMemory v2.7.0
+# ClipMemory v2.7.1
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+
+- **Search speed greatly improved** — Main thread no longer decrypts synchronously; cache pre-warming covers App wake-up, new item capture, and first list display, cold-start search no longer stutters
+- **Encryption failure diagnostics** — When Keychain lock causes decryption failure, the search page shows a yellow diagnostic banner explaining the reason, instead of silently returning empty results
+- **Decryption failure no longer permanently marks items** — Fixed a latent bug: after a transient Keychain lock, items were permanently marked as "undecryptable"; now automatic retry works once the key is restored
+- **DI container safety** — `ServiceContainer.crypto` changed to `private(set)` to prevent non-test code from accidentally replacing the encryption service
+- **AES-CBC implementation merged** — Removed duplicate CBC decryption implementation in `ImageStorage`, unified to the single path in `CryptoService`
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 

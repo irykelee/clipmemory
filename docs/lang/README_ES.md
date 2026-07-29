@@ -1,4 +1,4 @@
-# ClipMemory v2.7.0
+# ClipMemory v2.7.1
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+
+- **Mejora significativa en la velocidad de búsqueda** — El hilo principal ya no descifra sincrónicamente; el calentamiento de la caché cubre la activación de la aplicación, la captura de nuevas entradas y la primera visualización de la lista; la búsqueda en frío ya no se ralentiza.
+- **Diagnóstico de fallos de cifrado** — Cuando el bloqueo de Keychain provoca un fallo de descifrado, la página de búsqueda muestra un banner de diagnóstico amarillo explicando el motivo, en lugar de mostrar un resultado vacío en silencio.
+- **Los fallos de descifrado no marcan permanentemente las entradas** — Se corrigió un error latente: después de un bloqueo transitorio de Keychain, las entradas quedaban marcadas permanentemente como «no descifrables»; ahora, cuando la clave se recupera, se reintenta automáticamente.
+- **Seguridad del contenedor de DI** — `ServiceContainer.crypto` se cambió a `private(set)` para evitar que el código no relacionado con pruebas reemplace el servicio de cifrado por error.
+- **Fusión de implementaciones AES-CBC** — Se eliminó la implementación duplicada de descifrado CBC en ImageStorage, unificándola en la única ruta de CryptoService.
+- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 

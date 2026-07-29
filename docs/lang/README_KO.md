@@ -1,4 +1,4 @@
-# ClipMemory v2.7.0
+# ClipMemory v2.7.1
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 변경 로그
+
+### v2.7.1 (2026-07-29) — Search Performance & Cryptographic Safety
+
+- **검색 속도 대폭 향상** — 메인 스레드가 더 이상 동기적으로 복호화하지 않음. 캐시 워밍업(App 깨어나기, 새 항목 캡처, 목록 첫 표시)이 적용되어 콜드 스타트 검색 시 끊김 없음
+- **암호화 실패 진단** — Keychain 잠금으로 복호화 실패 시 검색 페이지에 노란색 진단 배너가 원인을 표시, 더 이상 조용히 빈 결과를 반환하지 않음
+- **복호화 실패가 항목을 영구 표시하지 않음** — 잠복 버그 수정: Keychain 일시적 잠금 후 항목이 영구적으로 '복호화 불가'로 표시되던 문제, 이제 키 복구 시 자동 재시도
+- **DI 컨테이너 보안** — `ServiceContainer.crypto`를 `private(set)`으로 변경, 테스트 외 코드가 암호화 서비스를 잘못 교체하지 않도록 방지
+- **AES-CBC 구현 병합** — ImageStorage의 중복 CBC 복호화 구현 제거, CryptoService의 단일 경로로 통일
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.7.1
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor 마이그레이션
 
