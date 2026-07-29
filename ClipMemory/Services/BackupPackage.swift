@@ -528,9 +528,10 @@ final class BackupPackage {
         let localizedTags = packageTags.map { reencryptTagName($0, from: packageCrypto) }
         // F-1 phase 3 (2026-07-28): importBackupTags is @MainActor (inherited
         // from class-level @MainActor on ClipboardStore). `onMain` dispatches
-        // to main queue but its closure isn't @MainActor-isolated.
-        // F-2 sweep (2026-07-28): same idiomatic bridge as :518-519 above
-        // (MainActor.assumeIsolated — not a workaround).
+        // to main queue but its closure isn't @MainActor-isolated; bridge via
+        // MainActor.assumeIsolated (matches the importBackupItems pattern at
+        // :518-519 above). Plan §1.3 leaves BackupPackage:519 untouched;
+        // this line is a sibling requiring the same treatment.
         result.tagsImported = onMain { MainActor.assumeIsolated { store.importBackupTags(localizedTags) } }
 
         // Images: decrypt with package key, re-encrypt with local key.
