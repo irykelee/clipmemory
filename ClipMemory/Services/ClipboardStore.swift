@@ -445,6 +445,17 @@ final class ClipboardStore: ObservableObject {
     private var pendingFailedIDs = Set<UUID>()
     private let pendingFailedIDsLock = NSLock()
 
+    // P0-2 F4: 诊断聚合 buffer（复用 C5 模式，避免 view-body 内 publish）
+    private var pendingDiagnostics: [PendingDiagnostic] = []
+    private let pendingDiagnosticsLock = NSLock()
+
+    enum PendingDiagnostic {
+        // N4 minor: .success 删除（getDecryptedContent 不再 append）
+        case keyUnavailable
+        case dataCorrupted
+        case internalError
+    }
+
     /// F-3 (2026-07-28): opaque tokens for block-based NotificationCenter
     /// observers. Stored so deinit can `removeObserver(_:)` each one — the
     /// selector-based `removeObserver(self)` API no longer applies since
@@ -1141,22 +1152,39 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         if let cached = contentCache.object(forKey: key) {
             return cached as String
         }
-        let result: String?
+        // P0-2 T4: 单 chokepoint 分类解密。把 reason 写入 pendingDiagnostics 缓冲，
+        // merge 由 view 层 (filter pass 末尾) 触发。
+        let decryptOutcome: DecryptResult
         if item.isEncrypted {
-            result = ServiceContainer.crypto.decrypt(item.content)
+            decryptOutcome = ServiceContainer.crypto.decryptWithReason(item.content, itemID: item.id)
         } else {
-            result = item.content
+            decryptOutcome = .success(item.content)
         }
-        if let result = result {
-            contentCache.setObject(result as NSString, forKey: key)
-        } else if item.isEncrypted {
-            // C5: never mutate @Published `items` from here — this method is
-            // called from SwiftUI view bodies, and a synchronous publish lands
-            // inside the view update. Buffer the id and merge asynchronously
-            // on the main queue instead.
+
+        switch decryptOutcome {
+        case .success(let plaintext):
+            contentCache.setObject(plaintext as NSString, forKey: key)
+            // N4: 不 append .success。成功 = 无需诊断 = merge 时显式 SET 零态。
+            return plaintext
+        case .keyUnavailable:
+            pendingDiagnosticsLock.lock()
+            pendingDiagnostics.append(.keyUnavailable)
+            pendingDiagnosticsLock.unlock()
+            return nil
+        case .dataCorrupted:
+            // N5: 只有永久失败才标 decryptionFailed（MF-2 修复点）
             scheduleDecryptionFailedMark(item.id)
+            pendingDiagnosticsLock.lock()
+            pendingDiagnostics.append(.dataCorrupted)
+            pendingDiagnosticsLock.unlock()
+            return nil
+        case .internalError:
+            scheduleDecryptionFailedMark(item.id)
+            pendingDiagnosticsLock.lock()
+            pendingDiagnostics.append(.internalError)
+            pendingDiagnosticsLock.unlock()
+            return nil
         }
-        return result
     }
 
     /// C5: lock-guarded check so any thread can cheaply bail on pending failures.
@@ -1164,6 +1192,23 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         pendingFailedIDsLock.lock()
         defer { pendingFailedIDsLock.unlock() }
         return pendingFailedIDs.contains(id)
+    }
+
+    /// P0-2 F4: main.async 合并到 @Published（不允许 view-body 内 publish）。
+    /// Task 3 占位实现：snapshot + dispatch。Task 4 替换为真实 DecryptionDiagnostics.reduce 逻辑。
+    private func mergePendingDiagnostics() {
+        pendingDiagnosticsLock.lock()
+        let snapshot = pendingDiagnostics
+        pendingDiagnostics.removeAll()
+        pendingDiagnosticsLock.unlock()
+
+        guard !snapshot.isEmpty else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            // Task 4 会替换为 DecryptionDiagnostics.reduce(snapshot)
+            _ = snapshot
+        }
     }
 
     /// C5: buffer a failed id and schedule exactly one async merge per new id.

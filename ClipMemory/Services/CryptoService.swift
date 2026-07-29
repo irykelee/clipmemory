@@ -32,6 +32,20 @@ enum KeyFailureAction {
     case quit
 }
 
+/// P0-2: 搜索路径解密结果分类。让调用方区分"瞬态" vs "永久"失败，
+/// 是修 MF-2 潜伏 bug（瞬态锁永久标记条目不可解密）的关键。
+enum DecryptResult: Equatable {
+    case success(String)
+    case keyUnavailable      // 瞬态：getKey() == nil，等 prepareKey 后重试
+    case dataCorrupted       // 永久：AES-GCM tag 失败 / legacy HMAC 不匹配
+    case internalError       // 永久：标称加密但结构不可解析（不变量 violation）
+
+    var isTransient: Bool {
+        if case .keyUnavailable = self { return true }
+        return false
+    }
+}
+
 /// Encryption format versions:
 /// - v2 (current): "v2" prefix + AES-GCM sealed box (nonce + ciphertext + tag)
 /// - v1 (legacy): AES-CBC + HMAC-SHA256, no prefix, for backwards compatibility
@@ -41,6 +55,17 @@ class CryptoService: CryptoServiceProtocol {
     static let shared = CryptoService()
 
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "CryptoService")
+
+    // P0-2: 否定缓存。keyUnavailable 永不写入（瞬态）。
+    private static let negativeCacheLock = NSLock()
+    private static var negativeCache: [String: (DecryptResult, Date)] = [:]
+    private static let negativeCacheTTL: TimeInterval = 60
+
+    /// Test-only clock injection（默认 = Date.init）
+    /// N6: 同样用 NSLock 保护，避免与 negativeCache 写并发竞争
+    private static let negativeCacheClockLock = NSLock()
+    private static var _negativeCacheClock: () -> Date = { Date() }
+
 
     // H-2 (2026-07-21 audit fix): Cache the loaded Keychain/file key so
     // subsequent encrypt/decrypt skip the Keychain round-trip (~1–10ms each).
@@ -230,6 +255,20 @@ class CryptoService: CryptoServiceProtocol {
         }
     }
 
+    /// P0-2 (2026-07-28): test-only hook to simulate "key load attempted but
+    /// still no key" without touching the user's prod key file. Sets
+    /// `keyLoadAttempted = true` so `getKey()` short-circuits to nil on the
+    /// next call without reading `keyFileURL`. Lets tests exercise the
+    /// `.keyUnavailable` branch when the prod key file is present.
+    /// Mirrors `resetForTesting()`'s pattern (XCTest-only, production never
+    /// calls).
+    static func simulateKeyLoadAttemptedForTesting() {
+        shared.withCachedLoadedKey {
+            shared.cachedLoadedKey = nil
+            shared.keyLoadAttempted = true
+        }
+    }
+
     /// STOR-1 (2026-07-24 audit): test-only probe for `cachedLoadedKey`.
     /// Avoids routing through `getKey()` (which reads the production
     /// `keyFileURL` and would leak state across tests). Returns true iff
@@ -330,6 +369,11 @@ class CryptoService: CryptoServiceProtocol {
             shared.cachedLoadedKey = key
             shared.keyLoadAttempted = true
         }
+        // P0-2 F18: key 重新就绪时清空否定缓存，让陈旧的 dataCorrupted 缓存不压制新解密。
+        // keyUnavailable 本来就不入缓存，故无需特殊处理。
+        negativeCacheLock.lock()
+        negativeCache.removeAll()
+        negativeCacheLock.unlock()
         NotificationCenter.default.post(
             name: .cryptoKeyPrepared,
             object: nil,
@@ -509,6 +553,83 @@ class CryptoService: CryptoServiceProtocol {
             return nil
         }
         return result
+    }
+
+    /// P0-2: 单 chokepoint 分类解密。NR4 否定缓存仅 .dataCorrupted / .internalError 写入，
+    /// .keyUnavailable 永不缓存（瞬态）。调用方按 isEncrypted 分支。
+    func decryptWithReason(_ base64String: String, itemID: UUID) -> DecryptResult {
+        // 1. key 就绪检查
+        guard getKey() != nil else { return .keyUnavailable }
+
+        // 2. base64 解码
+        guard let combined = Data(base64Encoded: base64String) else {
+            return .internalError
+        }
+
+        // 3. 否定缓存检查（读时懒淘汰, F8, P9 NSLock 包裹）
+        let cacheKey = "\(itemID):\(Self.sha256Hex(combined))"
+        Self.negativeCacheLock.lock()
+        let cached = Self.negativeCache[cacheKey]
+        Self.negativeCacheLock.unlock()
+        if let (cachedReason, cachedAt) = cached {
+            // N6: clockLock 包裹读（虽然 clock 生产端不变，但 set-up 注入时与负缓存写可能并发）
+            Self.negativeCacheClockLock.lock()
+            let now = Self._negativeCacheClock()
+            Self.negativeCacheClockLock.unlock()
+            if now.timeIntervalSince(cachedAt) < Self.negativeCacheTTL {
+                return cachedReason
+            }
+            // 过期：懒淘汰
+            Self.negativeCacheLock.lock()
+            Self.negativeCache.removeValue(forKey: cacheKey)
+            Self.negativeCacheLock.unlock()
+        }
+
+        // 4. 实际解密（走现有 decryptBytes 但用 isOldFormat 区分 v2/legacy 分流 reason）
+        if isOldFormat(base64String) {
+            // legacy: HMAC 不匹配 → decryptBytes 返回 nil → .dataCorrupted
+            guard let bytes = decryptBytes(from: combined) else {
+                return Self.cacheAndReturn(.dataCorrupted, key: cacheKey)
+            }
+            guard let result = String(bytes: bytes, encoding: .utf8) else {
+                return Self.cacheAndReturn(.internalError, key: cacheKey)
+            }
+            return .success(result)
+        } else {
+            // v2 GCM: 复用 decryptV2 但捕获 throw → 分类 authenticationFailure vs 其他
+            do {
+                let sealedBoxData = combined.dropFirst(2)  // N1 关键：剥 2 字节 "v2" prefix
+                let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
+                guard let key = getKey() else { return .keyUnavailable }  // 双重保险
+                let decrypted = try AES.GCM.open(sealedBox, using: key)
+                guard let result = String(bytes: decrypted, encoding: .utf8) else {
+                    return Self.cacheAndReturn(.internalError, key: cacheKey)
+                }
+                return .success(result)
+            } catch CryptoKitError.authenticationFailure {
+                return Self.cacheAndReturn(.dataCorrupted, key: cacheKey)
+            } catch {
+                return Self.cacheAndReturn(.internalError, key: cacheKey)
+            }
+        }
+    }
+
+    /// 写否定缓存（仅永久失败）+ 返回 result（P9 + N6 NSLock 包裹）
+    private static func cacheAndReturn(_ reason: DecryptResult, key: String) -> DecryptResult {
+        negativeCacheClockLock.lock()
+        let now = _negativeCacheClock()
+        negativeCacheClockLock.unlock()
+        negativeCacheLock.lock()
+        negativeCache[key] = (reason, now)
+        negativeCacheLock.unlock()
+        return reason
+    }
+
+    /// 计算密文 sha256（hex 编码）
+    /// N3: 用 CryptoKit.SHA256 与项目现有 HMAC<SHA256> 同源，零额外 import
+    private static func sha256Hex(_ data: Data) -> String {
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     /// Decrypts raw Data (for images). Automatically detects format.

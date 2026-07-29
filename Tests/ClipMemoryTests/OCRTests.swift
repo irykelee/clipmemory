@@ -417,4 +417,5 @@ private struct FailingEncryptCrypto: CryptoServiceProtocol {
     func isOldFormat(_ base64String: String) -> Bool { false }
     func migrateToV2(_ base64String: String) -> String? { nil }
     func hmacHex(for string: String) -> String? { nil }
+    func decryptWithReason(_ base64String: String, itemID: UUID) -> DecryptResult { .dataCorrupted }
 }
