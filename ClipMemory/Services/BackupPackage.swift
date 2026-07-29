@@ -513,11 +513,9 @@ final class BackupPackage {
         // Store mutations (@Published) must run on main even when the caller
         // invoked us from a background queue for a large package (M2 fix).
         // F-1 phase 2 (2026-07-28): importBackupItems is @MainActor; `onMain`
-        // dispatches to main queue but its closure body isn't @MainActor-isolated.
-        // F-2 sweep (2026-07-28): MainActor.assumeIsolated is the Swift
-        // Concurrency standard idiom for sync access to main-actor state when
-        // the caller can't await (this is sync `importPackage`). Keep wrap;
-        // not a workaround — it's the idiomatic bridge.
+        // dispatches to main queue but its closure isn't @MainActor-isolated.
+        // Wrap in MainActor.assumeIsolated (we've already verified we're on main).
+        let merge = onMain {
         let merge = onMain {
             MainActor.assumeIsolated { store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash) }
         }

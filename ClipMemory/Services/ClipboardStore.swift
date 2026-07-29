@@ -147,11 +147,12 @@ final class ClipboardStore: ObservableObject {
 
     /// HIGH-1 (2026-07-26 review): trash subsystem moved to TrashStore.
     /// Forwarding computed properties preserve existing call-site compatibility.
-    var trashedItems: [ClipboardItem] {
+    /// F-1 phase 2 (2026-07-28): @MainActor — forwards to TrashStore which is @MainActor.
+    @MainActor var trashedItems: [ClipboardItem] {
         get { trashStore.trashedItems }
         set { trashStore.trashedItems = newValue }
     }
-    var trashRetentionDays: Int {
+    @MainActor var trashRetentionDays: Int {
         get { trashStore.trashRetentionDays }
         set { trashStore.trashRetentionDays = newValue }
     }
@@ -241,7 +242,8 @@ final class ClipboardStore: ObservableObject {
 
     /// Default initializer — uses FileStorageBackend backed by UserDefaults for
     /// items, tags, and trash (separate UserDefaults keys).
-    convenience init() {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor designated init.
+    @MainActor convenience init() {
         self.init(backend: FileStorageBackend(),
                   tagBackend: FileStorageBackend(storageKey: ClipboardStore.tagStorageKey),
                   trashBackend: FileStorageBackend(storageKey: TrashStore.trashedItemsStorageKey))
@@ -250,9 +252,10 @@ final class ClipboardStore: ObservableObject {
     /// E.1: Designated initializer accepting StorageBackend instances for testing.
     /// `tagBackend` and `trashBackend` default to fresh in-memory backends so
     /// existing tests that only care about items don't accidentally hit UserDefaults.
-    init(backend: StorageBackend,
-         tagBackend: StorageBackend = MemoryStorageBackend(),
-         trashBackend: StorageBackend = MemoryStorageBackend()) {
+    /// F-1 phase 2 (2026-07-28): @MainActor — instantiates @MainActor TrashStore.
+    @MainActor init(backend: StorageBackend,
+                    tagBackend: StorageBackend = MemoryStorageBackend(),
+                    trashBackend: StorageBackend = MemoryStorageBackend()) {
         self.backend = backend
         self.tagBackend = tagBackend
         self.trashStore = TrashStore(backend: trashBackend)
@@ -591,7 +594,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     // updateExcludedAppsOnMonitor() removed (MED-5, 2026-07-26).
     // AppDelegate now sets excludedBundleIds on the monitor directly.
 
-    func loadItems() {
+    /// F-1 phase 2 (2026-07-28): @MainActor — references @MainActor `trashedItems` forwarding property.
+    @MainActor func loadItems() {
         let savedItems: [ClipboardItem]
         do {
             savedItems = try backend.load()
@@ -775,7 +779,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
 
     /// Flushes pending item, tag, and trash saves to disk immediately. Called by the debounce timer,
     /// on deinit, or from AppDelegate.applicationWillTerminate to prevent data loss on quit.
-    func flushPendingSaves() {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor TrashStore.flushPendingSave().
+    @MainActor func flushPendingSaves() {
         flushSave()
         flushTagSave()
         trashStore.flushPendingSave()
@@ -843,14 +848,16 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// This prevents dangling UUIDs (tag references that no longer resolve).
     /// Safe to call with an unknown id — no-op in that case. Triggers a
     /// debounced save for both tags and items.
-    func deleteTag(id tagId: UUID) {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor deleteTag(id:includeItems:).
+    @MainActor func deleteTag(id tagId: UUID) {
         deleteTag(id: tagId, includeItems: false)
     }
 
     /// When `includeItems` is true, items carrying this tag are first moved to
     /// the recycle bin (recoverable), then the tag definition is deleted and
     /// its id stripped from any remaining items.
-    func deleteTag(id tagId: UUID, includeItems: Bool) {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor deleteItems(where:).
+    @MainActor func deleteTag(id tagId: UUID, includeItems: Bool) {
         if includeItems {
             deleteItems { $0.tagIds.contains(tagId) }
         }
@@ -1145,8 +1152,9 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// new id from another machine). Trashed items merge into the recycle bin
     /// unless they collide with active/trashed entries.
     /// Returns (imported, skipped).
+    /// F-1 phase 2 (2026-07-28): @MainActor — calls @MainActor TrashStore.scheduleSavePublic().
     @discardableResult
-    func importBackupItems(_ newItems: [ClipboardItem], trashedItems newTrashed: [ClipboardItem]) -> (imported: Int, skipped: Int) {
+    @MainActor func importBackupItems(_ newItems: [ClipboardItem], trashedItems newTrashed: [ClipboardItem]) -> (imported: Int, skipped: Int) {
         var imported = 0
         var skipped = 0
         // Mutable sets — entries are added as items are imported so duplicates
@@ -1453,7 +1461,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
 
     // MARK: - Recycle Bin (Trash) — forwarding stubs (HIGH-1, 2026-07-26)
 
-    func moveToTrash(_ item: ClipboardItem) {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor TrashStore.
+    @MainActor func moveToTrash(_ item: ClipboardItem) {
         evictCaches(for: item)
         trashStore.moveToTrash(item, evictCaches: { _ in }, didMove: { [weak self] in
             self?.items.removeAll { $0.id == item.id }
@@ -1462,7 +1471,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         })
     }
 
-    func moveToTrash(_ itemsToMove: [ClipboardItem]) {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor TrashStore.
+    @MainActor func moveToTrash(_ itemsToMove: [ClipboardItem]) {
         for item in itemsToMove { evictCaches(for: item) }
         let idsToMove = Set(itemsToMove.map { $0.id })
         trashStore.moveToTrash(itemsToMove, evictCaches: { _ in }, didMove: { [weak self] in
@@ -1478,7 +1488,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
     }
 
-    func restoreFromTrash(_ item: ClipboardItem) {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor TrashStore.
+    @MainActor func restoreFromTrash(_ item: ClipboardItem) {
         trashStore.restoreFromTrash(item, didRestore: { [weak self] restored in
             self?.items.insert(restored, at: 0)
             self?.updatePinnedItems()
@@ -1486,9 +1497,12 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         })
     }
 
-    func deletePermanently(_ item: ClipboardItem) { trashStore.deletePermanently(item) }
-    func emptyTrash() { trashStore.emptyTrash() }
-    func purgeExpiredTrash() { trashStore.purgeExpiredTrash() }
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor TrashStore.
+    @MainActor func deletePermanently(_ item: ClipboardItem) { trashStore.deletePermanently(item) }
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor TrashStore.
+    @MainActor func emptyTrash() { trashStore.emptyTrash() }
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor TrashStore.
+    @MainActor func purgeExpiredTrash() { trashStore.purgeExpiredTrash() }
 
     func trimToMaxItems() {
         guard items.count > maxItems else { return }
@@ -1526,7 +1540,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         scheduleSave()
     }
 
-    func deleteItem(_ item: ClipboardItem) {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor moveToTrash.
+    @MainActor func deleteItem(_ item: ClipboardItem) {
         moveToTrash(item)
     }
 
@@ -1550,11 +1565,13 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         scheduleSave()
     }
 
-    func deleteItems(_ itemsToDelete: [ClipboardItem]) {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor moveToTrash.
+    @MainActor func deleteItems(_ itemsToDelete: [ClipboardItem]) {
         moveToTrash(itemsToDelete)
     }
 
-    func deleteItems(where predicate: (ClipboardItem) -> Bool) {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor deleteItems(_:).
+    @MainActor func deleteItems(where predicate: (ClipboardItem) -> Bool) {
         let toDelete = items.filter(predicate)
         deleteItems(toDelete)
     }
@@ -1596,19 +1613,22 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         scheduleSave()
     }
 
-    func clearSensitiveItems() {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor moveToTrash.
+    @MainActor func clearSensitiveItems() {
         let toRemove = items.filter { $0.isSensitive && !$0.isPinned }
         moveToTrash(toRemove)
     }
 
-    func clearAllItems() {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor moveToTrash.
+    @MainActor func clearAllItems() {
         let pinnedIds = Set(pinnedItems.map { $0.id })
         let toRemove = items.filter { !pinnedIds.contains($0.id) }
         moveToTrash(toRemove)
     }
 
     /// 清除今日的所有非置顶项目
-    func clearToday() {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor deleteItems(where:).
+    @MainActor func clearToday() {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
         let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? Date()
@@ -1618,7 +1638,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     }
 
     /// 清除昨天的所有非置顶项目
-    func clearYesterday() {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor deleteItems(where:).
+    @MainActor func clearYesterday() {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
         guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else { return }
@@ -1628,7 +1649,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     }
 
     /// 清除更早（昨天之前）的所有非置顶项目
-    func clearOlder() {
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor deleteItems(where:).
+    @MainActor func clearOlder() {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
         guard let startOfDayBeforeYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) else { return }
@@ -1665,8 +1687,9 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// Clears items matching an optional type and a time range, skipping
     /// pinned items (same protection rule as the other clear* paths).
     /// Returns the number of items moved to trash.
+    /// F-1 phase 2 (2026-07-28): @MainActor — delegates to @MainActor moveToTrash.
     @discardableResult
-    func clearItems(type: ClipboardItemType?, range: ClearRange) -> Int {
+    @MainActor func clearItems(type: ClipboardItemType?, range: ClearRange) -> Int {
         let targets = items.filter { item in
             !item.isPinned
                 && (type == nil || item.type == type)
@@ -1788,7 +1811,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         pinnedItems = items.filter { $0.isPinned }
     }
 
-    internal func cleanupExpiredItems() {
+    /// F-1 phase 2 (2026-07-28): @MainActor — mutates `@Published items` and calls @MainActor TrashStore.purgeExpiredTrash().
+    @MainActor internal func cleanupExpiredItems() {
         let expiredImageFilenames = items.filter { $0.isExpired && $0.type == .image }.map { $0.content }
         let expiredIds = Set(items.filter { $0.isExpired }.map { $0.id })
         if expiredImageFilenames.isEmpty && expiredIds.isEmpty { return }
