@@ -27,6 +27,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var keychainUnlockObserver: NSObjectProtocol?
     private var sessionBecomeActiveObserver: NSObjectProtocol?
     private var didBecomeActiveObserver: NSObjectProtocol?
+    // ID-SECURITY-0001 (2026-07-30 audit): wipe the in-memory root key
+    // when the app loses focus / locks / suspends so a memory-dump attack
+    // on a suspended process (hibernate image / RAM disk) can't recover
+    // raw key bytes. Both notifications cover distinct lock paths:
+    // - .protectedDataWillBecomeUnavailable fires when FileVault lock
+    //   begins (screen lock with FileVault enabled)
+    // - .didEnterBackground fires when the app moves to background
+    //   (Cmd+H / Cmd+Tab away) — covers all sessions including ones
+    //   without FileVault
+    private var protectedDataWillBecomeUnavailableObserver: NSObjectProtocol?
+    private var sessionDidResignActiveObserver: NSObjectProtocol?
+    private var didEnterBackgroundObserver: NSObjectProtocol?
     private var lastPrewarmTime: Date = .distantPast
     private var welcomeWindow: NSWindow?
     // Independent settings window (2026-07-25 plan): separate from the main
@@ -61,6 +73,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupLanguageObserver()
         setupKeychainUnlockObserver()
         setupSettingsMenuItem()
+        // ID-SECURITY-0001 (2026-07-30 audit): purge in-memory root key
+        // when the app loses focus / FileVault locks. See ivar comments.
+        setupBackgroundPurgeObservers()
         NSApp.setActivationPolicy(.accessory)
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
         // Start Sparkle: daily background check per SUEnableAutomaticChecks.
@@ -300,6 +315,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { _ in prewarmIfNeeded() }
     }
 
+    /// ID-SECURITY-0001 (2026-07-30 audit): register observers that wipe
+    /// `CryptoService.cachedLoadedKey` whenever the app loses focus /
+    /// the user locks the screen / the system sleeps. The next
+    /// foreground operation transparently re-prepares the key from
+    /// Keychain (existing `getKey()` flow).
+    ///
+    /// Notification selection rationale:
+    /// - `NSApplication.didResignActiveNotification` — app loses focus
+    ///   (Cmd+Tab away, dialog dismissed). Fires even without FileVault.
+    /// - `NSWorkspace.sessionDidResignActiveNotification` — user session
+    ///   went inactive: screen lock, fast user switching, logout. This
+    ///   is the closest AppKit signal to "user stepped away from
+    ///   computer"; FileVault lock begins around the same event.
+    /// - `NSWorkspace.willSleepNotification` — system sleep / hibernate.
+    ///   Memory may be written to disk (RAM-backed hibernation image),
+    ///   where raw key bytes would survive. Purge before sleep.
+    /// Deinit cleanup uses the `removeObserver(_:)` token pattern that
+    /// already handles the other lifecycle observers in this file.
+    private func setupBackgroundPurgeObservers() {
+        let purge: () -> Void = {
+            // Clear the in-memory key. Next foreground will re-prepare.
+            CryptoService.shared.clearInMemoryKey()
+        }
+        protectedDataWillBecomeUnavailableObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil, queue: .main
+        ) { _ in purge() }
+        sessionDidResignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSWorkspace.sessionDidResignActiveNotification,
+            object: nil, queue: .main
+        ) { _ in purge() }
+        didEnterBackgroundObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil, queue: .main
+        ) { _ in purge() }
+    }
+
     /// Independent settings window (2026-07-25 plan). Replaces the previous
     /// main-window-embedded settings tab. Both the menu `⌘,` entry and the
     /// sidebar "Settings" tab call this method.
@@ -412,6 +464,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let o = keychainUnlockObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = sessionBecomeActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = didBecomeActiveObserver { NotificationCenter.default.removeObserver(o) }
+        // ID-SECURITY-0001 (2026-07-30 audit): remove the background-purge
+        // observers alongside the other lifecycle observers.
+        if let o = protectedDataWillBecomeUnavailableObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = sessionDidResignActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+        if let o = didEnterBackgroundObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         // BUG-037 (2026-07-21): deinit was observer-only. Carbon hotkey,
         // clipboard monitor timer, and welcome window are cleaned only
         // in applicationWillTerminate. If AppDelegate is ever deallocated

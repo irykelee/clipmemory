@@ -358,18 +358,20 @@ struct ContentView: View {
         let previous = currentDate
         currentDate = Date()
         UIObservability.logCurrentDateRollover(from: previous, to: currentDate)
-        updateDisplayedItemsCache()
+        refreshAndPrewarm()
     }
 
+    /// ID-LIFE-0019 (2026-07-30 audit): split the refresh into a pure path
+    /// (this function) and an orchestrator that adds prewarm
+    /// (`refreshAndPrewarm`). The completion re-runs the pure path so
+    /// cold-cache items surface once decrypted — but the pure path does
+    /// not itself trigger another prewarm, breaking the would-be loop.
+    /// No flag needed because only `refreshAndPrewarm` calls prewarm.
     private func updateDisplayedItemsCache() {
         let start = Date()
         cachedDisplayedItems = filterItems(store.items)
         // P0-2 P2: merge once per filter pass (not per-item inside .filter closure).
         store.mergePendingDiagnostics()
-        // P0-3: pre-warm caches in background so the next filter pass reads from
-        // contentCache/rtfPlaintextCache (fast path) instead of doing sync AES-GCM
-        // decrypt on the main thread.
-        store.prewarmDecryptionCache(items: cachedDisplayedItems)
         // H-10 (2026-07-24 audit): items changed → visible indices change too.
         recomputeVisibleGlobalIndices()
         // Update grouped items cache
@@ -397,6 +399,27 @@ struct ContentView: View {
             items: cachedGroupedItems.reduce(0) { $0 + $1.1.count },
             durationMs: Date().timeIntervalSince(start) * 1000
         )
+    }
+
+    /// Refresh display state + kick off background prewarm. The completion
+    /// re-runs the pure `updateDisplayedItemsCache()` so items skipped by
+    /// the cold filter surface once their decrypted text is in cache.
+    private func refreshAndPrewarm() {
+        updateDisplayedItemsCache()
+        // P0-3: pre-warm caches in background so the next filter pass reads
+        // from contentCache/rtfPlaintextCache (fast path) instead of doing
+        // sync AES-GCM decrypt on the main thread.
+        // ID-LIFE-0019 (2026-07-30 audit): `[self]` (value capture) because
+        // `View` is a struct and `[weak self]` doesn't apply. The captured
+        // copy's @State wrappers still point at the same external storage
+        // — re-filter writes succeed as long as the parent View is in the
+        // hierarchy. If the View is gone, the @State setter is a no-op.
+        store.prewarmDecryptionCache(items: cachedDisplayedItems) { [self] in
+            // ID-LIFE-0019: re-filter once prewarm completes. Calling the
+            // pure refresh path (not `refreshAndPrewarm`) prevents the
+            // recursive prewarm → completion → prewarm cycle.
+            self.updateDisplayedItemsCache()
+        }
     }
 
     var displayedItems: [ClipboardItem] { cachedDisplayedItems }
@@ -580,7 +603,12 @@ struct ContentView: View {
     /// "Modifying state during view update" runtime warning.
     private func refreshDisplayedItemsCacheSoon(source: String) {
         UIObservability.logRefreshTrigger(source: source)
-        DispatchQueue.main.async { updateDisplayedItemsCache() }
+        // ID-LIFE-0019 (2026-07-30 audit): user-driven refresh always
+        // goes through `refreshAndPrewarm` so the prewarm completion can
+        // re-filter cold items into the visible list. The pure
+        // `updateDisplayedItemsCache` is reserved for the completion path
+        // to break the recursion.
+        DispatchQueue.main.async { refreshAndPrewarm() }
     }
 
     private func attachLifecycle<V: View>(_ v: V) -> some View {
@@ -593,9 +621,8 @@ struct ContentView: View {
             .onAppear {
                 (NSApp.delegate as? AppDelegate)?.disableFindMenuShortcut()
                 applyAppearance()
-                updateDisplayedItemsCache()
+                refreshAndPrewarm()
                 handleDayRolloverIfNeeded()
-                store.prewarmDecryptionCache(items: store.items)
             }
             .onChange(of: searchText) { newValue in
                 // B-2 (2026-07-27): previously the `keyboardSelectedIndex`
@@ -635,7 +662,7 @@ struct ContentView: View {
                     if !selectedTagIds.isSubset(of: valid) {
                         selectedTagIds.formIntersection(valid)
                     }
-                    updateDisplayedItemsCache()
+                    refreshAndPrewarm()
                 }
             }
             .onChange(of: collapsedGroups) { val in

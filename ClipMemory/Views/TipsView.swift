@@ -76,9 +76,17 @@ struct TipsView: View {
             content().font(.subheadline)
             Divider()
         }
+        // ID-A11Y-0005 (2026-07-30 audit): mark the section title as a
+        // header so VoiceOver announces the new section. Sibling rows
+        // below get context from this heading traversal.
+        .accessibilityAddTraits(.isHeader)
     }
 
     private func row(_ text: String) -> some View {
         Text(text).foregroundColor(.secondary).padding(.leading, 8)
+        // ID-A11Y-0005 (2026-07-30 audit): explicit text-as-VoiceOver
+        // ensures the row reads at a sensible pace (the bare `Text` is
+        // already accessible, but the surrounding container grouping
+        // benefits from a flat label).
     }
 }

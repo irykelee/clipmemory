@@ -24,10 +24,13 @@ struct LogoView: View {
             // Chinese + English on one line: "剪忆 ClipMemory"
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(chineseName)
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    // ID-A11Y-0003 (2026-07-30 audit): route through `sz()`
+                    // so Settings → Font Size (small/medium/large) actually
+                    // applies to the brand logo in the welcome window.
+                    .font(.system(size: sz(20), weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                 Text("ClipMemory")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: sz(11), weight: .medium))
                     .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity)
@@ -36,7 +39,7 @@ struct LogoView: View {
         } else {
             // Single name (English, Japanese, Korean, etc.)
             Text(L10n.appName)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: sz(16), weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)

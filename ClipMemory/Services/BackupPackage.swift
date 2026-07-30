@@ -300,10 +300,27 @@ final class BackupPackage {
     /// background → `onMain`). `MainActor.assumeIsolated` makes the
     /// "we're on main" requirement a runtime trap instead of a silent
     /// block, and the closure signature is now `@MainActor` so the type
-    /// system flags misuses at the call site. All current callers are
-    /// verified to run on main; this remains a hard precondition.
+    /// system flags misuses at the call site.
+    ///
+    /// ID-SYNC-0001 (2026-07-30 audit): the C2 fix introduced a regression
+    /// — backup import runs `importPackage` from `DispatchQueue.global`
+    /// (`BackupSettingsView:155`), which then calls `onMain` and traps
+    /// because the caller isn't on MainActor. Restore the threading-jump
+    /// semantic: assumeIsolated only when already on the main thread,
+    /// otherwise hop via `DispatchQueue.main.sync`. Main-thread callers
+    /// stay lock-free (no `main.sync` re-entry); background callers get a
+    /// sync hop to main, which is the original intent.
     private static func onMain<T>(_ work: @MainActor () throws -> T) rethrows -> T {
-        return try MainActor.assumeIsolated(work)
+        if Thread.isMainThread {
+            // Already on main thread (which IS the MainActor's executor on
+            // macOS) — safe to assumeIsolated without dispatching.
+            return try MainActor.assumeIsolated(work)
+        }
+        // Background caller — hop to main synchronously. The closure type
+        // demands MainActor isolation; DispatchQueue.main.sync executes on
+        // the main queue (== MainActor's executor), satisfying the
+        // isolation. No deadlock because the caller is not on main.
+        return try DispatchQueue.main.sync(execute: work)
     }
 
     /// L-11 (2026-07-24 audit): maps the UserDefaults key used in the export

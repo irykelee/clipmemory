@@ -10,8 +10,11 @@ struct DateFilterButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+            // ID-A11Y-0001 (2026-07-30 audit): use `sz()` instead of hardcoded
+                // font size so global font-scale settings (small/medium/large
+                // in Settings → Font Size) actually apply to this button.
+                Text(title)
+                    .font(.system(size: sz(11), weight: isSelected ? .semibold : .regular))
                 .foregroundColor(foregroundColor)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)

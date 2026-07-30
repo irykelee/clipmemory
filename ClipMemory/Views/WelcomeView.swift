@@ -136,7 +136,15 @@ struct InstructionRow: View {
                 Text(number)
                     .font(.callout)
                     .fontWeight(.bold)
-                    .foregroundColor(.white)
+                    // ID-A11Y-0006 (2026-07-30 audit): wrap the digit in a
+                    // `.regularMaterial` halo so it stays legible on light
+                    // accent colors (system yellow, etc.) where plain
+                    // `.white` is hard to read. The accent fill still
+                    // anchors the circle visually; the material adds
+                    // contrast under the glyph without an outer border.
+                    .foregroundStyle(Color.white)
+                    .padding(4)
+                    .background(.regularMaterial, in: Circle())
             }
 
             VStack(alignment: .leading, spacing: 4) {

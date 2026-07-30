@@ -108,6 +108,22 @@ class CryptoService: CryptoServiceProtocol {
         return try block()
     }
 
+    /// ID-SECURITY-0001 (2026-07-30 audit): wipe the in-memory root key
+    /// when the app loses focus / locks / suspends so a memory-dump attack
+    /// on a suspended process can't recover raw key bytes (hibernate /
+    /// RAM disk image). Safe to call any time — `getKey()` already
+    /// re-loads from Keychain on demand when `cachedLoadedKey == nil`,
+    /// so the next foreground operation transparently re-prepares.
+    /// Also resets `keyLoadAttempted` so a transient Keychain state at
+    /// the next foreground (`.interactionLocked` pre-unlock) gets a
+    /// fresh attempt instead of the cached failure.
+    func clearInMemoryKey() {
+        withCachedLoadedKey {
+            cachedLoadedKey = nil
+            keyLoadAttempted = false
+        }
+    }
+
     /// Legacy key file location (pre-C1). Still consulted as a read-only
     /// fallback and migrated into the Keychain by `prepareKey`; new keys
     /// are never written here. Exposed for ImageStorage migration.

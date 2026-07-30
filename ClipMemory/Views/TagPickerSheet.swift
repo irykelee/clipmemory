@@ -203,7 +203,13 @@ struct TagPickerSheet: View {
                         .background(Color.accentColor.opacity(0.12))
                         .cornerRadius(4)
                     }
+                    // ID-A11Y-0004 (2026-07-30 audit): explicit accessibility
+                    // label so VoiceOver reads "添加建议标签 X" instead of
+                    // "plus X" (the icon dominates). Uses an inline format
+                    // rather than a new L10n key to avoid churn for a
+                    // 1-shot accessibility polish.
                     .buttonStyle(.plain)
+                    .accessibilityLabel("添加建议标签 \(name)")
                 }
             }
         }

@@ -39,7 +39,17 @@ class ImageStorage {
             : "ClipMemory/Images"
         let dir = appSupport.appendingPathComponent(dirname, isDirectory: true)
         if FileManager.default.fileExists(atPath: dir.path) == false {
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            // ID-SECURITY-0002 (2026-07-30 audit): explicitly request
+            // 0o700 so the directory is owner-only readable. macOS default
+            // is 0o755 which lets other local-user accounts read our
+            // encrypted image directory. Defense-in-depth — image content
+            // is already AES-GCM encrypted at write, but a 0o755 directory
+            // leaks filename + size metadata that 0o700 hides.
+            try? FileManager.default.createDirectory(
+                at: dir,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
         }
         return dir
     }()

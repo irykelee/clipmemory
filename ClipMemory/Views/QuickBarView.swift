@@ -76,9 +76,13 @@ struct QuickBarView: View {
         }
     }
 
-    /// Rebuild cachedDisplayedItems from current inputs. Called on appear
-    /// and when store.items / searchTextDebounced change (see modifiers in
-    /// body). Key handlers read `displayedItems` (the cache) directly.
+    /// ID-LIFE-0019 (2026-07-30 audit): split refresh into a pure path
+    /// (`recomputeDisplayedItems`) and an orchestrator that adds prewarm
+    /// (`recomputeAndPrewarm`). The completion re-runs the pure path so
+    /// cold-cache items surface once decrypted — but the pure path does
+    /// not itself trigger another prewarm, breaking the would-be loop.
+    /// Mirrors ContentView.swift's `updateDisplayedItemsCache` /
+    /// `refreshAndPrewarm` split.
     private func recomputeDisplayedItems() {
         cachedDisplayedItems = Self.computeDisplayedItems(
             items: store.items,
@@ -88,8 +92,19 @@ struct QuickBarView: View {
         )
         // P0-2 P2: merge once per filter pass
         store.mergePendingDiagnostics()
+    }
+
+    /// Refresh + kick off background prewarm. Completion re-runs the pure
+    /// `recomputeDisplayedItems` so items skipped by the cold filter
+    /// surface once decrypted.
+    private func recomputeAndPrewarm() {
+        recomputeDisplayedItems()
         // P0-3: pre-warm caches in background for next filter pass.
-        store.prewarmDecryptionCache(items: cachedDisplayedItems)
+        // ID-LIFE-0019 (2026-07-30 audit): `[self]` (value capture) —
+        // `View` is a struct and `[weak self]` doesn't apply.
+        store.prewarmDecryptionCache(items: cachedDisplayedItems) { [self] in
+            self.recomputeDisplayedItems()
+        }
     }
 
     var body: some View {
@@ -315,7 +330,7 @@ struct QuickBarView: View {
         .onReceive(NotificationCenter.default.publisher(for: .cryptoKeyPrepared)) { note in
             let success = (note.userInfo?["success"] as? Bool) ?? false
             guard success else { return }
-            recomputeDisplayedItems()
+            recomputeAndPrewarm()
         }
         // CLIP-4 (2026-07-24 audit): keep cachedDisplayedItems in sync with
         // its two inputs. onAppear covers popover-open (the view is created
@@ -323,12 +338,12 @@ struct QuickBarView: View {
         // tick — writing @State synchronously inside onChange during a view
         // update triggers SwiftUI's "Modifying state during view update"
         // warning (same pattern as ContentView.refreshDisplayedItemsCacheSoon).
-        .onAppear { recomputeDisplayedItems() }
+        .onAppear { recomputeAndPrewarm() }
         .onChange(of: store.items) { _ in
             DispatchQueue.main.async { recomputeDisplayedItems() }
         }
         .onChange(of: searchTextDebounced) { _ in
-            DispatchQueue.main.async { recomputeDisplayedItems() }
+            DispatchQueue.main.async { recomputeAndPrewarm() }
         }
     }
 }

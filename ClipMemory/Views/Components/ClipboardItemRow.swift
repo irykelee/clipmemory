@@ -28,12 +28,19 @@ private let highlightedOcrCache: NSCache<NSString, NSAttributedString> = {
 // MARK: - AppKit NSPressGestureRecognizer for stable image long-press
 struct PressableImage: NSViewRepresentable {
     let onPressChanged: (Bool) -> Void
+    // ID-A11Y-0002 (2026-07-30 audit): expose accessibilityLabel so VoiceOver
+    // reads a meaningful name (e.g. "图片缩略图，长按显示预览") instead of
+    // being silent. Default to L10n.itemImage so callers can omit.
+    var accessibilityLabel: String = L10n.itemImage
+
     func makeNSView(context: Context) -> NSView {
         let v = LongPressView(onPressChanged: context.coordinator.onPressChanged)
+        v.setAccessibilityLabel(accessibilityLabel)
         return v
     }
     func updateNSView(_ nsView: NSView, context: Context) {
         (nsView as? LongPressView)?.onPressChanged = context.coordinator.onPressChanged
+        nsView.setAccessibilityLabel(accessibilityLabel)
     }
     func makeCoordinator() -> Coordinator { Coordinator(onPressChanged: onPressChanged) }
     class Coordinator {
@@ -745,8 +752,18 @@ private struct RowActions: View {
                                 .font(.system(size: sz(8)))
                                 .padding(2)
                                 .background(Color.accentColor, in: Circle())
-                                .foregroundColor(.white)
+                                // ID-A11Y-0007 (2026-07-30 audit): same
+                                // `.regularMaterial` halo as A11Y-0006 so the
+                                // tag-count badge stays legible on light
+                                // accent colors (system yellow). Plain
+                                // `.white` is hard to read there.
+                                .foregroundStyle(Color.white)
+                                .background(.regularMaterial, in: Circle())
                                 .offset(x: 4, y: -4)
+                                // ID-A11Y-0007: explicit accessibility label
+                                // so VoiceOver reads the count + context
+                                // ("3 个标签") rather than just "3".
+                                .accessibilityLabel("\(item.tagIds.count) 个标签")
                         }
                     }
             }
