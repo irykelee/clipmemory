@@ -1,4 +1,4 @@
-# ClipMemory v2.7.2
+# ClipMemory v2.7.3
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.7.3 (2026-07-30) — Correções Orientadas por Auditoria e VoiceOver em 7 Idiomas
+
+- **🚀 Melhorias de desempenho (várias otimizações em segundo plano)** — Reutilização do JSONEncoder, limite de concorrência no pré-aquecimento de cache, varredura única em tarefas de limpeza, pré-preenchimento de descriptografia AES-GCM em inicialização a frio; colagem e busca visivelmente mais suaves com milhares de itens no histórico
+- **🌐 VoiceOver acessível em 7 idiomas** — Menu principal / campo de pesquisa / página de boas-vindas / chip de etiqueta / lista de exclusão de aplicativos / botões de filtro por data / etiquetas de tipo de item da área de transferência totalmente localizados; usuários não ingleses podem usar o VoiceOver fluentemente pela primeira vez
+- **🧹 Reforço no ciclo de vida** — Fechar as janelas de boas-vindas/configurações não causa mais vazamento de memória; TrashStore / FeedProbeEngine limpam corretamente as tarefas em segundo plano no deinit; ImageStorage descarrega gravações pendentes antes do App sair
+- **🔇 Erros silenciosos tornados visíveis** — 10 pontos de `try?` que engoliam erros agora registram em log e notificam a UI (falhas de gravação na migração de imagens, arquivos órfãos residuais, falha na limpeza do diretório temporário de cópia de segurança, etc.), facilitando a depuração
+- **Falha de descriptografia AES-GCM não contamina mais itens permanentemente** — Falhas de descriptografia acionadas quando o Keychain está temporariamente bloqueado agora tentam automaticamente quando a chave é recuperada (bug antigo marcava itens permanentemente como indecifráveis)
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.3
 
 ### v2.7.2 (2026-07-29) — Busca Difusa e Integridade de Imagem + Segurança Criptográfica
 

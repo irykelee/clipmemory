@@ -1,4 +1,4 @@
-# ClipMemory v2.7.2
+# ClipMemory v2.7.3
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.7.3 (2026-07-30) — Audit-Driven Fixes & 7-Language VoiceOver
+
+- **🚀 Performance improvements (multiple background optimizations)** — JSONEncoder reuse, cache prewarming concurrency cap, cleanup task single-pass scan, cold-start AES-GCM decryption prefilling; pasting and searching are noticeably smoother with thousands of history items
+- **🌐 7-language VoiceOver accessibility** — Main menu / search box / welcome page / tag chips / app exclusion list / date filter buttons / clipboard item type labels all localized; non-English users can now use VoiceOver fluently for the first time
+- **🧹 Lifecycle hardening** — Closing welcome/settings windows no longer leaks memory; TrashStore & FeedProbeEngine properly clean up background tasks on `deinit`; ImageStorage flushes pending writes before app exit
+- **🔇 Silent errors made visible** — 10 `try?` swallow points now log to console and notify UI (image migration write failures, orphan file residues, backup staging directory cleanup failures, etc.) for easier debugging
+- **AES-GCM decryption failure no longer permanently contaminates items** — Decryption failures triggered by transient Keychain lock now automatically retry once the key is restored (old bug permanently marked items as undecryptable)
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.3
 
 ### v2.7.2 (2026-07-29) — Fuzzy Search & Image Integrity + Cryptographic Safety
 

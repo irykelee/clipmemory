@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.7.2
+# 剪忆 ClipMemory v2.7.3
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 更新日志
+
+### v2.7.3 (2026-07-30) — Audit-Driven Fixes & 7-Language VoiceOver
+
+- **🚀 性能提升（多项后台优化）** — JSONEncoder 复用、缓存预热并发上限、清理任务单遍扫描、冷启动 AES-GCM 解密预填；数千条历史下粘贴与搜索明显更顺
+- **🌐 7 语言 VoiceOver 无障碍** — 主菜单 / 搜索框 / 欢迎页 / 标签 chip / 应用排除列表 / 日期过滤按钮 / 剪贴板项类型标签全部本地化；非英语用户首次可用 VoiceOver 流畅使用
+- **🧹 生命周期加固** — 关闭欢迎/设置窗口不再内存泄漏；TrashStore / FeedProbeEngine 在 deinit 时正确清理后台任务；ImageStorage 在 App 退出前 flush 未完成写入
+- **🔇 沉默错误改为可见** — 10 处 `try?` 吞错点现在记录到日志并通知 UI（图片迁移写失败、孤儿文件残留、备份暂存目录清理失败等），便于排查
+- **AES-GCM 解密失败不再永久污染条目** — Keychain 瞬态锁定时触发的解密失败，现在 key 恢复后会自动重试（旧 bug 会永久标记条目不可解密）
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.3
 
 ### v2.7.2 (2026-07-29) — Fuzzy Search & Image Integrity + Cryptographic Safety
 

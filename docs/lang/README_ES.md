@@ -1,4 +1,4 @@
-# ClipMemory v2.7.2
+# ClipMemory v2.7.3
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.7.3 (2026-07-30) — Correcciones impulsadas por auditoría y VoiceOver en 7 idiomas
+
+- **🚀 Mejoras de rendimiento (múltiples optimizaciones en segundo plano)** — Reutilización de `JSONEncoder`, límite de concurrencia en el precalentamiento de caché, escaneo único en tareas de limpieza, precarga de descifrado AES-GCM en inicio en frío; pegado y búsqueda notablemente más fluidos con miles de entradas históricas
+- **🌐 Accesibilidad VoiceOver en 7 idiomas** — Menú principal, campo de búsqueda, página de bienvenida, chips de etiqueta, lista de exclusión de aplicaciones, botones de filtro por fecha y etiquetas de tipo de elemento del portapapeles, todo localizado; los usuarios no angloparlantes pueden usar VoiceOver sin problemas por primera vez
+- **🧹 Refuerzo del ciclo de vida** — Cerrar la ventana de bienvenida/configuración ya no produce fugas de memoria; `TrashStore` / `FeedProbeEngine` limpian correctamente las tareas en segundo plano en `deinit`; `ImageStorage` vacía las escrituras pendientes antes de que la App salga
+- **🔇 Errores silenciosos ahora visibles** — 10 puntos de `try?` que antes ignoraban errores ahora registran en el log y notifican a la UI (fallos de escritura en migración de imágenes, archivos huérfanos residuales, fallos de limpieza del directorio temporal de copia de seguridad, etc.), facilitando la depuración
+- **El fallo de descifrado AES-GCM ya no contamina permanentemente las entradas** — Los fallos de descifrado provocados por un bloqueo transitorio del llavero ahora se reintentan automáticamente cuando la clave se recupera (error antiguo que marcaba permanentemente las entradas como no descifrables)
+- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.3
 
 ### v2.7.2 (2026-07-29) — Búsqueda Difusa e Integridad de Imágenes + Seguridad Criptográfica
 
