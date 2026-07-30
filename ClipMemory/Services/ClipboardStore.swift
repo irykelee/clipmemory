@@ -215,10 +215,21 @@ final class ClipboardStore: ObservableObject {
     /// / `loadTags()` silently swallowed the error and continued with an
     /// empty in-memory collection — the very next save wiped the persist
     /// layer permanently.
+    // ID-PERF-0009 (2026-07-30 audit): ISO8601DateFormatter init is ~1 ms
+    // (locale + dateFormat + calendar setup). `quarantineCorruptBlob` is
+    // called from `loadItems` / `loadTags` error paths. Hoist to a
+    // `static let` so all calls share one instance (same pattern as
+    // `cachedAbsoluteDateFormatter` in DateHelpers.swift).
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
     private func quarantineCorruptBlob(key: String, error: Error) {
         let defaults = UserDefaults.standard
         guard let blob = defaults.data(forKey: key) else { return }
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = Self.iso8601Formatter.string(from: Date())
         let quarantineKey = "\(key).corrupt-\(timestamp)"
         defaults.set(blob, forKey: quarantineKey)
         defaults.removeObject(forKey: key)

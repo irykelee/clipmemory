@@ -48,6 +48,13 @@ struct TagPickerSheet: View {
 
     var body: some View {
         let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
+        // ID-PERF-0013 (2026-07-30 audit): `currentItem()` was called once
+        // per tag row (and per create-block), each O(n) `store.items.first`.
+        // For 10K items × 100 tags = 1M UUID comparisons per body build.
+        // Compute the live item once here and let the per-row call sites
+        // use a captured constant. Same `let` was already used for
+        // `fontScale` above; this just adds a second cheap binding.
+        let current = currentItem()
         VStack(spacing: 0) {
             header
             Divider()
@@ -56,7 +63,7 @@ struct TagPickerSheet: View {
                     previewBlock
                     if !suggestionsToCreate.isEmpty { suggestionsBlock }
                     if showNameSuggestions && !suggestedNames.isEmpty { suggestedNamesBlock }
-                    allTagsBlock
+                    allTagsBlock(current: current)
                     createBlock
                 }
                 .padding(16)
@@ -244,13 +251,16 @@ struct TagPickerSheet: View {
 
     // MARK: - All tags
 
-    private var allTagsBlock: some View {
+    private func allTagsBlock(current: ClipboardItem) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L10n.tagPickerSectionAllTags)
                 .font(.system(size: sz(11), weight: .semibold))
                 .foregroundColor(.secondary)
+            // ID-PERF-0013 (2026-07-30 audit): each tag row reuses the
+            // `current` captured in `body` (already O(1) via the per-body
+            // dict) instead of calling `currentItem()` again.
             ForEach(allTagsSorted, id: \.id) { tag in
-                tagRow(tag)
+                tagRow(tag, current: current)
             }
             if allTagsSorted.isEmpty {
                 Text("—").foregroundColor(.secondary).font(.system(size: sz(11)))
@@ -258,8 +268,8 @@ struct TagPickerSheet: View {
         }
     }
 
-    private func tagRow(_ tag: Tag) -> some View {
-        let isAttached = currentItem().tagIds.contains(tag.id)
+    private func tagRow(_ tag: Tag, current: ClipboardItem) -> some View {
+        let isAttached = current.tagIds.contains(tag.id)
         return HStack(spacing: 8) {
             // Tap anywhere on row = toggle attachment
             Button(action: { toggleAttachment(tag: tag) }, label: {

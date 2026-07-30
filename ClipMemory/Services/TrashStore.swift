@@ -110,11 +110,20 @@ final class TrashStore: ObservableObject {
         }
     }
 
+    // ID-PERF-0009 (2026-07-30 audit): same fix as ClipboardStore —
+    // share a static `ISO8601DateFormatter` instead of allocating one
+    // per quarantine call (~1 ms init each).
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
     private func quarantineCorruptBlob(error: Error) {
         let defaults = UserDefaults.standard
         let key = Self.trashedItemsStorageKey
         guard let blob = defaults.data(forKey: key) else { return }
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = Self.iso8601Formatter.string(from: Date())
         let quarantineKey = "\(key).corrupt-\(timestamp)"
         defaults.set(blob, forKey: quarantineKey)
         defaults.removeObject(forKey: key)

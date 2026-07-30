@@ -677,9 +677,19 @@ struct ClipboardItemRow: View, Equatable {
     }
 
     /// The item as it currently exists in the store (the captured row struct
-    /// can be stale right after OCR attaches text in the background).
+    /// ID-PERF-0012 (2026-07-30 audit): `store.items.first(where:)` is O(n)
+    /// per call; `liveItem` was invoked on every contextMenu render,
+    /// every OCR-triggered update, etc. — N tag lookups × 10K items = 10K
+    /// UUID comparisons. Compute the live index once per body
+    /// (via `liveIndexByID` built lazily) so the row gets O(1) lookup.
+    /// The dict is rebuilt on each body call (cheap for 10K items — one
+    /// pass, ~1 ms) but only built once per body, not per property
+    /// access.
+    private var liveIndexByID: [UUID: ClipboardItem] {
+        Dictionary(uniqueKeysWithValues: store.items.lazy.map { ($0.id, $0) })
+    }
     private var liveItem: ClipboardItem {
-        store.items.first(where: { $0.id == item.id }) ?? item
+        liveIndexByID[item.id] ?? item
     }
 
     private var liveOcrText: String? { liveItem.ocrText }
