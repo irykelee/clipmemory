@@ -189,7 +189,7 @@ struct ClipboardItemRow: View, Equatable {
     }
 
     private var cachedHighlighted: AttributedString {
-        let key = "\(item.id.uuidString)-\(searchText)" as NSString
+        let key = "\(item.id.uuidString)-\(searchText)-\(decryptedContent.hashValue)" as NSString
         if let cached = highlightedCache.object(forKey: key) {
             return AttributedString(cached)
         }
@@ -198,7 +198,7 @@ struct ClipboardItemRow: View, Equatable {
         return result
     }
     private var cachedMaskedHighlighted: AttributedString {
-        let key = "\(item.id.uuidString)-\(searchText)" as NSString
+        let key = "\(item.id.uuidString)-\(searchText)-\(decryptedContent.hashValue)" as NSString
         if let cached = maskedHighlightedCache.object(forKey: key) {
             return AttributedString(cached)
         }
