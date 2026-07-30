@@ -358,20 +358,31 @@ struct ContentView: View {
         let previous = currentDate
         currentDate = Date()
         UIObservability.logCurrentDateRollover(from: previous, to: currentDate)
-        refreshAndPrewarm()
+        updateDisplayedItemsCache()
     }
 
-    /// ID-LIFE-0019 (2026-07-30 audit): split the refresh into a pure path
-    /// (this function) and an orchestrator that adds prewarm
-    /// (`refreshAndPrewarm`). The completion re-runs the pure path so
-    /// cold-cache items surface once decrypted — but the pure path does
-    /// not itself trigger another prewarm, breaking the would-be loop.
-    /// No flag needed because only `refreshAndPrewarm` calls prewarm.
+    /// ID-LIFE-0019 (2026-07-30 audit) — REVERTED same session: the
+    /// pure-path + orchestrator split caused a display regression
+    /// (text rows rendered empty after Phase A push). Root cause is
+    /// the `[self]` value capture of a SwiftUI View struct in the
+    /// orchestrator's completion handler — the captured copy's
+    /// `@State` mutations through `updateDisplayedItemsCache()` didn't
+    /// propagate to the live view correctly (struct value semantics +
+    /// @State external storage interaction is subtle). Restored the
+    /// pre-split monolithic form. ID-LIFE-0019's proposed behavior
+    /// (cold items auto-surface via completion) needs a different
+    /// mechanism (Combine observer on `store.contentCache.count`, or
+    /// Task + debounce on the AppDelegate side) — re-attempt in a
+    /// follow-up audit batch with a non-capture-based approach.
     private func updateDisplayedItemsCache() {
         let start = Date()
         cachedDisplayedItems = filterItems(store.items)
         // P0-2 P2: merge once per filter pass (not per-item inside .filter closure).
         store.mergePendingDiagnostics()
+        // P0-3: pre-warm caches in background so the next filter pass reads from
+        // contentCache/rtfPlaintextCache (fast path) instead of doing sync AES-GCM
+        // decrypt on the main thread.
+        store.prewarmDecryptionCache(items: cachedDisplayedItems)
         // H-10 (2026-07-24 audit): items changed → visible indices change too.
         recomputeVisibleGlobalIndices()
         // Update grouped items cache
@@ -399,27 +410,6 @@ struct ContentView: View {
             items: cachedGroupedItems.reduce(0) { $0 + $1.1.count },
             durationMs: Date().timeIntervalSince(start) * 1000
         )
-    }
-
-    /// Refresh display state + kick off background prewarm. The completion
-    /// re-runs the pure `updateDisplayedItemsCache()` so items skipped by
-    /// the cold filter surface once their decrypted text is in cache.
-    private func refreshAndPrewarm() {
-        updateDisplayedItemsCache()
-        // P0-3: pre-warm caches in background so the next filter pass reads
-        // from contentCache/rtfPlaintextCache (fast path) instead of doing
-        // sync AES-GCM decrypt on the main thread.
-        // ID-LIFE-0019 (2026-07-30 audit): `[self]` (value capture) because
-        // `View` is a struct and `[weak self]` doesn't apply. The captured
-        // copy's @State wrappers still point at the same external storage
-        // — re-filter writes succeed as long as the parent View is in the
-        // hierarchy. If the View is gone, the @State setter is a no-op.
-        store.prewarmDecryptionCache(items: cachedDisplayedItems) { [self] in
-            // ID-LIFE-0019: re-filter once prewarm completes. Calling the
-            // pure refresh path (not `refreshAndPrewarm`) prevents the
-            // recursive prewarm → completion → prewarm cycle.
-            self.updateDisplayedItemsCache()
-        }
     }
 
     var displayedItems: [ClipboardItem] { cachedDisplayedItems }
@@ -603,12 +593,7 @@ struct ContentView: View {
     /// "Modifying state during view update" runtime warning.
     private func refreshDisplayedItemsCacheSoon(source: String) {
         UIObservability.logRefreshTrigger(source: source)
-        // ID-LIFE-0019 (2026-07-30 audit): user-driven refresh always
-        // goes through `refreshAndPrewarm` so the prewarm completion can
-        // re-filter cold items into the visible list. The pure
-        // `updateDisplayedItemsCache` is reserved for the completion path
-        // to break the recursion.
-        DispatchQueue.main.async { refreshAndPrewarm() }
+        DispatchQueue.main.async { updateDisplayedItemsCache() }
     }
 
     private func attachLifecycle<V: View>(_ v: V) -> some View {
@@ -621,7 +606,7 @@ struct ContentView: View {
             .onAppear {
                 (NSApp.delegate as? AppDelegate)?.disableFindMenuShortcut()
                 applyAppearance()
-                refreshAndPrewarm()
+                updateDisplayedItemsCache()
                 handleDayRolloverIfNeeded()
             }
             .onChange(of: searchText) { newValue in
@@ -662,7 +647,7 @@ struct ContentView: View {
                     if !selectedTagIds.isSubset(of: valid) {
                         selectedTagIds.formIntersection(valid)
                     }
-                    refreshAndPrewarm()
+                    updateDisplayedItemsCache()
                 }
             }
             .onChange(of: collapsedGroups) { val in
