@@ -619,12 +619,30 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         // getDecryptedContent path: image content is a filename, never encrypted,
         // so isEncrypted/decryptionFailed should never be true for .image items.
         // (No crypto involved — cheap enough to stay on the load path.)
+        //
+        // ID-FIX-loadItems-text (2026-07-30 audit): also clear
+        // `decryptionFailed` on non-image items. A transient Keychain lock
+        // or a one-off decrypt failure sets the flag permanently, but the
+        // NEXT launch (with the lock released) successfully decrypts —
+        // `getDecryptedContent` short-circuits on the flag and returns nil
+        // forever, leaving the row blank. Image items were already reset
+        // here; text / richText / link items were stuck. Repaired the
+        // same way: clear the flag, let the display path retry on view.
+        // Truly-corrupt items get the flag set again on the next failed
+        // decrypt — no data loss, just an extra render round-trip.
         var repairedItems = loadedItems
         var repairedImages = false
+        var repairedTexts = false
         for (index, item) in repairedItems.enumerated() where item.type == .image {
             if item.isEncrypted || item.decryptionFailed {
                 repairedItems[index] = item.with(isEncrypted: false, decryptionFailed: false)
                 repairedImages = true
+            }
+        }
+        for (index, item) in repairedItems.enumerated() where item.type != .image {
+            if item.decryptionFailed {
+                repairedItems[index] = item.with(decryptionFailed: false)
+                repairedTexts = true
             }
         }
 
@@ -634,7 +652,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         rebuildDedupHashSet()
         ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
 
-        if repairedImages {
+        if repairedImages || repairedTexts {
             scheduleSave()
         }
 

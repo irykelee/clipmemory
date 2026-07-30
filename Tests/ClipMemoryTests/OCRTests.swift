@@ -209,6 +209,30 @@ import AppKit
         XCTAssertTrue(repaired.ocrAttempted, "STOR-2: repair must keep ocrAttempted")
     }
 
+    /// ID-FIX-loadItems-text (2026-07-30): a transient Keychain lock or a
+    /// one-off decrypt failure sets `decryptionFailed = true` permanently.
+    /// The original loadItems() only reset this flag on image items, so
+    /// text / richText / link items stayed marked forever — `getDecryptedContent`
+    /// short-circuited on the flag and returned nil, leaving the row
+    /// blank in the main window. This test pins the new behavior:
+    /// non-image items with the flag also get reset on load, so the
+    /// display path retries decrypt on the next view.
+    func testLoadItemsRepairClearsDecryptionFailedOnTextItems() throws {
+        let stuck = ClipboardItem(
+            content: "v2:ciphertext-blob", type: .text,
+            isEncrypted: true,
+            decryptionFailed: true      // mark from a prior transient failure
+        )
+        try backend.save([stuck])
+
+        store.loadItems()
+
+        XCTAssertEqual(store.items.count, 1)
+        let repaired = store.items[0]
+        XCTAssertTrue(repaired.isEncrypted, "text repair must NOT touch isEncrypted")
+        XCTAssertFalse(repaired.decryptionFailed, "text repair must clear decryptionFailed so display retries")
+    }
+
     // MARK: - Search matching
 
     func testImageItemMatchesByOcrText() {
