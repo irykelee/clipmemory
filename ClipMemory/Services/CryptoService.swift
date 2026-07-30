@@ -61,6 +61,11 @@ class CryptoService: CryptoServiceProtocol {
     private static let negativeCacheLock = NSLock()
     private static var negativeCache: [String: (DecryptResult, Date)] = [:]
     private static let negativeCacheTTL: TimeInterval = 60
+    // ID-PERF-0003 (2026-07-30 audit): cap negativeCache size to bound memory.
+    // Lazy TTL eviction (decryptWithReason:644) only fires on hit; without a
+    // cap, 10K corrupted items would leave ~800 KB resident. 1000 entries
+    // ≈ 80 KB worst case while keeping recently-seen failures cacheable.
+    private static let negativeCacheMaxSize = 1000
 
     /// Test-only clock injection（默认 = Date.init）
     /// N6: 同样用 NSLock 保护，避免与 negativeCache 写并发竞争
@@ -681,6 +686,13 @@ class CryptoService: CryptoServiceProtocol {
         let now = _negativeCacheClock()
         negativeCacheClockLock.unlock()
         negativeCacheLock.lock()
+        // ID-PERF-0003: evict the oldest-timestamp entry before insert when
+        // at cap. min(by:) is O(n) but the cache is bounded (1000) so this
+        // stays under 100 µs even at the cap.
+        if negativeCache.count >= negativeCacheMaxSize,
+           let oldest = negativeCache.min(by: { $0.value.1 < $1.value.1 }) {
+            negativeCache.removeValue(forKey: oldest.key)
+        }
         negativeCache[key] = (reason, now)
         negativeCacheLock.unlock()
         return reason

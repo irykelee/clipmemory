@@ -61,7 +61,14 @@ private final class GentleUpdateReminder: NSObject, SPUStandardUserDriverDelegat
 
     func standardUserDriverWillFinishUpdateSession() {
         NSApp.dockTile.badgeLabel = nil
-        NSApp.setActivationPolicy(.accessory)
+        // ID-LIFE-0005 (2026-07-30 audit): only drop to .accessory if no
+        // windows are visible. Otherwise the user sees the window stuck on
+        // screen with no Dock/⌘Tab presence, matching the orphan-window
+        // pattern fixed by ID-LIFE-0003 for the welcome window.
+        let anyVisible = NSApp.windows.contains { $0.isVisible }
+        if !anyVisible {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 }
 
@@ -355,7 +362,13 @@ final class UpdateService {
             startUpdater()
             return
         }
+        // ID-LIFE-0006 (2026-07-30 audit): capture generation before await
+        // so we can detect mid-probe setPolicy() calls. If a new
+        // triggerProbe() ran while we were awaiting, skip startUpdater() to
+        // avoid racing the newer probe's writeback.
+        let myGeneration = probeGeneration
         await triggerProbe()
+        guard myGeneration == probeGeneration else { return }
         startUpdater()
     }
 

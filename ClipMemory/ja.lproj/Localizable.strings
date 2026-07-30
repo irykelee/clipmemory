@@ -74,6 +74,8 @@
 "settings.section.backup" = "バックアップ";
 "settings.backup.auto" = "毎日自動バックアップ";
 "settings.backup.keep" = "保持するバックアップ数";
+"settings.backup.keep.count" = "%d 件のバックアップ";
+"settings.trash.retention.days.count" = "%d 日";
 "settings.backup.now" = "今すぐバックアップ";
 "settings.backup.open" = "バックアップフォルダを開く";
 "settings.backup.export" = "バックアップを書き出す…";

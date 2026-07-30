@@ -38,6 +38,13 @@ extension StorageBackend {
 /// Writes are synchronous so `flushPendingSaves()` can guarantee data hits disk
 /// before the app terminates.
 final class FileStorageBackend: StorageBackend {
+    // ID-PERF-0001 (2026-07-30 audit): hoist JSONEncoder allocation.
+    // JSONEncoder is documented thread-safe for `.encode()` since macOS 10.15,
+    // so a class-scope static is safe. Used serially per call site (each
+    // save/saveTags runs to completion before the next).
+    private static let itemsEncoder = JSONEncoder()
+    private static let tagsEncoder = JSONEncoder()
+
     private let storageKey: String
 
     init(storageKey: String = "ClipboardItems") {
@@ -52,7 +59,7 @@ final class FileStorageBackend: StorageBackend {
     }
 
     func save(_ items: [ClipboardItem]) throws {
-        let data = try JSONEncoder().encode(items)
+        let data = try Self.itemsEncoder.encode(items)
         UserDefaults.standard.set(data, forKey: storageKey)
     }
 
@@ -76,7 +83,7 @@ final class FileStorageBackend: StorageBackend {
     }
 
     func saveTags(_ tags: [Tag]) throws {
-        let data = try JSONEncoder().encode(tags)
+        let data = try Self.tagsEncoder.encode(tags)
         UserDefaults.standard.set(data, forKey: storageKey)
     }
 }

@@ -85,6 +85,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // clipboard polling, and close the welcome window eagerly — same
         // cleanup the deinit path would do.
         ClipboardStore.shared.flushPendingSaves()
+        // ID-LIFE-0007 (2026-07-30 audit): drain in-flight image writes
+        // BEFORE ClipboardStore flush, so files already past encrypt complete
+        // their disk write before the process exits. Orphan cleanup is
+        // handled by cleanupOrphanedImages on next launch.
+        ImageStorage.shared.drainPendingWrites()
         hotKeyManager?.unregister()
         clipboardMonitor?.stopMonitoring()
         welcomeWindow?.close()
@@ -140,7 +145,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 740), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = L10n.appName; win.isReleasedWhenClosed = false; win.center()
         win.contentView = NSHostingView(rootView: welcome); win.makeKeyAndOrderFront(nil)
-        welcomeWindow = win; NSApp.activate(ignoringOtherApps: true)
+        welcomeWindow = win
+        // ID-LIFE-0003 (2026-07-30 audit): register so the main-window-close
+        // policy switch keeps the app activated while the welcome window is
+        // on screen. Settings window does this (line 317); welcome was the
+        // orphan, causing Dock-icon loss on close.
+        windowManager?.registerSecondaryWindow(win)
+        // ID-LIFE-0004 (2026-07-30 audit): win.isReleasedWhenClosed = false
+        // means closing the window doesn't deallocate it; the welcomeWindow
+        // ivar + NSHostingView would otherwise leak. Nil the ivar + unregister
+        // on willClose so the next reopen starts from a clean slate.
+        let welcomeRef = win
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: welcomeRef, queue: .main
+        ) { [weak self] _ in
+            self?.welcomeWindow = nil
+            self?.windowManager?.unregisterSecondaryWindow(welcomeRef)
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func setupWindowManager() { windowManager = WindowManager() }
@@ -148,7 +170,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "ClipMemory")
+            // ID-L10N-0010 (2026-07-30 audit): use L10n.appName for VoiceOver. The
+            // tooltip below already does this; consistency across both is
+            // the fix. SF Symbol name itself stays English (Apple platform
+            // convention).
+            button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: L10n.appName)
             button.toolTip = L10n.appName
             button.target = self; button.action = #selector(statusItemClicked)
             button.sendAction(on: [.leftMouseDown, .rightMouseDown])
@@ -310,6 +336,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // B-6 (2026-07-27): register so the main-window-close policy switch
         // keeps the app activated while the settings window is on screen.
         windowManager?.registerSecondaryWindow(win)
+        // ID-LIFE-0004 (2026-07-30 audit): same nil-on-close as welcome window.
+        let settingsRef = win
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: settingsRef, queue: .main
+        ) { [weak self] _ in
+            self?.settingsWindow = nil
+            self?.windowManager?.unregisterSecondaryWindow(settingsRef)
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 

@@ -24,13 +24,24 @@ struct SettingsRootView: View {
     @ObservedObject var store: ClipboardStore
     let backupService: BackupService
 
-    @State private var selectedTab: SettingsTab = .general
+    // ID-LIFE-0002 (2026-07-30 audit): persist via @AppStorage so the outer
+    // `.id(languageManager.selectedLanguage)` (which forces a view-tree rekey
+    // to refresh localized labels) doesn't drop the user's selected tab on
+    // every language switch.
+    @AppStorage("settings.selectedTab") private var selectedTabRaw: String = SettingsTab.general.rawValue
     @ObservedObject private var languageManager = LanguageManager.shared
+
+    private var selectedTabBinding: Binding<SettingsTab> {
+        Binding(
+            get: { SettingsTab(rawValue: selectedTabRaw) ?? .general },
+            set: { selectedTabRaw = $0.rawValue }
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             // Segmented tab bar
-            Picker(selection: $selectedTab, label: EmptyView()) {
+            Picker(selection: selectedTabBinding, label: EmptyView()) {
                 ForEach(SettingsTab.allCases, id: \.self) { tab in
                     Text(tab.label).tag(tab)
                 }
@@ -44,7 +55,7 @@ struct SettingsRootView: View {
 
             // Tab content
             Group {
-                switch selectedTab {
+                switch SettingsTab(rawValue: selectedTabRaw) ?? .general {
                 case .general:
                     GeneralSettingsView(hotKeyManager: hotKeyManager)
                 case .history:

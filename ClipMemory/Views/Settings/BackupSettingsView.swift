@@ -23,7 +23,9 @@ struct BackupSettingsView: View {
                     get: { backupService.keepCount },
                     set: { backupService.keepCount = $0 }
                 )) {
-                    ForEach([3, 7, 14, 30], id: \.self) { Text("\($0)").tag($0) }
+                    // ID-L10N-0009 (2026-07-30 audit): use L10n plural for unit
+                    // context (e.g. "3 backups" / "3 個備份" instead of bare "3").
+                    ForEach([3, 7, 14, 30], id: \.self) { Text(L10n.settingsBackupKeepCount($0)).tag($0) }
                 }
                 Button(L10n.settingsBackupNow) {
                     // BUG-020 (2026-07-21): backupNow() does synchronous file
@@ -112,7 +114,9 @@ struct BackupSettingsView: View {
     private func exportBackup() {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.init(filenameExtension: "clipmemory")].compactMap { $0 }
-        panel.nameFieldStringValue = "ClipMemory-backup.clipmemory"
+        // ID-L10N-0008 (2026-07-30 audit): compose with L10n.appName so non-English
+        // locales see "剪忆-backup.clipmemory" / "ClipMemory バックアップ" etc.
+        panel.nameFieldStringValue = "\(L10n.appName)-backup.clipmemory"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard let passphrase = promptBackupPassphrase() else { return }
         // H-3 (2026-07-23): a missing root encryption key gets a dedicated

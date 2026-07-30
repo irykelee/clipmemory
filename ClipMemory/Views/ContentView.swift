@@ -61,6 +61,9 @@ struct PendingMaxItemsReduction: Equatable {
 
 struct ContentView: View {
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "ContentView")
+    // ID-PERF-0001 (2026-07-30 audit): hoist JSONEncoder. saveCollapsedGroups
+    // is called from the SwiftUI main-actor context, so this static is safe.
+    private static let collapsedGroupsEncoder = JSONEncoder()
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
     @State private var selectedTab: SidebarTab = .all
@@ -236,7 +239,7 @@ struct ContentView: View {
         // fail, but if a future refactor adds non-encodable elements the user's
         // collapsed-group preference would silently reset on next launch. Log it.
         do {
-            let data = try JSONEncoder().encode(arr)
+            let data = try Self.collapsedGroupsEncoder.encode(arr)
             guard let str = String(data: data, encoding: .utf8) else {
                 Self.logger.error("Failed to convert collapsed-groups JSON to UTF-8 (preference lost)")
                 return

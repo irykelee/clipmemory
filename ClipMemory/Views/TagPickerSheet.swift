@@ -65,7 +65,11 @@ struct TagPickerSheet: View {
             footer
         }
         .frame(width: 400, height: 500)
-        .onAppear(perform: loadSuggestions)
+        // ID-LIFE-0009 (2026-07-30 audit): use .task instead of .onAppear so
+        // the suggestions Task is auto-cancelled when the sheet dismisses.
+        // The detached NLTagger call doesn't inherit cancellation but
+        // Task.isCancelled below guards the @State mutation.
+        .task { await loadSuggestions() }
         .alert(L10n.tagPickerDeleteConfirmTitle,
                isPresented: Binding(get: { pendingDelete != nil },
                                     set: { if !$0 { pendingDelete = nil } })) {
@@ -440,19 +444,20 @@ struct TagPickerSheet: View {
 
     // MARK: - onAppear
 
-    private func loadSuggestions() {
-        Task { @MainActor in
-            let rawContent = store.getDecryptedContent(item) ?? item.content
-            let facets = await Task.detached(priority: .userInitiated) {
-                TagSuggestion.detect(for: item.type, content: rawContent)
-            }.value
-            let existing = Array(store.tags.values)
-            let names = TagSuggestion.tagNames(for: facets.kind)
-            suggestionsToCreate = names.filter { name in
-                !existing.contains(where: { $0.name == name })
-            }
-            suggestedNames = facets.names
+    private func loadSuggestions() async {
+        let rawContent = store.getDecryptedContent(item) ?? item.content
+        let facets = await Task.detached(priority: .userInitiated) {
+            TagSuggestion.detect(for: item.type, content: rawContent)
+        }.value
+        // ID-LIFE-0009: guard against writing recycled @State after the sheet
+        // dismissed (Task.detached.value doesn't propagate cancellation).
+        guard !Task.isCancelled else { return }
+        let existing = Array(store.tags.values)
+        let names = TagSuggestion.tagNames(for: facets.kind)
+        suggestionsToCreate = names.filter { name in
+            !existing.contains(where: { $0.name == name })
         }
+        suggestedNames = facets.names
     }
 }
 

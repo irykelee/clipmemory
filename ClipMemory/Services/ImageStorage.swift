@@ -434,6 +434,17 @@ class ImageStorage {
         }
     }
 
+    /// ID-LIFE-0007 (2026-07-30 audit): synchronously drain in-flight
+    /// background-queue writes. Call from `applicationWillTerminate` so files
+    /// already past the encrypt step complete their disk write before the
+    /// process exits. Caveat: queued `DispatchQueue.main.async` completion
+    /// handlers will NOT fire during the sync wait (main is blocked), so
+    /// the corresponding ClipboardItems may not be added in this session —
+    /// they're handled by `cleanupOrphanedImages` on the next launch.
+    func drainPendingWrites() {
+        backgroundQueue.sync { }
+    }
+
 
     // Serializes legacy-migration writes across threads. Multiple callers
     // invoking imageStatus(for:) concurrently for the same legacy PNG would

@@ -3,6 +3,12 @@ import AppKit
 import Combine
 import os.log
 
+// ID-PERF-0001 (2026-07-30 audit): hoist JSONEncoder allocation. File-scope
+// (not class-scope) because ClipboardStore is @MainActor and the encode
+// runs on itemEncodingQueue — file-scope `let` is non-isolated and JSONEncoder
+// is documented thread-safe for `.encode()` since macOS 10.15.
+private let itemsSaveEncoder = JSONEncoder()
+
 // swiftlint:disable file_length
 // (1) Justification: ClipboardStore is the central coordinator of clipboard flow
 // (addItem / dedup / persistence / migration). Splitting risks cross-cutting
@@ -741,7 +747,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         let snapshot = items
         do {
             let data = try itemEncodingQueue.sync {
-                try JSONEncoder().encode(snapshot)
+                try itemsSaveEncoder.encode(snapshot)
             }
             try backend.saveBlob(data)
         } catch {
@@ -1326,6 +1332,12 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// Capped at `cap` items to avoid saturating the utility queue on large
     /// histories. Pass nil to prewarm all items. Call from updateDisplayedItemsCache
     /// (ContentView) / recomputeDisplayedItems (QuickBarView) after each filter pass.
+    ///
+    /// ID-PERF-0004 (2026-07-30 audit): concurrent decrypts gated by
+    /// `prewarmMaxConcurrent` (DispatchSemaphore), matching the OCR backfill
+    /// pattern. Mirroring backfillMaxConcurrentOCR's value so the codebase
+    /// has one cap for "compute-bound per-item work".
+    private static let prewarmMaxConcurrent = 4
     func prewarmDecryptionCache(items: [ClipboardItem], cap: Int? = nil, completion: (() -> Void)? = nil) {
         let workingSet = cap.map { items.prefix($0) } ?? items.prefix(items.count)
         let uncached = workingSet.filter { item in
@@ -1341,13 +1353,30 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             completion?()
             return
         }
+        // ID-PERF-0004 (2026-07-30 audit): cap concurrent decrypts via
+        // DispatchSemaphore, mirroring the OCR backfill pattern (L-7). The
+        // previous sequential for-loop on a single utility queue was 10-100s
+        // for a 10K-item cold cache (e.g. wake-from-sleep); 4 concurrent
+        // AES-GCM decrypts brings this to ~2-25s while still bounding memory.
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self else { return }
-            for item in uncached {
-                _ = self.getDecryptedContent(item)
-                if item.type == .richText { _ = self.getRTFPlaintext(item) }
-                if item.type == .image { _ = self.getDecryptedOcrText(item) }
+            guard let self else {
+                Task { @MainActor in completion?() }
+                return
             }
+            let semaphore = DispatchSemaphore(value: Self.prewarmMaxConcurrent)
+            let group = DispatchGroup()
+            for item in uncached {
+                semaphore.wait()
+                group.enter()
+                DispatchQueue.global(qos: .utility).async { [weak self] in
+                    _ = self?.getDecryptedContent(item)
+                    if item.type == .richText { _ = self?.getRTFPlaintext(item) }
+                    if item.type == .image { _ = self?.getDecryptedOcrText(item) }
+                    semaphore.signal()
+                    group.leave()
+                }
+            }
+            group.wait()
             Task { @MainActor [weak self] in
                 self?.objectWillChange.send()
                 completion?()

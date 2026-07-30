@@ -75,6 +75,8 @@
 "settings.section.backup" = "備份";
 "settings.backup.auto" = "每日自動備份";
 "settings.backup.keep" = "保留備份份數";
+"settings.backup.keep.count" = "%d 個備份";
+"settings.trash.retention.days.count" = "%d 天";
 "settings.backup.now" = "立即備份";
 "settings.backup.open" = "打開備份目錄";
 "settings.backup.export" = "導出備份…";

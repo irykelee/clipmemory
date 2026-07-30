@@ -236,8 +236,14 @@ struct L10n {
     static var settingsSectionBackup: String { string("settings.section.backup") }
     static var settingsBackupAuto: String { string("settings.backup.auto") }
     static var settingsBackupKeep: String { string("settings.backup.keep") }
+    // ID-L10N-0009 (2026-07-30 audit): parameterized options for picker
+    // entries so the bare-number "3" / "7" / "14" / "30" gets unit context
+    // (e.g. "3 backups" / "3 天"). AI-only translation per project policy.
+    static func settingsBackupKeepCount(_ count: Int) -> String { plural("settings.backup.keep.count", count) }
     static var settingsBackupNow: String { string("settings.backup.now") }
     static var settingsBackupOpen: String { string("settings.backup.open") }
+    // ID-L10N-0009 (2026-07-30 audit): see settingsBackupKeepCount above.
+    static func trashRetentionDaysCount(_ count: Int) -> String { plural("settings.trash.retention.days.count", count) }
     static var settingsBackupExport: String { string("settings.backup.export") }
     static var settingsBackupImport: String { string("settings.backup.import") }
     static var settingsBackupPassphrase: String { string("settings.backup.passphrase") }

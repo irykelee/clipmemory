@@ -90,6 +90,13 @@ final class TrashStore: ObservableObject {
         if let observer = willTerminateObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        // ID-LIFE-0001 (2026-07-30 audit): cancel saveTimer in deinit.
+        // In tests (no NSApplication.willTerminate), the store deallocates
+        // before the timer fires; DispatchSourceTimer + queue + closure stay
+        // retained until next fire (500 ms). DispatchSourceTimer.cancel()
+        // is Sendable so this is safe from a nonisolated deinit. Mirrors
+        // the ClipboardStore.deinit pattern (line 491).
+        saveTimer?.cancel()
     }
 
     // MARK: - Persistence
@@ -141,8 +148,13 @@ final class TrashStore: ObservableObject {
             evictCaches(item)
             var trashed = item
             trashed.deletedAt = now
-            trashedItems.insert(trashed, at: 0)
+            // ID-PERF-0005 (2026-07-30 audit): append + sort at end instead
+            // of insert(at: 0) per item. For K items into an empty array the
+            // old path was O(K^2); the new path is O(K log K) and matches
+            // the per-item moveToTrash's eventual order (most-recent first).
+            trashedItems.append(trashed)
         }
+        trashedItems.sort { $0.deletedAt ?? .distantPast > $1.deletedAt ?? .distantPast }
         didMove()
         scheduleSave()
     }

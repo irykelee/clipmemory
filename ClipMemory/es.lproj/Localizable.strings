@@ -76,6 +76,10 @@
 "settings.section.backup" = "Copia de seguridad";
 "settings.backup.auto" = "Copias diarias automáticas";
 "settings.backup.keep" = "Copias a conservar";
+"settings.backup.keep.count" = "%d copias";
+"settings.backup.keep.count.one" = "%d copia";
+"settings.trash.retention.days.count" = "%d días";
+"settings.trash.retention.days.count.one" = "%d día";
 "settings.backup.now" = "Copiar ahora";
 "settings.backup.open" = "Abrir carpeta de copias";
 "settings.backup.export" = "Exportar copia…";

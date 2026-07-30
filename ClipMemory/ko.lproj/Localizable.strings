@@ -74,6 +74,8 @@
 "settings.section.backup" = "백업";
 "settings.backup.auto" = "매일 자동 백업";
 "settings.backup.keep" = "유지할 백업 수";
+"settings.backup.keep.count" = "%d개 백업";
+"settings.trash.retention.days.count" = "%d일";
 "settings.backup.now" = "지금 백업";
 "settings.backup.open" = "백업 폴더 열기";
 "settings.backup.export" = "백업 내보내기…";

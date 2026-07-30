@@ -75,6 +75,10 @@
 "settings.section.backup" = "Backup";
 "settings.backup.auto" = "Daily automatic backups";
 "settings.backup.keep" = "Backups to keep";
+"settings.backup.keep.count" = "%d backups";
+"settings.backup.keep.count.one" = "%d backup";
+"settings.trash.retention.days.count" = "%d days";
+"settings.trash.retention.days.count.one" = "%d day";
 "settings.backup.now" = "Back Up Now";
 "settings.backup.open" = "Open Backups Folder";
 "settings.backup.export" = "Export Backup…";
