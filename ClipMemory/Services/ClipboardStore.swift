@@ -1830,8 +1830,17 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     }
 
     internal func cleanupExpiredItems() {
-        let expiredImageFilenames = items.filter { $0.isExpired && $0.type == .image }.map { $0.content }
-        let expiredIds = Set(items.filter { $0.isExpired }.map { $0.id })
+        // ID-PERF-0007 (2026-07-30 audit): single filter pass building both
+        // collections. Previous code did 2x O(n) `items.filter` per 60s tick.
+        var expiredImageFilenames: [String] = []
+        var expiredIds: Set<UUID> = []
+        expiredIds.reserveCapacity(items.count / 4)  // rough upper bound
+        for item in items where item.isExpired {
+            expiredIds.insert(item.id)
+            if item.type == .image {
+                expiredImageFilenames.append(item.content)
+            }
+        }
         if expiredImageFilenames.isEmpty && expiredIds.isEmpty { return }
 
         for filename in expiredImageFilenames {

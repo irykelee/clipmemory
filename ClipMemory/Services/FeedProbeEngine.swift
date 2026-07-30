@@ -51,6 +51,11 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
     // H-20 (2026-07-24 audit): logger for size-cap refusals.
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "FeedProbe")
     private let urlSession: URLSession
+    // ID-LIFE-0010 (2026-07-30 audit): tracks whether the URLSession was
+    // self-created (default branch below) vs caller-injected. Only the
+    // self-created one should be invalidated in deinit — test-injected
+    // sessions are owned by their tests and must not be invalidated.
+    private let selfCreated: Bool
     private let probeTimeoutSeconds: TimeInterval
     private let parseLatestDate: (String) -> Date?
 
@@ -68,15 +73,24 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         // shared cookie/cache state so probes don't pollute each other.
         if let urlSession {
             self.urlSession = urlSession
+            self.selfCreated = false
         } else {
             let config = URLSessionConfiguration.ephemeral
             config.timeoutIntervalForRequest = probeTimeoutSeconds
             config.timeoutIntervalForResource = probeTimeoutSeconds
             config.requestCachePolicy = .reloadIgnoringLocalCacheData
             self.urlSession = URLSession(configuration: config)
+            self.selfCreated = true
         }
         self.probeTimeoutSeconds = probeTimeoutSeconds
         self.parseLatestDate = parseLatestDate
+    }
+
+    deinit {
+        // ID-LIFE-0010: invalidate only if we own the URLSession. The
+        // production singleton never deinits, so this is defensive for
+        // future test/refactor paths that construct transient engines.
+        if selfCreated { urlSession.invalidateAndCancel() }
     }
 
     func resolve(

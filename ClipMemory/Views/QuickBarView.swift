@@ -279,7 +279,11 @@ struct QuickBarView: View {
                     if let idx = keyboardSelectedIndex { scrollAnchor = displayedItems[idx].id }
                 },
                 onReturn: {
-                    if let idx = keyboardSelectedIndex, idx < displayedItems.count {
+                    // ID-LIFE-0013 (2026-07-30 audit): mirror onUp/onDown's
+                    // `idx >= 0` guard. keyboardSelectedIndex is Int?; a -1
+                    // would crash with array out-of-bounds. Today unreachable
+                    // from keyboard handlers, but defensive.
+                    if let idx = keyboardSelectedIndex, idx >= 0, idx < displayedItems.count {
                         let item = displayedItems[idx]
                         lastCopiedId = item.id
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {

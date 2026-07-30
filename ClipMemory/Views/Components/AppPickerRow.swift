@@ -53,6 +53,10 @@ struct AppPickerRow: View {
             let image = await Task.detached(priority: .utility) {
                 NSWorkspace.shared.icon(forFile: url.path)
             }.value
+            // ID-LIFE-0015 (2026-07-30 audit): guard against the detached
+            // .task returning for a stale bundleId after .task(id:) cancels.
+            // Sibling ClipboardItemRow / TrashItemRow have this guard.
+            guard !Task.isCancelled else { return }
             await MainActor.run { resolvedIcon = image }
         }
     }

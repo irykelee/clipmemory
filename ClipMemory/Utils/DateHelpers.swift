@@ -2,7 +2,13 @@ import Foundation
 
 /// Shared date formatter cache for performance optimization.
 /// Creating DateFormatter is expensive; this cache avoids repeated instantiation.
-private let absoluteDateFormatterCache = NSCache<NSString, DateFormatter>()
+/// ID-PERF-0006 (2026-07-30 audit): defensive countLimit in case a future
+/// caller passes high-cardinality keys (currently bounded by 7 languages).
+private let absoluteDateFormatterCache: NSCache<NSString, DateFormatter> = {
+    let cache = NSCache<NSString, DateFormatter>()
+    cache.countLimit = 16
+    return cache
+}()
 
 /// Returns a cached DateFormatter for the given language code.
 func cachedAbsoluteDateFormatter(for languageCode: String) -> DateFormatter {
@@ -17,7 +23,12 @@ func cachedAbsoluteDateFormatter(for languageCode: String) -> DateFormatter {
 }
 
 /// Shared relative date formatter cache.
-private let relativeDateFormatterCache = NSCache<NSString, RelativeDateTimeFormatter>()
+/// ID-PERF-0006: see absoluteDateFormatterCache above.
+private let relativeDateFormatterCache: NSCache<NSString, RelativeDateTimeFormatter> = {
+    let cache = NSCache<NSString, RelativeDateTimeFormatter>()
+    cache.countLimit = 16
+    return cache
+}()
 
 /// Returns a cached RelativeDateTimeFormatter for the given language code.
 func cachedRelativeDateFormatter(for languageCode: String) -> RelativeDateTimeFormatter {
