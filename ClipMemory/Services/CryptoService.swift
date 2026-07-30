@@ -694,8 +694,14 @@ class CryptoService: CryptoServiceProtocol {
 
         // 4. 实际解密（走现有 decryptBytes 但用 isOldFormat 区分 v2/legacy 分流 reason）
         if isOldFormat(base64String) {
-            // legacy: HMAC 不匹配 → decryptBytes 返回 nil → .dataCorrupted
+            // ID-DEBUG-display (2026-07-30): log legacy decrypt failure to
+            // distinguish HMAC mismatch (wrong key) from other errors.
+            // Helps diagnose the "main window text rows blank" issue —
+            // `os_log` is privacy-safe (no plaintext content).
             guard let bytes = decryptBytes(from: combined) else {
+                let key = getKey()
+                let keyAvail = key != nil ? "key=OK" : "key=nil"
+                Self.logger.error("decryptWithReason legacy: decryptBytes returned nil (\(keyAvail, privacy: .public)), input[:20]=\(base64String.prefix(20), privacy: .public)")
                 return Self.cacheAndReturn(.dataCorrupted, key: cacheKey)
             }
             guard let result = String(bytes: bytes, encoding: .utf8) else {
