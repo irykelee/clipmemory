@@ -526,11 +526,24 @@ struct QuickBarRow: View {
                 return
             }
             if loadedContent != nil { return }
-            let content = await Task.detached(priority: .utility) {
+            // ID-FIX-key-race (2026-07-30 audit): see ClipboardItemRow —
+            // first decrypt can return empty if prepareKey hasn't finished
+            // on a fresh launch. Retry once after 200ms.
+            let first = await Task.detached(priority: .utility) {
                 store.getDecryptedContent(item) ?? ""
             }.value
             if Task.isCancelled { return }
-            loadedContent = content
+            if !first.isEmpty {
+                loadedContent = first
+                return
+            }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+            let second = await Task.detached(priority: .utility) {
+                store.getDecryptedContent(item) ?? ""
+            }.value
+            if Task.isCancelled { return }
+            loadedContent = second
         }
     }
 

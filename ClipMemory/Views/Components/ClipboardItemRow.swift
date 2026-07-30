@@ -630,14 +630,38 @@ struct ClipboardItemRow: View, Equatable {
             }
             guard item.type != .richText else { return }
             if loadedContent != nil { return }
-            let result = await Task.detached(priority: .utility) {
+            // ID-FIX-key-race (2026-07-30 audit): v2.7.3's `prepareKey()` runs
+            // on a detached background task. On a fresh launch, the main
+            // window's `.task` here can fire BEFORE `prepareKey` finishes —
+            // `getDecryptedContent` returns nil on `.keyUnavailable`, and
+            // `loadedContent = ""` makes the row blank. The user has to
+            // interact (click → paste) for the key to finally be ready.
+            // Retry once after a short delay so the key has time to land
+            // in `cachedLoadedKey`. The delay is below the 60 fps frame
+            // budget so it doesn't visibly stagger the UI; if the second
+            // attempt also returns empty, give up (the row stays blank
+            // and the user can interact to re-trigger via the existing
+            // `searchText` `.onChange` rebuild path).
+            let first = await Task.detached(priority: .utility) {
                 store.getDecryptedContent(item) ?? ""
             }.value
+            if Task.isCancelled { return }
+            if !first.isEmpty {
+                loadedContent = first
+                return
+            }
+            // Empty result — likely a key race. Give prepareKey a moment
+            // and retry once.
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+            let second = await Task.detached(priority: .utility) {
+                store.getDecryptedContent(item) ?? ""
+            }.value
+            if Task.isCancelled { return }
             // I-8 fix (2026-07-20 audit): same cancellation-isolation as the
             // image `.task`. Drop the decrypted text when the row has been
             // recycled so we don't paste stale text into the new item's state.
-            if Task.isCancelled { return }
-            loadedContent = result
+            loadedContent = second
         }
     }
 
