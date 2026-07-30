@@ -308,3 +308,15 @@
 "appPicker.accessibility.add" = "排除 %@";
 "dateFilter.selected" = "（已選）";
 "tag.chipAccessibility" = "標籤：%@";
+
+/* L10N-0015 (2026-07-30 audit): route inline-CN voiceover labels through L10n */
+"tagPicker.addSuggestion" = "添加建议标签 %@";
+"tag.badge.accessibility" = "%d 个标签";
+"tag.badge.accessibility.one" = "%d 个标签";
+"trash.emptyConfirm.message.one" = "1 條記錄將被永久刪除，此操作無法撤銷。";
+"settings.max.items.count.one" = "1 條";
+"clear.conditional.confirm.one" = "1 條記錄將被刪除（已釘選的保留，並移至垃圾桶）";
+"batch.selected.one" = "已選擇 1 項";
+"alert.encrypt.failed.count.one" = "敏感資料加密失敗，1 筆內容未儲存。";
+"alert.clear.message.one" = "確定要清除 1 條記錄嗎？
+已釘選的內容不會被刪除。";

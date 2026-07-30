@@ -306,3 +306,15 @@
 "appPicker.accessibility.add" = "%@ を除外";
 "dateFilter.selected" = "（選択中）";
 "tag.chipAccessibility" = "タグ：%@";
+
+/* L10N-0015 (2026-07-30 audit): route inline-CN voiceover labels through L10n */
+"tagPicker.addSuggestion" = "添加建议标签 %@";
+"tag.badge.accessibility" = "%d 个标签";
+"tag.badge.accessibility.one" = "%d 个标签";
+"trash.emptyConfirm.message.one" = "1 件の項目が完全に削除されます。この操作は取り消せません。";
+"settings.max.items.count.one" = "1 件";
+"clear.conditional.confirm.one" = "1 件の項目が削除されます（ピン留めは保持し、ごみ箱に移動）";
+"batch.selected.one" = "1 件選択中";
+"alert.encrypt.failed.count.one" = "機密データの暗号化に失敗しました。1 件保存されませんでした。";
+"alert.clear.message.one" = "1 件の項目をすべて消去しますか？
+ピン留めされた項目は削除されません。";

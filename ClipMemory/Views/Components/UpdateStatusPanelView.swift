@@ -37,17 +37,24 @@ struct UpdateStatusPanelView: View {
     // `body` re-runs on every @Published change in `UpdateStatus`. Cache
     // a single static instance — safe because SwiftUI body always runs
     // on the main thread, and this is only ever called from body.
-    // The .current locale is captured at process start; if the user
-    // changes macOS system locale at runtime, a relaunch picks it up.
-    private static let dateFormatter: DateFormatter = {
+    // ID-L10N-0017 (2026-07-30 audit): the static formatter was created
+    // with `.current` system locale, not the user's in-app `LanguageManager`
+    // selection. Surrounding L10n.string text switches when the user
+    // changes language, but the date stays in the system locale → mixed-
+    // language status line. Re-create the formatter on each call using
+    // `LanguageManager.shared.selectedLanguage` so language changes take
+    // effect (the F-25 cache concern was per-body, and a single
+    // DateFormatter is cheap once the locale is set).
+    private static func dateFormatter() -> DateFormatter {
         let f = DateFormatter()
         f.dateStyle = .short
         f.timeStyle = .short
+        f.locale = Locale(identifier: LanguageManager.shared.selectedLanguage)
         return f
-    }()
+    }
 
     private func formatted(_ date: Date?) -> String {
         guard let date else { return "—" }
-        return Self.dateFormatter.string(from: date)
+        return Self.dateFormatter().string(from: date)
     }
 }

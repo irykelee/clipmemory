@@ -314,3 +314,10 @@
 "appPicker.accessibility.add" = "Excluir %@";
 "dateFilter.selected" = ", selecionado";
 "tag.chipAccessibility" = "Etiqueta: %@";
+
+/* L10N-0015 (2026-07-30 audit): route inline-CN voiceover labels through L10n */
+"tagPicker.addSuggestion" = "添加建议标签 %@";
+"tag.badge.accessibility" = "%d 个标签";
+"tag.badge.accessibility.one" = "%d 个标签";
+"settings.max.items.count.one" = "1 item";
+"alert.encrypt.failed.count.one" = "Falha ao criptografar dados sensíveis. 1 item não foi salvo.";

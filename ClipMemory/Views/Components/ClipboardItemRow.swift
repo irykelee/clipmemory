@@ -794,10 +794,10 @@ private struct RowActions: View {
                                 .foregroundStyle(Color.white)
                                 .background(.regularMaterial, in: Circle())
                                 .offset(x: 4, y: -4)
-                                // ID-A11Y-0007: explicit accessibility label
-                                // so VoiceOver reads the count + context
-                                // ("3 个标签") rather than just "3".
-                                .accessibilityLabel("\(item.tagIds.count) 个标签")
+                                // ID-L10N-0015 (2026-07-30 audit): route through
+                                // L10n (was hardcoded zh-Hans). Use plural()
+                                // for proper count grammar.
+                                .accessibilityLabel(L10n.tagBadgeAccessibility(item.tagIds.count))
                         }
                     }
             }

@@ -326,7 +326,10 @@ struct L10n {
     static var alertEncryptFailed: String { string("alert.encrypt.failed") }
     // CLIP-3 (2026-07-24): coalesced variant used when the throttler
     // suppressed repeat failures inside its window — reports the total count.
-    static func alertEncryptFailedCount(_ count: Int) -> String { string("alert.encrypt.failed.count", count) }
+    // ID-L10N-0016 (2026-07-30 audit): use `plural()` so count=1 picks up
+    // the `.one` variant ("1 item was not saved" / "1 件保存されませんでした" / etc.).
+    // The previous `string()` only ever used the plural form.
+    static func alertEncryptFailedCount(_ count: Int) -> String { plural("alert.encrypt.failed.count", count) }
 
     // MARK: - Trim Alert
     static var alertTrimTitle: String { string("alert.trim.title") }
@@ -460,5 +463,18 @@ struct L10n {
     /// ID-L10N-0007: Tag chip label template, e.g. "Tag: Work".
     static func tagChipAccessibility(_ name: String) -> String {
         string("tag.chipAccessibility", name)
+    }
+    /// ID-L10N-0015 (2026-07-30 audit): explicit accessibility label so
+    /// VoiceOver reads "添加建议标签 X" (or localized equivalent) instead
+    /// of the inline Chinese. Added after v3.0 audit introduced the same
+    /// pattern with hardcoded "X 个标签" — both inline strings need to
+    /// be L10n-routed for non-zh-Hans locales.
+    static func tagPickerAddSuggestion(_ name: String) -> String {
+        string("tagPicker.addSuggestion", name)
+    }
+    /// ID-L10N-0015: plural-aware accessibility label for the tag-count
+    /// badge on each row. "3 个标签" / "1 个标签" / etc.
+    static func tagBadgeAccessibility(_ count: Int) -> String {
+        plural("tag.badge.accessibility", count)
     }
 }

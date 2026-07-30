@@ -304,3 +304,15 @@
 "appPicker.accessibility.add" = "排除 %@";
 "dateFilter.selected" = "（已选）";
 "tag.chipAccessibility" = "标签：%@";
+
+/* L10N-0015 (2026-07-30 audit): route inline-CN voiceover labels through L10n */
+"tagPicker.addSuggestion" = "添加建议标签 %@";
+"tag.badge.accessibility" = "%d 个标签";
+"tag.badge.accessibility.one" = "%d 个标签";
+"trash.emptyConfirm.message.one" = "1 条记录将被永久删除，此操作无法撤销。";
+"settings.max.items.count.one" = "1 条";
+"clear.conditional.confirm.one" = "1 条记录将被删除（已收藏的保留，并移至回收站）";
+"batch.selected.one" = "已选择 1 项";
+"alert.encrypt.failed.count.one" = "敏感数据加密失败，1 条内容未保存。";
+"alert.clear.message.one" = "确定要清空 1 条记录吗？
+已收藏的内容不会被删除。";
