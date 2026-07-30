@@ -153,7 +153,8 @@ struct InstructionRow: View {
                     .foregroundColor(.secondary)
             }
         }
-        .accessibilityLabel("Step \(number): \(title). \(description)")
+        // ID-L10N-0004 (2026-07-30 audit): localized step label template.
+        .accessibilityLabel(L10n.welcomeStepAccessibility(number, title, description))
     }
 }
 

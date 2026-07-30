@@ -712,7 +712,8 @@ struct ContentView: View {
                             .font(.system(size: sz(11)))
                     })
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Clear search")
+                    // ID-L10N-0002 (2026-07-30 audit): localized VoiceOver label.
+                    .accessibilityLabel(L10n.searchClear)
                 }
             }
             .padding(.horizontal, 8)

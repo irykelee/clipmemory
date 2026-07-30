@@ -298,3 +298,13 @@
 "settings.historyCapture.ocrPreview" = "圖片搜尋結果顯示 OCR 文字";
 "banner.key.unavailable" = "解鎖後重試";
 "banner.data.corrupted.count" = "%d 條損壞";
+
+/* VoiceOver / 無障礙標籤（2026-07-30 稽核 L10N-0001..0007） */
+"search.clear" = "清除搜尋";
+"quickbar.menuShortcut" = "%@，快速鍵 %@";
+"quickbar.clipboardItemPrefix" = "%@ 剪貼簿項目：%@";
+"welcome.stepAccessibility" = "步驟 %1$@：%2$@。%3$@";
+"appPicker.accessibility.remove" = "取消排除 %@";
+"appPicker.accessibility.add" = "排除 %@";
+"dateFilter.selected" = "（已選）";
+"tag.chipAccessibility" = "標籤：%@";

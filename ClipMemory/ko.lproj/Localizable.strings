@@ -296,3 +296,13 @@
 "settings.historyCapture.ocrPreview" = "이미지 검색 결과에 OCR 텍스트 표시";
 "banner.key.unavailable" = "잠금 해제 후 다시 시도";
 "banner.data.corrupted.count" = "%d개 항목 손상";
+
+/* VoiceOver / 접근성 레이블 (2026-07-30 감사 L10N-0001..0007) */
+"search.clear" = "검색 지우기";
+"quickbar.menuShortcut" = "%@, 단축키 %@";
+"quickbar.clipboardItemPrefix" = "%@ 클립보드 항목: %@";
+"welcome.stepAccessibility" = "단계 %1$@: %2$@. %3$@";
+"appPicker.accessibility.remove" = "%@ 제외 해제";
+"appPicker.accessibility.add" = "%@ 제외";
+"dateFilter.selected" = "(선택됨)";
+"tag.chipAccessibility" = "태그: %@";

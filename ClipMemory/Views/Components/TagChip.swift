@@ -34,6 +34,8 @@ struct TagChip: View {
                 .stroke(Color(hex: tag.colorHex).opacity(0.5), lineWidth: 0.5)
         )
         .cornerRadius(4)
-        .accessibilityLabel("Tag: \(tag.name)")
+        // ID-L10N-0007 (2026-07-30 audit): localized chip label so VoiceOver
+        // reads "Tag: Work" / "标签：Work" / "タグ：Work" instead of bare tag name.
+        .accessibilityLabel(L10n.tagChipAccessibility(tag.name))
     }
 }

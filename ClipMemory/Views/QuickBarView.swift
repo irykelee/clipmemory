@@ -363,7 +363,8 @@ struct MacOSMenuItem: View {
         .padding(.vertical, 5)
         .background(hoverBackground.cornerRadius(appCornerRadius))
         .contentShape(Rectangle())
-        .accessibilityLabel(shortcut.isEmpty ? label : "\(label), shortcut \(shortcut)")
+        // ID-L10N-0003 (2026-07-30 audit): localized shortcut hint for VoiceOver.
+        .accessibilityLabel(shortcut.isEmpty ? label : L10n.quickbarMenuShortcut(label, shortcut))
         .onHover { isHovered = $0 }
     }
 
@@ -531,14 +532,19 @@ struct QuickBarRow: View {
     private var clipboardItemAccessibilityLabel: String {
         let typeLabel: String = {
             switch item.type {
-            case .text: return "Text"
-            case .image: return "Image"
-            case .link: return "Link"
-            case .richText: return "Rich text"
+            // ID-L10N-0001 (2026-07-30 audit): use existing localized type
+            // names (already present for the sidebar type filter).
+            case .text: return L10n.filterText
+            case .image: return L10n.filterImage
+            case .link: return L10n.filterLink
+            case .richText: return L10n.filterRichText
             }
         }()
         let preview = loadedContent?.prefix(50) ?? ""
-        return "\(typeLabel) clipboard item: \(preview)"
+        // ID-L10N-0003 (2026-07-30 audit): localized "<Type> clipboard item: <preview>"
+        // template. Falls back to the typeLabel key verbatim if the locale omits
+        // the new "quickbar.clipboardItemPrefix" key (legacy / fallback bundle).
+        return L10n.quickbarClipboardItemPrefix(typeLabel, String(preview))
     }
 
     private var formattedDate: String {

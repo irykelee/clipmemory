@@ -43,7 +43,10 @@ struct AppPickerRow: View {
             .background(isHovered ? Color.accentColor.opacity(0.1) : Color.clear)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(isExcluded ? "Remove exclusion for" : "Exclude") \(name)")
+        // ID-L10N-0005 (2026-07-30 audit): localized VoiceOver label so the
+        // "Exclude" / "Remove exclusion" action is announced in the user's
+        // language, with the app name interpolated via L10n.appPicker*.
+        .accessibilityLabel(isExcluded ? L10n.appPickerAccessibilityRemove(name) : L10n.appPickerAccessibilityAdd(name))
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .onHover { hovering in isHovered = hovering }

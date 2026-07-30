@@ -294,3 +294,13 @@
 "settings.historyCapture.ocrPreview" = "图片搜索结果显示 OCR 文本";
 "banner.key.unavailable" = "解锁后重试";
 "banner.data.corrupted.count" = "%d 条损坏";
+
+/* VoiceOver / 无障碍标签（2026-07-30 审计 L10N-0001..0007） */
+"search.clear" = "清除搜索";
+"quickbar.menuShortcut" = "%@，快捷键 %@";
+"quickbar.clipboardItemPrefix" = "%@ 剪贴板项：%@";
+"welcome.stepAccessibility" = "步骤 %1$@：%2$@。%3$@";
+"appPicker.accessibility.remove" = "取消排除 %@";
+"appPicker.accessibility.add" = "排除 %@";
+"dateFilter.selected" = "（已选）";
+"tag.chipAccessibility" = "标签：%@";

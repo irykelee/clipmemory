@@ -19,7 +19,12 @@ struct DateFilterButton: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(title)\(isSelected ? ", selected" : "")")
+        // ID-L10N-0006 (2026-07-30 audit): localized selected-state suffix.
+        // dateFilter.selected carries the locale-appropriate suffix
+        // (", selected" / "（已选）" / "(선택됨)" / etc.) so VoiceOver reads
+        // "Today, selected" / "今天（已选）" instead of bare "Today" when the
+        // button is the active filter.
+        .accessibilityLabel("\(title)\(isSelected ? L10n.dateFilterSelected : "")")
         .onHover { isHovered = $0 }
     }
 

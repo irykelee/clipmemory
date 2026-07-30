@@ -304,3 +304,13 @@
 "banner.key.unavailable" = "Try again after unlock";
 "banner.data.corrupted.count" = "%d items corrupted";
 "banner.data.corrupted.count.one" = "%d item corrupted";
+
+/* VoiceOver / Accessibility labels (2026-07-30 audit L10N-0001..0007) */
+"search.clear" = "Clear search";
+"quickbar.menuShortcut" = "%@, shortcut %@";
+"quickbar.clipboardItemPrefix" = "%@ clipboard item: %@";
+"welcome.stepAccessibility" = "Step %1$@: %2$@. %3$@";
+"appPicker.accessibility.remove" = "Remove exclusion for %@";
+"appPicker.accessibility.add" = "Exclude %@";
+"dateFilter.selected" = ", selected";
+"tag.chipAccessibility" = "Tag: %@";

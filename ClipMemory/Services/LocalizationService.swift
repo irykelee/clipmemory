@@ -430,4 +430,35 @@ struct L10n {
     // P0-2: diagnostics banner (see DecryptionDiagnostics)
     static var bannerKeyUnavailable: String { string("banner.key.unavailable") }
     static func bannerDataCorruptedCount(_ n: Int) -> String { plural("banner.data.corrupted.count", n) }
+
+    // MARK: - VoiceOver / Accessibility labels (Round-2 2026-07-30 audit, L10N-0001..0007)
+    /// ID-L10N-0002: Clear search button label (ContentView toolbar × icon).
+    static var searchClear: String { string("search.clear") }
+    /// ID-L10N-0003: QuickBar menu item shortcut hint, e.g. "Quit ClipMemory, shortcut ⌘Q".
+    static func quickbarMenuShortcut(_ label: String, _ shortcut: String) -> String {
+        string("quickbar.menuShortcut", label, shortcut)
+    }
+    /// ID-L10N-0003: QuickBar row type-and-preview hint, e.g. "Text clipboard item: foo".
+    static func quickbarClipboardItemPrefix(_ typeLabel: String, _ preview: String) -> String {
+        string("quickbar.clipboardItemPrefix", typeLabel, preview)
+    }
+    /// ID-L10N-0004: Welcome step row label template (number, title, description).
+    static func welcomeStepAccessibility(_ number: String, _ title: String, _ description: String) -> String {
+        string("welcome.stepAccessibility", number, title, description)
+    }
+    /// ID-L10N-0005: AppPickerRow "Remove exclusion for X" label.
+    static func appPickerAccessibilityRemove(_ name: String) -> String {
+        string("appPicker.accessibility.remove", name)
+    }
+    /// ID-L10N-0005: AppPickerRow "Exclude X" label.
+    static func appPickerAccessibilityAdd(_ name: String) -> String {
+        string("appPicker.accessibility.add", name)
+    }
+    /// ID-L10N-0006: DateFilterButton selected-state suffix, e.g. ", selected" / "（已选）".
+    /// Empty string when not selected — caller decides whether to append.
+    static var dateFilterSelected: String { string("dateFilter.selected") }
+    /// ID-L10N-0007: Tag chip label template, e.g. "Tag: Work".
+    static func tagChipAccessibility(_ name: String) -> String {
+        string("tag.chipAccessibility", name)
+    }
 }

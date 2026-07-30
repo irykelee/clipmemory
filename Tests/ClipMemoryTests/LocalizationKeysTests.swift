@@ -182,6 +182,43 @@ final class LocalizationKeysTests: XCTestCase {
         }
     }
 
+    /// ID-L10N-0001..0007 (2026-07-30 audit): the 8 new VoiceOver /
+    /// accessibility labels must exist in all 7 shipping language files.
+    /// Without this parity pin, a missing locale silently degrades to English
+    /// rather than failing the build — defeating the purpose of the fix
+    /// (VoiceOver users in non-English locales still hear English).
+    func testRound2L10nAccessibilityKeysExistInAllSevenLanguageFiles() throws {
+        let keys = [
+            "search.clear",
+            "quickbar.menuShortcut",
+            "quickbar.clipboardItemPrefix",
+            "welcome.stepAccessibility",
+            "appPicker.accessibility.remove",
+            "appPicker.accessibility.add",
+            "dateFilter.selected",
+            "tag.chipAccessibility"
+        ]
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appResDir = projectRoot.appendingPathComponent("ClipMemory", isDirectory: true)
+
+        let languages = ["en", "es", "ja", "ko", "pt", "zh-Hans", "zh-Hant"]
+        for lang in languages {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            for key in keys {
+                XCTAssertTrue(
+                    content.contains("\"\(key)\""),
+                    "\(lang).lproj/Localizable.strings is missing key '\(key)'"
+                )
+            }
+        }
+    }
+
     /// 2026-07-25 plural-mechanism regression. The retired .stringsdict
     /// (`%#@count@`) path rendered "(null)" for any key missing from the
     /// bundled stringsdict (observed: settings maxItems picker on macOS 26).
