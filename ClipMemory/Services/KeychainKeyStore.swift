@@ -141,6 +141,16 @@ struct KeychainKeyStore: KeyStoring {
     }
 
     func delete() {
-        SecItemDelete(baseQuery as CFDictionary)
+        // ID-SILENT-0015 (2026-07-30 audit): surface the OSStatus. A
+        // non-zero result here means the key wasn't actually removed,
+        // which has security implications (stale key file still on disk,
+        // keychain item still queryable). Callers (`CryptoService.prepareKey`
+        // migration path, `Cask zap`) currently ignore the return; the
+        // most important ones already check, but logging makes future
+        // regressions visible.
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            NSLog("KeychainKeyStore.delete failed: OSStatus %d", Int(status))
+        }
     }
 }

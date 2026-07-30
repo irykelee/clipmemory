@@ -1,6 +1,7 @@
 import Foundation
 import Vision
 import AppKit
+import CoreImage
 import os
 
 /// MED-8 (2026-07-26 review): discriminated OCR outcome so callers can
@@ -56,8 +57,14 @@ final class VisionOCRService: OCRServiceProtocol {
     }
 
     private func performRecognition(imageData: Data) -> OCROutcome {
-        guard let image = NSImage(data: imageData),
-              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        // ID-OCR-0001 (2026-07-30 audit): honour EXIF orientation.
+        // iPhone HEIC photos copied via AirDrop carry `Orientation=6/8`
+        // (rotated). `VNImageRequestHandler(cgImage:options:)` does NOT
+        // apply that — Apple-documented. Building a `CIImage` from `Data`
+        // goes through CoreImage which honours EXIF, then we ask for
+        // `cgImage` on the oriented CIImage and pass that to Vision.
+        // Plain `NSImage(data:).cgImage` skips the orientation step.
+        guard let orientedCGImage = Self.cgImageRespectingEXIF(from: imageData) else {
             return .noText
         }
 
@@ -74,7 +81,7 @@ final class VisionOCRService: OCRServiceProtocol {
             from: ["zh-Hans", "zh-Hant", "en", "ja", "ko"]
         )
 
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        let handler = VNImageRequestHandler(cgImage: orientedCGImage, options: [:])
         do {
             try handler.perform([request])
         } catch {
@@ -89,6 +96,21 @@ final class VisionOCRService: OCRServiceProtocol {
         guard !lines.isEmpty else { return .noText }
         let joined = lines.joined(separator: "\n")
         return .text(String(joined.prefix(maxCharacters)))
+    }
+
+    /// ID-OCR-0001: decode image bytes via CoreImage so the EXIF
+    /// orientation is applied before we hand the bitmap to Vision.
+    /// Falls back to NSImage for non-CIImage-supported formats.
+    private static func cgImageRespectingEXIF(from data: Data) -> CGImage? {
+        if let ciImage = CIImage(data: data) {
+            let context = CIContext(options: [.useSoftwareRenderer: false])
+            return context.createCGImage(ciImage, from: ciImage.extent)
+        }
+        // Fallback for formats CoreImage rejects (rare).
+        if let image = NSImage(data: data) {
+            return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        }
+        return nil
     }
 
     /// NEW-1 (2026-07-21): filter the requested languages against the ones

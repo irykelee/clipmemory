@@ -45,11 +45,24 @@ class ImageStorage {
             // encrypted image directory. Defense-in-depth — image content
             // is already AES-GCM encrypted at write, but a 0o755 directory
             // leaks filename + size metadata that 0o700 hides.
-            try? FileManager.default.createDirectory(
-                at: dir,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
+            // ID-SILENT-0014 (2026-07-30 audit): `try?` previously swallowed
+            // the createDirectory failure. If a sandbox / permissions /
+            // disk-full error blocks creation, subsequent image writes
+            // crash with a less-informative error. Replace with explicit
+            // do/catch + os_log so the operator sees the root cause.
+            do {
+                try FileManager.default.createDirectory(
+                    at: dir,
+                    withIntermediateDirectories: true,
+                    attributes: [.posixPermissions: 0o700]
+                )
+            } catch {
+                // ID-SILENT-0014 (2026-07-30 audit): NSLog (not os.Logger)
+                // because this lazy initializer runs BEFORE `Self.shared`
+                // exists, so the instance `logger` is unavailable here.
+                // Privacy-safe: only paths + error messages.
+                NSLog("ImageStorage: failed to create 0o700 directory at %@: %@", dir.path, error.localizedDescription)
+            }
         }
         return dir
     }()

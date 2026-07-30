@@ -1768,6 +1768,18 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
 
         pasteboard.clearContents()
 
+        // ID-SECURITY-0003 (2026-07-30 audit): stamp
+        // `org.nspasteboard.ConcealedType` when copying sensitive items so
+        // other apps + the system clipboard monitor can honour "don't
+        // log / don't sync / don't share" semantics. Without this marker,
+        // any app can pull our pasteboard content (1Password / Bitwarden
+        // / Dashlane all stamp this on secret writes). Detection on the
+        // read side is at ClipboardMonitor.swift:289-296 — already
+        // honours the marker to skip capture.
+        if item.isSensitive {
+            pasteboard.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+        }
+
         if let image = preparedImage {
             pasteboard.writeObjects([image as NSImage])
         } else if let rtfData = preparedRtfData {

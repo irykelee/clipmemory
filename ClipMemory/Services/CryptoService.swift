@@ -130,7 +130,23 @@ class CryptoService: CryptoServiceProtocol {
     static var keyFileURL: URL {
         let appSupport = AppDirectories.applicationSupport
         let dir = appSupport.appendingPathComponent("ClipMemory", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // ID-SILENT-0012 + ID-SECURITY-0005 (2026-07-30 audit):
+        // surface both directory-creation failures AND enforce 0o700
+        // on the parent (defense-in-depth; image-dir fix in commit 4df9fd7
+        // only covered ImageStorage). `try?` previously swallowed both
+        // signals — first-time launch on a locked-down host would silently
+        // fall back to Keychain with a world-readable parent dir.
+        do {
+            try FileManager.default.createDirectory(
+                at: dir,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+        } catch {
+            // Don't crash — Keychain read path takes over on first launch.
+            // But log loud so the operator sees it.
+            NSLog("ClipMemory: failed to prepare key-file parent dir at %@: %@", dir.path, error.localizedDescription)
+        }
         return dir.appendingPathComponent(".encryption_key")
     }
 
@@ -396,7 +412,16 @@ class CryptoService: CryptoServiceProtocol {
                     secureRemoveKeyFile(at: keyURL)
                 } else {
                     logger.error("Keychain migration failed; keeping key file until next launch")
-                    try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
+                    // ID-SILENT-0013 (2026-07-30 audit): `try?` previously
+                    // swallowed chmod failures — if the file already
+                    // existed at 0o644 (typical world-readable), the key
+                    // would stay that way until the next successful
+                    // migration. Replace with explicit do/catch + log.
+                    do {
+                        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
+                    } catch {
+                        logger.error("Failed to chmod legacy key file to 0o600: \(error.localizedDescription, privacy: .public)")
+                    }
                 }
                 return publishToSharedCache(SymmetricKey(data: keyData))
             }
@@ -782,6 +807,15 @@ class CryptoService: CryptoServiceProtocol {
             let decrypted = try AES.GCM.open(sealedBox, using: key)
             return Array(decrypted)
         } catch {
+            // ID-SILENT-0011 (2026-07-30 audit): surface the underlying
+            // CryptoKit error to os_log so operators can distinguish
+            // GCM authenticationFailure (ciphertext corruption / wrong key)
+            // from a malformed `SealedBox` (truncation / format drift).
+            // Without this log the only signal downstream is the eventual
+            // `.dataCorrupted` in the P0-2 DecryptResult classifier — by
+            // then the cause is buried under 2 layers of `try?` chains.
+            // The error message is privacy-safe (no plaintext content).
+            Self.logger.error("decryptV2 failed: \(String(describing: error), privacy: .public)")
             return nil
         }
     }

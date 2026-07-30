@@ -37,7 +37,16 @@ enum SidebarTagFilter {
             // matching how users actually compose filters in tools like
             // Finder smart folders and Gmail multi-label search.
             if !selectedTagIds.isEmpty {
-                let hit = selectedTagIds.isSubset(of: Set(item.tagIds))
+                // ID-PERF-0010 (2026-07-30 audit): drop `Set(item.tagIds)`
+                // wrap. `Set.isSubset(of:)` accepts any `Sequence` whose
+                // element matches `Set.Element`; passing `[UUID]` directly
+                // skips the per-item Set allocation that was burning ~50K
+                // heap allocs on 10K-item × 5-tag histories (every search
+                // keystroke + tag click). Comparison cost is O(m·n) per
+                // item where m = selectedTagIds.count, n = tagIds.count —
+                // small constants in practice (typical n ≤ 5), well below
+                // the allocation savings.
+                let hit = selectedTagIds.isSubset(of: item.tagIds)
                 if !hit { return false }
             }
 
