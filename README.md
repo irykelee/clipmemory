@@ -48,7 +48,7 @@
 
 ## 📋 更新日志
 
-### v2.7.3 (2026-07-30) — Audit-Driven Fixes & 7-Language VoiceOver
+### v2.7.3 (2026-07-30) — 审计驱动修复 + 7 语言 VoiceOver 无障碍
 
 - **🚀 性能提升（多项后台优化）** — JSONEncoder 复用、缓存预热并发上限、清理任务单遍扫描、冷启动 AES-GCM 解密预填；数千条历史下粘贴与搜索明显更顺
 - **🌐 7 语言 VoiceOver 无障碍** — 主菜单 / 搜索框 / 欢迎页 / 标签 chip / 应用排除列表 / 日期过滤按钮 / 剪贴板项类型标签全部本地化；非英语用户首次可用 VoiceOver 流畅使用
@@ -57,7 +57,7 @@
 - **AES-GCM 解密失败不再永久污染条目** — Keychain 瞬态锁定时触发的解密失败，现在 key 恢复后会自动重试（旧 bug 会永久标记条目不可解密）
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.3
 
-### v2.7.2 (2026-07-29) — Fuzzy Search & Image Integrity + Cryptographic Safety
+### v2.7.2 (2026-07-29) — 模糊搜索 + 图片完整性扫描 + 加密安全加固
 
 - **拼音感知模糊搜索** — 「zhongwen」也能匹配「中文文档」；空格分隔的多个词必须全部命中，同时忽略大小写和音调符号
 - **启动时图片完整性扫描** — App 启动后异步扫描所有图片条目，标记缺失/损坏文件，列表项立即显示状态
