@@ -68,4 +68,27 @@ final class TrashStoreMainActorTests: XCTestCase {
         }
         wait(for: [exp], timeout: 1.5)
     }
+
+    /// ID-LIFE-0023 (2026-07-31 Round 5): the debounced flush used to
+    /// `cancel()` the reused timer source without nil-ing it — a cancelled
+    /// GCD source silently ignores later `schedule()` calls, so after the
+    /// FIRST debounced fire every subsequent trash save was lost until
+    /// graceful quit. Two consecutive cycles must both reach the backend.
+    func testSecondDebounceCycleStillPersists() {
+        store.moveToTrash(ClipboardItem(content: "cycle1", type: .text), evictCaches: { _ in }, didMove: {})
+        let exp1 = expectation(description: "debounce cycle 1")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { exp1.fulfill() }
+        wait(for: [exp1], timeout: 1.5)
+
+        // Cycle 2 — pre-fix the dead source was reused and never fired.
+        store.moveToTrash(ClipboardItem(content: "cycle2", type: .text), evictCaches: { _ in }, didMove: {})
+        let exp2 = expectation(description: "debounce cycle 2")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            let reload = TrashStore(backend: self.backend)
+            XCTAssertEqual(reload.trashedItems.count, 2,
+                           "ID-LIFE-0023: second debounce cycle must still persist to the backend")
+            exp2.fulfill()
+        }
+        wait(for: [exp2], timeout: 1.5)
+    }
 }

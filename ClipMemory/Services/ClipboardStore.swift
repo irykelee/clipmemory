@@ -862,9 +862,12 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     private func flushSave() {
         guard needsSave else { return }
         needsSave = false
-        saveTimer?.cancel()
-        // M-2 (2026-07-25 audit): keep the timer source alive for reuse rather
-        // than nil-ing it out after every flush.
+        // ID-LIFE-0023 (2026-07-31): do NOT cancel() the timer source here.
+        // DispatchSource.cancel() is irreversible — a cancelled source
+        // silently ignores later schedule() calls, so the old "cancel but
+        // keep for reuse" pattern killed every debounced save after the
+        // first flush. A fired one-shot source stays reusable via
+        // schedule(deadline:); deinit/willTerminate cancel it for real.
         saveItems()
     }
 
@@ -1105,10 +1108,9 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     private func flushTagSave() {
         guard tagNeedsSave else { return }
         tagNeedsSave = false
-        tagSaveTimer?.cancel()
-        // HIGH-4 (2026-07-26 review): keep timer alive for reuse, matching
-        // the flushSave() pattern — nil-ing it out would force scheduleTagSave
-        // to reallocate a new DispatchSource on the next call.
+        // ID-LIFE-0023 (2026-07-31): no cancel() here — see flushSave().
+        // A cancelled source silently ignores later schedule() calls,
+        // which used to kill every debounced tag save after the first flush.
         saveTags()
     }
 

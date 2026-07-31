@@ -65,6 +65,11 @@ struct BackupManifest: Codable {
     var itemCount: Int
     var tagCount: Int
     var imageCount: Int
+    /// ID-BACKUP-0001 (2026-07-31): trash.json entry count. Optional so
+    /// packages written before this field existed (which also had the
+    /// itemCount-excludes-trash bug) stay importable — nil means "not
+    /// declared, skip the trash count check".
+    var trashCount: Int? = nil
     /// M-1 fix (2026-07-21): backup packages used HKDF-SHA256 to derive a
     /// key from a passphrase, but HKDF is unsuitable for passphrase-to-key
     /// derivation — it has no work factor. An attacker with the package can
@@ -76,7 +81,7 @@ struct BackupManifest: Codable {
 
     enum CodingKeys: String, CodingKey {
         case formatVersion, createdAt, appVersion, keySalt
-        case itemCount, tagCount, imageCount, keyDerivationVersion
+        case itemCount, tagCount, imageCount, trashCount, keyDerivationVersion
     }
 }
 
@@ -95,6 +100,9 @@ extension BackupManifest {
         itemCount = try container.decode(Int.self, forKey: .itemCount)
         tagCount = try container.decode(Int.self, forKey: .tagCount)
         imageCount = try container.decode(Int.self, forKey: .imageCount)
+        // ID-BACKUP-0001: absent in pre-2026-07-31 packages → skip the
+        // trash count check for them.
+        trashCount = try container.decodeIfPresent(Int.self, forKey: .trashCount)
         // Default HKDF (version 1) for old packages without this field.
         keyDerivationVersion = try container.decodeIfPresent(Int.self, forKey: .keyDerivationVersion) ?? 1
     }
@@ -415,6 +423,10 @@ final class BackupPackage {
             itemCount: counts.items,
             tagCount: counts.tags,
             imageCount: imageCount,
+            // ID-BACKUP-0001: declare the trash count explicitly — the
+            // importer validates items.json against itemCount only, and
+            // trash.json against this field.
+            trashCount: counts.trash,
             keyDerivationVersion: 2
         )
         try JSONEncoder().encode(manifest).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
@@ -541,10 +553,14 @@ final class BackupPackage {
         // into the store or importing images. Previously the validation ran
         // after the merge, so a manifest/item-count mismatch left the local
         // store partially modified with no rollback path.
+        // ID-BACKUP-0001 (2026-07-31): itemCount is items.json ONLY (that is
+        // what the exporter writes); trash.json is validated separately
+        // against the optional trashCount field.
         try validateManifestCounts(
             manifest: manifest,
             staging: staging,
-            decodedItems: packageItems.count + packageTrash.count,
+            decodedItems: packageItems.count,
+            decodedTrash: packageTrash.count,
             decodedTags: packageTags.count
         )
 
@@ -596,16 +612,26 @@ final class BackupPackage {
 
     /// BKP-4 (2026-07-24 review): manifest declared counts must match what
     /// the package payload actually contains.
+    /// ID-BACKUP-0001 (2026-07-31): itemCount covers items.json only;
+    /// trash.json is checked against the optional trashCount field
+    /// (absent in legacy packages → check skipped).
     private static func validateManifestCounts(
         manifest: BackupManifest,
         staging: URL,
         decodedItems: Int,
+        decodedTrash: Int,
         decodedTags: Int
     ) throws {
         guard decodedItems == manifest.itemCount else {
             logger.error("Manifest itemCount \(manifest.itemCount) != items.json entries \(decodedItems)")
             throw BackupPackageError.corruptedData(
                 "manifest itemCount \(manifest.itemCount) != items.json entries \(decodedItems)", .manifest
+            )
+        }
+        if let declaredTrash = manifest.trashCount, decodedTrash != declaredTrash {
+            logger.error("Manifest trashCount \(declaredTrash) != trash.json entries \(decodedTrash)")
+            throw BackupPackageError.corruptedData(
+                "manifest trashCount \(declaredTrash) != trash.json entries \(decodedTrash)", .manifest
             )
         }
         guard decodedTags == manifest.tagCount else {

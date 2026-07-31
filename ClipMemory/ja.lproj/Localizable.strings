@@ -308,9 +308,9 @@
 "tag.chipAccessibility" = "タグ：%@";
 
 /* L10N-0015 (2026-07-30 audit): route inline-CN voiceover labels through L10n */
-"tagPicker.addSuggestion" = "添加建议标签 %@";
-"tag.badge.accessibility" = "%d 个标签";
-"tag.badge.accessibility.one" = "%d 个标签";
+"tagPicker.addSuggestion" = "提案タグ %@ を追加";
+"tag.badge.accessibility" = "%d 個のタグ";
+"tag.badge.accessibility.one" = "%d 個のタグ";
 "trash.emptyConfirm.message.one" = "1 件の項目が完全に削除されます。この操作は取り消せません。";
 "settings.max.items.count.one" = "1 件";
 "clear.conditional.confirm.one" = "1 件の項目が削除されます（ピン留めは保持し、ごみ箱に移動）";

@@ -5,19 +5,22 @@ import XCTest
 @MainActor final class ClipboardStoreTrashTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
+    private var tagBackend: MemoryStorageBackend!
     private var trashBackend: MemoryStorageBackend!
     private var store: ClipboardStore!
 
     override func setUp() {
         super.setUp()
         backend = MemoryStorageBackend()
+        tagBackend = MemoryStorageBackend()
         trashBackend = MemoryStorageBackend()
-        store = ClipboardStore(backend: backend, trashBackend: trashBackend)
+        store = ClipboardStore(backend: backend, tagBackend: tagBackend, trashBackend: trashBackend)
     }
 
     override func tearDown() {
         store = nil
         trashBackend = nil
+        tagBackend = nil
         backend = nil
         super.tearDown()
     }
@@ -210,6 +213,44 @@ import XCTest
         XCTAssertEqual(store.getDecryptedContent(store.items[0]), "A")
         XCTAssertFalse(store.items[0].isPinned, "A must NOT be toggled by B's pin")
         XCTAssertTrue(store.items[1].isPinned, "B must be pinned")
+    }
+
+    // MARK: - ID-LIFE-0023 (2026-07-31 Round 5): debounce timers survive first flush
+
+    /// ID-LIFE-0023: `flushSave`/`flushTagSave` used to `cancel()` the
+    /// reused DispatchSourceTimer WITHOUT nil-ing it. A cancelled GCD
+    /// source silently ignores later `schedule()` calls, so once a
+    /// channel's timer had fired (or been flushed) once, every subsequent
+    /// debounced save on that channel was lost until graceful quit.
+    /// Tags have NO write-through path — addTag/deleteTag depended
+    /// entirely on this debounce. Repro: two consecutive debounced tag
+    /// saves after an initial flush; pre-fix, cycle 2 never hit the backend.
+    func testSecondDebounceTagSaveCycleStillPersists() {
+        // Force an initial flush (any first clipboard capture does this
+        // via saveImmediately) so the tag timer's first cycle is the
+        // "post-flush" state already.
+        store.addItem(ClipboardItem(content: "seed", type: .text))
+        store.flushPendingSaves()
+
+        // Debounced cycle 1 — creates + fires the tag timer (works even pre-fix).
+        store.addTag(Tag(name: "cycle1", colorHex: "#FF6B6B"))
+        let exp1 = expectation(description: "debounce cycle 1")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { exp1.fulfill() }
+        wait(for: [exp1], timeout: 1.5)
+
+        // Debounced cycle 2 — pre-fix the cancelled source was reused and
+        // this save NEVER reached the backend.
+        store.addTag(Tag(name: "cycle2", colorHex: "#4ECDC4"))
+        let exp2 = expectation(description: "debounce cycle 2")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { exp2.fulfill() }
+        wait(for: [exp2], timeout: 1.5)
+
+        // Reload a fresh store from the same backends: both cycles must be on disk.
+        let reload = ClipboardStore(backend: backend, tagBackend: tagBackend, trashBackend: trashBackend)
+        XCTAssertTrue(reload.tags.values.contains(where: { $0.name == "cycle1" }),
+                      "cycle 1 tag must persist")
+        XCTAssertTrue(reload.tags.values.contains(where: { $0.name == "cycle2" }),
+                      "ID-LIFE-0023: second debounce cycle must still persist to the backend")
     }
 
     // MARK: - Permanent delete

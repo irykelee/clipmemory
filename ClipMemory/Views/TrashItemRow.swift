@@ -144,15 +144,6 @@ struct TrashItemRow: View, Equatable {
                                 imageLoadStatus = result.1
                             }
                         }
-                        .task(id: item.id) {
-                            guard item.type != .richText, item.type != .image else { return }
-                            if loadedContent != nil { return }
-                            let result = await Task.detached(priority: .utility) {
-                                store.getDecryptedContent(item) ?? ""
-                            }.value
-                            if Task.isCancelled { return }
-                            loadedContent = result
-                        }
                     } else if item.type == .richText {
                         Text(plainTextFallback)
                             .font(.system(size: sz(12))).foregroundColor(.secondary)
@@ -209,6 +200,19 @@ struct TrashItemRow: View, Equatable {
                 .help(L10n.actionDelete)
             }
             .opacity(isHovered || isFocused ? 1 : 0)
+        }
+        // ID-VIEW-0001 (2026-07-31): this task loads text/link content.
+        // It used to hang on the image branch's Group above (M14, 5f1ce38),
+        // so it never ran for .text/.link items and the row rendered "".
+        // Row-level attachment matches ClipboardItemRow.swift.
+        .task(id: item.id) {
+            guard item.type != .richText, item.type != .image else { return }
+            if loadedContent != nil { return }
+            let result = await Task.detached(priority: .utility) {
+                store.getDecryptedContent(item) ?? ""
+            }.value
+            if Task.isCancelled { return }
+            loadedContent = result
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

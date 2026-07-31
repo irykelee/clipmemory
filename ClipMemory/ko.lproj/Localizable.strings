@@ -308,9 +308,9 @@
 "tag.chipAccessibility" = "태그: %@";
 
 /* L10N-0015 (2026-07-30 audit): route inline-CN voiceover labels through L10n */
-"tagPicker.addSuggestion" = "添加建议标签 %@";
-"tag.badge.accessibility" = "%d 个标签";
-"tag.badge.accessibility.one" = "%d 个标签";
+"tagPicker.addSuggestion" = "추천 태그 %@ 추가";
+"tag.badge.accessibility" = "태그 %d개";
+"tag.badge.accessibility.one" = "태그 %d개";
 "trash.emptyConfirm.message.one" = "1개의 항목이 영구적으로 삭제됩니다. 이 작업은 취소할 수 없습니다.";
 "settings.max.items.count.one" = "1개";
 "clear.conditional.confirm.one" = "1개의 항목이 삭제됩니다(고정된 항목은 유지하고 휴지통으로 이동)";

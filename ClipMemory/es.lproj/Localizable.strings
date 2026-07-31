@@ -316,8 +316,8 @@
 "tag.chipAccessibility" = "Etiqueta: %@";
 
 /* L10N-0015 (2026-07-30 audit): route inline-CN voiceover labels through L10n */
-"tagPicker.addSuggestion" = "添加建议标签 %@";
-"tag.badge.accessibility" = "%d 个标签";
-"tag.badge.accessibility.one" = "%d 个标签";
+"tagPicker.addSuggestion" = "Añadir etiqueta sugerida %@";
+"tag.badge.accessibility" = "%d etiquetas";
+"tag.badge.accessibility.one" = "%d etiqueta";
 "settings.max.items.count.one" = "1 elemento";
 "alert.encrypt.failed.count.one" = "Error al cifrar datos sensibles. 1 elemento no se guardó.";

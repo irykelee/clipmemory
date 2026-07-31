@@ -316,8 +316,8 @@
 "tag.chipAccessibility" = "Tag: %@";
 
 /* L10N-0015 (2026-07-30 audit): route inline-CN voiceover labels through L10n */
-"tagPicker.addSuggestion" = "添加建议标签 %@";
-"tag.badge.accessibility" = "%d 个标签";
-"tag.badge.accessibility.one" = "%d 个标签";
+"tagPicker.addSuggestion" = "Add suggested tag %@";
+"tag.badge.accessibility" = "%d tags";
+"tag.badge.accessibility.one" = "%d tag";
 "settings.max.items.count.one" = "1 item";
 "alert.encrypt.failed.count.one" = "Failed to encrypt sensitive data. 1 item was not saved.";

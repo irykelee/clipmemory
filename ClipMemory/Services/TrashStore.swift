@@ -225,7 +225,10 @@ final class TrashStore: ObservableObject {
     private func flushSave() {
         guard needsSave else { return }
         needsSave = false
-        saveTimer?.cancel()
+        // ID-LIFE-0023 (2026-07-31): no cancel() here — a cancelled
+        // DispatchSource silently ignores later schedule() calls, which
+        // used to kill every debounced trash save after the first flush.
+        // deinit/handleWillTerminate cancel the source for real.
         saveTrashedItems()
     }
 

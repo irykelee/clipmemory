@@ -217,6 +217,7 @@ import CryptoKit
         cryptoForPackage: CryptoService,
         itemCount: Int,
         tagCount: Int = 0,
+        trashCount: Int? = nil,
         formatVersion: Int = 1,
         saltBytes: Int = 16,
         imageCount: Int = 0
@@ -243,6 +244,7 @@ import CryptoKit
             itemCount: itemCount,
             tagCount: tagCount,
             imageCount: imageCount,
+            trashCount: trashCount,
             keyDerivationVersion: 1
         )
         let packageURL = tempRoot.appendingPathComponent("per-entry.clipmemory")
@@ -680,6 +682,118 @@ import CryptoKit
 
     /// BKP-4(a): a manifest itemCount that disagrees with the items.json
     /// payload must abort the import as corrupt.
+    // MARK: - ID-BACKUP-0001 (2026-07-31 Round 5): non-empty trash round-trip
+
+    /// ID-BACKUP-0001: the exporter wrote `itemCount` = items.json count
+    /// only, but the importer validated items.json + trash.json against
+    /// it — so any package with a non-empty trash ALWAYS failed import
+    /// with "manifest itemCount mismatch". End-to-end regression: seed a
+    /// trashed entry, export with the production code path, import.
+    func testExportImportRoundTripWithNonEmptyTrash() throws {
+        try seedPackageSource(crypto: localCrypto)
+        // Non-empty trash — the trigger condition of ID-BACKUP-0001.
+        let trashed = ClipboardItem(
+            content: try XCTUnwrap(localCrypto.encrypt("trashed secret")),
+            type: .text,
+            isEncrypted: true,
+            contentHash: try XCTUnwrap(localCrypto.hmacHex(for: "trashed secret")),
+            deletedAt: Date()
+        )
+        defaults.set(try JSONEncoder().encode([trashed]), forKey: "ClipboardTrashedItems")
+
+        let packageURL = tempRoot.appendingPathComponent("backup-trash.clipmemory")
+        try BackupPackage.exportPackage(
+            to: packageURL,
+            passphrase: "secret123",
+            defaults: defaults,
+            imagesDirectory: imagesDir,
+            keyData: localKeyData
+        )
+
+        // Pre-fix this threw corruptedData("manifest itemCount 1 != items.json entries 2", .manifest)
+        let result = try BackupPackage.importPackage(
+            from: packageURL,
+            passphrase: "secret123",
+            store: store,
+            localCrypto: localCrypto,
+            imagesDirectory: imagesDir
+        )
+
+        XCTAssertEqual(result.itemsImported, 1)
+        XCTAssertEqual(store.trashedItems.count, 1, "trash entries must survive the round-trip")
+        XCTAssertEqual(store.getDecryptedContent(store.trashedItems[0]), "trashed secret")
+    }
+
+    /// ID-BACKUP-0001 (backward compat): packages already written by the
+    /// buggy exporter (itemCount excludes trash, no trashCount field in
+    /// the manifest) must import cleanly — the trash count check only
+    /// applies when the manifest declares it.
+    func testImportAcceptsLegacyPackageWithNonEmptyTrashAndNoTrashCount() throws {
+        let packageCrypto = makePackageCrypto()
+        let item = ClipboardItem(
+            content: try XCTUnwrap(packageCrypto.encrypt("active")),
+            type: .text,
+            isEncrypted: true,
+            contentHash: try XCTUnwrap(packageCrypto.hmacHex(for: "active"))
+        )
+        let trashed = ClipboardItem(
+            content: try XCTUnwrap(packageCrypto.encrypt("in trash")),
+            type: .text,
+            isEncrypted: true,
+            contentHash: try XCTUnwrap(packageCrypto.hmacHex(for: "in trash")),
+            deletedAt: Date()
+        )
+        let packageURL = try constructPackageWithItemsBlob(
+            itemsBlob: try JSONEncoder().encode([item]),
+            trashBlob: try JSONEncoder().encode([trashed]),
+            cryptoForPackage: packageCrypto,
+            itemCount: 1 // buggy exporter counted items.json only; no trashCount field
+        )
+
+        let result = try BackupPackage.importPackage(
+            from: packageURL,
+            passphrase: "secret123",
+            store: store,
+            localCrypto: localCrypto,
+            imagesDirectory: imagesDir
+        )
+
+        XCTAssertEqual(result.itemsImported, 1)
+        XCTAssertEqual(store.trashedItems.count, 1,
+                       "ID-BACKUP-0001: legacy packages with non-empty trash must import")
+    }
+
+    /// ID-BACKUP-0001: a manifest whose trashCount lies about trash.json
+    /// must be rejected (same BKP-4 contract as itemCount/tagCount).
+    func testImportRejectsManifestTrashCountMismatch() throws {
+        let packageCrypto = makePackageCrypto()
+        let trashed = ClipboardItem(
+            content: try XCTUnwrap(packageCrypto.encrypt("in trash")),
+            type: .text,
+            isEncrypted: true,
+            contentHash: try XCTUnwrap(packageCrypto.hmacHex(for: "in trash")),
+            deletedAt: Date()
+        )
+        let packageURL = try constructPackageWithItemsBlob(
+            itemsBlob: Data("[]".utf8),
+            trashBlob: try JSONEncoder().encode([trashed]),
+            cryptoForPackage: packageCrypto,
+            itemCount: 0,
+            trashCount: 5 // manifest lies: trash.json has 1 entry
+        )
+        XCTAssertThrowsError(
+            try BackupPackage.importPackage(
+                from: packageURL, passphrase: "secret123",
+                store: store, localCrypto: localCrypto, imagesDirectory: imagesDir
+            )
+        ) { error in
+            guard case BackupPackageError.corruptedData(_, .manifest) = error else {
+                XCTFail("expected .corruptedData(_, .manifest), got \(error)")
+                return
+            }
+        }
+    }
+
     func testImportRejectsManifestItemCountMismatch() throws {
         let packageCrypto = makePackageCrypto()
         let item = ClipboardItem(
