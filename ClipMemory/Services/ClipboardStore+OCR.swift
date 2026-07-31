@@ -28,7 +28,19 @@ extension ClipboardStore {
 
     /// Attaches OCR-recognized plaintext (encrypted at rest) to an image item.
     /// Called from background OCR pipelines; hops to main for the @Published write.
-    func attachOCRText(to itemId: UUID, text: String) {
+    ///
+    /// ID-OCR-0004 (2026-07-30 audit): `contentHash` is the HMAC of the
+    /// original image bytes. When the original item UUID was deduped away
+    /// by `addItem`'s hash-matches-existing branch (the existing item was
+    /// promoted to the top of the list and the new UUID was discarded),
+    /// the direct `firstIndex(where: { $0.id == itemId })` lookup fails
+    /// and the OCR result for the new UUID is silently dropped. With
+    /// `contentHash`, the fallback path walks `items` for an
+    /// `image`-typed entry whose `contentHash` matches and attaches the
+    /// OCR text to that surviving entry — preserving the OCR work and,
+    /// critically, allowing a previously-failed OCR to be retried simply
+    /// by re-copying the image.
+    func attachOCRText(to itemId: UUID, text: String, contentHash: String? = nil) {
         let apply = { [weak self] in
             guard let self = self else { return }
             // H-4 (2026-07-24 audit): split the combined guard so encrypt
@@ -43,7 +55,21 @@ extension ClipboardStore {
                 NotificationCenter.default.post(name: .encryptionFailed, object: nil)
                 return
             }
-            guard let index = self.items.firstIndex(where: { $0.id == itemId }) else { return }
+            // ID-OCR-0004: prefer the direct id lookup; fall back to
+            // contentHash when the original UUID was deduped away.
+            let directIndex = self.items.firstIndex(where: { $0.id == itemId })
+            let index: Int?
+            if let directIndex = directIndex {
+                index = directIndex
+            } else if let contentHash = contentHash {
+                index = self.items.firstIndex(where: { $0.type == .image && $0.contentHash == contentHash })
+                if index != nil {
+                    Self.logger.error("OCR result routed via contentHash fallback (id \(itemId, privacy: .public) was deduped away); attaching to surviving item")
+                }
+            } else {
+                index = nil
+            }
+            guard let index = index else { return }
             self.items[index].ocrText = encrypted
             self.items[index].ocrAttempted = true
             // H-1 (2026-07-25 audit): OCR text is derived metadata. Using
@@ -165,6 +191,18 @@ extension ClipboardStore {
     /// backfilled in one burst — Vision is compute-bound and unbounded
     /// concurrency causes UI freezes + memory spikes on first launch.
     /// Behavior is otherwise unchanged; this only adds backpressure.
+    ///
+    /// ID-OCR-0003 (2026-07-30 audit): the *Vision* execution is bounded at
+    /// 1 by the serial `com.clipmemory.ocr` queue inside VisionOCRService
+    /// (regardless of this cap's value), so the comment's "Vision
+    /// concurrency" rationale is misleading. The cap's actual role is to
+    /// bound the number of *decrypted image Data buffers* held in memory
+    /// while waiting for the serial queue to drain — a 6K HEIC image is
+    /// ~50 MB decrypted, and 4 parallel buffers = ~200 MB resident during
+    /// a backfill burst. Raising the cap trades memory for backfill
+    /// throughput; lowering it does the opposite. Keep at 4 to match the
+    /// prewarmMaxConcurrent cap (clipboard prewarm) so the codebase has
+    /// one global "buffer-bound concurrency" knob.
     ///
     /// MED-3 (2026-07-26 review): added `onComplete` callback fired when all
     /// candidates have been processed, so tests can wait deterministically

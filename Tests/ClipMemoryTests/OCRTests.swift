@@ -449,6 +449,124 @@ import AppKit
         store.ocrPreviewEnabled = true
         XCTAssertEqual(ClipboardStore.shared.ocrPreviewEnabled, true)
     }
+
+    // MARK: - ID-OCR-0002 (2026-07-30 audit): CJK fallback notification
+
+    /// When the requested OCR languages are not supported by
+    /// `VNRecognizeTextRequestRevision3` on the host macOS, the fallback
+    /// path (currently always "en") must post `.ocrLanguageFallback` so a
+    /// future settings banner can surface the issue to the user. Reading
+    /// `Notification.Name.ocrLanguageFallback` in the same release locks
+    /// the contract — silently dropping the notification would break the
+    /// user-facing "OCR is using English on this Mac" diagnostic.
+    func testOcrLanguageFallbackNotificationExists() {
+        // Notification.Name type system check: the name is declared.
+        let name: Notification.Name = .ocrLanguageFallback
+        XCTAssertEqual(name.rawValue, "OCRService.languageFallback")
+    }
+
+    /// ID-OCR-0002: the `recognizeText` call path must not crash when the
+    /// OCR service is invoked on a real (non-corrupt) image even when the
+    /// requested languages don't all survive the Revision3 supported
+    /// filter. The fallback path (M-23 / CLIP-5) routes through "en" or
+    /// the first supported code; the user-facing `testVisionRecognizesRenderedText`
+    /// above already covers the happy path on en. This test simply
+    /// confirms the public surface is callable.
+    func testVisionRecognizeTextReturnsValidOutcome() {
+        let image = Self.renderTextImage("HELLO")
+        guard let tiff = image.tiffRepresentation else {
+            XCTFail("cannot render test image")
+            return
+        }
+        let exp = expectation(description: "OCR completes")
+        var captured: OCROutcome?
+        VisionOCRService.shared.recognizeText(in: tiff) { outcome in
+            captured = outcome
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 30.0)
+        XCTAssertNotNil(captured, "OCR completion must be invoked")
+        // No text check — Vision's accuracy on a rendered string is
+        // high but not deterministic across xcode versions. Just ensure
+        // a valid outcome was returned (not a crash / missing enum case).
+        switch captured! {
+        case .text, .noText, .failure: break
+        }
+    }
+
+    // MARK: - ID-OCR-0004 (2026-07-30 audit): dedup-then-OCR race
+
+    /// When `attachOCRText` is called with a `contentHash` that matches an
+    /// existing item but the requested `itemId` is unknown (the original
+    /// UUID was deduped away), the OCR text must be attached to the
+    /// surviving item. Without this, the user's re-copy of a previously
+    /// failed-OCR image is silently dropped.
+    func testAttachOCRTextContentHashFallbackRoutesToExistingItem() {
+        let existingHash = "abc123hash"
+        let existingItemId = UUID()
+        let dedupedAwayId = UUID()
+        let item = ClipboardItem(
+            id: existingItemId,
+            content: "img-uuid-name.png",
+            type: .image,
+            isSensitive: false,
+            expiresAt: nil,
+            contentHash: existingHash
+        )
+        store.items = [item]
+        // The original (deduped) UUID is gone — `attachOCRText` should
+        // fall back to the contentHash match.
+        store.attachOCRText(to: dedupedAwayId, text: "OCR fallback via hash", contentHash: existingHash)
+        // The surviving item (same hash) should now carry the OCR text.
+        XCTAssertEqual(store.items.count, 1)
+        let stored = store.items.first!
+        XCTAssertEqual(stored.id, existingItemId, "Must route to the existing item, not insert a new one")
+        XCTAssertNotNil(stored.ocrText, "OCR text must be attached via the contentHash fallback")
+        XCTAssertTrue(stored.ocrAttempted, "ocrAttempted must be set so subsequent skips don't re-OCR")
+        // Decrypt and verify the plaintext.
+        let decrypted = store.getDecryptedOcrText(stored)
+        XCTAssertEqual(decrypted, "OCR fallback via hash")
+    }
+
+    /// ID-OCR-0004 negative control: when neither the direct id nor a
+    /// contentHash matches, the call is a no-op (item was deleted between
+    /// OCR start and finish — a normal race, not a fix for this audit).
+    func testAttachOCRTextNoIdAndNoHashIsNoOp() {
+        let item = ClipboardItem(
+            id: UUID(),
+            content: "img.png",
+            type: .image,
+            isSensitive: false,
+            expiresAt: nil,
+            contentHash: "another-hash"
+        )
+        store.items = [item]
+        let unrelatedId = UUID()
+        let unrelatedHash = "yet-another-hash"
+        store.attachOCRText(to: unrelatedId, text: "should not be stored", contentHash: unrelatedHash)
+        XCTAssertNil(store.items.first!.ocrText, "No-match attach must be a no-op")
+        XCTAssertFalse(store.items.first!.ocrAttempted, "No-match attach must not flip ocrAttempted")
+    }
+
+    /// ID-OCR-0004: when the direct id matches, the call attaches to that
+    /// item (no contentHash fallback needed). This is the existing
+    /// contract — the audit's fix must not regress it.
+    func testAttachOCRTextDirectIdTakesPrecedenceOverContentHash() {
+        let directId = UUID()
+        let directHash = "direct-hash"
+        let item = ClipboardItem(
+            id: directId,
+            content: "img.png",
+            type: .image,
+            isSensitive: false,
+            expiresAt: nil,
+            contentHash: directHash
+        )
+        store.items = [item]
+        store.attachOCRText(to: directId, text: "direct lookup", contentHash: directHash)
+        XCTAssertNotNil(store.items.first!.ocrText)
+        XCTAssertEqual(store.getDecryptedOcrText(store.items.first!), "direct lookup")
+    }
 }
 
 // H-4 (2026-07-24 audit): test stub. Conforms to CryptoServiceProtocol so

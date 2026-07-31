@@ -51,8 +51,8 @@ extension ClipboardStore: ClipboardMonitorDelegate {
     }
     func monitorDidCaptureItem(_ item: ClipboardItem) { addItem(item) }
     func ocrEnabledForMonitor() -> Bool { ocrEnabled }
-    func monitorDidRecognizeText(_ text: String, forImageItemId id: UUID) {
-        attachOCRText(to: id, text: text)
+    func monitorDidRecognizeText(_ text: String, forImageItemId id: UUID, contentHash: String?) {
+        attachOCRText(to: id, text: text, contentHash: contentHash)
     }
 }
 

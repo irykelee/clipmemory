@@ -458,7 +458,14 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
             if self?.delegate?.ocrEnabledForMonitor() == true {
                 VisionOCRService.shared.recognizeText(in: imageData) { outcome in
                     if case .text(let text) = outcome, !text.isEmpty {
-                        self?.delegate?.monitorDidRecognizeText(text, forImageItemId: id)
+                        // ID-OCR-0004 (2026-07-30 audit): pass the
+                        // contentHash so the store can recover when the
+                        // original `id` was deduped away before OCR
+                        // completion. The cost is one extra String
+                        // capture in the closure; the upside is the
+                        // existing item's `ocrText` is no longer
+                        // permanently lost when the user re-copies.
+                        self?.delegate?.monitorDidRecognizeText(text, forImageItemId: id, contentHash: contentHash)
                     }
                 }
             }

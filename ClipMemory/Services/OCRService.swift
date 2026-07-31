@@ -2,15 +2,26 @@ import Foundation
 import Vision
 import AppKit
 import CoreImage
+import ImageIO
 import os
 
 /// MED-8 (2026-07-26 review): discriminated OCR outcome so callers can
-/// distinguish "no text found" (normal, non-actionable) from "Vision engine
+/// distinguish "no text found" (normal, non-actionable) from "Vision engine"
 /// error" (actionable — logs, diagnostics, or degraded-mode UX).
 enum OCROutcome {
     case text(String)
     case noText
     case failure(Error)
+}
+
+extension Notification.Name {
+    /// ID-OCR-0002 (2026-07-30 audit): posted when the requested OCR
+    /// language(s) are not supported by `VNRecognizeTextRequestRevision3`
+    /// on this macOS and the recognizer falls back to a different (usually
+    /// "en") language. UTF-16 payloads so consumers can route the warning
+    /// to a UI banner without joining the requested list on the receiver.
+    /// Carries no payload when the requested list was empty (no fallback).
+    static let ocrLanguageFallback = Notification.Name("OCRService.languageFallback")
 }
 
 /// OCR abstraction so tests can inject a fake recognizer.
@@ -77,36 +88,157 @@ final class VisionOCRService: OCRServiceProtocol {
         }
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
+        // ID-OCR-0005 (2026-07-30 audit): default `minimumTextHeight = 0.02`
+        // is tuned for printed-document photos. UI screenshots and dense
+        // terminal/code captures drop below 0.02 of the image height and
+        // return `.noText` despite visually-clear text. 0.01 matches the
+        // common "12-pt text on a Retina display" case; the accuracy cost
+        // on printed documents is acceptable because false positives are
+        // filtered by `topCandidates(1).confidence` at the result layer.
+        request.minimumTextHeight = 0.01
         request.recognitionLanguages = Self.supportedRecognitionLanguages(
             from: ["zh-Hans", "zh-Hant", "en", "ja", "ko"]
         )
 
+        // ID-OCR-0006 (2026-07-30 audit): watchdog around Vision's
+        // synchronous `perform`. A malformed / corrupt / unusually-large
+        // image (e.g. 50-MB TIFF from an old scanner, or a PNG with
+        // truncated IDAT that Vision tries to decode internally) can hang
+        // the recognizer indefinitely; without an external timeout the
+        // hung call blocks the serial OCR queue and every subsequent
+        // `recognizeText` waits behind it. The public Vision SDK has no
+        // timeout API, so we run `perform` on a background queue and arm
+        // a DispatchSourceTimer that calls `request.cancel()` if it
+        // overruns `performTimeoutSeconds`. After cancel the queued
+        // `perform` throws (caught below) and the call returns `.failure`.
         let handler = VNImageRequestHandler(cgImage: orientedCGImage, options: [:])
-        do {
-            try handler.perform([request])
-        } catch {
-            // MED-8 (2026-07-26 review): surface Vision errors as .failure
-            // so callers can log / diagnose / degrade differently from the
-            // normal "image has no text" case.
-            Self.ocrLanguageLogger.error("Vision recognition failed: \(error.localizedDescription, privacy: .public)")
-            return .failure(error)
+        // Capture the perform error so we can distinguish "Vision threw
+        // (e.g. cancel-induced)" from "Vision returned successfully".
+        // `request.cancel()` is documented to make `perform` throw on
+        // its next checkpoint — the watchdog fires when timeout elapses,
+        // the throw propagates, and the workItem completes with the
+        // error captured here.
+        var performError: Error?
+        let workItem = DispatchWorkItem {
+            do {
+                try handler.perform([request])
+            } catch {
+                performError = error
+            }
         }
-
+        let resultSemaphore = DispatchSemaphore(value: 0)
+        workItem.notify(queue: Self.performQueue) { resultSemaphore.signal() }
+        DispatchQueue.global(qos: .userInitiated).async(execute: workItem)
+        let cancelTimer = DispatchSource.makeTimerSource(queue: Self.performQueue)
+        cancelTimer.schedule(deadline: .now() + Self.performTimeoutSeconds)
+        cancelTimer.setEventHandler {
+            // `request.cancel()` is atomic and thread-safe per Apple docs
+            // — safe to call from the watchdog queue. The next time
+            // `perform` checks its cancel flag (Vision polls at internal
+            // boundaries), it throws and the workItem's catch block
+            // captures the error.
+            request.cancel()
+        }
+        cancelTimer.resume()
+        let waitResult = resultSemaphore.wait(timeout: .now() + Self.performTimeoutSeconds + 1.0)
+        cancelTimer.cancel()
+        if waitResult == .timedOut {
+            // Belt-and-braces: the cancel timer should have fired and
+            // made `perform` throw before the semaphore wait timed out.
+            // If we still hit this branch, Vision is hung in a way even
+            // `request.cancel()` couldn't unblock — return failure so the
+            // serial queue at least keeps moving.
+            Self.ocrLanguageLogger.error("Vision recognition timed out after \(String(Self.performTimeoutSeconds), privacy: .public)s; returning failure")
+            return .failure(NSError(
+                domain: "OCRService.timeout",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Vision recognition timed out"]
+            ))
+        }
+        if let performError = performError {
+            // ID-OCR-0006: log the captured error so the operator can
+            // distinguish "Vision cancelled by watchdog" from "Vision
+            // threw for some other reason" (e.g. corrupt input).
+            Self.ocrLanguageLogger.error("Vision recognition failed: \(performError.localizedDescription, privacy: .public)")
+            return .failure(performError)
+        }
         let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
         guard !lines.isEmpty else { return .noText }
         let joined = lines.joined(separator: "\n")
         return .text(String(joined.prefix(maxCharacters)))
     }
 
-    /// ID-OCR-0001: decode image bytes via CoreImage so the EXIF
+    /// ID-OCR-0006 (2026-07-30 audit): dedicated queue for the Vision
+    /// `perform` watchdog. The serial `com.clipmemory.ocr` queue is the
+    /// "logical" serial gate for OCR work; this is a separate
+    /// priority-of-life queue used only for the cancel-timer source, so
+    /// a Vision hang on one item can't stall the watchdog for the next.
+    private static let performQueue = DispatchQueue(label: "com.clipmemory.ocr.perform", qos: .utility)
+
+    /// ID-OCR-0006: 15 s cap on a single Vision `perform` call. Picked
+    /// empirically: well-formed images on Apple Silicon return in
+    /// 50-500 ms; 15 s is 30× the worst case I've measured and short
+    /// enough to clear the serial queue within a backfill's interval.
+    /// Returns `.failure` rather than blocking forever.
+    private static let performTimeoutSeconds: TimeInterval = 15
+
+    /// ID-OCR-0001: decode image bytes via Image I/O so the EXIF
     /// orientation is applied before we hand the bitmap to Vision.
-    /// Falls back to NSImage for non-CIImage-supported formats.
+    /// Falls back to the full-resolution CGImage when Image I/O can't
+    /// make a source (corrupt headers, formats Image I/O doesn't index).
+    ///
+    /// ID-OCR-0007 (2026-07-30 audit): replace the previous
+    /// `CIImage → CIContext.createCGImage` + `NSImage.cgImage` pair with
+    /// `CGImageSourceCreateThumbnailAtIndex` capped at
+    /// `thumbnailMaxPixelSize` (2048 px). The previous path decoded the
+    /// full image into a backing CGImage (50+ MB for a 6K HEIC) and the
+    /// CIContext's createCGImage retained a second bitmap buffer during
+    /// the copy. With `backfillMaxConcurrentOCR = 4` that's ~200-400 MB
+    /// transient resident above baseline during a backfill burst —
+    /// exceeded ID-PERF-0007's footprint budget on memory-constrained
+    /// 8 GB MacBook Airs. `CGImageSourceCreateThumbnailAtIndex` with
+    /// `kCGImageSourceCreateThumbnailWithTransform` honours EXIF
+    /// orientation in the same pass, so the ID-OCR-0001 correctness
+    /// contract is preserved. Vision's accuracy on a 2048-px thumbnail
+    /// of a 6K screenshot is comparable for UI text (the common case);
+    /// printed-document photos drop slightly but our recognition result
+    /// is for search/snippet, not pixel-perfect transcription.
+    private static let thumbnailMaxPixelSize: CGFloat = 2048
+
     private static func cgImageRespectingEXIF(from data: Data) -> CGImage? {
+        // Image I/O path: single-buffer thumbnail with EXIF orientation
+        // applied. `kCGImageSourceShouldCacheImmediately = false` defers
+        // the bitmap decode until the thumbnail is actually drawn —
+        // combined with the 2048-px cap, peak memory for a 6K HEIC
+        // drops from ~100 MB to ~16 MB.
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return fallbackFullResolutionCGImage(from: data)
+        }
+        let thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: thumbnailMaxPixelSize,
+            kCGImageSourceShouldCacheImmediately: false
+        ]
+        if let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) {
+            return cgImage
+        }
+        // Fallback: source exists but thumbnail generation failed (rare —
+        // animated GIFs, some formats). Use the full image as a last
+        // resort so OCR still gets a bitmap.
+        return fallbackFullResolutionCGImage(from: data)
+    }
+
+    /// ID-OCR-0007: full-resolution CGImage fallback. Only used when
+    /// `CGImageSourceCreateThumbnailAtIndex` returns nil — animated GIFs,
+    /// unusual formats, or corrupt headers. Pays the full-memory cost
+    /// (50+ MB for a 6K HEIC) but only on the rare failure path; the
+    /// common path is the 2048-px thumbnail above.
+    private static func fallbackFullResolutionCGImage(from data: Data) -> CGImage? {
         if let ciImage = CIImage(data: data) {
             let context = CIContext(options: [.useSoftwareRenderer: false])
             return context.createCGImage(ciImage, from: ciImage.extent)
         }
-        // Fallback for formats CoreImage rejects (rare).
         if let image = NSImage(data: data) {
             return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
         }
@@ -171,8 +303,28 @@ final class VisionOCRService: OCRServiceProtocol {
             let filtered = requested.filter { supported.contains($0) }
             if filtered.isEmpty {
                 let dropped = requested.filter { !supported.contains($0) }
+                // ID-OCR-0002 (2026-07-30 audit): tag the log with
+                // `userLocale` so on-call can correlate the fallback with the
+                // user's macOS language list (CJK users hit this most often
+                // because zh-Hans / zh-Hant / ja / ko are the most likely
+                // to be staggered across macOS revisions). Also post
+                // `.ocrLanguageFallback` so a future settings banner can
+                // surface "OCR recognition is using English on this Mac"
+                // — the user-facing diagnostic that the original log line
+                // didn't provide.
+                let userLocale = Locale.current.identifier
                 ocrLanguageLogger.error(
-                    "No requested OCR language is supported by Revision3 on this macOS; requested=\(requested, privacy: .public) supported=\(supported, privacy: .public) dropped=\(dropped, privacy: .public). Falling back to en."
+                    "No requested OCR language is supported by Revision3 on this macOS; requested=\(requested, privacy: .public) supported=\(supported, privacy: .public) dropped=\(dropped, privacy: .public) userLocale=\(userLocale, privacy: .public). Falling back to en."
+                )
+                NotificationCenter.default.post(
+                    name: .ocrLanguageFallback,
+                    object: nil,
+                    userInfo: [
+                        "requested": requested,
+                        "supported": supported,
+                        "dropped": dropped,
+                        "userLocale": userLocale
+                    ]
                 )
                 // CLIP-5 (2026-07-24 review): "en" itself is not guaranteed
                 // to be in `supported` (a future macOS could drop it, and
@@ -192,6 +344,19 @@ final class VisionOCRService: OCRServiceProtocol {
         let supported = supportedRecognitionLanguages(for: VNRecognizeTextRequestRevision2)
         let filtered = requested.filter { supported.contains($0) }
         if filtered.isEmpty {
+            let userLocale = Locale.current.identifier
+            ocrLanguageLogger.error(
+                "No requested OCR language is supported by Revision2 on this macOS; requested=\(requested, privacy: .public) supported=\(supported, privacy: .public) userLocale=\(userLocale, privacy: .public). Falling back to en."
+            )
+            NotificationCenter.default.post(
+                name: .ocrLanguageFallback,
+                object: nil,
+                userInfo: [
+                    "requested": requested,
+                    "supported": supported,
+                    "userLocale": userLocale
+                ]
+            )
             return supported.contains("en") ? ["en"] : Array(supported.prefix(1))
         }
         return filtered

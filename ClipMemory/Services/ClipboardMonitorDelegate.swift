@@ -34,7 +34,13 @@ protocol ClipboardMonitorDelegate: AnyObject {
     /// Attach OCR-recognized plaintext to an already-persisted image item.
     /// The store hops back to main thread internally and re-encrypts the
     /// `ocrText` ciphertext at rest.
-    func monitorDidRecognizeText(_ text: String, forImageItemId id: UUID)
+    ///
+    /// ID-OCR-0004 (2026-07-30 audit): pass `contentHash` so the store can
+    /// recover when the original `id` was deduped away between the
+    /// monitor's `processImageData` allocation and the OCR completion.
+    /// Without this, the OCR result for the new UUID is silently dropped
+    /// and the existing item's `ocrText` is never refreshed.
+    func monitorDidRecognizeText(_ text: String, forImageItemId id: UUID, contentHash: String?)
 }
 
 // L-2 (2026-07-24 audit): the previous default-implementation extension
