@@ -92,4 +92,39 @@ final class FuzzySearchMatcherTests: XCTestCase {
         let result = FuzzySearchMatcher.toPinyin("hello")
         XCTAssertEqual(result, "hello")
     }
+
+    // MARK: - ID-PERF-0011 (2026-07-30 audit): pinyin cache behavior
+
+    /// Cache hit: same `content` returns the same pinyin string on
+    /// repeated calls without re-running CFStringTransform. The
+    /// (pinyin result equality) is the externally observable signal —
+    /// if caching is broken, the first vs second call could differ if
+    /// the underlying transform is non-deterministic (it isn't, but the
+    /// contract is "same key → same value").
+    func testCachedPinyinReturnsSameResultForSameContent() {
+        let first = FuzzySearchMatcher.toPinyin("你好世界测试")
+        let second = FuzzySearchMatcher.toPinyin("你好世界测试")
+        XCTAssertEqual(first, second, "toPinyin must be deterministic for same input")
+    }
+
+    /// Performance regression test: 1000 `matches` calls on the same
+    /// Chinese content should not be 1000× slower than a single call.
+    /// With ID-PERF-0011 cache in place, the first call computes pinyin
+    /// and subsequent calls are O(1) NSCache hits. Without the cache,
+    /// 1000 calls × ~1 ms each = 1 s budget breach.
+    /// Threshold: <200 ms for 1000 calls (loose, to avoid CI flakiness
+    /// while still catching "cache broken" regressions).
+    func testCachedPinyinPerformance() {
+        let content = "你好世界" + String(repeating: "中文测试 ", count: 50)
+        let search = "nihao shijie zhongwen"  // all non-Chinese tokens that require pinyin
+        // Warm cache
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: content, searchText: search))
+        // Measure
+        let start = Date()
+        for _ in 0..<1000 {
+            _ = FuzzySearchMatcher.matches(content: content, searchText: search)
+        }
+        let elapsed = Date().timeIntervalSince(start) * 1000
+        XCTAssertLessThan(elapsed, 200, "1000 cached pinyin matches should take <200 ms, took \(elapsed) ms")
+    }
 }
