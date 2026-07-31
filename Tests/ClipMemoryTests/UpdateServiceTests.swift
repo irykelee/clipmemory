@@ -136,6 +136,69 @@ final class UpdateServiceTests: XCTestCase {
                        "unparsable mirror data must not block the consented fallback")
     }
 
+    // MARK: - ID-UPDATE-0001 (2026-07-31 Round 5): updater must start after probe
+
+    /// ID-UPDATE-0001: `startAfterFeedProbe` captured `probeGeneration`
+    /// BEFORE `triggerProbe()` — but `triggerProbe()` always increments it
+    /// first thing, so the post-await guard `myGeneration == probeGeneration`
+    /// could never pass and `startUpdater()` was dead code. Production
+    /// (SUFeedURL always present) always took this path, so Sparkle never
+    /// started: no automatic checks, manual checks silently no-op'd.
+    /// All pre-existing tests use `autoStart: false`, so the path had zero
+    /// coverage. This test drives the probe-then-start path directly and
+    /// asserts the start is reached exactly once.
+    @MainActor
+    func testStartAfterFeedProbeStartsUpdater() async {
+        let stub = StubProbeEngine()
+        await stub.setNextDecision(FeedProbeDecision(
+            chosenURL: primary,
+            usedChannelID: "primary",
+            reason: .automaticReachable,
+            primaryAppcastXML: nil,
+            primaryLatestDate: nil
+        ))
+        let service = UpdateService(probeEngine: stub, autoStart: false)
+        service.hasFeedURL = { true } // test runner bundle has no SUFeedURL
+        var startCount = 0
+        service.startUpdaterHook = { startCount += 1 }
+
+        await service.startAfterFeedProbe()
+
+        XCTAssertEqual(startCount, 1,
+                       "ID-UPDATE-0001: startUpdater() must be reached after our own probe finishes")
+    }
+
+    /// The generation guard must still block the start when a NEWER probe
+    /// ran while we were awaiting (e.g. the user switched the update-source
+    /// policy mid-probe). Simulated with a delayed stub decision plus an
+    /// extra triggerProbe fired during the delay.
+    @MainActor
+    func testStartAfterFeedProbeSkipsStartWhenNewerProbeRan() async {
+        let stub = StubProbeEngine()
+        await stub.enqueueDecision(FeedProbeDecision(
+            chosenURL: primary,
+            usedChannelID: "primary",
+            reason: .automaticReachable,
+            primaryAppcastXML: nil,
+            primaryLatestDate: nil
+        ), delaySeconds: 0.3)
+        let service = UpdateService(probeEngine: stub, autoStart: false)
+        service.hasFeedURL = { true }
+        var startCount = 0
+        service.startUpdaterHook = { startCount += 1 }
+
+        async let firstProbe: Void = service.startAfterFeedProbe()
+        // Let the first probe get in flight, then run a newer probe
+        // (setPolicy does exactly this in production). The stub's queue is
+        // empty for it → nil decision → only the generation bump matters.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        await service.triggerProbe()
+        await firstProbe
+
+        XCTAssertEqual(startCount, 0,
+                       "a newer in-flight probe must suppress the stale path's startUpdater()")
+    }
+
     // MARK: - Feed policy (UpdateSourceSwitch spec §3.1, §5 tests 1-4)
 
     func testPolicyMigrationFromTrueConsentYieldsAutomatic() {

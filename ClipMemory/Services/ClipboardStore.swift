@@ -1564,6 +1564,10 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         evictCaches(for: item)
         trashStore.moveToTrash(item, evictCaches: { _ in }, didMove: { [weak self] in
             self?.items.removeAll { $0.id == item.id }
+            // ID-CRASH-0001 (2026-07-31): every `items` mutation MUST
+            // invalidate the ID-PERF-0015 index — a stale map crashes or
+            // silently targets the wrong item on the next pin/tag/moveToTop.
+            self?.invalidateItemIndex()
             self?.updatePinnedItems()
             self?.scheduleSave()
             self?.rebuildDedupHashSet()
@@ -1575,6 +1579,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         let idsToMove = Set(itemsToMove.map { $0.id })
         trashStore.moveToTrash(itemsToMove, evictCaches: { _ in }, didMove: { [weak self] in
             self?.items.removeAll { idsToMove.contains($0.id) }
+            self?.invalidateItemIndex() // ID-CRASH-0001
             self?.updatePinnedItems()
             self?.scheduleSave()
             self?.rebuildDedupHashSet()
@@ -1590,6 +1595,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     func restoreFromTrash(_ item: ClipboardItem) {
         trashStore.restoreFromTrash(item, didRestore: { [weak self] restored in
             self?.items.insert(restored, at: 0)
+            self?.invalidateItemIndex() // ID-CRASH-0001
             self?.updatePinnedItems()
             self?.scheduleSave()
             self?.rebuildDedupHashSet()

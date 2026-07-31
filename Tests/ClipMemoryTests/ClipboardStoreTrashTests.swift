@@ -128,6 +128,90 @@ import XCTest
         XCTAssertEqual(d, "Second", "Restored item should be at top")
     }
 
+    // MARK: - ID-CRASH-0001 (2026-07-31 Round 5): itemIndex invalidation on trash paths
+
+    /// ID-CRASH-0001: `moveToTrash` mutated `items` without calling
+    /// `invalidateItemIndex()`, leaving the ID-PERF-0015 UUID→index map
+    /// stale. Repro: pin (builds the map) → delete the front item
+    /// (all later indices shift) → pin again. Before the fix the stale
+    /// index either crashed (`Index out of range`) or silently toggled
+    /// the WRONG item.
+    func testPinDeletePinDoesNotUseStaleItemIndex() {
+        let itemA = ClipboardItem(content: "A", type: .text)
+        let itemB = ClipboardItem(content: "B", type: .text)
+        let itemC = ClipboardItem(content: "C", type: .text)
+        store.addItem(itemA)
+        store.addItem(itemB)
+        store.addItem(itemC)
+        store.flushPendingSaves()
+        // items = [C, B, A]
+
+        // Build the UUID→index map.
+        store.togglePin(itemC)
+        XCTAssertTrue(store.items[0].isPinned)
+
+        // Delete the front item: indices of B/A shift by one.
+        store.deleteItem(store.items[0]) // deletes C
+        store.flushPendingSaves()
+        // items = [B, A]; a stale map still says B→1, A→2 (2 is out of bounds)
+
+        // Pre-fix: pinning B toggled items[1] (= A, wrong item);
+        // pinning A crashed on index 2.
+        store.togglePin(itemB)
+        XCTAssertEqual(store.getDecryptedContent(store.items[0]), "B")
+        XCTAssertTrue(store.items[0].isPinned, "B must be pinned")
+        XCTAssertFalse(store.items[1].isPinned, "A must NOT be toggled by B's pin")
+
+        store.togglePin(itemA) // pre-fix: Index out of range crash
+        XCTAssertTrue(store.items[1].isPinned, "A must be pinned")
+    }
+
+    /// ID-CRASH-0001 (batch path): `moveToTrash(_ items:)` had the same
+    /// missing invalidation — after batch deletion the stale map points
+    /// past the end of the shrunk array.
+    func testBatchTrashInvalidatesItemIndex() {
+        let itemA = ClipboardItem(content: "A", type: .text)
+        let itemB = ClipboardItem(content: "B", type: .text)
+        let itemC = ClipboardItem(content: "C", type: .text)
+        store.addItem(itemA)
+        store.addItem(itemB)
+        store.addItem(itemC)
+        store.flushPendingSaves()
+        // items = [C, B, A]; build the map
+        store.togglePin(itemC)
+
+        store.deleteItems([itemC, itemB])
+        store.flushPendingSaves()
+        // items = [A]; stale map says A→2 → pre-fix crash on next pin
+        store.togglePin(itemA)
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertTrue(store.items[0].isPinned, "A must be pinned, not crash")
+    }
+
+    /// ID-CRASH-0001 (restore path): `restoreFromTrash` inserts at 0,
+    /// shifting every index — the stale map then swaps item positions.
+    func testRestoreFromTrashInvalidatesItemIndex() {
+        let itemA = ClipboardItem(content: "A", type: .text)
+        let itemB = ClipboardItem(content: "B", type: .text)
+        store.addItem(itemA)
+        store.addItem(itemB)
+        store.flushPendingSaves()
+        // items = [B, A]; build the map
+        store.togglePin(itemB)
+        store.togglePin(itemB) // unpin B again, keep the built map
+
+        store.deleteItem(itemA) // items = [B]
+        store.flushPendingSaves()
+        store.restoreFromTrash(store.trashedItems[0]) // items = [A, B]
+        store.flushPendingSaves()
+        // Stale map still says B→0, A→1 (swapped). Pre-fix: pinning B
+        // toggled items[0] = A.
+        store.togglePin(itemB)
+        XCTAssertEqual(store.getDecryptedContent(store.items[0]), "A")
+        XCTAssertFalse(store.items[0].isPinned, "A must NOT be toggled by B's pin")
+        XCTAssertTrue(store.items[1].isPinned, "B must be pinned")
+    }
+
     // MARK: - Permanent delete
 
     func testDeletePermanentlyRemovesFromTrash() {

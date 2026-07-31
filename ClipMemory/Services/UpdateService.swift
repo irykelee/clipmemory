@@ -353,12 +353,25 @@ final class UpdateService {
         updaterController.updater.resetUpdateCycleAfterShortDelay()
     }
 
+    /// ID-UPDATE-0001 (2026-07-31 Round 5): SUFeedURL presence check,
+    /// injectable for tests — the test runner bundle has no SUFeedURL key,
+    /// so the probe path would never be exercised otherwise.
+    var hasFeedURL: () -> Bool = {
+        Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") is String
+    }
+
+    /// ID-UPDATE-0001: test observation hook fired at the top of
+    /// `startUpdater()` so tests can assert the start path was reached.
+    var startUpdaterHook: (() -> Void)?
+
     /// Probe the primary feed; only with persisted (or freshly given) user
     /// consent fall back to the jsDelivr mirror, then start the updater.
     /// The network fetches run off the main thread; Sparkle calls stay on main.
+    /// Internal (not private) since ID-UPDATE-0001 so tests can drive the
+    /// probe-then-start path directly.
     @MainActor
-    private func startAfterFeedProbe() async {
-        guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") is String else {
+    func startAfterFeedProbe() async {
+        guard hasFeedURL() else {
             startUpdater()
             return
         }
@@ -366,9 +379,15 @@ final class UpdateService {
         // so we can detect mid-probe setPolicy() calls. If a new
         // triggerProbe() ran while we were awaiting, skip startUpdater() to
         // avoid racing the newer probe's writeback.
+        // ID-UPDATE-0001 (2026-07-31): triggerProbe() ALWAYS increments the
+        // generation exactly once — our own probe. The original guard
+        // (`myGeneration == probeGeneration`) could therefore never pass and
+        // startUpdater() was dead code: Sparkle never started in production.
+        // Our own probe accounts for exactly +1; anything beyond that means
+        // a newer probe (e.g. setPolicy) ran while we were awaiting.
         let myGeneration = probeGeneration
         await triggerProbe()
-        guard myGeneration == probeGeneration else { return }
+        guard probeGeneration == myGeneration + 1 else { return }
         startUpdater()
     }
 
@@ -381,6 +400,7 @@ final class UpdateService {
 
     @MainActor
     private func startUpdater() {
+        startUpdaterHook?() // ID-UPDATE-0001: test observation hook
         do {
             try updaterController.updater.start()
         } catch {
