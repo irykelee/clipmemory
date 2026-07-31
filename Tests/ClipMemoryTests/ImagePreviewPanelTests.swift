@@ -65,6 +65,24 @@ final class ImagePreviewPanelTests: XCTestCase {
         XCTAssertEqual(layout.imageSize, wideShort)
     }
 
+    /// User-reported bug (2026-07-31): a window screenshot whose height
+    /// fills the screen (e.g. a near-fullscreen app window, 700×958 on a
+    /// 1512×982 display) falls into the scrollable branch and gets a
+    /// cap-sized panel (1360×883) while the imageView is only 700 wide —
+    /// the ~660 px to the right of the document renders as blank panel
+    /// background. The panel must hug the image width and only scroll
+    /// vertically.
+    func testFullHeightWindowScreenshotPanelHugsImageWidth() {
+        let fullHeight = NSSize(width: 700, height: 958) // height ≈ visible frame height
+        let layout = ImagePreviewPanel.layout(imageSize: fullHeight, screenSize: screen)
+        XCTAssertTrue(layout.scrollable, "taller than 90% of screen: must scroll vertically")
+        XCTAssertEqual(layout.imageSize, fullHeight, "image keeps native resolution")
+        XCTAssertEqual(layout.panelSize.width, fullHeight.width,
+                       "panel must not be wider than the image — dead space renders as blank on the right")
+        XCTAssertEqual(layout.panelSize.height, floor(screen.height * 0.9),
+                       "panel height is capped at 90% of the screen")
+    }
+
     // MARK: - DIAG-2026-07-31: wide-image long-press produces a white screen
 
     /// Render a wide screenshot (6020×2400, iPhone 6K landscape capture)

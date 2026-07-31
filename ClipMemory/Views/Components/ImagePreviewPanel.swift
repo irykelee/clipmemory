@@ -41,6 +41,20 @@ enum ImagePreviewPanel {
             // within the panel; no scrolling needed.
             return Layout(panelSize: imageSize, imageSize: imageSize, scrollable: false)
         }
+        // Mirror of the wide-short case above: the image fits cap.width
+        // but is taller than cap.height (typical: a near-fullscreen
+        // window screenshot — its height matches the visible frame, e.g.
+        // 700×958 on a 1360×883 cap). The "scrollable" branch below would
+        // size the panel to the FULL cap, leaving cap.width − image.width
+        // of blank panel background to the right of the document. Hug the
+        // image width and cap only the height; scroll vertically.
+        if imageSize.width <= cap.width {
+            return Layout(
+                panelSize: NSSize(width: imageSize.width, height: cap.height),
+                imageSize: imageSize,
+                scrollable: true
+            )
+        }
         // Too big in BOTH dimensions: keep native resolution and scroll —
         // downscaling a wide screenshot makes its text unreadable again.
         return Layout(panelSize: cap, imageSize: imageSize, scrollable: true)
