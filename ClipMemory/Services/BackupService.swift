@@ -110,7 +110,22 @@ final class BackupService {
             let value = defaults.integer(forKey: Self.keepCountKey)
             return [3, 7, 14, 30].contains(value) ? value : 7
         }
-        set { defaults.set(newValue, forKey: Self.keepCountKey) }
+        set {
+            // ID-BACKUP-0003 (2026-07-31 audit): lowering the retention count
+            // used to leave the now-over-limit old backups on disk until the
+            // next backup triggered pruning — disk usage diverged from the
+            // user's expectation for up to 24h. Prune immediately when the
+            // value drops. Async so the settings UI never blocks on the
+            // removeItem cost of Images/-carrying backup dirs; BackupService
+            // is a singleton, so `self` capture is effectively immortal anyway.
+            let oldValue = keepCount
+            defaults.set(newValue, forKey: Self.keepCountKey)
+            if newValue < oldValue {
+                DispatchQueue.global(qos: .utility).async { [weak self] in
+                    self?.pruneOldBackups()
+                }
+            }
+        }
     }
 
     var lastBackupDate: Date? {
@@ -132,8 +147,17 @@ final class BackupService {
     /// disabled or when the last backup is younger than 24h.
     func performBackupIfNeeded() {
         guard isEnabled else { return }
-        if let last = lastBackupDate, Date().timeIntervalSince(last) < Self.minimumInterval {
-            return
+        if let last = lastBackupDate {
+            let elapsed = Date().timeIntervalSince(last)
+            // ID-BACKUP-0002 (2026-07-31 audit): the throttle is wall-clock
+            // based. A system clock rollback (NTP correction, manual change)
+            // after the last backup yields a NEGATIVE delta, which is always
+            // < minimumInterval — the daily backup silently stalled until the
+            // wall clock caught back up. Treat a negative delta as "due now"
+            // (fail-open towards backing up) instead of extending the window.
+            if elapsed >= 0, elapsed < Self.minimumInterval {
+                return
+            }
         }
         DispatchQueue.global(qos: .utility).async { [weak self] in
             // M-2 (2026-07-23): backupNow now throws. Auto-backup path is
@@ -194,7 +218,16 @@ final class BackupService {
         let destination = backupsDirectory.appendingPathComponent(Self.backupFormatter.string(from: Date()), isDirectory: true)
 
         do {
-            try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+            // ID-SECURITY-0004 (2026-07-31 audit): backup dirs were created
+            // with default 0o755, exposing backup metadata (timestamp, item
+            // count via items.json size, image count) to other local users on
+            // shared hosts. Align with ImageStorage's ID-SECURITY-0002 fix —
+            // 0o700. The blobs themselves are encrypted at rest either way.
+            try fileManager.createDirectory(
+                at: destination,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
         } catch {
             logger.error("Backup failed (directory): \(error.localizedDescription)")
             throw BackupError.directoryCreationFailed(underlying: error)

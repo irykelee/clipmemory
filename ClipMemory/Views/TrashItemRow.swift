@@ -49,10 +49,6 @@ struct TrashItemRow: View, Equatable {
         return Self.deletedAtFormatter.localizedString(for: deletedAt, relativeTo: Date())
     }
 
-    private var decryptedContent: String {
-        store.getDecryptedContent(item) ?? ""
-    }
-
     var body: some View {
         // 2026-07-25: reading fontScale subscribes this view to @AppStorage
         // invalidation — an unread wrapper creates no dependency, so
@@ -258,6 +254,8 @@ struct TrashItemRow: View, Equatable {
     }
 
     private var plainTextFallback: String {
-        ClipboardStore.shared.getRTFPlaintext(item)
+        // ID-VIEW-0005 (2026-07-31 audit): use the injected store (L-16)
+        // instead of bypassing DI via ClipboardStore.shared.
+        store.getRTFPlaintext(item)
     }
 }

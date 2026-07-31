@@ -201,6 +201,10 @@ struct TagPickerSheet: View {
                     Button {
                         TagPickerLogic.attachOrCreateTag(name: name, colorHex: newColor, to: item.id, store: store)
                         suggestionsToCreate.removeAll { $0 == name }
+                        // ID-VIEW-0004 (2026-07-31 audit): adopting a
+                        // suggestion IS a mutation — mark it so Done enables
+                        // (previously stayed disabled and looked like a no-op).
+                        hasChanges = true
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "plus").font(.system(size: sz(9)))
@@ -233,6 +237,10 @@ struct TagPickerSheet: View {
                     Button {
                         TagPickerLogic.attachOrCreateTag(name: name, colorHex: newColor, to: item.id, store: store)
                         suggestedNames.removeAll { $0 == name }
+                        // ID-VIEW-0004 (2026-07-31 audit): same as the
+                        // suggestions block — adopting a suggested name is a
+                        // mutation, so Done must enable.
+                        hasChanges = true
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "person").font(.system(size: sz(9)))
@@ -434,6 +442,10 @@ struct TagPickerSheet: View {
         }
         newName = ""
         isCreating = false
+        // ID-VIEW-0004 (2026-07-31 audit): creating / attaching a tag via the
+        // inline form is a mutation — mark it so Done enables (previously
+        // only toggleAttachment / delete-confirm set this).
+        hasChanges = true
     }
 
     /// Secondary CLIP-2: single submit implementation shared by the Create /

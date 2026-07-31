@@ -95,6 +95,7 @@
 "settings.backup.last" = "Última copia: %@";
 "clear.type.action" = "Eliminar todos los %@";
 "clear.type.confirm" = "Se eliminarán %2$d elementos de «%1$@» (fijados conservados, a la Papelera)";
+"clear.type.confirm.one" = "Se eliminará %2$d elemento de «%1$@» (fijados conservados, a la Papelera)";
 "clear.conditional.action" = "Eliminar por condición…";
 "clear.conditional.title" = "Eliminar por condición";
 "clear.conditional.type" = "Tipo";
@@ -208,6 +209,7 @@
 "tagPicker.nameConflict" = "La etiqueta \"%@\" ya existe, se usará la existente";
 "tagPicker.deleteConfirm.title" = "¿Eliminar etiqueta?";
 "tagPicker.deleteConfirm.message" = "La etiqueta \"%@\" se eliminará de %d elementos";
+"tagPicker.deleteConfirm.message.one" = "La etiqueta \"%@\" se eliminará de %d elemento";
 "tagPicker.deleteConfirm.confirm" = "Eliminar";
 "tagPicker.section.suggestedNames" = "Nombres detectados";
 "tagPicker.nameSuggestions.toggle" = "Mostrar nombres detectados";
@@ -217,7 +219,9 @@
 "sidebar.deleteTag" = "Eliminar etiqueta";
 "sidebar.deleteTag.confirm.title" = "¿Eliminar etiqueta?";
 "sidebar.deleteTag.confirm.message" = "La etiqueta «%@» se eliminará de %d elementos";
+"sidebar.deleteTag.confirm.message.one" = "La etiqueta «%@» se eliminará de %d elemento";
 "sidebar.tag.accessibility.label" = "Etiqueta %@, %d elementos";
+"sidebar.tag.accessibility.label.one" = "Etiqueta %@, %d elemento";
 "sidebar.tag.accessibility.selected" = "seleccionada";
 "sidebar.tag.accessibility.unselected" = "no seleccionada";
 "tagFilter.active.title" = "Filtrando por etiqueta";

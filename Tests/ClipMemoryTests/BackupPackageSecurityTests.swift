@@ -181,4 +181,51 @@ import CryptoKit
             }
         }
     }
+
+    // MARK: - ID-BACKUP-0004 (2026-07-31 audit): corrupt key.enc ≠ wrongPassword
+
+    /// A truncated key.enc must surface as package corruption
+    /// (corruptedData), not wrongPassword — otherwise users retry the
+    /// correct passphrase forever and troubleshooting goes the wrong way.
+    func testImportRejectsTruncatedKeyEncAsCorruptNotWrongPassword() throws {
+        let packageURL = try buildPackage(name: "truncated-key.clipmemory") { staging in
+            // 20 bytes < nonce(12)+key(32)+tag(16)=60 → structurally broken.
+            try Data(repeating: 0xAA, count: 20).write(to: staging.appendingPathComponent("key.enc"))
+        }
+        XCTAssertThrowsError(try importPackage(packageURL)) { error in
+            guard case BackupPackageError.corruptedData(_, .manifest) = error else {
+                return XCTFail("expected corruptedData(_, .manifest), got \(error)")
+            }
+        }
+    }
+
+    /// Same for an oversized key.enc (garbage appended to the package file).
+    func testImportRejectsOversizedKeyEncAsCorruptNotWrongPassword() throws {
+        let packageURL = try buildPackage(name: "oversized-key.clipmemory") { staging in
+            try Data(repeating: 0xBB, count: 128).write(to: staging.appendingPathComponent("key.enc"))
+        }
+        XCTAssertThrowsError(try importPackage(packageURL)) { error in
+            guard case BackupPackageError.corruptedData(_, .manifest) = error else {
+                return XCTFail("expected corruptedData(_, .manifest), got \(error)")
+            }
+        }
+    }
+
+    /// Control: a well-formed 60-byte key.enc sealed under a DIFFERENT
+    /// passphrase still reports wrongPassword — the GCM tag failure for a
+    /// wrong passphrase is unchanged by the structural-corruption check.
+    func testImportWrongPassphraseStillReportsWrongPassword() throws {
+        let packageURL = try buildPackage(name: "wrong-pass.clipmemory") { _ in }
+        XCTAssertThrowsError(try BackupPackage.importPackage(
+            from: packageURL,
+            passphrase: "not-the-right-one",
+            store: store,
+            localCrypto: localCrypto,
+            imagesDirectory: imagesDir
+        )) { error in
+            guard case BackupPackageError.wrongPassword = error else {
+                return XCTFail("expected wrongPassword, got \(error)")
+            }
+        }
+    }
 }

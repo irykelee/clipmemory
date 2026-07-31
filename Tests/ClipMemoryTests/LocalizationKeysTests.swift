@@ -303,4 +303,110 @@ final class LocalizationKeysTests: XCTestCase {
             }
         }
     }
+
+    /// ID-L10N-0016 + ID-L10N-0018 (2026-07-31 audit) parity pin.
+    ///
+    /// 0016: the four (name, count) messages now route through the plural
+    /// template, so each needs a ".one" variant in ALL 7 files — a missing
+    /// one silently degrades to the plural base form ("1 items").
+    /// 0018: the four pre-existing plural keys whose CJK bundles omitted
+    /// ".one" must now define it (value == base). Without these, `string()`'s
+    /// English-bundle fallback made CJK count==1 render English ("1 item").
+    func testCountOneVariantsExistInAllSevenLanguageFiles() throws {
+        let keys = [
+            // ID-L10N-0016: newly plural-routed (name, count) messages
+            "tagPicker.deleteConfirm.message.one",
+            "sidebar.deleteTag.confirm.message.one",
+            "sidebar.tag.accessibility.label.one",
+            "clear.type.confirm.one",
+            // ID-L10N-0018: CJK-backfilled ".one" for existing plural keys
+            "settings.backup.keep.count.one",
+            "settings.trash.retention.days.count.one",
+            "quickbar.recent.one",
+            "banner.data.corrupted.count.one"
+        ]
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appResDir = projectRoot.appendingPathComponent("ClipMemory", isDirectory: true)
+
+        let languages = ["en", "es", "ja", "ko", "pt", "zh-Hans", "zh-Hant"]
+        for lang in languages {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            for key in keys {
+                XCTAssertTrue(
+                    content.contains("\"\(key)\""),
+                    "\(lang).lproj/Localizable.strings is missing key '\(key)'"
+                )
+            }
+        }
+    }
+
+    /// ID-L10N-0016 (2026-07-30 audit): the four (name, count) accessors must
+    /// select singular grammar at count==1 in English. Before the fix they
+    /// called `string()` directly and always rendered the plural base form
+    /// ("removed from 1 items").
+    @MainActor
+    func testNameAndCountAccessorsUseSingularAtCountOne() {
+        let mgr = LanguageManager.shared
+        let original = mgr.selectedLanguage
+        defer { mgr.selectedLanguage = original }
+        mgr.selectedLanguage = "en"
+
+        let cases: [(String, String)] = [
+            ("tagPicker", L10n.tagPickerDeleteConfirmMessage("Work", 1)),
+            ("sidebarDelete", L10n.sidebarDeleteTagConfirmMessage("Work", 1)),
+            ("sidebarA11y", L10n.sidebarTagAccessibilityLabel("Work", 1)),
+            ("clearType", L10n.clearTypeConfirm("Text", 1))
+        ]
+        for (name, rendered) in cases {
+            XCTAssertTrue(
+                rendered.contains("1"),
+                "\(name)(count: 1) must embed the count, got: \(rendered)"
+            )
+            XCTAssertFalse(
+                rendered.contains("items"),
+                "\(name)(count: 1) must not use the plural 'items', got: \(rendered)"
+            )
+            XCTAssertTrue(
+                rendered.contains("Work") || rendered.contains("Text"),
+                "\(name)(count: 1) must embed the name argument, got: \(rendered)"
+            )
+        }
+        // Plural path must be untouched.
+        XCTAssertTrue(
+            L10n.tagPickerDeleteConfirmMessage("Work", 3).contains("3 items"),
+            "plural form must still render at count > 1"
+        )
+    }
+
+    /// ID-L10N-0018 (2026-07-31 audit): with a CJK in-app language, count==1
+    /// must render in that language — never English. Before the fix the CJK
+    /// bundles omitted ".one" and `string()`'s English-bundle fallback
+    /// resolved "<key>.one" to the English singular ("1 item").
+    @MainActor
+    func testCJKPluralAtCountOneDoesNotFallBackToEnglish() {
+        let mgr = LanguageManager.shared
+        let original = mgr.selectedLanguage
+        defer { mgr.selectedLanguage = original }
+
+        // (language, accessor render at 1, required native token)
+        mgr.selectedLanguage = "zh-Hans"
+        XCTAssertEqual(L10n.quickbarRecent(1), "1 条")
+        XCTAssertTrue(L10n.bannerDataCorruptedCount(1).contains("损坏"))
+
+        mgr.selectedLanguage = "zh-Hant"
+        XCTAssertEqual(L10n.quickbarRecent(1), "1 條")
+
+        mgr.selectedLanguage = "ja"
+        XCTAssertEqual(L10n.quickbarRecent(1), "1 件")
+        XCTAssertTrue(L10n.settingsBackupKeepCount(1).contains("バックアップ"))
+
+        mgr.selectedLanguage = "ko"
+        XCTAssertEqual(L10n.quickbarRecent(1), "1개")
+    }
 }

@@ -97,6 +97,19 @@ struct QuickBarView: View {
         store.prewarmDecryptionCache(items: cachedDisplayedItems)
     }
 
+    /// ID-A11Y-0008 (2026-07-31 audit): shared "copy + flash + dismiss" path
+    /// used by row tap, list-level Enter (KeyCaptureView.onReturn), and the
+    /// search field's Return (`.onSubmit`). Extracted so the three keyboard /
+    /// pointer routes cannot drift apart.
+    private func copyItemAndDismiss(_ item: ClipboardItem) {
+        lastCopiedId = item.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            if lastCopiedId == item.id { lastCopiedId = nil }
+        }
+        store.copyToClipboard(item)
+        onDismiss()
+    }
+
     var body: some View {
         // 2026-07-25: reading fontScale subscribes this view to @AppStorage
         // invalidation — an unread wrapper creates no dependency, so
@@ -112,6 +125,18 @@ struct QuickBarView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: sz(13)))
                     .focused($isSearchFocused)
+                    // ID-A11Y-0008 (2026-07-31 audit): while the search field
+                    // owns focus, KeyCaptureView deliberately lets Return/Esc
+                    // propagate to the field (KeyCaptureView.swift:95-100),
+                    // which made both keys dead for keyboard users. Route
+                    // them explicitly: Return copies the keyboard-selected
+                    // (else first) result; Esc closes the QuickBar.
+                    .onSubmit {
+                        let idx = keyboardSelectedIndex.flatMap { $0 >= 0 && $0 < displayedItems.count ? $0 : nil } ?? 0
+                        guard !displayedItems.isEmpty else { return }
+                        copyItemAndDismiss(displayedItems[idx])
+                    }
+                    .onExitCommand { onDismiss() }
                     // I-1 (2026-07-25 audit): writing @State synchronously
                     // inside `.onChange` can trigger SwiftUI's "Modifying state
                     // during view update" warning when the TextField binding
@@ -202,12 +227,7 @@ struct QuickBarView: View {
                                     searchTextDebounced: searchTextDebounced,
                                     sz: sz,
                                     onTap: {
-                                        lastCopiedId = item.id
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                            if lastCopiedId == item.id { lastCopiedId = nil }
-                                        }
-                                        store.copyToClipboard(item)
-                                        onDismiss()
+                                        copyItemAndDismiss(item)
                                     }
                                 )
                                 .id(item.id)
@@ -289,13 +309,7 @@ struct QuickBarView: View {
                     // would crash with array out-of-bounds. Today unreachable
                     // from keyboard handlers, but defensive.
                     if let idx = keyboardSelectedIndex, idx >= 0, idx < displayedItems.count {
-                        let item = displayedItems[idx]
-                        lastCopiedId = item.id
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            if lastCopiedId == item.id { lastCopiedId = nil }
-                        }
-                        store.copyToClipboard(item)
-                        onDismiss()
+                        copyItemAndDismiss(displayedItems[idx])
                     }
                 },
                 onEscape: { onDismiss() },
@@ -431,6 +445,10 @@ struct QuickBarRow: View {
     @State private var loadedContent: String?
     @State private var loadedRtfPlaintext: String?
     @State private var loadedOcrText: String?
+    // ID-VIEW-0002 (2026-07-31 audit): bumped by the .cryptoKeyPrepared
+    // observer below so the `.task` re-runs after the crypto key lands —
+    // see ClipboardItemRow for the full key-race scenario.
+    @State private var decryptRetryToken = 0
 
     private var iconName: String {
         switch item.type {
@@ -504,7 +522,10 @@ struct QuickBarRow: View {
         .onHover { isHovered = $0 }
         .onTapGesture { onTap() }
         .animation(.easeOut(duration: 0.3), value: isCopied)
-        .task(id: item.id) {
+        // ID-VIEW-0002 (2026-07-31 audit): `decryptRetryToken` in the task id
+        // lets the .cryptoKeyPrepared observer below re-fire the decrypt
+        // after a key-race double miss (same fix as ClipboardItemRow).
+        .task(id: "\(item.id.uuidString)-\(decryptRetryToken)") {
             guard item.type != .richText else {
                 if loadedRtfPlaintext == nil {
                     let rtf = await Task.detached(priority: .utility) {
@@ -543,7 +564,27 @@ struct QuickBarRow: View {
                 store.getDecryptedContent(item) ?? ""
             }.value
             if Task.isCancelled { return }
-            loadedContent = second
+            // ID-VIEW-0002 (2026-07-31 audit): write only a non-empty result.
+            // Storing "" made `loadedContent != nil` early-return forever and
+            // left the QuickBar row blank with no recovery path; keeping nil
+            // lets the .cryptoKeyPrepared retry below re-run this task.
+            if !second.isEmpty {
+                loadedContent = second
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cryptoKeyPrepared)) { note in
+            // ID-VIEW-0002 (2026-07-31 audit): key landed after our decrypt
+            // attempts missed — bump the token in the .task id so it re-runs.
+            let success = (note.userInfo?["success"] as? Bool) ?? false
+            guard success else { return }
+            let needsRetry: Bool
+            if item.type == .image {
+                needsRetry = item.ocrText != nil && loadedOcrText == nil
+            } else {
+                needsRetry = item.type != .richText && loadedContent == nil
+            }
+            guard needsRetry else { return }
+            decryptRetryToken += 1
         }
     }
 

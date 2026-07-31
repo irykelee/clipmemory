@@ -234,10 +234,29 @@ final class VisionOCRService: OCRServiceProtocol {
     /// unusual formats, or corrupt headers. Pays the full-memory cost
     /// (50+ MB for a 6K HEIC) but only on the rare failure path; the
     /// common path is the 2048-px thumbnail above.
-    private static func fallbackFullResolutionCGImage(from data: Data) -> CGImage? {
+    ///
+    /// Internal (not private) so the ID-OCR-0009 regression test can feed
+    /// it an EXIF-rotated JPEG directly — simulating "thumbnail generation
+    /// failed" deterministically is not practical from the test side.
+    static func fallbackFullResolutionCGImage(from data: Data) -> CGImage? {
         if let ciImage = CIImage(data: data) {
+            // ID-OCR-0009 (2026-07-31 audit, ID-OCR-0001 residual):
+            // `CIImage(data:)` records the EXIF orientation in
+            // `properties` but does NOT bake it into the bitmap —
+            // `createCGImage(_:from: ciImage.extent)` returned the
+            // unrotated pixels, so Vision misread rotated screenshots
+            // (e.g. AirDropped iPhone photos) whenever the thumbnail path
+            // failed. Apply `.oriented(_:)` here, matching what the
+            // thumbnail path's `kCGImageSourceCreateThumbnailWithTransform`
+            // does in its pass.
+            var oriented = ciImage
+            if let raw = ciImage.properties[kCGImagePropertyOrientation as String] as? NSNumber,
+               let exif = CGImagePropertyOrientation(rawValue: raw.uint32Value),
+               exif != .up {
+                oriented = ciImage.oriented(exif)
+            }
             let context = CIContext(options: [.useSoftwareRenderer: false])
-            return context.createCGImage(ciImage, from: ciImage.extent)
+            return context.createCGImage(oriented, from: oriented.extent)
         }
         if let image = NSImage(data: data) {
             return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
@@ -273,7 +292,28 @@ final class VisionOCRService: OCRServiceProtocol {
     private static var cachedSupportedLanguages: [Int: [String]] = [:]
     private static let cachedSupportedLanguagesLock = NSLock()
 
-    private static func supportedRecognitionLanguages(for revision: Int) -> [String] {
+    /// ID-SILENT-0016 (2026-07-31 audit): test seam around the Vision
+    /// language query so tests can simulate a framework throw. Production
+    /// never reassigns this; tests must restore the original afterwards
+    /// (paired with `resetSupportedLanguagesCacheForTesting`).
+    static var recognitionLanguagesQuery: (Int) throws -> [String] = { revision in
+        try VNRecognizeTextRequest.supportedRecognitionLanguages(
+            for: VNRequestTextRecognitionLevel.accurate,
+            revision: revision
+        )
+    }
+
+    /// ID-SILENT-0016: test-only cache reset so language-query tests stay
+    /// isolated from each other and from earlier real queries in the session.
+    static func resetSupportedLanguagesCacheForTesting() {
+        cachedSupportedLanguagesLock.lock()
+        cachedSupportedLanguages.removeAll()
+        cachedSupportedLanguagesLock.unlock()
+    }
+
+    /// Internal (not private) so the ID-SILENT-0016 regression tests can
+    /// drive the cache through the injected query above.
+    static func supportedRecognitionLanguages(for revision: Int) -> [String] {
         cachedSupportedLanguagesLock.lock()
         if let cached = cachedSupportedLanguages[revision] {
             cachedSupportedLanguagesLock.unlock()
@@ -281,11 +321,22 @@ final class VisionOCRService: OCRServiceProtocol {
         }
         cachedSupportedLanguagesLock.unlock()
 
-        let supported = (try? VNRecognizeTextRequest
-            .supportedRecognitionLanguages(
-                for: VNRequestTextRecognitionLevel.accurate,
-                revision: revision
-            )) ?? []
+        // ID-SILENT-0016 (2026-07-31 audit): distinguish "query returned an
+        // empty array" (a valid answer — cacheable) from "query threw"
+        // (transient framework failure — do NOT cache). The previous
+        // `(try? ...) ?? []` cached an empty array on the first Vision
+        // error, so every language was judged unsupported for the rest of
+        // the session even after the framework recovered. On throw: log,
+        // return empty for this call only, and let the next call re-query.
+        let supported: [String]
+        do {
+            supported = try recognitionLanguagesQuery(revision)
+        } catch {
+            ocrLanguageLogger.error(
+                "supportedRecognitionLanguages query threw for revision \(revision, privacy: .public): \(error.localizedDescription, privacy: .public). Not caching; will re-query on next OCR call."
+            )
+            return []
+        }
 
         cachedSupportedLanguagesLock.lock()
         cachedSupportedLanguages[revision] = supported

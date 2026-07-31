@@ -142,6 +142,11 @@ final class TrashStore: ObservableObject {
 
     /// Move a single item to the recycle bin.
     func moveToTrash(_ item: ClipboardItem, evictCaches: (ClipboardItem) -> Void, didMove: () -> Void) {
+        // ID-STORE-0003 (2026-07-31 audit): idempotent by id — a double
+        // moveToTrash (batch + single delete race, restore-then-retrash)
+        // used to insert a duplicate trashed entry, skewing export/import
+        // counts and the trash UI. Skip when the id is already in the bin.
+        guard !trashedItems.contains(where: { $0.id == item.id }) else { return }
         evictCaches(item)
         var trashed = item
         trashed.deletedAt = Date()
@@ -153,7 +158,13 @@ final class TrashStore: ObservableObject {
     /// Move multiple items to the recycle bin (shared timestamp, L-5).
     func moveToTrash(_ itemsToMove: [ClipboardItem], evictCaches: (ClipboardItem) -> Void, didMove: () -> Void) {
         let now = Date()
+        // ID-STORE-0003: idempotent by id — skip items already in the bin
+        // (and duplicates within the batch itself) so no duplicate trashed
+        // entries can be created. Nothing moved → no didMove/save.
+        var seen = Set(trashedItems.map { $0.id })
+        var movedAny = false
         for item in itemsToMove {
+            guard seen.insert(item.id).inserted else { continue }
             evictCaches(item)
             var trashed = item
             trashed.deletedAt = now
@@ -162,7 +173,9 @@ final class TrashStore: ObservableObject {
             // old path was O(K^2); the new path is O(K log K) and matches
             // the per-item moveToTrash's eventual order (most-recent first).
             trashedItems.append(trashed)
+            movedAny = true
         }
+        guard movedAny else { return }
         trashedItems.sort { $0.deletedAt ?? .distantPast > $1.deletedAt ?? .distantPast }
         didMove()
         scheduleSave()

@@ -193,85 +193,154 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         )
     }
 
+    /// ID-UPDATE-0002 (2026-07-31 audit): streams the H-20 size cap through
+    /// a URLSessionDataDelegate so `fetchBody` can collect the body with ONE
+    /// continuation-resume instead of iterating `bytes(for:)` one byte at a
+    /// time (tens of thousands of async suspensions on a near-1 MB feed could
+    /// burn the 5s probe budget and misdiagnose a healthy feed as
+    /// unreachable). The cap is still enforced before/while bytes arrive —
+    /// never after a full in-memory buffer (UPD-2 invariant):
+    /// - `didReceive response` refuses a declared Content-Length over the cap
+    ///   before a single body byte is consumed
+    /// - `didReceive data` cancels the task the moment the running total
+    ///   crosses the cap (Content-Length absent / chunked)
+    ///
+    /// Why not `data(for:delegate:)`: the async convenience APIs (with or
+    /// without a per-task delegate) do NOT deliver the data/response delegate
+    /// callbacks — verified 2026-07-31 against a URLProtocol stub AND with a
+    /// session-bound delegate; only the classic no-completion-handler
+    /// `dataTask(with:)` drives them. So this delegate is bound to a
+    /// per-fetch URLSession and the task's completion is bridged back via
+    /// `didCompleteWithError` + a checked continuation.
+    private final class CappedFetchDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+        /// Why the fetch was refused; nil while the response is still legal.
+        enum Refusal {
+            case declaredContentLength(Int64)
+            case streamExceeded
+        }
+        let maxBytes: Int
+        private(set) var refusal: Refusal?
+        private var receivedBytes = 0
+        private var body = Data()
+        private var response: URLResponse?
+        private var continuation: CheckedContinuation<(Data, URLResponse), Error>?
+
+        init(maxBytes: Int) {
+            self.maxBytes = maxBytes
+        }
+
+        /// Runs a single data task whose streaming callbacks land on this
+        /// delegate. Resumes exactly once — URLSession guarantees one
+        /// `didCompleteWithError` per task, including after our own cancel.
+        func fetch(session: URLSession, request: URLRequest) async throws -> (Data, URLResponse) {
+            try await withCheckedThrowingContinuation { cont in
+                continuation = cont
+                session.dataTask(with: request).resume()
+            }
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            dataTask: URLSessionDataTask,
+            didReceive response: URLResponse,
+            completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+        ) {
+            if response.expectedContentLength > Int64(maxBytes) {
+                refusal = .declaredContentLength(response.expectedContentLength)
+                completionHandler(.cancel)
+            } else {
+                self.response = response
+                completionHandler(.allow)
+            }
+        }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+            receivedBytes += data.count
+            if receivedBytes > maxBytes {
+                refusal = .streamExceeded
+                dataTask.cancel()
+            } else {
+                body.append(data)
+            }
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+            guard let continuation else { return }
+            self.continuation = nil
+            if let error {
+                continuation.resume(throwing: error)
+            } else if let response {
+                continuation.resume(returning: (body, response))
+            } else {
+                continuation.resume(throwing: URLError(.badServerResponse))
+            }
+        }
+    }
+
     private func fetchBody(url: URL, timeout: TimeInterval) async -> String? {
+        let request = URLRequest(url: url, timeoutInterval: timeout)
+        // ID-UPDATE-0002: one-shot body collection with the cap enforced by
+        // the delegate (see CappedFetchDelegate doc). Replaces the byte-at-a-
+        // time `bytes(for:)` loop (per-byte async suspension). A per-fetch
+        // session is required because the streaming delegate can only be
+        // bound at session-creation time; reusing the engine session's
+        // configuration preserves its protocolClasses (tests) and timeouts.
+        let delegate = CappedFetchDelegate(maxBytes: Self.maxResponseBytes)
+        let session = URLSession(configuration: urlSession.configuration, delegate: delegate, delegateQueue: nil)
+        // The task is already complete at this defer — invalidate only
+        // releases the delegate/session resources.
+        defer { session.invalidateAndCancel() }
+        let data: Data
+        let response: URLResponse
         do {
-            let request = URLRequest(url: url, timeoutInterval: timeout)
-            // UPD-2 (2026-07-24 audit): H-20 added the 1 MB cap but checked it
-            // only AFTER `data(for:)` had buffered the whole response — a
-            // malicious or compromised CDN could still serve a multi-GB body
-            // and OOM the process before the guard ran. `bytes(for:)` hands
-            // us the response headers first and streams the body, so the cap
-            // is enforced before/while bytes arrive, never after.
-            let (bytes, response) = try await urlSession.bytes(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else { return nil }
-            // Precheck: a declared Content-Length over the cap fails fast
-            // without consuming a single body byte.
-            if httpResponse.expectedContentLength > Int64(Self.maxResponseBytes) {
-                DefaultFeedProbeEngine.logger.warning("Feed Content-Length \(httpResponse.expectedContentLength) exceeds \(Self.maxResponseBytes) bytes — refusing before download")
-                return nil
-            }
-            // Content-Length absent or chunked (expectedContentLength == -1):
-            // accumulate and cancel the stream the moment we cross the cap.
-            // Abandoning the iterator tears down the underlying task.
-            // L-8 (2026-07-25 audit): accumulating one byte at a time into Data
-            // triggers a potential allocation per byte. Buffer into a small
-            // chunk and append batches instead.
-            var data = Data()
-            if httpResponse.expectedContentLength > 0 {
-                data.reserveCapacity(Int(httpResponse.expectedContentLength))
-            }
-            var chunk: [UInt8] = []
-            chunk.reserveCapacity(4096)
-            for try await byte in bytes {
-                chunk.append(byte)
-                if chunk.count >= 4096 {
-                    data.append(contentsOf: chunk)
-                    chunk.removeAll(keepingCapacity: true)
-                }
-                if data.count + chunk.count > Self.maxResponseBytes {
-                    DefaultFeedProbeEngine.logger.warning("Feed body exceeded \(Self.maxResponseBytes) bytes mid-stream — cancelling")
-                    return nil
-                }
-            }
-            if !chunk.isEmpty {
-                data.append(contentsOf: chunk)
-            }
-            // L-20 (2026-07-24 audit): log parse failures distinctly from
-            // transport errors so an operator can tell "feed returned 200 but
-            // body wasn't valid UTF-8" (a CDN corruption signal) from
-            // "connection refused" (a network signal). Both still surface
-            // as nil upstream; the split is for triage only.
-            guard let body = String(data: data, encoding: .utf8) else {
-                DefaultFeedProbeEngine.logger.error("Feed body returned 200 but failed UTF-8 decode (bytes=\(data.count))")
-                return nil
-            }
-            return body
-        } catch let urlError as URLError {
-            // L-20: separate timeout (often transient, keep .automatic
-            // patience) from other transport errors (DNS, refused, etc.)
-            // so a brief outage doesn't look like a hard failure.
-            switch urlError.code {
-            case .timedOut:
-                DefaultFeedProbeEngine.logger.notice("Feed probe timed out after \(timeout, privacy: .public)s url=\(url.absoluteString, privacy: .public)")
-            case .cancelled:
-                // Probe was cancelled by a newer probe winning the race —
-                // expected behavior, don't surface to operators.
-                break
-            default:
-                DefaultFeedProbeEngine.logger.error("Feed probe URLError code=\(urlError.code.rawValue, privacy: .public) desc=\(urlError.localizedDescription, privacy: .public) url=\(url.absoluteString, privacy: .public)")
-            }
-            return nil
+            (data, response) = try await delegate.fetch(session: session, request: request)
         } catch {
-            DefaultFeedProbeEngine.logger.error("Feed probe non-URL error: \(String(describing: error), privacy: .public) url=\(url.absoluteString, privacy: .public)")
+            if let refusal = delegate.refusal {
+                switch refusal {
+                case .declaredContentLength(let declared):
+                    DefaultFeedProbeEngine.logger.warning("Feed Content-Length \(declared) exceeds \(Self.maxResponseBytes) bytes — refusing before download")
+                case .streamExceeded:
+                    DefaultFeedProbeEngine.logger.warning("Feed body exceeded \(Self.maxResponseBytes) bytes mid-stream — cancelling")
+                }
+                return nil
+            }
+            if let urlError = error as? URLError {
+                // L-20: separate timeout (often transient, keep .automatic
+                // patience) from other transport errors (DNS, refused, etc.)
+                // so a brief outage doesn't look like a hard failure.
+                switch urlError.code {
+                case .timedOut:
+                    DefaultFeedProbeEngine.logger.notice("Feed probe timed out after \(timeout, privacy: .public)s url=\(url.absoluteString, privacy: .public)")
+                case .cancelled:
+                    // Probe was cancelled by a newer probe winning the race —
+                    // expected behavior, don't surface to operators.
+                    break
+                default:
+                    DefaultFeedProbeEngine.logger.error("Feed probe URLError code=\(urlError.code.rawValue, privacy: .public) desc=\(urlError.localizedDescription, privacy: .public) url=\(url.absoluteString, privacy: .public)")
+                }
+            } else {
+                DefaultFeedProbeEngine.logger.error("Feed probe non-URL error: \(String(describing: error), privacy: .public) url=\(url.absoluteString, privacy: .public)")
+            }
             return nil
         }
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else { return nil }
+        // L-20 (2026-07-24 audit): log parse failures distinctly from
+        // transport errors so an operator can tell "feed returned 200 but
+        // body wasn't valid UTF-8" (a CDN corruption signal) from
+        // "connection refused" (a network signal). Both still surface
+        // as nil upstream; the split is for triage only.
+        guard let body = String(data: data, encoding: .utf8) else {
+            DefaultFeedProbeEngine.logger.error("Feed body returned 200 but failed UTF-8 decode (bytes=\(data.count))")
+            return nil
+        }
+        return body
     }
 
     /// H-20 (2026-07-24 audit): 1 MB cap on feed body size. appcast.xml feeds
     /// are typically <50 KB; 1 MB leaves 20x headroom while preventing the
-    /// OOM path from a malicious CDN response. UPD-2: enforced via the
-    /// Content-Length precheck and the streaming accumulator in `fetchBody`,
-    /// never after a full in-memory buffer.
+    /// OOM path from a malicious CDN response. UPD-2 + ID-UPDATE-0002:
+    /// enforced by `CappedFetchDelegate` during streaming (Content-Length
+    /// precheck + running-total cancel), never after a full in-memory buffer.
     static let maxResponseBytes = 1_000_000
 }

@@ -63,8 +63,10 @@ struct HistoryCaptureSettingsView: View {
                     set: { store.ocrEnabled = $0 }
                 ))
                 Toggle(L10n.settingsHistoryCaptureOcrPreview, isOn: Binding(
-                    get: { ClipboardStore.shared.ocrPreviewEnabled },
-                    set: { ClipboardStore.shared.ocrPreviewEnabled = $0 }
+                    // ID-VIEW-0005 (2026-07-31 audit): use the injected store
+                    // instead of bypassing DI via ClipboardStore.shared.
+                    get: { store.ocrPreviewEnabled },
+                    set: { store.ocrPreviewEnabled = $0 }
                 ))
             } footer: { Text(L10n.settingsOcrHint).foregroundColor(.secondary) }
 
@@ -215,7 +217,10 @@ struct HistoryCaptureSettingsView: View {
                         search.isEmpty || $0.name.lowercased().contains(search)
                     }
 
-                    if isLoadingApps {
+                    // ID-VIEW-0006 (2026-07-31 audit): only show the spinner
+                    // when there is nothing to display — during a background
+                    // revalidation the cached list stays visible.
+                    if isLoadingApps && installedApps.isEmpty {
                         HStack {
                             Spacer()
                             ProgressView().scaleEffect(0.8)
@@ -261,14 +266,20 @@ struct HistoryCaptureSettingsView: View {
     /// Kick off a background fetch of installed applications. Icons are loaded
     /// lazily by AppPickerRow via NSImage, so only the directory scan and bundle
     /// ID lookup run on the background queue. Results are cached statically.
+    ///
+    /// ID-VIEW-0006 (2026-07-31 audit): the static cache previously never
+    /// expired within the process lifetime, so apps installed/uninstalled
+    /// after the first picker open stayed stale until app restart. Now
+    /// stale-while-revalidate: serve the cache instantly (no flicker), but
+    /// always kick a fresh background scan on every sheet open and swap in
+    /// the new results when they land.
     private func loadInstalledAppsIfNeeded() {
-        guard installedApps.isEmpty, !isLoadingApps else { return }
+        guard !isLoadingApps else { return }
         Self.cachedAppsLock.lock()
         let cached = Self.cachedApps
         Self.cachedAppsLock.unlock()
-        if let cached = cached {
+        if let cached = cached, installedApps.isEmpty {
             installedApps = cached
-            return
         }
         isLoadingApps = true
         DispatchQueue.global(qos: .userInitiated).async {

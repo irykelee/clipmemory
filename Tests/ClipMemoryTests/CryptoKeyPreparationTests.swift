@@ -383,4 +383,105 @@ final class CryptoKeyPreparationTests: XCTestCase {
         XCTAssertEqual(store.storeCalls, storeCallsBefore,
                        "Retry must not re-store when key is already loaded")
     }
+
+    // MARK: - ID-CRYPTO-0001 (2026-07-31 audit): transient Keychain error must not regenerate
+
+    /// A transient Keychain error (.otherError — errSecAuthFailed,
+    /// errSecServiceNotAvailable, ...) must be treated like .interactionLocked:
+    /// return nil, touch nothing, wait for the wake retry. Previously it fell
+    /// through to the not-found path and could overwrite a valid root key,
+    /// permanently destroying all encrypted history.
+    func testPrepareKeyDoesNotRegenerateOnTransientKeychainError() {
+        let store = MockKeyStore()
+        store.lockedStatus = .otherError(errSecAuthFailed)
+        // A legacy file on disk must also survive — it may be the only
+        // remaining copy of the key material.
+        let legacy = Data((0..<32).map { UInt8($0) })
+        XCTAssertNoThrow(try legacy.write(to: keyURL))
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+
+        XCTAssertNil(key, "transient Keychain error must defer key prep, not regenerate")
+        XCTAssertEqual(recorder.failures, [], "no user-facing failure for a transient Keychain error")
+        XCTAssertEqual(store.storeCalls, 0, "store() must never be called on a transient Keychain error")
+        XCTAssertEqual(try? Data(contentsOf: keyURL), legacy,
+                       "legacy key file must survive a transient Keychain error")
+    }
+
+    /// Recovery path: after the transient error clears, the retry must pick
+    /// up the real Keychain item (no regeneration happened in between).
+    func testRetrySucceedsAfterTransientKeychainErrorClears() {
+        let store = MockKeyStore()
+        store.lockedStatus = .otherError(errSecServiceNotAvailable)
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key1 = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+        XCTAssertNil(key1)
+
+        store.lockedStatus = nil
+        let existing = Data((0..<32).map { UInt8($0 ^ 0xA5) })
+        store.store(existing)
+
+        let key2 = CryptoService.retryPrepareKeyIfLocked(
+            keyURL: keyURL, keyStore: store, failureHandler: recorder.handler
+        )
+        XCTAssertNotNil(key2, "retry must load the existing key once the transient error clears")
+        XCTAssertEqual(recorder.failures, [])
+    }
+
+    // MARK: - ID-CRYPTO-0003 (2026-07-31 audit): Keychain-hit path cleans up legacy file
+
+    /// When the Keychain already holds a valid key, a lingering pre-C1
+    /// plaintext key file (from an interrupted/failed migration) must be
+    /// removed idempotently instead of sitting on disk forever.
+    func testKeychainHitRemovesLingeringLegacyKeyFile() {
+        let store = MockKeyStore()
+        let existing = Data((0..<32).map { UInt8($0 ^ 0x5A) })
+        store.store(existing)
+        let legacy = Data((0..<32).map { UInt8($0) })
+        XCTAssertNoThrow(try legacy.write(to: keyURL))
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+
+        XCTAssertNotNil(key)
+        XCTAssertEqual(recorder.failures, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keyURL.path),
+                       "Keychain-hit path must remove the lingering legacy key file")
+    }
+
+    // MARK: - ID-CRYPTO-0002 (2026-07-31 audit): secure erase overwrites in place
+
+    /// `.atomic` writes are temp-file + rename, leaving the original key
+    /// blocks untouched in unallocated space. The overwrite must happen on
+    /// the same inode: a hard-link alias observes the SAME blocks, so after
+    /// secure removal it must see random bytes, not the original key.
+    func testSecureRemoveKeyFileOverwritesOriginalBlocksInPlace() throws {
+        let original = Data((0..<32).map { UInt8($0) })
+        try original.write(to: keyURL)
+        let aliasURL = tempDir.appendingPathComponent("key-alias")
+        try FileManager.default.linkItem(at: keyURL, to: aliasURL) // hard link = same inode
+
+        CryptoService.secureRemoveKeyFile(at: keyURL)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keyURL.path),
+                       "key file must be unlinked after secure removal")
+        let aliasData = try Data(contentsOf: aliasURL)
+        XCTAssertEqual(aliasData.count, 32)
+        XCTAssertNotEqual(aliasData, original,
+                          "in-place overwrite must clobber the original blocks (alias sees the same inode)")
+    }
+
+    // MARK: - ID-CRYPTO-0004 (2026-07-31 audit): shared key-material zeroing helper
+
+    func testWipeKeyMaterialZeroesAllBytes() {
+        var keyData = Data((0..<32).map { UInt8($0 | 0x01) }) // no accidental zeros
+        CryptoService.wipeKeyMaterial(&keyData)
+        XCTAssertEqual(keyData, Data(count: 32), "every byte of the key copy must be zeroed")
+
+        var empty = Data()
+        CryptoService.wipeKeyMaterial(&empty) // must not crash on empty buffers
+        XCTAssertEqual(empty.count, 0)
+    }
 }

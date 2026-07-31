@@ -3,12 +3,10 @@ import AppKit
 import Sparkle
 import os
 
-/// The user's persisted choice about the jsDelivr mirror feed (H1).
-enum FeedConsent {
-    case granted
-    case denied
-    case undecided
-}
+// ID-MISC-0002 (2026-07-31 audit): the `FeedConsent` enum and
+// `UpdateService.resolvedFeed` / `fallbackIsStale` were deleted as dead code
+// (no production callers; the live decision path is FeedProbeEngine's
+// resolve(policy:lastKnownDate:channels:timeout:) + its built-in stale guard).
 
 /// Supplies the fallback feed URL to Sparkle when the primary feed failed
 /// the launch probe. Returning nil makes Sparkle use the Info.plist SUFeedURL.
@@ -191,22 +189,6 @@ final class UpdateService {
         }
     }
 
-    /// The feed Sparkle should use (H1): the primary unless it is unreachable
-    /// AND the user has explicitly consented to the mirror AND the mirror is
-    /// not stale. `.undecided` keeps the primary — the consent alert is
-    /// shown by the caller.
-    static func resolvedFeed(
-        primary: URL,
-        primaryReachable: Bool,
-        consent: FeedConsent,
-        mirrorStale: Bool = false,
-        fallback: URL = fallbackFeedURL
-    ) -> URL {
-        guard !primaryReachable else { return primary }
-        guard consent == .granted, !mirrorStale else { return primary }
-        return fallback
-    }
-
     /// M-17 (2026-07-24 audit): DateFormatter instantiation is expensive
     /// (~5–10 ms cold, ~1 ms warm) and was rebuilt on every `latestItemDate`
     /// call. The format string and POSIX locale are constants for the
@@ -221,7 +203,7 @@ final class UpdateService {
     /// UPD-4 (2026-07-24 review): the numeric-offset formatter above is
     /// narrower than RFC 822, which also permits NAMED timezones ("GMT",
     /// "PST", ...). A pubDate like "..., 24 Jul 2026 10:00:00 GMT" used to
-    /// parse as nil — and fallbackIsStale treats nil as "not stale"
+    /// parse as nil — and the H1 stale guard treats nil as "not stale"
     /// (fail-open), so a stale mirror could slip through. Retry with the
     /// `zzz` (named timezone) pattern before giving up.
     private static let appcastDateFormatterNamedTZ: DateFormatter = {
@@ -232,7 +214,8 @@ final class UpdateService {
     }()
 
     /// Newest `<pubDate>` among appcast items, or nil when nothing parses.
-    /// Pure for tests (H1 staleness guard).
+    /// Pure for tests; production uses it via DefaultFeedProbeEngine's
+    /// `parseLatestDate` for the H1 staleness guard.
     static func latestItemDate(inAppcastXML xml: String) -> Date? {
         let formatter = appcastDateFormatter
         var latest: Date?
@@ -248,15 +231,6 @@ final class UpdateService {
             rest = rest[close.upperBound...]
         }
         return latest
-    }
-
-    /// H1 max-timestamp guard: the mirror is stale when its newest item
-    /// predates the newest item the primary last served (jsDelivr caches
-    /// `@main` aggressively and can lag behind a fresh release).
-    static func fallbackIsStale(fallbackXML: String, lastPrimaryItemDate: Date?) -> Bool {
-        guard let lastPrimaryItemDate,
-              let fallbackDate = latestItemDate(inAppcastXML: fallbackXML) else { return false }
-        return fallbackDate < lastPrimaryItemDate
     }
 
     /// Mirrors Sparkle's own persisted setting (SUAutomaticallyChecksForUpdates).

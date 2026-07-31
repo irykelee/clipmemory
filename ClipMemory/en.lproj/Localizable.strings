@@ -94,6 +94,7 @@
 "settings.backup.last" = "Last backup: %@";
 "clear.type.action" = "Delete all %@";
 "clear.type.confirm" = "%2$d \"%1$@\" items will be deleted (pinned kept, moved to the Trash)";
+"clear.type.confirm.one" = "%2$d \"%1$@\" item will be deleted (pinned kept, moved to the Trash)";
 "clear.conditional.action" = "Clear by Condition…";
 "clear.conditional.title" = "Clear by Condition";
 "clear.conditional.type" = "Type";
@@ -212,6 +213,7 @@
 "tagPicker.nameConflict" = "Tag \"%@\" already exists, will use existing";
 "tagPicker.deleteConfirm.title" = "Delete Tag?";
 "tagPicker.deleteConfirm.message" = "Tag \"%@\" will be removed from %d items";
+"tagPicker.deleteConfirm.message.one" = "Tag \"%@\" will be removed from %d item";
 "tagPicker.deleteConfirm.confirm" = "Delete";
 "tagPicker.section.suggestedNames" = "Detected Names";
 "tagPicker.nameSuggestions.toggle" = "Show detected names";
@@ -221,9 +223,11 @@
 "sidebar.deleteTag" = "Delete Tag";
 "sidebar.deleteTag.confirm.title" = "Delete Tag?";
 "sidebar.deleteTag.confirm.message" = "Tag \"%@\" will be removed from %d items";
+"sidebar.deleteTag.confirm.message.one" = "Tag \"%@\" will be removed from %d item";
 // L-17 (2026-07-24 audit): accessibility labels for the sidebar tag row
 // so VoiceOver reads "Tag Work, 5 items" with full context.
 "sidebar.tag.accessibility.label" = "Tag %@, %d items";
+"sidebar.tag.accessibility.label.one" = "Tag %@, %d item";
 "sidebar.tag.accessibility.selected" = "selected";
 "sidebar.tag.accessibility.unselected" = "not selected";
 "tagFilter.active.title" = "Filtering by tag";

@@ -512,8 +512,13 @@ struct ContentView: View {
             // and `searchTextDebounced` observers stay here because they
             // are about the visible-index sequence, not the search field.
             // H-10 (2026-07-24 audit): collapsed-groups toggles invalidate the
-            // visible-index sequence. Recompute on the next main hop so the
-            // keyboard handlers pick up the new sequence immediately.
+            // visible-index sequence. ID-VIEW-0007 (2026-07-31 audit): this
+            // recomputes SYNCHRONOUSLY — the old comment claimed a deferred
+            // "next main hop" that was never implemented. Sync is safe here:
+            // both triggers (user group-toggle click, debounce work item)
+            // fire outside SwiftUI's view-update cycle, so writing
+            // cachedVisibleGlobalIndices can't hit "Modifying state during
+            // view update".
             .onChange(of: collapsedGroups) { _ in
                 recomputeVisibleGlobalIndices()
             }
@@ -521,6 +526,8 @@ struct ContentView: View {
             // settled" signal (raw searchText changes on every keystroke; the
             // debounced copy only fires 250ms after the last edit). Recompute
             // on the settled copy so we don't pay O(n) per keystroke.
+            // ID-VIEW-0007 (2026-07-31 audit): synchronous recompute, same
+            // rationale as collapsedGroups above.
             .onChange(of: searchTextDebounced) { _ in
                 recomputeVisibleGlobalIndices()
             }

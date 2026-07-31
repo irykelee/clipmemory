@@ -459,6 +459,72 @@ final class ImageStorageTests: XCTestCase {
         try? FileManager.default.removeItem(at: stray)
     }
 
+    // MARK: - ID-IMG-0001 / ID-SILENT-0017 (2026-07-31 audit)
+
+    /// ID-IMG-0001: deleteAllExcept must evict deleted files from imageCache.
+    /// Pre-fix the cache was never touched, so a deleted image stayed
+    /// resident and later loadImageObject calls returned a zombie image for
+    /// a file that no longer exists on disk.
+    func testDeleteAllExceptEvictsDeletedImagesFromCache() {
+        let keep = newTestUUID()
+        let drop = newTestUUID()
+        let keepName = "\(keep.uuidString).png"
+        let dropName = "\(drop.uuidString).png"
+        _ = saveAndWait(makePNGData(), uuid: keep)
+        _ = saveAndWait(makePNGData(), uuid: drop)
+
+        // Warm the cache for both files
+        XCTAssertNotNil(storage.loadImageObject(filename: keepName),
+                        "Test fixture: kept image must load into cache")
+        XCTAssertNotNil(storage.loadImageObject(filename: dropName),
+                        "Test fixture: dropped image must load into cache")
+
+        storage.deleteAllExcept(filenames: [keepName])
+
+        XCTAssertNil(storage.cachedImageObject(filename: dropName),
+                     "ID-IMG-0001: deleted file must be evicted from imageCache")
+        XCTAssertNotNil(storage.cachedImageObject(filename: keepName),
+                        "ID-IMG-0001: kept file must remain cached (per-file eviction, not removeAllObjects)")
+    }
+
+    /// ID-SILENT-0017: a file whose removeItem fails (simulated via the
+    /// macOS immutable flag — removeItem then throws EPERM) must NOT be
+    /// counted as deleted and must NOT be evicted from the cache. Pre-fix
+    /// the unconditional `deleted += 1` misreported the failure in the log
+    /// and (with the ID-IMG-0001 fix) would have dropped a live file's
+    /// cache entry.
+    func testDeleteAllExceptFailedDeletionKeepsFileAndCache() throws {
+        let keep = newTestUUID()
+        let stuck = newTestUUID()
+        let drop = newTestUUID()
+        let keepName = "\(keep.uuidString).png"
+        let stuckName = "\(stuck.uuidString).png"
+        let dropName = "\(drop.uuidString).png"
+        _ = saveAndWait(makePNGData(), uuid: keep)
+        _ = saveAndWait(makePNGData(), uuid: stuck)
+        _ = saveAndWait(makePNGData(), uuid: drop)
+
+        let stuckURL = storageDirectoryURL().appendingPathComponent(stuckName)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: stuckURL.path)
+        // tearDown's deleteImage would fail on the immutable file; clear the
+        // flag no matter how the test exits.
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: stuckURL.path) }
+
+        // Warm the cache for the stuck file
+        XCTAssertNotNil(storage.loadImageObject(filename: stuckName),
+                        "Test fixture: stuck image must load into cache")
+
+        storage.deleteAllExcept(filenames: [keepName])
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: stuckURL.path),
+                      "ID-SILENT-0017: a file that fails removal must remain on disk")
+        XCTAssertNotNil(storage.cachedImageObject(filename: stuckName),
+                        "ID-SILENT-0017: a file that fails removal must keep its cache entry " +
+                        "(evicting it would desync cache from a file that still exists)")
+        XCTAssertNil(storage.cachedImageObject(filename: dropName),
+                     "Successfully deleted sibling must still be evicted")
+    }
+
     // MARK: - I.8 cleanupOrphanedImages
 
     func testCleanupOrphanedImagesRemovesUnreferenced() {

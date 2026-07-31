@@ -63,11 +63,19 @@ enum TagSuggestion {
     /// long mixed-script snippets (e.g. long emails or reports).
     static let maxNames = 5
 
+    /// ID-PERF-0018 (2026-07-31 audit): analysis input cap (~16 K characters
+    /// ≈ 8–16 KB of UTF-8 for mixed CJK/Latin). Oversized items (long text,
+    /// large RTF plaintext) made the regex + NLTagger pipeline unbounded;
+    /// the classifiers below only need the head of the content to decide.
+    static let maxAnalysisLength = 16_000
+
     /// Primary entry point. Returns a `DetectedFacets` describing the snippet.
     /// `type:` is accepted but currently unused — type-based filtering at
     /// acceptance is moot (we never suggest type-equivalent names).
     static func detect(for type: ClipboardItemType, content: String) -> DetectedFacets {
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        // ID-PERF-0018: truncate before any analysis.
+        let capped = content.count > maxAnalysisLength ? String(content.prefix(maxAnalysisLength)) : content
+        let trimmed = capped.trimmingCharacters(in: .whitespacesAndNewlines)
         return DetectedFacets(
             language: detectLanguage(trimmed),
             kind: detectKind(trimmed),

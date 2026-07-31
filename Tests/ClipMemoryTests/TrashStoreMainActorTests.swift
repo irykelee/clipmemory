@@ -91,4 +91,30 @@ final class TrashStoreMainActorTests: XCTestCase {
         }
         wait(for: [exp2], timeout: 1.5)
     }
+
+    // MARK: - ID-STORE-0003 (2026-07-31 audit): moveToTrash idempotency
+
+    /// ID-STORE-0003: the same id moved twice via the single-item path
+    /// (batch + single delete race, restore-then-retrash) must not create
+    /// a duplicate trashed entry.
+    func testMoveToTrashDuplicateIdIsSkipped() {
+        let item = ClipboardItem(content: "once", type: .text)
+        store.moveToTrash(item, evictCaches: { _ in }, didMove: {})
+        store.moveToTrash(item, evictCaches: { _ in }, didMove: {})
+        XCTAssertEqual(store.trashedItems.count, 1,
+                       "ID-STORE-0003: duplicate id must be skipped idempotently")
+    }
+
+    /// ID-STORE-0003: the batch path skips items already in the bin AND
+    /// duplicates within the batch itself.
+    func testBatchMoveToTrashSkipsExistingAndDuplicateIds() {
+        let a = ClipboardItem(content: "a", type: .text)
+        let b = ClipboardItem(content: "b", type: .text)
+        store.moveToTrash(a, evictCaches: { _ in }, didMove: {})
+        // Batch re-includes `a` (already trashed), plus `b` twice.
+        store.moveToTrash([a, b, b], evictCaches: { _ in }, didMove: {})
+        XCTAssertEqual(store.trashedItems.count, 2,
+                       "ID-STORE-0003: batch must dedup against existing bin and itself")
+        XCTAssertEqual(Set(store.trashedItems.map { $0.id }), Set([a.id, b.id]))
+    }
 }

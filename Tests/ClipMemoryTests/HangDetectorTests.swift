@@ -244,4 +244,29 @@ final class HangDetectorTests: XCTestCase {
         XCTAssertNil(cleared.firstDetectedAt, "recovery must clear firstDetectedAt (the downtime baseline is no longer valid)")
         XCTAssertEqual(cleared.detectionCount, 0, "recovery must reset detectionCount to 0")
     }
+
+    /// ID-LIFE-0022 (2026-07-31 audit): stop() used to leave `isStarted`
+    /// true, so a later start() exited at the re-entry guard and the
+    /// watchdog stayed permanently dead. stop() must re-arm the lifecycle
+    /// so start() → stop() → start() actually restarts the timers.
+    func testStop_clearsIsStarted_soWatchdogCanRestart() {
+        HangDetector._resetForTesting()
+        HangDetector.start()
+        XCTAssertTrue(HangDetector._isStartedForTesting, "precondition: start() sets isStarted")
+
+        HangDetector.stop()
+        XCTAssertFalse(HangDetector._isStartedForTesting,
+                       "ID-LIFE-0022: stop() must clear isStarted")
+
+        // The restart must not be swallowed by the re-entry guard; a fresh
+        // heartbeat baseline proves the second start() ran its body.
+        HangDetector._seedLastHeartbeatForTesting(Date().addingTimeInterval(-3600))
+        HangDetector.start()
+        defer { HangDetector.stop() }
+        XCTAssertTrue(HangDetector._isStartedForTesting,
+                      "ID-LIFE-0022: start() after stop() must re-arm the watchdog")
+        let s = HangDetector._snapshotStateForTesting()
+        XCTAssertLessThan(Date().timeIntervalSince(s.lastHeartbeat), 5,
+                          "ID-LIFE-0022: restarted watchdog must establish a fresh heartbeat baseline")
+    }
 }

@@ -5,11 +5,24 @@ import os.log
 /// logs `Thread.callStackSymbols` to surface post-mortem root cause for
 /// bugs like 2026-07-19 21:35 "sidebar OK but main empty".
 ///
+/// ID-LIFE-0024 (2026-07-31 audit, decision: ACCEPT AS-IS): the captured
+/// stack is the RECOVERY-moment stack, not the in-hang stack. The stack
+/// timer runs on the main queue, so while the main thread is genuinely
+/// blocked it cannot fire; by the time it fires, the hang is over and
+/// `Thread.callStackSymbols` yields the timer-drain frames of the recovery
+/// moment (which is why `noiseFilter` often collapses the preview to
+/// `"(empty)"`). Treat logged stacks as a coarse reference signal only —
+/// they have no post-mortem value for the real hang site. Capturing the
+/// actual in-hang main stack would require sampling the main thread from
+/// the checker thread via mach APIs (`thread_get_state`), a deliberate
+/// architecture change that was NOT taken.
+///
 /// Architecture (3 timers, per spec §4.1):
 /// - heartbeat (main, 1s) — refreshes `state.lastHeartbeat`
 /// - stack (main, 5s)     — checks recovery; captures `Thread.callStackSymbols`
 ///   ONLY when a hang is suspected (detection active or heartbeat stale past
-///   threshold). See INFRA-2 note on `recordStackCaptureAndMaybeRecover`.
+///   threshold). See INFRA-2 note on `recordStackCaptureAndMaybeRecover` and
+///   the ID-LIFE-0024 caveat above (recovery-moment stack, reference only).
 /// - checker (.utility, 30s) — reads `elapsed` and emits detection log when stale
 ///
 /// Mirrors `UIObservability`'s split (per spec §2): pure `formatXxx` helpers +
@@ -62,8 +75,10 @@ enum HangDetector {
     private static var stackTimer: DispatchSourceTimer?
     private static var checkerTimer: DispatchSourceTimer?
     // main-thread only; set at end of `start()` after all 3 timer `resume()` calls
-    // (per spec §10.2 + gate 1b Ma — avoids permanent no-op if a future API throws mid-setup,
-    // since `stop()` per §10.2 deliberately does NOT reset isStarted).
+    // (per spec §10.2 + gate 1b Ma — avoids permanent no-op if a future API throws mid-setup).
+    // ID-LIFE-0022 (2026-07-31 audit): `stop()` now RESETS this flag — the
+    // original §10.2 "故意的不对称" left it true after stop(), making any
+    // later `start()` a permanent no-op (stopped watchdog could never restart).
     private static var isStarted: Bool = false
 
     // MARK: - Tunables (internal so tests can read; mutable by amending `let` if ever needed)
@@ -175,6 +190,10 @@ enum HangDetector {
     internal static func _seedLastHeartbeatForTesting(_ date: Date) {
         withStateLock { $0.lastHeartbeat = date }
     }
+
+    /// Test-only. Exposes `isStarted` so the ID-LIFE-0022 regression test can
+    /// assert stop() re-arms the watchdog for a later start().
+    internal static var _isStartedForTesting: Bool { isStarted }
     // swiftlint:enable identifier_name large_tuple
 
     // MARK: - Mutation API: heartbeat (spec §4.2 / §4.3)
@@ -235,6 +254,14 @@ enum HangDetector {
     /// but ONLY when a hang is suspected (INFRA-2 gating, see inline note):
     /// with a fresh heartbeat and no active detection this returns early
     /// without walking the stack.
+    ///
+    /// ID-LIFE-0024 (2026-07-31 audit, accepted as-is): because this timer
+    /// lives on the main queue, it CANNOT fire while the main thread is
+    /// actually blocked — the frames captured here are always the
+    /// recovery-moment stack (often pure dispatch noise), never the in-hang
+    /// stack. Value is a coarse "a hang happened around here" reference
+    /// signal only; see the file-header note for the full rationale.
+    ///
     /// Empty-stack rule (reviewer #3, spec §4.2): if the captured stack is
     /// empty, do NOT overwrite `lastMainStack` — preserve the previously-captured
     /// (pre-hang) frames so the diagnostic value survives.
@@ -403,11 +430,16 @@ enum HangDetector {
 
     /// Cancel all 3 timers in reverse-start order. Idempotent: no-op if
     /// `start()` wasn't called (the timer fields are nil). Does NOT reset
-    /// `state` and does NOT clear `isStarted` — process lifetime is one
-    /// start + one stop (terminate) per spec §10.2 "故意的不对称".
+    /// `state`. ID-LIFE-0022 (2026-07-31 audit): now DOES clear `isStarted`
+    /// — the original §10.2 "故意的不对称" (stop() leaves isStarted true)
+    /// made a stopped watchdog impossible to restart: a later `start()`
+    /// exited at the re-entry guard and the watchdog stayed permanently
+    /// dead (test teardown/restart, delegate replacement, future runtime
+    /// watchdog toggle).
     static func stop() {
         checkerTimer?.cancel();   checkerTimer = nil
         stackTimer?.cancel();     stackTimer = nil
         heartbeatTimer?.cancel(); heartbeatTimer = nil
+        isStarted = false
     }
 }

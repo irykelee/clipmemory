@@ -254,9 +254,9 @@ class ImageStorage {
         }
 
         // Only mark migration complete when every eligible file has been
-        // processed. If anything failed, the next launch will retry the rest.
+        // processed AND its plaintext legacy copy is gone from disk. If
+        // anything failed, the next launch will retry the rest.
         if !hadFailure {
-            defaults.set(true, forKey: migrationCompleteKey)
             // M-3 + 2.1 (2026-07-23 audit): post-migration cleanup. Originally
             // `removeItem(at: legacyImagesDirectory)` deleted the whole dir
             // — but the legacy dir belongs to the old ClipPaste app and may
@@ -267,14 +267,27 @@ class ImageStorage {
             // stays. The forensic-residue concern from M-3 is fully addressed
             // because all plaintext PNGs eligible for migration are gone.
             //
-            // `try?` per file: removal is best-effort. If a particular file
-            // is locked, we still mark the migration complete and move on —
-            // at worst one plaintext PNG lingers, which is no worse than
-            // the pre-M-3 state.
+            // ID-SILENT-0018 (2026-07-31 audit): was `try?` per file — a
+            // removeItem failure left a PLAINTEXT legacy PNG on disk (the
+            // exact state this migration exists to eliminate) while the
+            // completion flag was still set. Now a removal failure with the
+            // file still present marks hadFailure = true (flag stays unset,
+            // logged loudly at error level for operator grep). A failure
+            // where the file is already gone (the per-file migrate step
+            // removes it in-flight) is the success state, not an error.
             for filename in migratedFilenames {
-                try? fileManager.removeItem(
-                    at: legacyDirectory.appendingPathComponent(filename)
-                )
+                let legacyURL = legacyDirectory.appendingPathComponent(filename)
+                do {
+                    try fileManager.removeItem(at: legacyURL)
+                } catch {
+                    if fileManager.fileExists(atPath: legacyURL.path) {
+                        hadFailure = true
+                        logger.error("PLAINTEXT LEGACY PNG STILL ON DISK after migration: \(filename, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                    }
+                }
+            }
+            if !hadFailure {
+                defaults.set(true, forKey: migrationCompleteKey)
             }
         }
 
@@ -687,11 +700,34 @@ class ImageStorage {
               let image = NSImage(data: data) else {
             return nil
         }
-        // BUG-027 (2026-07-21): pass cost: data.count so totalCostLimit (100MB)
-// can trigger eviction. Without cost:, only countLimit (100) is
-// effective — 100 large images can far exceed 100MB.
-imageCache.setObject(image, forKey: filename as NSString, cost: data.count)
+        // BUG-027 (2026-07-21): pass a cost so totalCostLimit (100MB) can
+        // trigger eviction. Without cost:, only countLimit (100) is
+        // effective — 100 large images can far exceed 100MB.
+        // ID-PERF-0016 (2026-07-31 audit): cost was the COMPRESSED byte
+        // count (data.count), underestimating the resident bitmap by 5-15x
+        // — a 6K screenshot compresses to ~5-20MB but decodes to ~81MB, so
+        // the 100MB cap could actually pin ~1GB. Estimate the decoded
+        // bitmap (width*height*4 RGBA bytes) instead. A full ImageIO
+        // thumbnail decode path (like OCRService's 2048px pattern, ~480px
+        // for rows) is deliberately NOT done here: the long-press preview
+        // reuses this cache and may legitimately need the large image, so
+        // downscaling would be a behavior change — left as a follow-up.
+        imageCache.setObject(
+            image, forKey: filename as NSString,
+            cost: Self.bitmapCostEstimate(of: image, fallback: data.count)
+        )
         return image
+    }
+
+    /// ID-PERF-0016: decoded-bitmap cost estimate for imageCache. NSImage
+    /// loads of PNG/JPEG produce an NSBitmapImageRep whose pixelsWide/
+    /// pixelsHigh reflect the actual backing bitmap; falls back to the
+    /// compressed byte count when no raster representation is available.
+    private static func bitmapCostEstimate(of image: NSImage, fallback: Int) -> Int {
+        for rep in image.representations where rep.pixelsWide > 0 && rep.pixelsHigh > 0 {
+            return rep.pixelsWide * rep.pixelsHigh * 4
+        }
+        return fallback
     }
 
     func deleteImage(filename: String) {
@@ -721,17 +757,36 @@ imageCache.setObject(image, forKey: filename as NSString, cost: data.count)
         // the store is in this set, and cannot be deleted.
         let inFlight = pendingSnapshot()
         var deleted = 0
+        var failed = 0
         for file in files {
             guard isValidFilename(file) else { continue }
             if filenames.contains(file) { continue }
             if inFlight.contains(file) { continue }
-            try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(file))
-            deleted += 1
+            // ID-SILENT-0017 (2026-07-31 audit): was `try? removeItem` with
+            // an unconditional `deleted += 1` — a failed removal (EBUSY,
+            // Spotlight indexing, immutable flag) was counted as deleted,
+            // misreporting the log and hiding the orphan. Now only successful
+            // removals increment `deleted`; failures increment `failed` and
+            // are logged at error level.
+            do {
+                try fileManager.removeItem(at: imagesDirectory.appendingPathComponent(file))
+                deleted += 1
+                // ID-IMG-0001 (2026-07-31 audit): evict the deleted file from
+                // imageCache — otherwise its NSImage stays resident in memory
+                // and later loadImageObject calls hit the cache and return a
+                // zombie image for a file that no longer exists on disk.
+                // Per-file eviction (not removeAllObjects) so kept files
+                // stay cached.
+                imageCache.removeObject(forKey: file as NSString)
+            } catch {
+                failed += 1
+                logger.error("deleteAllExcept: removeItem failed during bulk cleanup: \(error.localizedDescription, privacy: .public) file=\(file, privacy: .public)")
+            }
         }
         // Bulk deletions used to happen silently — log them so a future
         // "images vanished" report can be traced in the system log.
-        if deleted > 0 {
-            logger.info("deleteAllExcept: removed \(deleted) orphaned image file(s), kept \(filenames.count)")
+        if deleted > 0 || failed > 0 {
+            logger.info("deleteAllExcept: removed \(deleted) orphaned image file(s), failed \(failed), kept \(filenames.count)")
         }
     }
 

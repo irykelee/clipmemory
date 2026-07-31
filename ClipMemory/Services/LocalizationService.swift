@@ -28,8 +28,8 @@ struct L10n {
 
     /// Plural-aware variant for count-bearing messages. Picks "<key>.one"
     /// when count == 1 and the current language defines that key (en/es/pt
-    /// have singular forms; the CJK languages intentionally omit it and
-    /// always use the base form). Falls back to the base key when ".one"
+    /// have singular forms; the CJK languages define ".one" with the same
+    /// value as the base key). Falls back to the base key when ".one"
     /// is absent — `string()` returns the key verbatim for missing keys,
     /// which is how the fallback is detected.
     ///
@@ -42,15 +42,31 @@ struct L10n {
     /// the bundled stringsdict rendered as "(null)" — observed in the
     /// settings maxItems picker on macOS 26. Plain `%d` formatting routes
     /// through the proven `String(format:)` path in the correct bundle.
+    ///
+    /// ID-L10N-0018 (2026-07-31 audit): the CJK bundles originally omitted
+    /// ".one" and relied on the missing-key fallback above — but `string()`
+    /// consults the English bundle before declaring a key missing, and en
+    /// defines every ".one", so CJK count==1 rendered English ("1 item").
+    /// The 4 CJK bundles now carry ".one" keys (value == base) so the
+    /// singular lookup resolves in the current bundle; the missing-key
+    /// fallback stays as defense-in-depth.
     static func plural(_ key: String, _ count: Int) -> String {
+        String(format: pluralTemplate(key, count), count)
+    }
+
+    /// ID-L10N-0016 (2026-07-30 audit): template-selection half of
+    /// `plural()`, exposed for count-bearing messages that also carry other
+    /// format arguments (e.g. a tag name) whose substitution order differs
+    /// from the count's. Callers format the returned template themselves.
+    private static func pluralTemplate(_ key: String, _ count: Int) -> String {
         if count == 1 {
             let singularKey = key + ".one"
             let singular = string(singularKey)
             if singular != singularKey {
-                return String(format: singular, count)
+                return singular
             }
         }
-        return String(format: string(key), count)
+        return string(key)
     }
 
     // MARK: - Private
@@ -155,7 +171,12 @@ struct L10n {
     static var tagPickerUseExisting: String { string("tagPicker.useExisting") }
     static func tagPickerNameConflict(_ name: String) -> String { string("tagPicker.nameConflict", name) }
     static var tagPickerDeleteConfirmTitle: String { string("tagPicker.deleteConfirm.title") }
-    static func tagPickerDeleteConfirmMessage(_ name: String, _ count: Int) -> String { string("tagPicker.deleteConfirm.message", name, count) }
+    // ID-L10N-0016 (2026-07-30 audit): route through the plural template so
+    // count=1 picks the ".one" variant ("removed from 1 item") instead of
+    // the grammatically plural base form.
+    static func tagPickerDeleteConfirmMessage(_ name: String, _ count: Int) -> String {
+        String(format: pluralTemplate("tagPicker.deleteConfirm.message", count), name, count)
+    }
     static var tagPickerDeleteConfirmConfirm: String { string("tagPicker.deleteConfirm.confirm") }
     static var tagPickerNameSuggestionsToggle: String { string("tagPicker.nameSuggestions.toggle") }
 
@@ -165,11 +186,17 @@ struct L10n {
     static var sidebarNewTag: String { string("sidebar.newTag") }
     static var sidebarDeleteTag: String { string("sidebar.deleteTag") }
     static var sidebarDeleteTagConfirmTitle: String { string("sidebar.deleteTag.confirm.title") }
-    static func sidebarDeleteTagConfirmMessage(_ name: String, _ count: Int) -> String { string("sidebar.deleteTag.confirm.message", name, count) }
+    // ID-L10N-0016 (2026-07-30 audit): plural-aware; count=1 uses ".one".
+    static func sidebarDeleteTagConfirmMessage(_ name: String, _ count: Int) -> String {
+        String(format: pluralTemplate("sidebar.deleteTag.confirm.message", count), name, count)
+    }
     // L-17 (2026-07-24 audit): explicit accessibility labels so VoiceOver
     // reads "Tag Work, 5 items" instead of the bare "Work, 5". Lives on the
     // tag-row accessibility modifier (see SidebarTagRow).
-    static func sidebarTagAccessibilityLabel(_ name: String, _ count: Int) -> String { string("sidebar.tag.accessibility.label", name, count) }
+    // ID-L10N-0016 (2026-07-30 audit): plural-aware; count=1 uses ".one".
+    static func sidebarTagAccessibilityLabel(_ name: String, _ count: Int) -> String {
+        String(format: pluralTemplate("sidebar.tag.accessibility.label", count), name, count)
+    }
     static var sidebarTagAccessibilitySelected: String { string("sidebar.tag.accessibility.selected") }
     static var sidebarTagAccessibilityUnselected: String { string("sidebar.tag.accessibility.unselected") }
     static var newTagTitle: String { string("newTag.title") }
@@ -275,7 +302,10 @@ struct L10n {
     static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ corrupt: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, corrupt, images) }
     static func settingsBackupLast(_ date: String) -> String { string("settings.backup.last", date) }
     static func clearTypeAction(_ typeName: String) -> String { string("clear.type.action", typeName) }
-    static func clearTypeConfirm(_ typeName: String, _ count: Int) -> String { string("clear.type.confirm", typeName, count) }
+    // ID-L10N-0016 (2026-07-30 audit): plural-aware; count=1 uses ".one".
+    static func clearTypeConfirm(_ typeName: String, _ count: Int) -> String {
+        String(format: pluralTemplate("clear.type.confirm", count), typeName, count)
+    }
     static var clearConditionalAction: String { string("clear.conditional.action") }
     static var clearConditionalTitle: String { string("clear.conditional.title") }
     static var clearConditionalType: String { string("clear.conditional.type") }

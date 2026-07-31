@@ -10,9 +10,21 @@ class LanguageManager: ObservableObject {
     /// `Task.detached` `CryptoService.prepareKey` failure handler).
     /// Written from `didSet` on the main actor; reads are best-effort and
     /// tolerate one-tick staleness across thread boundaries.
-    /// Marked `nonisolated(unsafe)` because Swift cannot prove the
-    /// single-writer / many-reader discipline at compile time.
-    nonisolated(unsafe) static var currentLanguageCode: String = "en"
+    ///
+    /// ID-SYNC-0002 (2026-07-31 audit): was `nonisolated(unsafe)` storage —
+    /// an unsynchronized cross-thread String read/write (main writes in
+    /// `didSet`, background L10n lookups read), a theoretical torn-read
+    /// race. Now backed by NSLock-guarded storage. NSLock rather than
+    /// OSAllocatedUnfairLock because the deployment target is macOS 13 and
+    /// C-1 (2026-07-24 audit) flagged OSAllocatedUnfairLock as macOS 14+.
+    nonisolated private static let codeLock = NSLock()
+    // Guarded by `codeLock` at every access (see the computed property
+    // below); `unsafe` only because Swift cannot verify the lock discipline.
+    nonisolated(unsafe) private static var codeStorage: String = "en"
+    nonisolated static var currentLanguageCode: String {
+        get { codeLock.withLock { codeStorage } }
+        set { codeLock.withLock { codeStorage = newValue } }
+    }
 
     @Published var selectedLanguage: String {
         didSet {

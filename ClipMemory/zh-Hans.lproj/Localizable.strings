@@ -75,7 +75,9 @@
 "settings.backup.auto" = "每天自动备份";
 "settings.backup.keep" = "保留备份份数";
 "settings.backup.keep.count" = "%d 个备份";
+"settings.backup.keep.count.one" = "%d 个备份";
 "settings.trash.retention.days.count" = "%d 天";
+"settings.trash.retention.days.count.one" = "%d 天";
 "settings.backup.now" = "立即备份";
 "settings.backup.open" = "打开备份目录";
 "settings.backup.export" = "导出备份…";
@@ -91,6 +93,7 @@
 "settings.backup.last" = "上次备份：%@";
 "clear.type.action" = "删除全部%@";
 "clear.type.confirm" = "将删除 %2$d 个%1$@条目（不含收藏，进回收站）";
+"clear.type.confirm.one" = "将删除 %2$d 个%1$@条目（不含收藏，进回收站）";
 "clear.conditional.action" = "按条件删除…";
 "clear.conditional.title" = "按条件删除";
 "clear.conditional.type" = "类型";
@@ -160,6 +163,7 @@
 
 /* QuickBar */
 "quickbar.recent" = "%d 条";
+"quickbar.recent.one" = "%d 条";
 "quickbar.open.full" = "打开完整窗口";
 "quickbar.no.results" = "无结果";
 
@@ -206,6 +210,7 @@
 "tagPicker.nameConflict" = "标签「%@」已存在，将使用现有";
 "tagPicker.deleteConfirm.title" = "删除标签？";
 "tagPicker.deleteConfirm.message" = "标签「%@」将从 %d 个项目移除";
+"tagPicker.deleteConfirm.message.one" = "标签「%@」将从 %d 个项目移除";
 "tagPicker.deleteConfirm.confirm" = "删除";
 "tagPicker.section.suggestedNames" = "检测到的名称";
 "tagPicker.nameSuggestions.toggle" = "显示检测到的名称";
@@ -215,7 +220,9 @@
 "sidebar.deleteTag" = "删除标签";
 "sidebar.deleteTag.confirm.title" = "删除标签？";
 "sidebar.deleteTag.confirm.message" = "标签「%@」将从 %d 个项目移除";
+"sidebar.deleteTag.confirm.message.one" = "标签「%@」将从 %d 个项目移除";
 "sidebar.tag.accessibility.label" = "标签 %@，%d 项";
+"sidebar.tag.accessibility.label.one" = "标签 %@，%d 项";
 "sidebar.tag.accessibility.selected" = "已选中";
 "sidebar.tag.accessibility.unselected" = "未选中";
 "tagFilter.active.title" = "按标签过滤";
@@ -294,6 +301,7 @@
 "settings.historyCapture.ocrPreview" = "图片搜索结果显示 OCR 文本";
 "banner.key.unavailable" = "解锁后重试";
 "banner.data.corrupted.count" = "%d 条损坏";
+"banner.data.corrupted.count.one" = "%d 条损坏";
 
 /* VoiceOver / 无障碍标签（2026-07-30 审计 L10N-0001..0007） */
 "search.clear" = "清除搜索";

@@ -48,6 +48,42 @@ final class TagTests: XCTestCase {
         XCTAssertEqual(original, decoded)
     }
 
+    // MARK: - ID-STORE-0004 (2026-07-31 audit): tolerant decoding
+
+    /// ID-STORE-0004: a tag JSON missing optional fields decodes with
+    /// defaults instead of throwing (same M-20 pattern as ClipboardItem).
+    /// A missing `createdAt` falls back to `.distantPast` so degraded tags
+    /// sort last in recency ordering.
+    func testTagDecodesWithMissingFields() throws {
+        let json = #"{"id":"\#(UUID().uuidString)","name":"工作"}"#
+        let tag = try JSONDecoder().decode(Tag.self, from: Data(json.utf8))
+        XCTAssertEqual(tag.name, "工作")
+        XCTAssertEqual(tag.colorHex, "", "missing colorHex degrades to empty (renders as fallback color)")
+        XCTAssertFalse(tag.isAutoSuggested)
+        XCTAssertEqual(tag.createdAt, .distantPast)
+    }
+
+    /// ID-STORE-0004: one degraded tag in the persisted array must not fail
+    /// the whole `[Tag]` decode — pre-fix a single bad tag threw and
+    /// `loadTags()` lost every tag definition (quarantine path).
+    func testSingleBadTagDoesNotFailWholeArrayDecode() throws {
+        let good = Tag(id: UUID(), name: "学习", colorHex: "#FF6B6B",
+                       isAutoSuggested: true, createdAt: Date(timeIntervalSince1970: 1_700_000_000))
+        let goodData = try JSONEncoder().encode(good)
+        let goodObject = try JSONSerialization.jsonObject(with: goodData)
+        // Missing id / colorHex / isAutoSuggested / createdAt — the "bad" tag.
+        let badObject: [String: Any] = ["name": "残缺"]
+        let arrayData = try JSONSerialization.data(withJSONObject: [goodObject, badObject])
+
+        let decoded = try JSONDecoder().decode([Tag].self, from: arrayData)
+
+        XCTAssertEqual(decoded.count, 2,
+                       "ID-STORE-0004: bad tag must degrade, not fail the whole array")
+        XCTAssertTrue(decoded.contains(good), "good tag must survive intact")
+        let degraded = decoded.first { $0.name == "残缺" }
+        XCTAssertNotNil(degraded, "degraded tag must still decode with defaults")
+    }
+
     // MARK: - Preset colors
 
     func testPresetColorsAreNonEmpty() {

@@ -446,4 +446,67 @@ final class BackupServiceTests: XCTestCase {
                      "N-3: manual backupNow must not write to the auto-only error fields")
         XCTAssertNil(service.lastBackupErrorMessage)
     }
+
+    // MARK: - Round-5 audit regressions (2026-07-31)
+
+    /// ID-BACKUP-0002: a wall-clock rollback makes `Date() - lastBackupDate`
+    /// NEGATIVE, which the old throttle read as "still within 24h" — the
+    /// daily auto-backup silently stalled. Negative deltas must be treated
+    /// as "due now" instead.
+    func testPerformBackupIfNeededRunsWhenLastBackupDateIsInFuture() throws {
+        seedStoreData()
+        // Simulate a clock rollback: last backup "happened" 1h in the future.
+        defaults.set(Date().addingTimeInterval(3600), forKey: "lastBackupDate")
+
+        service.performBackupIfNeeded()
+
+        // performBackupIfNeeded dispatches to a utility queue; poll for the
+        // new timestamped dir (same pattern as the N-3 failure test above).
+        let deadline = Date().addingTimeInterval(5.0)
+        var entries = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        while entries.isEmpty, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
+            entries = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        }
+        XCTAssertEqual(entries.count, 1,
+                       "ID-BACKUP-0002: clock rollback (future lastBackupDate) must not stall the auto-backup")
+    }
+
+    /// ID-BACKUP-0003: lowering `keepCount` must prune the now-over-limit
+    /// old backups immediately, not at the next backup trigger.
+    func testKeepCountReductionPrunesImmediately() {
+        for i in 0..<7 {
+            let name = String(format: "2026-07-%02d_120000.000", 14 + i)
+            try? FileManager.default.createDirectory(
+                at: backupsDir.appendingPathComponent(name, isDirectory: true),
+                withIntermediateDirectories: true
+            )
+        }
+        XCTAssertEqual(service.keepCount, 7, "precondition: default keepCount is 7")
+
+        service.keepCount = 3
+
+        // The setter prunes on a utility queue; poll for convergence.
+        let deadline = Date().addingTimeInterval(5.0)
+        var remaining = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        while remaining.count != 3, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
+            remaining = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        }
+        XCTAssertEqual(remaining.count, 3,
+                       "ID-BACKUP-0003: lowering keepCount must prune immediately, got \(remaining.count) dirs")
+        XCTAssertEqual(remaining.min(), "2026-07-18_120000.000", "newest three must survive")
+    }
+
+    /// ID-SECURITY-0004: backup directories must be created 0o700 — sibling
+    /// of ImageStorage's ID-SECURITY-0002. 0o755 leaked backup metadata
+    /// (timestamps, blob sizes) to other local users on shared hosts.
+    func testBackupDirectoryPermissionsAreOwnerOnly() throws {
+        seedStoreData()
+        let dir = try service.backupNow()
+        let attrs = try FileManager.default.attributesOfItem(atPath: dir.path)
+        let perms = (attrs[.posixPermissions] as? NSNumber)?.intValue
+        XCTAssertEqual(perms, 0o700,
+                       "ID-SECURITY-0004: backup dir must be 0o700, got \(String(describing: perms.map { String($0, radix: 8) }))")
+    }
 }

@@ -652,7 +652,13 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             items = []
             return
         }
-        let loadedItems = savedItems.filter { !$0.isExpired }
+        // ID-STORE-0002 (2026-07-31 audit): the old `!$0.isExpired` filter
+        // dropped expired items silently — including PINNED ones — and the
+        // next save wiped them permanently, bypassing the recycle bin.
+        // Pinned items are exempt from expiry (pin = explicit retention);
+        // expired unpinned items route to the trash below (recoverable).
+        let expiredItems = savedItems.filter { $0.isExpired && !$0.isPinned }
+        let loadedItems = savedItems.filter { !$0.isExpired || $0.isPinned }
 
         // Repair legacy image items incorrectly flagged by the old
         // getDecryptedContent path: image content is a filename, never encrypted,
@@ -690,6 +696,14 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         updatePinnedItems()
         trimToMaxItems()
         rebuildDedupHashSet()
+        if !expiredItems.isEmpty {
+            // ID-STORE-0002: trash load-time-expired items BEFORE the
+            // orphan-image sweep so their image files stay referenced
+            // (restorable from the bin) instead of being swept as orphans.
+            // Idempotent across relaunches via TrashStore's per-id dedup
+            // (ID-STORE-0003) if the kill lands before the debounced save.
+            moveToTrash(expiredItems)
+        }
         ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
 
         if repairedImages || repairedTexts {
@@ -731,9 +745,20 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             // Without this, every addItem does O(n) decrypt-and-compare against them.
             var hashes: [UUID: String] = [:]
             for candidate in backfillCandidates {
-                let plaintext = candidate.isEncrypted
-                    ? (ServiceContainer.crypto.decrypt(candidate.content) ?? candidate.content)
-                    : candidate.content
+                // ID-STORE-0001 (2026-07-31 audit): on decrypt failure
+                // (key not ready / corrupt blob) skip the backfill instead
+                // of falling back to the ciphertext as "plaintext" — the
+                // old `?? candidate.content` fallback persisted an HMAC of
+                // the WRONG content as the dedup fingerprint, permanently
+                // poisoning dedup for the real content. Leave contentHash
+                // nil so a later launch (key available) retries.
+                let plaintext: String
+                if candidate.isEncrypted {
+                    guard let decrypted = ServiceContainer.crypto.decrypt(candidate.content) else { continue }
+                    plaintext = decrypted
+                } else {
+                    plaintext = candidate.content
+                }
                 if let hash = ServiceContainer.crypto.hmacHex(for: plaintext) {
                     hashes[candidate.id] = hash
                 }
@@ -1308,7 +1333,10 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
 
         switch decryptOutcome {
         case .success(let plaintext):
-            contentCache.setObject(plaintext as NSString, forKey: key)
+            // ID-PERF-0017 (2026-07-31 audit): pass the plaintext byte
+            // count as cost — totalCostLimit was dead code while every
+            // setObject defaulted cost to 0, so the 10MB cap never fired.
+            contentCache.setObject(plaintext as NSString, forKey: key, cost: plaintext.utf8.count)
             // N4: 不 append .success。成功 = 无需诊断 = merge 时显式 SET 零态。
             return plaintext
         case .keyUnavailable:
@@ -1479,8 +1507,14 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         pendingFailedIDs.removeAll()
         pendingFailedIDsLock.unlock()
         var changed = false
+        // ID-PERF-0014 (2026-07-30 audit): reuse the ID-PERF-0015
+        // UUID→index map (amortized O(1) per id) instead of
+        // `items.firstIndex(where:)` per id — O(n·k) → O(n+k) for batched
+        // failure merges. Property-only mutation below doesn't reorder
+        // `items`, so the index stays valid (no invalidateItemIndex).
+        rebuildItemIndexIfStale()
         for id in ids {
-            if let index = items.firstIndex(where: { $0.id == id }),
+            if let index = itemIndex[id],
                !items[index].decryptionFailed {
                 items[index].decryptionFailed = true
                 changed = true
@@ -1528,20 +1562,23 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                 scheduleDecryptionFailedMark(item.id)
                 recordPendingDiagnostic(.dataCorrupted)
                 let result = RichTextParser.plaintext(from: item.content, fallback: L10n.itemRichText)
-                rtfPlaintextCache.setObject(result as NSString, forKey: key)
+                // ID-PERF-0017: cost = plaintext bytes so totalCostLimit works.
+                rtfPlaintextCache.setObject(result as NSString, forKey: key, cost: result.utf8.count)
                 return result
             case .internalError:
                 scheduleDecryptionFailedMark(item.id)
                 recordPendingDiagnostic(.internalError)
                 let result = RichTextParser.plaintext(from: item.content, fallback: L10n.itemRichText)
-                rtfPlaintextCache.setObject(result as NSString, forKey: key)
+                // ID-PERF-0017: cost = plaintext bytes so totalCostLimit works.
+                rtfPlaintextCache.setObject(result as NSString, forKey: key, cost: result.utf8.count)
                 return result
             }
         } else {
             base64RTF = item.content
         }
         let result = RichTextParser.plaintext(from: base64RTF, fallback: L10n.itemRichText)
-        rtfPlaintextCache.setObject(result as NSString, forKey: key)
+        // ID-PERF-0017: cost = plaintext bytes so totalCostLimit works.
+        rtfPlaintextCache.setObject(result as NSString, forKey: key, cost: result.utf8.count)
         return result
     }
 
@@ -1891,6 +1928,13 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                 self.onRecordOwnWrite?()
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()
+                // ID-SECURITY-0003 (2026-07-30 audit): mirror the warm-path
+                // marker in copyToClipboard — stamp ConcealedType when the
+                // item is sensitive so well-behaved apps (and our own
+                // ClipboardMonitor read path) suppress/skip the entry.
+                if item.isSensitive {
+                    pasteboard.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+                }
                 pasteboard.writeObjects([image])
                 self.moveToTop(item)
             }
@@ -1925,35 +1969,19 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     }
 
     internal func cleanupExpiredItems() {
-        // ID-PERF-0007 (2026-07-30 audit): single filter pass building both
-        // collections. Previous code did 2x O(n) `items.filter` per 60s tick.
-        var expiredImageFilenames: [String] = []
-        var expiredIds: Set<UUID> = []
-        expiredIds.reserveCapacity(items.count / 4)  // rough upper bound
-        for item in items where item.isExpired {
-            expiredIds.insert(item.id)
-            if item.type == .image {
-                expiredImageFilenames.append(item.content)
-            }
-        }
-        if expiredImageFilenames.isEmpty && expiredIds.isEmpty { return }
-
-        for filename in expiredImageFilenames {
-            ImageStorage.shared.deleteImage(filename: filename)
-        }
-        for id in expiredIds {
-            contentCache.removeObject(forKey: id.uuidString as NSString)
-            // CLIP-5 (2026-07-24 review): also drop the derived OCR cache key.
-            contentCache.removeObject(forKey: (id.uuidString + ".ocr") as NSString)
-            rtfPlaintextCache.removeObject(forKey: id.uuidString as NSString)
-        }
-        let beforeCount = items.count
-        items.removeAll { expiredIds.contains($0.id) }
-        invalidateItemIndex()
-        if items.count != beforeCount {
-            updatePinnedItems()
-            scheduleSave()
-            rebuildDedupHashSet()
-        }
+        // ID-STORE-0002 (2026-07-31 audit): two fixes —
+        // 1. The predicate now exempts pinned items: pin is an explicit
+        //    long-term retention guarantee; an expiresAt deadline must not
+        //    silently destroy pinned content (same exemption rule as
+        //    trimToMaxItems / clearAllItems / clearSensitiveItems).
+        // 2. Deletion routes through moveToTrash so expired items land in
+        //    the recycle bin (recoverable until trash retention expires)
+        //    instead of being permanently removed. Image files are NOT
+        //    deleted here — TrashStore's purge / deletePermanently own the
+        //    file lifecycle, so a restored expired item keeps its image.
+        //    Cache eviction happens inside moveToTrash (evictCaches).
+        let expired = items.filter { $0.isExpired && !$0.isPinned }
+        guard !expired.isEmpty else { return }
+        moveToTrash(expired)
     }
 }

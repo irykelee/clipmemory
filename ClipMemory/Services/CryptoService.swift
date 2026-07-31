@@ -117,10 +117,28 @@ class CryptoService: CryptoServiceProtocol {
     /// Also resets `keyLoadAttempted` so a transient Keychain state at
     /// the next foreground (`.interactionLocked` pre-unlock) gets a
     /// fresh attempt instead of the cached failure.
+    ///
+    /// ID-CRYPTO-0004 (2026-07-31 audit): `SymmetricKey` exposes no
+    /// mutable-bytes API, so the cached key itself can only be dropped —
+    /// best-effort. The transient raw `Data` copies that fed it CAN be
+    /// zeroed, and every such path now routes through the shared
+    /// `wipeKeyMaterial` helper (generate/migration paths here, package-key
+    /// path in BackupPackage) so the zeroing behavior is consistent.
     func clearInMemoryKey() {
         withCachedLoadedKey {
             cachedLoadedKey = nil
             keyLoadAttempted = false
+        }
+    }
+
+    /// ID-CRYPTO-0004 (2026-07-31 audit): single best-effort zeroing helper
+    /// for transient key-material `Data` copies, shared by every path that
+    /// handles raw key bytes (previously each path zeroed differently — or
+    /// not at all — so sensitive bytes could linger in freed heap memory).
+    static func wipeKeyMaterial(_ data: inout Data) {
+        data.withUnsafeMutableBytes { ptr in
+            guard let base = ptr.baseAddress, !ptr.isEmpty else { return }
+            memset(base, 0, ptr.count)
         }
     }
 
@@ -153,7 +171,9 @@ class CryptoService: CryptoServiceProtocol {
     /// S1 (2026-07-29 audit): securely erase a key file before deletion.
     /// Overwrites the file with random data before unlinking to prevent
     /// recovery of the plaintext root key from unallocated disk blocks.
-    private static func secureRemoveKeyFile(at url: URL) {
+    /// Internal (not private) so tests can verify the in-place overwrite
+    /// (ID-CRYPTO-0002 regression test).
+    static func secureRemoveKeyFile(at url: URL) {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: url.path) else { return }
         do {
@@ -164,7 +184,21 @@ class CryptoService: CryptoServiceProtocol {
                 random.withUnsafeMutableBytes { ptr in
                     _ = SecRandomCopyBytes(kSecRandomDefault, Int(fileSize), ptr.baseAddress!)
                 }
-                try random.write(to: url, options: .atomic)
+                // ID-CRYPTO-0002 (2026-07-31 audit): the previous
+                // `random.write(to: url, options: .atomic)` was temp-file +
+                // rename — the ORIGINAL key blocks were never overwritten,
+                // so the claimed "prevent recovery from unallocated disk
+                // blocks" guarantee did not hold. Overwrite in place on the
+                // same inode via FileHandle + synchronize instead.
+                let handle = try FileHandle(forWritingTo: url)
+                do {
+                    try handle.write(contentsOf: random)
+                    try handle.synchronize()
+                    try handle.close()
+                } catch {
+                    try? handle.close()
+                    throw error
+                }
             }
             try fileManager.removeItem(at: url)
         } catch {
@@ -275,6 +309,9 @@ class CryptoService: CryptoServiceProtocol {
         let keyURL = keyFileURL
         if let existing = try? Data(contentsOf: keyURL), existing.count == 32 { return }
         var keyData = Data(count: 32)
+        // ID-CRYPTO-0004 (2026-07-31 audit): zero the transient raw-key
+        // copy on every exit path via the shared helper.
+        defer { wipeKeyMaterial(&keyData) }
         let result = keyData.withUnsafeMutableBytes {
             SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!)
         }
@@ -380,6 +417,12 @@ class CryptoService: CryptoServiceProtocol {
         // user's real key and permanently destroying all encrypted history.
         switch keyStore.loadStatus() {
         case .found(let data) where data.count == 32:
+            // ID-CRYPTO-0003 (2026-07-31 audit): a pre-C1 plaintext key file
+            // can linger on disk from an interrupted/failed migration even
+            // when the Keychain item is healthy. Remove it idempotently on
+            // this path too (secureRemoveKeyFile no-ops when absent) so the
+            // plaintext root key does not sit on disk forever.
+            secureRemoveKeyFile(at: keyURL)
             return publishToSharedCache(SymmetricKey(data: data))
         case .found:
             logger.error("Keychain contains invalid key (not 32 bytes); treating as absent")
@@ -397,8 +440,19 @@ class CryptoService: CryptoServiceProtocol {
             // notification to start working.
             logger.error("Keychain interaction not allowed (locked); deferring key prep until unlock")
             return nil
-        case .notFound, .otherError:
+        case .notFound:
             break // fall through to file migration / fresh generation
+        case .otherError(let status):
+            // ID-CRYPTO-0001 (2026-07-31 audit): transient Keychain errors
+            // (errSecAuthFailed, errSecServiceNotAvailable, ...) previously
+            // collapsed into the not-found path — a flaky read could then
+            // trigger regeneration and SecItemUpdate would overwrite the
+            // valid root key, permanently destroying all encrypted history.
+            // Treat exactly like .interactionLocked: log, return nil, wait
+            // for the wake retry (retryPrepareKeyIfLocked). Only a
+            // definitive .notFound may migrate / generate.
+            logger.error("Keychain load failed (OSStatus \(status, privacy: .public)); deferring key prep to avoid overwriting a possibly-valid root key")
+            return nil
         }
         // 2. Migrate a pre-C1 key file, then remove it.
         let fileManager = FileManager.default
@@ -513,6 +567,9 @@ class CryptoService: CryptoServiceProtocol {
         failureHandler: (CryptoKeyFailure) -> KeyFailureAction
     ) -> SymmetricKey? {
         var keyData = Data(count: 32)
+        // ID-CRYPTO-0004 (2026-07-31 audit): zero the transient raw-key
+        // copy on every exit path via the shared helper.
+        defer { wipeKeyMaterial(&keyData) }
         let result = keyData.withUnsafeMutableBytes {
             SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!)
         }
@@ -812,16 +869,20 @@ class CryptoService: CryptoServiceProtocol {
             let sealedBox = try AES.GCM.SealedBox(combined: data)
             let decrypted = try AES.GCM.open(sealedBox, using: key)
             return Array(decrypted)
+        } catch CryptoKitError.authenticationFailure {
+            // ID-SILENT-0011 (2026-07-31 audit): GCM tag mismatch = wrong key
+            // or tampered/corrupt ciphertext — an EXPECTED, already-classified
+            // failure (decryptWithReason maps it to .dataCorrupted). Keep it
+            // out of the error stream so the loud log below stays a reliable
+            // "something is actually wrong" signal.
+            Self.logger.debug("decryptV2 authentication failure (wrong key or corrupt ciphertext)")
+            return nil
         } catch {
-            // ID-SILENT-0011 (2026-07-30 audit): surface the underlying
-            // CryptoKit error to os_log so operators can distinguish
-            // GCM authenticationFailure (ciphertext corruption / wrong key)
-            // from a malformed `SealedBox` (truncation / format drift).
-            // Without this log the only signal downstream is the eventual
-            // `.dataCorrupted` in the P0-2 DecryptResult classifier — by
-            // then the cause is buried under 2 layers of `try?` chains.
+            // ID-SILENT-0011 (2026-07-30/31 audits): anything else — malformed
+            // `SealedBox` (truncation / format drift), CryptoKit parameter
+            // errors, framework hiccups — is unexpected and must be visible.
             // The error message is privacy-safe (no plaintext content).
-            Self.logger.error("decryptV2 failed: \(String(describing: error), privacy: .public)")
+            Self.logger.error("decryptV2 unexpected error: \(String(describing: error), privacy: .public)")
             return nil
         }
     }

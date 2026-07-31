@@ -41,11 +41,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var didEnterBackgroundObserver: NSObjectProtocol?
     private var lastPrewarmTime: Date = .distantPast
     private var welcomeWindow: NSWindow?
+    // ID-LIFE-0020 (2026-07-31 audit): the willClose block observer token
+    // used to be discarded, so every welcome-window reopen left a permanent
+    // observer whose closure strongly captured the closed NSWindow graph.
+    // Stored now; removed on willClose (self-removal) and in deinit.
+    // Internal (not private) so the ID-LIFE-0020 regression test can assert
+    // the token lifecycle.
+    private(set) var welcomeCloseObserver: NSObjectProtocol?
     // Independent settings window (2026-07-25 plan): separate from the main
     // window, opened via menu `⌘,` or the sidebar "Settings" tab. Same
     // `isReleasedWhenClosed = false` pattern as welcomeWindow so SwiftUI
     // @State survives close/reopen.
     private var settingsWindow: NSWindow?
+    // ID-LIFE-0021 (2026-07-31 audit): same discarded-token leak as
+    // welcomeCloseObserver, for the settings window.
+    private(set) var settingsCloseObserver: NSObjectProtocol?
     // CLIP-3 (2026-07-24): debounce .encryptionFailed alerts — see throttler doc.
     private let encryptionAlertThrottler = EncryptionFailedAlertThrottler()
 
@@ -170,12 +180,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // means closing the window doesn't deallocate it; the welcomeWindow
         // ivar + NSHostingView would otherwise leak. Nil the ivar + unregister
         // on willClose so the next reopen starts from a clean slate.
+        // ID-LIFE-0020 (2026-07-31 audit): keep the observer token and
+        // self-remove inside the handler — a discarded token left a permanent
+        // observer (and its strongly-captured window graph) per reopen.
+        if let stale = welcomeCloseObserver {
+            NotificationCenter.default.removeObserver(stale)
+            welcomeCloseObserver = nil
+        }
         let welcomeRef = win
-        NotificationCenter.default.addObserver(
+        welcomeCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: welcomeRef, queue: .main
         ) { [weak self] _ in
             self?.welcomeWindow = nil
             self?.windowManager?.unregisterSecondaryWindow(welcomeRef)
+            if let self, let observer = self.welcomeCloseObserver {
+                NotificationCenter.default.removeObserver(observer)
+                self.welcomeCloseObserver = nil
+            }
         }
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -389,12 +410,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // keeps the app activated while the settings window is on screen.
         windowManager?.registerSecondaryWindow(win)
         // ID-LIFE-0004 (2026-07-30 audit): same nil-on-close as welcome window.
+        // ID-LIFE-0021 (2026-07-31 audit): keep the observer token and
+        // self-remove inside the handler — same discarded-token leak as the
+        // welcome window (ID-LIFE-0020).
+        if let stale = settingsCloseObserver {
+            NotificationCenter.default.removeObserver(stale)
+            settingsCloseObserver = nil
+        }
         let settingsRef = win
-        NotificationCenter.default.addObserver(
+        settingsCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: settingsRef, queue: .main
         ) { [weak self] _ in
             self?.settingsWindow = nil
             self?.windowManager?.unregisterSecondaryWindow(settingsRef)
+            if let self, let observer = self.settingsCloseObserver {
+                NotificationCenter.default.removeObserver(observer)
+                self.settingsCloseObserver = nil
+            }
         }
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -469,6 +501,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let o = protectedDataWillBecomeUnavailableObserver { NotificationCenter.default.removeObserver(o) }
         if let o = sessionDidResignActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = didEnterBackgroundObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+        // ID-LIFE-0020 / ID-LIFE-0021 (2026-07-31 audit): the willClose
+        // observers normally self-remove when their window closes; deinit
+        // is the safety net for a still-open window at teardown.
+        if let o = welcomeCloseObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = settingsCloseObserver { NotificationCenter.default.removeObserver(o) }
         // BUG-037 (2026-07-21): deinit was observer-only. Carbon hotkey,
         // clipboard monitor timer, and welcome window are cleaned only
         // in applicationWillTerminate. If AppDelegate is ever deallocated

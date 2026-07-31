@@ -3,7 +3,10 @@ import Foundation
 import os.log
 import Combine
 
-class ClipboardMonitor: SensitiveDetectorProtocol {
+// ID-MISC-0001 (2026-07-31 audit): no longer conforms to the deleted dead
+// protocol `SensitiveDetectorProtocol` (it had no injection point; the
+// `detectSensitive(_:)` requirement is still satisfied by the method below).
+class ClipboardMonitor {
     private var timer: DispatchSourceTimer?
     private let pasteboard = NSPasteboard.general
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
@@ -246,12 +249,72 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
     }
 
     /// Called by ClipboardStore after it writes to pasteboard, so we skip re-capturing.
+    ///
+    /// ID-MON-0001 (2026-07-31 audit): also records a content fingerprint of
+    /// what we just wrote. The old contract skipped "the next changeCount
+    /// bump" blindly — an external app's write landing inside the skip window
+    /// was swallowed as if it were ours, silently losing a history entry.
+    /// `checkClipboard` now only skips a change whose fingerprint matches
+    /// this recorded one (changeCount + fingerprint double check).
+    ///
+    /// Timing note: callers invoke this BEFORE `clearContents()` + the
+    /// payload write (M-4 contract, all synchronous on the main thread), so
+    /// the pasteboard still holds the OLD content here. The fingerprint is
+    /// therefore captured from a main-queue async block, which runs right
+    /// after the caller's synchronous write completes.
     func recordOwnWrite() {
-        skipNextCapture = true
-        lastChangeCount = pasteboard.changeCount
+        let countAtRecord = pasteboard.changeCount
+        withLock {
+            _skipNextCapture = true
+            _lastChangeCount = countAtRecord
+            _ownWriteFingerprint = nil
+            _ownWriteFingerprintReady = false
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let fingerprint = Self.pasteboardContentFingerprint(self.pasteboard)
+            self.withLock {
+                self._ownWriteFingerprint = fingerprint
+                self._ownWriteFingerprintReady = true
+            }
+        }
     }
 
-    private func checkClipboard() {
+    /// ID-MON-0001: fingerprint of the pasteboard payload recorded after
+    /// `recordOwnWrite()` (see its timing note). Compared against the live
+    /// pasteboard when the skip flag is consumed; only a matching change is
+    /// treated as our own write. HMAC'd (same style as `imageContentHash`) so
+    /// a large own-write (up to 10 MB text) doesn't sit duplicated in memory
+    /// and the hash can't serve as a content oracle.
+    /// `_ownWriteFingerprintReady` distinguishes "fingerprint not captured
+    /// yet" (main-async still pending) from a legitimately-nil fingerprint
+    /// (e.g. a write that left no string/image payload).
+    private var _ownWriteFingerprint: String?
+    private var _ownWriteFingerprintReady = false
+    /// Internal (not private) so the ID-MON-0001 regression test can inspect it.
+    var ownWriteFingerprint: String? {
+        get { withLock { _ownWriteFingerprintReady ? _ownWriteFingerprint : nil } }
+    }
+
+    /// ID-MON-0001: stable fingerprint of the pasteboard's current payload.
+    /// Covers the two own-write shapes ClipboardStore produces: text
+    /// (`setString`) and images (`writeObjects([image])`). Rich-text own
+    /// writes still resolve via the string representation; a pasteboard with
+    /// neither string nor image (e.g. just cleared) fingerprints as nil and
+    /// matches a nil recorded fingerprint — same skip behavior as before.
+    static func pasteboardContentFingerprint(_ pasteboard: NSPasteboard) -> String? {
+        if let string = pasteboard.string(forType: .string), !string.isEmpty {
+            return "s:" + (ServiceContainer.crypto.hmacHex(for: string) ?? "\(string.utf8.count)#\(string.hashValue)")
+        }
+        if let imageData = firstImageData(read: { pasteboard.data(forType: $0) }) {
+            return "i:" + (imageContentHash(for: imageData) ?? "\(imageData.count)")
+        }
+        return nil
+    }
+
+    // Internal (not private) so the ID-MON-0001 regression test can drive
+    // the skip-window decision deterministically without the poll timer.
+    func checkClipboard() {
         // L-1 (2026-07-21 audit): the original check-then-act was two separate
         // lock acquisitions; a recordOwnWrite() landing between the read and the
         // false-write could re-set the flag back to true after we cleared it,
@@ -270,15 +333,42 @@ class ClipboardMonitor: SensitiveDetectorProtocol {
         // times per 0.5 s poll tick. The pasteboard server round-trip is
         // cheap but not free; snapshot it once per tick and reuse the value.
         let currentChangeCount = pasteboard.changeCount
-        let shouldSkip = withLock { () -> Bool in
-            guard _skipNextCapture else { return false }
-            if currentChangeCount != _lastChangeCount {
+        // ID-MON-0001 (2026-07-31 audit): the old block consumed the skip
+        // flag on ANY changeCount bump — an external write landing inside
+        // the skip window was silently swallowed. Now, when the count has
+        // moved, we verify the payload fingerprint against what
+        // recordOwnWrite() captured: match → it really was our write, skip;
+        // mismatch → an external app owns this change, drop the flag and
+        // fall through to the normal capture path so the entry is not lost.
+        let skipPending = withLock { _skipNextCapture }
+        if skipPending {
+            // CLIP-4: own write hasn't landed yet — keep the flag and wait.
+            guard currentChangeCount != lastChangeCount else { return }
+            let fingerprint = Self.pasteboardContentFingerprint(pasteboard)
+            let matchesOwnWrite = withLock { () -> Bool? in
+                // The fingerprint main-async capture hasn't run yet (own
+                // write just landed): keep the flag and wait one more tick
+                // rather than guessing. Returning nil = undecided.
+                guard _ownWriteFingerprintReady else { return nil }
+                if _ownWriteFingerprint == fingerprint {
+                    _skipNextCapture = false
+                    _ownWriteFingerprint = nil
+                    _ownWriteFingerprintReady = false
+                    _lastChangeCount = currentChangeCount
+                    return true
+                }
+                // External change consumed the skip window: drop the stale
+                // skip state but do NOT advance lastChangeCount — the normal
+                // path below treats this as a fresh capture.
                 _skipNextCapture = false
-                _lastChangeCount = currentChangeCount
+                _ownWriteFingerprint = nil
+                _ownWriteFingerprintReady = false
+                return false
             }
-            return true
+            // nil (fingerprint pending) and true (our own write) both skip
+            // this tick; false falls through to capture the external change.
+            if matchesOwnWrite != false { return }
         }
-        if shouldSkip { return }
 
         // CLIP-6 (2026-07-24 review): credential-manager class apps mark
         // their copies with these standard concealed/transient pasteboard

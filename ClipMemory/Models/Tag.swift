@@ -22,6 +22,24 @@ struct Tag: Codable, Identifiable, Hashable {
         self.createdAt = createdAt
     }
 
+    // MARK: - Codable compatibility
+    // ID-STORE-0004 (2026-07-31 audit): synthesized Codable throws on ANY
+    // missing field, and one bad tag fails the whole `[Tag]` decode —
+    // `loadTags()` then quarantines the blob and every tag definition is
+    // lost. Follow the ClipboardItem M-20 pattern (`decodeIfPresent` ??
+    // default) so a single degraded tag decodes with defaults instead of
+    // taking down all tags. A missing `id` gets a fresh UUID (degraded
+    // identity, still better than losing every tag); a missing `createdAt`
+    // uses `distantPast` so degraded tags sort last in recency ordering.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        self.colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? ""
+        self.isAutoSuggested = try container.decodeIfPresent(Bool.self, forKey: .isAutoSuggested) ?? false
+        self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? .distantPast
+    }
+
     /// Curated palette for new-tag color picker. All 7-char "#RRGGBB" strings.
     /// Designed for distinct hues at small chip sizes (high enough chroma).
     static let presetColors: [String] = [

@@ -410,16 +410,91 @@ import XCTest
         XCTAssertEqual(store.trashedItems.count, 0, "trimToMaxItems should permanently delete, not trash")
     }
 
-    func testCleanupExpiredItemsDoesNotTrash() {
+    // MARK: - ID-STORE-0002 (2026-07-31 audit): expiry cleanup goes to trash
+
+    /// ID-STORE-0002: an expired item must land in the recycle bin
+    /// (recoverable), not vanish permanently. Covers the restart path —
+    /// loadItems previously filtered expired items out of `items` and let
+    /// the next save wipe them, bypassing the trash entirely.
+    func testExpiredItemMovesToTrashOnRestart() {
         let expired = ClipboardItem(content: "Expired", type: .text, expiresAt: Date().addingTimeInterval(-3600))
         store.addItem(expired)
         store.flushPendingSaves()
 
-        // Simulate restart which triggers cleanupExpiredItems
+        // Simulate restart which triggers the loadItems expiry path.
         let store2 = ClipboardStore(backend: backend, trashBackend: trashBackend)
 
         XCTAssertEqual(store2.items.count, 0)
-        XCTAssertEqual(store2.trashedItems.count, 0, "Expired items should be permanently deleted, not trashed")
+        XCTAssertEqual(store2.trashedItems.count, 1,
+                       "ID-STORE-0002: expired item must be recoverable via trash, not permanently deleted")
+        XCTAssertEqual(store2.trashedItems[0].id, expired.id)
+    }
+
+    /// ID-STORE-0002: pin is an explicit retention guarantee — a pinned
+    /// expired item must survive BOTH the in-session cleanup pass
+    /// (cleanupExpiredItems, driven by the 60s timer) and the restart
+    /// (loadItems) path. Pre-fix both paths dropped pinned expired content
+    /// permanently.
+    func testPinnedExpiredItemSurvivesCleanupAndRestart() {
+        let pinnedExpired = ClipboardItem(content: "PinnedExpired", type: .text,
+                                          isPinned: true, expiresAt: Date().addingTimeInterval(-3600))
+        store.addItem(pinnedExpired)
+        store.flushPendingSaves()
+
+        // In-session path (the 60s timer's driver).
+        store.cleanupExpiredItems()
+        XCTAssertEqual(store.items.count, 1, "pinned expired item must not be cleaned up")
+        XCTAssertEqual(store.trashedItems.count, 0)
+
+        // Restart path (loadItems filter).
+        let store2 = ClipboardStore(backend: backend, trashBackend: trashBackend)
+        XCTAssertEqual(store2.items.count, 1,
+                       "ID-STORE-0002: pinned expired item must survive load")
+        XCTAssertTrue(store2.items[0].isPinned)
+        XCTAssertEqual(store2.trashedItems.count, 0)
+    }
+
+    /// ID-STORE-0002: mixed batch — in-session cleanup trashes ONLY the
+    /// unpinned expired items; pinned expired and non-expired items stay.
+    func testCleanupExpiredItemsTrashesOnlyUnpinnedExpired() {
+        let pinnedExpired = ClipboardItem(content: "PinnedExpired", type: .text,
+                                          isPinned: true, expiresAt: Date().addingTimeInterval(-3600))
+        let plainExpired = ClipboardItem(content: "PlainExpired", type: .text,
+                                         expiresAt: Date().addingTimeInterval(-3600))
+        let alive = ClipboardItem(content: "Alive", type: .text)
+        store.addItem(pinnedExpired)
+        store.addItem(plainExpired)
+        store.addItem(alive)
+        store.flushPendingSaves()
+
+        store.cleanupExpiredItems()
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items.count, 2)
+        XCTAssertTrue(store.items.contains { $0.id == pinnedExpired.id },
+                      "pinned expired item must be exempt")
+        XCTAssertTrue(store.items.contains { $0.id == alive.id })
+        XCTAssertEqual(store.trashedItems.count, 1)
+        XCTAssertEqual(store.trashedItems[0].id, plainExpired.id,
+                       "unpinned expired item must go to trash, not vanish")
+    }
+
+    // MARK: - ID-STORE-0003 (2026-07-31 audit): trash dedup by id
+
+    /// ID-STORE-0003: moving the same item to trash twice (batch + single
+    /// delete race, restore-then-retrash) must be idempotent — exactly one
+    /// bin entry per id. Pre-fix the second move inserted a duplicate.
+    func testMoveToTrashSameItemTwiceIsIdempotent() {
+        let item = ClipboardItem(content: "dup", type: .text)
+        store.addItem(item)
+        store.flushPendingSaves()
+
+        store.deleteItem(item)
+        store.moveToTrash(item) // second move — pre-fix created a duplicate
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.trashedItems.count, 1,
+                       "ID-STORE-0003: same id must not duplicate in trash")
     }
 
     // MARK: - Trash persistence

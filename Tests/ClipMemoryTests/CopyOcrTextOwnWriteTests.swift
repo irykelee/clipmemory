@@ -56,4 +56,32 @@ import AppKit
 
         XCTAssertEqual(NSPasteboard.general.string(forType: .string), "no monitor text")
     }
+
+    /// ID-SECURITY-0003 (2026-07-31 audit): OCR plaintext of a SENSITIVE item
+    /// must carry the `org.nspasteboard.ConcealedType` marker so well-behaved
+    /// pasteboard readers (incl. our own ClipboardMonitor read path) suppress
+    /// capture — same convention as 1Password / Bitwarden writes.
+    func testWriteOcrText_sensitiveItem_marksConcealedType() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+
+        ClipboardItemRow.writeOcrTextToPasteboard("sensitive ocr text", store: store, isSensitive: true)
+
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "sensitive ocr text")
+        XCTAssertNotNil(
+            NSPasteboard.general.data(forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")),
+            "sensitive OCR copy must stamp org.nspasteboard.ConcealedType (ID-SECURITY-0003)")
+    }
+
+    /// Non-sensitive items must NOT be marked — the marker tells every
+    /// clipboard reader to suppress the entry, which would break normal
+    /// paste behavior for ordinary OCR text.
+    func testWriteOcrText_nonSensitiveItem_noConcealedType() {
+        let store = ClipboardStore(backend: MemoryStorageBackend())
+
+        ClipboardItemRow.writeOcrTextToPasteboard("plain ocr text", store: store)
+
+        XCTAssertNil(
+            NSPasteboard.general.data(forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")),
+            "non-sensitive OCR copy must not carry the concealed marker")
+    }
 }

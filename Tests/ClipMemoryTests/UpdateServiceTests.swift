@@ -16,40 +16,10 @@ final class UpdateServiceTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "UpdateFallbackFeedConsent")
     }
 
-    // MARK: - Feed resolution
-
-    func testResolvedFeedKeepsPrimaryWhenReachable() {
-        for consent in [FeedConsent.granted, .denied, .undecided] {
-            let resolved = UpdateService.resolvedFeed(primary: primary, primaryReachable: true, consent: consent)
-            XCTAssertEqual(resolved, primary, "reachable primary must be kept regardless of consent")
-        }
-    }
-
-    func testResolvedFeedUsesMirrorWhenUnreachableAndConsented() {
-        let resolved = UpdateService.resolvedFeed(primary: primary, primaryReachable: false, consent: .granted)
-        XCTAssertEqual(resolved, UpdateService.fallbackFeedURL)
-        XCTAssertNotEqual(resolved, primary)
-    }
-
-    func testResolvedFeedKeepsPrimaryWhenConsentDenied() {
-        let resolved = UpdateService.resolvedFeed(primary: primary, primaryReachable: false, consent: .denied)
-        XCTAssertEqual(resolved, primary, "denied consent must keep the primary feed")
-    }
-
-    func testResolvedFeedNeverSwitchesSilentlyWhenUndecided() {
-        let resolved = UpdateService.resolvedFeed(primary: primary, primaryReachable: false, consent: .undecided)
-        XCTAssertEqual(resolved, primary, "H1: no silent fallback — undecided consent keeps the primary")
-    }
-
-    func testResolvedFeedKeepsPrimaryWhenMirrorIsStale() {
-        let resolved = UpdateService.resolvedFeed(
-            primary: primary,
-            primaryReachable: false,
-            consent: .granted,
-            mirrorStale: true
-        )
-        XCTAssertEqual(resolved, primary, "a stale mirror must be refused even with consent")
-    }
+    // ID-MISC-0002 (2026-07-31 audit): the "Feed resolution" tests for
+    // UpdateService.resolvedFeed and the "Staleness guard" tests for
+    // fallbackIsStale were deleted together with that dead code (no
+    // production callers; the live decision path is FeedProbeEngine).
 
     func testFallbackFeedIsJsDelivrMirrorOfMainBranch() {
         let fallback = UpdateService.fallbackFeedURL.absoluteString
@@ -99,7 +69,7 @@ final class UpdateServiceTests: XCTestCase {
 
     /// UPD-4 (2026-07-24 review): RFC 822 also permits NAMED timezones. A
     /// pubDate like "... GMT" must parse via the `zzz` fallback formatter —
-    /// before the fix it returned nil and `fallbackIsStale` failed open.
+    /// before the fix it returned nil and the H1 stale guard failed open.
     func testLatestItemDateParsesNamedTimezone() {
         let xml = """
         <?xml version="1.0" encoding="utf-8"?>
@@ -114,29 +84,8 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(date, formatter.date(from: "Sat, 18 Jul 2026 03:32:59 +0000"))
     }
 
-    // MARK: - Staleness guard
-
-    func testFallbackIsStaleWhenOlderThanLastPrimary() {
-        let lastPrimary = Date(timeIntervalSince1970: 1_900_000_000) // 2030, after the sample appcast
-        XCTAssertTrue(UpdateService.fallbackIsStale(fallbackXML: sampleAppcast, lastPrimaryItemDate: lastPrimary))
-    }
-
-    func testFallbackIsNotStaleWhenNewerOrEqual() {
-        let old = Date(timeIntervalSince1970: 1_000_000_000) // 2001
-        XCTAssertFalse(UpdateService.fallbackIsStale(fallbackXML: sampleAppcast, lastPrimaryItemDate: old))
-    }
-
-    func testFallbackIsNotStaleWhenNoBaselineKnown() {
-        XCTAssertFalse(UpdateService.fallbackIsStale(fallbackXML: sampleAppcast, lastPrimaryItemDate: nil),
-                       "without a primary baseline there is nothing to compare against")
-    }
-
-    func testFallbackIsNotStaleWhenUnparsable() {
-        XCTAssertFalse(UpdateService.fallbackIsStale(fallbackXML: "garbage", lastPrimaryItemDate: Date()),
-                       "unparsable mirror data must not block the consented fallback")
-    }
-
     // MARK: - ID-UPDATE-0001 (2026-07-31 Round 5): updater must start after probe
+
 
     /// ID-UPDATE-0001: `startAfterFeedProbe` captured `probeGeneration`
     /// BEFORE `triggerProbe()` — but `triggerProbe()` always increments it

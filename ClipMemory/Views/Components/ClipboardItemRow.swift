@@ -116,6 +116,11 @@ struct ClipboardItemRow: View, Equatable {
     @State private var showFullContent = false
     @State private var imageLoadFailed = false
     @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
+    // ID-VIEW-0002 (2026-07-31 audit): bumped by the .cryptoKeyPrepared
+    // observer below so the content `.task` re-runs after the crypto key
+    // lands — the previous "retry once after 200ms then give up" path left
+    // the row permanently blank when prepareKey took longer.
+    @State private var decryptRetryToken = 0
 
     static func == (lhs: ClipboardItemRow, rhs: ClipboardItemRow) -> Bool {
         lhs.item.id == rhs.item.id &&
@@ -193,7 +198,7 @@ struct ClipboardItemRow: View, Equatable {
         if let cached = highlightedCache.object(forKey: key) {
             return AttributedString(cached)
         }
-        let result = highlightedContent(decryptedContent, highlight: searchText)
+        let result = Self.highlightedContent(decryptedContent, highlight: searchText)
         highlightedCache.setObject(NSAttributedString(result), forKey: key)
         return result
     }
@@ -202,7 +207,7 @@ struct ClipboardItemRow: View, Equatable {
         if let cached = maskedHighlightedCache.object(forKey: key) {
             return AttributedString(cached)
         }
-        let result = maskedHighlightedContent(decryptedContent, highlight: searchText)
+        let result = Self.maskedHighlightedContent(decryptedContent, highlight: searchText)
         maskedHighlightedCache.setObject(NSAttributedString(result), forKey: key)
         return result
     }
@@ -235,9 +240,14 @@ struct ClipboardItemRow: View, Equatable {
         } else if item.ocrText != nil {
             // Ciphertext present but decrypt failed — show warning placeholder.
             // AttributedString does NOT have `.with {}`; mutate via subscript.
+            // ID-VIEW-0003 (2026-07-31 audit): do NOT cache this warning —
+            // the cache key has no loadedOCRText dimension, so a cached
+            // warning would keep hitting after the late OCR decrypt lands
+            // and stay poisoned for the whole session. Return uncached so
+            // the next body evaluation recomputes.
             var warnAttr = AttributedString(Self.warningOcrText)
             warnAttr.foregroundColor = .orange
-            result = warnAttr
+            return warnAttr
         } else if !item.ocrAttempted {
             var phAttr = AttributedString(Self.placeholderOcrText)
             phAttr.foregroundColor = .secondary
@@ -252,12 +262,20 @@ struct ClipboardItemRow: View, Equatable {
     private static var placeholderOcrText: String { L10n.itemOcrProcessing }
     private static var warningOcrText: String { L10n.itemOcrUnreadable }
 
-    private func highlightedContent(_ text: String, highlight: String) -> AttributedString {
+    // ID-CRASH-0002 (2026-07-31 audit): static + internal so the Unicode
+    // case-fold regression test can call it without a view tree.
+    static func highlightedContent(_ text: String, highlight: String) -> AttributedString {
         if highlight.isEmpty { return AttributedString(String(text.prefix(200))) }
-        let lt = text.lowercased(), lh = highlight.lowercased()
-        guard lt.range(of: lh) != nil else { return AttributedString(String(text.prefix(200))) }
-        let fm = lt.range(of: lh)!
-        let mso = lt.distance(from: lt.startIndex, to: fm.lowerBound)
+        let lh = highlight.lowercased()
+        // ID-CRASH-0002 (2026-07-31 audit): same class as BUG-008 (below) —
+        // the first match was located in `text.lowercased()` and the
+        // resulting offset (`mso`) applied to `text` via a NON-limited
+        // `offsetBy:`. Unicode case-fold that changes length (e.g. "İ"→"i̇",
+        // "ß"→"ss") inflates the lowercased copy, so `mso` could run past
+        // `text.endIndex` and trap. Locate the match on the ORIGINAL string
+        // with `.caseInsensitive` so every index below belongs to `text`.
+        guard let fm = text.range(of: highlight, options: .caseInsensitive) else { return AttributedString(String(text.prefix(200))) }
+        let mso = text.distance(from: text.startIndex, to: fm.lowerBound)
         var prefix = ""
         let dsi: String.Index
         if mso > 30 { dsi = text.index(text.index(text.startIndex, offsetBy: mso), offsetBy: -20, limitedBy: text.startIndex) ?? text.startIndex; prefix = "..." } else { dsi = text.startIndex }
@@ -391,11 +409,27 @@ struct ClipboardItemRow: View, Equatable {
         s.filter { $0.isLetter || $0.isNumber || $0.isPunctuation || $0.isSymbol || $0.isWhitespace }
     }
 
-    private func maskContent(_ c: String) -> String { c.count <= 4 ? String(repeating: "\u{2022}", count: c.count) : String(c.prefix(2)) + String(repeating: "\u{2022}", count: c.count - 4) + String(c.suffix(2)) }
-    private func maskedHighlightedContent(_ content: String, highlight: String, ctx: Int = 15) -> AttributedString {
+    // ID-CRASH-0002 (2026-07-31 audit): static + internal (with
+    // `maskedHighlightedContent`) so the Unicode case-fold regression test
+    // can exercise the crash path without a view tree.
+    static func maskContent(_ c: String) -> String { c.count <= 4 ? String(repeating: "\u{2022}", count: c.count) : String(c.prefix(2)) + String(repeating: "\u{2022}", count: c.count - 4) + String(c.suffix(2)) }
+    static func maskedHighlightedContent(_ content: String, highlight: String, ctx: Int = 15) -> AttributedString {
         if highlight.isEmpty { var a = AttributedString(maskContent(content)); a.foregroundColor = .orange; return a }
-        let lc = content.lowercased(), lh = highlight.lowercased(); var vis: [Range<String.Index>] = []; var ss = lc.startIndex
-        while let r = lc.range(of: lh, range: ss..<lc.endIndex) { let cs = lc.index(r.lowerBound, offsetBy: -ctx, limitedBy: lc.startIndex) ?? lc.startIndex; let ce = lc.index(r.upperBound, offsetBy: ctx, limitedBy: lc.endIndex) ?? lc.endIndex; vis.append(cs..<ce); ss = r.upperBound }
+        // ID-CRASH-0002 (2026-07-31 audit): same class as BUG-008 — match
+        // ranges were computed on `content.lowercased()` (a DIFFERENT String)
+        // and then subscripted into `content` below (`content[r]`). Unicode
+        // case-fold that changes grapheme count ("İ"→"i̇", "ß"→"ss") shifts
+        // every index after the fold point, so the lc-range could run past
+        // content.endIndex and trap on the main thread. Run the search on
+        // the ORIGINAL string with `.caseInsensitive` so every Range<String
+        // .Index> below is an index into `content` itself (same fix pattern
+        // as `highlightedOcrContent` / BUG-008).
+        var vis: [Range<String.Index>] = []; var ss = content.startIndex
+        while let r = content.range(of: highlight, options: .caseInsensitive, range: ss..<content.endIndex) {
+            let cs = content.index(r.lowerBound, offsetBy: -ctx, limitedBy: content.startIndex) ?? content.startIndex
+            let ce = content.index(r.upperBound, offsetBy: ctx, limitedBy: content.endIndex) ?? content.endIndex
+            vis.append(cs..<ce); ss = r.upperBound
+        }
         guard !vis.isEmpty else { return AttributedString(maskContent(content)) }; vis.sort { $0.lowerBound < $1.lowerBound }
         var merged: [Range<String.Index>] = []; for r in vis { if let last = merged.last, last.upperBound >= r.lowerBound { merged[merged.count-1] = last.lowerBound..<max(last.upperBound, r.upperBound) } else { merged.append(r) } }
         var res = AttributedString(); var ci = content.startIndex
@@ -618,7 +652,15 @@ struct ClipboardItemRow: View, Equatable {
                 Label(L10n.actionDelete, systemImage: "trash")
             })
         }
-        .task(id: item.id) {
+        // ID-VIEW-0003 (2026-07-31 audit): task id gains the
+        // `item.ocrText != nil` dimension so a late OCR attach re-runs the
+        // OCR decrypt — previously the row re-rendered (Equatable) but the
+        // task never re-fired, `loadedOCRText` stayed nil, and
+        // `cachedHighlightedOcr` showed the false "无法读取" warning.
+        // ID-VIEW-0002 (2026-07-31 audit): `decryptRetryToken` lets the
+        // .cryptoKeyPrepared observer below re-fire this task after a
+        // key-race double miss.
+        .task(id: "\(item.id.uuidString)-\(item.ocrText != nil)-\(decryptRetryToken)") {
             if item.type == .image {
                 guard item.ocrText != nil, loadedOCRText == nil else { return }
                 let ocrResult = await Task.detached(priority: .utility) {
@@ -639,9 +681,9 @@ struct ClipboardItemRow: View, Equatable {
             // Retry once after a short delay so the key has time to land
             // in `cachedLoadedKey`. The delay is below the 60 fps frame
             // budget so it doesn't visibly stagger the UI; if the second
-            // attempt also returns empty, give up (the row stays blank
-            // and the user can interact to re-trigger via the existing
-            // `searchText` `.onChange` rebuild path).
+            // attempt also returns empty, keep loadedContent == nil and let
+            // the .cryptoKeyPrepared observer below re-run this task once
+            // the key lands (ID-VIEW-0002, 2026-07-31 audit).
             let first = await Task.detached(priority: .utility) {
                 store.getDecryptedContent(item) ?? ""
             }.value
@@ -661,7 +703,29 @@ struct ClipboardItemRow: View, Equatable {
             // I-8 fix (2026-07-20 audit): same cancellation-isolation as the
             // image `.task`. Drop the decrypted text when the row has been
             // recycled so we don't paste stale text into the new item's state.
-            loadedContent = second
+            // ID-VIEW-0002 (2026-07-31 audit): write only a non-empty result.
+            // Storing "" made `loadedContent != nil` early-return on every
+            // later pass, so the row stayed blank for the whole session with
+            // no recovery path (window + hosting controller persist @State).
+            if !second.isEmpty {
+                loadedContent = second
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cryptoKeyPrepared)) { note in
+            // ID-VIEW-0002 (2026-07-31 audit): the crypto key landed after
+            // our decrypt attempts missed — bump the token in the .task id
+            // so the task re-runs. Guards keep this a no-op for rows that
+            // already have content or don't need decryption here.
+            let success = (note.userInfo?["success"] as? Bool) ?? false
+            guard success else { return }
+            let needsRetry: Bool
+            if item.type == .image {
+                needsRetry = item.ocrText != nil && loadedOCRText == nil
+            } else {
+                needsRetry = item.type != .richText && loadedContent == nil
+            }
+            guard needsRetry else { return }
+            decryptRetryToken += 1
         }
     }
 
@@ -736,7 +800,7 @@ struct ClipboardItemRow: View, Equatable {
     /// ClipboardMonitor first — so this won't create a new history entry.
     private func copyOcrText() {
         guard let text = store.getDecryptedOcrText(liveItem), !text.isEmpty else { return }
-        Self.writeOcrTextToPasteboard(text, store: store)
+        Self.writeOcrTextToPasteboard(text, store: store, isSensitive: liveItem.isSensitive)
     }
 
     /// CLIP-2 (2026-07-24 audit): the OCR copy path wrote the pasteboard
@@ -749,11 +813,19 @@ struct ClipboardItemRow: View, Equatable {
     /// recordOwnWrite would re-capture the write.
     /// Static + store-injected so tests can exercise it against a
     /// MemoryStorageBackend store without touching ClipboardStore.shared.
-    static func writeOcrTextToPasteboard(_ text: String, store: ClipboardStore) {
+    static func writeOcrTextToPasteboard(_ text: String, store: ClipboardStore, isSensitive: Bool = false) {
         store.onRecordOwnWrite?()
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+        // ID-SECURITY-0003 (2026-07-31 audit): OCR plaintext of a sensitive
+        // item is still a secret — stamp the standard concealed marker so
+        // well-behaved pasteboard readers (credential-aware apps, and our
+        // own ClipboardMonitor.swift:289-296 read path) suppress capture.
+        // Empty-data marker mirrors the convention used by 1Password etc.
+        if isSensitive {
+            pasteboard.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+        }
     }
 }
 

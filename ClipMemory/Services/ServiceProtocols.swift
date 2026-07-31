@@ -16,12 +16,6 @@ protocol CryptoServiceProtocol {
     func decryptWithReason(_ base64String: String, itemID: UUID) -> DecryptResult
 }
 
-// MARK: - Sensitive Detection
-
-protocol SensitiveDetectorProtocol {
-    func detectSensitive(_ content: String) -> Bool
-}
-
 // MARK: - Service Container
 
 enum ServiceContainer {

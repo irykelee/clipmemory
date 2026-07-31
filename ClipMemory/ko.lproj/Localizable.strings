@@ -75,7 +75,9 @@
 "settings.backup.auto" = "매일 자동 백업";
 "settings.backup.keep" = "유지할 백업 수";
 "settings.backup.keep.count" = "%d개 백업";
+"settings.backup.keep.count.one" = "%d개 백업";
 "settings.trash.retention.days.count" = "%d일";
+"settings.trash.retention.days.count.one" = "%d일";
 "settings.backup.now" = "지금 백업";
 "settings.backup.open" = "백업 폴더 열기";
 "settings.backup.export" = "백업 내보내기…";
@@ -91,6 +93,7 @@
 "settings.backup.last" = "마지막 백업: %@";
 "clear.type.action" = "%@ 모두 삭제";
 "clear.type.confirm" = "%1$@ %2$d개 항목을 삭제합니다(고정은 유지, 휴지통으로 이동)";
+"clear.type.confirm.one" = "%1$@ %2$d개 항목을 삭제합니다(고정은 유지, 휴지통으로 이동)";
 "clear.conditional.action" = "조건별 삭제…";
 "clear.conditional.title" = "조건별 삭제";
 "clear.conditional.type" = "유형";
@@ -160,6 +163,7 @@
 
 /* QuickBar */
 "quickbar.recent" = "%d개";
+"quickbar.recent.one" = "%d개";
 "quickbar.open.full" = "전체 창 열기";
 "quickbar.no.results" = "결과 없음";
 
@@ -202,6 +206,7 @@
 "tagPicker.nameConflict" = "태그 \"%@\"이(가) 이미 존재합니다. 기존 항목을 사용합니다";
 "tagPicker.deleteConfirm.title" = "태그를 삭제하시겠습니까?";
 "tagPicker.deleteConfirm.message" = "태그 \"%@\"을(를) %d개 항목에서 제거합니다";
+"tagPicker.deleteConfirm.message.one" = "태그 \"%@\"을(를) %d개 항목에서 제거합니다";
 "tagPicker.deleteConfirm.confirm" = "삭제";
 "tagPicker.section.suggestedNames" = "감지된 이름";
 "tagPicker.nameSuggestions.toggle" = "감지된 이름 표시";
@@ -211,7 +216,9 @@
 "sidebar.deleteTag" = "태그 삭제";
 "sidebar.deleteTag.confirm.title" = "태그를 삭제하시겠습니까?";
 "sidebar.deleteTag.confirm.message" = "태그「%@」이(가) %d개 항목에서 제거됩니다";
+"sidebar.deleteTag.confirm.message.one" = "태그「%@」이(가) %d개 항목에서 제거됩니다";
 "sidebar.tag.accessibility.label" = "태그 %@, %d개 항목";
+"sidebar.tag.accessibility.label.one" = "태그 %@, %d개 항목";
 "sidebar.tag.accessibility.selected" = "선택됨";
 "sidebar.tag.accessibility.unselected" = "선택되지 않음";
 "tagFilter.active.title" = "태그로 필터링";
@@ -296,6 +303,7 @@
 "settings.historyCapture.ocrPreview" = "이미지 검색 결과에 OCR 텍스트 표시";
 "banner.key.unavailable" = "잠금 해제 후 다시 시도";
 "banner.data.corrupted.count" = "%d개 항목 손상";
+"banner.data.corrupted.count.one" = "%d개 항목 손상";
 
 /* VoiceOver / 접근성 레이블 (2026-07-30 감사 L10N-0001..0007) */
 "search.clear" = "검색 지우기";

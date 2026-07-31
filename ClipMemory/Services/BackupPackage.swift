@@ -532,14 +532,37 @@ final class BackupPackage {
 
         // Passphrase check: GCM open fails on wrong passphrase.
         let derivedKey = try deriveKey(passphrase: passphrase, salt: salt, version: manifest.keyDerivationVersion)
-        let packageKeyData: Data
+        // ID-BACKUP-0004 (2026-07-31 audit): a structurally broken key.enc
+        // (truncated / bit-rot changing the length) must surface as package
+        // corruption, not `wrongPassword` — otherwise users retry the correct
+        // passphrase forever and troubleshooting goes the wrong way. GCM
+        // combined = nonce(12) + key(32) + tag(16) = 60 bytes. Note: a
+        // bit-flip INSIDE a well-formed 60-byte blob still fails the GCM tag
+        // check and remains cryptographically indistinguishable from a wrong
+        // passphrase — only structural breakage is reclassified here.
+        guard sealedKeyData.count == 12 + 32 + 16 else {
+            throw BackupPackageError.corruptedData(
+                "key.enc has unexpected length \(sealedKeyData.count) (expected 60); package file is likely corrupted", .manifest)
+        }
+        let sealedBox: AES.GCM.SealedBox
         do {
-            let sealedBox = try AES.GCM.SealedBox(combined: sealedKeyData)
+            sealedBox = try AES.GCM.SealedBox(combined: sealedKeyData)
+        } catch {
+            throw BackupPackageError.corruptedData(
+                "key.enc is not a valid AES-GCM sealed box; package file is likely corrupted", .manifest)
+        }
+        var packageKeyData: Data
+        do {
             packageKeyData = try AES.GCM.open(sealedBox, using: derivedKey)
         } catch {
             throw BackupPackageError.wrongPassword
         }
         let packageCrypto = CryptoService(customKeyData: packageKeyData)
+        // ID-CRYPTO-0004 (2026-07-31 audit): wipe the transient raw
+        // package-key copy now that the bytes live inside `packageCrypto`'s
+        // SymmetricKey — same shared helper as the root-key paths in
+        // CryptoService, so zeroing behavior is consistent everywhere.
+        CryptoService.wipeKeyMaterial(&packageKeyData)
 
         var result = BackupImportResult()
 

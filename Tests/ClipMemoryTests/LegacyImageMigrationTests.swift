@@ -264,4 +264,58 @@ final class LegacyImageMigrationTests: XCTestCase {
         XCTAssertNil(suite.stringArray(forKey: skippedFilenamesKey),
                      "STOR-4: transient failures must NOT enter the permanent skip list")
     }
+
+    // MARK: - ID-SILENT-0018 (2026-07-31 audit): plaintext removal failure
+
+    /// Regression: when the legacy plaintext PNG cannot be removed from disk
+    /// (simulated via the macOS immutable flag — removeItem throws EPERM),
+    /// the migration must be treated as FAILED: the global completion flag
+    /// stays false (so the next launch retries) and the filename is NOT
+    /// recorded as migrated. Pre-fix, remove failures on the post-migration
+    /// cleanup path were swallowed by `try?` and the completion flag was set
+    /// anyway — leaving a PLAINTEXT legacy PNG on disk, the exact state the
+    /// migration exists to eliminate.
+    ///
+    /// Note: the failure here surfaces on the per-file migrate step's
+    /// removeItem (which shares the same remediation: hadFailure = true);
+    /// the ID-SILENT-0018 cleanup-loop path additionally treats any
+    /// still-present file as hadFailure and logs "PLAINTEXT LEGACY PNG
+    /// STILL ON DISK" at error level.
+    func testLegacyPlaintextRemovalFailureKeepsMigrationIncomplete() throws {
+        let uuid = newMigratedUUID()
+        let filename = writeLegacyFile(makeLegacyPNGBytes(), uuid: uuid)
+        let legacyURL = legacyDir.appendingPathComponent(filename)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: legacyURL.path)
+        // tearDown's removeItem(legacyDir) would fail while the file is
+        // immutable; clear the flag no matter how the test exits.
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: legacyURL.path) }
+
+        storage.migrateFromLegacyIfNeeded(legacyDirectory: legacyDir, defaults: suite)
+
+        XCTAssertFalse(suite.bool(forKey: migrationKey),
+                       "ID-SILENT-0018: a plaintext removal failure must keep the completion " +
+                       "flag false so the next launch retries")
+        XCTAssertNil(suite.stringArray(forKey: migratedFilenamesKey),
+                     "ID-SILENT-0018: a file whose plaintext could not be removed must NOT " +
+                     "be recorded as migrated")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path),
+                      "Test fixture: the immutable legacy file must still be on disk")
+    }
+
+    /// Contract: the success path is unchanged — after a fully successful
+    /// pass the completion flag is set and the migrated plaintext is gone.
+    /// Guards the ID-SILENT-0018 restructure (flag set moved AFTER the
+    /// cleanup loop) against regressions on the happy path.
+    func testSuccessfulMigrationStillMarksCompleteAndRemovesPlaintext() {
+        let uuid = newMigratedUUID()
+        let filename = writeLegacyFile(makeLegacyPNGBytes(), uuid: uuid)
+
+        storage.migrateFromLegacyIfNeeded(legacyDirectory: legacyDir, defaults: suite)
+
+        XCTAssertTrue(suite.bool(forKey: migrationKey))
+        XCTAssertEqual(suite.stringArray(forKey: migratedFilenamesKey), [filename])
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: legacyDir.appendingPathComponent(filename).path),
+            "Migrated plaintext must be gone from the legacy dir")
+    }
 }

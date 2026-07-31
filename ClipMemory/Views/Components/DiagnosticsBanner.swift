@@ -21,7 +21,10 @@ struct DiagnosticsBanner: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help(L10n.buttonConfirm)
+                // ID-L10N-0019 (2026-07-31 audit): tooltip was bound to the
+                // "Confirm" key — this button dismisses the banner, so it
+                // must read "Close" in every language.
+                .help(L10n.buttonClose)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)

@@ -1,5 +1,8 @@
 import XCTest
 import AppKit
+import ImageIO
+import UniformTypeIdentifiers
+import Vision
 @testable import ClipMemory
 
 /// OCR pipeline: model field compatibility, encrypted storage round-trip,
@@ -566,6 +569,155 @@ import AppKit
         store.attachOCRText(to: directId, text: "direct lookup", contentHash: directHash)
         XCTAssertNotNil(store.items.first!.ocrText)
         XCTAssertEqual(store.getDecryptedOcrText(store.items.first!), "direct lookup")
+    }
+
+    // MARK: - ID-OCR-0008 (2026-07-31 audit): .failure must not mark ocrAttempted
+
+    /// Mock recognizer that always fails — simulates a Vision throw, the
+    /// 15 s watchdog timeout (ID-OCR-0006), or a load-induced cancel.
+    private struct FailingOCR: OCRServiceProtocol {
+        func recognizeText(in imageData: Data, completion: @escaping (OCROutcome) -> Void) {
+            completion(.failure(NSError(domain: "OCRTests.transient", code: -1)))
+        }
+    }
+
+    /// ID-OCR-0008: a transient OCR failure (Vision error / watchdog
+    /// timeout / cancel) must leave `ocrAttempted == false` so the next
+    /// launch's backfill retries automatically. Previously `.failure`
+    /// called `markOCRAttempted`, permanently dropping those images.
+    /// Second half of the test pins the retry path: a later backfill with
+    /// a healthy recognizer picks the same item up and attaches the text.
+    func testBackfillFailureLeavesOcrAttemptedFalseAndRetries() {
+        let filename = seedImageFile()
+        let item = ClipboardItem(content: filename, type: .image)
+        store.addItem(item)
+
+        // First pass: recognizer fails (transient) — must NOT mark.
+        let exp1 = expectation(description: "failing backfill")
+        store.backfillOCRIfNeeded(using: FailingOCR(), imageStorage: .shared,
+                                  onComplete: { exp1.fulfill() })
+        wait(for: [exp1], timeout: 5)
+
+        var after = store.items.first(where: { $0.id == item.id })
+        XCTAssertEqual(after?.ocrAttempted, false,
+                       "ID-OCR-0008: transient OCR failure must not mark ocrAttempted")
+        XCTAssertNil(after?.ocrText, "failed OCR must not attach text")
+
+        // Retry pass (next launch): healthy recognizer must find the item
+        // again (it is still a backfill candidate) and attach the text.
+        let exp2 = expectation(description: "retry backfill")
+        store.backfillOCRIfNeeded(using: MockOCR(result: "重试成功"), imageStorage: .shared,
+                                  onComplete: { exp2.fulfill() })
+        wait(for: [exp2], timeout: 5)
+
+        after = store.items.first(where: { $0.id == item.id })
+        XCTAssertEqual(after?.ocrAttempted, true, "successful retry must mark ocrAttempted")
+        XCTAssertEqual(after.flatMap { store.getDecryptedOcrText($0) }, "重试成功")
+    }
+
+    // MARK: - ID-SILENT-0016 (2026-07-31 audit): throwing language query must not be cached
+
+    /// When `VNRecognizeTextRequest.supportedRecognitionLanguages` throws
+    /// (transient framework hiccup), the empty result must NOT be cached —
+    /// otherwise every language is judged unsupported for the rest of the
+    /// session. The next call after the framework recovers must re-query.
+    func testSupportedLanguagesQueryThrowIsNotCached() {
+        let original = VisionOCRService.recognitionLanguagesQuery
+        defer {
+            VisionOCRService.recognitionLanguagesQuery = original
+            VisionOCRService.resetSupportedLanguagesCacheForTesting()
+        }
+        VisionOCRService.resetSupportedLanguagesCacheForTesting()
+
+        struct TransientVisionError: Error {}
+        var throwCalls = 0
+        VisionOCRService.recognitionLanguagesQuery = { _ in
+            throwCalls += 1
+            throw TransientVisionError()
+        }
+        let first = VisionOCRService.supportedRecognitionLanguages(for: VNRecognizeTextRequestRevision3)
+        XCTAssertTrue(first.isEmpty, "a throwing query must surface as empty for this call")
+        XCTAssertEqual(throwCalls, 1)
+
+        // Framework "recovers": the next call must re-query (not hit a
+        // poisoned empty cache entry).
+        var successCalls = 0
+        VisionOCRService.recognitionLanguagesQuery = { _ in
+            successCalls += 1
+            return ["en", "zh-Hans"]
+        }
+        let second = VisionOCRService.supportedRecognitionLanguages(for: VNRecognizeTextRequestRevision3)
+        XCTAssertEqual(second, ["en", "zh-Hans"],
+                       "ID-SILENT-0016: after a transient throw, the next call must re-query Vision")
+        XCTAssertEqual(successCalls, 1)
+
+        // And the recovered result is cached normally afterwards.
+        _ = VisionOCRService.supportedRecognitionLanguages(for: VNRecognizeTextRequestRevision3)
+        XCTAssertEqual(successCalls, 1, "recovered result must be cached like any valid answer")
+    }
+
+    /// Negative control for ID-SILENT-0016: a legitimately EMPTY query
+    /// result (no throw) is a valid answer and must still be cached —
+    /// the fix must not disable caching altogether.
+    func testSupportedLanguagesEmptyResultIsCached() {
+        let original = VisionOCRService.recognitionLanguagesQuery
+        defer {
+            VisionOCRService.recognitionLanguagesQuery = original
+            VisionOCRService.resetSupportedLanguagesCacheForTesting()
+        }
+        VisionOCRService.resetSupportedLanguagesCacheForTesting()
+
+        var calls = 0
+        VisionOCRService.recognitionLanguagesQuery = { _ in
+            calls += 1
+            return []
+        }
+        XCTAssertEqual(VisionOCRService.supportedRecognitionLanguages(for: VNRecognizeTextRequestRevision3), [])
+        XCTAssertEqual(VisionOCRService.supportedRecognitionLanguages(for: VNRecognizeTextRequestRevision3), [])
+        XCTAssertEqual(calls, 1, "a legitimately empty result is valid and must be cached")
+    }
+
+    // MARK: - ID-OCR-0009 (2026-07-31 audit): full-resolution fallback must apply EXIF
+
+    /// ID-OCR-0001 residual: the full-resolution fallback (used when
+    /// thumbnail generation fails) handed Vision the unrotated bitmap.
+    /// Feed the fallback a JPEG tagged Orientation=6 (90° CW) and verify
+    /// the returned CGImage has swapped dimensions — i.e. the orientation
+    /// was baked in, matching the thumbnail path's
+    /// `kCGImageSourceCreateThumbnailWithTransform` behavior.
+    func testFallbackFullResolutionAppliesEXIFOrientation() throws {
+        let width = 200, height = 100
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(data: nil, width: width, height: height,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: colorSpace,
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+              let cgImage = ctx.makeImage() else {
+            XCTFail("cannot create test CGImage")
+            return
+        }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data, UTType.jpeg.identifier as CFString, 1, nil
+        ) else {
+            XCTFail("cannot create image destination")
+            return
+        }
+        CGImageDestinationAddImage(destination, cgImage,
+                                   [kCGImagePropertyOrientation: 6] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            XCTFail("cannot finalize JPEG")
+            return
+        }
+
+        let result = VisionOCRService.fallbackFullResolutionCGImage(from: data as Data)
+        XCTAssertNotNil(result, "fallback must decode a valid JPEG")
+        // Orientation=6 rotates 90°: 200x100 becomes 100x200. If EXIF is
+        // ignored the dimensions stay 200x100.
+        XCTAssertEqual(result?.width, height,
+                       "ID-OCR-0009: fallback must bake EXIF orientation into the bitmap")
+        XCTAssertEqual(result?.height, width,
+                       "ID-OCR-0009: fallback must bake EXIF orientation into the bitmap")
     }
 }
 

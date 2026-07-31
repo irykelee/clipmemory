@@ -75,7 +75,9 @@
 "settings.backup.auto" = "毎日自動バックアップ";
 "settings.backup.keep" = "保持するバックアップ数";
 "settings.backup.keep.count" = "%d 件のバックアップ";
+"settings.backup.keep.count.one" = "%d 件のバックアップ";
 "settings.trash.retention.days.count" = "%d 日";
+"settings.trash.retention.days.count.one" = "%d 日";
 "settings.backup.now" = "今すぐバックアップ";
 "settings.backup.open" = "バックアップフォルダを開く";
 "settings.backup.export" = "バックアップを書き出す…";
@@ -91,6 +93,7 @@
 "settings.backup.last" = "前回のバックアップ：%@";
 "clear.type.action" = "%@をすべて削除";
 "clear.type.confirm" = "%1$@ %2$d 件を削除します（ピン留めは保持、ごみ箱へ移動）";
+"clear.type.confirm.one" = "%1$@ %2$d 件を削除します（ピン留めは保持、ごみ箱へ移動）";
 "clear.conditional.action" = "条件で削除…";
 "clear.conditional.title" = "条件で削除";
 "clear.conditional.type" = "タイプ";
@@ -160,6 +163,7 @@
 
 /* QuickBar */
 "quickbar.recent" = "%d 件";
+"quickbar.recent.one" = "%d 件";
 "quickbar.open.full" = "完全なウィンドウを開く";
 "quickbar.no.results" = "結果なし";
 
@@ -202,6 +206,7 @@
 "tagPicker.nameConflict" = "タグ「%@」は既に存在します。既存のものを使用します";
 "tagPicker.deleteConfirm.title" = "タグを削除しますか？";
 "tagPicker.deleteConfirm.message" = "タグ「%@」を %d 件のアイテムから削除します";
+"tagPicker.deleteConfirm.message.one" = "タグ「%@」を %d 件のアイテムから削除します";
 "tagPicker.deleteConfirm.confirm" = "削除";
 "tagPicker.section.suggestedNames" = "検出された名前";
 "tagPicker.nameSuggestions.toggle" = "検出された名前を表示";
@@ -211,7 +216,9 @@
 "sidebar.deleteTag" = "タグを削除";
 "sidebar.deleteTag.confirm.title" = "タグを削除しますか？";
 "sidebar.deleteTag.confirm.message" = "タグ「%@」は %d 件の項目から削除されます";
+"sidebar.deleteTag.confirm.message.one" = "タグ「%@」は %d 件の項目から削除されます";
 "sidebar.tag.accessibility.label" = "タグ %@、%d 件";
+"sidebar.tag.accessibility.label.one" = "タグ %@、%d 件";
 "sidebar.tag.accessibility.selected" = "選択中";
 "sidebar.tag.accessibility.unselected" = "未選択";
 "tagFilter.active.title" = "タグで絞り込み";
@@ -296,6 +303,7 @@
 "settings.historyCapture.ocrPreview" = "画像検索結果に OCR テキストを表示";
 "banner.key.unavailable" = "ロック解除後に再試行";
 "banner.data.corrupted.count" = "%d 件破損";
+"banner.data.corrupted.count.one" = "%d 件破損";
 
 /* VoiceOver / アクセシビリティラベル（2026-07-30 監査 L10N-0001..0007） */
 "search.clear" = "検索をクリア";

@@ -236,8 +236,16 @@ extension ClipboardStore {
                     case .text, .noText:
                         self?.markOCRAttempted(itemId: item.id)
                     case .failure(let error):
-                        Self.logger.error("OCR backfill failed for \(item.id): \(error.localizedDescription, privacy: .public)")
-                        self?.markOCRAttempted(itemId: item.id)
+                        // ID-OCR-0008 (2026-07-31 audit): do NOT mark
+                        // ocrAttempted on failure. Vision throws, the 15 s
+                        // watchdog timeout (ID-OCR-0006), and load-induced
+                        // cancels are all transient — marking made those
+                        // images permanently lose OCR with no signal.
+                        // Leaving ocrAttempted=false lets the next launch's
+                        // backfill retry automatically — the same
+                        // self-healing contract as the missing-file path
+                        // and BUG-010's encrypt-failure path above.
+                        Self.logger.error("OCR backfill failed for \(item.id, privacy: .public): \(error.localizedDescription, privacy: .public); ocrAttempted stays false so a later backfill retries")
                     }
                     semaphore.signal()  // release slot only after OCR result lands
                     group.leave()
