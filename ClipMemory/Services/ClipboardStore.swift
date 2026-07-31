@@ -413,6 +413,34 @@ final class ClipboardStore: ObservableObject {
     /// Rebuilt after batch mutations (delete, trim, clear, import, backfill).
     private var dedupHashes: Set<String> = []
 
+    // ID-PERF-0015 (2026-07-30 audit): UUID → items-array-index map.
+    // O(n) `items.firstIndex(where:)` was hit on every addTag / removeTag
+    // / togglePin / moveToTop — for 10K items that's 10K UUID compares
+    // per user action. Maintain a dict; rebuild only when items changes
+    // (cheap O(n) build, amortized O(1) per call). Stale index is
+    // detected by a version counter — every items mutation increments it.
+    private var itemIndexVersion: Int = 0
+    private var itemIndex: [UUID: Int] = [:]
+    private var itemIndexBuiltForVersion: Int = -1
+
+    private func rebuildItemIndexIfStale() {
+        if itemIndexBuiltForVersion == itemIndexVersion { return }
+        var built: [UUID: Int] = [:]
+        built.reserveCapacity(items.count)
+        for (i, item) in items.enumerated() {
+            built[item.id] = i
+        }
+        itemIndex = built
+        itemIndexBuiltForVersion = itemIndexVersion
+    }
+
+    /// Call after every `items` mutation. Cheap (one Int increment)
+    /// and makes subsequent `rebuildItemIndexIfStale()` calls skip the
+    /// O(n) rebuild until the next mutation.
+    private func invalidateItemIndex() {
+        itemIndexVersion &+= 1
+    }
+
     /// P2: rebuild dedupHashes from current items array.
     private func rebuildDedupHashSet() {
         dedupHashes = Set(items.compactMap { $0.contentHash })
@@ -658,6 +686,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         }
 
         items = repairedItems
+        invalidateItemIndex()
         updatePinnedItems()
         trimToMaxItems()
         rebuildDedupHashSet()
@@ -868,7 +897,12 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// tag twice is a no-op since tagIds is a Set. Schedules both item and tag
     /// persistence so the attachment survives app restarts.
     func addTag(to itemId: UUID, tagId: UUID) {
-        guard let index = items.firstIndex(where: { $0.id == itemId }) else { return }
+        // ID-PERF-0015 (2026-07-30 audit): use the maintained UUID→index
+        // map for O(1) lookup instead of `firstIndex(where:)` (O(n) per
+        // call). The map is rebuilt by `rebuildItemIndexIfStale()` after
+        // every items mutation, so it's correct under the O(1) read.
+        rebuildItemIndexIfStale()
+        guard let index = itemIndex[itemId] else { return }
         items[index].tagIds.insert(tagId)
         scheduleSave()
     }
@@ -876,7 +910,9 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// Detach a tag from an item. Does not delete the tag itself; for that use
     /// deleteTag(id:). Safe to call when the tag isn't attached (no-op).
     func removeTag(from itemId: UUID, tagId: UUID) {
-        guard let index = items.firstIndex(where: { $0.id == itemId }) else { return }
+        // ID-PERF-0015: see addTag above.
+        rebuildItemIndexIfStale()
+        guard let index = itemIndex[itemId] else { return }
         items[index].tagIds.remove(tagId)
         scheduleSave()
     }
@@ -1147,6 +1183,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                 var existing = items.remove(at: existingIndex)
                 existing = existing.with(createdAt: Date(), contentHash: existing.contentHash ?? newHash)
                 items.insert(existing, at: 0)
+                invalidateItemIndex()
                 if newItem.type == .image, newItem.content != existing.content {
                     ImageStorage.shared.deleteImage(filename: newItem.content)
                 }
@@ -1155,10 +1192,12 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                 // rebuild after a prior mutation). Insert as new and
                 // repair the set below.
                 items.insert(newItem, at: 0)
+        invalidateItemIndex()
                 dedupHashes.insert(newHash)
             }
         } else {
             items.insert(newItem, at: 0)
+            invalidateItemIndex()
             if let newHash = newHash { dedupHashes.insert(newHash) }
         }
 
@@ -1195,6 +1234,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                 continue
             }
             items.append(item)
+        invalidateItemIndex()
             existingIds.insert(item.id)
             if let hash = item.contentHash { existingHashes.insert(hash) }
             imported += 1
@@ -1212,6 +1252,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
 
         if imported > 0 {
             items.sort { $0.createdAt > $1.createdAt }
+        invalidateItemIndex()
             trimToMaxItems()
             updatePinnedItems()
             saveImmediately()
@@ -1591,6 +1632,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
         items.removeAll { !trimmedIds.contains($0.id) }
+        invalidateItemIndex()
         updatePinnedItems()
         scheduleSave()
         rebuildDedupHashSet()
@@ -1601,7 +1643,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     }
 
     func togglePin(_ item: ClipboardItem) {
-        if let index = items.firstIndex(where: { $0.id == item.id }) {
+        rebuildItemIndexIfStale()
+        if let index = itemIndex[item.id] {
             items[index].isPinned.toggle()
             trimToMaxItems()
             updatePinnedItems()
@@ -1610,8 +1653,9 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     }
 
     func togglePinItems(_ itemsToToggle: [ClipboardItem]) {
+        rebuildItemIndexIfStale()
         for item in itemsToToggle {
-            if let index = items.firstIndex(where: { $0.id == item.id }) {
+            if let index = itemIndex[item.id] {
                 items[index].isPinned.toggle()
             }
         }
@@ -1859,10 +1903,12 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     }
 
     private func moveToTop(_ item: ClipboardItem) {
-        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        rebuildItemIndexIfStale()
+        guard let index = itemIndex[item.id] else { return }
         var moved = items.remove(at: index)
         moved = moved.with(createdAt: Date())
         items.insert(moved, at: 0)
+        invalidateItemIndex()
         scheduleSave()
     }
 
@@ -1895,6 +1941,7 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         }
         let beforeCount = items.count
         items.removeAll { expiredIds.contains($0.id) }
+        invalidateItemIndex()
         if items.count != beforeCount {
             updatePinnedItems()
             scheduleSave()
