@@ -1,4 +1,4 @@
-# ClipMemory v2.7.3
+# ClipMemory v2.7.4
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.7.4 (2026-07-31) — Correção de tela branca na pré-visualização de imagens largas + 6 otimizações de OCR + melhorias de desempenho
+
+- **🔍 6 otimizações de OCR (CJK / deduplicação / tempo limite / memória)** — Notificação e log de userLocale adicionados quando o reconhecimento CJK sofre degradação; resultados de OCR de UUIDs antigos não são perdidos após a deduplicação de imagens; chamadas Vision canceladas automaticamente após 15 segundos; memória de pré-visualização de HEIC 6K reduzida de ~100 MB para ~16 MB (`thumbnailMaxPixelSize=2048`).
+- **⚡️ Melhorias de desempenho em pesquisa / cópia (várias otimizações em segundo plano)** — consulta O(1) no dicionário UUID→índice; resultados Pinyin armazenados em cache por conteúdo (1000 correspondências reduzidas de 1340 ms para 77 ms); reutilização do JSONEncoder; varredura única em tarefas de limpeza; pré-preenchimento de descriptografia AES-GCM em inicialização a frio.
+- **🖼️ Pré-visualização por toque longo de imagens largas não fica mais com tela branca** — Ao copiar capturas de tela 16:9 quando a tela principal está no modo retrato, o caso extremo em que 1 pixel excede a largura máxima não gera mais fundo branco de 2000+ pixels (o painel se ajusta automaticamente ao tamanho da imagem).
+- **🔇 Limite mínimo de altura de texto adicionado ao caminho de OCR** — `minimumTextHeight = 0.01` (o padrão de 0.02 é calibrado para documentos impressos); capturas de tela de terminal com texto pequeno / capturas de tela retina de 12 pt agora são reconhecidas.
+- **🌐 Localização concluída para 7 idiomas** — acessibilidade do badge de etiqueta, sugestões do seletor de etiquetas, aviso de falha de criptografia e várias outras correções de L10n.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.4
 
 ### v2.7.3 (2026-07-30) — Correções Orientadas por Auditoria e VoiceOver em 7 Idiomas
 

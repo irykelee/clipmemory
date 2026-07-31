@@ -1,4 +1,4 @@
-# ClipMemory v2.7.3
+# ClipMemory v2.7.4
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.7.4 (2026-07-31) — Corrección de pantalla blanca en vista previa de imágenes anchas + 6 optimizaciones de OCR + mejoras de rendimiento
+
+- **🔍 6 optimizaciones de OCR (CJK / deduplicación / tiempo de espera / memoria)** — Nueva notificación y registro de `userLocale` al degradar el reconocimiento CJK, los resultados de OCR de UUID antiguos no se pierden tras la deduplicación de imágenes, cancelación automática de la llamada a Vision a los 15 segundos, memoria de vista previa de HEIC de 6K reducida de ~100 MB a ~16 MB (`thumbnailMaxPixelSize=2048`)
+- **⚡️ Mejoras de rendimiento en búsqueda / copiado (múltiples optimizaciones en segundo plano)** — Búsqueda O(1) en el diccionario UUID→índice, resultados pinyin cacheados por contenido (1000 coincidencias de 1340 ms a 77 ms), reutilización de `JSONEncoder`, escaneo único en cleanup, precarga de AES-GCM en inicio en frío
+- **🖼️ La vista previa de imágenes anchas tras pulsación larga ya no muestra pantalla blanca** — Al copiar capturas 16:9 con la pantalla principal en portrait, el caso límite de 1 píxel que excedía el ancho máximo ya no genera un fondo blanco de más de 2000 píxeles (el panel se ajusta automáticamente al tamaño de la imagen)
+- **🔇 Umbral mínimo de altura de texto añadido en la ruta de OCR** — `minimumTextHeight = 0.01` (el valor predeterminado de 0.02 está ajustado para documentos impresos); ahora se reconocen capturas de terminal con fuente pequeña y capturas Retina de 12 pt
+- **🌐 Localización completada en 7 idiomas** — Accesibilidad de insignias de etiqueta, sugerencias en el selector de etiquetas, avisos de error de cifrado y varias correcciones de L10n
+- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.4
 
 ### v2.7.3 (2026-07-30) — Correcciones impulsadas por auditoría y VoiceOver en 7 idiomas
 

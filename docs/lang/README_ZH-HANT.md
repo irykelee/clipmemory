@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.7.3
+# 剪憶 ClipMemory v2.7.4
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 更新日誌
+
+### v2.7.4 (2026-07-31) — 寬圖預覽白屏修復 + 6 項 OCR 優化 + 效能提升
+
+- **🔍 6 項 OCR 優化（CJK / 去重 / 逾時 / 記憶體）** — CJK 辨識降級時新增通知與 userLocale 日誌、圖片去重後舊 UUID 的 OCR 結果不丟失、Vision 呼叫 15 秒自動取消、6K HEIC 預覽記憶體從 ~100 MB 降至 ~16 MB（`thumbnailMaxPixelSize=2048`）
+- **⚡️ 搜尋 / 複製效能提升（多項背景優化）** — UUID→索引字典 O(1) 查詢、拼音結果按內容快取（1000 次比對從 1340 ms 降至 77 ms）、JSONEncoder 重複使用、cleanup 單次掃描、冷啟動 AES-GCM 預填
+- **🖼️ 寬圖長按預覽不再白屏** — 主螢幕旋轉為直向時複製 16:9 截圖，1 像素超出 cap 寬度的邊界情況不再產生 2000+ 像素白底（panel 自動貼合圖片尺寸）
+- **🔇 OCR 路徑加入最小文字高度閾值** — `minimumTextHeight = 0.01`（預設 0.02 是為印刷文件調校的），小字號終端機截圖 / 12-pt 視網膜截圖現在能被辨識
+- **🌐 7 語言在地化補齊** — 標籤徽章無障礙、tag picker 新增建議、加密失敗提示等多項 L10n 修復
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.4
 
 ### v2.7.3 (2026-07-30) — Audit-Driven Fixes & 7-Language VoiceOver
 

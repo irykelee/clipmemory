@@ -1,4 +1,4 @@
-# ClipMemory v2.7.3
+# ClipMemory v2.7.4
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.7.4 (2026-07-31) — Wide Image Preview White Screen Fix + 6 OCR Optimizations + Performance Improvements
+
+- **🔍 6 OCR optimizations (CJK / deduplication / timeout / memory)** — Notification and `userLocale` logging when CJK recognition degrades, OCR results for old UUIDs are no longer lost after image deduplication, Vision calls auto-cancel after 15 seconds, 6K HEIC preview memory drops from ~100 MB to ~16 MB (`thumbnailMaxPixelSize=2048`)
+- **⚡️ Search / copy performance improvements (multiple background optimizations)** — O(1) UUID→index dictionary lookup, pinyin results cached by content (1000 matches from 1340 ms down to 77 ms), JSONEncoder reuse, cleanup single-pass scan, cold-start AES-GCM prefilling
+- **🖼️ Wide image long-press preview no longer white-screens** — Copying a 16:9 screenshot while the main screen is rotated to portrait, the boundary case where width exceeds the cap by 1 pixel no longer produces a 2000+ pixel white background (panel now auto-fits the image size)
+- **🔇 OCR path adds minimum text height threshold** — `minimumTextHeight = 0.01` (the default 0.02 is tuned for printed documents), small-font terminal screenshots / 12-pt Retina screenshots are now recognized
+- **🌐 7-language localization completed** — Tag badge accessibility, tag picker add suggestions, encryption failure prompts, and various other L10n fixes
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.4
 
 ### v2.7.3 (2026-07-30) — Audit-Driven Fixes & 7-Language VoiceOver
 
