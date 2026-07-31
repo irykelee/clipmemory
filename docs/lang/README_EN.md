@@ -1,4 +1,4 @@
-# ClipMemory v2.7.4
+# ClipMemory v2.7.5
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.7.5 (2026-07-31) — Emergency Fix
+
+- **Fix blank bar on the right side of image preview** — When opening a tall screenshot close to the screen height in portrait mode, a large blank area appeared on the right side of the preview panel; it now auto-fits to the actual image width
+- **Fix dead code in auto-update checker** — The Sparkle auto-update checker in v2.7.4 was never started, so that version **could not receive the auto-update push for this release**. Fixed in v2.7.5; auto-update returns to normal for future versions
+- **Fix crash on Recycle Bin operations** — Deleting or restoring items in the Recycle Bin could trigger a crash (or silently act on the wrong item); fixed
+- **Fix silent failure of debounced save timer** — For non-immediate disk-write paths such as tag editing and Recycle Bin operations, the debounced save would stop working after its first trigger; a crash or force quit could lose all tag/Recycle Bin changes since the last launch
+- **Fix backups containing Recycle Bin entries failing to import** — Any backup file containing a non-empty Recycle Bin would fail on import; this is now supported
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.5
 
 ### v2.7.4 (2026-07-31) — Wide Image Preview White Screen Fix + 6 OCR Optimizations + Performance Improvements
 

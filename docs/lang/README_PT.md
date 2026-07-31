@@ -1,4 +1,4 @@
-# ClipMemory v2.7.4
+# ClipMemory v2.7.5
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.7.5 (2026-07-31) — Correção urgente
+
+- **Corrigida faixa branca à direita na pré-visualização de imagens** — Ao abrir capturas de tela longas com altura próxima à da tela no modo retrato, uma grande área em branco aparecia no lado direito do painel de pré-visualização; agora o painel se ajusta automaticamente à largura real da imagem.
+- **Corrigido código morto no detector de atualização automática** — O detector de atualização automática Sparkle do v2.7.4 não era iniciado, fazendo com que essa versão **não recebesse o push de atualização automática desta versão**. Corrigido no v2.7.5; as atualizações automáticas voltarão ao normal nas próximas versões.
+- **Corrigida falha ao operar a Lixeira** — Excluir ou restaurar itens na Lixeira podia causar uma falha (ou operar silenciosamente no item errado); agora corrigido.
+- **Corrigido timer de salvamento com debounce que falhava silenciosamente** — Em caminhos de gravação não imediatos, como edição de etiquetas e operações na Lixeira, o salvamento com debounce parava de funcionar após o primeiro acionamento; um travamento ou saída forçada poderia perder todas as alterações de etiquetas/Lixeira desde a última inicialização.
+- **Corrigida falha ao importar backups que continham itens da Lixeira** — Qualquer arquivo de backup com Lixeira não vazia falhava na importação; agora é compatível.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.5
 
 ### v2.7.4 (2026-07-31) — Correção de tela branca na pré-visualização de imagens largas + 6 otimizações de OCR + melhorias de desempenho
 

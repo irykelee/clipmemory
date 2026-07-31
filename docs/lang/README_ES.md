@@ -1,4 +1,4 @@
-# ClipMemory v2.7.4
+# ClipMemory v2.7.5
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.7.5 (2026-07-31) — Corrección urgente
+
+- **Corregida la franja blanca en el lado derecho de la vista previa de imágenes** — Al abrir capturas de pantalla largas casi de la altura de la pantalla en orientación vertical, aparecía una gran franja vacía en el lado derecho del panel de vista previa; ahora se ajusta automáticamente al ancho real de la imagen
+- **Corregido el código muerto del detector de actualización automática** — El detector de actualización automática Sparkle de v2.7.4 no se iniciaba, por lo que esa versión **no podía recibir la notificación de actualización automática de esta versión**. Ya corregido en v2.7.5, las actualizaciones automáticas vuelven a funcionar con normalidad en versiones posteriores
+- **Corregido el fallo al operar con la Papelera** — Al eliminar o restaurar elementos de la Papelera podía producirse un fallo (o una operación silenciosa sobre el elemento equivocado); ya está corregido
+- **Corregido el temporizador de guardado con debounce que fallaba silenciosamente** — El guardado con debounce en rutas que no escriben inmediatamente en disco (edición de etiquetas, operaciones con la Papelera, etc.) dejaba de funcionar tras la primera activación; un fallo o cierre forzado podía perder todos los cambios de etiquetas/Papelera realizados desde el último inicio
+- **Corregida la imposibilidad de importar copias de seguridad que contienen elementos de la Papelera** — Cualquier archivo de copia de seguridad con una Papelera no vacía fallaba al importarse; ahora es compatible
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.5
 
 ### v2.7.4 (2026-07-31) — Corrección de pantalla blanca en vista previa de imágenes anchas + 6 optimizaciones de OCR + mejoras de rendimiento
 
