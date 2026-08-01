@@ -144,8 +144,14 @@ import AppKit
     /// The fix clamps with `isFinite && scale > 0 && scale < 4`.
     func testFontScalingClampsBadValuesToBase() {
         let key = "fontScale"
-        let original = UserDefaults.standard.double(forKey: key)
-        defer { UserDefaults.standard.set(original, forKey: key) }
+        // ID-STORE-0007 (2026-08-01): object(forKey:) not double(forKey:) —
+        // double() returns 0 for an ABSENT key and the defer would write a
+        // real 0 back into production defaults (blank settings picker).
+        let original = UserDefaults.standard.object(forKey: key) as? Double
+        defer {
+            if let original { UserDefaults.standard.set(original, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
 
         UserDefaults.standard.set(Double.infinity, forKey: key)
         XCTAssertEqual(sz(16), 16, ".infinity must clamp to base (regression of M-5)")
