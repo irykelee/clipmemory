@@ -30,11 +30,21 @@ final class ImageStorageTests: XCTestCase {
     private var testUUIDs: [UUID] = []
     private let migrationKey = "ImageStorageMigrationComplete"
     private let startupCleanupKey = "ImageStorageStartupCleanupRan"
+    private var savedMigrationValue: Any?
+    private var savedStartupCleanupValue: Any?
 
     override func setUp() {
         super.setUp()
         // Force migration + startup cleanup to no-op BEFORE ImageStorage.shared
         // is touched (its private init() runs migrateFromLegacyIfNeeded on first access).
+        // M13 (2026-08-01 audit): these set(true) writes used to leak into the
+        // production UserDefaults domain — ImageStorage reads the keys from
+        // UserDefaults.standard directly and is not suite-injectable (roadmap
+        // UserDefaults-abstraction debt), so back up the real values first and
+        // restore them in tearDown (STORE-0007 pattern: object(forKey:)
+        // distinguishes "absent" from "value").
+        savedMigrationValue = UserDefaults.standard.object(forKey: migrationKey)
+        savedStartupCleanupValue = UserDefaults.standard.object(forKey: startupCleanupKey)
         UserDefaults.standard.set(true, forKey: migrationKey)
         UserDefaults.standard.set(true, forKey: startupCleanupKey)
         storage = ImageStorage.shared
@@ -45,7 +55,20 @@ final class ImageStorageTests: XCTestCase {
             storage.deleteImage(filename: "\(uuid.uuidString).png")
         }
         testUUIDs.removeAll()
+        // M13: restore the production defaults captured in setUp.
+        restore(migrationKey, savedMigrationValue)
+        restore(startupCleanupKey, savedStartupCleanupValue)
+        savedMigrationValue = nil
+        savedStartupCleanupValue = nil
         super.tearDown()
+    }
+
+    private func restore(_ key: String, _ value: Any?) {
+        if let value {
+            UserDefaults.standard.set(value, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     private func newTestUUID() -> UUID {

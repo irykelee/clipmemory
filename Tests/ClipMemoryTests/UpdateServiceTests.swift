@@ -8,12 +8,31 @@ final class UpdateServiceTests: XCTestCase {
 
     private let primary = URL(string: "https://github.com/irykelee/clipmemory/releases/latest/download/appcast.xml")!
 
+    private var savedFeedPolicy: Any?
+    private var savedFallbackConsent: Any?
+    private var savedLastPrimaryItemDate: Any?
+
     override func tearDownWithError() throws {
         // Never leak consent/date state written to UserDefaults across tests.
         UpdateService.fallbackFeedConsent = nil
         UpdateService.lastPrimaryItemDate = nil
         UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
         UserDefaults.standard.removeObject(forKey: "UpdateFallbackFeedConsent")
+        // M13: restore the production values captured in setUp.
+        restore("UpdateFeedPolicy", savedFeedPolicy)
+        restore("UpdateFallbackFeedConsent", savedFallbackConsent)
+        restore("LastPrimaryAppcastItemDate", savedLastPrimaryItemDate)
+        savedFeedPolicy = nil
+        savedFallbackConsent = nil
+        savedLastPrimaryItemDate = nil
+    }
+
+    private func restore(_ key: String, _ value: Any?) {
+        if let value {
+            UserDefaults.standard.set(value, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     // ID-MISC-0002 (2026-07-31 audit): the "Feed resolution" tests for
@@ -195,6 +214,17 @@ final class UpdateServiceTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // M13 (2026-08-01 audit): the tests below write UpdateFeedPolicy /
+        // UpdateFallbackFeedConsent / LastPrimaryAppcastItemDate through
+        // UpdateService's static accessors, which are hardwired to
+        // UserDefaults.standard (not suite-injectable — roadmap UserDefaults
+        // abstraction debt). The old tearDown only removed the keys, so a
+        // real user's consent/policy/baseline was permanently deleted by a
+        // test run. Back up the production values and restore them in
+        // tearDown (STORE-0007 pattern).
+        savedFeedPolicy = UserDefaults.standard.object(forKey: "UpdateFeedPolicy")
+        savedFallbackConsent = UserDefaults.standard.object(forKey: "UpdateFallbackFeedConsent")
+        savedLastPrimaryItemDate = UserDefaults.standard.object(forKey: "LastPrimaryAppcastItemDate")
         MockURLProtocol.stubResponses = [:]
         MockURLProtocol.stubError = nil
     }

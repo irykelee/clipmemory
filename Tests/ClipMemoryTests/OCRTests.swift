@@ -13,9 +13,16 @@ import Vision
     private var store: ClipboardStore!
     private var originalCrypto: CryptoServiceProtocol?
     private var testCrypto: CryptoService!
+    private var savedOcrPreviewEnabled: Any?
 
     override func setUp() {
         super.setUp()
+        // M13 (2026-08-01 audit): the testOcrPreviewEnabled* tests write the
+        // production "ocrPreviewEnabled" key through ClipboardStore+OCR's
+        // hardwired UserDefaults.standard accessor (not suite-injectable).
+        // Back up the real value and restore it in tearDown so a user's
+        // non-default setting survives a test run (STORE-0007 pattern).
+        savedOcrPreviewEnabled = UserDefaults.standard.object(forKey: "ocrPreviewEnabled")
         backend = MemoryStorageBackend()
         store = ClipboardStore(backend: backend)
         testCrypto = CryptoService(customKeyData: Data((0..<32).map { UInt8($0) }))
@@ -24,6 +31,13 @@ import Vision
     }
 
     override func tearDown() {
+        // M13: restore the production value captured in setUp.
+        if let savedOcrPreviewEnabled {
+            UserDefaults.standard.set(savedOcrPreviewEnabled, forKey: "ocrPreviewEnabled")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "ocrPreviewEnabled")
+        }
+        savedOcrPreviewEnabled = nil
         if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         testCrypto = nil
