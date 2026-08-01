@@ -76,7 +76,7 @@
 |---|---|---|
 | 1 | **ClipboardStore 拆分** | 已 2070+ 行且每轮审计在涨（去重/过滤/诊断/预热/持久化/回收站桥接全在一类）。抽 `DecryptScheduler`/`DisplayCoordinator`。PERF-0020（O(n) 重建）挂在此次拆分上，也利于 strict concurrency 推进 |
 | 2 | **存储迁移** | 维持原 Phase 2 判断：**先 Instruments 实测 1K/5K/10K 条再动手**；每次保存整库 JSON 重写是 O(n) 写放大。升 15 后评估对象改为 **SwiftData vs 手写 SQLite 二选一**（SwiftData 加密方案见「现代化」节 B 类）。**顺序：先拆 Store 再换存储**，切换面更小 |
-| 3 | **测试隔离收尾** | 2026-08-01 一天两起测试宿主污染（ID-MON-0002 / ID-STORE-0005）就是利息。清掉 M12（10+ 测试直用 `.shared`）/ M13（测试直写生产 `UserDefaults.standard` migration key）残留 |
+| 3 | **测试隔离收尾** | 2026-08-01 三起测试宿主污染（ID-MON-0002 / ID-STORE-0005 / ID-STORE-0007）就是利息。M13 已闭环（§10.14）；残留：M12（10+ 测试直用 `.shared` 改注入） |
 | 4 | **PERF-0016 缩略图降采样** | Round-5 deferred 尾巴：行缩略图全分辨率解码，内存虚高 |
 | 5 | **Swift 6 语言模式** | 见下节「现代化」 |
 
@@ -155,7 +155,7 @@
 |---|---|---|
 | ImageStorage 双队列 | M5 | OPEN（0.5 天） |
 | 测试隔离：Store | M12 | **大部分已闭环**（ID-MON-0002 + ID-STORE-0005，2026-08-01）；残留：10+ 测试直用 `.shared` 改用注入 |
-| 测试隔离：UserDefaults | M13 | OPEN（改用 `UserDefaults(suiteName:)`，0.5 天） |
+| 测试隔离：UserDefaults | M13 | **已闭环**（2026-08-01，ledger §10.14）：3 处直写按 STORE-0007 范本修复 + canary 加固。真债务残留：ImageStorage/UpdateService/ClipboardStore+OCR 硬连 `UserDefaults.standard` 不可注入 suite——并入未来 UserDefaults 抽象评估 |
 
 ### P3 — 代码整洁度（非阻塞）
 
