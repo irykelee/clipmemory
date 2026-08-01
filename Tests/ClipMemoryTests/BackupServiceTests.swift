@@ -32,6 +32,26 @@ final class BackupServiceTests: XCTestCase {
         super.tearDown()
     }
 
+    /// ID-BACKUP-0003/0005 test determinism (2026-08-01): assigning
+    /// `service.keepCount` (the setter) dispatches a fire-and-forget
+    /// `pruneOldBackups()` on a utility queue whenever the value drops.
+    /// Tests that hand-seed backup dirs and then call `pruneOldBackups()`
+    /// directly must NOT trigger that async prune: it cannot be drained,
+    /// and it races (a) dir seeding — a just-created dir whose
+    /// `.incomplete` marker hasn't been written yet looks VALID, so the
+    /// async prune counts it toward keepCount and deletes genuinely-valid
+    /// dirs (CI run 30691182034: remaining=2 instead of 3) — and (b) the
+    /// unlocked direct prune (duplicate removeItem attempts → "failed to
+    /// remove" logs), and can even fire after tearDown removed tempRoot
+    /// ("Backups doesn't exist" logs). Write the defaults key directly:
+    /// the getter sees the same value with zero async work scheduled.
+    /// The setter's async-prune behavior itself stays covered (with a
+    /// deterministic convergence poll) by
+    /// `testKeepCountReductionPrunesImmediately`.
+    private func seedKeepCount(_ value: Int) {
+        defaults.set(value, forKey: "backupKeepCount")
+    }
+
     private func seedStoreData() {
         let item = ClipboardItem(content: "backup-me", type: .text)
         let data = try? JSONEncoder().encode([item])
@@ -62,7 +82,7 @@ final class BackupServiceTests: XCTestCase {
     }
 
     func testPruneKeepsOnlyNewestN() {
-        service.keepCount = 3
+        seedKeepCount(3)
         // Regression for 1.1 (2026-07-23 audit): the backup dir format is
         // BUG-021 `yyyy-MM-dd_HHmmss.SSS` (21 chars). Seed matching names so
         // `isBackupDirName` accepts them; if the length check drifts again,
@@ -93,7 +113,7 @@ final class BackupServiceTests: XCTestCase {
     /// the filter — i.e. the filter accepts the real format, not just a
     /// hand-seeded one with the same length.
     func testPruneRecognizesRealBackupNowFormat() throws {
-        service.keepCount = 3
+        seedKeepCount(3)
         seedStoreData()
         for _ in 0..<5 {
             _ = try service.backupNow()
@@ -277,7 +297,10 @@ final class BackupServiceTests: XCTestCase {
     /// unusable for restore and its presence would otherwise be counted as a
     /// valid backup by the count-based pruning logic.
     func testPruneRemovesIncompleteDirsUnconditionally() throws {
-        service.keepCount = 5
+        // 5 is outside the accepted [3, 7, 14, 30] list, so the getter
+        // yields the 7 default either way — same as the old setter call,
+        // minus its fire-and-forget async prune (see seedKeepCount).
+        seedKeepCount(5)
         // Seed one incomplete (the bug scenario) and one valid dir.
         let incompleteName = "2026-07-25_120000.000"
         let validName = "2026-07-26_120000.000"
@@ -308,7 +331,7 @@ final class BackupServiceTests: XCTestCase {
     /// backups to keep incomplete ones, which is exactly the audit's failure
     /// scenario ("complete backups get pruned, incomplete kept").
     func testPruneSeparatesIncompleteFromValidCount() throws {
-        service.keepCount = 3
+        seedKeepCount(3)
         // 4 valid + 2 incomplete = 6 total entries; only 3 valid should survive.
         let validNames = [
             "2026-07-20_120000.000",
@@ -350,7 +373,7 @@ final class BackupServiceTests: XCTestCase {
     /// a backup dir — the old positional digit check accepted it, so prune
     /// could have counted/removed a foreign directory.
     func testPruneIgnoresShapeMatchingButInvalidDateNames() {
-        service.keepCount = 3  // keepCount only accepts [3, 7, 14, 30]
+        seedKeepCount(3)  // keepCount only accepts [3, 7, 14, 30]
         let validNames = [
             "2026-07-14_120000.000", "2026-07-15_120000.000",
             "2026-07-16_120000.000", "2026-07-17_120000.000"
