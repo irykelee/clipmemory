@@ -76,7 +76,7 @@ struct GeneralSettingsView: View {
                     Text(L10n.themeAppearanceDark).tag("dark")
                 }
                 .onChange(of: themeAppearance) { _ in applyAppearance() }
-                Picker(L10n.string("settings.font.picker"), selection: $fontScale) {
+                Picker(L10n.settingsFontSize, selection: $fontScale) {
                     Text(L10n.fontSizeSmall).tag(1.0)
                     Text(L10n.fontSizeMedium).tag(1.2)
                     Text(L10n.fontSizeLarge).tag(1.4)

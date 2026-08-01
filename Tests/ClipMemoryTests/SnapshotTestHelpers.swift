@@ -181,7 +181,11 @@ func assertImageSnapshot(
 /// Stores the original values and restores them in `tearDown()`.
 @MainActor func snapshotTestSetUp() {
     let defaults = UserDefaults.standard
-    snapshotTestSavedFontScale = defaults.double(forKey: "fontScale")
+    // ID-STORE-0007 (2026-08-01): object(forKey:) not double(forKey:) —
+    // double() returns 0 for an ABSENT key, which tearDown would then
+    // write back as a real 0, polluting production defaults (fontScale=0
+    // matches no picker tag and renders the settings row blank).
+    snapshotTestSavedFontScale = defaults.object(forKey: "fontScale") as? Double
     snapshotTestSavedLanguage = LanguageManager.shared.selectedLanguage
     // Force defaults used by our rendered views to a deterministic baseline
     defaults.set(1.0, forKey: "fontScale")

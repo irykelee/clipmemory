@@ -167,7 +167,6 @@
 "quickbar.no.results" = "無結果";
 
 /* Font Size */
-"settings.font.picker" = "設定為";
 "settings.font.size" = "字體大小";
 "font.size.small" = "小";
 "font.size.medium" = "中";

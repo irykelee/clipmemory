@@ -171,7 +171,6 @@
 "quickbar.no.results" = "Sem resultados";
 
 /* Font Size */
-"settings.font.picker" = "Definir";
 "settings.font.size" = "Tamanho da fonte";
 "font.size.small" = "Pequeno";
 "font.size.medium" = "Médio";

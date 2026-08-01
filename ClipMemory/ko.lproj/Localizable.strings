@@ -168,7 +168,6 @@
 "quickbar.no.results" = "결과 없음";
 
 /* Font Size */
-"settings.font.picker" = "설정：";
 "settings.font.size" = "글꼴 크기";
 "font.size.small" = "작게";
 "font.size.medium" = "보통";

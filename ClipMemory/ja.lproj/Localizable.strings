@@ -168,7 +168,6 @@
 "quickbar.no.results" = "結果なし";
 
 /* Font Size */
-"settings.font.picker" = "設定：";
 "settings.font.size" = "フォントサイズ";
 "font.size.small" = "小";
 "font.size.medium" = "中";
