@@ -7,20 +7,25 @@ import XCTest
 @MainActor
 final class CryptoKeyPreparedNotificationTests: XCTestCase {
 
+    // M12 (2026-08-01): per-test injected store replaces ClipboardStore.shared —
+    // each instance registers its own .cryptoKeyPrepared observer in init, so
+    // posting the notification exercises the same handler. Fresh instance
+    // starts with empty diagnostics (prior shared-state resets unnecessary).
+    private var store: ClipboardStore!
+
     override func setUp() {
         super.setUp()
         CryptoService.resetForTesting()
-        ClipboardStore.shared.diagnostics = .init()
+        store = ClipboardStore(backend: MemoryStorageBackend())
     }
 
     override func tearDown() {
         CryptoService.resetForTesting()
-        ClipboardStore.shared.diagnostics = .init()
+        store = nil
         super.tearDown()
     }
 
     func testDismissedResetOnSuccessNotification() {
-        let store = ClipboardStore.shared
         store.diagnostics = DecryptionDiagnostics(
             keyUnavailable: false, dataCorruptedCount: 3, internalErrorCount: 0, dismissed: true
         )
@@ -40,7 +45,6 @@ final class CryptoKeyPreparedNotificationTests: XCTestCase {
     }
 
     func testDismissedNotResetOnFailureNotification() {
-        let store = ClipboardStore.shared
         store.diagnostics = DecryptionDiagnostics(
             keyUnavailable: true, dataCorruptedCount: 0, internalErrorCount: 0, dismissed: true
         )

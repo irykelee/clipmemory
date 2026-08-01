@@ -5,27 +5,29 @@ import XCTest
 @MainActor
 final class ClipboardStoreDiagnosticsTests: XCTestCase {
 
+    private var store: ClipboardStore!
+
     override func setUp() {
         super.setUp()
         CryptoService.resetForTesting()
-        // N7: reset shared diagnostics so test state doesn't leak across tests.
-        ClipboardStore.shared.diagnostics = .init()
+        // M12 (2026-08-01): per-test injected store replaces
+        // ClipboardStore.shared — fresh instance starts with empty
+        // diagnostics, so the prior shared-state resets are unnecessary.
+        store = ClipboardStore(backend: MemoryStorageBackend())
     }
 
     override func tearDown() {
         CryptoService.resetForTesting()
-        ClipboardStore.shared.diagnostics = .init()
+        store = nil
         super.tearDown()
     }
 
     func testDiagnosticsInitialEmpty() {
-        let store = ClipboardStore.shared
         XCTAssertFalse(store.diagnostics.keyUnavailable)
         XCTAssertEqual(store.diagnostics.dataCorruptedCount, 0)
     }
 
     func testKeyUnavailableAggregatedToBool() {
-        let store = ClipboardStore.shared
         store.testAddPendingDiagnostic(.keyUnavailable)
         store.mergePendingDiagnostics()
         let exp = expectation(description: "wait diagnostics merge")
@@ -35,7 +37,6 @@ final class ClipboardStoreDiagnosticsTests: XCTestCase {
     }
 
     func testDataCorruptedCounted() {
-        let store = ClipboardStore.shared
         store.testAddPendingDiagnostic(.dataCorrupted)
         store.testAddPendingDiagnostic(.dataCorrupted)
         store.testAddPendingDiagnostic(.internalError)
@@ -48,13 +49,11 @@ final class ClipboardStoreDiagnosticsTests: XCTestCase {
     }
 
     func testDismissedFlagToggles() {
-        let store = ClipboardStore.shared
         store.diagnostics.dismissed = true
         XCTAssertTrue(store.diagnostics.dismissed)
     }
 
     func testMergeIsAsyncNotBlocking() {
-        let store = ClipboardStore.shared
         store.testAddPendingDiagnostic(.keyUnavailable)
         let beforeMerge = store.diagnostics.keyUnavailable
         store.mergePendingDiagnostics()
@@ -64,7 +63,6 @@ final class ClipboardStoreDiagnosticsTests: XCTestCase {
 
     func testEmptySnapshotSetsZeroState() {
         // N4: without the empty-early-return, even an empty snapshot must SET zero state
-        let store = ClipboardStore.shared
         store.diagnostics = .init(keyUnavailable: true, dataCorruptedCount: 5, internalErrorCount: 0, dismissed: false)
         // pendingDiagnostics is empty by default
         store.mergePendingDiagnostics()
@@ -80,7 +78,6 @@ final class ClipboardStoreDiagnosticsTests: XCTestCase {
     /// P0-2 T5: OCR path (.keyUnavailable) appends diagnostic without marking
     /// decryptionFailed on the item (N10).
     func testOcrPathKeyUnavailableAppendsDiagnostic() {
-        let store = ClipboardStore.shared
         // Ensure items are clean before this test
         store.items.removeAll()
         store.diagnostics = .init()
@@ -111,7 +108,6 @@ final class ClipboardStoreDiagnosticsTests: XCTestCase {
 
     /// P0-2 T5: OCR path data corruption is tracked as diagnostic.
     func testOcrPathDataCorruptedAppendsDiagnostic() {
-        let store = ClipboardStore.shared
         store.items.removeAll()
         store.diagnostics = .init()
 
@@ -145,7 +141,6 @@ final class ClipboardStoreDiagnosticsTests: XCTestCase {
     /// P0-2 T5: RTF path (.keyUnavailable) appends diagnostic and does NOT
     /// cache the fallback label — retry after key becomes available must succeed.
     func testRtfPathKeyUnavailableNotCached() {
-        let store = ClipboardStore.shared
         store.items.removeAll()
         store.diagnostics = .init()
 
@@ -195,7 +190,6 @@ final class ClipboardStoreDiagnosticsTests: XCTestCase {
     /// P0-2 T5: RTF path data corruption is tracked as diagnostic and marks
     /// decryptionFailed on the item.
     func testRtfPathDataCorruptedAppendsDiagnostic() {
-        let store = ClipboardStore.shared
         store.items.removeAll()
         store.diagnostics = .init()
 

@@ -40,7 +40,12 @@ final class TrashItemRowSnapshotTests: XCTestCase {
         )
         let row = TrashItemRow(
             item: item,
-            store: ClipboardStore.shared,
+            // M12 (2026-08-01): injected store — TrashItemRow takes the store
+            // as a parameter precisely so tests don't need the singleton
+            // (SettingsTabSnapshotTests uses the same pattern). The baseline
+            // renders the initial ProgressView state, which doesn't consult
+            // the store, so the snapshot is unaffected.
+            store: ClipboardStore(backend: MemoryStorageBackend()),
             onRestore: {},
             onDeletePermanently: {}
         )

@@ -597,11 +597,6 @@ final class ClipboardStore: ObservableObject {
         pendingKeyItems.removeAll()
         pendingKeyItemsLock.unlock()
 
-        guard !pending.isEmpty else {
-            // P0-2 N4: 即便 pending 为空，success 时也复位 dismissed
-            if success { resetDiagnosticsDismissed() }
-            return
-        }
         // CRIT-1 (2026-07-26 review): handler now runs on main thread by
         // type-system guarantee (F-3 queue: .main observer), not by defensive
         // DispatchQueue.main.async wrap. addItem(_:) directly callable.
@@ -609,7 +604,12 @@ final class ClipboardStore: ObservableObject {
             // P0-2 N4: 复位 dismiss（H-2 重放前）
             resetDiagnosticsDismissed()
             for item in pending { self.addItem(item) }
+            // M2 (2026-08-01 roadmap): heal items stored with contentHash = nil
+            // while the key was unavailable — backfill their hashes and merge
+            // the duplicates that piled up in the key-not-ready window.
+            backfillHashesAndMergeDuplicatesAfterKeyReady()
         } else {
+            guard !pending.isEmpty else { return }
             self.logger.error("Encryption key preparation failed; dropping \(pending.count) deferred clipboard capture(s)")
             NotificationCenter.default.post(
                 name: .encryptionFailed,
@@ -620,6 +620,117 @@ final class ClipboardStore: ObservableObject {
                 ]
             )
         }
+    }
+
+    /// M2 (2026-08-01 roadmap): items stored while the encryption key was
+    /// unavailable carry `contentHash = nil` — the addItem dedup pre-filter
+    /// skips them ("accept a duplicate rather than risk a false collision"),
+    /// so repeats captured inside the key-not-ready window (first launch,
+    /// Keychain locked) pile up and stay invisible to dedup for the rest of
+    /// the session. Once `.cryptoKeyPrepared` reports success, backfill their
+    /// hashes off-main (same C6 pattern as the load-time backfill) and merge
+    /// the duplicates on main (`mergeBackfilledHashes`).
+    ///
+    /// ID-STORE-0001 semantics preserved: an item that still cannot be
+    /// decrypted keeps `contentHash = nil` — never fingerprint the ciphertext
+    /// fallback — and is retried on the next key-ready event / launch.
+    private func backfillHashesAndMergeDuplicatesAfterKeyReady() {
+        struct Candidate {
+            let id: UUID
+            let type: ClipboardItemType
+            let content: String
+            let isEncrypted: Bool
+        }
+        let candidates = items.filter { $0.contentHash == nil }.map {
+            Candidate(id: $0.id, type: $0.type, content: $0.content, isEncrypted: $0.isEncrypted)
+        }
+        guard !candidates.isEmpty else { return }
+
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var hashes: [UUID: String] = [:]
+            for candidate in candidates {
+                let plaintext: String
+                if candidate.type == .image {
+                    // CLIP-1: the image dedup fingerprint is HMAC over the
+                    // base64 of the raw bytes (ClipboardMonitor.imageContentHash).
+                    // Recover it from the stored file; a missing / undecryptable
+                    // file skips the item — hash stays nil.
+                    guard let data = ImageStorage.shared.loadImage(filename: candidate.content) else { continue }
+                    plaintext = data.base64EncodedString()
+                } else if candidate.isEncrypted {
+                    // ID-STORE-0001: decrypt failure → skip; do NOT hash the
+                    // ciphertext as a fallback fingerprint.
+                    guard let decrypted = ServiceContainer.crypto.decrypt(candidate.content) else { continue }
+                    plaintext = decrypted
+                } else {
+                    plaintext = candidate.content
+                }
+                if let hash = ServiceContainer.crypto.hmacHex(for: plaintext) {
+                    hashes[candidate.id] = hash
+                }
+            }
+            guard !hashes.isEmpty else { return }
+            Task { @MainActor [weak self] in
+                self?.mergeBackfilledHashes(hashes)
+            }
+        }
+    }
+
+    /// M2: main-actor half of `backfillHashesAndMergeDuplicatesAfterKeyReady`.
+    /// Applies the computed hashes, then collapses duplicate groups with the
+    /// same semantics as addItem's dedup hit: the EARLIEST capture's entry
+    /// survives (identity, OCR fields, image filename), its createdAt is
+    /// refreshed to the latest capture time and the list re-sorted
+    /// newest-first; later duplicates are dropped and their image files
+    /// deleted (mirrors addItem's `ImageStorage.shared.deleteImage` on a
+    /// dedup hit).
+    private func mergeBackfilledHashes(_ hashes: [UUID: String]) {
+        var applied = false
+        for (id, hash) in hashes {
+            guard let index = items.firstIndex(where: { $0.id == id }),
+                  items[index].contentHash == nil else { continue }
+            items[index].contentHash = hash
+            applied = true
+        }
+        guard applied else { return }
+
+        // Only groups containing a just-backfilled item can be NEW collisions —
+        // pre-existing hashed items were already deduped at insertion time.
+        let backfilledIds = Set(hashes.keys)
+        var groups: [String: [Int]] = [:]
+        for (index, item) in items.enumerated() {
+            guard let hash = item.contentHash else { continue }
+            groups["\(item.type.rawValue)|\(hash)", default: []].append(index)
+        }
+
+        var removedIndices = Set<Int>()
+        var imageFilesToDelete: [String] = []
+        for indices in groups.values where indices.count > 1 {
+            guard indices.contains(where: { backfilledIds.contains(items[$0].id) }),
+                  let survivorIndex = indices.min(by: { items[$0].createdAt < items[$1].createdAt }),
+                  let latestCapture = indices.map({ items[$0].createdAt }).max() else { continue }
+            for index in indices where index != survivorIndex {
+                removedIndices.insert(index)
+                let dropped = items[index]
+                if dropped.type == .image, dropped.content != items[survivorIndex].content {
+                    imageFilesToDelete.append(dropped.content)
+                }
+            }
+            items[survivorIndex] = items[survivorIndex].with(createdAt: latestCapture)
+        }
+
+        if !removedIndices.isEmpty {
+            items = items.enumerated().filter { !removedIndices.contains($0.offset) }.map { $0.element }
+            items.sort { $0.createdAt > $1.createdAt }
+            invalidateItemIndex()
+            for filename in imageFilesToDelete {
+                ImageStorage.shared.deleteImage(filename: filename)
+            }
+            trimToMaxItems()
+            updatePinnedItems()
+        }
+        rebuildDedupHashSet()
+        scheduleSave()
     }
 
     /// P0-2: user taps banner ✕ → dismiss until next key event.

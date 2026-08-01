@@ -495,16 +495,20 @@ import Vision
 
     func testOcrPreviewEnabledDefaultsToTrue() {
         UserDefaults.standard.removeObject(forKey: "ocrPreviewEnabled")
-        let store = ClipboardStore.shared
+        // M12 (2026-08-01): injected store — ocrPreviewEnabled is a
+        // UserDefaults-backed accessor, so any instance exercises the same
+        // code path as ClipboardStore.shared.
+        let store = ClipboardStore(backend: MemoryStorageBackend())
         XCTAssertEqual(store.ocrPreviewEnabled, true)
     }
 
     func testOcrPreviewEnabledSetterPersists() {
-        let store = ClipboardStore.shared
+        // M12 (2026-08-01): injected store, same rationale as above.
+        let store = ClipboardStore(backend: MemoryStorageBackend())
         store.ocrPreviewEnabled = false
-        XCTAssertEqual(ClipboardStore.shared.ocrPreviewEnabled, false)
+        XCTAssertEqual(store.ocrPreviewEnabled, false)
         store.ocrPreviewEnabled = true
-        XCTAssertEqual(ClipboardStore.shared.ocrPreviewEnabled, true)
+        XCTAssertEqual(store.ocrPreviewEnabled, true)
     }
 
     // MARK: - ID-OCR-0002 (2026-07-30 audit): CJK fallback notification

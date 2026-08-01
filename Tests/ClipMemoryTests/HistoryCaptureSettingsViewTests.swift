@@ -5,23 +5,35 @@ import SwiftUI
 @MainActor
 final class HistoryCaptureSettingsViewTests: XCTestCase {
 
+    // M12 (2026-08-01): per-test injected store replaces ClipboardStore.shared.
+    // HistoryCaptureSettingsView takes an injected store (see
+    // SettingsTabSnapshotTests) and ocrPreviewEnabled is UserDefaults-backed,
+    // so any instance exercises the same accessor.
+    private var store: ClipboardStore!
+
     override func setUp() {
         super.setUp()
+        store = ClipboardStore(backend: MemoryStorageBackend())
         // Each test starts from a known state.
-        ClipboardStore.shared.ocrPreviewEnabled = true
+        store.ocrPreviewEnabled = true
+    }
+
+    override func tearDown() {
+        store = nil
+        super.tearDown()
     }
 
     func testToggleOnShowsOcrPreviewSection() {
-        ClipboardStore.shared.ocrPreviewEnabled = true
+        store.ocrPreviewEnabled = true
         // Smoke: render the view, assert no crash. Toggle state asserted
         // via UserDefaults.
-        XCTAssertEqual(ClipboardStore.shared.ocrPreviewEnabled, true)
+        XCTAssertEqual(store.ocrPreviewEnabled, true)
     }
 
     func testToggleOffHidesOcrPreviewButKeepsFilter() {
-        ClipboardStore.shared.ocrPreviewEnabled = false
+        store.ocrPreviewEnabled = false
         // Display-only: filter still uses OCR text. (Filter behavior is
         // covered by ContentViewTests — not duplicated here.)
-        XCTAssertEqual(ClipboardStore.shared.ocrPreviewEnabled, false)
+        XCTAssertEqual(store.ocrPreviewEnabled, false)
     }
 }

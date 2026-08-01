@@ -548,45 +548,92 @@ class ImageStorage {
     func imageStatus(for filename: String) -> ImageLoadStatus {
         guard Self.isValidFilename(filename) else { return .fileMissing }
         let fileURL = imagesDirectory.appendingPathComponent(filename)
-        // C-3 (2026-07-24 audit): the prior implementation read the file
-        // OUTSIDE migrationQueue (Data(contentsOf:) at line 334) and only
-        // serialized the re-encrypted write. Two threads racing on the same
-        // legacy PNG could both read pre-migration bytes, both enter the
-        // legacy-decrypt path, and produce inconsistent on-disk state with
-        // .decryptionFailed returned to the UI for files that are actually
-        // fine. Wrap read + process + write in a single migrationQueue.sync
-        // so concurrent calls for the same file serialize end-to-end.
-        return Self.migrationQueue.sync {
-            guard fileManager.fileExists(atPath: fileURL.path) else { return .fileMissing }
-            // STOR-5 (2026-07-24 review): pre-check the file size BEFORE
-            // Data(contentsOf:) — the 50 MB cap used to cover only the write
-            // path (saveImage) and the legacy-migration path, so a hostile or
-            // corrupted multi-hundred-MB file in Images/ was pulled whole
-            // into memory here. Conservative on stat failure (same fail-closed
-            // pattern as C-4 in BackupPackage.importImages): skip the read
-            // rather than risk an unbounded allocation.
-            guard let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),
-                  let fileSize = attrs[.size] as? Int else {
-                logger.warning("STOR-5: cannot determine size of image (skipping read): \(filename, privacy: .public)")
-                return .fileMissing
-            }
-            guard fileSize <= Self.maxImageSize else {
-                Self.corruptionCountLock.lock()
-                Self.corruptionCount += 1
-                Self.corruptionCountLock.unlock()
-                logger.error("imageCorrupted filename=\(filename, privacy: .public) bytes=\(fileSize) reason=exceeds maxImageSize")
-                return .decryptionFailed
-            }
-            guard let encryptedData = try? Data(contentsOf: fileURL) else {
-                return .fileMissing
-            }
-
+        // M5 (2026-08-01 roadmap): the v2 fast path is a pure read — no disk
+        // mutation — so it no longer serializes on migrationQueue. Previously
+        // EVERY read (v2 included) went through `migrationQueue.sync`, so v2
+        // loads stalled behind an in-flight legacy migration of an unrelated
+        // file. Paths that can WRITE (legacy CBC re-encrypt, plaintext-PNG
+        // upgrade) still run end-to-end inside migrationQueue.sync (C-3
+        // contract, see migrateLegacyImageAtRead) and re-read the file inside
+        // the queue. The upgrade writes are `.atomic` (temp-file rename), so
+        // an outside-queue reader racing a migration of the SAME file sees
+        // either pre- or post-migration bytes — never a partial file; on
+        // pre-migration bytes it simply enters the queue and re-reads.
+        switch readRawImageData(fileURL: fileURL, filename: filename) {
+        case .terminal(let status):
+            return status
+        case .readable(let encryptedData):
             // Detect format by prefix BEFORE calling decryptData — otherwise the
             // v2 path's internal legacy fallback silently succeeds on legacy
             // blobs, masking them from the migration branch below.
             let isV2 = encryptedData.count >= 2 && encryptedData.prefix(2) == Data("v2".utf8)
 
-            // Try new v2 format directly (no legacy fallback needed)
+            // Try new v2 format directly (no legacy fallback needed) — M5:
+            // the common case returns here without touching migrationQueue.
+            if isV2, let data = ServiceContainer.crypto.decryptData(encryptedData) {
+                return .available(data)
+            }
+
+            // Legacy / plaintext / corrupt paths may mutate the file —
+            // serialize against concurrent migrations of the same file.
+            return Self.migrationQueue.sync {
+                migrateLegacyImageAtRead(fileURL: fileURL, filename: filename)
+            }
+        }
+    }
+
+    /// Raw-read result for `imageStatus`: either the on-disk bytes or a
+    /// terminal status (missing / oversized-corrupt). M5: shared by the v2
+    /// fast path (outside migrationQueue) and the legacy migration path
+    /// (re-read inside migrationQueue per the C-3 contract).
+    private enum RawImageRead {
+        case readable(Data)
+        case terminal(ImageLoadStatus)
+    }
+
+    private func readRawImageData(fileURL: URL, filename: String) -> RawImageRead {
+        guard fileManager.fileExists(atPath: fileURL.path) else { return .terminal(.fileMissing) }
+        // STOR-5 (2026-07-24 review): pre-check the file size BEFORE
+        // Data(contentsOf:) — the 50 MB cap used to cover only the write
+        // path (saveImage) and the legacy-migration path, so a hostile or
+        // corrupted multi-hundred-MB file in Images/ was pulled whole
+        // into memory here. Conservative on stat failure (same fail-closed
+        // pattern as C-4 in BackupPackage.importImages): skip the read
+        // rather than risk an unbounded allocation.
+        guard let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),
+              let fileSize = attrs[.size] as? Int else {
+            logger.warning("STOR-5: cannot determine size of image (skipping read): \(filename, privacy: .public)")
+            return .terminal(.fileMissing)
+        }
+        guard fileSize <= Self.maxImageSize else {
+            Self.corruptionCountLock.lock()
+            Self.corruptionCount += 1
+            Self.corruptionCountLock.unlock()
+            logger.error("imageCorrupted filename=\(filename, privacy: .public) bytes=\(fileSize) reason=exceeds maxImageSize")
+            return .terminal(.decryptionFailed)
+        }
+        guard let encryptedData = try? Data(contentsOf: fileURL) else {
+            return .terminal(.fileMissing)
+        }
+        return .readable(encryptedData)
+    }
+
+    /// Legacy/plaintext half of `imageStatus`. MUST be called inside
+    /// `migrationQueue.sync` — C-3 (2026-07-24 audit): read + process + write
+    /// serialize end-to-end so two threads racing the same legacy PNG can't
+    /// both read pre-migration bytes and produce inconsistent on-disk state
+    /// with `.decryptionFailed` returned for files that are actually fine.
+    /// Re-reads the file because a concurrent migration may have landed
+    /// between the caller's outside-queue fast-path read and queue entry.
+    private func migrateLegacyImageAtRead(fileURL: URL, filename: String) -> ImageLoadStatus {
+        switch readRawImageData(fileURL: fileURL, filename: filename) {
+        case .terminal(let status):
+            return status
+        case .readable(let encryptedData):
+            let isV2 = encryptedData.count >= 2 && encryptedData.prefix(2) == Data("v2".utf8)
+
+            // Another thread may have completed the migration while this call
+            // waited on migrationQueue — retry the v2 fast path first.
             if isV2, let data = ServiceContainer.crypto.decryptData(encryptedData) {
                 return .available(data)
             }
@@ -646,6 +693,14 @@ class ImageStorage {
             logger.error("imageCorrupted filename=\(filename, privacy: .public) bytes=\(encryptedData.count)")
             return .decryptionFailed
         }
+    }
+
+    /// M5 (2026-08-01 roadmap): test-only hook — occupies migrationQueue so a
+    /// test can prove v2 fast-path reads no longer serialize behind an
+    /// in-flight legacy migration while legacy/plaintext mutation reads still
+    /// do. Production code never calls this.
+    static func dispatchOnMigrationQueueForTesting(_ block: @escaping () -> Void) {
+        migrationQueue.async(execute: block)
     }
 
     /// Decrypts image data using legacy AES-CBC+HMAC format (pre-v2).

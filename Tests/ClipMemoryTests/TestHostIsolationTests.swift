@@ -71,7 +71,9 @@ final class TestHostIsolationTests: XCTestCase {
         store.addItem(ClipboardItem(content: "m13-canary", type: .text,
                                     createdAt: Date(), isPinned: false))
         store.flushPendingSaves()
-        _ = ClipboardStore.shared.ocrPreviewEnabled
+        // M12 (2026-08-01): read via the local store — the accessor is
+        // UserDefaults-backed and instance-agnostic (was ClipboardStore.shared).
+        _ = store.ocrPreviewEnabled
         _ = UpdateService.feedPolicy
         _ = UpdateService.fallbackFeedConsent
         _ = UpdateService.lastPrimaryItemDate

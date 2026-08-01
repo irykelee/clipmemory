@@ -16,6 +16,20 @@ import XCTest
 @MainActor
 final class ClipboardStoreMainActorPhase3Tests: XCTestCase {
 
+    // M12 (2026-08-01): per-test injected store replaces ClipboardStore.shared —
+    // the @MainActor contract these tests exercise is per-instance.
+    private var store: ClipboardStore!
+
+    override func setUp() {
+        super.setUp()
+        store = ClipboardStore(backend: MemoryStorageBackend())
+    }
+
+    override func tearDown() {
+        store = nil
+        super.tearDown()
+    }
+
     /// Mock recognizer mirroring OCRTests.MockOCR (private there; replicated
     /// here for cross-file test isolation).
     private struct MockOCR: OCRServiceProtocol {
@@ -36,7 +50,6 @@ final class ClipboardStoreMainActorPhase3Tests: XCTestCase {
     /// feedback, this tests the contract, not the timer wiring — no 60s
     /// wait, no mock clock.
     func testCleanupExpiredItemsDirectCallExercisesMainActorIsolation() throws {
-        let store = ClipboardStore.shared
         // Direct call from @MainActor test method. If class isolation breaks,
         // this won't compile (run `xcodebuild build` first as compile gate).
         store.cleanupExpiredItems()
@@ -52,7 +65,6 @@ final class ClipboardStoreMainActorPhase3Tests: XCTestCase {
     /// (Phase 2 anti-pattern: pollutes global observer chain + cannot verify
     /// private state). Mirrors Phase 2 `TrashStoreMainActorTests.testHandleWillTerminate...`.
     func testWillTerminateFlushesPendingSaves() throws {
-        let store = ClipboardStore.shared
         // Direct call to handleWillTerminate. No notification posting.
         store.handleWillTerminate()
         // Contract: flush completes. Verify by checking `flushPendingSaves`
@@ -68,7 +80,6 @@ final class ClipboardStoreMainActorPhase3Tests: XCTestCase {
     /// onComplete callback; asserts items array's ocrText is set
     /// (proving main-actor write happened).
     func testBackfillOCRHopLandsOnMainActor() throws {
-        let store = ClipboardStore.shared
 
         // Seed an image item so backfill has something to operate on. The
         // image file may not exist on disk (test doesn't exercise decode);

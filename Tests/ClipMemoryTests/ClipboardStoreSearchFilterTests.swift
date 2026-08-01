@@ -5,14 +5,16 @@ import XCTest
 @MainActor
 final class ClipboardStoreSearchFilterTests: XCTestCase {
 
+    private var appStore: ClipboardStore!
+
     override func setUp() {
         super.setUp()
         CryptoService.resetForTesting()
         CryptoService.simulateKeyLoadAttemptedForTesting()
-        // ClipboardStore.shared is a singleton; prior tests have left items in
-        // it. Clear so this test's filter assertions are not contaminated by
-        // 100+ pre-existing items.
-        ClipboardStore.shared.items.removeAll()
+        // M12 (2026-08-01): per-test injected store — fresh instance starts
+        // empty, so prior tests' items can't contaminate the filter
+        // assertions (previously ClipboardStore.shared.items.removeAll()).
+        appStore = ClipboardStore(backend: MemoryStorageBackend())
     }
 
     override func tearDown() {
@@ -34,7 +36,6 @@ final class ClipboardStoreSearchFilterTests: XCTestCase {
         defer { ServiceContainer.setCryptoForTesting(original) }
 
         // 添加 1 个明文 item（addItem 会用 crypto.encrypt 单次加密存储为 v2）
-        let appStore = ClipboardStore.shared
         appStore.addItem(ClipboardItem(content: "apple pie recipe", type: .text, isEncrypted: false))
 
         // 切换 mock 到 keyUnavailable 模式 — 之后 filter 调 getDecryptedContent 会得 nil
@@ -57,7 +58,6 @@ final class ClipboardStoreSearchFilterTests: XCTestCase {
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         // real crypto（不替换为 mock）
-        let appStore = ClipboardStore.shared
         appStore.addItem(ClipboardItem(content: "apple pie recipe", type: .text, isEncrypted: false))
 
         let items = appStore.items

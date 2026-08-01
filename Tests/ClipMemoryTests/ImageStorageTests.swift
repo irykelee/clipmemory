@@ -804,6 +804,80 @@ final class ImageStorageTests: XCTestCase {
             "Re-loading the now-migrated v2 file must still return original bytes")
     }
 
+    // MARK: - M5 (2026-08-01 roadmap): v2 fast path bypasses migrationQueue
+
+    /// M5: a v2-format read is a pure read — it must NOT serialize behind an
+    /// in-flight legacy migration (migrationQueue). Pre-fix every imageStatus
+    /// call went through `migrationQueue.sync`, so v2 loads stalled behind a
+    /// migration of an unrelated file. The gate keeps migrationQueue occupied
+    /// until released; the v2 read must complete anyway.
+    func testV2FastPathReadNotBlockedByInFlightMigration() throws {
+        let uuid = newTestUUID()
+        let original = makePNGData()
+        let filename = try XCTUnwrap(saveAndWait(original, uuid: uuid))
+
+        // Occupy migrationQueue (simulates an in-flight legacy migration).
+        let gate = DispatchSemaphore(value: 0)
+        let queueEntered = DispatchSemaphore(value: 0)
+        ImageStorage.dispatchOnMigrationQueueForTesting {
+            queueEntered.signal()
+            gate.wait()
+        }
+        XCTAssertEqual(queueEntered.wait(timeout: .now() + 5), .success)
+        defer { gate.signal() } // never leave the queue wedged
+
+        // The v2 read must complete WITHOUT the gate being released.
+        var status: ImageStorage.ImageLoadStatus?
+        let readDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            status = self.storage.imageStatus(for: filename)
+            readDone.signal()
+        }
+        XCTAssertEqual(readDone.wait(timeout: .now() + 5), .success,
+                       "M5: v2 fast-path reads must not block behind migrationQueue")
+        XCTAssertEqual(status, .available(original))
+    }
+
+    /// M5: the legacy/plaintext mutation path must STILL serialize on
+    /// migrationQueue (C-3 contract — concurrent migrations of the same file
+    /// would otherwise race the re-encrypted write). While the queue is
+    /// occupied a raw-PNG read waits; after release it completes and upgrades
+    /// the file to v2.
+    func testLegacyMigrationReadStillSerializesOnMigrationQueue() throws {
+        let uuid = newTestUUID()
+        let filename = "\(uuid.uuidString).png"
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+        let pngBytes = makePNGData()
+        try pngBytes.write(to: fileURL)
+
+        let gate = DispatchSemaphore(value: 0)
+        let queueEntered = DispatchSemaphore(value: 0)
+        ImageStorage.dispatchOnMigrationQueueForTesting {
+            queueEntered.signal()
+            gate.wait()
+        }
+        XCTAssertEqual(queueEntered.wait(timeout: .now() + 5), .success)
+        defer { gate.signal() }
+
+        var status: ImageStorage.ImageLoadStatus?
+        let readDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            status = self.storage.imageStatus(for: filename)
+            readDone.signal()
+        }
+
+        // While migrationQueue is occupied, the mutation-path read must wait.
+        XCTAssertEqual(readDone.wait(timeout: .now() + 0.5), .timedOut,
+                       "M5: legacy/plaintext reads must still serialize behind migrationQueue (C-3)")
+
+        gate.signal()
+        XCTAssertEqual(readDone.wait(timeout: .now() + 5), .success)
+        XCTAssertEqual(status, .available(pngBytes))
+        let migrated = try Data(contentsOf: fileURL)
+        XCTAssertTrue(migrated.starts(with: Data("v2".utf8)),
+                      "raw PNG must be upgraded to v2 after the serialized migration read")
+    }
+
     // MARK: - RS-6 Helpers (duplicate of CryptoServiceTests synthesis — kept
     // local to avoid cross-file test helpers + project.pbxproj churn)
 

@@ -14,6 +14,21 @@ import XCTest
 @MainActor
 final class ClipboardStoreNotificationObserverTests: XCTestCase {
 
+    // M12 (2026-08-01): per-test injected store replaces ClipboardStore.shared —
+    // each instance registers its own block-based observers in init, so posting
+    // the notification exercises the same handler on the injected store.
+    private var store: ClipboardStore!
+
+    override func setUp() {
+        super.setUp()
+        store = ClipboardStore(backend: MemoryStorageBackend())
+    }
+
+    override func tearDown() {
+        store = nil
+        super.tearDown()
+    }
+
     // MARK: - Test #1: ImageStorageMigrationCompleted handler
 
     /// Verifies that posting `ImageStorageMigrationCompleted` with migrated
@@ -23,7 +38,6 @@ final class ClipboardStoreNotificationObserverTests: XCTestCase {
     /// `DispatchQueue.main.async` (now removed because the queue parameter
     /// guarantees main-thread execution).
     func testImageMigrationCompletedUpdatesIsEncrypted() throws {
-        let store = ClipboardStore.shared
         let filename = "\(UUID().uuidString).png"
         let item = ClipboardItem(content: filename, type: .image, isEncrypted: false)
         store.addItem(item)
@@ -54,7 +68,6 @@ final class ClipboardStoreNotificationObserverTests: XCTestCase {
     /// and dispatches; it does not re-test the deferred pendingKeyItems retry
     /// path (already covered by existing tests).
     func testCryptoKeyPreparedSuccessObserverFires() {
-        let store = ClipboardStore.shared
         // Just verify the observer is wired: posting the notification should
         // not trap (the queue: .main observer fires synchronously on main).
         NotificationCenter.default.post(

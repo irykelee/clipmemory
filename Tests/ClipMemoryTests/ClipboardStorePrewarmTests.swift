@@ -6,28 +6,26 @@ import XCTest
 @MainActor
 final class ClipboardStorePrewarmTests: XCTestCase {
 
+    private var store: ClipboardStore!
+
     override func setUp() {
         super.setUp()
         CryptoService.resetForTesting()
-        let store = ClipboardStore.shared
-        store.items.removeAll()
-        store.contentCache.removeAllObjects()
-        store.diagnostics = .init()
+        // M12 (2026-08-01): per-test injected store — no reliance on
+        // ClipboardStore.shared (fresh instance starts empty, so the prior
+        // setUp/tearDown items/cache clearing is unnecessary).
+        store = ClipboardStore(backend: MemoryStorageBackend())
     }
 
     override func tearDown() {
         CryptoService.resetForTesting()
-        let store = ClipboardStore.shared
-        store.items.removeAll()
-        store.contentCache.removeAllObjects()
-        store.diagnostics = .init()
+        store = nil
         super.tearDown()
     }
 
     // MARK: - Cache Population
 
     func testPrewarmPopulatesContentCache() {
-        let store = ClipboardStore.shared
         for i in 0..<5 {
             let item = ClipboardItem(content: "prewarm-text-\(i)", type: .text)
             store.addItem(item)
@@ -51,7 +49,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     }
 
     func testPrewarmMakesGetDecryptedContentReturnCached() {
-        let store = ClipboardStore.shared
         for i in 0..<5 {
             let item = ClipboardItem(content: "fast-path-\(i)", type: .text)
             store.addItem(item)
@@ -74,7 +71,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     // MARK: - Skip Already Cached
 
     func testPrewarmSkipsAlreadyCachedItems() {
-        let store = ClipboardStore.shared
         for i in 0..<3 {
             let item = ClipboardItem(content: "skip-cached-\(i)", type: .text)
             store.addItem(item)
@@ -102,7 +98,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     // MARK: - Batch Size Cap
 
     func testPrewarmRespectsBatchSize() {
-        let store = ClipboardStore.shared
         for i in 0..<50 {
             let item = ClipboardItem(content: "batch-\(i)", type: .text)
             store.addItem(item)
@@ -128,7 +123,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     // MARK: - Skip decryptionFailed
 
     func testPrewarmSkipsDecryptionFailedItems() {
-        let store = ClipboardStore.shared
         // Add items normally
         for i in 0..<3 {
             let item = ClipboardItem(content: "df-skip-\(i)", type: .text)
@@ -167,7 +161,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     // MARK: - RTF Items (indirect verification — rtfPlaintextCache is private)
 
     func testPrewarmPopulatesRTFPlaintext() {
-        let store = ClipboardStore.shared
         let rtfString = "{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times;}}\n\\f0 Prewarm RTF\n}"
         guard let rtfData = rtfString.data(using: .utf8) else {
             XCTFail("failed to encode RTF")
@@ -195,7 +188,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     // MARK: - Edge Cases
 
     func testPrewarmNoopWhenAllCached() {
-        let store = ClipboardStore.shared
         for i in 0..<3 {
             let item = ClipboardItem(content: "noop-\(i)", type: .text)
             store.addItem(item)
@@ -208,7 +200,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     }
 
     func testPrewarmNoopWithEmptyItems() {
-        let store = ClipboardStore.shared
         store.prewarmDecryptionCache(items: [])
         XCTAssertTrue(true, "prewarm with empty array must not crash")
     }
@@ -216,7 +207,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     // MARK: - OCR Cache
 
     func testPrewarmPopulatesOCRCacheForImageItems() {
-        let store = ClipboardStore.shared
         let crypto = CryptoService.shared
 
         guard let encryptedOCR = crypto.encrypt("ocr-text-in-image") else {
@@ -255,7 +245,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     /// drained as a follow-up round. Every completion fires exactly once,
     /// on the main thread.
     func testPrewarmCoalescesRapidSuccessiveCalls() {
-        let store = ClipboardStore.shared
         for i in 0..<10 {
             store.addItem(ClipboardItem(content: "coalesce-\(i)", type: .text))
         }
@@ -297,7 +286,6 @@ final class ClipboardStorePrewarmTests: XCTestCase {
     /// in the SECOND call's workingSet get decrypted by the follow-up round
     /// (not dropped because round 1 never saw them).
     func testPrewarmCoalescedFollowUpRoundDecryptsNewerItems() {
-        let store = ClipboardStore.shared
         var firstSet: [ClipboardItem] = []
         var secondSet: [ClipboardItem] = []
         for i in 0..<5 {
