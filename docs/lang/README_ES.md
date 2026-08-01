@@ -1,4 +1,4 @@
-# ClipMemory v2.7.5
+# ClipMemory v2.7.6
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.7.6 (2026-08-01) — Refuerzo de estabilidad y seguridad de datos
+
+- **La limpieza automática caducada ahora va a la Papelera, y los elementos fijados quedan exentos permanentemente** — Antes, la limpieza automática al alcanzar el límite de retención eliminaba permanentemente los elementos; ahora se mueven a la Papelera (se pueden recuperar en cualquier momento), y los elementos fijados (favoritos) ya no se eliminan automáticamente
+- **Refuerzo de la cadena de cifrado** — Los errores de lectura del llavero ya no sobrescriben por error la clave raíz (evitando que en casos extremos todo el historial quede sin descifrar); los archivos de clave obsoletos ahora se sobrescriben de forma segura antes de eliminarse; los permisos del directorio de copias de seguridad se han restringido a solo lectura para el usuario
+- **OCR más robusto** — Si el reconocimiento de texto en imágenes falla momentáneamente (p. ej., por falta de recursos del sistema), se reintentará automáticamente en el próximo inicio, sin omitirlo permanentemente
+- **Corregida la visualización ocasional de «no se puede leer» en elementos con fallo de descifrado, que además quedaban en caché** — Los fallos esporádicos de visualización en blanco o avisos erróneos cuando la clave está lista más tarde que la carga de la interfaz; ahora se reintenta automáticamente hasta recuperar la visualización
+- **Corregida la zona muerta del teclado en el campo de búsqueda de QuickBar** — Cuando el campo de búsqueda tenía el foco, Enter (copiar elemento seleccionado) y Esc (cerrar) no funcionaban; ya se ha restablecido
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.6
 
 ### v2.7.5 (2026-07-31) — Corrección urgente
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.7.5
+# ClipMemory v2.7.6
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.7.6 (2026-08-01) — Stability and Data-Security Hardening
+
+- **Expired auto-cleanup now moves items to the Recycle Bin, with pinned items permanently exempt** — Automatic cleanup when the retention limit was reached previously deleted entries forever; it now moves them to the Recycle Bin (recoverable at any time), and pinned (favorited) entries are no longer auto-cleaned
+- **Encryption pipeline hardening** — When keychain reads fail, the root key is no longer erroneously overwritten (avoiding a scenario where all history becomes undecryptable in extreme cases); obsolete key files are now securely overwritten before deletion; backup directory permissions have been tightened to be readable only by the current user
+- **More robust OCR** — When image text recognition hits a transient failure (e.g., system resource pressure), it now automatically retries on the next launch instead of being permanently skipped
+- **Fix occasional “cannot read” display and caching of decryption-failed entries** — When the key became ready later than the UI load, entries could appear blank or erroneously report “cannot read”; they now automatically retry and recover their display
+- **Fix keyboard dead zone in QuickBar search field** — When the search field was focused, Enter (to copy the selected item) and Esc (to close) were ineffective; they are now restored
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.6
 
 ### v2.7.5 (2026-07-31) — Emergency Fix
 

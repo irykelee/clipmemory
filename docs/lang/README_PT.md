@@ -1,4 +1,4 @@
-# ClipMemory v2.7.5
+# ClipMemory v2.7.6
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.7.6 (2026-08-01) — Estabilidade e reforço de segurança de dados
+
+- **Limpeza automática de itens expirados agora vai para a Lixeira, com isenção permanente para itens fixados** — Anteriormente, ao atingir o limite de retenção, a limpeza automática excluía permanentemente os itens; agora ela os move para a Lixeira (recuperáveis a qualquer momento), e itens fixados (favoritos) não são mais removidos automaticamente.
+- **Reforço da cadeia de criptografia** — Erros de leitura da cadeia de chaves não sobrescrevem mais indevidamente a chave raiz (evitando que todo o histórico fique indecifrável em casos extremos); arquivos de chave obsoletos agora são sobrescritos com segurança antes de serem excluídos; as permissões do diretório de cópia de segurança foram restritas para leitura apenas pelo usuário.
+- **OCR mais robusto** — Quando o reconhecimento de texto em imagens encontra uma falha transitória (como falta de recursos do sistema), a próxima inicialização tenta novamente automaticamente, em vez de pular permanentemente.
+- **Corrigido item com falha de descriptografia que às vezes exibia "não foi possível ler" e era armazenado em cache** — Quando a chave fica disponível após o carregamento da interface, ocorriam espaços em branco ou falsos positivos; agora o sistema tenta novamente automaticamente e restaura a exibição.
+- **Corrigida a zona morta do teclado na caixa de busca do QuickBar** — Quando a caixa de busca estava com foco, Enter (copiar item selecionado) e Esc (fechar) não funcionavam; agora foram restaurados.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.6
 
 ### v2.7.5 (2026-07-31) — Correção urgente
 
