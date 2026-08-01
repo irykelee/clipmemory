@@ -422,6 +422,46 @@ import Vision
                        "file-missing items must stay un-attempted so a later launch can retry")
     }
 
+    /// ID-OCR-0010 (2026-08-01 audit): an OCRServiceProtocol implementation
+    /// that NEVER calls its completion used to deadlock the backfill — the
+    /// (backfillMaxConcurrentOCR+1)th item blocked forever on
+    /// `semaphore.wait()` and `group.notify` never fired, so `onComplete`
+    /// was never called. The per-item timeout watchdog must release the
+    /// slots so the backfill terminates, and the items must stay
+    /// ocrAttempted=false so a later pass retries (same contract as the
+    /// .failure and missing-file paths).
+    func testBackfillSurvivesNeverCallingCompletion() {
+        var itemIDs: [UUID] = []
+        // Seed MORE items than backfillMaxConcurrentOCR (4) so the
+        // semaphore would actually block without the watchdog.
+        for _ in 0..<6 {
+            let filename = seedImageFile()
+            let item = ClipboardItem(content: filename, type: .image)
+            store.addItem(item)
+            itemIDs.append(item.id)
+        }
+
+        let exp = expectation(description: "backfill completes via timeout watchdog")
+        store.backfillOCRIfNeeded(using: NeverCompletingOCR(), imageStorage: .shared,
+                                  onComplete: { exp.fulfill() }, perItemTimeout: 0.2)
+        wait(for: [exp], timeout: 10)
+
+        for id in itemIDs {
+            let after = store.items.first(where: { $0.id == id })
+            XCTAssertEqual(after?.ocrAttempted, false,
+                           "ID-OCR-0010: timed-out items must stay un-attempted so a later backfill retries")
+        }
+    }
+
+    /// ID-OCR-0010: deliberately violates the OCRServiceProtocol completion
+    /// contract (never calls completion) to exercise the backfill's
+    /// per-item timeout watchdog.
+    private struct NeverCompletingOCR: OCRServiceProtocol {
+        func recognizeText(in imageData: Data, completion: @escaping (OCROutcome) -> Void) {
+            // Intentionally never calls completion.
+        }
+    }
+
     private static func renderTextImage(_ text: String) -> NSImage {
         let size = NSSize(width: 400, height: 120)
         let image = NSImage(size: size)

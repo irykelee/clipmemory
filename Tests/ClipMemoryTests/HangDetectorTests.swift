@@ -269,4 +269,27 @@ final class HangDetectorTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(s.lastHeartbeat), 5,
                           "ID-LIFE-0022: restarted watchdog must establish a fresh heartbeat baseline")
     }
+
+    /// ID-LIFE-0025 (2026-08-01 audit): `isStarted` and the 3 timer refs
+    /// were plain statics with no synchronization; start/stop interleaving
+    /// could corrupt the lifecycle. Hammer start/stop from many concurrent
+    /// threads — no crash, no deadlock — and the watchdog must still
+    /// settle into a consistent, restartable state afterwards.
+    func testConcurrentStartStopDoesNotCorruptLifecycle() {
+        HangDetector._resetForTesting()
+        DispatchQueue.concurrentPerform(iterations: 100) { i in
+            if i % 2 == 0 {
+                HangDetector.start()
+            } else {
+                HangDetector.stop()
+            }
+        }
+        HangDetector.stop()
+        XCTAssertFalse(HangDetector._isStartedForTesting,
+                       "ID-LIFE-0025: after concurrent hammering + stop(), isStarted must be false")
+        HangDetector.start()
+        defer { HangDetector.stop() }
+        XCTAssertTrue(HangDetector._isStartedForTesting,
+                      "ID-LIFE-0025: watchdog must still restart cleanly after concurrent start/stop")
+    }
 }

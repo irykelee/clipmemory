@@ -84,6 +84,40 @@ final class TagTests: XCTestCase {
         XCTAssertNotNil(degraded, "degraded tag must still decode with defaults")
     }
 
+    /// ID-STORE-0006 (2026-08-01 audit): a value with the WRONG TYPE (name as
+    /// a JSON number, colorHex as an array, isAutoSuggested as a string,
+    /// createdAt as a number) used to throw `typeMismatch` and fail the whole
+    /// `[Tag]` decode — `loadTags()` then quarantined the blob and lost every
+    /// tag. Wrong-typed fields must degrade to defaults just like missing
+    /// ones, leaving the healthy tags in the same array intact.
+    func testWrongTypedTagFieldsDegradeWithoutFailingArrayDecode() throws {
+        let good = Tag(id: UUID(), name: "学习", colorHex: "#FF6B6B",
+                       isAutoSuggested: true, createdAt: Date(timeIntervalSince1970: 1_700_000_000))
+        let goodData = try JSONEncoder().encode(good)
+        let goodObject = try JSONSerialization.jsonObject(with: goodData)
+        // Every field present but with a wrong JSON type.
+        let badObject: [String: Any] = [
+            "id": 42,
+            "name": 12345,
+            "colorHex": ["#FF6B6B"],
+            "isAutoSuggested": "yes",
+            "createdAt": "not-a-date"
+        ]
+        let arrayData = try JSONSerialization.data(withJSONObject: [goodObject, badObject])
+
+        let decoded = try JSONDecoder().decode([Tag].self, from: arrayData)
+
+        XCTAssertEqual(decoded.count, 2,
+                       "ID-STORE-0006: wrong-typed tag must degrade, not fail the whole array")
+        XCTAssertTrue(decoded.contains(good), "good tag must survive intact")
+        let degraded = decoded.first { $0 != good }
+        XCTAssertNotNil(degraded, "wrong-typed tag must still decode with defaults")
+        XCTAssertEqual(degraded?.name, "", "wrong-typed name degrades to empty string")
+        XCTAssertEqual(degraded?.colorHex, "", "wrong-typed colorHex degrades to empty string")
+        XCTAssertEqual(degraded?.isAutoSuggested, false, "wrong-typed isAutoSuggested degrades to false")
+        XCTAssertEqual(degraded?.createdAt, .distantPast, "wrong-typed createdAt degrades to distantPast")
+    }
+
     // MARK: - Preset colors
 
     func testPresetColorsAreNonEmpty() {

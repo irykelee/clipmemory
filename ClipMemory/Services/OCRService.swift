@@ -21,12 +21,25 @@ extension Notification.Name {
     /// "en") language. UTF-16 payloads so consumers can route the warning
     /// to a UI banner without joining the requested list on the receiver.
     /// Carries no payload when the requested list was empty (no fallback).
+    /// ID-SYNC-0004 (2026-08-01 audit): posted on the main queue (async) —
+    /// the post sites run on the OCR serial utility queue, and future UI
+    /// observers (the banner this notification exists for) would otherwise
+    /// receive it off-main.
     static let ocrLanguageFallback = Notification.Name("OCRService.languageFallback")
 }
 
 /// OCR abstraction so tests can inject a fake recognizer.
 protocol OCRServiceProtocol {
     /// Recognizes text in image data (PNG/TIFF).
+    ///
+    /// ID-OCR-0010 (2026-08-01 audit): CONTRACT — `completion` MUST be
+    /// called exactly once for every invocation, including on failure,
+    /// cancellation, and internal timeout. `ClipboardStore+OCR.backfillOCRIfNeeded`
+    /// releases its concurrency slot and dispatch-group token only from the
+    /// completion; an implementation that never calls it deadlocks the
+    /// backfill (the backfill carries its own per-item timeout watchdog as
+    /// defense-in-depth, but that is a fallback, not license to violate
+    /// the contract).
     func recognizeText(in imageData: Data, completion: @escaping (OCROutcome) -> Void)
 }
 
@@ -367,16 +380,22 @@ final class VisionOCRService: OCRServiceProtocol {
                 ocrLanguageLogger.error(
                     "No requested OCR language is supported by Revision3 on this macOS; requested=\(requested, privacy: .public) supported=\(supported, privacy: .public) dropped=\(dropped, privacy: .public) userLocale=\(userLocale, privacy: .public). Falling back to en."
                 )
-                NotificationCenter.default.post(
-                    name: .ocrLanguageFallback,
-                    object: nil,
-                    userInfo: [
-                        "requested": requested,
-                        "supported": supported,
-                        "dropped": dropped,
-                        "userLocale": userLocale
-                    ]
-                )
+                // ID-SYNC-0004 (2026-08-01 audit): post async on main — this
+                // code runs on the OCR serial utility queue, and a future UI
+                // banner observer would otherwise run off-main (and block
+                // the OCR pipeline while the synchronous post executes).
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .ocrLanguageFallback,
+                        object: nil,
+                        userInfo: [
+                            "requested": requested,
+                            "supported": supported,
+                            "dropped": dropped,
+                            "userLocale": userLocale
+                        ]
+                    )
+                }
                 // CLIP-5 (2026-07-24 review): "en" itself is not guaranteed
                 // to be in `supported` (a future macOS could drop it, and
                 // `supported` can even be empty when the query throws).
@@ -399,15 +418,19 @@ final class VisionOCRService: OCRServiceProtocol {
             ocrLanguageLogger.error(
                 "No requested OCR language is supported by Revision2 on this macOS; requested=\(requested, privacy: .public) supported=\(supported, privacy: .public) userLocale=\(userLocale, privacy: .public). Falling back to en."
             )
-            NotificationCenter.default.post(
-                name: .ocrLanguageFallback,
-                object: nil,
-                userInfo: [
-                    "requested": requested,
-                    "supported": supported,
-                    "userLocale": userLocale
-                ]
-            )
+            // ID-SYNC-0004 (2026-08-01 audit): post async on main — same
+            // rationale as the Revision3 site above.
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .ocrLanguageFallback,
+                    object: nil,
+                    userInfo: [
+                        "requested": requested,
+                        "supported": supported,
+                        "userLocale": userLocale
+                    ]
+                )
+            }
             return supported.contains("en") ? ["en"] : Array(supported.prefix(1))
         }
         return filtered

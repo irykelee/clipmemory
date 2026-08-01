@@ -2,8 +2,8 @@ import Foundation
 import AppKit
 
 /// I-6 (2026-07-20 audit): pure parser extracted from `ClipboardStore.shared`
-/// so that `ClipboardItem.plainTextFromRTFFallback` can be a true computed
-/// property that does not transitively read from the shared store — the
+/// so that RTF plaintext extraction can be a true pure function that does
+/// not transitively read from the shared store — the
 /// previous shape (`ClipboardStore.shared.getRTFPlaintext(self)`) forced every
 /// `ClipboardItem` reading off the SwiftUI render path to also pull from the
 /// `@MainActor` ClipboardStore singleton, which created implicit threading and

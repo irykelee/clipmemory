@@ -30,8 +30,10 @@ struct L10n {
     /// when count == 1 and the current language defines that key (en/es/pt
     /// have singular forms; the CJK languages define ".one" with the same
     /// value as the base key). Falls back to the base key when ".one"
-    /// is absent — `string()` returns the key verbatim for missing keys,
-    /// which is how the fallback is detected.
+    /// is absent from the CURRENT bundle (ID-L10N-0020: detected via a
+    /// direct current-bundle lookup — the englishBundle fallback inside
+    /// `string()` must not leak English singular forms into non-English
+    /// languages).
     ///
     /// 2026-07-25: replaces the .stringsdict (`%#@count@`) mechanism, which
     /// was broken on multiple levels: all six keys shared ONE format key
@@ -61,8 +63,15 @@ struct L10n {
     private static func pluralTemplate(_ key: String, _ count: Int) -> String {
         if count == 1 {
             let singularKey = key + ".one"
-            let singular = string(singularKey)
-            if singular != singularKey {
+            // ID-L10N-0020 (2026-08-01 audit): the presence check used to be
+            // `string(singularKey) != singularKey` — but `string()` falls
+            // back to englishBundle on a current-bundle miss, so a language
+            // lacking ".one" would silently resolve to the ENGLISH singular
+            // ("1 item") instead of its own plural base form. Check the
+            // current bundle directly; on a miss, fall through to the base
+            // key (current language, plural grammar) — the defense-in-depth
+            // path the L10N-0018 comment describes.
+            if let singular = getFromBundle(singularKey, bundle: currentBundle) {
                 return singular
             }
         }

@@ -20,6 +20,10 @@ struct TrashItemRow: View, Equatable {
     @FocusState private var isFocused: Bool
     @State private var loadedImage: NSImage?
     @State private var loadedContent: String?
+    // ID-VIEW-0009 (2026-08-01 audit): bump from the .cryptoKeyPrepared
+    // observer below to re-fire the content .task after a key-race miss —
+    // same mechanism as ClipboardItemRow (ID-VIEW-0002).
+    @State private var decryptRetryToken = 0
     @State private var imageLoadFailed = false
     @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
     @State private var imageLongPressing = false
@@ -201,14 +205,48 @@ struct TrashItemRow: View, Equatable {
         // It used to hang on the image branch's Group above (M14, 5f1ce38),
         // so it never ran for .text/.link items and the row rendered "".
         // Row-level attachment matches ClipboardItemRow.swift.
-        .task(id: item.id) {
+        // ID-VIEW-0009 (2026-08-01 audit): `decryptRetryToken` lets the
+        // .cryptoKeyPrepared observer below re-fire this task after a
+        // key-race double miss — mirrors ClipboardItemRow (ID-VIEW-0002).
+        .task(id: "\(item.id.uuidString)-\(decryptRetryToken)") {
             guard item.type != .richText, item.type != .image else { return }
             if loadedContent != nil { return }
-            let result = await Task.detached(priority: .utility) {
+            let first = await Task.detached(priority: .utility) {
                 store.getDecryptedContent(item) ?? ""
             }.value
             if Task.isCancelled { return }
-            loadedContent = result
+            if !first.isEmpty {
+                loadedContent = first
+                return
+            }
+            // Empty result — likely a key race (prepareKey still in flight
+            // on a fresh launch / login-item start with Keychain locked).
+            // Retry once after a short delay; if the second attempt also
+            // misses, keep loadedContent == nil and let the
+            // .cryptoKeyPrepared observer below re-run this task once the
+            // key lands. ID-VIEW-0009: write only a non-empty result —
+            // storing "" made `loadedContent != nil` early-return on every
+            // later pass, leaving the row blank for the whole session
+            // (window + hosting controller persist @State).
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+            let second = await Task.detached(priority: .utility) {
+                store.getDecryptedContent(item) ?? ""
+            }.value
+            if Task.isCancelled { return }
+            if !second.isEmpty {
+                loadedContent = second
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cryptoKeyPrepared)) { note in
+            // ID-VIEW-0009 (2026-08-01 audit): the crypto key landed after
+            // our decrypt attempts missed — bump the token in the .task id
+            // so the task re-runs. Guards keep this a no-op for rows that
+            // already have content or don't need decryption here.
+            let success = (note.userInfo?["success"] as? Bool) ?? false
+            guard success else { return }
+            guard item.type != .richText, item.type != .image, loadedContent == nil else { return }
+            decryptRetryToken += 1
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

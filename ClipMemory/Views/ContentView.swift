@@ -211,7 +211,15 @@ struct ContentView: View {
     private func handleKeyReturn() {
         let visibleIdx = cachedVisibleGlobalIndices
         guard let idx = keyboardSelectedIndex, visibleIdx.contains(idx) else { return }
-        let item = cachedDisplayedItems[idx]
+        copyItemWithFlash(cachedDisplayedItems[idx])
+    }
+
+    /// Copy an item to the clipboard and flash the "copied" state briefly.
+    /// ID-VIEW-0011 (2026-08-01 audit): shared by KeyCaptureView.onReturn
+    /// (handleKeyReturn above) and the search field's `.onSubmit` so the
+    /// two Return routes cannot drift apart (same rationale as QuickBar's
+    /// ID-A11Y-0008 copyItemAndDismiss).
+    private func copyItemWithFlash(_ item: ClipboardItem) {
         lastCopiedId = item.id
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             if self.lastCopiedId == item.id { self.lastCopiedId = nil }
@@ -297,21 +305,29 @@ struct ContentView: View {
                 if dateFilter == .yesterday || dateFilter == .older { return false }
             }
             // search filter
-            // CLIP-1 main (2026-07-24 audit): use store.getRTFPlaintext for
-            // richText items. The old `item.plainTextFromRTFFallback` parses
-            // the raw (encrypted base64) content directly, returns the
-            // parser's default "Rich Text" string for every encrypted RTF
-            // item, and bypasses rtfPlaintextCache (M-24 contract). After
-            // the fix, search matches the actual RTF plaintext AND respects
-            // the cache (no per-keystroke NSAttributedString parse).
+            // CLIP-1 main (2026-07-24 audit): richText search goes through
+            // the store's rtfPlaintextCache — never parse the raw (encrypted
+            // base64) content directly here; that path returned the parser's
+            // default "Rich Text" string for every encrypted RTF item and
+            // bypassed rtfPlaintextCache (M-24 contract). Search matches the
+            // actual RTF plaintext AND respects the cache (no per-keystroke
+            // NSAttributedString parse).
             if !searchTextDebounced.isEmpty {
                 // P0-3: check caches first instead of sync decrypt.
                 // Cold-cache items are batched for background prewarm and
                 // skipped in this pass; they reappear once caches are warm.
                 let contentKey = item.id.uuidString as NSString
                 let searchableText: String
+                // ID-PERF-0021 (2026-08-01 audit): richText used to call
+                // store.getRTFPlaintext here — a synchronous AES-GCM decrypt
+                // + RTF parse (20-100 ms/item) on a cold cache, violating
+                // the P0-3 contract above. Read the cache only, mirroring
+                // QuickBarView.computeDisplayedItems; cold items are skipped
+                // this pass and resurface after background prewarm via the
+                // ID-VIEW-0008 debounced objectWillChange rebuild.
                 if item.type == .richText {
-                    searchableText = store.getRTFPlaintext(item)
+                    guard let cached = store.cachedRtfPlaintext(item) else { return false }
+                    searchableText = cached
                 } else if let cached = store.contentCache.object(forKey: contentKey) as? String {
                     searchableText = cached
                 } else if item.decryptionFailed {
@@ -686,7 +702,12 @@ struct ContentView: View {
             // cache-hit rebuild at most). mergePendingDiagnostics SETs zero
             // state once and then compares equal, so it can't sustain a loop.
             .onReceive(store.objectWillChange.debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)) { _ in
-                updateDisplayedItemsCache()
+                // ID-PERF-0022 (2026-08-01 audit): route through the async
+                // hop like the other rebuild triggers above — the onReceive
+                // closure runs inside the view-update cycle, and a
+                // synchronous full O(n) cache rebuild writing @State here
+                // risks SwiftUI's "Modifying state during view update".
+                refreshDisplayedItemsCacheSoon(source: "objectWillChange.debounce")
             }
             // M8 fix: use NSCalendarDayChanged notification (fires at midnight) instead of
             // Timer.publish(every: 60). Reduces wakeups from 1440/day to 1/day, and removes
@@ -733,6 +754,21 @@ struct ContentView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: sz(12)))
                     .focused($isSearchFocused)
+                    // ID-VIEW-0011 (2026-08-01 audit): with the search field
+                    // focused, KeyCaptureView propagates Return to the field
+                    // (KeyCaptureView.swift:95-100), but no `.onSubmit` was
+                    // attached — Return was a dead key here. Copy the
+                    // keyboard-selected item when one is visible, else the
+                    // first filtered result. Mirrors QuickBarView's
+                    // `.onSubmit` (ID-A11Y-0008); the main window stays open
+                    // (it's not a popover).
+                    .onSubmit {
+                        let idx = keyboardSelectedIndex.flatMap {
+                            cachedVisibleGlobalIndices.contains($0) ? $0 : nil
+                        } ?? cachedVisibleGlobalIndices.first
+                        guard let idx, idx < cachedDisplayedItems.count else { return }
+                        copyItemWithFlash(cachedDisplayedItems[idx])
+                    }
                     .frame(width: 180)
                 // 2026-07-27 (user-requested): one-tap clear of the search
                 // field instead of backspacing character by character.

@@ -219,7 +219,7 @@ final class ClipboardStore: ObservableObject {
     // (locale + dateFormat + calendar setup). `quarantineCorruptBlob` is
     // called from `loadItems` / `loadTags` error paths. Hoist to a
     // `static let` so all calls share one instance (same pattern as
-    // `cachedAbsoluteDateFormatter` in DateHelpers.swift).
+    // the date-formatter cache in DateHelpers.swift).
     private static let iso8601Formatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -472,7 +472,7 @@ final class ClipboardStore: ObservableObject {
     }()
 
     /// Cache for parsed RTF plaintext — avoids re-parsing RTF on every access
-    /// in search/filter paths where `plainTextFromRTFFallback` is hit repeatedly.
+    /// in search/filter paths where RTF plaintext is read repeatedly.
     /// ID-SYNC-0003: nonisolated(unsafe), same NSCache thread-safety contract
     /// as contentCache above.
     nonisolated(unsafe) private let rtfPlaintextCache: NSCache<NSString, NSString> = {
@@ -584,31 +584,6 @@ final class ClipboardStore: ObservableObject {
             NotificationCenter.default.removeObserver(observer)
         }
     }
-
-    /// Handles image migration completion — updates isEncrypted flags for migrated image items.
-/// NEW-A (2026-07-27 review): the `ImageStorageMigrationCompleted` notification is
-/// posted via `DispatchQueue.main.async` from `ImageStorage.migrateFromLegacyIfNeeded`,
-/// but the observer registration at :288 does not pin the handler to any queue —
-/// it executes on the posting thread. Direct mutation of `@Published var items`
-/// from any non-main thread violates SwiftUI's contract (the same hazard CRIT-1
-/// called out for `.cryptoKeyPrepared`). Pin to main here too so a future caller
-/// that posts the notification from a background queue cannot race the UI.
-///
-/// F-3 (2026-07-28): handler inlined into the block-based observer closure
-/// in init() above (with `queue: .main`). This `@objc` method removed —
-/// no longer needed since observer is block-based.
-private func handleImageMigrationCompleted(_ notification: Notification) {
-    guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }
-    let migratedSet = Set(migratedFilenames)
-    var didMigrateAny = false
-    for (index, item) in self.items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
-        self.items[index] = item.with(isEncrypted: true)
-        didMigrateAny = true
-    }
-    if didMigrateAny {
-        self.scheduleSave()
-    }
-}
 
     /// H-2 (2026-07-25 audit): retry captures that were deferred while the
     /// encryption key was still being prepared. On success, re-feed every

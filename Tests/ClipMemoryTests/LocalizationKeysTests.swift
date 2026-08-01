@@ -409,4 +409,68 @@ final class LocalizationKeysTests: XCTestCase {
         mgr.selectedLanguage = "ko"
         XCTAssertEqual(L10n.quickbarRecent(1), "1개")
     }
+
+    /// ID-L10N-0020 (2026-08-01 audit): `pluralTemplate` now detects ".one"
+    /// presence in the CURRENT bundle only — the old `string()`-based check
+    /// fell through englishBundle, so a language pack missing a ".one" key
+    /// that en defines would silently render the ENGLISH singular. With
+    /// shipping data all 7 packs carry every ".one", so the latent bug's
+    /// trigger is exactly a parity gap. Pin it dynamically: every ".one"
+    /// key defined in en.lproj must exist in all 7 shipping files.
+    func testAllEnglishSingularVariantsExistInAllSevenLanguageFiles() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appResDir = projectRoot.appendingPathComponent("ClipMemory", isDirectory: true)
+
+        let enPath = appResDir
+            .appendingPathComponent("en.lproj", isDirectory: true)
+            .appendingPathComponent("Localizable.strings")
+        let enContent = try String(contentsOf: enPath, encoding: .utf8)
+        let keyRegex = try NSRegularExpression(
+            pattern: #"^"([^"]+\.one)"\s*="#,
+            options: .anchorsMatchLines
+        )
+        let oneKeys = keyRegex
+            .matches(in: enContent, range: NSRange(enContent.startIndex..., in: enContent))
+            .compactMap { Range($0.range(at: 1), in: enContent).map { String(enContent[$0]) } }
+        XCTAssertFalse(oneKeys.isEmpty, "en.lproj must define at least one '.one' singular key")
+
+        let languages = ["en", "es", "ja", "ko", "pt", "zh-Hans", "zh-Hant"]
+        for lang in languages {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            for key in oneKeys {
+                XCTAssertTrue(
+                    content.contains("\"\(key)\""),
+                    "\(lang).lproj/Localizable.strings is missing key '\(key)' — ID-L10N-0020: this gap makes count==1 in \(lang) silently render English"
+                )
+            }
+        }
+    }
+
+    /// ID-L10N-0020: count==1 for a key that defines NO ".one" variant must
+    /// render the BASE key's template in the current language (plural
+    /// grammar), never an English singular leak or the raw key. "app.name"
+    /// and "button.clear" have no ".one" in any bundle.
+    @MainActor
+    func testPluralAtCountOneWithoutSingularVariantUsesBaseKey() {
+        let mgr = LanguageManager.shared
+        let original = mgr.selectedLanguage
+        defer { mgr.selectedLanguage = original }
+
+        mgr.selectedLanguage = "en"
+        XCTAssertEqual(L10n.plural("app.name", 1), L10n.string("app.name"))
+        XCTAssertFalse(L10n.plural("app.name", 1).contains(".one"))
+
+        mgr.selectedLanguage = "zh-Hans"
+        XCTAssertEqual(
+            L10n.plural("button.clear", 1),
+            L10n.string("button.clear"),
+            "ID-L10N-0020: missing '.one' must fall back to the base key in the CURRENT language"
+        )
+    }
 }

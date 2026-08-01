@@ -18,7 +18,7 @@ enum FuzzySearchMatcher {
     // it. For 10K items × ~5 tokens per search × every keystroke, this
     // was multi-second per filter pass. Cache the pinyin output per
     // `content` string in an NSCache keyed by the content hash — same
-    // pattern as `cachedAbsoluteDateFormatter` in DateHelpers.swift.
+    // pattern as the date-formatter cache in DateHelpers.swift.
     private static let pinyinCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
         // Bound by item count (per-launch history). 16 is a defensive

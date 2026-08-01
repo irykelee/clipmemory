@@ -232,19 +232,6 @@ final class ClipboardItemTests: XCTestCase {
         XCTAssertEqual(nsAttr.string, "Hello World")
     }
 
-    func testRichTextItemPlainTextFallback() {
-        let rtf = "{\\rtf1\\ansi \\b Bold\\b0  text}"
-        let item = ClipboardItem(content: Data(rtf.utf8).base64EncodedString(), type: .richText)
-        let plain = item.plainTextFromRTFFallback
-        XCTAssertTrue(plain.contains("Bold"))
-        XCTAssertTrue(plain.contains("text"))
-    }
-
-    func testRichTextNotText() {
-        let item = ClipboardItem(content: "plain", type: .text)
-        XCTAssertTrue(item.plainTextFromRTFFallback.isEmpty)
-    }
-
     func testRichTextEncodingRoundTrip() throws {
         let originalRTF = "{\\rtf1\\ansi \\b Bold\\b0  text}"
         let base64 = Data(originalRTF.utf8).base64EncodedString()

@@ -212,7 +212,8 @@ extension ClipboardStore {
     /// instead of relying on asyncAfter + timeout.
     func backfillOCRIfNeeded(using ocr: OCRServiceProtocol = VisionOCRService.shared,
                              imageStorage: ImageStorage = .shared,
-                             onComplete: (() -> Void)? = nil) {
+                             onComplete: (() -> Void)? = nil,
+                             perItemTimeout: TimeInterval = ClipboardStore.backfillPerItemCompletionTimeout) {
         guard ocrEnabled else { onComplete?(); return }
         let candidates = items.filter { $0.type == .image && $0.ocrText == nil && !$0.ocrAttempted }
         guard !candidates.isEmpty else { onComplete?(); return }
@@ -226,7 +227,35 @@ extension ClipboardStore {
                     continue
                 }
                 group.enter()
+                // ID-OCR-0010 (2026-08-01 audit): per-item timeout watchdog.
+                // `semaphore.signal()` / `group.leave()` below were only
+                // reachable from the OCR completion — an OCRServiceProtocol
+                // implementation that never calls its completion (contract
+                // violation; production VisionOCRService only escapes via
+                // its own 15s watchdog) deadlocked the backfill: the 5th
+                // item blocked forever on `semaphore.wait()` and
+                // `group.notify` never fired. The watchdog releases the
+                // slot + leaves the group instead; the OCROneShotGate makes
+                // exactly one of completion/watchdog do so (no double
+                // signal/leave when they race). The item keeps
+                // ocrAttempted=false so the next launch's backfill retries
+                // — same self-healing contract as the .failure path below.
+                let gate = OCROneShotGate()
+                let timeoutSeconds = perItemTimeout
+                let watchdog = DispatchWorkItem {
+                    guard gate.claim() else { return }
+                    Self.logger.error("OCR backfill: completion not called within \(timeoutSeconds, privacy: .public)s for \(item.id, privacy: .public); releasing slot (ocrAttempted stays false so a later backfill retries)")
+                    semaphore.signal()
+                    group.leave()
+                }
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + perItemTimeout, execute: watchdog)
                 ocr.recognizeText(in: data) { [weak self] outcome in
+                    // ID-OCR-0010: if the watchdog already claimed the gate,
+                    // this completion arrived after the timeout — the slot
+                    // and group token are already released; do NOT touch
+                    // them again (double signal/leave corrupts both).
+                    guard gate.claim() else { return }
+                    watchdog.cancel()
                     // BUG-010 (2026-07-21): do NOT mark ocrAttempted before
                     // OCR completes. If `attachOCRText`'s encrypt() failed
                     // (e.g. CryptoService unavailable), ocrAttempted was
@@ -258,10 +287,41 @@ extension ClipboardStore {
         }
     }
 
+    /// ID-OCR-0010 (2026-08-01 audit): max time the backfill waits for one
+    /// OCR completion before the watchdog releases the slot. Longer than
+    /// VisionOCRService's own 15s watchdog + 16s hard ceiling so the
+    /// production implementation always completes first; this only fires
+    /// for a non-conforming OCRServiceProtocol implementation.
+    /// (Internal, not private: default argument expressions are resolved at
+    /// the call site, so the default for `backfillOCRIfNeeded(perItemTimeout:)`
+    /// must be visible to callers.)
+    static let backfillPerItemCompletionTimeout: TimeInterval = 30
+
     /// L-7 (2026-07-24 audit): max concurrent OCR jobs during backfill.
     /// Picked at 4 to keep Vision (CPU + GPU bound) under control without
     /// serializing the whole backfill — a 200-image library finishes roughly
     /// twice as fast as fully serial but doesn't trigger the OS-level Vision
     /// throttle that comes in at ~8+ simultaneous requests.
     private static let backfillMaxConcurrentOCR = 4
+}
+
+/// ID-OCR-0010 (2026-08-01 audit): one-shot gate so exactly ONE of the OCR
+/// completion handler and the per-item timeout watchdog releases the
+/// backfill semaphore slot and leaves the dispatch group — without it, a
+/// completion arriving concurrently with the timeout would double-signal
+/// the semaphore (over-admitting OCR jobs) and double-leave the group
+/// (firing `group.notify` early / crashing on imbalance).
+private final class OCROneShotGate {
+    private let lock = NSLock()
+    private var claimed = false
+
+    /// Returns true for the first caller only; the losing caller must not
+    /// touch the guarded resources.
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if claimed { return false }
+        claimed = true
+        return true
+    }
 }

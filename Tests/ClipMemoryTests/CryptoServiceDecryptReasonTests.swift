@@ -73,6 +73,29 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
         XCTAssertEqual(result, .internalError, "非法 base64 归 internalError")
     }
 
+    // ID-CRYPTO-0005 (2026-08-01 audit): base64 解码失败路径此前直接 return
+    // .internalError 而不写否定缓存，与 spec NR4（.internalError → 缓存 60s）
+    // 及其余失败路径不一致。修复后该路径以对原始输入字符串的哈希为 key 写入。
+    func testInternalErrorOnNonBase64WritesNegativeCache() throws {
+        let store = MockKeyStore()
+        let key = Data((0..<32).map { UInt8($0) })
+        store.store(key)
+        _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
+
+        let itemID = UUID()
+        let countBefore = CryptoService.negativeCacheCountForTesting()
+        let r1 = CryptoService.shared.decryptWithReason("!!!not-base64!!!", itemID: itemID)
+        XCTAssertEqual(r1, .internalError)
+        XCTAssertEqual(CryptoService.negativeCacheCountForTesting(), countBefore + 1,
+                       "ID-CRYPTO-0005: base64 失败必须写否定缓存（spec NR4 一致性）")
+
+        // 同一坏输入第二次调用：命中缓存，不重复写
+        let r2 = CryptoService.shared.decryptWithReason("!!!not-base64!!!", itemID: itemID)
+        XCTAssertEqual(r2, .internalError)
+        XCTAssertEqual(CryptoService.negativeCacheCountForTesting(), countBefore + 1,
+                       "ID-CRYPTO-0005: TTL 内同一坏 base64 应命中缓存而非重复写入")
+    }
+
     // T2: 否定缓存 hit + TTL
     func testNegativeCacheHitOnRepeatedFailure() throws {
         let store = MockKeyStore()

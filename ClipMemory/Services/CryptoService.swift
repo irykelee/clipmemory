@@ -395,6 +395,16 @@ class CryptoService: CryptoServiceProtocol {
         shared.withCachedLoadedKey { shared.cachedLoadedKey } != nil
     }
 
+    /// ID-CRYPTO-0005 (2026-08-01 audit): test-only probe for the negative
+    /// cache size, so tests can prove a failure path actually WROTE an entry
+    /// (result-equality alone can't distinguish a cache hit from a re-run —
+    /// both return the same reason).
+    static func negativeCacheCountForTesting() -> Int {
+        negativeCacheLock.lock()
+        defer { negativeCacheLock.unlock() }
+        return negativeCache.count
+    }
+
     /// Prepares the app key: Keychain first, then one-time migration of the
     /// pre-C1 key file, then fresh generation into the Keychain (C1).
     /// A corrupt key file is never silently overwritten (H6): the failure
@@ -725,28 +735,26 @@ class CryptoService: CryptoServiceProtocol {
         // 1. key 就绪检查
         guard getKey() != nil else { return .keyUnavailable }
 
+        // ID-CRYPTO-0005 (2026-08-01 audit): base64 解码失败路径此前直接
+        // return .internalError，不写否定缓存，与 spec NR4（.internalError →
+        // 缓存 60s）及其余失败路径不一致。解码失败时 `combined` 不存在，
+        // 无法复用 `itemID:sha256(combined)` key —— 该路径改用对原始输入
+        // 字符串的哈希作 key，并在解码前先做前置查询（下方第 3 步仍保留
+        // combined 哈希 key 的查询，成功路径缓存命中行为不变）。
+        let rawCacheKey = "\(itemID):\(Self.sha256Hex(Data(base64String.utf8)))"
+        if let cached = Self.cachedNegativeResult(forKey: rawCacheKey) {
+            return cached
+        }
+
         // 2. base64 解码
         guard let combined = Data(base64Encoded: base64String) else {
-            return .internalError
+            return Self.cacheAndReturn(.internalError, key: rawCacheKey)
         }
 
         // 3. 否定缓存检查（读时懒淘汰, F8, P9 NSLock 包裹）
         let cacheKey = "\(itemID):\(Self.sha256Hex(combined))"
-        Self.negativeCacheLock.lock()
-        let cached = Self.negativeCache[cacheKey]
-        Self.negativeCacheLock.unlock()
-        if let (cachedReason, cachedAt) = cached {
-            // N6: clockLock 包裹读（虽然 clock 生产端不变，但 set-up 注入时与负缓存写可能并发）
-            Self.negativeCacheClockLock.lock()
-            let now = Self._negativeCacheClock()
-            Self.negativeCacheClockLock.unlock()
-            if now.timeIntervalSince(cachedAt) < Self.negativeCacheTTL {
-                return cachedReason
-            }
-            // 过期：懒淘汰
-            Self.negativeCacheLock.lock()
-            Self.negativeCache.removeValue(forKey: cacheKey)
-            Self.negativeCacheLock.unlock()
+        if let cached = Self.cachedNegativeResult(forKey: cacheKey) {
+            return cached
         }
 
         // 4. 实际解密（走现有 decryptBytes 但用 isOldFormat 区分 v2/legacy 分流 reason）
@@ -782,6 +790,30 @@ class CryptoService: CryptoServiceProtocol {
                 return Self.cacheAndReturn(.internalError, key: cacheKey)
             }
         }
+    }
+
+    /// 否定缓存查询（读时懒淘汰, F8, P9 NSLock 包裹）。命中且未过期返回
+    /// 缓存的 reason；未命中或已过期（懒淘汰后）返回 nil。
+    /// ID-CRYPTO-0005 (2026-08-01 audit): extracted from decryptWithReason
+    /// so the pre-decode raw-input key and the post-decode combined key
+    /// share one lookup path.
+    private static func cachedNegativeResult(forKey cacheKey: String) -> DecryptResult? {
+        negativeCacheLock.lock()
+        let cached = negativeCache[cacheKey]
+        negativeCacheLock.unlock()
+        guard let (cachedReason, cachedAt) = cached else { return nil }
+        // N6: clockLock 包裹读（虽然 clock 生产端不变，但 set-up 注入时与负缓存写可能并发）
+        negativeCacheClockLock.lock()
+        let now = _negativeCacheClock()
+        negativeCacheClockLock.unlock()
+        if now.timeIntervalSince(cachedAt) < negativeCacheTTL {
+            return cachedReason
+        }
+        // 过期：懒淘汰
+        negativeCacheLock.lock()
+        negativeCache.removeValue(forKey: cacheKey)
+        negativeCacheLock.unlock()
+        return nil
     }
 
     /// 写否定缓存（仅永久失败）+ 返回 result（P9 + N6 NSLock 包裹）

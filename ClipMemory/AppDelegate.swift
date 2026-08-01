@@ -30,15 +30,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // ID-SECURITY-0001 (2026-07-30 audit): wipe the in-memory root key
     // when the app loses focus / locks / suspends so a memory-dump attack
     // on a suspended process (hibernate image / RAM disk) can't recover
-    // raw key bytes. Both notifications cover distinct lock paths:
-    // - .protectedDataWillBecomeUnavailable fires when FileVault lock
-    //   begins (screen lock with FileVault enabled)
-    // - .didEnterBackground fires when the app moves to background
-    //   (Cmd+H / Cmd+Tab away) — covers all sessions including ones
-    //   without FileVault
-    private var protectedDataWillBecomeUnavailableObserver: NSObjectProtocol?
+    // raw key bytes. The three registrations cover distinct lock paths:
+    // - NSApplication.didResignActiveNotification — app loses focus
+    //   (Cmd+Tab away), fires even without FileVault
+    // - NSWorkspace.sessionDidResignActiveNotification — screen lock /
+    //   fast user switching / logout
+    // - NSWorkspace.willSleepNotification — system sleep / hibernate
+    // ID-APP-0001 (2026-08-01 audit): ivar names fixed to match the
+    // notifications actually registered in setupBackgroundPurgeObservers();
+    // they previously referenced namesake notifications that were never
+    // observed here.
+    private var didResignActiveObserver: NSObjectProtocol?
     private var sessionDidResignActiveObserver: NSObjectProtocol?
-    private var didEnterBackgroundObserver: NSObjectProtocol?
+    private var willSleepObserver: NSObjectProtocol?
     private var lastPrewarmTime: Date = .distantPast
     private var welcomeWindow: NSWindow?
     // ID-LIFE-0020 (2026-07-31 audit): the willClose block observer token
@@ -359,7 +363,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Clear the in-memory key. Next foreground will re-prepare.
             CryptoService.shared.clearInMemoryKey()
         }
-        protectedDataWillBecomeUnavailableObserver = NotificationCenter.default.addObserver(
+        didResignActiveObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification,
             object: nil, queue: .main
         ) { _ in purge() }
@@ -367,7 +371,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSWorkspace.sessionDidResignActiveNotification,
             object: nil, queue: .main
         ) { _ in purge() }
-        didEnterBackgroundObserver = NSWorkspace.shared.notificationCenter.addObserver(
+        willSleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willSleepNotification,
             object: nil, queue: .main
         ) { _ in purge() }
@@ -507,9 +511,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let o = didBecomeActiveObserver { NotificationCenter.default.removeObserver(o) }
         // ID-SECURITY-0001 (2026-07-30 audit): remove the background-purge
         // observers alongside the other lifecycle observers.
-        if let o = protectedDataWillBecomeUnavailableObserver { NotificationCenter.default.removeObserver(o) }
-        if let o = sessionDidResignActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
-        if let o = didEnterBackgroundObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+        if let o = didResignActiveObserver { NotificationCenter.default.removeObserver(o) }
+        // ID-APP-0002 (2026-08-01 audit): sessionDidResignActiveObserver is
+        // registered on NotificationCenter.default (see
+        // setupBackgroundPurgeObservers) but was removed from the NSWorkspace
+        // center here — a no-op that leaked the observer for the process
+        // lifetime. Remove it from the center it was actually registered on.
+        if let o = sessionDidResignActiveObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = willSleepObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         // ID-LIFE-0020 / ID-LIFE-0021 (2026-07-31 audit): the willClose
         // observers normally self-remove when their window closes; deinit
         // is the safety net for a still-open window at teardown.

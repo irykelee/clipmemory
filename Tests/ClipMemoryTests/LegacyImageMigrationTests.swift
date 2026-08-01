@@ -119,8 +119,9 @@ final class LegacyImageMigrationTests: XCTestCase {
             "Successfully migrated plaintext must be cleaned up")
     }
 
-    /// Contract: the completion-notification path is unchanged — observers
-    /// (ClipboardStore.handleImageMigrationCompleted) still receive the
+    /// Contract: the completion-notification path is unchanged — the observer
+    /// (ClipboardStore's init block observer for the migration-completed
+    /// notification) still receives the
     /// migrated filenames on the main queue after an async pass.
     func testScheduleLegacyMigrationStillPostsCompletionNotificationOnMain() {
         let uuid = newMigratedUUID()

@@ -122,7 +122,19 @@ final class BackupService {
             defaults.set(newValue, forKey: Self.keepCountKey)
             if newValue < oldValue {
                 DispatchQueue.global(qos: .utility).async { [weak self] in
-                    self?.pruneOldBackups()
+                    // ID-BACKUP-0005 (2026-08-01 audit): this fire-and-forget
+                    // prune ran outside `backupLock`, so it could overlap a
+                    // concurrent `backupNow()` (which holds the lock and also
+                    // calls pruneOldBackups) — duplicate directory listings,
+                    // double removeItem attempts, and spurious failure logs.
+                    // Take the same lock here; `pruneOldBackups` stays the
+                    // unlocked body because `performBackupUnlocked` calls it
+                    // while already holding the lock (NSLock is not
+                    // recursive — wrapping both paths would deadlock).
+                    guard let self else { return }
+                    self.backupLock.lock()
+                    defer { self.backupLock.unlock() }
+                    self.pruneOldBackups()
                 }
             }
         }

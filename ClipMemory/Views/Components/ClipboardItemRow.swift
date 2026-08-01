@@ -190,7 +190,9 @@ struct ClipboardItemRow: View, Equatable {
         loadedContent ?? ""
     }
     private var formattedDate: String {
-        cachedAbsoluteDateFormatter(for: LanguageManager.shared.selectedLanguage).string(from: item.createdAt)
+        // ID-SYNC-0005 (2026-08-01 audit): locked formatting — the shared
+        // formatter instance is no longer exposed directly.
+        cachedAbsoluteDateString(from: item.createdAt, languageCode: LanguageManager.shared.selectedLanguage)
     }
 
     private var cachedHighlighted: AttributedString {

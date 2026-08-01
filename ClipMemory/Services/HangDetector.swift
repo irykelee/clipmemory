@@ -81,6 +81,19 @@ enum HangDetector {
     // later `start()` a permanent no-op (stopped watchdog could never restart).
     private static var isStarted: Bool = false
 
+    /// ID-LIFE-0025 (2026-08-01 audit): serializes `start()` / `stop()` /
+    /// `_resetForTesting()`. `isStarted` and the 3 timer refs above were
+    /// plain statics touched without any synchronization — today every
+    /// call site is main-thread (AppDelegate), but nothing enforced that
+    /// contract and a concurrent start/stop could interleave flag and
+    /// timer lifecycle. Thread contract: start/stop may now be called from
+    /// any thread; the L-9 ordering semantics (flag set right after the
+    /// re-entry guard) are preserved inside the lock.
+    /// Lock order: `lifecycleLock` is always acquired BEFORE `stateLock`
+    /// (start() takes stateLock via withStateLock while holding this lock;
+    /// state-only paths never take lifecycleLock).
+    private static let lifecycleLock = NSLock()
+
     // MARK: - Tunables (internal so tests can read; mutable by amending `let` if ever needed)
 
     static let thresholdSeconds: TimeInterval = 60
@@ -163,6 +176,11 @@ enum HangDetector {
     /// `static let` lazy single-eval freezing `lastHeartbeat` across test cases.
     /// MUST be called in setUp. MUST NOT be called concurrently with start() / stop().
     internal static func _resetForTesting() {
+        // ID-LIFE-0025 (2026-08-01 audit): take lifecycleLock so the reset
+        // can't interleave with a concurrent start()/stop() (same lock
+        // order as start(): lifecycleLock → stateLock).
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
         withStateLock { $0 = State(lastHeartbeat: Date(), lastMainStack: [], lastDetectedAt: nil, firstDetectedAt: nil, detectionCount: 0) }
         heartbeatTimer?.cancel(); heartbeatTimer = nil
         stackTimer?.cancel();     stackTimer = nil
@@ -372,6 +390,10 @@ enum HangDetector {
     /// already gone out of scope (start() returned). Call the static
     /// entry point directly instead.
     static func start() {
+        // ID-LIFE-0025 (2026-08-01 audit): hold lifecycleLock for the whole
+        // start so the flag and the 3 timer resumes are atomic vs stop().
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
         guard !isStarted else { return }
         // L-9 (2026-07-24 audit): previous design set `isStarted = true` at the very
         // end of `start()`, AFTER all 3 timer `resume()` calls. The narrow
@@ -437,6 +459,10 @@ enum HangDetector {
     /// dead (test teardown/restart, delegate replacement, future runtime
     /// watchdog toggle).
     static func stop() {
+        // ID-LIFE-0025 (2026-08-01 audit): same lock as start() — cancel +
+        // flag reset are atomic vs a concurrent start().
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
         checkerTimer?.cancel();   checkerTimer = nil
         stackTimer?.cancel();     stackTimer = nil
         heartbeatTimer?.cancel(); heartbeatTimer = nil

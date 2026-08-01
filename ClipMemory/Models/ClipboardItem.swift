@@ -135,23 +135,4 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     var isDecryptionFailed: Bool {
         decryptionFailed
     }
-
-    /// Extracts plain text from RTF content for preview and search purposes.
-    /// Calls the pure `RichTextParser` directly — model layer no longer
-    /// reaches into `ClipboardStore.shared` to obtain a cached result. The
-    /// store can still wrap calls to this with its `NSCache` when callers
-    /// know they're iterating the same item many times.
-    ///
-    /// M-24 (2026-07-24 audit) performance contract — NEVER CALL FROM A
-    /// LIST RENDERING LOOP. Each call re-parses the RTF; for large RTF
-    /// payloads that is 5–20 ms per item. Callers that iterate items
-    /// (sidebar filters, full-text search, RichTextItemRow preview) MUST go
-    /// through ClipboardStore.rtfPlaintextCache (NSCache<NSString, NSString>,
-    /// countLimit tracks maxItems per M-4) to amortize the parse across
-    /// repeated reads of the same item. Direct calls are appropriate only
-    /// for one-shot operations (export, single-row preview).
-    var plainTextFromRTFFallback: String {
-        guard type == .richText else { return "" }
-        return RichTextParser.plaintext(from: content, fallback: String(localized: "item.richText", defaultValue: "Rich Text"))
-    }
 }

@@ -336,6 +336,18 @@ struct QuickBarView: View {
             guard success else { return }
             recomputeDisplayedItems()
         }
+        // ID-VIEW-0010 (2026-08-01 audit): cold-cache search misses were
+        // silently dropped AND never recovered — prewarm below only fed the
+        // already-filtered `cachedDisplayedItems`, and nothing re-ran the
+        // filter when prewarm finished. Mirrors ContentView's ID-VIEW-0008
+        // mechanism (ContentView.swift:688-706): prewarm's batch-end path
+        // sends store.objectWillChange when real decrypts ran, so observe
+        // that publisher — debounced — and rebuild. Loop-freedom: the
+        // rebuild's prewarm re-pass finds an empty uncached set → early
+        // return, no send.
+        .onReceive(store.objectWillChange.debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)) { _ in
+            recomputeDisplayedItems()
+        }
         // CLIP-4 (2026-07-24 audit): keep cachedDisplayedItems in sync with
         // its two inputs. onAppear covers popover-open (the view is created
         // fresh each time). The onChange writes are deferred one runloop
@@ -607,7 +619,9 @@ struct QuickBarRow: View {
     }
 
     private var formattedDate: String {
-        cachedRelativeDateFormatter(for: LanguageManager.shared.selectedLanguage)
-            .localizedString(for: item.createdAt, relativeTo: Date())
+        // ID-SYNC-0005 (2026-08-01 audit): locked formatting — the shared
+        // formatter instance is no longer exposed directly.
+        cachedRelativeDateString(from: item.createdAt, relativeTo: Date(),
+                                 languageCode: LanguageManager.shared.selectedLanguage)
     }
 }
