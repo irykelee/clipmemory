@@ -259,6 +259,19 @@ final class ClipboardStore: ObservableObject {
     /// Default initializer — uses FileStorageBackend backed by UserDefaults for
     /// items, tags, and trash (separate UserDefaults keys).
     convenience init() {
+        // ID-STORE-0005 (2026-08-01): under XCTest the test bundle is injected
+        // into the real app — FileStorageBackend would read AND write the
+        // production UserDefaults domain. The host's fixture key differs from
+        // the production Keychain key (each test run generates a throwaway
+        // key), so any host-side save (OCR backfill, debounced persist, tag
+        // ops, test fixtures) plants items the production app cannot decrypt
+        // ("N 条损坏") and can overwrite real user data. ID-MON-0002 stopped
+        // the live monitor; this closes the remaining persistence path.
+        // Isolate all three backends in memory; production behavior unchanged.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
+            self.init(backend: MemoryStorageBackend())
+            return
+        }
         self.init(backend: FileStorageBackend(),
                   tagBackend: FileStorageBackend(storageKey: ClipboardStore.tagStorageKey),
                   trashBackend: FileStorageBackend(storageKey: TrashStore.trashedItemsStorageKey))
