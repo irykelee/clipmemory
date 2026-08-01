@@ -398,7 +398,12 @@ struct ContentView: View {
         // P0-3: pre-warm caches in background so the next filter pass reads from
         // contentCache/rtfPlaintextCache (fast path) instead of doing sync AES-GCM
         // decrypt on the main thread.
-        store.prewarmDecryptionCache(items: cachedDisplayedItems)
+        // ID-VIEW-0012 (2026-08-01 audit): feed the FULL item set, not the
+        // filtered survivors — during an active search, cold items fail the
+        // filter (return false below) and would otherwise wait for the next
+        // app-activation full-set prewarm before self-healing. prewarm
+        // internally narrows to uncached items, so the extra input is cheap.
+        store.prewarmDecryptionCache(items: store.items)
         // H-10 (2026-07-24 audit): items changed → visible indices change too.
         recomputeVisibleGlobalIndices()
         // Update grouped items cache

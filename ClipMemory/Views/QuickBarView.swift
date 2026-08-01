@@ -94,7 +94,12 @@ struct QuickBarView: View {
         // P0-2 P2: merge once per filter pass
         store.mergePendingDiagnostics()
         // P0-3: pre-warm caches in background for next filter pass.
-        store.prewarmDecryptionCache(items: cachedDisplayedItems)
+        // ID-VIEW-0012 (2026-08-01 audit): feed the FULL item set, not the
+        // filtered survivors — cold items fail the search filter (return
+        // false in computeDisplayedItems) and would otherwise wait for the
+        // next app-activation full-set prewarm before self-healing. prewarm
+        // internally narrows to uncached items, so the extra input is cheap.
+        store.prewarmDecryptionCache(items: store.items)
     }
 
     /// ID-A11Y-0008 (2026-07-31 audit): shared "copy + flash + dismiss" path
@@ -337,14 +342,19 @@ struct QuickBarView: View {
             recomputeDisplayedItems()
         }
         // ID-VIEW-0010 (2026-08-01 audit): cold-cache search misses were
-        // silently dropped AND never recovered — prewarm below only fed the
-        // already-filtered `cachedDisplayedItems`, and nothing re-ran the
-        // filter when prewarm finished. Mirrors ContentView's ID-VIEW-0008
+        // silently dropped AND never recovered — nothing re-ran the filter
+        // when prewarm finished. Mirrors ContentView's ID-VIEW-0008
         // mechanism (ContentView.swift:688-706): prewarm's batch-end path
         // sends store.objectWillChange when real decrypts ran, so observe
         // that publisher — debounced — and rebuild. Loop-freedom: the
         // rebuild's prewarm re-pass finds an empty uncached set → early
         // return, no send.
+        // ID-VIEW-0012 (2026-08-01 audit): prewarm now also feeds the full
+        // `store.items` set (not just the filtered survivors), so cold items
+        // excluded by an active search are decrypted and surface via this
+        // same rebuild path instead of waiting for the next app-activation
+        // full-set prewarm. Loop-freedom still holds: once decrypted, the
+        // re-pass finds no uncached items → no send.
         .onReceive(store.objectWillChange.debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)) { _ in
             recomputeDisplayedItems()
         }
