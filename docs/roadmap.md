@@ -76,7 +76,7 @@
 |---|---|---|
 | 1 | **ClipboardStore 拆分** | 已 2070+ 行且每轮审计在涨（去重/过滤/诊断/预热/持久化/回收站桥接全在一类）。抽 `DecryptScheduler`/`DisplayCoordinator`。PERF-0020（O(n) 重建）挂在此次拆分上，也利于 strict concurrency 推进 |
 | 2 | **存储迁移** | 维持原 Phase 2 判断：**先 Instruments 实测 1K/5K/10K 条再动手**；每次保存整库 JSON 重写是 O(n) 写放大。升 15 后评估对象改为 **SwiftData vs 手写 SQLite 二选一**（SwiftData 加密方案见「现代化」节 B 类）。**顺序：先拆 Store 再换存储**，切换面更小 |
-| 3 | **测试隔离收尾** | 2026-08-01 三起测试宿主污染（ID-MON-0002 / ID-STORE-0005 / ID-STORE-0007）就是利息。M13 已闭环（§10.14）；残留：M12（10+ 测试直用 `.shared` 改注入） |
+| 3 | **测试隔离收尾** | 2026-08-01 三起测试宿主污染（ID-MON-0002 / ID-STORE-0005 / ID-STORE-0007）就是利息。**M12/M13 均已闭环**（§10.14/§10.15），本节可归档 |
 | 4 | **PERF-0016 缩略图降采样** | Round-5 deferred 尾巴：行缩略图全分辨率解码，内存虚高 |
 | 5 | **Swift 6 语言模式** | 见下节「现代化」 |
 
@@ -146,15 +146,15 @@
 |---|---|---|
 | Keychain biometric/ACL | M6 | OPEN——与应用锁（v3.0.0）天然捆绑，建议一起做 |
 | UserDefaults HMAC 完整性 | M7 | OPEN——若决定迁 SQLite 则此项被取代，**建议并入 SQLite 评估一并决策，避免双重投入** |
-| contentHash 去重降级 | M2 | OPEN（0.5 天） |
+| contentHash 去重降级 | M2 | **已闭环**（2026-08-01，ledger §10.15）：key 就绪后补算 nil-hash + 去重合并 pass |
 | Developer ID 证书评估 | M8 | OPEN（调研，$99/yr + 公证，能消掉首开「无法验证」提示） |
 
 ### P2 — 架构优化
 
 | 项 | ID | 状态/说明 |
 |---|---|---|
-| ImageStorage 双队列 | M5 | OPEN（0.5 天） |
-| 测试隔离：Store | M12 | **大部分已闭环**（ID-MON-0002 + ID-STORE-0005，2026-08-01）；残留：10+ 测试直用 `.shared` 改用注入 |
+| ImageStorage 双队列 | M5 | **已闭环**（2026-08-01，ledger §10.15）：v2 快路径读取不再过 migrationQueue.sync，legacy 迁移互斥保留 |
+| 测试隔离：Store | M12 | **已闭环**（2026-08-01，ledger §10.15）：Tests/ 下 `.shared` 代码级直用清零，全部改 MemoryStorageBackend 注入 |
 | 测试隔离：UserDefaults | M13 | **已闭环**（2026-08-01，ledger §10.14）：3 处直写按 STORE-0007 范本修复 + canary 加固。真债务残留：ImageStorage/UpdateService/ClipboardStore+OCR 硬连 `UserDefaults.standard` 不可注入 suite——并入未来 UserDefaults 抽象评估 |
 
 ### P3 — 代码整洁度（非阻塞）
