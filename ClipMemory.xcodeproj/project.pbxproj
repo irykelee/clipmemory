@@ -62,7 +62,6 @@
 		5D57DABDB70335AA7EABF65A /* ClipboardStoreRTFCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A9BEBF6532DD5C9551E963 /* ClipboardStoreRTFCacheTests.swift */; };
 		5F166E081C5C54406638AB80 /* HangDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D006CCE0E8AC47CF7B7413 /* HangDetectorTests.swift */; };
 		609E1C245E883EB4B9EFF4F7 /* ImageDedupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19E2CC4B7B1314D98FBEBD8D /* ImageDedupTests.swift */; };
-		9A0A773A4D2F4D52B54C5864 /* ContentHashKeyReadyBackfillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89ACC9C91B364E97925E71A4 /* ContentHashKeyReadyBackfillTests.swift */; };
 		6251793B9A8CC6133FB16264 /* ClipboardItemRowUnicodeHighlightTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D45E7136201747C6198D9A /* ClipboardItemRowUnicodeHighlightTests.swift */; };
 		6287BB49CE58AD2FF0335C9B /* KeychainKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63B981F3EB1254A3485EE914 /* KeychainKeyStore.swift */; };
 		62A7A0496DAB0F7CDD3542C7 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D94B664336CED43230940FC /* UpdateService.swift */; };
@@ -95,6 +94,7 @@
 		868914B1AF4B89BD3A4881EB /* QuickBarOCRTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2914AA3EEABA4BF9DF482852 /* QuickBarOCRTests.swift */; };
 		8927BF4F0FA925EDA72F4CAA /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98ADF74CF248C9E8B4EE7EA6 /* BackupService.swift */; };
 		8AE3D6EABA7C52180921E9EE /* AppVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576BC9BCA44C3479F2691F5B /* AppVersion.swift */; };
+		8B12B00C99BACB9D5D7683E8 /* ContentHashKeyReadyBackfillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF23478C1DE9F1F61C1ACFBD /* ContentHashKeyReadyBackfillTests.swift */; };
 		8ECDCFA7D7981743A08719DC /* TagSuggestionTagNamesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7DDF8601E51F10DA99AD713 /* TagSuggestionTagNamesTests.swift */; };
 		918C9F3970589F50C7E06374 /* AppDirectoriesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA672B12AE7F6167EAD741A5 /* AppDirectoriesTests.swift */; };
 		919909C13EFD40D730CCD15E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A060CA837242FD57B25DFFD9 /* ContentView.swift */; };
@@ -189,7 +189,6 @@
 		14ED4AF1FE79FF40252DEF61 /* TrashItemRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashItemRow.swift; sourceTree = "<group>"; };
 		162510951570AB9FC4207B0F /* ClipboardMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitorTests.swift; sourceTree = "<group>"; };
 		19E2CC4B7B1314D98FBEBD8D /* ImageDedupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageDedupTests.swift; sourceTree = "<group>"; };
-		89ACC9C91B364E97925E71A4 /* ContentHashKeyReadyBackfillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentHashKeyReadyBackfillTests.swift; sourceTree = "<group>"; };
 		1A8ED97CA49FF8F747A96CBF /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		1C6F13182E51140986AB1201 /* EncryptionFailedAlertThrottlerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptionFailedAlertThrottlerTests.swift; sourceTree = "<group>"; };
 		1CCBBEFD86C39FFA6222D0C9 /* ContentViewTrimAlertTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentViewTrimAlertTests.swift; sourceTree = "<group>"; };
@@ -306,6 +305,7 @@
 		C9766C5502F941459D7894FF /* ClipboardItemRowOCRTransitionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItemRowOCRTransitionTests.swift; sourceTree = "<group>"; };
 		C9CFDA4DE370490B4369B899 /* TagPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagPickerSheet.swift; sourceTree = "<group>"; };
 		CB46D62ED9B13AFDE0196EFF /* HangDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HangDetector.swift; sourceTree = "<group>"; };
+		CF23478C1DE9F1F61C1ACFBD /* ContentHashKeyReadyBackfillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentHashKeyReadyBackfillTests.swift; sourceTree = "<group>"; };
 		D0DEC3B7B2D86D84165C1941 /* ClipboardStoreDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStoreDiagnosticsTests.swift; sourceTree = "<group>"; };
 		D1261BEEA56B02715F37CFB4 /* TagSuggestionLengthCapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagSuggestionLengthCapTests.swift; sourceTree = "<group>"; };
 		D308A232E245A43D294015ED /* LocalizationKeysTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationKeysTests.swift; sourceTree = "<group>"; };
@@ -426,6 +426,7 @@
 				5B4E6D5E6E7DBF88457A6077 /* ClipboardStoreTrashTests.swift */,
 				814FC521762331411B0823A5 /* ClipMemoryTests.entitlements */,
 				A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */,
+				CF23478C1DE9F1F61C1ACFBD /* ContentHashKeyReadyBackfillTests.swift */,
 				8AAB21C7B713F9428F157AE5 /* ContentViewTests.swift */,
 				1CCBBEFD86C39FFA6222D0C9 /* ContentViewTrimAlertTests.swift */,
 				E1FA17C9DB22CB9584E8ADA8 /* CopyOcrTextOwnWriteTests.swift */,
@@ -443,7 +444,6 @@
 				E25EBD3BBAD32C1A9B6ADFDA /* HotKeyManagerTests.swift */,
 				32ED9328F22F8499A3D161DB /* HotKeyRetainFailurePathTests.swift */,
 				19E2CC4B7B1314D98FBEBD8D /* ImageDedupTests.swift */,
-				89ACC9C91B364E97925E71A4 /* ContentHashKeyReadyBackfillTests.swift */,
 				043D7BEC02F3AB2D812024BD /* ImagePreviewPanelTests.swift */,
 				BB3E3AEDB1137BDD2F31FA85 /* ImageStorageTests.swift */,
 				F2F5EA99DF3188F2D2E455B2 /* ImportExportTests.swift */,
@@ -739,6 +739,7 @@
 				F65D1483820148A8FFF7B762 /* ClipboardStoreSearchFilterTests.swift in Sources */,
 				7D06F010CEA290AA290A0335 /* ClipboardStoreTrashTests.swift in Sources */,
 				EDD4772BEACF49926B32ECA9 /* ConcurrencyTests.swift in Sources */,
+				8B12B00C99BACB9D5D7683E8 /* ContentHashKeyReadyBackfillTests.swift in Sources */,
 				101A0E4D804823A84450BE64 /* ContentViewTests.swift in Sources */,
 				04E3A6E2C32F6378821F8690 /* ContentViewTrimAlertTests.swift in Sources */,
 				2CF1852365EE42CE643D8035 /* CopyOcrTextOwnWriteTests.swift in Sources */,
@@ -756,7 +757,6 @@
 				A0EB5CF9B762950F8A8B0842 /* HotKeyManagerTests.swift in Sources */,
 				E16AA67D6C0B28DA85FC1036 /* HotKeyRetainFailurePathTests.swift in Sources */,
 				609E1C245E883EB4B9EFF4F7 /* ImageDedupTests.swift in Sources */,
-				9A0A773A4D2F4D52B54C5864 /* ContentHashKeyReadyBackfillTests.swift in Sources */,
 				9F76B639D19195A92EC01DC5 /* ImagePreviewPanelTests.swift in Sources */,
 				015F6AFCB7E44CD524CD45FB /* ImageStorageTests.swift in Sources */,
 				A2D4761F4089E7B3DB7BCAE6 /* ImportExportTests.swift in Sources */,
@@ -975,7 +975,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2.7.6;
+				CURRENT_PROJECT_VERSION = 2.7.7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = G59B692W3M;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -989,7 +989,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 2.7.6;
+				MARKETING_VERSION = 2.7.7;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = ClipMemory;
@@ -1051,7 +1051,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2.7.6;
+				CURRENT_PROJECT_VERSION = 2.7.7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = G59B692W3M;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1071,7 +1071,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 2.7.6;
+				MARKETING_VERSION = 2.7.7;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

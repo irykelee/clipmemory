@@ -1,4 +1,4 @@
-# ClipMemory v2.7.6
+# ClipMemory v2.7.7
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.7.7 (2026-08-01) — Search Experience and Reliability Fixes
+
+- **Search no longer stutters** — Searching rich-text history previously decrypted entries one by one on the main thread, causing noticeable lag; cold-cache entries are now skipped first and automatically appear in results after background warm-up completes
+- **More complete QuickBar search** — Entries not yet decrypted during a search were previously silently omitted and never filled in; results now automatically refresh and fill in the gaps after warm-up completes
+- **Duplicate entries are automatically merged** — Once the startup key is ready, duplicate entries in history (including those that slipped through during the startup window) are now automatically merged and cleaned up
+- **Faster image browsing** — Image reading is no longer blocked by the background legacy-format migration task
+- **Fix Recycle Bin entries staying blank for entire sessions** — When launched at login and the keychain had not yet been unlocked, text/link entries in the Recycle Bin previously remained blank and did not self-heal
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.7
 
 ### v2.7.6 (2026-08-01) — Stability and Data-Security Hardening
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.7.6
+# ClipMemory v2.7.7
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.7.7 (2026-08-01) — Mejoras en la búsqueda y correcciones de fiabilidad
+
+- **La búsqueda ya no se bloquea** — Antes, al buscar en el historial con texto enriquecido, se descifraban los elementos uno a uno en el hilo principal, lo que causaba bloqueos notables; ahora las entradas de caché fría se omiten primero y aparecen automáticamente en los resultados después de que se complete el calentamiento en segundo plano
+- **Búsqueda de QuickBar más completa** — Antes, los elementos sin descifrar se omitían silenciosamente al buscar y no se completaban; ahora, tras el calentamiento, los resultados se actualizan y completan automáticamente
+- **Fusión automática de entradas duplicadas** — Una vez que la clave de inicio está lista, las entradas duplicadas en el historial (incluidas las que se acumularon sin detectar durante la ventana de inicio) ahora se fusionan y limpian automáticamente
+- **Visualización de imágenes más rápida** — La lectura de imágenes ya no se bloquea por las tareas de migración de formatos antiguos en segundo plano
+- **Corregido el problema de las entradas de la Papelera en blanco durante toda la sesión** — Al iniciar sesión con autoarranque y cuando el llavero aún no estaba desbloqueado, las entradas de texto/enlace de la Papelera se quedaban en blanco y no se recuperaban automáticamente
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.7
 
 ### v2.7.6 (2026-08-01) — Refuerzo de estabilidad y seguridad de datos
 

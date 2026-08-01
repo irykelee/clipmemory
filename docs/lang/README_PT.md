@@ -1,4 +1,4 @@
-# ClipMemory v2.7.6
+# ClipMemory v2.7.7
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.7.7 (2026-08-01) — Experiência de busca e correções de confiabilidade
+
+- **Busca sem travamentos** — Ao pesquisar histórico com rich text, antes cada item era descriptografado na thread principal, causando travamentos visíveis; agora entradas de cache frio são puladas primeiro e aparecem automaticamente nos resultados após o aquecimento em segundo plano.
+- **Busca do QuickBar mais completa** — Antes, itens não descriptografados eram silenciosamente omitidos na busca e não eram preenchidos; agora, após o aquecimento, os resultados são atualizados automaticamente.
+- **Mesclagem automática de itens duplicados** — Após a chave de inicialização ficar pronta, itens duplicados no histórico (incluindo os acumulados durante a janela de inicialização anterior) agora são mesclados e limpos automaticamente.
+- **Visualização de imagens mais rápida** — A leitura de imagens não é mais bloqueada por tarefas de migração de formato antigo em segundo plano.
+- **Corrigido itens da Lixeira em branco durante toda a sessão** — Ao iniciar automaticamente no login e com o chaveiro ainda bloqueado, os itens de texto/links da Lixeira ficavam em branco e não se recuperavam sozinhos.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.7
 
 ### v2.7.6 (2026-08-01) — Estabilidade e reforço de segurança de dados
 
