@@ -99,4 +99,22 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertNil(delegate.welcomeCloseObserver,
                      "ID-LIFE-0020: observer token must be removed when the window closes")
     }
+
+    // MARK: - ID-MON-0002 (2026-08-01): no live clipboard monitor under XCTest
+
+    /// ID-MON-0002: the test bundle is injected into the real app — a live
+    /// monitor in the test host captures real pasteboard writes (including
+    /// writes from other tests) into the production UserDefaults store,
+    /// encrypted with the XCTest fixture key, which production then reports
+    /// as corrupted. `setupClipboardMonitor()` must skip the monitor under
+    /// XCTest; tests that exercise ClipboardMonitor build their own instance.
+    @MainActor
+    func testClipboardMonitorNotStartedUnderXCTest() {
+        guard let delegate = NSApp.delegate as? AppDelegate else {
+            XCTFail("AppDelegate not available in test host")
+            return
+        }
+        XCTAssertNil(delegate.clipboardMonitor,
+                     "ID-MON-0002: live monitor in test host pollutes the production store")
+    }
 }

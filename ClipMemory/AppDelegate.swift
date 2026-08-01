@@ -454,6 +454,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = ClipboardStore.shared
         // Then trigger ImageStorage migration
         _ = ImageStorage.shared
+        // ID-MON-0002 (2026-08-01): under XCTest the test bundle is injected
+        // into the real app, so a live monitor here captures REAL pasteboard
+        // writes (including writes made by other tests) into the production
+        // UserDefaults store — encrypted with the XCTest fixture key, which
+        // production then reports as corrupted ("N 条损坏"). Keep the store /
+        // ImageStorage first-touch above (tests rely on it for migration
+        // coverage); skip only the live monitor. Tests that exercise
+        // ClipboardMonitor construct their own instance.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         // H-1: optional — guard init result so a partial ClipboardMonitor
         // construction doesn't take the whole app down. We still let the
         // store run; the menu bar QuickBar just won't auto-refresh from
