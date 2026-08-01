@@ -202,9 +202,49 @@ final class BackupPackage {
     }
 
     private static func unzipArchive(_ archive: URL, to destination: URL) throws {
+        // ID-SECURITY-0006 (2026-08-01 audit): enumerate zip members BEFORE
+        // extraction and reject hostile paths outright — ditto -x would
+        // otherwise write `../` members outside the staging root before
+        // validateExtractedTree ever gets a chance to inspect the tree.
+        try validateArchiveMembers(archive)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         try runDitto(args: ["-x", "-k", archive.path, destination.path])
         try validateExtractedTree(at: destination)
+    }
+
+    /// ID-SECURITY-0006 (2026-08-01 audit): pre-extraction member check.
+    /// Lists the archive's central directory via `unzip -Z1` (one member per
+    /// line, no size/date columns to parse) and refuses the package as
+    /// corrupt if any member contains a `..` path component, is an absolute
+    /// path, or uses backslash separators (Windows-style traversal). Runs
+    /// BEFORE `ditto -x` so a hostile member never reaches the filesystem —
+    /// validateExtractedTree (BKP-2) remains as the post-extraction net for
+    /// symlinks and resolved-path escapes.
+    private static func validateArchiveMembers(_ archive: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        process.arguments = ["-Z1", archive.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        // Drain stdout BEFORE waiting so a large member list can't deadlock
+        // the child on a full pipe buffer.
+        let listingData = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
+        let listing = String(decoding: listingData, as: UTF8.self)
+        for rawLine in listing.split(separator: "\n", omittingEmptySubsequences: true) {
+            let member = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !member.isEmpty else { continue }
+            let hasDotDot = member.split(separator: "/").contains("..")
+            guard !hasDotDot, !member.hasPrefix("/"), !member.contains("\\") else {
+                logger.error("Backup package contains unsafe archive member: \(member)")
+                throw BackupPackageError.corruptedData(
+                    "unsafe archive member: \(member)", .manifest
+                )
+            }
+        }
     }
 
     /// BKP-2 (2026-07-24 audit): `ditto -x` extracts whatever the zip
@@ -701,6 +741,14 @@ final class BackupPackage {
         // and could drift if one was bumped without the other.
         let maxImageBytes = ImageStorage.maxImageSize
         for file in files where file.hasSuffix(".png") {
+            // ID-SECURITY-0006 (2026-08-01 audit): whitelist the packaged
+            // image name (UUID + .png, shared with ImageStorage) before any
+            // write — a hostile member name must never be used to build the
+            // target path inside the local images directory.
+            guard ImageStorage.isValidFilename(file) else {
+                logger.warning("Skipping image with invalid filename in backup: \(file)")
+                continue
+            }
             let target = imagesDirectory.appendingPathComponent(file)
             guard !FileManager.default.fileExists(atPath: target.path) else { continue }
             let fileURL = packageImages.appendingPathComponent(file)
@@ -745,6 +793,16 @@ final class BackupPackage {
                     "\(file): \(error.localizedDescription)",
                     .image
                 )
+            }
+            // ID-SECURITY-0007 (2026-08-01 audit): tighten the imported image
+            // to 0o600, matching ImageStorage.saveImage. `.atomic` renames a
+            // temp file, so the permission is set on the FINAL path AFTER the
+            // write. Log-only on failure (the directory is already 0o700 and
+            // the content is encrypted — defense in depth, not a hard gate).
+            do {
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+            } catch {
+                logger.warning("Failed to set 0o600 on imported image \(file): \(error.localizedDescription)")
             }
             count += 1
         }

@@ -133,7 +133,10 @@ extension ClipboardStore {
     /// transient — never marks `decryptionFailed`. Data corruption here also
     /// does NOT mark `decryptionFailed` on the item because that flag controls
     /// the search path's retry of `item.content`, not OCR text.
-    func getDecryptedOcrText(_ item: ClipboardItem) -> String? {
+    /// ID-SYNC-0003 (2026-08-01 audit): nonisolated decrypt kernel — touches
+    /// only contentCache (NSCache), ServiceContainer.crypto (internally
+    /// locked), and recordPendingDiagnostic (NSLock). Callable off-main.
+    nonisolated func getDecryptedOcrText(_ item: ClipboardItem) -> String? {
         guard item.type == .image, let ciphertext = item.ocrText else { return nil }
         let key = (item.id.uuidString + ".ocr") as NSString
         if let cached = contentCache.object(forKey: key) {

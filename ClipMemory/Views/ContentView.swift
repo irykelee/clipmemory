@@ -669,6 +669,25 @@ struct ContentView: View {
                 guard success else { return }
                 refreshDisplayedItemsCacheSoon(source: "cryptoKeyPrepared")
             }
+            // ID-VIEW-0008 (2026-08-01 audit, cross-ref ID-LIFE-0019): cold
+            // items (filter path can't decrypt them yet, e.g. right after
+            // launch) only surfaced on the NEXT user edit — prewarm decrypted
+            // them in the background but nothing re-ran the filter when it
+            // finished. The reverted ID-LIFE-0019 attempt captured the View
+            // struct in a completion handler and caused a display regression;
+            // this retry is the mandated non-capture mechanism: prewarm's
+            // batch-end path already sends store.objectWillChange (only when
+            // real decrypts ran), so observe that publisher — debounced —
+            // and rebuild the displayed cache.
+            // Loop-freedom reasoning: the rebuild's prewarm re-pass finds an
+            // empty uncached set → early return, no send; an items-change
+            // burst coalesces into one debounced fire, which the existing
+            // .onChange(of: store.items) rebuild path also answers (one extra
+            // cache-hit rebuild at most). mergePendingDiagnostics SETs zero
+            // state once and then compares equal, so it can't sustain a loop.
+            .onReceive(store.objectWillChange.debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)) { _ in
+                updateDisplayedItemsCache()
+            }
             // M8 fix: use NSCalendarDayChanged notification (fires at midnight) instead of
             // Timer.publish(every: 60). Reduces wakeups from 1440/day to 1/day, and removes
             // the synchronous-write-of-@State-in-onReceive pattern that triggered SwiftUI warnings.

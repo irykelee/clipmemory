@@ -247,4 +247,76 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         XCTAssertEqual(store.contentCache.object(forKey: ocrKey) as? String,
                        "ocr-text-in-image", "cached OCR text must match")
     }
+
+    // MARK: - ID-PERF-0019 (2026-08-01 audit): in-flight batch coalescing
+
+    /// Rapid successive calls must not overlap independent background batches:
+    /// the second call is coalesced as the pending "latest request" and
+    /// drained as a follow-up round. Every completion fires exactly once,
+    /// on the main thread.
+    func testPrewarmCoalescesRapidSuccessiveCalls() {
+        let store = ClipboardStore.shared
+        for i in 0..<10 {
+            store.addItem(ClipboardItem(content: "coalesce-\(i)", type: .text))
+        }
+        store.contentCache.removeAllObjects()
+
+        let lock = NSLock()
+        var callsA = 0, callsB = 0
+        var aOnMain = false, bOnMain = false
+
+        // Call 1 sets prewarmInFlight synchronously (under lock) BEFORE
+        // dispatching its batch, so call 2 — issued immediately after on the
+        // same thread — deterministically takes the coalescing path (or, at
+        // worst on an extremely fast machine, the all-cached early return;
+        // the assertions hold either way).
+        store.prewarmDecryptionCache(items: store.items) {
+            lock.lock(); callsA += 1; aOnMain = Thread.isMainThread; lock.unlock()
+        }
+        store.prewarmDecryptionCache(items: store.items) {
+            lock.lock(); callsB += 1; bOnMain = Thread.isMainThread; lock.unlock()
+        }
+
+        let exp = expectation(description: "coalesced rounds complete")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp.fulfill() }
+        wait(for: [exp], timeout: 5.0)
+
+        lock.lock()
+        XCTAssertEqual(callsA, 1, "first completion must fire exactly once")
+        XCTAssertEqual(callsB, 1, "coalesced completion must fire exactly once")
+        XCTAssertTrue(aOnMain, "first completion must fire on the main thread")
+        XCTAssertTrue(bOnMain, "coalesced completion must fire on the main thread")
+        lock.unlock()
+        for item in store.items {
+            XCTAssertNotNil(store.contentCache.object(forKey: item.id.uuidString as NSString),
+                            "item must be cached after the coalesced rounds")
+        }
+    }
+
+    /// The coalesced "latest request" must actually run: items that were only
+    /// in the SECOND call's workingSet get decrypted by the follow-up round
+    /// (not dropped because round 1 never saw them).
+    func testPrewarmCoalescedFollowUpRoundDecryptsNewerItems() {
+        let store = ClipboardStore.shared
+        var firstSet: [ClipboardItem] = []
+        var secondSet: [ClipboardItem] = []
+        for i in 0..<5 {
+            firstSet.append(ClipboardItem(content: "round1-\(i)", type: .text))
+            secondSet.append(ClipboardItem(content: "round2-\(i)", type: .text))
+        }
+        store.items = firstSet + secondSet
+        store.contentCache.removeAllObjects()
+
+        let doneB = expectation(description: "coalesced completion fired")
+        store.prewarmDecryptionCache(items: firstSet)
+        store.prewarmDecryptionCache(items: secondSet) { doneB.fulfill() }
+        wait(for: [doneB], timeout: 5.0)
+
+        // Cache writes happen before the completion hop, so by the time the
+        // completion fired the follow-up round's results are visible.
+        for item in secondSet {
+            XCTAssertNotNil(store.contentCache.object(forKey: item.id.uuidString as NSString),
+                            "follow-up round must decrypt the coalesced request's items")
+        }
+    }
 }

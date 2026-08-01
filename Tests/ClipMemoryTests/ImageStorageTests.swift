@@ -855,4 +855,20 @@ final class ImageStorageTests: XCTestCase {
         let cap = ImageStorage.maxImageSize
         XCTAssertEqual(cap, 50 * 1024 * 1024, "shared cap must be 50 MB")
     }
+
+    // MARK: - ID-SECURITY-0007 (2026-08-01 audit): written files are 0o600
+
+    /// saveImage must tighten the written encrypted file to owner-only
+    /// (0o600) after the atomic write — defense in depth on top of the
+    /// 0o700 directory and AES-GCM content encryption.
+    func testSavedImageFileHasOwnerOnlyPermissions() throws {
+        let uuid = newTestUUID()
+        let filename = try XCTUnwrap(saveAndWait(makePNGData(), uuid: uuid),
+                                     "saveImage must succeed for a valid PNG")
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+        let attrs = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let perms = try XCTUnwrap(attrs[.posixPermissions] as? Int)
+        XCTAssertEqual(perms & 0o777, 0o600,
+                       "saved image file must be owner-only (0o600), got \(String(perms & 0o777, radix: 8))")
+    }
 }

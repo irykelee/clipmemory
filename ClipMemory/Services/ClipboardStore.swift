@@ -446,7 +446,12 @@ final class ClipboardStore: ObservableObject {
         dedupHashes = Set(items.compactMap { $0.contentHash })
     }
 
-    let contentCache: NSCache<NSString, NSString> = {
+    // ID-SYNC-0003 (2026-08-01 audit): nonisolated(unsafe) so the nonisolated
+    // decrypt kernels (getDecryptedContent / getRTFPlaintext /
+    // getDecryptedOcrText) can touch the caches from prewarm's utility-queue
+    // workers without violating @MainActor isolation. Safe: NSCache is
+    // documented thread-safe for concurrent object(forKey:)/setObject.
+    nonisolated(unsafe) let contentCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
         cache.countLimit = 500
         cache.totalCostLimit = 10 * 1024 * 1024 // 10MB limit
@@ -455,7 +460,9 @@ final class ClipboardStore: ObservableObject {
 
     /// Cache for parsed RTF plaintext — avoids re-parsing RTF on every access
     /// in search/filter paths where `plainTextFromRTFFallback` is hit repeatedly.
-    private let rtfPlaintextCache: NSCache<NSString, NSString> = {
+    /// ID-SYNC-0003: nonisolated(unsafe), same NSCache thread-safety contract
+    /// as contentCache above.
+    nonisolated(unsafe) private let rtfPlaintextCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
         cache.countLimit = 500
         cache.totalCostLimit = 10 * 1024 * 1024 // 10MB limit
@@ -504,12 +511,16 @@ final class ClipboardStore: ObservableObject {
     /// never land inside a SwiftUI view-body update (the "open full window
     /// freezes" bug class). The set also short-circuits repeat decrypt attempts
     /// in the gap before the merge lands.
-    private var pendingFailedIDs = Set<UUID>()
-    private let pendingFailedIDsLock = NSLock()
+    // ID-SYNC-0003 (2026-08-01 audit): nonisolated(unsafe) — every access is
+    // bracketed by the paired NSLock (contract unchanged since C5/P0-2), so
+    // the nonisolated decrypt kernels may read/append from any thread.
+    nonisolated(unsafe) private var pendingFailedIDs = Set<UUID>()
+    nonisolated(unsafe) private let pendingFailedIDsLock = NSLock()
 
     // P0-2 F4: 诊断聚合 buffer（复用 C5 模式，避免 view-body 内 publish）
-    private var pendingDiagnostics: [PendingDiagnostic] = []
-    private let pendingDiagnosticsLock = NSLock()
+    // ID-SYNC-0003: nonisolated(unsafe), same NSLock contract as above.
+    nonisolated(unsafe) private var pendingDiagnostics: [PendingDiagnostic] = []
+    nonisolated(unsafe) private let pendingDiagnosticsLock = NSLock()
 
     enum PendingDiagnostic {
         // N4 minor: .success 删除（getDecryptedContent 不再 append）
@@ -1302,7 +1313,13 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
         return added
     }
 
-    func getDecryptedContent(_ item: ClipboardItem) -> String? {
+    // ID-SYNC-0003 (2026-08-01 audit): nonisolated decrypt kernel. Every
+    // state this touches is thread-safe by contract — contentCache (NSCache),
+    // isDecryptionPendingFailed / pendingDiagnostics / scheduleDecryptionFailedMark
+    // (NSLock-guarded), ServiceContainer.crypto.decryptWithReason (internally
+    // NSLock-guarded; ImageStorage already decrypts/encrypts with it off-main).
+    // Called from @MainActor read paths AND prewarm's utility-queue workers.
+    nonisolated func getDecryptedContent(_ item: ClipboardItem) -> String? {
         // Image items store a filename (UUID.png), not encrypted text. Decrypting
         // a filename always fails and would incorrectly mark the item as
         // decryptionFailed. ImageStorage handles image-file encryption separately.
@@ -1361,7 +1378,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     }
 
     /// C5: lock-guarded check so any thread can cheaply bail on pending failures.
-    private func isDecryptionPendingFailed(_ id: UUID) -> Bool {
+    /// ID-SYNC-0003: nonisolated — NSLock contract makes it callable off-main.
+    nonisolated private func isDecryptionPendingFailed(_ id: UUID) -> Bool {
         pendingFailedIDsLock.lock()
         defer { pendingFailedIDsLock.unlock() }
         return pendingFailedIDs.contains(id)
@@ -1370,7 +1388,8 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// P0-2 T5: append a diagnostic from any call path (search, OCR, RTF).
     /// Internal so extensions in other files (ClipboardStore+OCR) can reach it
     /// without duplicating the lock/unlock dance.
-    func recordPendingDiagnostic(_ d: PendingDiagnostic) {
+    /// ID-SYNC-0003: nonisolated — NSLock contract makes it callable off-main.
+    nonisolated func recordPendingDiagnostic(_ d: PendingDiagnostic) {
         pendingDiagnosticsLock.lock()
         pendingDiagnostics.append(d)
         pendingDiagnosticsLock.unlock()
@@ -1438,6 +1457,20 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// pattern. Mirroring backfillMaxConcurrentOCR's value so the codebase
     /// has one cap for "compute-bound per-item work".
     private static let prewarmMaxConcurrent = 4
+
+    // ID-PERF-0019 (2026-08-01 audit): in-flight batch coalescing. Rapid
+    // successive prewarm calls used to overlap N independent background
+    // batches — each with its own semaphore — reaching N×prewarmMaxConcurrent
+    // concurrent AES-GCM decrypts. Now, while a batch runs, later calls only
+    // record their "latest request" (workingSet + completion); the running
+    // batch drains the pending request as an immediate follow-up round, so
+    // concurrency never exceeds prewarmMaxConcurrent. NSLock-guarded because
+    // the drain check runs on a utility queue while calls arrive on main.
+    nonisolated(unsafe) private let prewarmStateLock = NSLock()
+    nonisolated(unsafe) private var prewarmInFlight = false
+    nonisolated(unsafe) private var prewarmPendingItems: [ClipboardItem]?
+    nonisolated(unsafe) private var prewarmPendingCompletions: [() -> Void] = []
+
     func prewarmDecryptionCache(items: [ClipboardItem], cap: Int? = nil, completion: (() -> Void)? = nil) {
         let workingSet = cap.map { items.prefix($0) } ?? items.prefix(items.count)
         let uncached = workingSet.filter { item in
@@ -1453,6 +1486,17 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
             completion?()
             return
         }
+        // ID-PERF-0019: coalesce with a running batch instead of overlapping.
+        prewarmStateLock.lock()
+        if prewarmInFlight {
+            prewarmPendingItems = Array(uncached)
+            if let completion { prewarmPendingCompletions.append(completion) }
+            prewarmStateLock.unlock()
+            return
+        }
+        prewarmInFlight = true
+        prewarmStateLock.unlock()
+
         // ID-PERF-0004 (2026-07-30 audit): cap concurrent decrypts via
         // DispatchSemaphore, mirroring the OCR backfill pattern (L-7). The
         // previous sequential for-loop on a single utility queue was 10-100s
@@ -1463,9 +1507,26 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                 Task { @MainActor in completion?() }
                 return
             }
+            self.runPrewarmBatches(firstRound: Array(uncached), firstCompletion: completion)
+        }
+    }
+
+    /// ID-PERF-0019 (2026-08-01 audit): one decrypt round, then an immediate
+    /// follow-up round for any request coalesced while the round was running.
+    /// Each round notifies its own completions exactly once on the main thread
+    /// and sends objectWillChange (the round did real decrypt work), matching
+    /// the pre-coalescing per-batch semantics.
+    ///
+    /// ID-SYNC-0003: nonisolated — the per-item calls hit only the nonisolated
+    /// decrypt kernels (getDecryptedContent / getRTFPlaintext /
+    /// getDecryptedOcrText), which touch thread-safe state exclusively.
+    nonisolated private func runPrewarmBatches(firstRound: [ClipboardItem], firstCompletion: (() -> Void)?) {
+        var round = firstRound
+        var roundCompletions: [() -> Void] = firstCompletion.map { [$0] } ?? []
+        while true {
             let semaphore = DispatchSemaphore(value: Self.prewarmMaxConcurrent)
             let group = DispatchGroup()
-            for item in uncached {
+            for item in round {
                 semaphore.wait()
                 group.enter()
                 DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -1477,15 +1538,33 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
                 }
             }
             group.wait()
+            // Notify this round's requesters, then check whether a newer
+            // request was coalesced while the round was working.
+            let finishedCompletions = roundCompletions
             Task { @MainActor [weak self] in
                 self?.objectWillChange.send()
-                completion?()
+                finishedCompletions.forEach { $0() }
+            }
+            prewarmStateLock.lock()
+            if let pending = prewarmPendingItems {
+                prewarmPendingItems = nil
+                let pendingCompletions = prewarmPendingCompletions
+                prewarmPendingCompletions = []
+                prewarmStateLock.unlock()
+                round = pending
+                roundCompletions = pendingCompletions
+            } else {
+                prewarmInFlight = false
+                prewarmStateLock.unlock()
+                return
             }
         }
     }
 
     /// C5: buffer a failed id and schedule exactly one async merge per new id.
-    private func scheduleDecryptionFailedMark(_ id: UUID) {
+    /// ID-SYNC-0003: nonisolated — NSLock insert + Task hop to @MainActor,
+    /// safe from prewarm's utility-queue workers.
+    nonisolated private func scheduleDecryptionFailedMark(_ id: UUID) {
         pendingFailedIDsLock.lock()
         let inserted = pendingFailedIDs.insert(id).inserted
         pendingFailedIDsLock.unlock()
@@ -1542,7 +1621,11 @@ private func handleImageMigrationCompleted(_ notification: Notification) {
     /// the RTF path avoid caching a stale fallback when .keyUnavailable later
     /// resolves — the old path cached "Rich Text" (the fallback label) and
     /// returned it forever even after the key became available.
-    func getRTFPlaintext(_ item: ClipboardItem) -> String {
+    // ID-SYNC-0003 (2026-08-01 audit): nonisolated decrypt kernel — touches
+    // only rtfPlaintextCache (NSCache), ServiceContainer.crypto (internally
+    // locked), RichTextParser/L10n (stateless / lock-guarded), and the
+    // NSLock-guarded failure/diagnostics helpers. Callable off-main.
+    nonisolated func getRTFPlaintext(_ item: ClipboardItem) -> String {
         guard item.type == .richText else { return "" }
         let key = item.id.uuidString as NSString
         if let cached = rtfPlaintextCache.object(forKey: key) {

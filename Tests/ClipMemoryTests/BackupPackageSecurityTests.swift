@@ -228,4 +228,137 @@ import CryptoKit
             }
         }
     }
+
+    // MARK: - ID-SECURITY-0006 (2026-08-01 audit): pre-extraction member check
+
+    /// Minimal zip writer (single stored entry, no compression) so a test can
+    /// plant member names that `ditto -c` would never produce — e.g. `../`.
+    /// CRC is left 0: the member check runs BEFORE extraction, so nothing
+    /// ever validates the payload.
+    private func makeZipWithMember(_ memberName: String, payload: Data = Data("x".utf8)) -> Data {
+        func le16(_ v: UInt16) -> [UInt8] { [UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)] }
+        func le32(_ v: UInt32) -> [UInt8] {
+            [UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)]
+        }
+        let name = Data(memberName.utf8)
+        let n = UInt32(payload.count)
+        var d = Data()
+        // Local file header
+        d.append(contentsOf: le32(0x04034B50)) // signature
+        d.append(contentsOf: le16(20))         // version needed
+        d.append(contentsOf: le16(0))          // flags
+        d.append(contentsOf: le16(0))          // method: stored
+        d.append(contentsOf: le16(0))          // mod time
+        d.append(contentsOf: le16(0))          // mod date
+        d.append(contentsOf: le32(0))          // crc32 (unused)
+        d.append(contentsOf: le32(n))          // compressed size
+        d.append(contentsOf: le32(n))          // uncompressed size
+        d.append(contentsOf: le16(UInt16(name.count)))
+        d.append(contentsOf: le16(0))          // extra len
+        d.append(name)
+        d.append(payload)
+        let cdOffset = UInt32(d.count)
+        // Central directory record
+        d.append(contentsOf: le32(0x02014B50))
+        d.append(contentsOf: le16(20))         // version made by
+        d.append(contentsOf: le16(20))         // version needed
+        d.append(contentsOf: le16(0))          // flags
+        d.append(contentsOf: le16(0))          // method
+        d.append(contentsOf: le16(0))          // mod time
+        d.append(contentsOf: le16(0))          // mod date
+        d.append(contentsOf: le32(0))          // crc32
+        d.append(contentsOf: le32(n))
+        d.append(contentsOf: le32(n))
+        d.append(contentsOf: le16(UInt16(name.count)))
+        d.append(contentsOf: le16(0))          // extra len
+        d.append(contentsOf: le16(0))          // comment len
+        d.append(contentsOf: le16(0))          // disk number start
+        d.append(contentsOf: le16(0))          // internal attrs
+        d.append(contentsOf: le32(0))          // external attrs
+        d.append(contentsOf: le32(0))          // local header offset
+        d.append(name)
+        let cdSize = UInt32(d.count) - cdOffset
+        // End of central directory
+        d.append(contentsOf: le32(0x06054B50))
+        d.append(contentsOf: le16(0))          // disk number
+        d.append(contentsOf: le16(0))          // cd start disk
+        d.append(contentsOf: le16(1))          // entries this disk
+        d.append(contentsOf: le16(1))          // total entries
+        d.append(contentsOf: le32(cdSize))
+        d.append(contentsOf: le32(cdOffset))
+        d.append(contentsOf: le16(0))          // comment len
+        return d
+    }
+
+    /// A zip carrying a `../` member must be rejected as corrupt BEFORE
+    /// `ditto -x` runs — and nothing may be written outside the staging dir
+    /// (which lives directly under the shared temporary directory).
+    func testImportRejectsPackageWithTraversalMember() throws {
+        let uniqueName = "cm-evil-\(UUID().uuidString).png"
+        let packageURL = tempRoot.appendingPathComponent("traversal.clipmemory")
+        try makeZipWithMember("../\(uniqueName)").write(to: packageURL)
+        XCTAssertThrowsError(try importPackage(packageURL)) { error in
+            guard case BackupPackageError.corruptedData(_, .manifest) = error else {
+                return XCTFail("expected corruptedData(_, .manifest), got \(error)")
+            }
+        }
+        let escaped = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueName)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: escaped.path),
+                       "traversal member must never be written outside staging")
+    }
+
+    /// Same check for absolute-path and backslash members (Windows-style
+    /// traversal / absolute overwrite) — both rejected pre-extraction.
+    func testImportRejectsPackageWithAbsoluteAndBackslashMembers() throws {
+        for (name, member) in [
+            ("absolute.clipmemory", "/tmp/cm-evil-abs.png"),
+            ("backslash.clipmemory", "Images\\..\\cm-evil-bs.png"),
+        ] {
+            let packageURL = tempRoot.appendingPathComponent(name)
+            try makeZipWithMember(member).write(to: packageURL)
+            XCTAssertThrowsError(try importPackage(packageURL),
+                                 "member \(member) must be rejected") { error in
+                guard case BackupPackageError.corruptedData(_, .manifest) = error else {
+                    return XCTFail("expected corruptedData(_, .manifest), got \(error)")
+                }
+            }
+        }
+    }
+
+    /// Images/ entries whose names fail the UUID+.png whitelist are skipped
+    /// (warning logged) — never written into the local images directory. The
+    /// valid entry imports normally and lands owner-only 0o600
+    /// (ID-SECURITY-0007). Manifest is rewritten so the count check (2 .png
+    /// entries in staging) passes and the test isolates the whitelist skip.
+    func testImportSkipsInvalidImageFilenameAndImportsValidWith0600() throws {
+        let packageCrypto = CryptoService(customKeyData: Data((32..<64).map { UInt8($0 & 0xFF) }))
+        let validName = "\(UUID().uuidString).png"
+        let packageURL = try buildPackage(name: "mixed-images.clipmemory") { staging in
+            let images = staging.appendingPathComponent("Images", isDirectory: true)
+            try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+            let plain = Data((0..<64).map { UInt8($0) })
+            let encrypted = try XCTUnwrap(packageCrypto.encryptData(plain))
+            try encrypted.write(to: images.appendingPathComponent(validName))
+            try Data("garbage".utf8).write(to: images.appendingPathComponent("not-a-uuid.png"))
+            // buildPackage declared imageCount: 0; staging now holds 2 .png
+            // entries, so rewrite the manifest to keep validateManifestCounts
+            // out of this test's way.
+            let manifestURL = staging.appendingPathComponent("manifest.json")
+            var manifest = try JSONDecoder().decode(BackupManifest.self, from: Data(contentsOf: manifestURL))
+            manifest.imageCount = 2
+            try JSONEncoder().encode(manifest).write(to: manifestURL)
+        }
+        let result = try importPackage(packageURL)
+        XCTAssertEqual(result.imagesImported, 1, "only the whitelisted image may import")
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: imagesDir.appendingPathComponent("not-a-uuid.png").path),
+            "invalid filename must never be written to the images directory")
+        let imported = imagesDir.appendingPathComponent(validName)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: imported.path),
+                      "valid image must be imported")
+        let attrs = try FileManager.default.attributesOfItem(atPath: imported.path)
+        let perms = try XCTUnwrap(attrs[.posixPermissions] as? Int)
+        XCTAssertEqual(perms & 0o777, 0o600,
+                       "imported image must be owner-only (0o600), got \(String(perms & 0o777, radix: 8))")
+    }
 }

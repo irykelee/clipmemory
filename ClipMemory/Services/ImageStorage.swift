@@ -347,7 +347,10 @@ class ImageStorage {
 
     /// Validates that a filename is safe: must be a UUID string + ".png" extension.
     /// Prevents path traversal attacks where content like "../../.ssh/id_rsa" could be used.
-    private func isValidFilename(_ filename: String) -> Bool {
+    /// ID-SECURITY-0006 (2026-08-01 audit): promoted to `static` (was private
+    /// instance) so BackupPackage.importImages shares the same whitelist for
+    /// packaged image names — two divergent validators would drift.
+    static func isValidFilename(_ filename: String) -> Bool {
         guard filename.hasSuffix(".png") else { return false }
         let nameWithoutExt = String(filename.dropLast(4))
         return UUID(uuidString: nameWithoutExt) != nil
@@ -457,6 +460,18 @@ class ImageStorage {
                 return
             }
 
+            // ID-SECURITY-0007 (2026-08-01 audit): tighten the written image
+            // file to 0o600 (owner-only). Defense in depth — the images
+            // directory is already 0o700 and the content is AES-GCM encrypted.
+            // `.atomic` writes via a temp-file rename, so the permission must
+            // be set on the FINAL path AFTER the write. Log-only on failure:
+            // never fail an otherwise-successful save over a chmod.
+            do {
+                try self.fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            } catch {
+                self.logger.warning("Failed to set 0o600 on image file: \(error.localizedDescription)")
+            }
+
             // File on disk. Defer pending removal until AFTER the main-thread
             // completion handler runs — the completion handler triggers addItem
             // (via the ClipboardMonitor delegate chain), so by the time it
@@ -531,7 +546,7 @@ class ImageStorage {
     /// Used by the UI to distinguish "file missing" from "decryption failed"
     /// so users are not prompted to delete entries whose key has been corrupted.
     func imageStatus(for filename: String) -> ImageLoadStatus {
-        guard isValidFilename(filename) else { return .fileMissing }
+        guard Self.isValidFilename(filename) else { return .fileMissing }
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         // C-3 (2026-07-24 audit): the prior implementation read the file
         // OUTSIDE migrationQueue (Data(contentsOf:) at line 334) and only
@@ -685,7 +700,7 @@ class ImageStorage {
     /// without touching disk. `ClipboardStore.copyToClipboard` uses it to
     /// stay synchronous for warm images (M-5, 2026-07-24 audit).
     func cachedImageObject(filename: String) -> NSImage? {
-        guard isValidFilename(filename) else { return nil }
+        guard Self.isValidFilename(filename) else { return nil }
         return imageCache.object(forKey: filename as NSString)
     }
 
@@ -731,7 +746,7 @@ class ImageStorage {
     }
 
     func deleteImage(filename: String) {
-        guard isValidFilename(filename) else { return }
+        guard Self.isValidFilename(filename) else { return }
         imageCache.removeObject(forKey: filename as NSString)
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         // ID-03 (2026-07-30 audit): a swallowed removeItem failure leaves
@@ -759,7 +774,7 @@ class ImageStorage {
         var deleted = 0
         var failed = 0
         for file in files {
-            guard isValidFilename(file) else { continue }
+            guard Self.isValidFilename(file) else { continue }
             if filenames.contains(file) { continue }
             if inFlight.contains(file) { continue }
             // ID-SILENT-0017 (2026-07-31 audit): was `try? removeItem` with
