@@ -99,7 +99,8 @@ struct QuickBarView: View {
         // false in computeDisplayedItems) and would otherwise wait for the
         // next app-activation full-set prewarm before self-healing. prewarm
         // internally narrows to uncached items, so the extra input is cheap.
-        store.prewarmDecryptionCache(items: store.items)
+        // ID-PERF-0023 (2026-08-02 audit): 5 s throttled entry — see store.
+        store.prewarmDecryptionCacheThrottled(items: store.items)
     }
 
     /// ID-A11Y-0008 (2026-07-31 audit): shared "copy + flash + dismiss" path

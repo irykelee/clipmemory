@@ -403,7 +403,8 @@ struct ContentView: View {
         // filter (return false below) and would otherwise wait for the next
         // app-activation full-set prewarm before self-healing. prewarm
         // internally narrows to uncached items, so the extra input is cheap.
-        store.prewarmDecryptionCache(items: store.items)
+        // ID-PERF-0023 (2026-08-02 audit): 5 s throttled entry — see store.
+        store.prewarmDecryptionCacheThrottled(items: store.items)
         // H-10 (2026-07-24 audit): items changed → visible indices change too.
         recomputeVisibleGlobalIndices()
         // Update grouped items cache

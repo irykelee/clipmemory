@@ -1573,6 +1573,26 @@ final class ClipboardStore: ObservableObject {
     nonisolated(unsafe) private var prewarmPendingItems: [ClipboardItem]?
     nonisolated(unsafe) private var prewarmPendingCompletions: [() -> Void] = []
 
+    /// ID-PERF-0023 (2026-08-02 audit): view-driven prewarm entry with the
+    /// same 5 s throttle as AppDelegate's activation prewarm
+    /// (`lastPrewarmTime`, AppDelegate.swift:323). ID-VIEW-0012 made the two
+    /// view call sites (ContentView / QuickBarView) feed the FULL item set
+    /// after every debounced search / items change, so the main-thread
+    /// uncached filter in prewarmDecryptionCache ran per keystroke. Both
+    /// views now go through this shared wrapper — one timestamp for both,
+    /// so ContentView and QuickBarView can't each trigger their own pass
+    /// inside the same window. AppDelegate's observer prewarm, the
+    /// new-capture single-item prewarm (:1347), and tests keep calling
+    /// prewarmDecryptionCache directly (unthrottled).
+    private var lastViewPrewarmTime: Date = .distantPast
+
+    func prewarmDecryptionCacheThrottled(items: [ClipboardItem], interval: TimeInterval = 5) {
+        let now = Date()
+        guard now.timeIntervalSince(lastViewPrewarmTime) >= interval else { return }
+        lastViewPrewarmTime = now
+        prewarmDecryptionCache(items: items)
+    }
+
     func prewarmDecryptionCache(items: [ClipboardItem], cap: Int? = nil, completion: (() -> Void)? = nil) {
         let workingSet = cap.map { items.prefix($0) } ?? items.prefix(items.count)
         let uncached = workingSet.filter { item in
