@@ -49,7 +49,11 @@ LANG_NAMES = {
 # Fixed terminology so translations stay consistent release over release.
 GLOSSARY = {
     "剪忆": {"en": "ClipMemory", "zh-Hant": "剪憶", "ja": "ClipMemory", "ko": "ClipMemory", "es": "ClipMemory", "pt": "ClipMemory"},
-    "回收站": {"en": "Recycle Bin", "zh-Hant": "資源回收筒", "ja": "ごみ箱", "ko": "휴지통", "es": "Papelera", "pt": "Lixeira"},
+    # DOC-0003 (2026-08-02 audit): en/zh-Hant mappings previously said
+    # "Recycle Bin" / "資源回收筒", contradicting the app's own strings
+    # (en.lproj trash.title = "Trash", zh-Hant.lproj = 垃圾桶), so every
+    # sync regenerated changelog wording inconsistent with the app.
+    "回收站": {"en": "Trash", "zh-Hant": "垃圾桶", "ja": "ごみ箱", "ko": "휴지통", "es": "Papelera", "pt": "Lixeira"},
     "自动更新": {"en": "auto-update", "zh-Hant": "自動更新", "ja": "自動アップデート", "ko": "자동 업데이트", "es": "actualización automática", "pt": "atualização automática"},
     "更新源": {"en": "update feed", "zh-Hant": "更新源", "ja": "更新フィード", "ko": "업데이트 피드", "es": "feed de actualización", "pt": "feed de atualização"},
     "备份": {"en": "backup", "zh-Hant": "備份", "ja": "バックアップ", "ko": "백업", "es": "copia de seguridad", "pt": "cópia de segurança"},
@@ -106,11 +110,33 @@ def section_version(section):
     return m.group(1)
 
 
+def strip_extra_headings(section):
+    """Truncate a generated section at any second `### vX.Y.Z` heading.
+
+    DOC-0002 (2026-08-02 audit): the v2.7.2 sync inserted LLM output that
+    contained a second, untranslated `### v2.7.0` heading after the
+    translated body. insert_section only checked the TARGET text for
+    duplicate version headings, never the section itself, so the stray
+    heading was written verbatim into 5 READMEs — and survived every
+    later sync because remove_existing_section only strips blocks
+    matching the NEW version. A changelog section has exactly one
+    heading; anything from a second one on does not belong to it.
+    """
+    lines = section.strip().splitlines()
+    for i, line in enumerate(lines):
+        if i > 0 and SECTION_RE.match(line):
+            return "\n".join(lines[:i])
+    return "\n".join(lines)
+
+
 def insert_section(text, section):
     # 2026-07-23 ship review: sync used to just append, leaving duplicate
     # `### v2.5.11` blocks in the README. Caller is expected to call
     # `remove_existing_section(text, version)` first; this function now
     # asserts the precondition rather than silently appending.
+    # DOC-0002 (2026-08-02 audit): sanitize the section itself first —
+    # LLM output may carry extra version headings (see strip_extra_headings).
+    section = strip_extra_headings(section)
     if re.search(r"^### v" + re.escape(section_version(section)) + r"\b", text, re.MULTILINE):
         raise ValueError(
             "insert_section called with version that already exists in text; "

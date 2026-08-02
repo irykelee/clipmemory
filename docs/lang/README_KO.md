@@ -102,8 +102,6 @@
 - **Keychain 일시 잠금으로 인한 항목 영구 표시 수정** — 키 복구 시 자동 재시도
 - 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.7.2
 
-### v2.7.0 (2026-07-28) — F-1 @MainActor migration
-
 ### v2.7.0 (2026-07-28) — F-1 @MainActor 마이그레이션
 
 - **시작 시 언어 선택기와 UI 텍스트 일관성 수정** — 이전에는 영어 이외의 언어가 저장된 경우, 시작 후 Settings 창 내 UI 텍스트가 여전히 영어로 표시됨 (Language 선택기는 올바르게 표시). v2.7.0에서 수정 후, 시작 즉시 적용됨.

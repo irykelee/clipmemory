@@ -54,12 +54,12 @@
 - **More complete QuickBar search** — Entries not yet decrypted during a search were previously silently omitted and never filled in; results now automatically refresh and fill in the gaps after warm-up completes
 - **Duplicate entries are automatically merged** — Once the startup key is ready, duplicate entries in history (including those that slipped through during the startup window) are now automatically merged and cleaned up
 - **Faster image browsing** — Image reading is no longer blocked by the background legacy-format migration task
-- **Fix Recycle Bin entries staying blank for entire sessions** — When launched at login and the keychain had not yet been unlocked, text/link entries in the Recycle Bin previously remained blank and did not self-heal
+- **Fix Trash entries staying blank for entire sessions** — When launched at login and the keychain had not yet been unlocked, text/link entries in the Trash previously remained blank and did not self-heal
 - Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.7
 
 ### v2.7.6 (2026-08-01) — Stability and Data-Security Hardening
 
-- **Expired auto-cleanup now moves items to the Recycle Bin, with pinned items permanently exempt** — Automatic cleanup when the retention limit was reached previously deleted entries forever; it now moves them to the Recycle Bin (recoverable at any time), and pinned (favorited) entries are no longer auto-cleaned
+- **Expired auto-cleanup now moves items to the Trash, with pinned items permanently exempt** — Automatic cleanup when the retention limit was reached previously deleted entries forever; it now moves them to the Trash (recoverable at any time), and pinned (favorited) entries are no longer auto-cleaned
 - **Encryption pipeline hardening** — When keychain reads fail, the root key is no longer erroneously overwritten (avoiding a scenario where all history becomes undecryptable in extreme cases); obsolete key files are now securely overwritten before deletion; backup directory permissions have been tightened to be readable only by the current user
 - **More robust OCR** — When image text recognition hits a transient failure (e.g., system resource pressure), it now automatically retries on the next launch instead of being permanently skipped
 - **Fix occasional “cannot read” display and caching of decryption-failed entries** — When the key became ready later than the UI load, entries could appear blank or erroneously report “cannot read”; they now automatically retry and recover their display
@@ -70,9 +70,9 @@
 
 - **Fix blank bar on the right side of image preview** — When opening a tall screenshot close to the screen height in portrait mode, a large blank area appeared on the right side of the preview panel; it now auto-fits to the actual image width
 - **Fix dead code in auto-update checker** — The Sparkle auto-update checker in v2.7.4 was never started, so that version **could not receive the auto-update push for this release**. Fixed in v2.7.5; auto-update returns to normal for future versions
-- **Fix crash on Recycle Bin operations** — Deleting or restoring items in the Recycle Bin could trigger a crash (or silently act on the wrong item); fixed
-- **Fix silent failure of debounced save timer** — For non-immediate disk-write paths such as tag editing and Recycle Bin operations, the debounced save would stop working after its first trigger; a crash or force quit could lose all tag/Recycle Bin changes since the last launch
-- **Fix backups containing Recycle Bin entries failing to import** — Any backup file containing a non-empty Recycle Bin would fail on import; this is now supported
+- **Fix crash on Trash operations** — Deleting or restoring items in the Trash could trigger a crash (or silently act on the wrong item); fixed
+- **Fix silent failure of debounced save timer** — For non-immediate disk-write paths such as tag editing and Trash operations, the debounced save would stop working after its first trigger; a crash or force quit could lose all tag/Trash changes since the last launch
+- **Fix backups containing Trash entries failing to import** — Any backup file containing a non-empty Trash would fail on import; this is now supported
 - Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.5
 
 ### v2.7.4 (2026-07-31) — Wide Image Preview White Screen Fix + 6 OCR Optimizations + Performance Improvements
@@ -117,16 +117,16 @@
 - **Tag filtering changed to "AND" semantics**: When selecting multiple tags (e.g., "Mainland China" + "2026"), only items tagged with both tags are shown — no longer any single tag matching.
 - **Prompt bar appears at the top of the main list during tag filtering**: Active tags are listed as capsules; each capsule has an × on the right to remove individually, and a "Clear All" button on the right clears everything at once. Also shows "Showing X of Y items" count — at a glance confirm filtering is active.
 - **Added an × clear button to the right of the search box**: After searching a keyword, click × to clear directly — no need to delete character by character. The search box automatically gains focus, ready for the next keyword.
-- **List refreshes instantly after Recycle Bin deletion**: Previously, after deleting Recycle Bin items, other actions were needed to refresh the list. Now clicking "Delete Permanently" / "Empty" takes effect immediately.
+- **List refreshes instantly after Trash deletion**: Previously, after deleting Trash items, other actions were needed to refresh the list. Now clicking "Delete Permanently" / "Empty" takes effect immediately.
 - Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.6.2
 
 ### v2.6.1 (2026-07-26) — Audit Fixes & QuickBar Repair
 
 - **Fixed "Open Full Window" button in QuickBar not responding on second click** — Menu bar experience restored to smooth operation
-- **15 potential issues resolved after comprehensive code audit** — Encryption key failure popup no longer intrudes on underlying services; Recycle Bin now fully modular; OCR errors are diagnosable; settings page visual regressions are guarded
+- **15 potential issues resolved after comprehensive code audit** — Encryption key failure popup no longer intrudes on underlying services; Trash now fully modular; OCR errors are diagnosable; settings page visual regressions are guarded
 - **QuickBar "Open Full Window" unresponsive on second click** — `@State` was being reset after window closed; window instance now remains stable, allowing normal opening on each click
 - **Cross‑thread crash could occur when capturing content before encryption key is ready on fresh install** — No longer triggers concurrency exceptions in extreme cases (copying within the first milliseconds of first launch)
-- **Tags and Recycle Bin save each new operation to a background queue** — Batch operations (importing 100 tags, emptying Recycle Bin) no longer cause resource thrashing
+- **Tags and Trash save each new operation to a background queue** — Batch operations (importing 100 tags, emptying Trash) no longer cause resource thrashing
 - Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.6.1
 
 ### v2.6.0 (2026-07-25) — Standalone Settings Window
@@ -261,13 +261,13 @@ Sorted by impact (high → medium → low):
 
 - **🌐 Fix "update error" on check** — the appcast feed moved from raw.githubusercontent.com (unreachable on some networks) to a GitHub Release asset, so update checks respond instantly. If v2.4.0 shows an update error, download v2.4.1 manually once; auto-update resumes afterwards
 
-### v2.4.0 (2026-07-18) — Recycle Bin
+### v2.4.0 (2026-07-18) — Trash
 
-- **🗑️ Recycle Bin** — Deleted items are no longer destroyed immediately. They move to a Recycle Bin and stay for 7 days (configurable in Settings), during which you can restore or permanently delete them. Emptying the bin requires confirmation; expired items are cleaned up automatically.
+- **🗑️ Trash** — Deleted items are no longer destroyed immediately. They move to a Trash and stay for 7 days (configurable in Settings), during which you can restore or permanently delete them. Emptying the bin requires confirmation; expired items are cleaned up automatically.
 - **✨ Auto-update (Sparkle 2)** — In-app update checks: daily background checks plus a manual check in Settings. Update packages are verified with EdDSA signatures before one-click install and relaunch; the Homebrew Cask declares auto_updates.
 - **Data safety** — Image files are kept while their items remain in the bin; they are only deleted on permanent removal. Automatic cleanup (trim/expiry) bypasses the bin entirely.
-- **UI updates** — New "Recycle Bin" sidebar entry with a badge count; deletion confirmation text changed to "Move to Recycle Bin"; trashed items show their deletion time.
-- **Tests** — 12 new Recycle Bin tests, all passing.
+- **UI updates** — New "Trash" sidebar entry with a badge count; deletion confirmation text changed to "Move to Trash"; trashed items show their deletion time.
+- **Tests** — 12 new Trash tests, all passing.
 
 ### v2.3.0 (2026-07-17) — Tag System & Data Integrity
 

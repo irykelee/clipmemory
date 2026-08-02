@@ -104,8 +104,6 @@
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 
-### v2.7.0 (2026-07-28) — F-1 @MainActor migration
-
 - **Correção de consistência entre o seletor de idioma na inicialização e os textos da interface** — Anteriormente, se um idioma não inglês fosse salvo, os textos da UI na janela Settings ainda apareciam em inglês (o seletor de idioma exibia corretamente). Após a correção na v2.7.0, a alteração entra em vigor imediatamente na inicialização.
 - **Compatibilidade completa com Swift Concurrency nas classes principais** — `LanguageManager` / `TrashStore` / `ClipboardStore` receberam a anotação `@MainActor`, protegendo o contrato de thread principal pelo sistema de tipos, evitando regressões futuras.
 - **657 testes passaram, 0 falhas** — Reforço da arquitetura interna sem regressão funcional.

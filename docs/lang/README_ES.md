@@ -104,8 +104,6 @@
 
 ### v2.7.0 (2026-07-28) — F-1 @MainActor migration
 
-### v2.7.0 (2026-07-28) — F-1 @MainActor migration
-
 - **Corrección de consistencia entre el selector de idioma al inicio y el texto de la interfaz** — Anteriormente, si se guardaba un idioma no inglés, después del inicio el texto de la interfaz dentro de la ventana de Ajustes seguía siendo inglés (el selector de idioma se mostraba correctamente). En v2.7.0 se ha corregido para que surta efecto desde el inicio.
 - **Compatibilidad integral con concurrencia de Swift para las clases principales** — Se ha añadido `@MainActor` a las tres clases principales `LanguageManager` / `TrashStore` / `ClipboardStore`, protegiendo el contrato del hilo principal mediante el sistema de tipos, evitando regresiones futuras.
 - **657 pruebas superadas, 0 fallos** — Refuerzo de la arquitectura interna sin regresiones funcionales.
