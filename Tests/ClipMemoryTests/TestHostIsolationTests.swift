@@ -56,6 +56,7 @@ final class TestHostIsolationTests: XCTestCase {
             "UpdateFallbackFeedConsent",    // M13: UpdateServiceTests
             "LastPrimaryAppcastItemDate",   // M13: UpdateServiceTests
             "ocrPreviewEnabled",            // M13: OCRTests
+            "ClipboardTrashedItems.retentionDays", // TST-0002 (2026-08-02 audit): ClipboardStoreTrashTests
         ]
         // .some(...) wrapping keeps an explicit "key was absent" entry —
         // assigning a bare nil to a Dictionary subscript would delete it.
