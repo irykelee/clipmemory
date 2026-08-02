@@ -760,6 +760,9 @@ final class ClipboardStore: ObservableObject {
         } catch {
             quarantineCorruptBlob(key: Self.itemsStorageKey, error: error)
             items = []
+            // ID-CRASH-0003 (2026-08-02 audit): keep the ID-CRASH-0001
+            // invariant — every `items` mutation invalidates itemIndex.
+            invalidateItemIndex()
             return
         }
         // ID-STORE-0002 (2026-07-31 audit): the old `!$0.isExpired` filter

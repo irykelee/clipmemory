@@ -563,7 +563,7 @@ final class ImageStorageTests: XCTestCase {
             content: "\(keep.uuidString).png",
             type: .image
         )
-        storage.cleanupOrphanedImages(keptItems: [item])
+        storage.cleanupOrphanedImagesForTesting(keptItems: [item])
 
         XCTAssertNotNil(storage.loadImage(filename: "\(keep.uuidString).png"),
                        "Referenced image should survive cleanup")
@@ -584,7 +584,7 @@ final class ImageStorageTests: XCTestCase {
                        "Test fixture: startup flag must be cleared before call")
 
         // First call with NO images in store — must still mark the flag.
-        storage.cleanupOrphanedImages(keptItems: [])
+        storage.cleanupOrphanedImagesForTesting(keptItems: [])
 
         XCTAssertTrue(UserDefaults.standard.bool(forKey: startupCleanupKey),
                      "Startup flag must be set on the very first call, " +
@@ -634,7 +634,7 @@ final class ImageStorageTests: XCTestCase {
 
         // Run cleanup with empty keptItems — simulates the race window where
         // the store has no reference to the in-flight image yet.
-        storage.cleanupOrphanedImages(keptItems: [])
+        storage.cleanupOrphanedImagesForTesting(keptItems: [])
 
         // Wait for saveImage's main-thread completion to confirm the write succeeded.
         wait(for: [saveExp], timeout: 5.0)
@@ -685,7 +685,7 @@ final class ImageStorageTests: XCTestCase {
         // cleanupOrphanedImages proceeds past the flag check and would
         // (without the failsafe) call deleteAllExcept([]) which deletes
         // every file in the directory.
-        storage.cleanupOrphanedImages(keptItems: [])
+        storage.cleanupOrphanedImagesForTesting(keptItems: [])
 
         XCTAssertNotNil(storage.loadImage(filename: filename),
                        "Empty keptItems must skip delete (Path B failsafe) — " +

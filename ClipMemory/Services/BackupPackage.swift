@@ -138,6 +138,15 @@ final class BackupPackage {
     /// style as the M-2 image cap (50 MB) below.
     private static let maxStoreBlobBytes = 100 * 1024 * 1024
 
+    /// BKP-5 (2026-08-02 audit): cap on manifest.json / key.enc inside a
+    /// package — the last two import-path reads without a size guard
+    /// (BKP-3 covers the store blobs, M-2 the images). The manifest is
+    /// <1 KB and key.enc is exactly 60 bytes in practice, so 1 MB is
+    /// generous headroom. A larger file means a hostile or corrupt
+    /// package that would OOM the process via `Data(contentsOf:)` —
+    /// same fail-closed discipline as BKP-3.
+    private static let maxManifestBytes = 1 * 1024 * 1024
+
     static func deriveKey(passphrase: String, salt: Data, version: Int = 2) throws -> SymmetricKey {
         switch version {
         case 1:
@@ -547,7 +556,11 @@ final class BackupPackage {
         }
         try unzipArchive(archive, to: staging)
 
-        guard let manifestData = try? Data(contentsOf: staging.appendingPathComponent("manifest.json")) else {
+        let manifestURL = staging.appendingPathComponent("manifest.json")
+        // BKP-5 (2026-08-02 audit): size guard BEFORE Data(contentsOf:) —
+        // a multi-GB manifest.json would OOM the process.
+        try guardStoreBlobSize(url: manifestURL, name: "manifest.json", source: .manifest, maxBytes: maxManifestBytes)
+        guard let manifestData = try? Data(contentsOf: manifestURL) else {
             // M-7: distinguish "manifest file missing" from later corruption.
             throw BackupPackageError.corruptedData("manifest.json missing or unreadable", .manifest)
         }
@@ -565,7 +578,12 @@ final class BackupPackage {
         guard let salt = Data(base64Encoded: manifest.keySalt), salt.count >= 16 else {
             throw BackupPackageError.invalidPackage
         }
-        guard let sealedKeyData = try? Data(contentsOf: staging.appendingPathComponent("key.enc")) else {
+        let keyEncURL = staging.appendingPathComponent("key.enc")
+        // BKP-5 (2026-08-02 audit): same size guard as manifest.json —
+        // key.enc is exactly 60 bytes; a hostile oversized file would
+        // OOM the process via Data(contentsOf:).
+        try guardStoreBlobSize(url: keyEncURL, name: "key.enc", source: .manifest, maxBytes: maxManifestBytes)
+        guard let sealedKeyData = try? Data(contentsOf: keyEncURL) else {
             // M-7: same pattern — surface which file is the offender.
             throw BackupPackageError.corruptedData("key.enc missing or unreadable", .manifest)
         }
@@ -815,13 +833,16 @@ final class BackupPackage {
     /// the process. Only enforced when the size is determinable: a missing
     /// file (legal empty state, spec risk §3) has no attributes and falls
     /// through to the existing no-such-file → `[]` path in the caller.
-    private static func guardStoreBlobSize(url: URL, name: String, source: BackupFileSource) throws {
+    /// BKP-5 (2026-08-02 audit): `maxBytes` parameter added so the small
+    /// header files (manifest.json / key.enc) can share the same guard
+    /// with their own 1 MB cap.
+    private static func guardStoreBlobSize(url: URL, name: String, source: BackupFileSource, maxBytes: Int = maxStoreBlobBytes) throws {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = attrs[.size] as? Int,
-              size > maxStoreBlobBytes else { return }
-        logger.error("\(name) is \(size) bytes, exceeds \(maxStoreBlobBytes) cap — treating package as corrupt")
+              size > maxBytes else { return }
+        logger.error("\(name) is \(size) bytes, exceeds \(maxBytes) cap — treating package as corrupt")
         throw BackupPackageError.corruptedData(
-            "\(name) exceeds \(maxStoreBlobBytes) byte size cap", source
+            "\(name) exceeds \(maxBytes) byte size cap", source
         )
     }
 

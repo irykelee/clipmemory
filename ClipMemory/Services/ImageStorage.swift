@@ -861,6 +861,23 @@ class ImageStorage {
     }
 
     func cleanupOrphanedImages(keptItems: [ClipboardItem]) {
+        // ID-IMG-0002 (2026-08-02 audit): mirror the I-5 guard in init —
+        // XCTest shares the bundle-id UserDefaults domain with production,
+        // so a test run on a fresh machine would otherwise pre-set the
+        // ImageStorageStartupCleanupRan key below and disarm the
+        // first-launch cleanup guard in the user's real install.
+        if Self.isRunningTests {
+            return
+        }
+        cleanupOrphanedImagesForTesting(keptItems: keptItems)
+    }
+
+    /// ID-IMG-0002: test seam. The isRunningTests early-return above makes
+    /// the public entry a no-op under XCTest, so the cleanupOrphanedImages
+    /// regression tests (I.8, race window, Path B failsafe) call this
+    /// directly. Production's only caller (ClipboardStore.loadItems) goes
+    /// through the guarded wrapper above.
+    func cleanupOrphanedImagesForTesting(keptItems: [ClipboardItem]) {
         // Skip cleanup on first call (startup) to avoid deleting freshly migrated images
         // that haven't been added to store.items yet. The flag is set on EVERY first
         // call — even when there are no images in store — so a transient empty-store
