@@ -43,9 +43,11 @@ final class TestHostIsolationTests: XCTestCase {
     /// through save/restore. Covers fontScale (ID-STORE-0007) and the M13
     /// sweep findings — ImageStorage migration / startup-cleanup flags
     /// (ImageStorageTests), UpdateService policy / consent / baseline date
-    /// (UpdateServiceTests), and ocrPreviewEnabled (OCRTests). Same canary
+    /// (UpdateServiceTests), ocrPreviewEnabled (OCRTests), trash
+    /// retentionDays (TST-0002), and maxItems / hotkey keys
+    /// (ID-STORE-0009, 2026-08-02 v6 audit F-1). Same canary
     /// style as above: snapshot before, exercise, assert after. The canary
-    /// itself is strictly read-only — it never writes to UserDefaults.
+    /// itself restores everything it writes (see ID-STORE-0009 exercise).
     @MainActor
     func testProductionDefaultsKeysAreNotMutated() {
         let canaryKeys = [
@@ -57,6 +59,9 @@ final class TestHostIsolationTests: XCTestCase {
             "LastPrimaryAppcastItemDate",   // M13: UpdateServiceTests
             "ocrPreviewEnabled",            // M13: OCRTests
             "ClipboardTrashedItems.retentionDays", // TST-0002 (2026-08-02 audit): ClipboardStoreTrashTests
+            "maxClipboardItems",            // ID-STORE-0009 (2026-08-02 v6 audit F-1): ClipboardStore.maxItems didSet
+            "HotKeyKeyCode",                // ID-STORE-0009: HotKeyConfig.save()
+            "HotKeyModifiers",              // ID-STORE-0009: HotKeyConfig.save()
         ]
         // .some(...) wrapping keeps an explicit "key was absent" entry —
         // assigning a bare nil to a Dictionary subscript would delete it.
@@ -78,6 +83,33 @@ final class TestHostIsolationTests: XCTestCase {
         _ = UpdateService.feedPolicy
         _ = UpdateService.fallbackFeedConsent
         _ = UpdateService.lastPrimaryItemDate
+
+        // ID-STORE-0009 (2026-08-02 v6 audit F-1): exercise the maxItems
+        // didSet and HotKeyConfig.save() write paths, then restore the raw
+        // defaults in-line (a `defer` would run after the assertions below).
+        // Restore is absence-aware: on a fresh CI sandbox these keys may not
+        // exist, and blindly writing back the read value would make the key
+        // "appear" and trip the canary.
+        let maxItemsBefore = UserDefaults.standard.object(forKey: "maxClipboardItems")
+        store.maxItems = 12345
+        if let maxItemsBefore {
+            UserDefaults.standard.set(maxItemsBefore, forKey: "maxClipboardItems")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
+        }
+        let hotKeyCodeBefore = UserDefaults.standard.object(forKey: "HotKeyKeyCode")
+        let hotKeyModifiersBefore = UserDefaults.standard.object(forKey: "HotKeyModifiers")
+        HotKeyConfig(keyCode: 0, modifiers: 256).save()
+        if let hotKeyCodeBefore {
+            UserDefaults.standard.set(hotKeyCodeBefore, forKey: "HotKeyKeyCode")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "HotKeyKeyCode")
+        }
+        if let hotKeyModifiersBefore {
+            UserDefaults.standard.set(hotKeyModifiersBefore, forKey: "HotKeyModifiers")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "HotKeyModifiers")
+        }
 
         for key in canaryKeys {
             let after = UserDefaults.standard.object(forKey: key)
