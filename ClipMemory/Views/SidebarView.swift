@@ -23,17 +23,22 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ID-VIEW-0017 (2026-08-03, user-driven): brand logo moved out
-            // of the sidebar header into the window toolbar (toolbarContent,
-            // .automatic placement) — matching macOS system apps where the
-            // sidebar is pure navigation. This frees ~36pt of vertical space
-            // here for the tag list and reduces the need to scroll.
-            //
+            // ID-VIEW-0018 (2026-08-03, user-driven): brand logo moved
+            // BACK into the sidebar header (ID-VIEW-0017 had it in the
+            // toolbar at the 800pt min width, where the leading "剪" got
+            // clipped by the date chips). Now back at the top of the
+            // sidebar, matching Finder / Notes / Reminders where the
+            // brand lives at the top of the sidebar column.
+            LogoView()
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 14)
             // Search field styling follows the macOS sidebar-search
             // convention (Finder / System Settings): a distinct filled
             // capsule with a hairline border and real breathing room
             // above/below, instead of the old translucent toolbar look
-            // that blended into the background.
+            // that blended into the background. (ID-VIEW-0017 styling,
+            // kept after the logo moved back here.)
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
@@ -78,8 +83,9 @@ struct SidebarView: View {
                     )
             )
             .padding(.horizontal, 12)
-            .padding(.top, 14)
             .padding(.bottom, 10)
+            // (top padding intentionally 0 — the LogoView above already
+            // provides 14pt of bottom breathing room.)
             List(selection: $selectedTab) {
                 ForEach([SidebarTab.all, .text, .image, .link, .richText], id: \.self) { tab in
                     Label(tab.label, systemImage: tab.icon)
