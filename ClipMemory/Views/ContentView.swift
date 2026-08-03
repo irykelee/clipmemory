@@ -765,14 +765,23 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // ID-VIEW-0018 (2026-08-03, user-driven): brand logo taken OUT of
-        // the toolbar (where it collided with the date chips at 800pt —
-        // the leading edge clipped the Chinese "剪" character) and put
-        // back in the sidebar header (the red-box position in the
-        // screenshot), which is the macOS system-app sidebar pattern
-        // (Finder / Notes / Reminders all show the brand at the top of
-        // the sidebar, not in the toolbar).
-        //
+        // ID-VIEW-0019 (2026-08-03, user-driven): brand logo moved BACK
+        // into the toolbar as .principal → centered in the title bar —
+        // the position the user actually meant in the red-box screenshot.
+        // (ID-VIEW-0017 had it as .automatic, leading edge, which collided
+        // with the date chips at 800pt and clipped the "剪". ID-VIEW-0018
+        // misread the red-box and put it in the sidebar header; user
+        // clarified it's the detail top-center.) .principal has ~360pt
+        // of horizontal space at the 800pt min width, and the logo only
+        // needs ~120pt, so the ID-VIEW-0014 narrow-window clipping risk
+        // doesn't apply here.
+        ToolbarItem(placement: .principal) {
+            // expandWidth: false — in a toolbar the logo hugs its content
+            // instead of stretching to fill the bar (the sidebar uses the
+            // default expandWidth: true).
+            LogoView(expandWidth: false)
+                .fixedSize()
+        }
         // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
         // sidebar header (SidebarView), matching the macOS system-app
         // convention (Finder / App Store / Notes). The window toolbar now
