@@ -749,7 +749,11 @@ struct ContentView: View {
         // room; at 440pt a handful of tags forced the sidebar List to
         // scroll. 520pt keeps ~3-4 tags visible without scrolling, and the
         // sidebar scroll indicator is now hidden anyway.
-        .frame(minWidth: 800, minHeight: 520)
+        // ID-VIEW-0028 (2026-08-03, user-driven): min size bumped to
+        // 850×600pt. With the larger logo (ID-VIEW-0027) and the
+        // completed layout, the sidebar at 190pt wide + content at 660pt
+        // wide is the smallest proportions that still feel balanced.
+        .frame(minWidth: 850, minHeight: 600)
         .toolbar { self.toolbarContent }
         // ID-VIEW-0024 (2026-08-03, user-driven): brand logo as a
         // topLeading overlay instead of a toolbar item. The overlay sits

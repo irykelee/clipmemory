@@ -30,15 +30,27 @@ struct SidebarView: View {
             // not the sidebar header, not a .principal center, not a
             // .automatic leading spot. The sidebar is navigation-only.
             //
-            // Search field styling follows the macOS sidebar-search
-            // convention (Finder / System Settings): a distinct filled
-            // capsule with a hairline border and real breathing room
-            // above/below, instead of the old translucent toolbar look
-            // that blended into the background. (ID-VIEW-0017 styling.)
+            // ID-VIEW-0028 (2026-08-03, user-driven): search field restyled
+            // to match the macOS 26 (Tahoe) system default sidebar search
+            // box (referenced capcap-rec-260803-232039.mp4). Key changes:
+            //   - the magnifying glass icon is now a CHIP (circular
+            //     filled background) instead of a bare glyph — this is
+            //     the macOS 26 standard
+            //   - the container is a rounded rect with a 1pt colored
+            //     border that fills with the accent color when focused
+            //   - padding is tighter (8pt horiz, 6pt vert) so the box
+            //     is the same height as other sidebar rows
+            //   - the clear ✕ button is hidden when empty (kept from
+            //     ID-VIEW-0017) and only shown when there's text
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: sz(11)))
+                ZStack {
+                    Circle()
+                        .fill(Color.secondary.opacity(0.15))
+                        .frame(width: 16, height: 16)
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 9, weight: .semibold))
+                }
                 TextField(L10n.searchPlaceholder, text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: sz(12)))
@@ -66,16 +78,18 @@ struct SidebarView: View {
                     .accessibilityLabel(L10n.searchClear)
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(
-                // macOS sidebar-search look: solid fill + hairline border,
-                // clearly distinct from the sidebar background.
+                // macOS 26 sidebar-search look: rounded rect with a
+                // colored border that fills with the accent tint when
+                // focused. Focus state is bound to the same isSearchFocused
+                // @FocusState that the TextField uses.
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .fill(isSearchFocused ? Color.accentColor.opacity(0.08) : Color(nsColor: .textBackgroundColor).opacity(0.5))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
+                            .stroke(isSearchFocused ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.25), lineWidth: isSearchFocused ? 1.5 : 1)
                     )
             )
             .padding(.horizontal, 12)
