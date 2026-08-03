@@ -4,6 +4,13 @@ import SwiftUI
 struct LogoView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
 
+    // ID-VIEW-0017 (2026-08-03, user-driven): the logo moved from the
+    // sidebar header into the window toolbar. In the sidebar it should
+    // span the column width (`.frame(maxWidth: .infinity)`); inside a
+    // ToolbarItem it must NOT — it should hug its content and sit on the
+    // leading edge. `expandWidth` selects the behavior at the call site.
+    var expandWidth: Bool = true
+
     /// True when appName contains both Chinese and English (zh-Hans / zh-Hant)
     private var isBilingual: Bool {
         let name = L10n.appName
@@ -33,7 +40,7 @@ struct LogoView: View {
                     .font(.system(size: sz(11), weight: .medium))
                     .foregroundColor(.secondary)
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: expandWidth ? .infinity : nil)
             .padding(.vertical, 4)
             .accessibilityLabel(L10n.appName)
         } else {
@@ -41,7 +48,7 @@ struct LogoView: View {
             Text(L10n.appName)
                 .font(.system(size: sz(16), weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: expandWidth ? .infinity : nil)
                 .padding(.vertical, 4)
                 .accessibilityLabel(L10n.appName)
         }

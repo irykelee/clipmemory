@@ -23,12 +23,18 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            LogoView()
-                .padding(.horizontal, 8)
-            // ID-VIEW-0015: search field in the sidebar header, matching
-            // Finder / App Store / Notes. Visual styling mirrors the old
-            // toolbar field (ContentView) so the switch is invisible.
-            HStack(spacing: 4) {
+            // ID-VIEW-0017 (2026-08-03, user-driven): brand logo moved out
+            // of the sidebar header into the window toolbar (toolbarContent,
+            // .automatic placement) — matching macOS system apps where the
+            // sidebar is pure navigation. This frees ~36pt of vertical space
+            // here for the tag list and reduces the need to scroll.
+            //
+            // Search field styling follows the macOS sidebar-search
+            // convention (Finder / System Settings): a distinct filled
+            // capsule with a hairline border and real breathing room
+            // above/below, instead of the old translucent toolbar look
+            // that blended into the background.
+            HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
                     .font(.system(size: sz(11)))
@@ -59,12 +65,21 @@ struct SidebarView: View {
                     .accessibilityLabel(L10n.searchClear)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
-            .cornerRadius(6)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 10)
             .padding(.vertical, 6)
+            .background(
+                // macOS sidebar-search look: solid fill + hairline border,
+                // clearly distinct from the sidebar background.
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
+                    )
+            )
+            .padding(.horizontal, 12)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
             List(selection: $selectedTab) {
                 ForEach([SidebarTab.all, .text, .image, .link, .richText], id: \.self) { tab in
                     Label(tab.label, systemImage: tab.icon)
@@ -112,6 +127,10 @@ struct SidebarView: View {
                 }
             }
             .listStyle(.sidebar)
+            // ID-VIEW-0017: macOS sidebar apps don't show a persistent
+            // scrollbar track. Hide the indicator; scrolling still works,
+            // and the raised minHeight (ContentView) makes overflow rare.
+            .scrollIndicators(.hidden)
         }
         .padding(.vertical, 8)
         .padding(.trailing, 4)

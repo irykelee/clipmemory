@@ -740,10 +740,16 @@ struct ContentView: View {
         // into the » overflow menu when the window gets narrow — at 640pt
         // the date filter chips + clear button were silently hidden behind
         // the overflow chevron. 800pt keeps the full toolbar visible at
-        // the minimum window size (the toolbar row carries the 4 date
-        // chips ~200pt + clear ~28pt + titlebar traffic lights ~70pt,
-        // well under 800pt with sidebar at its 190pt min).
-        .frame(minWidth: 800, minHeight: 440)
+        // the minimum window size (the toolbar row carries the brand logo
+        // + 4 date chips ~200pt + clear ~28pt + titlebar traffic lights
+        // ~70pt, well under 800pt with sidebar at its 190pt min).
+        // ID-VIEW-0017 (2026-08-03, user-driven): min height raised from
+        // 440pt to 520pt. The sidebar's fixed chrome (search ~60pt +
+        // 5 type tabs + pinned/trash/settings + tags header) needs vertical
+        // room; at 440pt a handful of tags forced the sidebar List to
+        // scroll. 520pt keeps ~3-4 tags visible without scrolling, and the
+        // sidebar scroll indicator is now hidden anyway.
+        .frame(minWidth: 800, minHeight: 520)
         .toolbar { self.toolbarContent }
         // 2026-07-25: `.visible` forced an opaque toolbar background. On
         // macOS 15 that rendered as a unified material blended with the
@@ -759,14 +765,25 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        // ID-VIEW-0017 (2026-08-03, user-driven): brand logo moved into the
+        // toolbar (moved OUT of the sidebar header, which is now pure
+        // navigation — search + list). .automatic places it on the leading
+        // side of the title bar; it does not compete with the date chips
+        // (also .automatic) for space at the 800pt min width.
+        ToolbarItem(id: "brand") {
+            // expandWidth: false — in a toolbar the logo hugs its content
+            // instead of stretching to fill the bar.
+            LogoView(expandWidth: false)
+                .fixedSize()
+        }
         // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
         // sidebar header (SidebarView), matching the macOS system-app
         // convention (Finder / App Store / Notes). The window toolbar now
         // carries only window-level commands: date filter + clear. Both use
         // default placement (NOT .principal — see ID-VIEW-0014 for why
         // .principal items get silently clipped instead of entering the »
-        // overflow menu on narrow windows); at the 640pt min width this
-        // row still has ~340pt of headroom, so nothing overflows.
+        // overflow menu on narrow windows); at the 800pt min width this
+        // row still has plenty of headroom, so nothing overflows.
         ToolbarItemGroup(placement: .automatic) {
             HStack(spacing: 4) {
                 ForEach(DateFilter.allCases, id: \.self) { filter in
