@@ -91,6 +91,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // when the app loses focus / FileVault locks. See ivar comments.
         setupBackgroundPurgeObservers()
         NSApp.setActivationPolicy(.accessory)
+        // ID-MON-0003 (2026-08-03): skip startup side-effects in test host.
+        // The test bundle is injected into the real app process, so these
+        // calls write to the shared UserDefaults domain used by production —
+        // polluting test baseline (UpdateService network probe, BackupService
+        // lastBackupDate, etc.). The :469 guard covers setupClipboardMonitor;
+        // this guard covers welcome判定 + UpdateService init + backup +
+        // OCR backfill. StartupHealth.logSnapshot and observer setup above
+        // are intentionally left unguarded (read-only or test-inert).
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
         // Start Sparkle: daily background check per SUEnableAutomaticChecks.
         _ = UpdateService.shared

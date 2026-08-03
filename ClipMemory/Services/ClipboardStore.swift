@@ -252,6 +252,15 @@ final class ClipboardStore: ObservableObject {
     /// definitions, and the item backend stays unaware of the tag schema.
     private let tagBackend: StorageBackend
 
+    /// M13 (2026-08-03): injectable UserDefaults suite for TrashStore.
+    /// Stored here so it can be passed to TrashStore during init; ClipboardStore
+    /// itself reads settings (maxItems etc.) via direct UserDefaults.standard calls
+    /// (those keys are test-inert or guarded by the XCTestConfigurationFilePath
+    /// early-return in the default initializer). Production callers get .standard.
+    /// `internal` (default) so ClipboardStore+OCR.swift (same module, different
+    /// file) can access it for ocrPreviewEnabled / ocrEnabled accessors.
+    let defaults: UserDefaults
+
     // trashBackend moved to TrashStore (HIGH-1, 2026-07-26)
 
     // MARK: - Initializers
@@ -280,12 +289,15 @@ final class ClipboardStore: ObservableObject {
     /// E.1: Designated initializer accepting StorageBackend instances for testing.
     /// `tagBackend` and `trashBackend` default to fresh in-memory backends so
     /// existing tests that only care about items don't accidentally hit UserDefaults.
+    /// `defaults` allows tests to isolate TrashStore writes to a test suite.
     init(backend: StorageBackend,
          tagBackend: StorageBackend = MemoryStorageBackend(),
-         trashBackend: StorageBackend = MemoryStorageBackend()) {
+         trashBackend: StorageBackend = MemoryStorageBackend(),
+         defaults: UserDefaults = .standard) {
         self.backend = backend
         self.tagBackend = tagBackend
-        self.trashStore = TrashStore(backend: trashBackend)
+        self.defaults = defaults
+        self.trashStore = TrashStore(backend: trashBackend, defaults: defaults)
 
         // M-3 ... (clamp logic unchanged)
 

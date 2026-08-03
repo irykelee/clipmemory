@@ -25,8 +25,7 @@ import XCTest
 
     private let migrationKey = "ImageStorageMigrationComplete"
     private let startupCleanupKey = "ImageStorageStartupCleanupRan"
-    private var savedMigrationValue: Any?
-    private var savedStartupCleanupValue: Any?
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
@@ -34,17 +33,14 @@ import XCTest
         originalCrypto = ServiceContainer.crypto
         ServiceContainer.setCryptoForTesting(testCrypto)
 
-        // ClipboardStore init → loadItems → cleanupOrphanedImages and the
-        // ImageStorage singleton both touch these UserDefaults keys. Pin
-        // them to a deterministic value for the test and restore the
-        // previous values afterwards.
-        savedMigrationValue = UserDefaults.standard.object(forKey: migrationKey)
-        savedStartupCleanupValue = UserDefaults.standard.object(forKey: startupCleanupKey)
-        UserDefaults.standard.set(true, forKey: migrationKey)
-        UserDefaults.standard.set(true, forKey: startupCleanupKey)
+        // M13 (2026-08-03): use isolated defaults suite so ClipboardStore+OCR
+        // writes (ocrPreviewEnabled etc.) never touch production.
+        testDefaults = makeTestDefaults()
+        testDefaults.set(true, forKey: migrationKey)
+        testDefaults.set(true, forKey: startupCleanupKey)
 
         backend = MemoryStorageBackend()
-        store = ClipboardStore(backend: backend)
+        store = ClipboardStore(backend: backend, defaults: testDefaults)
     }
 
     override func tearDown() {
@@ -52,24 +48,14 @@ import XCTest
             ImageStorage.shared.deleteImage(filename: Self.filename(uuid))
         }
         testUUIDs.removeAll()
-        restore(migrationKey, savedMigrationValue)
-        restore(startupCleanupKey, savedStartupCleanupValue)
-        savedMigrationValue = nil
-        savedStartupCleanupValue = nil
         if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         testCrypto = nil
         store = nil
         backend = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
-    }
-
-    private func restore(_ key: String, _ value: Any?) {
-        if let value {
-            UserDefaults.standard.set(value, forKey: key)
-        } else {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
     }
 
     // MARK: - Helpers

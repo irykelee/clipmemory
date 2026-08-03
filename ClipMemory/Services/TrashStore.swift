@@ -19,10 +19,11 @@ final class TrashStore: ObservableObject {
 
     /// Number of days trashed items are kept before automatic permanent deletion.
     @Published var trashRetentionDays: Int {
-        didSet { UserDefaults.standard.set(trashRetentionDays, forKey: TrashStore.trashedItemsStorageKey + ".retentionDays") }
+        didSet { defaults.set(trashRetentionDays, forKey: TrashStore.trashedItemsStorageKey + ".retentionDays") }
     }
 
     private let backend: StorageBackend
+    private let defaults: UserDefaults
     private let saveTimerQueue = DispatchQueue(label: "com.clipmemory.trashsave", qos: .utility)
     private var saveTimer: DispatchSourceTimer?
     private var needsSave = false
@@ -50,16 +51,23 @@ final class TrashStore: ObservableObject {
     /// guarantee). See 2026-07-28 F-1 phase 2 spec §4.
     private var willTerminateObserver: NSObjectProtocol?
 
-    init(backend: StorageBackend) {
+    /// M13 (2026-08-03): `defaults` injectable so tests use an isolated suite.
+    /// Production callers pass the defaulted `.standard` — no call-site change.
+    init(backend: StorageBackend, defaults: UserDefaults = .standard) {
         self.backend = backend
+        self.defaults = defaults
         let retentionKey = TrashStore.trashedItemsStorageKey + ".retentionDays"
-        let saved = UserDefaults.standard.integer(forKey: retentionKey)
+        let saved = defaults.integer(forKey: retentionKey)
         let valid = [3, 7, 14, 30]
         if valid.contains(saved) {
             trashRetentionDays = saved
         } else {
+            // ID-STORE-0008 (2026-08-03): removed persist-on-absent write.
+            // Gap 2 (v4 plan): the unconditional set() here caused fresh-CI
+            // environments to write production defaults on every test run.
+            // New users get the in-memory default (7) — the settings UI's
+            // @Published binding reads trashRetentionDays directly.
             trashRetentionDays = 7
-            UserDefaults.standard.set(7, forKey: retentionKey)
         }
         loadTrashedItems()
         purgeExpiredTrash()
@@ -120,7 +128,6 @@ final class TrashStore: ObservableObject {
     }()
 
     private func quarantineCorruptBlob(error: Error) {
-        let defaults = UserDefaults.standard
         let key = Self.trashedItemsStorageKey
         guard let blob = defaults.data(forKey: key) else { return }
         let timestamp = Self.iso8601Formatter.string(from: Date())

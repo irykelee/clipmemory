@@ -6,6 +6,24 @@ import AppKit
 /// close/reopen so SwiftUI @State is preserved.
 final class WindowManagerTests: XCTestCase {
 
+    private var testDefaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        // M13 (2026-08-03): WindowManager uses a static defaults seam.
+        // Redirect to isolated suite so savedWindowFrame writes never touch
+        // production UserDefaults.
+        testDefaults = makeTestDefaults()
+        WindowManager.defaults = testDefaults
+    }
+
+    override func tearDown() {
+        WindowManager.defaults = .standard
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
+        super.tearDown()
+    }
+
     func testWindowWillCloseKeepsWindowAndContentView() {
         let manager = WindowManager()
         manager.showMainWindow()

@@ -38,15 +38,17 @@ final class TestHostIsolationTests: XCTestCase {
                        "ID-STORE-0005: trash backend must not persist under XCTest")
     }
 
-    /// M13 (2026-08-01 audit): keys that tests write into the production
-    /// UserDefaults domain must read back unchanged once the writes go
-    /// through save/restore. Covers fontScale (ID-STORE-0007) and the M13
-    /// sweep findings — ImageStorage migration / startup-cleanup flags
-    /// (ImageStorageTests), UpdateService policy / consent / baseline date
-    /// (UpdateServiceTests), ocrPreviewEnabled (OCRTests), trash
-    /// retentionDays (TST-0002), and maxItems / hotkey keys
-    /// (ID-STORE-0009, 2026-08-02 v6 audit F-1). Same canary
-    /// style as above: snapshot before, exercise, assert after. The canary
+    /// M13 (2026-08-03): with injectable defaults in place (TrashStore,
+    /// ClipboardStore+OCR, UpdateService, ImageStorage, WindowManager), the
+    /// per-class save/restore样板 has been removed — production defaults are
+    /// now protected by construction, not restoration. This canary confirms
+    /// that the injection is working: the white-box exercise of production
+    /// code paths below must not mutate the production persistent domain.
+    ///
+    /// The suite-level before/after snapshot (AAASuiteBootstrapTests /
+    /// ZZZSuiteTeardownTests) catches any OTHER key pollution from any test.
+    /// This canary focuses on the specific M13-injected code paths. Same
+    /// canary style: snapshot before, exercise, assert after. The canary
     /// itself restores everything it writes (see ID-STORE-0009 exercise).
     @MainActor
     func testProductionDefaultsKeysAreNotMutated() {
