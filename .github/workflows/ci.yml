@@ -16,6 +16,55 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # REL-23 (2026-08-03): README hygiene gate — DOC-0002/DOC-0003 prevention.
+      # Ported from ~/Projects/ClipMemory-local/release.sh preflight (9eebd8d,
+      # local-only repo, not on GitHub). The global core.hooksPath
+      # (~/bin/git-hooks) bypasses this repo's .git/hooks/pre-commit xcodebuild
+      # gate, so CI is the only automated pre-merge gate; running these checks
+      # first fails fast on README pollution without burning a full build.
+      # Deliberately in ci.yml, NOT release.yml: release.yml only fires on tag
+      # push / its own changes, so a plain README PR would never reach it.
+      # Canary anti-silence (REL-M13) intentionally stays in local release.sh —
+      # it needs the xcodebuild test log and is lower priority than README
+      # hygiene.
+      - name: Check README hygiene (DOC-0002/0003)
+        run: |
+          set -euo pipefail
+          FAILS=0
+          fail() { echo "❌ $*"; FAILS=$((FAILS+1)); }
+
+          # DOC-0002: no duplicate '### vX.Y.Z (' heading in any of the 7
+          # READMEs for the current dev version (sync_readme.py
+          # strip_extra_headings() regression guard).
+          VERSION=$(grep -E '^    MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          for f in README.md docs/lang/README_EN.md docs/lang/README_ZH-HANT.md docs/lang/README_JA.md docs/lang/README_KO.md docs/lang/README_ES.md docs/lang/README_PT.md; do
+            COUNT=$(grep -c "^### v${VERSION} (" "$f" 2>/dev/null || echo 0)
+            if [[ "$COUNT" -gt 1 ]]; then
+              fail "${f} has ${COUNT} '### v${VERSION} (' headings (expected ≤ 1, DOC-0002)"
+            fi
+          done
+          echo "✅ no duplicate v${VERSION} README heading"
+
+          # DOC-0003: cross-locale Trash terminology pollution (glossary map:
+          # sync_readme.py:50 GLOSSARY dict — zh-Hans 回收站 / zh-Hant 垃圾桶 /
+          # en Trash).
+          if grep -q "垃圾桶" README.md; then
+            fail "README.md (zh-Hans) uses '垃圾桶' (should be '回收站')"
+          fi
+          if grep -q "回收站" docs/lang/README_ZH-HANT.md; then
+            fail "README_ZH-HANT.md uses '回收站' (should be '垃圾桶')"
+          fi
+          if grep -qi "Recycle Bin" docs/lang/README_EN.md; then
+            fail "README_EN.md uses 'Recycle Bin' (should be 'Trash')"
+          fi
+          echo "✅ Trash glossary consistent (zh-Hans/zh-Hant/en)"
+
+          if [[ "$FAILS" -gt 0 ]]; then
+            echo "❌ README hygiene checks FAILED."
+            exit 1
+          fi
+          echo "✅ All README hygiene checks passed."
+
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
