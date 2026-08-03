@@ -426,8 +426,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         win.title = L10n.settingsWindowTitle
         win.isReleasedWhenClosed = false
-        win.center()
         win.contentView = NSHostingView(rootView: rootView)
+        // Center relative to the main ItemListView window when it's on
+        // screen (the common path: user has the main window open and
+        // clicks the sidebar "Settings" entry, or presses ⌘, while
+        // focused on it). Fall back to `win.center()` (screen-centered)
+        // when the main window isn't visible — typical when the user
+        // triggers settings from the menu bar QuickBar popover, where
+        // there is no anchoring window to relate to.
+        if let main = windowManager?.mainWindow, main.isVisible {
+            let mainFrame = main.frame
+            let settingsSize = win.frame.size
+            let origin = NSPoint(
+                x: mainFrame.midX - settingsSize.width / 2,
+                y: mainFrame.midY - settingsSize.height / 2
+            )
+            win.setFrameOrigin(origin)
+            // Clamp to the main window's screen so off-screen or
+            // straddling edge cases don't strand the settings window.
+            if let screen = main.screen ?? win.screen ?? NSScreen.main {
+                let visible = screen.visibleFrame
+                var clamped = win.frame
+                clamped.origin.x = min(max(clamped.origin.x, visible.minX),
+                                       visible.maxX - clamped.width)
+                clamped.origin.y = min(max(clamped.origin.y, visible.minY),
+                                       visible.maxY - clamped.height)
+                if clamped != win.frame { win.setFrame(clamped, display: false) }
+            }
+        } else {
+            win.center()
+        }
         win.makeKeyAndOrderFront(nil)
         settingsWindow = win
         // B-6 (2026-07-27): register so the main-window-close policy switch
