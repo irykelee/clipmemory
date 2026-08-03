@@ -823,8 +823,11 @@ struct ClipboardItemRow: View, Equatable {
         // ID-SECURITY-0003 (2026-07-31 audit): OCR plaintext of a sensitive
         // item is still a secret — stamp the standard concealed marker so
         // well-behaved pasteboard readers (credential-aware apps, and our
-        // own ClipboardMonitor.swift:289-296 read path) suppress capture.
+        // own ClipboardMonitor.swift:374-384 read path) suppress capture.
         // Empty-data marker mirrors the convention used by 1Password etc.
+        // NEW-8 (2026-08-03 audit): the old anchor `:289-296` pointed at
+        // the own-write fingerprint helper, which is unrelated to
+        // concealed-type detection.
         if isSensitive {
             pasteboard.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
         }

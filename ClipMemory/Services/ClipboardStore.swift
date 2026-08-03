@@ -253,15 +253,22 @@ final class ClipboardStore: ObservableObject {
     private let tagBackend: StorageBackend
 
     /// M13 (2026-08-03): injectable UserDefaults suite for TrashStore.
-    /// Stored here so it can be passed to TrashStore during init; ClipboardStore
-    /// itself reads settings (maxItems etc.) via direct UserDefaults.standard calls
-    /// (mostly test-inert reads; the only writes are the maxItems clamp back-write
-    /// on out-of-range stored values (:315-317) and the excludedBundleIdsString
-    /// assignment at :336 — both reachable from tests via the convenience init's
-    /// XCTestConfigurationFilePath early-return path, but borderline-low impact
-    /// per audit F-5 2026-08-03). Production callers get .standard.
-    /// `internal` (default) so ClipboardStore+OCR.swift (same module, different
-    /// file) can access it for ocrPreviewEnabled / ocrEnabled accessors.
+/// Stored here so it can be passed to TrashStore during init. Production
+/// callers get `.standard`; tests inject a suite through the designated
+/// init (see `Tests/.../TestHostIsolationTests.swift` for the canary).
+///
+/// NEW-9 (2026-08-03 audit): the previous comment enumerated specific
+/// write sites (`:315-317`, `:336`) as "the only writes" to `.standard`.
+/// That description rotted the moment any didSet added a new
+/// `UserDefaults.standard.set(...)` line, which is exactly what
+/// happened — `maxItems` didSet, `sensitiveClearHours` setter,
+/// `captureRichText` didSet, and `excludedBundleIdsString` didSet all
+/// also write to `.standard`. Tests that drive these setters MUST
+/// restore the prior state in an absence-aware way (see
+/// `TestHostIsolationTests.swift:95-101` for the canonical pattern),
+/// or the canary's `key ADDED` check will fire on a fresh CI sandbox.
+/// This block now describes the invariant, not the implementation
+/// line numbers.
     let defaults: UserDefaults
 
     // trashBackend moved to TrashStore (HIGH-1, 2026-07-26)
@@ -2142,8 +2149,12 @@ final class ClipboardStore: ObservableObject {
         // log / don't sync / don't share" semantics. Without this marker,
         // any app can pull our pasteboard content (1Password / Bitwarden
         // / Dashlane all stamp this on secret writes). Detection on the
-        // read side is at ClipboardMonitor.swift:289-296 — already
+        // read side is at ClipboardMonitor.swift:374-384 — already
         // honours the marker to skip capture.
+        // NEW-8 (2026-08-03 audit): the old anchor `:289-296` pointed at
+        // the own-write fingerprint helper, which is unrelated to
+        // concealed-type detection. Update to the real read-side site
+        // (`concealedTypes` set + `isDisjoint` check).
         if item.isSensitive {
             pasteboard.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
         }

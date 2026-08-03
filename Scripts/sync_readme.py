@@ -111,7 +111,7 @@ def section_version(section):
 
 
 def strip_extra_headings(section):
-    """Truncate a generated section at any second `### vX.Y.Z` heading.
+    """Truncate a generated section at any extra `###` heading after the first.
 
     DOC-0002 (2026-08-02 audit): the v2.7.2 sync inserted LLM output that
     contained a second, untranslated `### v2.7.0` heading after the
@@ -119,12 +119,19 @@ def strip_extra_headings(section):
     duplicate version headings, never the section itself, so the stray
     heading was written verbatim into 5 READMEs — and survived every
     later sync because remove_existing_section only strips blocks
-    matching the NEW version. A changelog section has exactly one
-    heading; anything from a second one on does not belong to it.
+    matching the NEW version.
+
+    NEW-4 (2026-08-03 audit, ID-L10N-0024): expand to strip ALL non-first
+    `### ` lines in the section, not just version headings. The v2.5.11
+    LLM output added decorative `### Highlights` / `### Fixes` /
+    `### Upgrade Note` sub-headings that don't exist in the zh-Hans
+    source, producing 7 READMEs with different `###` counts under the
+    same version heading. The canonical section shape is a single `###`
+    line + a flat bullet list — anything more is an LLM invention.
     """
     lines = section.strip().splitlines()
     for i, line in enumerate(lines):
-        if i > 0 and SECTION_RE.match(line):
+        if i > 0 and line.startswith("### "):
             return "\n".join(lines[:i])
     return "\n".join(lines)
 

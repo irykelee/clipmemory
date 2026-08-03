@@ -38,12 +38,41 @@ jobs:
           # strip_extra_headings() regression guard).
           VERSION=$(grep -E '^    MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
           for f in README.md docs/lang/README_EN.md docs/lang/README_ZH-HANT.md docs/lang/README_JA.md docs/lang/README_KO.md docs/lang/README_ES.md docs/lang/README_PT.md; do
-            COUNT=$(grep -c "^### v${VERSION} (" "$f" 2>/dev/null || echo 0)
-            if [[ "$COUNT" -gt 1 ]]; then
-              fail "${f} has ${COUNT} '### v${VERSION} (' headings (expected ≤ 1, DOC-0002)"
+            # NEW-7 (2026-08-03 audit, ID-MISC-0008): `grep -c` on a
+            # zero-match input returns exit 1 AND prints "0", so the old
+            # `|| echo 0` appended a second "0" producing COUNT="0\n0".
+            # The subsequent `[[ -gt 1 ]]` arithmetic then errored but
+            # because the error happened inside the `if` condition (not
+            # a top-level command), `set -e` did NOT propagate and the
+            # gate silently passed — including the case where the
+            # version section is entirely missing from a README (the
+            # opposite of what DOC-0002 is meant to catch).
+            # `|| true` swallows the exit code; `${COUNT:-0}` collapses
+            # a missing var to 0; the `-ne 1` predicate now rejects both
+            # duplicates (>1) AND absence (<1).
+            COUNT=$(grep -c "^### v${VERSION} (" "$f" 2>/dev/null || true)
+            COUNT=${COUNT:-0}
+            if [[ "$COUNT" -ne 1 ]]; then
+              fail "${f} has ${COUNT} '### v${VERSION} (' headings (expected exactly 1, DOC-0002)"
             fi
           done
-          echo "✅ no duplicate v${VERSION} README heading"
+          echo "✅ exactly one v${VERSION} README heading per locale"
+
+          # ID-L10N-0024 (2026-08-03 audit, NEW-4): enforce that every
+          # locale's v${VERSION} section has the same `###` heading
+          # count as the zh-Hans canonical (README.md). Sync script's
+          # strip_extra_headings() guards against future LLM-injected
+          # decorative sub-headings; this gate guards against any future
+          # sync path that bypasses the script (e.g. hand-edits, plugin
+          # injections) and against drift between sync runs.
+          CANONICAL_COUNT=$(awk '/^### v'"${VERSION}"' /{flag=1; next} /^### v[0-9]+\.[0-9]+\.[0-9]+/{flag=0} flag && /^### /' README.md | wc -l | tr -d ' ')
+          for f in docs/lang/README_EN.md docs/lang/README_ZH-HANT.md docs/lang/README_JA.md docs/lang/README_KO.md docs/lang/README_ES.md docs/lang/README_PT.md; do
+            LOC_COUNT=$(awk '/^### v'"${VERSION}"' /{flag=1; next} /^### v[0-9]+\.[0-9]+\.[0-9]+/{flag=0} flag && /^### /' "$f" | wc -l | tr -d ' ')
+            if [[ "$LOC_COUNT" != "$CANONICAL_COUNT" ]]; then
+              fail "${f} v${VERSION} section has ${LOC_COUNT} '###' sub-headings (canonical README.md has ${CANONICAL_COUNT}, ID-L10N-0024)"
+            fi
+          done
+          echo "✅ v${VERSION} section heading structure consistent across all 7 locales"
 
           # DOC-0003: cross-locale Trash terminology pollution. Each
           # language's README must contain only its own Trash term —

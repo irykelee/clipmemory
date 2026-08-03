@@ -158,15 +158,11 @@
 
 ### v2.5.11 (2026-07-23) — ContentView 分割 + 16 件のバグ修正
 
-### 主要更新 (Highlights)
-
 - **🏗 ContentView 分割 (NEW-7 Phase 4)** — メインリスト / 選択 / 一括操作 / 削除アラートをすべて ContentView から独立した `ItemListView`（287 行）に抽出。ContentView は 1178 → 995 行（-15.5%）。リストレンダリングとリスト関連の状態を疎結合化。ただし、検索 / フィルター / スクロールキャッシュは ContentView に保持（一度にリファクタするリスクを回避）。後続の Phase 6+ ViewModel collapse で `@State` を `@StateObject` にまとめれば、ItemListView のスナップショットベースラインを取得可能
 - **🛡 データ安全 4 点セット** — `maxItems` セッターを `1...10_000` にクランプ（負の値や巨大値を防止）。`backupNow()` を直列化（NSLock）し、ダブルクリック + 自動バックアップの競合を防止。`addTag()` で前後の空白をトリムし、"  Work  " と "Work" が重複保存されるのを防止。`ClipboardItemRow` が LanguageManager を監視し、言語切り替え時に日付を即時再レンダリング
 - **🌐 i18n 複数形対応 (F-7)** — 6 つの %d 複数形キーを `.stringsdict` 化（batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm）。英語で "1 item" / "5 items" がどちらも "1 items" と表示されなくなる。`Scripts/generate_stringsdict.py` を新規追加し、7 言語をワンキーで再生成可能
 - **🛡 設定画面「今すぐバックアップ」のエラーを黙殺しない (F-4)** — 従来は `try?` ですべての backupNow() 失敗を破棄。現在は do/catch + onShowBackupError コールバック → ContentView が `L10n.settingsBackupError` NSAlert を表示（export/import/pre-import スナップショットの失敗パスと統一）
 - **🛡 QuickBar ⌘F で本当に検索にフォーカスできるようになった (F-9)** — 従来は KeyCaptureView の NSEvent ローカルモニターのみに依存（ポップオーバーウィンドウコンテキストでは信頼性が低い）。現在は `.cmdFFindAction` 通知をフォールバックとして追加し、ContentView と同じパスを経由
-
-### 修正 (Fixes)
 
 影響度順（高 → 中 → 低）：
 
@@ -193,8 +189,6 @@
 - **BUG-007 ItemListView ヘッダートグル、検索中はスキップ** — `onTapGesture` が `!searchText.isEmpty` のときは no-op。force-expand 表示ルール下で collapsedGroups を変更すると、検索クリア時に予期せぬ collapsed 状態が発生するのを防止
 - **F-25 UpdateStatusPanelView DateFormatter キャッシュ** — `static let dateFormatter` を追加。body が再レンダリングされるたびに新しい DateFormatter が生成されなくなる
 - **F-7 .stringsdict に 3 つの複数形キーを追加** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`。3 つの複数引数キー（alert.trim 2x %d / tagPicker & sidebar.deleteTag with %@）は次ラウンドに延期
-
-### アップグレード注意事項 (Upgrade Note)
 
 - v2.4.0 以降で自動アップデートモジュール（Sparkle）を搭載しているバージョン：アプリ内の自動アップデートを待つか、`brew upgrade --cask clipmemory` を実行
 - データ移行や一度きりのポップアップはなし
@@ -318,19 +312,13 @@
 
 ## 機能ハイライト
 
-### Quick Bar — ワンタップ
-
 メニューバーをクリック → NSPopoverで最近8件表示 → クリックでコピー/検索/フルウィンドウ表示
-
-### ロングプレス 0.4s — 無制限プレビュー
 
 | コンテンツ | デフォルト | ロングプレス後 |
 |-----------|----------|------------|
 | 通常テキスト | 最初の200文字、3行 | 全文表示 |
 | 機密コンテンツ | マスク `ab••••••yz` | 原文表示 |
 | 画像 | サムネイル 80px | 原寸大フローティングパネル（画面を超える場合はスクロール）|
-
-### スマートセキュリティ — 暗号化 + 検出
 
 - AES-256-GCM暗号化（v2）、旧式AES-CBC+HMAC-SHA256互換
 - 35ルールの自動機密検出（パスワード/APIキー/Slack/Discord/OpenAIトークン/身分証明書番号など）

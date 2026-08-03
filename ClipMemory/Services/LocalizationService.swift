@@ -309,6 +309,10 @@ struct L10n {
     }
     static var settingsBackupExportDone: String { string("settings.backup.export.done") }
     static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ corrupt: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, corrupt, images) }
+    // NEW-3 (2026-08-03 audit): shown when image import failed but
+    // items/tags already merged. Plain string (no interpolation) so
+    // all 7 locales can ship the same key without plural rule drift.
+    static var settingsBackupImportImagesFailed: String { string("settings.backup.import.imagesFailed") }
     static func settingsBackupLast(_ date: String) -> String { string("settings.backup.last", date) }
     static func clearTypeAction(_ typeName: String) -> String { string("clear.type.action", typeName) }
     // ID-L10N-0016 (2026-07-30 audit): plural-aware; count=1 uses ".one".

@@ -158,15 +158,11 @@
 
 ### v2.5.11 (2026-07-23) — Divisão da ContentView + 16 correções de bugs
 
-### Principais Atualizações (Highlights)
-
 - **🏗 Divisão da ContentView (NEW-7 Phase 4)** — Lista principal / seleção / operações em lote / alerts de exclusão foram extraídos da ContentView para uma `ItemListView` independente (287 linhas); ContentView 1178 → 995 linhas (-15,5%). Desacoplamento da renderização da lista + estado relacionado à lista, mas mantendo a pesquisa / filtro / cache de rolagem da camada de visualização na ContentView (evitando risco de refatoração única). A fase 6+ ViewModel collapse transformará `@State` em `@StateObject` para abrir a linha de base do snapshot da ItemListView
 - **🛡 Pacote de segurança de dados 4 em 1** — `maxItems` setter clamp 1...10_000 para evitar valores negativos/extragrandes; `backupNow()` serializado (NSLock) para evitar race condition de double-click + auto-backup; `addTag()` com trim de espaços iniciais/finais para evitar duplicação de "  Work  " e "Work"; `ClipboardItemRow` observa o LanguageManager para re-renderizar a data imediatamente ao mudar de idioma
 - **🌐 Suporte a plural i18n (F-7)** — 6 chaves plural %d via `.stringsdict` (batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm); "1 item" / "5 items" em inglês não são mais ambos "1 items"; novo `Scripts/generate_stringsdict.py` para regenerar 7 idiomas com um clique
 - **🛡 Erros em "Back Up Now" nas Configurações não são mais silenciosamente ignorados (F-4)** — Antes `try?` descartava toda falha de backupNow(); agora do/catch + callback onShowBackupError → ContentView exibe NSAlert `L10n.settingsBackupError` (consistente com caminhos de falha de exportação/importação/snapshot pré-importação)
 - **🛡 QuickBar ⌘F realmente foca a pesquisa (F-9)** — Antes dependia apenas do monitor local NSEvent do KeyCaptureView (não confiável no contexto da janela popover); agora adicionado fallback via notificação `.cmdFFindAction`, seguindo o mesmo caminho da ContentView
-
-### Correções (Fixes)
 
 Ordenadas por impacto (alto → médio → baixo):
 
@@ -193,8 +189,6 @@ Ordenadas por impacto (alto → médio → baixo):
 - **BUG-007 Pular alternância de cabeçalho da ItemListView durante pesquisa** — `onTapGesture` é no-op quando `!searchText.isEmpty`; sob regras de exibição force-expand, mutar collapsedGroups causava estado recolhido inesperado ao limpar a pesquisa
 - **F-25 DateFormatter em cache no UpdateStatusPanelView** — `static let dateFormatter`; a cada re-renderização do body, não é mais criado um novo DateFormatter
 - **F-7 Estender .stringsdict com 3 chaves plural** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`; 3 chaves multi-arg (alert.trim com 2x %d / tagPicker & sidebar.deleteTag com %@) adiadas para o próximo ciclo
-
-### Nota de Atualização (Upgrade Note)
 
 - Versões com módulo de atualização automática (Sparkle) desde v2.4.0: aguarde a atualização no aplicativo, ou `brew upgrade --cask clipmemory`
 - Sem migração de dados, sem janela única
@@ -318,19 +312,13 @@ Ordenadas por impacto (alto → médio → baixo):
 
 ## Destaques
 
-### Quick Bar — Um toque
-
 Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique para copiar / pesquisar / abrir janela completa
-
-### Pressionar e segurar 0.4s — Visualização ilimitada
 
 | Tipo de conteúdo | Padrão | Após pressionar |
 |-----------------|--------|-----------------|
 | Texto normal | Primeiros 200 caracteres, 3 linhas | Texto completo |
 | Conteúdo sensível | Mascarado `ab••••••yz` | Texto revelado |
 | Imagem | Miniatura 80px | Painel flutuante em tamanho nativo (com rolagem se exceder a tela) |
-
-### Segurança inteligente — Criptografia + Deteção
 
 - Criptografia AES-256-GCM (v2), compatível com legacy AES-CBC+HMAC-SHA256
 - 35 regras de detecção automática de dados sensíveis (senhas / chaves de API / tokens Slack/Discord/OpenAI / números de identificação etc.)

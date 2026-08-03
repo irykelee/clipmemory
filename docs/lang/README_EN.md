@@ -158,15 +158,11 @@
 
 ### v2.5.11 (2026-07-23) — ContentView split + 16 bug fixes
 
-### Highlights
-
 - **🏗 ContentView split (NEW-7 Phase 4)** — Main list / selection / batch operations / delete alerts all extracted from ContentView into a standalone `ItemListView` (287 lines); ContentView 1178 → 995 lines (-15.5%). Decouples list render + list-related state, but retains view-layer search / filter / scroll cache in ContentView (to avoid one-shot refactor risk). Subsequent Phase 6+ ViewModel collapse will consolidate `@State` into `@StateObject`, then `ItemListView` snapshot baseline can be opened
 - **🛡 Data safety 4-piece set** — `maxItems` setter clamped to `1...10_000` to prevent negative/oversized values; `backupNow()` serialized via `NSLock` to prevent double-click + auto-backup race; `addTag()` trims leading/trailing whitespace to prevent "  Work  " and "Work" from being stored as duplicates; `ClipboardItemRow` observes `LanguageManager` to immediately re-render dates when language switches
 - **🌐 i18n plural support (F-7)** — 6 `%d` plural keys now use `.stringsdict` (`batch.selected` / `quickbar.recent` / `trash.emptyConfirm.message` / `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`); English "1 item" / "5 items" no longer both display as "1 items"; new `Scripts/generate_stringsdict.py` for one-click regeneration across 7 languages
 - **🛡 Settings "Back Up Now" errors no longer silently swallowed (F-4)** — Previously `try?` discarded every `backupNow()` failure; now uses `do/catch` + `onShowBackupError` callback → `ContentView` displays `L10n.settingsBackupError` `NSAlert` (consistent with export/import/pre-import snapshot failure paths)
 - **🛡 QuickBar ⌘F now reliably focuses search (F-9)** — Previously relied solely on `KeyCaptureView`'s `NSEvent` local monitor (unreliable in popover window context); now adds `.cmdFFindAction` notification as fallback, following the same path as `ContentView`
-
-### Fixes
 
 Sorted by impact (high → medium → low):
 
@@ -193,8 +189,6 @@ Sorted by impact (high → medium → low):
 - **BUG-007 ItemListView header toggle skip during search** — `onTapGesture` is a no-op when `!searchText.isEmpty`; under force-expand display rules, mutating `collapsedGroups` could cause unexpected collapsed states when clearing search
 - **F-25 UpdateStatusPanelView DateFormatter cached** — `static let dateFormatter`; no longer creates a new `DateFormatter` on every body re-render
 - **F-7 extend .stringsdict 3 plural keys** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`; 3 multi-arg keys (`alert.trim` 2x `%d` / `tagPicker` & `sidebar.deleteTag` with `%@`) deferred to the next round
-
-### Upgrade Note
 
 - For versions with the built-in auto-update module (Sparkle) since v2.4.0: wait for in-app auto-update, or run `brew upgrade --cask clipmemory`
 - No data migration, no one-time popup
@@ -318,19 +312,13 @@ Sorted by impact (high → medium → low):
 
 ## Feature Highlights
 
-### Quick Bar — One Tap Away
-
 Click menu bar icon → NSPopover shows 8 recent items → click to copy / search / open full window
-
-### Long Press 0.4s — Unlimited Preview
 
 | Content type | Default | After long press |
 |-------------|---------|-----------------|
 | Plain text | First 200 chars, 3 lines | Full text |
 | Sensitive content | Masked `ab••••••yz` | Revealed text |
 | Image | Thumbnail 80px | Native-size floating panel (scrollable if larger than screen) |
-
-### Smart Security — Encryption + Detection
 
 - AES-256-GCM encryption (v2), compatible with legacy AES-CBC+HMAC-SHA256
 - 35 rules auto-detect sensitive data (credentials / API keys / Slack/Discord/OpenAI tokens / ID numbers / etc.)

@@ -158,15 +158,11 @@
 
 ### v2.5.11 (2026-07-23) — ContentView 분할 + 16개 버그 수정
 
-### 주요 업데이트 (Highlights)
-
 - **🏗 ContentView 분할 (NEW-7 Phase 4)** — 기본 목록 / 선택 / 일괄 작업 / 삭제 알림을 모두 ContentView에서 독립적인 `ItemListView`(287줄)로 추출; ContentView 1178 → 995줄(-15.5%). list render + list-related state 분리, 그러나 view 계층의 검색 / filter / 스크롤 캐시는 ContentView에 유지(일회성 리팩터 위험 방지). 이후 Phase 6+ ViewModel collapse에서 `@State`를 `@StateObject`로 수렴하면 ItemListView snapshot baseline 개설 가능
 - **🛡 데이터 안전 4종 세트** — `maxItems` setter clamp 1...10_000으로 음수/초과 방지; `backupNow()` 직렬화(NSLock)로 double-click + auto-backup 경합 방지; `addTag()` 앞/뒤 공백 제거로 "  Work  "와 "Work" 중복 저장 방지; `ClipboardItemRow`가 LanguageManager를 observe하여 언어 전환 시 날짜 즉시 재렌더링
 - **🌐 i18n 복수형 지원 (F-7)** — 6개의 %d 복수형 키가 `.stringsdict`로 처리됨(batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm); 영어 "1 item" / "5 items"가 더 이상 모두 "1 items"로 표시되지 않음; `Scripts/generate_stringsdict.py` 추가로 7개 언어 일괄 재생성
 - **🛡 설정 "Back Up Now" 오류 더 이상 조용히 무시되지 않음 (F-4)** — 기존 `try?`가 모든 backupNow() 실패를 직접 폐기; 이제 do/catch + onShowBackupError callback → ContentView에서 `L10n.settingsBackupError` NSAlert 표시(export/import/pre-import snapshot 실패 경로와 일관성 유지)
 - **🛡 QuickBar ⌘F가 실제로 검색에 포커스됨 (F-9)** — 이전에는 KeyCaptureView의 NSEvent local monitor에만 의존(popover 창 컨텍스트에서 불안정); 이제 `.cmdFFindAction` notification을 추가하여 ContentView와 동일한 경로로 작동
-
-### 수정 사항 (Fixes)
 
 영향 순서 (높음 → 중간 → 낮음):
 
@@ -193,8 +189,6 @@
 - **BUG-007 ItemListView header toggle 검색 중 건너뛰기** — `onTapGesture`가 `!searchText.isEmpty`일 때 no-op; force-expand 표시 규칙에서 collapsedGroups를 변경하면 검색 시 예상치 못한 collapsed 상태가 나타나는 문제 해결
 - **F-25 UpdateStatusPanelView DateFormatter 캐시** — `static let dateFormatter`; body 재렌더링 시마다 새로운 DateFormatter를 생성하지 않음
 - **F-7 .stringsdict 3개 복수형 키 확장** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`; 3개의 다중 인수 키(alert.trim 2x %d / tagPicker & sidebar.deleteTag with %@)는 다음 라운드로 연기
-
-### 업그레이드 안내 (Upgrade Note)
 
 - v2.4.0부터 자동 업데이트 모듈(Sparkle)이 포함된 버전: 앱 내 자동 업데이트를 기다리거나 `brew upgrade --cask clipmemory` 실행
 - 데이터 마이그레이션 없음, 일회성 팝업 없음
@@ -318,19 +312,13 @@
 
 ## 기능 하이라이트
 
-### Quick Bar — 원 탭
-
 메뉴바 아이콘 클릭 → NSPopover로 최근 8개 항목 표시 → 클릭으로 복사/검색/전체 창 열기
-
-### 길게 누르기 0.4s — 제한 없는 미리보기
 
 | 콘텐츠 | 기본 표시 | 길게 누른 후 |
 |--------|----------|------------|
 | 일반 텍스트 | 처음 200자, 3줄 | 전체 표시 |
 | 민감 콘텐츠 | 마스킹 `ab••••••yz` | 원문 표시 |
 | 이미지 | 썸네일 80px | 원본 크기 플로팅 패널(화면 초과 시 스크롤) |
-
-### 스마트 보안 — 암호화 + 감지
 
 - AES-256-GCM 암호화 (v2), 레거시 AES-CBC+HMAC-SHA256 호환
 - 35 규칙의 자동 민감 정보 감지 (비밀번호/API 키/Slack/Discord/OpenAI 토큰/신분증 번호 등)

@@ -91,6 +91,7 @@
 "settings.backup.error" = "A operação de cópia falhou, tente novamente";
 "settings.backup.export.done" = "Exportação concluída";
 "settings.backup.import.result" = "Importação concluída: %1$d itens adicionados, %2$d duplicados ignorados, %3$d corrompidos, %4$d imagens";
+"settings.backup.import.imagesFailed" = "Aviso: não foi possível restaurar as imagens (itens e tags importados com sucesso). Verifique se o ClipMemory tem acesso de escrita à pasta Images.";
 "settings.backup.last" = "Última cópia: %@";
 "clear.type.action" = "Apagar todos os %@";
 "clear.type.confirm" = "%2$d itens de \"%1$@\" serão apagados (fixados mantidos, para a Lixeira)";

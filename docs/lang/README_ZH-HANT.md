@@ -158,15 +158,11 @@
 
 ### v2.5.11 (2026-07-23) — ContentView 拆分 + 16 項 bug 修復
 
-### 主要更新 (Highlights)
-
 - **🏗 ContentView 拆分 (NEW-7 Phase 4)** — 主列表 / 選擇 / 批量操作 / 刪除 alerts 全部從 ContentView 抽出到獨立 `ItemListView`（287 行）；ContentView 1178 → 995 行（-15.5%）。解耦 list render + list-related state，但保留 view 層的搜尋 / filter / 滾動 cache 在 ContentView（避免一次性 refactor 風險）。後續 Phase 6+ ViewModel collapse 把 `@State` 收成 `@StateObject` 即可開 ItemListView snapshot baseline
 - **🛡 資料安全 4 件套** — `maxItems` setter clamp 1...10_000 防負值/超大；`backupNow()` 序列化（NSLock）防 double-click + auto-backup race；`addTag()` trim 前導/尾部空白防 "  Work  " 跟 "Work" 雙存；`ClipboardItemRow` observe LanguageManager 切語言時立即重新渲染日期
 - **🌐 i18n plural support (F-7)** — 6 個 %d plural keys 走 `.stringsdict`（batch.selected / quickbar.recent / trash.emptyConfirm.message / alert.clear.message / settings.max.items.count / clear.conditional.confirm）；英文 "1 item" / "5 items" 不再都是 "1 items"；新增 `Scripts/generate_stringsdict.py` 一鍵 regen 7 lang
 - **🛡 Settings "Back Up Now" 錯誤不再靜默吞 (F-4)** — 原來 `try?` 直接 discard every backupNow() 失敗；現在 do/catch + onShowBackupError callback → ContentView 彈 `L10n.settingsBackupError` NSAlert（與 export/import/pre-import snapshot 失敗路徑一致）
 - **🛡 QuickBar ⌘F 真的能聚焦搜尋了 (F-9)** — 之前只依賴 KeyCaptureView 的 NSEvent local monitor（popover 視窗上下文裡不可靠）；現在加 `.cmdFFindAction` notification 兜底，與 ContentView 走同一條路徑
-
-### 修復 (Fixes)
 
 按影響排序 (high → medium → low)：
 
@@ -193,8 +189,6 @@
 - **BUG-007 ItemListView header toggle skip during search** — `onTapGesture` 在 `!searchText.isEmpty` 時 no-op；force-expand 顯示規則下，mutate collapsedGroups 反而清空搜尋時冒出意外 collapsed 狀態
 - **F-25 UpdateStatusPanelView DateFormatter cached** — `static let dateFormatter`；每次 body re-render 不再 new 一個 DateFormatter
 - **F-7 extend .stringsdict 3 plural keys** — `alert.clear.message` / `settings.max.items.count` / `clear.conditional.confirm`；3 multi-arg keys (alert.trim 2x %d / tagPicker & sidebar.deleteTag with %@) 延後到下個 round
-
-### 升級提示 (Upgrade Note)
 
 - v2.4.0 起帶自動更新模組（Sparkle）的版本：等 App 內自動更新，或 `brew upgrade --cask clipmemory`
 - 無資料遷移、無一次性彈窗
@@ -318,19 +312,13 @@
 
 ## 功能亮點
 
-### Quick Bar — 一步即達
-
 點擊選單列圖示 → NSPopover 彈出最近 8 條 → 點擊複製 / 搜尋 / 開啟完整視窗
-
-### 長按 0.4s — 預覽無限制
 
 | 內容類型 | 預設顯示 | 長按後 |
 |---------|---------|--------|
 | 一般文字 | 前 200 字元，3 行 | 全文顯示 |
 | 敏感內容 | 遮罩 `ab••••••yz` | 揭示原文 |
 | 圖片 | 縮圖 80px | 原生尺寸浮窗（超過螢幕可捲動）|
-
-### 智能安全 — 加密 + 敏感檢測
 
 - AES-256-GCM 加密（v2），相容舊版 AES-CBC+HMAC-SHA256
 - 35 條規則自動識別敏感內容（密碼 / API 金鑰 / Slack/Discord/OpenAI 等 token / 身份證號等）

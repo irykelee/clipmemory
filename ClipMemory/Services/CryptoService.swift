@@ -67,11 +67,15 @@ class CryptoService: CryptoServiceProtocol {
     // ≈ 80 KB worst case while keeping recently-seen failures cacheable.
     private static let negativeCacheMaxSize = 1000
 
-    /// Test-only clock injection（默认 = Date.init）
-    /// N6: 同样用 NSLock 保护，避免与 negativeCache 写并发竞争
-    private static let negativeCacheClockLock = NSLock()
-    private static var _negativeCacheClock: () -> Date = { Date() }
-
+    // NEW-6 (2026-08-03 audit): the `_negativeCacheClock` test-injection
+    // hook (formerly at :70-73) was a dead interface — no setter ever
+    // existed, so the variable always evaluated `Date()`, paying 2 extra
+    // lock/unlock round-trips per cache lookup for nothing. Removed
+    // along with the matching lock. The `cachedNegativeResult(forKey:)`
+    // and `cacheAndReturn(_:key:)` readers now use `Date()` directly;
+    // if a future TTL test needs a fake clock, re-introduce it through
+    // a properly-typed test seam (e.g. a protocol) rather than a bare
+    // `var () -> Date`.
 
     // H-2 (2026-07-21 audit fix): Cache the loaded Keychain/file key so
     // subsequent encrypt/decrypt skip the Keychain round-trip (~1–10ms each).
@@ -761,12 +765,18 @@ class CryptoService: CryptoServiceProtocol {
         if isOldFormat(base64String) {
             // ID-DEBUG-display (2026-07-30): log legacy decrypt failure to
             // distinguish HMAC mismatch (wrong key) from other errors.
-            // Helps diagnose the "main window text rows blank" issue —
-            // `os_log` is privacy-safe (no plaintext content).
+            // Helps diagnose the "main window text rows blank" issue.
+            // NEW-5 (2026-08-03 audit): the previous log call also printed
+            // the first 20 chars of the base64 ciphertext with
+            // `privacy: .public`, which explicitly opts out of os_log's
+            // default redaction. ~15 bytes of ciphertext per line still
+            // leaks user data (it's a function of the plaintext). The
+            // distinguishing diagnostic only needs the key-availability
+            // bit; drop the input prefix entirely.
             guard let bytes = decryptBytes(from: combined) else {
                 let key = getKey()
                 let keyAvail = key != nil ? "key=OK" : "key=nil"
-                Self.logger.error("decryptWithReason legacy: decryptBytes returned nil (\(keyAvail, privacy: .public)), input[:20]=\(base64String.prefix(20), privacy: .public)")
+                Self.logger.error("decryptWithReason legacy: decryptBytes returned nil (\(keyAvail, privacy: .public)), inputLength=\(combined.count, privacy: .public)")
                 return Self.cacheAndReturn(.dataCorrupted, key: cacheKey)
             }
             guard let result = String(bytes: bytes, encoding: .utf8) else {
@@ -802,10 +812,10 @@ class CryptoService: CryptoServiceProtocol {
         let cached = negativeCache[cacheKey]
         negativeCacheLock.unlock()
         guard let (cachedReason, cachedAt) = cached else { return nil }
-        // N6: clockLock 包裹读（虽然 clock 生产端不变，但 set-up 注入时与负缓存写可能并发）
-        negativeCacheClockLock.lock()
-        let now = _negativeCacheClock()
-        negativeCacheClockLock.unlock()
+        // NEW-6 (2026-08-03 audit): `_negativeCacheClock` removed — call
+        // `Date()` directly. No-op for correctness; reclaims 1 lock/unlock
+        // per cache lookup.
+        let now = Date()
         if now.timeIntervalSince(cachedAt) < negativeCacheTTL {
             return cachedReason
         }
@@ -818,9 +828,10 @@ class CryptoService: CryptoServiceProtocol {
 
     /// 写否定缓存（仅永久失败）+ 返回 result（P9 + N6 NSLock 包裹）
     private static func cacheAndReturn(_ reason: DecryptResult, key: String) -> DecryptResult {
-        negativeCacheClockLock.lock()
-        let now = _negativeCacheClock()
-        negativeCacheClockLock.unlock()
+        // NEW-6 (2026-08-03 audit): `_negativeCacheClock` removed — call
+        // `Date()` directly. The negative-cache insert below is the only
+        // synchronization point left in this function.
+        let now = Date()
         negativeCacheLock.lock()
         // ID-PERF-0003: evict the oldest-timestamp entry before insert when
         // at cap. min(by:) is O(n) but the cache is bounded (1000) so this

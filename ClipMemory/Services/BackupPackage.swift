@@ -117,6 +117,13 @@ struct BackupImportResult {
     /// content failed GCM auth (per-entry corruption, not package-level).
     /// Distinct from `itemsSkipped` (dedupe by id/contentHash).
     var itemsSkippedCorrupt = 0
+    // NEW-3 (2026-08-03 audit): distinguishes "package contained no
+    // images" (`imagesImported == 0 && !imageImportFailed`) from "image
+    // pass threw, items/tags already merged" (same numeric 0 but
+    // `imageImportFailed == true`). Without this, the success alert
+    // reads "0 images" for both shapes and the user has no signal that
+    // their image history was lost.
+    var imageImportFailed = false
 }
 
 final class BackupPackage {
@@ -458,8 +465,16 @@ final class BackupPackage {
             // side only accepts .png, so counting every staged file (stray
             // .DS_Store etc.) made the manifest disagree with the importable
             // payload.
-            imageCount = ((try? FileManager.default.contentsOfDirectory(atPath: imagesDestination.path)) ?? [])
-                .filter { $0.hasSuffix(".png") }.count
+            // NEW-2 (2026-08-03 audit): propagate directory-enumeration
+            // failures instead of swallowing them with `try? ?? []` —
+            // a zero imageCount would land in the manifest, then
+            // `validateManifestCounts` (line 727) would reject the package
+            // on import as `corruptedData`, producing a permanently
+            // un-importable backup that the user believed succeeded.
+            imageCount = try FileManager.default
+                .contentsOfDirectory(atPath: imagesDestination.path)
+                .filter { $0.hasSuffix(".png") }
+                .count
         }
 
         try sealedKeyData.write(to: staging.appendingPathComponent("key.enc"), options: .atomic)
@@ -684,6 +699,13 @@ final class BackupPackage {
                 localCrypto: localCrypto
             )
         } catch {
+            // NEW-3 (2026-08-03 audit): surface the failure on the result
+            // so the UI alert can distinguish "package had no images"
+            // (false) from "image pass threw after items/tags were merged"
+            // (true). Items/tags already imported at this point — the
+            // user's clipboard entries are intact, but their thumbnails
+            // will be missing. The alert must not claim success silently.
+            result.imageImportFailed = true
             logger.error("Image import failed (items/tags already merged): \(error.localizedDescription)")
         }
 
@@ -722,8 +744,22 @@ final class BackupPackage {
             )
         }
         let packageImages = staging.appendingPathComponent("Images", isDirectory: true)
-        let pngCount = ((try? FileManager.default.contentsOfDirectory(atPath: packageImages.path)) ?? [])
-            .filter { $0.hasSuffix(".png") }.count
+        // NEW-2 (2026-08-03 audit): propagate directory-enumeration
+        // failures instead of swallowing them with `try? ?? []` —
+        // mirror of the export-side fix (line 461). A missing
+        // packageImages directory still maps to pngCount=0 (a valid
+        // export with no images, or a manifest that declared 0), so
+        // check existence first; only call `contentsOfDirectory` when
+        // the directory is actually present.
+        let pngCount: Int
+        if FileManager.default.fileExists(atPath: packageImages.path) {
+            pngCount = try FileManager.default
+                .contentsOfDirectory(atPath: packageImages.path)
+                .filter { $0.hasSuffix(".png") }
+                .count
+        } else {
+            pngCount = 0
+        }
         guard pngCount == manifest.imageCount else {
             logger.error("Manifest imageCount \(manifest.imageCount) != packaged .png files \(pngCount)")
             throw BackupPackageError.corruptedData(

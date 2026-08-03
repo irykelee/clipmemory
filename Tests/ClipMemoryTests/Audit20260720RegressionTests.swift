@@ -53,8 +53,19 @@ import AppKit
     func testTrimToMaxItemsPreservesPinnedOverflow() {
         // maxItems persists to UserDefaults via didSet — restore it so later
         // tests (and the host app's own defaults domain) are unaffected.
-        let originalMaxItems = store.maxItems
-        defer { store.maxItems = originalMaxItems }
+        // NEW-1 (2026-08-03 audit): absence-aware restore — on a fresh CI
+        // sandbox `maxClipboardItems` may not exist; reading `store.maxItems`
+        // returns the parsed default 100, and `store.maxItems = 100` would
+        // fire didSet and plant a brand-new key, tripping ZZZ's `key ADDED`
+        // canary. Mirror TestHostIsolationTests.swift :95-101.
+        let maxItemsBefore = UserDefaults.standard.object(forKey: "maxClipboardItems")
+        defer {
+            if let maxItemsBefore {
+                UserDefaults.standard.set(maxItemsBefore, forKey: "maxClipboardItems")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
+            }
+        }
         store.maxItems = 50
         var pinnedIDs = Set<UUID>()
         for i in 0..<60 {

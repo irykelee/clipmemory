@@ -404,8 +404,19 @@ import XCTest
         // test classes (e.g. IntegrationTests) don't inherit the tiny cap.
         // M-3 (2026-07-24) widened init acceptance from {50,100,200,500} to
         // the [1, 10000] clamp, which made this leak visible downstream.
-        let originalMaxItems = store.maxItems
-        defer { store.maxItems = originalMaxItems }
+        // NEW-1 (2026-08-03 audit): absence-aware restore — on a fresh CI
+        // sandbox `maxClipboardItems` may not exist; reading `store.maxItems`
+        // returns the parsed default 100, and `store.maxItems = 100` would
+        // fire didSet and plant a brand-new key, tripping ZZZ's `key ADDED`
+        // canary. Mirror TestHostIsolationTests.swift :95-101.
+        let maxItemsBefore = UserDefaults.standard.object(forKey: "maxClipboardItems")
+        defer {
+            if let maxItemsBefore {
+                UserDefaults.standard.set(maxItemsBefore, forKey: "maxClipboardItems")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
+            }
+        }
         store.maxItems = 2
         for i in 1...5 {
             store.addItem(ClipboardItem(content: "Item \(i)", type: .text))

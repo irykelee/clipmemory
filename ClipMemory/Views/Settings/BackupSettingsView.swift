@@ -177,6 +177,14 @@ struct BackupSettingsView: View {
                         result.itemsSkippedCorrupt,
                         result.imagesImported
                     ))
+                    // NEW-3 (2026-08-03 audit): items/tags already
+                    // imported at this point — the success alert alone
+                    // hides the image failure. Surface it as a follow-up
+                    // notice so the user knows their thumbnails were
+                    // lost (and can check Images folder permissions).
+                    if result.imageImportFailed {
+                        showBackupInfo(L10n.settingsBackupImportImagesFailed)
+                    }
                 }
             } catch BackupPackageError.wrongPassword {
                 DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPassphraseWrong) }

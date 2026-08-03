@@ -91,6 +91,7 @@
 "settings.backup.error" = "Backup operation failed, please try again";
 "settings.backup.export.done" = "Export complete";
 "settings.backup.import.result" = "Import complete: %1$d items added, %2$d duplicates skipped, %3$d corrupt, %4$d images";
+"settings.backup.import.imagesFailed" = "Note: images could not be restored (items and tags imported successfully). Check that ClipMemory has write access to its Images folder.";
 "settings.backup.last" = "Last backup: %@";
 "clear.type.action" = "Delete all %@";
 "clear.type.confirm" = "%2$d \"%1$@\" items will be deleted (pinned kept, moved to the Trash)";

@@ -91,6 +91,7 @@
 "settings.backup.error" = "備份操作失敗，請重試";
 "settings.backup.export.done" = "導出完成";
 "settings.backup.import.result" = "導入完成：新增 %1$d 條，跳過重複 %2$d 條，損壞 %3$d 條，圖片 %4$d 張";
+"settings.backup.import.imagesFailed" = "提示：圖片未能還原（條目與標籤已成功匯入）。請檢查 ClipMemory 對其 Images 資料夾的寫入權限。";
 "settings.backup.last" = "上次備份：%@";
 "clear.type.action" = "刪除全部%@";
 "clear.type.confirm" = "將刪除 %2$d 個%1$@條目（不含收藏，進垃圾桶）";

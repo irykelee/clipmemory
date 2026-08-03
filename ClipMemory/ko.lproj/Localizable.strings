@@ -90,6 +90,7 @@
 "settings.backup.error" = "백업 작업 실패, 다시 시도하세요";
 "settings.backup.export.done" = "내보내기 완료";
 "settings.backup.import.result" = "가져오기 완료: 항목 %1$d개 추가, 중복 %2$d개 건너뜀, 손상 %3$d개, 이미지 %4$d개";
+"settings.backup.import.imagesFailed" = "알림: 이미지를 복원하지 못했습니다 (항목과 태그는 가져오기 완료). ClipMemory Images 폴더 쓰기 권한을 확인하세요.";
 "settings.backup.last" = "마지막 백업: %@";
 "clear.type.action" = "%@ 모두 삭제";
 "clear.type.confirm" = "%1$@ %2$d개 항목을 삭제합니다(고정은 유지, 휴지통으로 이동)";
