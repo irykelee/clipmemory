@@ -23,24 +23,18 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ID-VIEW-0022 (2026-08-03, user-driven): brand logo returned
-            // to the sidebar header. The user's "left-align" instruction
-            // really meant the sidebar column on the left side of the
-            // window — the macOS system-app convention (Finder / Notes /
-            // Reminders all show the brand at the top of the sidebar).
-            // expandWidth: true (default) lets the logo span the column
-            // width.
-            LogoView()
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .padding(.bottom, 14)
+            // ID-VIEW-0023 (2026-08-03, user-driven): the brand logo lives
+            // in the TOOLBAR, leading side via .navigation placement.
+            // The user has corrected this five times (0017/0018/0019/0020/
+            // 0021/0022) — the right place is the toolbar's leading edge,
+            // not the sidebar header, not a .principal center, not a
+            // .automatic leading spot. The sidebar is navigation-only.
+            //
             // Search field styling follows the macOS sidebar-search
             // convention (Finder / System Settings): a distinct filled
             // capsule with a hairline border and real breathing room
             // above/below, instead of the old translucent toolbar look
             // that blended into the background. (ID-VIEW-0017 styling.)
-            // top padding intentionally 0 — the LogoView above provides
-            // 14pt of bottom breathing room.
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
@@ -85,9 +79,8 @@ struct SidebarView: View {
                     )
             )
             .padding(.horizontal, 12)
+            .padding(.top, 14)
             .padding(.bottom, 10)
-            // (top padding intentionally 0 — the LogoView above provides
-            // 14pt of bottom breathing room.)
             List(selection: $selectedTab) {
                 ForEach([SidebarTab.all, .text, .image, .link, .richText], id: \.self) { tab in
                     Label(tab.label, systemImage: tab.icon)

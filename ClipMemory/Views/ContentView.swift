@@ -765,17 +765,22 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // ID-VIEW-0022 (2026-08-03, user-driven): brand logo taken OUT of
-        // the toolbar, AGAIN. The user's "left-align" instruction (in
-        // ID-VIEW-0021) actually meant the sidebar header — the user's
-        // left-aligned location is the top of the sidebar column, not
-        // a .navigation ToolbarItem next to the traffic lights. The
-        // macOS ToolbarItem placements I've been cycling through
-        // (.principal / .automatic leading) all rendered on the wrong
-        // track (.automatic defaults to trailing in macOS, not leading;
-        // .principal centers with a Tahoe capsule background). Sidebar
-        // header is the only place the user actually wants it.
-        //
+        // ID-VIEW-0023 (2026-08-03, user-driven): brand logo in the TOOLBAR
+        // at the leading edge via .navigation placement. This is the
+        // user's "toolbar 的最左侧" — what they have been asking for in
+        // every cycle since 0017. My previous attempts:
+        //   - .automatic (0017) → rendered as trailing in macOS, got
+        //     clipped by the date chips
+        //   - .principal (0019) → centered, with a Tahoe unified-toolbar
+        //     capsule background the user explicitly rejected
+        //   - .automatic again (0021) → still trailing, looked centered
+        //   - sidebar header (0018, 0022) → user never wanted it there
+        // .navigation is the correct placement — it sits on the leading
+        // edge of the toolbar row, before the date chips and clear.
+        ToolbarItem(placement: .navigation) {
+            LogoView(expandWidth: false)
+                .fixedSize()
+        }
         // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
         // sidebar header (SidebarView), matching the macOS system-app
         // convention (Finder / App Store / Notes). The window toolbar now
