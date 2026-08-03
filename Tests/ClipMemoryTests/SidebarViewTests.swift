@@ -23,6 +23,9 @@ import SwiftUI
         _ = SidebarView(
             store: store,
             selectedTab: .constant(.all),
+            searchText: .constant(""),
+            isSearchFocused: .constant(false),
+            onSearchSubmit: {},
             selectedTagIds: [tag.id],
             tabCounts: [.all: 3, .text: 2, .image: 1],
             tagCounts: [tag.id: 2],

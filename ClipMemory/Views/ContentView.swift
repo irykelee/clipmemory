@@ -751,55 +751,23 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(id: "search") {
+        // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
+        // sidebar header (SidebarView), matching the macOS system-app
+        // convention (Finder / App Store / Notes). The window toolbar now
+        // carries only window-level commands: date filter + clear. Both use
+        // default placement (NOT .principal — see ID-VIEW-0014 for why
+        // .principal items get silently clipped instead of entering the »
+        // overflow menu on narrow windows); at the 640pt min width this
+        // row still has ~340pt of headroom, so nothing overflows.
+        ToolbarItemGroup(placement: .automatic) {
             HStack(spacing: 4) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: sz(11)))
-                TextField(L10n.searchPlaceholder, text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: sz(12)))
-                    .focused($isSearchFocused)
-                    // ID-VIEW-0011 (2026-08-01 audit): with the search field
-                    // focused, KeyCaptureView propagates Return to the field
-                    // (KeyCaptureView.swift:95-100), but no `.onSubmit` was
-                    // attached — Return was a dead key here. Copy the
-                    // keyboard-selected item when one is visible, else the
-                    // first filtered result. Mirrors QuickBarView's
-                    // `.onSubmit` (ID-A11Y-0008); the main window stays open
-                    // (it's not a popover).
-                    .onSubmit {
-                        let idx = keyboardSelectedIndex.flatMap {
-                            cachedVisibleGlobalIndices.contains($0) ? $0 : nil
-                        } ?? cachedVisibleGlobalIndices.first
-                        guard let idx, idx < cachedDisplayedItems.count else { return }
-                        copyItemWithFlash(cachedDisplayedItems[idx])
+                ForEach(DateFilter.allCases, id: \.self) { filter in
+                    DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
+                        dateFilter = filter
                     }
-                    .frame(width: 180)
-                // 2026-07-27 (user-requested): one-tap clear of the search
-                // field instead of backspacing character by character.
-                // Hidden when the field is empty so the toolbar stays
-                // visually quiet when no search is active. Mirrors the
-                // QuickBar × at QuickBarView.swift:110-115 so both search
-                // surfaces have a consistent interaction model.
-                if !searchText.isEmpty {
-                    Button(action: {
-                        searchText = ""
-                        isSearchFocused = true
-                    }, label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                            .font(.system(size: sz(11)))
-                    })
-                    .buttonStyle(.plain)
-                    // ID-L10N-0002 (2026-07-30 audit): localized VoiceOver label.
-                    .accessibilityLabel(L10n.searchClear)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
-            .cornerRadius(6)
+            .padding(.horizontal, 4)
         }
         ToolbarItem(id: "clear") {
             if selectedTab == .trash {
@@ -827,17 +795,6 @@ struct ContentView: View {
                 .disabled(store.items.isEmpty)
             }
         }
-        // ID-VIEW-0014 (2026-08-03 audit, user-driven): date filter was
-        // previously a ToolbarItemGroup(placement: .principal) at the
-        // top of this toolbar. `.principal` items are NOT routed through
-        // NSToolbar's native » overflow menu when the window narrows —
-        // they get silently clipped, hiding both the search hint and
-        // the active filter selection from the user. Date filters and
-        // tag filters are semantically the same class (list filters, not
-        // window-level commands), so move the date filter chip strip
-        // down next to the existing `activeTagFilterStrip` (itemList's
-        // VStack). The toolbar now only carries window-level commands
-        // (search + clear) and stays legible at 640pt.
     }
 
     private var sidebar: some View {
@@ -859,6 +816,21 @@ struct ContentView: View {
                     }
                 }
             ),
+            // ID-VIEW-0015: search field moved into the sidebar header —
+            // binding to the same @State the toolbar field used to own, so
+            // filtering, debounce and keyboard selection all keep working.
+            searchText: $searchText,
+            isSearchFocused: $isSearchFocused,
+            // ID-VIEW-0011 behavior preserved (was the toolbar field's
+            // .onSubmit): copy the keyboard-selected item when one is
+            // visible, else the first filtered result.
+            onSearchSubmit: {
+                let idx = keyboardSelectedIndex.flatMap {
+                    cachedVisibleGlobalIndices.contains($0) ? $0 : nil
+                } ?? cachedVisibleGlobalIndices.first
+                guard let idx, idx < cachedDisplayedItems.count else { return }
+                copyItemWithFlash(cachedDisplayedItems[idx])
+            },
             selectedTagIds: selectedTagIds,
             tabCounts: tabCounts,
             tagCounts: tagCounts,
@@ -880,30 +852,13 @@ struct ContentView: View {
     /// rollover stay in one place — the ViewModel collapse is Phase 5+ scope.
     private var itemList: some View {
         VStack(spacing: 0) {
-            // ID-VIEW-0014 (2026-08-03 audit): date filter chip strip
-            // moved here from the window toolbar's `.principal` placement
-            // (ContentView.swift:830-839, now removed). `.principal`
-            // toolbar items are silently clipped on narrow windows instead
-            // of being routed into NSToolbar's » overflow menu — moving
-            // down here keeps them always visible and side-by-side with
-            // the semantically-equivalent tag filter strip below.
-            // Padding mirrors `activeTagFilterStrip` so the two strips
-            // share the same horizontal margin.
-            HStack(spacing: 4) {
-                ForEach(DateFilter.allCases, id: \.self) { filter in
-                    DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
-                        dateFilter = filter
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
             // 2026-07-27 (user-requested): surface the active tag filter at
             // the top of the list so users don't read a short list as
             // "missing content". When `selectedTagIds` is empty the chip
             // strip renders nothing (no extra vertical space). When set,
             // the strip shows one chip per selected tag with an inline ×,
             // plus a "clear all" affordance and a count badge.
+            // (Date filter chips live in the window toolbar — ID-VIEW-0015.)
             activeTagFilterStrip
             DiagnosticsBanner(
                 diagnostics: store.diagnostics,

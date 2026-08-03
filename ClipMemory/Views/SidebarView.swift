@@ -3,6 +3,14 @@ import SwiftUI
 struct SidebarView: View {
     @ObservedObject var store: ClipboardStore
     @Binding var selectedTab: SidebarTab
+    // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
+    // sidebar header (macOS system-app convention). The bindings are owned
+    // by ContentView — filtering, debounce, focus and keyboard selection
+    // all stay in one place there. onSubmit behavior also lives in
+    // ContentView (it needs cachedDisplayedItems / copyItemWithFlash).
+    @Binding var searchText: String
+    @FocusState.Binding var isSearchFocused: Bool
+    let onSearchSubmit: () -> Void
     let selectedTagIds: Set<UUID>
     let tabCounts: [SidebarTab: Int]
     let tagCounts: [UUID: Int]
@@ -17,6 +25,46 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             LogoView()
                 .padding(.horizontal, 8)
+            // ID-VIEW-0015: search field in the sidebar header, matching
+            // Finder / App Store / Notes. Visual styling mirrors the old
+            // toolbar field (ContentView) so the switch is invisible.
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: sz(11)))
+                TextField(L10n.searchPlaceholder, text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: sz(12)))
+                    .focused($isSearchFocused)
+                    // Fill the sidebar width (the old toolbar field was a
+                    // fixed 180pt; here the sidebar column is the constraint).
+                    .frame(maxWidth: .infinity)
+                    // ID-VIEW-0011 behavior preserved: Return copies the
+                    // keyboard-selected (or first) visible item. The actual
+                    // copy logic lives in ContentView via onSearchSubmit.
+                    .onSubmit { onSearchSubmit() }
+                // 2026-07-27 (user-requested): one-tap clear. Hidden when
+                // empty so the sidebar stays visually quiet.
+                if !searchText.isEmpty {
+                    Button(action: {
+                        searchText = ""
+                        isSearchFocused = true
+                    }, label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: sz(11)))
+                    })
+                    .buttonStyle(.plain)
+                    // ID-L10N-0002: localized VoiceOver label.
+                    .accessibilityLabel(L10n.searchClear)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+            .cornerRadius(6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
             List(selection: $selectedTab) {
                 ForEach([SidebarTab.all, .text, .image, .link, .richText], id: \.self) { tab in
                     Label(tab.label, systemImage: tab.icon)
