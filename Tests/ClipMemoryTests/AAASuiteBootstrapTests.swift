@@ -26,4 +26,15 @@ final class AAASuiteBootstrapTests: XCTestCase {
         Self.productionPersistentDomainBefore =
             UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
     }
+
+    // MARK: Canary discovery marker
+
+    /// XCTest discovers test classes by their `testXxx()` methods; a class
+    /// with NO test methods is silently skipped and its class-level hooks
+    /// (`setUp`/`tearDown`) never run — the whole canary was structurally
+    /// dead until this marker was added (2026-08-03 CI catch: build passed,
+    /// zero tests executed). Empty on purpose; ordering relies on XCTest's
+    /// class-name alphabetical execution with the scheme's
+    /// `parallelizable = NO`.
+    func testSuiteBootstrapMarker() {}
 }

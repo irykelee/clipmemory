@@ -13,7 +13,11 @@ import XCTest
 /// that may legitimately appear/disappear between launches; not test errors.
 final class ZZZSuiteTeardownTests: XCTestCase {
 
-    private let systemKeyPrefixes = ["NS", "Apple", "com.apple."]
+    /// System runtime key prefixes that may legitimately appear/disappear
+    /// between before/after snapshots without meaning a test wrote them.
+    /// `static` so the suite-level class func tearDown can reference it
+    /// without needing `self` (which a class func lacks).
+    private static let systemKeyPrefixes = ["NS", "Apple", "com.apple."]
 
     override class func tearDown() {
         let bundleId = Bundle.main.bundleIdentifier ?? ""
@@ -53,4 +57,15 @@ final class ZZZSuiteTeardownTests: XCTestCase {
 
         super.tearDown()
     }
+
+    // MARK: Canary discovery marker
+
+    /// XCTest discovers test classes by their `testXxx()` methods; a class
+    /// with NO test methods is silently skipped and its class-level hooks
+    /// (`setUp`/`tearDown`) never run — the whole canary was structurally
+    /// dead until this marker was added (2026-08-03 CI catch: build passed,
+    /// zero tests executed). Empty on purpose; ordering relies on XCTest's
+    /// class-name alphabetical execution with the scheme's
+    /// `parallelizable = NO`.
+    func testSuiteTeardownMarker() {}
 }
