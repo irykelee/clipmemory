@@ -45,19 +45,51 @@ jobs:
           done
           echo "✅ no duplicate v${VERSION} README heading"
 
-          # DOC-0003: cross-locale Trash terminology pollution (glossary map:
-          # sync_readme.py:50 GLOSSARY dict — zh-Hans 回收站 / zh-Hant 垃圾桶 /
-          # en Trash).
-          if grep -q "垃圾桶" README.md; then
-            fail "README.md (zh-Hans) uses '垃圾桶' (should be '回收站')"
-          fi
-          if grep -q "回收站" docs/lang/README_ZH-HANT.md; then
-            fail "README_ZH-HANT.md uses '回收站' (should be '垃圾桶')"
-          fi
-          if grep -qi "Recycle Bin" docs/lang/README_EN.md; then
-            fail "README_EN.md uses 'Recycle Bin' (should be 'Trash')"
-          fi
-          echo "✅ Trash glossary consistent (zh-Hans/zh-Hant/en)"
+          # DOC-0003: cross-locale Trash terminology pollution. Each
+          # language's README must contain only its own Trash term —
+          # never any other language's. Mirror of sync_readme.py:50
+          # GLOSSARY["回收站"] (the canonical map). Covers all 7 langs
+          # (REL-24 2026-08-03 audit F-4 — previous gate was 3 files only).
+          declare -A EXPECTED_TRASH=(
+            ["README.md"]="回收站"
+            ["docs/lang/README_ZH-HANT.md"]="垃圾桶"
+            ["docs/lang/README_EN.md"]="Trash"
+            ["docs/lang/README_JA.md"]="ごみ箱"
+            ["docs/lang/README_KO.md"]="휴지통"
+            ["docs/lang/README_ES.md"]="Papelera"
+            ["docs/lang/README_PT.md"]="Lixeira"
+          )
+          # All Trash terms across locales. CJK terms use -F (fixed string);
+          # Western terms use ERE (^|[^A-Za-z0-9_.])Term([^A-Za-z0-9_.]|$)
+          # — proxy for lookbehind/lookahead that avoids matching inside
+          # identifiers like TrashStore or i18n key paths like trash.json
+          # (without needing GNU grep's -P, which stock macOS grep lacks).
+          ALL_TRASH_CJK=("回收站" "垃圾桶" "ごみ箱" "휴지통")
+          ALL_TRASH_WESTERN=("Trash" "Papelera" "Lixeira")
+          for file in "${!EXPECTED_TRASH[@]}"; do
+            expected="${EXPECTED_TRASH[$file]}"
+            for term in "${ALL_TRASH_CJK[@]}"; do
+              if [[ "$term" != "$expected" ]] && grep -qF "$term" "$file" 2>/dev/null; then
+                fail "$file contains foreign Trash term '$term' (expected '$expected' for this locale)"
+              fi
+            done
+            for term in "${ALL_TRASH_WESTERN[@]}"; do
+              if [[ "$term" != "$expected" ]]; then
+                PATTERN="(^|[^A-Za-z0-9_.])${term}([^A-Za-z0-9_.]|$)"
+                if grep -qiE "$PATTERN" "$file" 2>/dev/null; then
+                  fail "$file contains foreign Trash term '$term' as standalone word (expected '$expected')"
+                fi
+              fi
+            done
+          done
+          # Legacy "Recycle Bin" annotation (DOC-0003 root-cause fix) must not
+          # appear in any README regardless of locale.
+          for file in "${!EXPECTED_TRASH[@]}"; do
+            if grep -qiF "Recycle Bin" "$file" 2>/dev/null; then
+              fail "$file contains legacy 'Recycle Bin' annotation (should use local Trash term)"
+            fi
+          done
+          echo "✅ Trash glossary consistent across all 7 locales (zh-Hans/zh-Hant/en/ja/ko/es/pt)"
 
           if [[ "$FAILS" -gt 0 ]]; then
             echo "❌ README hygiene checks FAILED."
