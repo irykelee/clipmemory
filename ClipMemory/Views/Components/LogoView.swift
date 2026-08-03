@@ -29,7 +29,7 @@ struct LogoView: View {
     var body: some View {
         if isBilingual {
             // Chinese + English on one line: "剪忆 ClipMemory"
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(chineseName)
                     // ID-A11Y-0003 (2026-07-30 audit): route through `sz()`
                     // so Settings → Font Size (small/medium/large) actually

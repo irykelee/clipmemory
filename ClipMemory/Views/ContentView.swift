@@ -783,12 +783,15 @@ struct ContentView: View {
         ToolbarItem(placement: .navigation) {
             LogoView(expandWidth: false)
                 .fixedSize()
-                // ID-VIEW-0026 (2026-08-03, user-driven): minimal
-                // 6pt horizontal padding — just enough to keep the
-                // glyphs off the capsule's rounded edge. The capsule
-                // itself comes from Tahoe's unified toolbar and is
-                // sized by the toolbar manager.
-                .padding(.horizontal, 6)
+                // ID-VIEW-0027 (2026-08-03, user-driven): match the
+                // date-chip padding — 12pt horizontal — so the logo
+                // capsule has the same breathing room as the chips
+                // (compared side-by-side the logo felt cramped). The
+                // internal HStack spacing was tightened from 8 → 6 to
+                // keep the total width roughly the same so the date
+                // chips + clear don't get pushed into the overflow
+                // menu again.
+                .padding(.horizontal, 12)
         }
         // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
         // sidebar header (SidebarView), matching the macOS system-app
