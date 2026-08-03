@@ -783,7 +783,12 @@ struct ContentView: View {
         ToolbarItem(placement: .navigation) {
             LogoView(expandWidth: false)
                 .fixedSize()
-                .padding(.horizontal, 12)
+                // ID-VIEW-0026 (2026-08-03, user-driven): minimal
+                // 6pt horizontal padding — just enough to keep the
+                // glyphs off the capsule's rounded edge. The capsule
+                // itself comes from Tahoe's unified toolbar and is
+                // sized by the toolbar manager.
+                .padding(.horizontal, 6)
         }
         // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
         // sidebar header (SidebarView), matching the macOS system-app
