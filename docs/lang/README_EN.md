@@ -400,7 +400,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 - Rich text capture toggle
 - Font size (Small / Medium / Large)
 - Launch at login
-- Recycle bin retention (3 / 7 / 14 / 30 days)
+- Trash retention (3 / 7 / 14 / 30 days)
 - Backup (daily auto-backup / retention / export / import)
 - Updates (automatic checks / check now)
 
