@@ -767,27 +767,24 @@ struct ContentView: View {
         // `titlebarAppearsTransparent` + `.fullSizeContentView`. `.hidden`
         // here keeps the toolbar layer itself from painting a background
         // so the two layers stay transparent together.
-        .toolbarBackground(.hidden, for: .windowToolbar)
-        // ID-VIEW-0024: logo overlay (no capsule, exact leading offset).
-        .overlay(alignment: .topLeading) {
-            LogoView(expandWidth: false)
-                .padding(.leading, 88)
-                .padding(.top, 12)
-                .allowsHitTesting(false)
-        })
+        .toolbarBackground(.hidden, for: .windowToolbar))
     }
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // ID-VIEW-0024 (2026-08-03, user-driven): brand logo moved OUT of
-        // the toolbar item system entirely — placed as an overlay on the
-        // NavigationSplitView (see splitViewWithLifecycle). Reasons:
-        //   (a) macOS 26 Tahoe gives toolbar items a system capsule
-        //       background that no SwiftUI API can remove — the user
-        //       rejected it in every .principal/.navigation attempt;
-        //   (b) overlay gives exact control of the leading offset (user
-        //       asked for more space left of the logo) and has no capsule.
-        //
+        // ID-VIEW-0025 (2026-08-03, user-driven): brand logo at the
+        // toolbar's leading edge via .navigation placement — same as
+        // ID-VIEW-0023, but with English "ClipMemory" now sz(20) to
+        // match the Chinese "剪忆" (was sz(14) in 0021). The Tahoe
+        // capsule background is accepted here (no API to remove it);
+        // the user asked for more left/right padding inside the capsule
+        // so the text doesn't crowd the rounded edges. The LogoView
+        // internals make the glyphs fill the capsule cleanly.
+        ToolbarItem(placement: .navigation) {
+            LogoView(expandWidth: false)
+                .fixedSize()
+                .padding(.horizontal, 12)
+        }
         // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
         // sidebar header (SidebarView), matching the macOS system-app
         // convention (Finder / App Store / Notes). The window toolbar now

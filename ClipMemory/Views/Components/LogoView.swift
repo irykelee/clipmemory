@@ -29,7 +29,7 @@ struct LogoView: View {
     var body: some View {
         if isBilingual {
             // Chinese + English on one line: "剪忆 ClipMemory"
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(chineseName)
                     // ID-A11Y-0003 (2026-07-30 audit): route through `sz()`
                     // so Settings → Font Size (small/medium/large) actually
@@ -37,11 +37,12 @@ struct LogoView: View {
                     .font(.system(size: sz(20), weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                 Text("ClipMemory")
-                    // ID-VIEW-0021 (2026-08-03, user-driven): English part
-                    // bumped sz(11) → sz(14) — it read too small next to the
-                    // sz(20) Chinese name.
-                    .font(.system(size: sz(14), weight: .medium))
-                    .foregroundColor(.secondary)
+                    // ID-VIEW-0025 (2026-08-03, user-driven): English part
+                    // bumped sz(14) → sz(20) to match the Chinese "剪忆".
+                    // Weight unified to .bold so the two glyph pairs
+                    // (CN:bold / EN:bold) carry the same visual weight.
+                    .font(.system(size: sz(20), weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
             }
             .frame(maxWidth: expandWidth ? .infinity : nil)
             .padding(.vertical, 4)
