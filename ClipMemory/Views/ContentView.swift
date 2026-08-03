@@ -827,16 +827,17 @@ struct ContentView: View {
                 .disabled(store.items.isEmpty)
             }
         }
-        ToolbarItemGroup(placement: .principal) {
-            HStack(spacing: 4) {
-                ForEach(DateFilter.allCases, id: \.self) { filter in
-                    DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
-                        dateFilter = filter
-                    }
-                }
-            }
-            .padding(.horizontal, 4)
-        }
+        // ID-VIEW-0014 (2026-08-03 audit, user-driven): date filter was
+        // previously a ToolbarItemGroup(placement: .principal) at the
+        // top of this toolbar. `.principal` items are NOT routed through
+        // NSToolbar's native » overflow menu when the window narrows —
+        // they get silently clipped, hiding both the search hint and
+        // the active filter selection from the user. Date filters and
+        // tag filters are semantically the same class (list filters, not
+        // window-level commands), so move the date filter chip strip
+        // down next to the existing `activeTagFilterStrip` (itemList's
+        // VStack). The toolbar now only carries window-level commands
+        // (search + clear) and stays legible at 640pt.
     }
 
     private var sidebar: some View {
@@ -879,6 +880,24 @@ struct ContentView: View {
     /// rollover stay in one place — the ViewModel collapse is Phase 5+ scope.
     private var itemList: some View {
         VStack(spacing: 0) {
+            // ID-VIEW-0014 (2026-08-03 audit): date filter chip strip
+            // moved here from the window toolbar's `.principal` placement
+            // (ContentView.swift:830-839, now removed). `.principal`
+            // toolbar items are silently clipped on narrow windows instead
+            // of being routed into NSToolbar's » overflow menu — moving
+            // down here keeps them always visible and side-by-side with
+            // the semantically-equivalent tag filter strip below.
+            // Padding mirrors `activeTagFilterStrip` so the two strips
+            // share the same horizontal margin.
+            HStack(spacing: 4) {
+                ForEach(DateFilter.allCases, id: \.self) { filter in
+                    DateFilterButton(title: filter.label, isSelected: dateFilter == filter) {
+                        dateFilter = filter
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             // 2026-07-27 (user-requested): surface the active tag filter at
             // the top of the list so users don't read a short list as
             // "missing content". When `selectedTagIds` is empty the chip
