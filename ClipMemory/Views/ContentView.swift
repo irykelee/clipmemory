@@ -735,7 +735,15 @@ struct ContentView: View {
             // so the detail pane is always the item list.
             itemList
         }
-        .frame(minWidth: 640, minHeight: 440)
+        // ID-VIEW-0016 (2026-08-03, user-driven): min width raised from
+        // 640pt to 800pt. NavigationSplitView's toolbar collects items
+        // into the » overflow menu when the window gets narrow — at 640pt
+        // the date filter chips + clear button were silently hidden behind
+        // the overflow chevron. 800pt keeps the full toolbar visible at
+        // the minimum window size (the toolbar row carries the 4 date
+        // chips ~200pt + clear ~28pt + titlebar traffic lights ~70pt,
+        // well under 800pt with sidebar at its 190pt min).
+        .frame(minWidth: 800, minHeight: 440)
         .toolbar { self.toolbarContent }
         // 2026-07-25: `.visible` forced an opaque toolbar background. On
         // macOS 15 that rendered as a unified material blended with the
