@@ -765,18 +765,17 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // ID-VIEW-0021 (2026-08-03, user-driven): brand logo in the
-        // toolbar, LEFT-aligned (not .principal-centered as in
-        // ID-VIEW-0019, which also carried a Tahoe-unified-toolbar
-        // capsule background around the item). A leading .automatic
-        // ToolbarItem renders on the leading side with no capsule;
-        // the date chips + clear keep their own .automatic group.
-        ToolbarItem(id: "brand") {
-            // expandWidth: false — in a toolbar the logo hugs its content
-            // instead of stretching to fill the bar.
-            LogoView(expandWidth: false)
-                .fixedSize()
-        }
+        // ID-VIEW-0022 (2026-08-03, user-driven): brand logo taken OUT of
+        // the toolbar, AGAIN. The user's "left-align" instruction (in
+        // ID-VIEW-0021) actually meant the sidebar header — the user's
+        // left-aligned location is the top of the sidebar column, not
+        // a .navigation ToolbarItem next to the traffic lights. The
+        // macOS ToolbarItem placements I've been cycling through
+        // (.principal / .automatic leading) all rendered on the wrong
+        // track (.automatic defaults to trailing in macOS, not leading;
+        // .principal centers with a Tahoe capsule background). Sidebar
+        // header is the only place the user actually wants it.
+        //
         // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
         // sidebar header (SidebarView), matching the macOS system-app
         // convention (Finder / App Store / Notes). The window toolbar now
