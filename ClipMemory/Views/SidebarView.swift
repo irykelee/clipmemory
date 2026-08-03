@@ -23,15 +23,11 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ID-VIEW-0019 (2026-08-03, user-driven): logo moved BACK to
-            // the toolbar (this time as .principal → centered in the
-            // title bar), after ID-VIEW-0018 placed it in the sidebar
-            // header and the user clarified the red-box position was the
-            // detail top-center, not the sidebar header. .principal has
-            // ~360pt of horizontal space at the 800pt min width, and the
-            // "剪忆 ClipMemory" text only needs ~120pt, so the silent-
-            // clip risk ID-VIEW-0014 documented (.principal overflow on
-            // narrow windows) doesn't apply here.
+            // ID-VIEW-0021 (2026-08-03, user-driven): the brand logo lives
+            // in the window toolbar (leading .automatic ToolbarItem in
+            // ContentView.toolbarContent) — NOT in this sidebar. The
+            // sidebar is navigation only: search + list. This comment is
+            // the anchor for that decision; see ContentView for the logo.
             //
             // Search field styling follows the macOS sidebar-search
             // convention (Finder / System Settings): a distinct filled

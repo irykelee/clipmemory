@@ -765,20 +765,15 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // ID-VIEW-0019 (2026-08-03, user-driven): brand logo moved BACK
-        // into the toolbar as .principal → centered in the title bar —
-        // the position the user actually meant in the red-box screenshot.
-        // (ID-VIEW-0017 had it as .automatic, leading edge, which collided
-        // with the date chips at 800pt and clipped the "剪". ID-VIEW-0018
-        // misread the red-box and put it in the sidebar header; user
-        // clarified it's the detail top-center.) .principal has ~360pt
-        // of horizontal space at the 800pt min width, and the logo only
-        // needs ~120pt, so the ID-VIEW-0014 narrow-window clipping risk
-        // doesn't apply here.
-        ToolbarItem(placement: .principal) {
+        // ID-VIEW-0021 (2026-08-03, user-driven): brand logo in the
+        // toolbar, LEFT-aligned (not .principal-centered as in
+        // ID-VIEW-0019, which also carried a Tahoe-unified-toolbar
+        // capsule background around the item). A leading .automatic
+        // ToolbarItem renders on the leading side with no capsule;
+        // the date chips + clear keep their own .automatic group.
+        ToolbarItem(id: "brand") {
             // expandWidth: false — in a toolbar the logo hugs its content
-            // instead of stretching to fill the bar (the sidebar uses the
-            // default expandWidth: true).
+            // instead of stretching to fill the bar.
             LogoView(expandWidth: false)
                 .fixedSize()
         }
