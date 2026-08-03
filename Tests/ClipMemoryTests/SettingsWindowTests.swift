@@ -10,6 +10,24 @@ import XCTest
 ///    (the same dedupe pattern `showWelcomeView` uses).
 final class SettingsWindowTests: XCTestCase {
 
+    private var testDefaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        // M13 (2026-08-03): WindowManager uses a static defaults seam.
+        // SettingsWindowTests show real windows which triggers savedWindowFrame
+        // writes — redirect to isolated suite.
+        testDefaults = makeTestDefaults()
+        WindowManager.defaults = testDefaults
+    }
+
+    override func tearDown() {
+        WindowManager.defaults = .standard
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
+        super.tearDown()
+    }
+
     @MainActor
     func testShowSettingsWindowCreatesWindow() {
         guard let delegate = NSApp.delegate as? AppDelegate else {

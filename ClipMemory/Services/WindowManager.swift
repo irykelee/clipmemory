@@ -79,6 +79,13 @@ class WindowManager: NSObject, NSWindowDelegate {
         QuickBarView(onDismiss: onDismiss)
     }
 
+    /// M13 (2026-08-03): test seam — static injectable UserDefaults suite.
+    /// `nonisolated(unsafe)` because the savedWindowFrame accessor is
+    /// nonisolated (window frame read from a DispatchWorkItem callback).
+    /// Swift 6: first candidate for removal once all nonisolated(unsafe)
+    /// statics are eliminated from the service layer.
+    nonisolated(unsafe) static var defaults: UserDefaults = .standard
+
     override init() { super.init() }
 
     func setStatusItem(_ item: NSStatusItem) { self.statusItem = item }
@@ -221,7 +228,7 @@ class WindowManager: NSObject, NSWindowDelegate {
     private var savedWindowFrame: NSRect {
         get {
             let defaultFrame = NSRect(x: 0, y: 0, width: 680, height: 500)
-            guard let data = UserDefaults.standard.data(forKey: windowFrameKey),
+            guard let data = Self.defaults.data(forKey: windowFrameKey),
                   let frame = try? JSONDecoder().decode(WindowFrame.self, from: data) else { return defaultFrame }
             let saved = NSRect(x: frame.x, y: frame.y, width: frame.w, height: frame.h)
             if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(saved) }) {
@@ -238,7 +245,7 @@ class WindowManager: NSObject, NSWindowDelegate {
             // would silently drop on next launch. Log the failure.
             do {
                 let data = try JSONEncoder().encode(f)
-                UserDefaults.standard.set(data, forKey: windowFrameKey)
+                Self.defaults.set(data, forKey: windowFrameKey)
             } catch {
                 logger.error("Failed to persist window frame (position/size lost on next launch): \(error.localizedDescription, privacy: .public)")
             }

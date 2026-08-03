@@ -11,8 +11,8 @@ extension ClipboardStore {
     /// Whether image search results show OCR text snippet + highlight under the
     /// thumbnail. Display-only — filter still uses OCR text even when off. Default on.
     var ocrPreviewEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: Self.ocrPreviewEnabledKey) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: Self.ocrPreviewEnabledKey) }
+        get { defaults.object(forKey: Self.ocrPreviewEnabledKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.ocrPreviewEnabledKey) }
     }
 
     // H-4 (2026-07-24 audit): logger for OCR-specific failures. Mirrors the
@@ -22,8 +22,8 @@ extension ClipboardStore {
 
     /// Whether on-device OCR runs for newly captured images. Default on.
     var ocrEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: Self.ocrEnabledKey) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: Self.ocrEnabledKey) }
+        get { defaults.object(forKey: Self.ocrEnabledKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.ocrEnabledKey) }
     }
 
     /// Attaches OCR-recognized plaintext (encrypted at rest) to an image item.

@@ -204,3 +204,34 @@ func assertImageSnapshot(
 
 private var snapshotTestSavedFontScale: Double?
 private var snapshotTestSavedLanguage: String = "en"
+
+// MARK: - M13 Test Infrastructure
+
+/// M13: isolated UserDefaults suite factory.
+///
+/// Tests must never write to `UserDefaults.standard` — the test host shares
+/// that domain with the production app, so any write pollutes the user's
+/// real preferences and causes local-green / CI-red flakes (ID-MON-0002).
+///
+/// Usage:
+/// ```
+/// let defaults = makeTestDefaults()
+/// // use defaults in test
+/// removeTestDefaults(defaults)
+/// ```
+private var _testDefaultsSuiteNames: [Int: String] = [:]
+
+func makeTestDefaults() -> UserDefaults {
+    let suiteName = "test-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    _testDefaultsSuiteNames[ObjectIdentifier(defaults).hashValue] = suiteName
+    return defaults
+}
+
+func removeTestDefaults(_ defaults: UserDefaults) {
+    let key = ObjectIdentifier(defaults).hashValue
+    if let suiteName = _testDefaultsSuiteNames[key] {
+        defaults.removePersistentDomain(forName: suiteName)
+        _testDefaultsSuiteNames[key] = nil
+    }
+}

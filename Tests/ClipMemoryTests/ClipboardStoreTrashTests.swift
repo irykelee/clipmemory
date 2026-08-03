@@ -8,35 +8,26 @@ import XCTest
     private var tagBackend: MemoryStorageBackend!
     private var trashBackend: MemoryStorageBackend!
     private var store: ClipboardStore!
-    private var savedTrashRetentionDays: Any?
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        // M13 (2026-08-02 audit): the purge tests write
-        // "ClipboardTrashedItems.retentionDays" through TrashStore's
-        // trashRetentionDays didSet (hardwired UserDefaults.standard, not
-        // suite-injectable). Back up the real value and restore it in
-        // tearDown so a user's retention setting survives a test run
-        // (STORE-0007 pattern).
-        savedTrashRetentionDays = UserDefaults.standard.object(forKey: TrashStore.trashedItemsStorageKey + ".retentionDays")
+        // M13 (2026-08-03): TrashStore now uses injectable defaults. Pass a
+        // test suite so trashRetentionDays writes never touch production.
+        testDefaults = makeTestDefaults()
         backend = MemoryStorageBackend()
         tagBackend = MemoryStorageBackend()
         trashBackend = MemoryStorageBackend()
-        store = ClipboardStore(backend: backend, tagBackend: tagBackend, trashBackend: trashBackend)
+        store = ClipboardStore(backend: backend, tagBackend: tagBackend, trashBackend: trashBackend, defaults: testDefaults)
     }
 
     override func tearDown() {
-        // M13: restore the production value captured in setUp.
-        if let savedTrashRetentionDays {
-            UserDefaults.standard.set(savedTrashRetentionDays, forKey: TrashStore.trashedItemsStorageKey + ".retentionDays")
-        } else {
-            UserDefaults.standard.removeObject(forKey: TrashStore.trashedItemsStorageKey + ".retentionDays")
-        }
-        savedTrashRetentionDays = nil
         store = nil
         trashBackend = nil
         tagBackend = nil
         backend = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 

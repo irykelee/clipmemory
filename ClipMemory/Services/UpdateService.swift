@@ -97,6 +97,13 @@ final class UpdateService {
     private static let lastPrimaryItemDateKey = "LastPrimaryAppcastItemDate"
     private static let feedPolicyKey = "UpdateFeedPolicy"
 
+    /// M13 (2026-08-03): test seam — static injectable UserDefaults suite.
+    /// `nonisolated(unsafe)` because the static properties that use it are
+    /// nonisolated; the same justification as `ClipboardStore.contentCache`.
+    /// Swift 6: first candidate for removal once all nonisolated(unsafe)
+    /// statics are eliminated from the service layer.
+    nonisolated(unsafe) static var defaults: UserDefaults = .standard
+
     private let feedProvider = FeedURLProvider()
     private let gentleReminder = GentleUpdateReminder()
     private let updaterController: SPUStandardUpdaterController
@@ -139,12 +146,12 @@ final class UpdateService {
 
     /// The user's recorded mirror-feed choice. nil = never asked (H1).
     static var fallbackFeedConsent: Bool? {
-        get { UserDefaults.standard.object(forKey: fallbackConsentKey) as? Bool }
+        get { Self.defaults.object(forKey: fallbackConsentKey) as? Bool }
         set {
             if let newValue {
-                UserDefaults.standard.set(newValue, forKey: fallbackConsentKey)
+                Self.defaults.set(newValue, forKey: fallbackConsentKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: fallbackConsentKey)
+                Self.defaults.removeObject(forKey: fallbackConsentKey)
             }
         }
     }
@@ -152,14 +159,14 @@ final class UpdateService {
     /// The user's current update-source policy. Single source of truth.
     static var feedPolicy: UpdateFeedPolicy {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: feedPolicyKey),
+            guard let raw = Self.defaults.string(forKey: feedPolicyKey),
                   let policy = UpdateFeedPolicy(rawValue: raw) else {
                 return .automatic
             }
             return policy
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: feedPolicyKey)
+            Self.defaults.set(newValue.rawValue, forKey: feedPolicyKey)
         }
     }
 
@@ -167,10 +174,10 @@ final class UpdateService {
     /// `UpdateFeedPolicy` enum. Idempotent — safe to call from init() every launch.
     /// Spec §3.1 migration block.
     static func migrateFeedConsentIfNeeded() {
-        guard UserDefaults.standard.object(forKey: feedPolicyKey) == nil else { return }
+        guard Self.defaults.object(forKey: feedPolicyKey) == nil else { return }
         if let legacy = fallbackFeedConsent {
             feedPolicy = legacy ? .automatic : .primary
-            UserDefaults.standard.removeObject(forKey: fallbackConsentKey)
+            Self.defaults.removeObject(forKey: fallbackConsentKey)
         } else {
             feedPolicy = .automatic
         }
@@ -179,12 +186,12 @@ final class UpdateService {
     /// Newest item date the primary feed last served. Basis of the H1
     /// max-timestamp guard against a stale jsDelivr cache.
     static var lastPrimaryItemDate: Date? {
-        get { UserDefaults.standard.object(forKey: lastPrimaryItemDateKey) as? Date }
+        get { Self.defaults.object(forKey: lastPrimaryItemDateKey) as? Date }
         set {
             if let newValue {
-                UserDefaults.standard.set(newValue, forKey: lastPrimaryItemDateKey)
+                Self.defaults.set(newValue, forKey: lastPrimaryItemDateKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: lastPrimaryItemDateKey)
+                Self.defaults.removeObject(forKey: lastPrimaryItemDateKey)
             }
         }
     }

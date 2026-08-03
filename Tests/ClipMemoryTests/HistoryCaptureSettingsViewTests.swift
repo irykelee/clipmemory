@@ -9,32 +9,23 @@ final class HistoryCaptureSettingsViewTests: XCTestCase {
     // HistoryCaptureSettingsView takes an injected store (see
     // SettingsTabSnapshotTests) and ocrPreviewEnabled is UserDefaults-backed,
     // so any instance exercises the same accessor.
+    // M13 (2026-08-03): now uses isolated defaults suite — no production writes.
     private var store: ClipboardStore!
-    private var savedOcrPreviewEnabled: Any?
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        // M13 (2026-08-02 audit): these tests write the production
-        // "ocrPreviewEnabled" key through ClipboardStore+OCR's hardwired
-        // UserDefaults.standard accessor (not suite-injectable). Back up
-        // the real value and restore it in tearDown so a user's
-        // non-default setting survives a test run (STORE-0007 pattern,
-        // same as OCRTests).
-        savedOcrPreviewEnabled = UserDefaults.standard.object(forKey: "ocrPreviewEnabled")
-        store = ClipboardStore(backend: MemoryStorageBackend())
+        // M13 (2026-08-03): use isolated defaults suite for ocrPreviewEnabled.
+        testDefaults = makeTestDefaults()
+        store = ClipboardStore(backend: MemoryStorageBackend(), defaults: testDefaults)
         // Each test starts from a known state.
         store.ocrPreviewEnabled = true
     }
 
     override func tearDown() {
-        // M13: restore the production value captured in setUp.
-        if let savedOcrPreviewEnabled {
-            UserDefaults.standard.set(savedOcrPreviewEnabled, forKey: "ocrPreviewEnabled")
-        } else {
-            UserDefaults.standard.removeObject(forKey: "ocrPreviewEnabled")
-        }
-        savedOcrPreviewEnabled = nil
         store = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 

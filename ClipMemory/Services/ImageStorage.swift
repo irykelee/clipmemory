@@ -877,7 +877,8 @@ class ImageStorage {
     /// regression tests (I.8, race window, Path B failsafe) call this
     /// directly. Production's only caller (ClipboardStore.loadItems) goes
     /// through the guarded wrapper above.
-    func cleanupOrphanedImagesForTesting(keptItems: [ClipboardItem]) {
+    /// M13 (2026-08-03): `defaults` injectable so tests use an isolated suite.
+    func cleanupOrphanedImagesForTesting(keptItems: [ClipboardItem], defaults: UserDefaults = .standard) {
         // Skip cleanup on first call (startup) to avoid deleting freshly migrated images
         // that haven't been added to store.items yet. The flag is set on EVERY first
         // call — even when there are no images in store — so a transient empty-store
@@ -886,8 +887,8 @@ class ImageStorage {
         // when items have been re-added but cleanupOrphanedImages runs with a stale
         // view of the world.
         let startupCleanupKey = "ImageStorageStartupCleanupRan"
-        if !UserDefaults.standard.bool(forKey: startupCleanupKey) {
-            UserDefaults.standard.set(true, forKey: startupCleanupKey)
+        if !defaults.bool(forKey: startupCleanupKey) {
+            defaults.set(true, forKey: startupCleanupKey)
             return
         }
         // Path B failsafe (2026-07-28): empty keptItems is a load-failure

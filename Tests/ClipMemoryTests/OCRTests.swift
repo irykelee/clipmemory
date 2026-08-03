@@ -13,36 +13,29 @@ import Vision
     private var store: ClipboardStore!
     private var originalCrypto: CryptoServiceProtocol?
     private var testCrypto: CryptoService!
-    private var savedOcrPreviewEnabled: Any?
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        // M13 (2026-08-01 audit): the testOcrPreviewEnabled* tests write the
-        // production "ocrPreviewEnabled" key through ClipboardStore+OCR's
-        // hardwired UserDefaults.standard accessor (not suite-injectable).
-        // Back up the real value and restore it in tearDown so a user's
-        // non-default setting survives a test run (STORE-0007 pattern).
-        savedOcrPreviewEnabled = UserDefaults.standard.object(forKey: "ocrPreviewEnabled")
+        // M13 (2026-08-03): ClipboardStore+OCR now uses an injectable defaults
+        // suite. Use an isolated test suite so ocrPreviewEnabled writes never
+        // touch production UserDefaults.
+        testDefaults = makeTestDefaults()
         backend = MemoryStorageBackend()
-        store = ClipboardStore(backend: backend)
+        store = ClipboardStore(backend: backend, defaults: testDefaults)
         testCrypto = CryptoService(customKeyData: Data((0..<32).map { UInt8($0) }))
         originalCrypto = ServiceContainer.crypto
         ServiceContainer.setCryptoForTesting(testCrypto)
     }
 
     override func tearDown() {
-        // M13: restore the production value captured in setUp.
-        if let savedOcrPreviewEnabled {
-            UserDefaults.standard.set(savedOcrPreviewEnabled, forKey: "ocrPreviewEnabled")
-        } else {
-            UserDefaults.standard.removeObject(forKey: "ocrPreviewEnabled")
-        }
-        savedOcrPreviewEnabled = nil
         if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         testCrypto = nil
         store = nil
         backend = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 
@@ -494,21 +487,22 @@ import Vision
     // MARK: - ocrPreviewEnabled (Task 1)
 
     func testOcrPreviewEnabledDefaultsToTrue() {
-        UserDefaults.standard.removeObject(forKey: "ocrPreviewEnabled")
-        // M12 (2026-08-01): injected store — ocrPreviewEnabled is a
-        // UserDefaults-backed accessor, so any instance exercises the same
-        // code path as ClipboardStore.shared.
-        let store = ClipboardStore(backend: MemoryStorageBackend())
+        // M13 (2026-08-03): use isolated defaults suite.
+        let defaults = makeTestDefaults()
+        let store = ClipboardStore(backend: MemoryStorageBackend(), defaults: defaults)
         XCTAssertEqual(store.ocrPreviewEnabled, true)
+        removeTestDefaults(defaults)
     }
 
     func testOcrPreviewEnabledSetterPersists() {
-        // M12 (2026-08-01): injected store, same rationale as above.
-        let store = ClipboardStore(backend: MemoryStorageBackend())
+        // M13 (2026-08-03): use isolated defaults suite.
+        let defaults = makeTestDefaults()
+        let store = ClipboardStore(backend: MemoryStorageBackend(), defaults: defaults)
         store.ocrPreviewEnabled = false
         XCTAssertEqual(store.ocrPreviewEnabled, false)
         store.ocrPreviewEnabled = true
         XCTAssertEqual(store.ocrPreviewEnabled, true)
+        removeTestDefaults(defaults)
     }
 
     // MARK: - ID-OCR-0002 (2026-07-30 audit): CJK fallback notification

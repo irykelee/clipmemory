@@ -14,16 +14,22 @@ final class TrashStoreMainActorTests: XCTestCase {
 
     private var backend: MemoryStorageBackend!
     private var store: TrashStore!
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
+        // M13 (2026-08-03): use isolated defaults suite so TrashStore
+        // trashRetentionDays didSet writes never touch production.
+        testDefaults = makeTestDefaults()
         backend = MemoryStorageBackend()
-        store = TrashStore(backend: backend)
+        store = TrashStore(backend: backend, defaults: testDefaults)
     }
 
     override func tearDown() {
         store = nil
         backend = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 
@@ -40,7 +46,7 @@ final class TrashStoreMainActorTests: XCTestCase {
 
         // Reload via a fresh TrashStore against the same backend → the
         // pending write must have been flushed synchronously
-        let reload = TrashStore(backend: backend)
+        let reload = TrashStore(backend: backend, defaults: testDefaults)
         XCTAssertEqual(reload.trashedItems.count, 1)
         XCTAssertEqual(reload.trashedItems.first?.content, "trash me")
     }
@@ -61,7 +67,7 @@ final class TrashStoreMainActorTests: XCTestCase {
         let exp = expectation(description: "debounced flush")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
             // Reload from the SAME backend instance to read what was saved
-            let reload = TrashStore(backend: self.backend)
+            let reload = TrashStore(backend: self.backend, defaults: self.testDefaults)
             XCTAssertEqual(reload.trashedItems.count, 1)
             XCTAssertEqual(reload.trashedItems.first?.content, "debounce me")
             exp.fulfill()
@@ -84,7 +90,7 @@ final class TrashStoreMainActorTests: XCTestCase {
         store.moveToTrash(ClipboardItem(content: "cycle2", type: .text), evictCaches: { _ in }, didMove: {})
         let exp2 = expectation(description: "debounce cycle 2")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            let reload = TrashStore(backend: self.backend)
+            let reload = TrashStore(backend: self.backend, defaults: self.testDefaults)
             XCTAssertEqual(reload.trashedItems.count, 2,
                            "ID-LIFE-0023: second debounce cycle must still persist to the backend")
             exp2.fulfill()

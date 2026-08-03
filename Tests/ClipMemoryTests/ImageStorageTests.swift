@@ -30,23 +30,15 @@ final class ImageStorageTests: XCTestCase {
     private var testUUIDs: [UUID] = []
     private let migrationKey = "ImageStorageMigrationComplete"
     private let startupCleanupKey = "ImageStorageStartupCleanupRan"
-    private var savedMigrationValue: Any?
-    private var savedStartupCleanupValue: Any?
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        // Force migration + startup cleanup to no-op BEFORE ImageStorage.shared
-        // is touched (its private init() runs migrateFromLegacyIfNeeded on first access).
-        // M13 (2026-08-01 audit): these set(true) writes used to leak into the
-        // production UserDefaults domain — ImageStorage reads the keys from
-        // UserDefaults.standard directly and is not suite-injectable (roadmap
-        // UserDefaults-abstraction debt), so back up the real values first and
-        // restore them in tearDown (STORE-0007 pattern: object(forKey:)
-        // distinguishes "absent" from "value").
-        savedMigrationValue = UserDefaults.standard.object(forKey: migrationKey)
-        savedStartupCleanupValue = UserDefaults.standard.object(forKey: startupCleanupKey)
-        UserDefaults.standard.set(true, forKey: migrationKey)
-        UserDefaults.standard.set(true, forKey: startupCleanupKey)
+        // M13 (2026-08-03): pass isolated defaults suite so
+        // cleanupOrphanedImagesForTesting never touches production.
+        testDefaults = makeTestDefaults()
+        testDefaults.set(true, forKey: migrationKey)
+        testDefaults.set(true, forKey: startupCleanupKey)
         storage = ImageStorage.shared
     }
 
@@ -55,20 +47,9 @@ final class ImageStorageTests: XCTestCase {
             storage.deleteImage(filename: "\(uuid.uuidString).png")
         }
         testUUIDs.removeAll()
-        // M13: restore the production defaults captured in setUp.
-        restore(migrationKey, savedMigrationValue)
-        restore(startupCleanupKey, savedStartupCleanupValue)
-        savedMigrationValue = nil
-        savedStartupCleanupValue = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
-    }
-
-    private func restore(_ key: String, _ value: Any?) {
-        if let value {
-            UserDefaults.standard.set(value, forKey: key)
-        } else {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
     }
 
     private func newTestUUID() -> UUID {
@@ -563,7 +544,7 @@ final class ImageStorageTests: XCTestCase {
             content: "\(keep.uuidString).png",
             type: .image
         )
-        storage.cleanupOrphanedImagesForTesting(keptItems: [item])
+        storage.cleanupOrphanedImagesForTesting(keptItems: [item], defaults: testDefaults)
 
         XCTAssertNotNil(storage.loadImage(filename: "\(keep.uuidString).png"),
                        "Referenced image should survive cleanup")
@@ -579,14 +560,14 @@ final class ImageStorageTests: XCTestCase {
     /// briefly missing from the keep set's view.
     func testCleanupOrphanedImagesFirstCallSetsStartupFlagEvenWhenKeepSetIsEmpty() {
         // Clear the flag so the next call is "first".
-        UserDefaults.standard.removeObject(forKey: startupCleanupKey)
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: startupCleanupKey),
+        testDefaults.removeObject(forKey: startupCleanupKey)
+        XCTAssertFalse(testDefaults.bool(forKey: startupCleanupKey),
                        "Test fixture: startup flag must be cleared before call")
 
         // First call with NO images in store — must still mark the flag.
-        storage.cleanupOrphanedImagesForTesting(keptItems: [])
+        storage.cleanupOrphanedImagesForTesting(keptItems: [], defaults: testDefaults)
 
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: startupCleanupKey),
+        XCTAssertTrue(testDefaults.bool(forKey: startupCleanupKey),
                      "Startup flag must be set on the very first call, " +
                      "even with an empty keep set, so the guard is armed " +
                      "for subsequent launches.")
@@ -634,7 +615,7 @@ final class ImageStorageTests: XCTestCase {
 
         // Run cleanup with empty keptItems — simulates the race window where
         // the store has no reference to the in-flight image yet.
-        storage.cleanupOrphanedImagesForTesting(keptItems: [])
+        storage.cleanupOrphanedImagesForTesting(keptItems: [], defaults: testDefaults)
 
         // Wait for saveImage's main-thread completion to confirm the write succeeded.
         wait(for: [saveExp], timeout: 5.0)
@@ -685,7 +666,7 @@ final class ImageStorageTests: XCTestCase {
         // cleanupOrphanedImages proceeds past the flag check and would
         // (without the failsafe) call deleteAllExcept([]) which deletes
         // every file in the directory.
-        storage.cleanupOrphanedImagesForTesting(keptItems: [])
+        storage.cleanupOrphanedImagesForTesting(keptItems: [], defaults: testDefaults)
 
         XCTAssertNotNil(storage.loadImage(filename: filename),
                        "Empty keptItems must skip delete (Path B failsafe) — " +
