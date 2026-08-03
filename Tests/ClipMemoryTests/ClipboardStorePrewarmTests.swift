@@ -307,4 +307,53 @@ final class ClipboardStorePrewarmTests: XCTestCase {
                             "follow-up round must decrypt the coalesced request's items")
         }
     }
+
+    // MARK: - ID-PERF-0024 (2026-08-03 audit): throttle drop must defer re-fire
+
+    /// F-3 regression: when prewarmDecryptionCacheThrottled is called twice
+    /// within the throttle window, the second call previously lost its items
+    /// forever if no subsequent call landed after the window (active-state
+    /// scenario: QuickBar close→reopen <window + stop). The fix schedules a
+    /// delayed re-fire so the dropped items still get prewarmed once the
+    /// window expires.
+    ///
+    /// Uses a short interval (0.5s) to keep the test fast; the trigger
+    /// shape (two calls within window, no subsequent call) is the same.
+    @MainActor
+    func testPrewarmThrottleDeferredRefirePrewarmsDroppedItems() {
+        let setA = (0..<3).map { ClipboardItem(content: "setA-\($0)", type: .text) }
+        let setB = (0..<3).map { ClipboardItem(content: "setB-\($0)", type: .text) }
+        store.items = setA + setB
+        store.contentCache.removeAllObjects()
+
+        // First call: lastViewPrewarmTime is .distantPast → no throttle →
+        // prewarm fires immediately for setA.
+        store.prewarmDecryptionCacheThrottled(items: setA, interval: 0.5)
+        let exp1 = expectation(description: "first prewarm completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp1.fulfill() }
+        wait(for: [exp1], timeout: 2.0)
+        for item in setA {
+            XCTAssertNotNil(store.contentCache.object(forKey: item.id.uuidString as NSString),
+                            "setA must be cached after first prewarm call")
+        }
+
+        // Second call within window: throttled. Under old behavior, setB
+        // items would be dropped forever. New behavior: deferred re-fire
+        // scheduled to fire after the window expires.
+        store.prewarmDecryptionCacheThrottled(items: setB, interval: 0.5)
+
+        // Wait long enough for the deferred re-fire (~0.5s after the second
+        // call) plus batch dispatch (~0.5s for prewarm dispatch on utility
+        // queue).
+        let exp2 = expectation(description: "deferred re-fire completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp2.fulfill() }
+        wait(for: [exp2], timeout: 3.0)
+
+        // F-3 regression assertion: setB must be cached.
+        // Under the old `return`-on-throttle behavior, setB would stay cold.
+        for item in setB {
+            XCTAssertNotNil(store.contentCache.object(forKey: item.id.uuidString as NSString),
+                            "F-3 regression: deferred re-fire must prewarm items dropped by throttle")
+        }
+    }
 }

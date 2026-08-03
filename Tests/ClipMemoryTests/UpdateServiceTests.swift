@@ -163,24 +163,24 @@ final class UpdateServiceTests: XCTestCase {
 
     func testPolicyMigrationFromTrueConsentYieldsAutomatic() {
         UpdateService.fallbackFeedConsent = true
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         UpdateService.migrateFeedConsentIfNeeded()
         XCTAssertEqual(UpdateService.feedPolicy, .automatic)
-        XCTAssertNil(UserDefaults.standard.object(forKey: "UpdateFallbackFeedConsent"),
+        XCTAssertNil(testDefaults.object(forKey: "UpdateFallbackFeedConsent"),
                      "old key must be cleared after migration")
     }
 
     func testPolicyMigrationFromFalseConsentYieldsPrimary() {
         UpdateService.fallbackFeedConsent = false
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         UpdateService.migrateFeedConsentIfNeeded()
         XCTAssertEqual(UpdateService.feedPolicy, .primary)
-        XCTAssertNil(UserDefaults.standard.object(forKey: "UpdateFallbackFeedConsent"))
+        XCTAssertNil(testDefaults.object(forKey: "UpdateFallbackFeedConsent"))
     }
 
     func testPolicyDefaultsToAutomaticWhenUnset() {
-        UserDefaults.standard.removeObject(forKey: "UpdateFallbackFeedConsent")
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFallbackFeedConsent")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         UpdateService.migrateFeedConsentIfNeeded()
         XCTAssertEqual(UpdateService.feedPolicy, .automatic,
                        "first-time users default to automatic for safety")
@@ -283,7 +283,7 @@ final class UpdateServiceTests: XCTestCase {
 
     @MainActor
     func testSetPolicyTriggersProbeAndStatusUpdate() async {
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         MockURLProtocol.stubResponses = [:]
         MockURLProtocol.stubError = nil
         // Deterministic stub — no network dependency (Important #4 fix).
@@ -316,7 +316,7 @@ final class UpdateServiceTests: XCTestCase {
         // in unit tests — but the .fallback → jsdelivr-mirror activation
         // path is exercised here. Sparkle reset failures are covered by
         // e2e manual (Task 9).
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         MockURLProtocol.stubResponses = [:]
         let stub = StubProbeEngine()
         await stub.setNextDecision(forcedFallbackDecision)
@@ -352,7 +352,7 @@ final class UpdateServiceTests: XCTestCase {
     /// production-realistic surface this test pins.
     @MainActor
     func testTriggerProbeDoesNotCancelItself() async {
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         MockURLProtocol.stubResponses = [:]
         let stub = StubProbeEngine()
         await stub.setNextDecision(automaticPrimaryDecision)
@@ -384,7 +384,7 @@ final class UpdateServiceTests: XCTestCase {
     /// second (fast) probe has already written a primary decision.
     @MainActor
     func testSlowStartupProbeDoesNotOverwriteFasterUserChoice() async {
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         UpdateService.lastPrimaryItemDate = nil
         MockURLProtocol.stubResponses = [:]
         MockURLProtocol.stubError = nil
@@ -419,7 +419,7 @@ final class UpdateServiceTests: XCTestCase {
         // Important #2: probe returns primary metadata inline. A single
         // successful primary fetch must update the baseline, even though
         // no second URLSession fetch happens.
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         UpdateService.lastPrimaryItemDate = nil
         let stub = StubProbeEngine()
         let decisionWithPrimaryDate = FeedProbeDecision(
@@ -442,7 +442,7 @@ final class UpdateServiceTests: XCTestCase {
     func testBaselineMonotonicDoesNotRollBackOnOlderObservation() async {
         // Important #2: max(old, new) so an out-of-order response can never
         // lower the baseline.
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         let newer = dateFromPubDateString("Sat, 18 Jul 2026 12:00:00 +0000")
         let older = dateFromPubDateString("Sat, 18 Jul 2026 03:32:59 +0000")
         UpdateService.lastPrimaryItemDate = newer
@@ -471,7 +471,7 @@ final class UpdateServiceTests: XCTestCase {
     /// from the current source.
     @MainActor
     func testSwitchReasonRecordedOnlyWhenChannelChanges() async {
-        UserDefaults.standard.removeObject(forKey: "UpdateFeedPolicy")
+        testDefaults.removeObject(forKey: "UpdateFeedPolicy")
         let stub = StubProbeEngine()
         let service = UpdateService(probeEngine: stub, autoStart: false)
 

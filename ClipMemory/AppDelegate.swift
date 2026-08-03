@@ -82,7 +82,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             trashed: ClipboardStore.shared.trashedItems.count,
             tags: ClipboardStore.shared.tags.count
         )
-        StartupHealth.logSnapshot(counts: startupCounts)
+        // ID-APP-0003 (2026-08-03 audit): logSnapshot writes lastLaunchTime to
+        // production .standard BEFORE the AAA suite snapshot, escaping the ZZZ
+        // canary (which is structurally blind to writes earlier than its own
+        // before-snapshot) AND overwriting the real user's lastLaunchTime on
+        // every test run. Skip in test host — same pattern as the test-host
+        // guard at :108. StartupHealthTests does not depend on AppDelegate's
+        // call path; it invokes logSnapshot directly with an isolated suite.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            StartupHealth.logSnapshot(counts: startupCounts)
+        }
         setupHotKey()
         setupLanguageObserver()
         setupKeychainUnlockObserver()
@@ -97,8 +106,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // polluting test baseline (UpdateService network probe, BackupService
         // lastBackupDate, etc.). The :469 guard covers setupClipboardMonitor;
         // this guard covers welcome判定 + UpdateService init + backup +
-        // OCR backfill. StartupHealth.logSnapshot and observer setup above
-        // are intentionally left unguarded (read-only or test-inert).
+        // OCR backfill. StartupHealth.logSnapshot is now guarded separately
+        // at :86 (ID-APP-0003) because it writes lastLaunchTime to the
+        // shared .standard domain, not a fresh store. Observer setup above
+        // is read-only or test-inert and stays unguarded.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
         // Start Sparkle: daily background check per SUEnableAutomaticChecks.

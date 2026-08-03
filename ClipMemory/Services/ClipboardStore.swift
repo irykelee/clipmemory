@@ -255,8 +255,11 @@ final class ClipboardStore: ObservableObject {
     /// M13 (2026-08-03): injectable UserDefaults suite for TrashStore.
     /// Stored here so it can be passed to TrashStore during init; ClipboardStore
     /// itself reads settings (maxItems etc.) via direct UserDefaults.standard calls
-    /// (those keys are test-inert or guarded by the XCTestConfigurationFilePath
-    /// early-return in the default initializer). Production callers get .standard.
+    /// (mostly test-inert reads; the only writes are the maxItems clamp back-write
+    /// on out-of-range stored values (:315-317) and the excludedBundleIdsString
+    /// assignment at :336 — both reachable from tests via the convenience init's
+    /// XCTestConfigurationFilePath early-return path, but borderline-low impact
+    /// per audit F-5 2026-08-03). Production callers get .standard.
     /// `internal` (default) so ClipboardStore+OCR.swift (same module, different
     /// file) can access it for ocrPreviewEnabled / ocrEnabled accessors.
     let defaults: UserDefaults
@@ -1584,6 +1587,13 @@ final class ClipboardStore: ObservableObject {
     nonisolated(unsafe) private var prewarmInFlight = false
     nonisolated(unsafe) private var prewarmPendingItems: [ClipboardItem]?
     nonisolated(unsafe) private var prewarmPendingCompletions: [() -> Void] = []
+    // ID-PERF-0024 (2026-08-03 audit): throttle wrapper previously dropped
+    // throttled calls forever when no subsequent call landed after the
+    // window. Pending re-fire is scheduled via DispatchWorkItem so the
+    // dropped items still get prewarmed once the throttle expires.
+    // Main-only (asyncAfter fires on main), same access discipline as the
+    // nonisolated(unsafe) mutable state above (Swift 6 removal candidate).
+    nonisolated(unsafe) private var pendingPrewarmWorkItem: DispatchWorkItem?
 
     /// ID-PERF-0023 (2026-08-02 audit): view-driven prewarm entry with the
     /// same 5 s throttle as AppDelegate's activation prewarm
@@ -1600,9 +1610,32 @@ final class ClipboardStore: ObservableObject {
 
     func prewarmDecryptionCacheThrottled(items: [ClipboardItem], interval: TimeInterval = 5) {
         let now = Date()
-        guard now.timeIntervalSince(lastViewPrewarmTime) >= interval else { return }
-        lastViewPrewarmTime = now
-        prewarmDecryptionCache(items: items)
+        let elapsed = now.timeIntervalSince(lastViewPrewarmTime)
+        if elapsed >= interval {
+            // Inside window — prewarm now and cancel any pending re-fire.
+            lastViewPrewarmTime = now
+            pendingPrewarmWorkItem?.cancel()
+            pendingPrewarmWorkItem = nil
+            prewarmDecryptionCache(items: items)
+        } else {
+            // ID-PERF-0024 (2026-08-03 audit): previous `return` lost these
+            // items forever when no subsequent call landed after the window
+            // (active-state scenario: QuickBar close→reopen <5s + stop).
+            // Schedule a delayed re-fire that updates the timestamp and
+            // re-enters prewarm with the dropped items. Latest-wins is
+            // acceptable because view-driven callers (ContentView /
+            // QuickBarView) feed the full item set per ID-VIEW-0012.
+            pendingPrewarmWorkItem?.cancel()
+            let delay = interval - elapsed
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.pendingPrewarmWorkItem = nil
+                self.lastViewPrewarmTime = Date()
+                self.prewarmDecryptionCache(items: items)
+            }
+            pendingPrewarmWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
     }
 
     func prewarmDecryptionCache(items: [ClipboardItem], cap: Int? = nil, completion: (() -> Void)? = nil) {
