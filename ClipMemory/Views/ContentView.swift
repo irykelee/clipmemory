@@ -751,6 +751,13 @@ struct ContentView: View {
         // sidebar scroll indicator is now hidden anyway.
         .frame(minWidth: 800, minHeight: 520)
         .toolbar { self.toolbarContent }
+        // ID-VIEW-0024 (2026-08-03, user-driven): brand logo as a
+        // topLeading overlay instead of a toolbar item. The overlay sits
+        // in the title bar area (traffic lights occupy ~70pt; the toolbar
+        // row is ~52pt tall). 88pt leading leaves breathing room past the
+        // traffic lights, 12pt top roughly centers the ~24pt-tall logo in
+        // the 52pt toolbar row. `.allowsHitTesting(false)` keeps the
+        // title bar draggable — the logo must never swallow window drags.
         // 2026-07-25: `.visible` forced an opaque toolbar background. On
         // macOS 15 that rendered as a unified material blended with the
         // sidebar; on macOS 26 (Tahoe) the title bar + toolbar stack renders
@@ -760,27 +767,27 @@ struct ContentView: View {
         // `titlebarAppearsTransparent` + `.fullSizeContentView`. `.hidden`
         // here keeps the toolbar layer itself from painting a background
         // so the two layers stay transparent together.
-        .toolbarBackground(.hidden, for: .windowToolbar))
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        // ID-VIEW-0024: logo overlay (no capsule, exact leading offset).
+        .overlay(alignment: .topLeading) {
+            LogoView(expandWidth: false)
+                .padding(.leading, 88)
+                .padding(.top, 12)
+                .allowsHitTesting(false)
+        })
     }
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // ID-VIEW-0023 (2026-08-03, user-driven): brand logo in the TOOLBAR
-        // at the leading edge via .navigation placement. This is the
-        // user's "toolbar 的最左侧" — what they have been asking for in
-        // every cycle since 0017. My previous attempts:
-        //   - .automatic (0017) → rendered as trailing in macOS, got
-        //     clipped by the date chips
-        //   - .principal (0019) → centered, with a Tahoe unified-toolbar
-        //     capsule background the user explicitly rejected
-        //   - .automatic again (0021) → still trailing, looked centered
-        //   - sidebar header (0018, 0022) → user never wanted it there
-        // .navigation is the correct placement — it sits on the leading
-        // edge of the toolbar row, before the date chips and clear.
-        ToolbarItem(placement: .navigation) {
-            LogoView(expandWidth: false)
-                .fixedSize()
-        }
+        // ID-VIEW-0024 (2026-08-03, user-driven): brand logo moved OUT of
+        // the toolbar item system entirely — placed as an overlay on the
+        // NavigationSplitView (see splitViewWithLifecycle). Reasons:
+        //   (a) macOS 26 Tahoe gives toolbar items a system capsule
+        //       background that no SwiftUI API can remove — the user
+        //       rejected it in every .principal/.navigation attempt;
+        //   (b) overlay gives exact control of the leading offset (user
+        //       asked for more space left of the logo) and has no capsule.
+        //
         // ID-VIEW-0015 (2026-08-03, user-driven): search moved into the
         // sidebar header (SidebarView), matching the macOS system-app
         // convention (Finder / App Store / Notes). The window toolbar now
