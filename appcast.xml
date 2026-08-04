@@ -236,5 +236,15 @@
                  type="application/octet-stream"
                  sparkle:edSignature="vx4jaoI5NSjVb5PtqkCe68NBn3In65S1dmVVOV0FxFn07tIlUdA2z/cTa7t1KyKl5B3o1nEh0AknDzxMtHR1CQ==" />
     </item>
+    <item>
+      <title>Version 2.7.8</title>
+      <sparkle:shortVersionString>2.7.8</sparkle:shortVersionString>
+      <sparkle:version>2.7.8</sparkle:version>
+      <pubDate>Tue, 04 Aug 2026 15:00:02 +0000</pubDate>
+      <enclosure url="https://github.com/irykelee/clipmemory/releases/download/v2.7.8/ClipMemory.tar.gz"
+                 length="7682613"
+                 type="application/octet-stream"
+                 sparkle:edSignature="O/JfKbaqTRSsFtnSyF51KTyAPKdQfhJjqa3c65vj7703QLb7L/epHNtW7tZlsv+wtw6qgo5Xpz2Br0QINM4sCQ==" />
+    </item>
   </channel>
 </rss>
