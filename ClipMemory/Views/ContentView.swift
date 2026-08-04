@@ -778,12 +778,12 @@ struct ContentView: View {
     private var toolbarContent: some ToolbarContent {
         // ID-VIEW-0025 (2026-08-03, user-driven): brand logo at the
         // toolbar's leading edge via .navigation placement — same as
-        // ID-VIEW-0023, but with English "ClipMemory" now sz(20) to
-        // match the Chinese "剪忆" (was sz(14) in 0021). The Tahoe
-        // capsule background is accepted here (no API to remove it);
-        // the user asked for more left/right padding inside the capsule
-        // so the text doesn't crowd the rounded edges. The LogoView
-        // internals make the glyphs fill the capsule cleanly.
+        // ID-VIEW-0023, with all locale variants using sz(18) for a
+        // consistent brand scale. The Tahoe capsule background is
+        // accepted here (no API to remove it); the user asked for more
+        // left/right padding inside the capsule so the text doesn't crowd
+        // the rounded edges. The LogoView internals make the glyphs fill
+        // the capsule cleanly.
         ToolbarItem(placement: .navigation) {
             LogoView(expandWidth: false)
                 .fixedSize()

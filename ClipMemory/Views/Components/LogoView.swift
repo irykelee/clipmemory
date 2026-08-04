@@ -34,22 +34,24 @@ struct LogoView: View {
                     // ID-A11Y-0003 (2026-07-30 audit): route through `sz()`
                     // so Settings → Font Size (small/medium/large) actually
                     // applies to the brand logo in the welcome window.
-                    .font(.system(size: sz(20), weight: .bold, design: .rounded))
+                    .font(.system(size: sz(18), weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                 Text("ClipMemory")
                     // ID-VIEW-0025 (2026-08-03, user-driven): English part
-                    // bumped sz(14) → sz(20) to match the Chinese "剪忆".
+                    // unified at sz(18) to match the Chinese "剪忆".
                     // Weight unified to .bold so the two glyph pairs
                     // (CN:bold / EN:bold) carry the same visual weight.
-                    .font(.system(size: sz(20), weight: .bold, design: .rounded))
+                    .font(.system(size: sz(18), weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
             }
             .frame(maxWidth: expandWidth ? .infinity : nil)
             .accessibilityLabel(L10n.appName)
         } else {
-            // Single name (English, Japanese, Korean, etc.)
+            // Single name (English, Japanese, Korean, etc.). Keep the same
+            // point size as the bilingual logo so changing language does not
+            // change the brand mark's visual scale.
             Text(L10n.appName)
-                .font(.system(size: sz(16), weight: .bold, design: .rounded))
+                .font(.system(size: sz(18), weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
                 .frame(maxWidth: expandWidth ? .infinity : nil)
                 .accessibilityLabel(L10n.appName)
