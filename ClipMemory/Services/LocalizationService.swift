@@ -349,6 +349,11 @@ struct L10n {
     static var itemOcrCopy: String { string("item.ocr.copy") }
     static var settingsOcrEnabled: String { string("settings.ocr.enabled") }
     static var settingsOcrHint: String { string("settings.ocr.hint") }
+    static var settingsHotkeyFooter: String { string("settings.hotkey.footer") }
+    static var settingsHistoryFooter: String { string("settings.history.footer") }
+    static var settingsExcludedAppsFooter: String { string("settings.excluded.apps.footer") }
+    static var settingsBackupFooter: String { string("settings.backup.footer") }
+    static var settingsUpdateSourceFooter: String { string("settings.updateSource.footer") }
 
     // MARK: - OCR Search Highlight
     /// Placeholder shown under image thumbnails while OCR backfill is in progress.

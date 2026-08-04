@@ -52,6 +52,7 @@ struct HistoryCaptureSettingsView: View {
                     ForEach([3, 7, 14, 30], id: \.self) { Text(L10n.trashRetentionDaysCount($0)).tag($0) }
                 }
             } header: { Text(L10n.settingsSectionHistory) }
+            footer: { Text(L10n.settingsHistoryFooter).foregroundColor(.secondary) }
 
             // Capture
             Section {
@@ -70,7 +71,11 @@ struct HistoryCaptureSettingsView: View {
                 ))
             } footer: { Text(L10n.settingsOcrHint).foregroundColor(.secondary) }
 
-            // Sensitive content
+            // Sensitive content — explanatory footer is split into its own
+            // headerless Section so it renders outside the picker card
+            // (Grouped Form draws footers inside the same section's card;
+            // a headerless footer-only Section shows as a small outer
+            // paragraph, matching the other explanatory footers above).
             Section {
                 Picker(L10n.settingsAutoClear, selection: $store.sensitiveClearHours) {
                     // L-5 (2026-07-25 audit): use array index as ForEach identity
@@ -81,7 +86,10 @@ struct HistoryCaptureSettingsView: View {
                         Text(option.label).tag(option.hours)
                     }
                 }.id(languageManager.selectedLanguage)
-            } header: { Text(L10n.settingsSectionSensitive) } footer: { Text(L10n.settingsSensitiveHint).foregroundColor(.secondary) }
+            } header: { Text(L10n.settingsSectionSensitive) }
+            Section {
+                EmptyView()
+            } footer: { Text(L10n.settingsSensitiveHint).foregroundColor(.secondary) }
 
             // Excluded apps
             Section {
@@ -90,6 +98,7 @@ struct HistoryCaptureSettingsView: View {
                     Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle")
                 }).buttonStyle(.link)
             } header: { Text(L10n.settingsSectionExcludedApps) }
+            footer: { Text(L10n.settingsExcludedAppsFooter).foregroundColor(.secondary) }
         }
         .formStyle(.grouped)
         .onAppear { refreshExcludedApps() }

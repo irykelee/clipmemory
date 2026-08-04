@@ -26,7 +26,7 @@ struct UpdateAboutSettingsView: View {
             }
 
             // Update source
-            Section(L10n.settingsUpdateSourceTitle) {
+            Section {
                 Picker(L10n.settingsUpdateSourceTitle, selection: Binding(
                     get: { UpdateService.feedPolicy },
                     set: { newPolicy in UpdateService.shared.setPolicy(newPolicy) }
@@ -40,7 +40,8 @@ struct UpdateAboutSettingsView: View {
                     }
                 }.pickerStyle(.segmented)
                 UpdateStatusPanelView().environmentObject(UpdateService.shared.status)
-            }
+            } header: { Text(L10n.settingsUpdateSourceTitle) }
+            footer: { Text(L10n.settingsUpdateSourceFooter).foregroundColor(.secondary) }
 
             // About
             Section {

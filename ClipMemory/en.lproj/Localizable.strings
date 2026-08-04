@@ -261,7 +261,12 @@
 "trash.deleteConfirm.confirm" = "Delete";
 "item.ocr.copy" = "Copy Text from Image";
 "settings.ocr.enabled" = "Image text recognition (OCR)";
-"settings.ocr.hint" = "On-device, never leaves your Mac. Applies automatically to new screenshots.";
+"settings.ocr.hint" = "Image text is recognized on-device and never leaves your Mac; enabling OCR processes new images automatically. \"Show OCR text\" only controls the preview in image search results, not recognition itself.";
+"settings.hotkey.footer" = "Use this shortcut from any app to open QuickBar. After choosing Change, press a modifier-and-key combination; press Escape to cancel.";
+"settings.history.footer" = "Max Items limits unpinned history only; pinned items remain even above the limit. After confirming a lower limit, the oldest unpinned items are removed immediately; Trash items older than the retention period are permanently deleted.";
+"settings.excluded.apps.footer" = "New content copied from excluded apps is not recorded; existing history is not deleted. Use Add Application to choose apps, and click × beside an app to resume capture.";
+"settings.backup.footer" = "Automatic backup is checked when the app launches and runs once the last successful backup is at least 24 hours old. Local backups use this Mac's device key; Export Backup creates a password-protected .clipmemory file that requires the same password to import.";
+"settings.updateSource.footer" = "Automatic prefers the GitHub update feed and may offer the jsDelivr mirror when the primary feed is unavailable. The mirror provides update information only; downloads still come from GitHub. Manual selection is mainly for network troubleshooting.";
 
 // H6: encryption key failure alerts
 "alert.key.corrupt.title" = "Encryption Key File Is Corrupted";

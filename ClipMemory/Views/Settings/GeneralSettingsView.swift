@@ -43,6 +43,7 @@ struct GeneralSettingsView: View {
                         hotkeyRefresh.toggle()
                     }.buttonStyle(.link)
                 } header: { Text(L10n.settingsSectionHotkey) }
+                footer: { Text(L10n.settingsHotkeyFooter).foregroundColor(.secondary) }
             }
 
             // Launch at login
