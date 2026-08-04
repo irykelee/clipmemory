@@ -17,9 +17,9 @@
 - [ ] `project.yml` `CURRENT_PROJECT_VERSION` bumped (same value as MARKETING_VERSION)
 - [ ] `xcodegen generate` re-run (only after project.yml change)
 
-### A2. 8 README files (per `docs/RELEASE.md` B1.2)
+### A2. 7 README files (per `docs/RELEASE.md` B1.2)
 
-For each of: `README.md`, `docs/lang/README_{EN,ZH-HANS,ZH-HANT,JA,KO,ES,PT}.md` (8 total):
+For each of: `README.md` (zh-Hans), `docs/lang/README_{EN,ZH-HANT,JA,KO,ES,PT}.md` (7 total):
 
 - [ ] H1 title line `# <name> vX.Y.Z` updated
 - [ ] Changelog section (e.g. `## 📋 更新日志` / `## 📋 Changelog`) has a new `### vX.Y.Z (date) — <title>` entry
@@ -53,7 +53,7 @@ For each of: `README.md`, `docs/lang/README_{EN,ZH-HANS,ZH-HANT,JA,KO,ES,PT}.md`
 ## B. Commit (atomic where possible)
 
 - [ ] Single commit for project.yml + release-notes file (if any)
-- [ ] Single commit for 8 README sync
+- [ ] Single commit for 7 README sync
 - [ ] Single commit for Casks file (with `git commit --amend` if the sha changed mid-process)
 - [ ] Pre-commit hook (file-size / sensitive-pattern / field-name) passes — never `--no-verify`
 
@@ -95,7 +95,7 @@ For each of: `README.md`, `docs/lang/README_{EN,ZH-HANS,ZH-HANT,JA,KO,ES,PT}.md`
 
 > **Why**: `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md` §1 P0-15 (no branch protection) → 2026-07-22 v2.5.10 release required user-explicit force-push to main to recover. Branch protection would have blocked that path and forced the fix to flow through a PR.
 > **When**: One-time per repo (or after GH Settings reset). **Not** per-release.
-> **Status (2026-07-23)**: NOT YET configured. `gh api repos/irykelee/clipmemory/branches/main/protection` → 404 "Branch not protected".
+> **Status (verified 2026-08-04)**: configured — required check `build-and-test`, required approvals `0`, `enforce_admins: false`, force pushes/deletions disabled. Re-run the F2 verification commands after any GitHub branch-protection reset.
 
 ### F1. Configure via GitHub Web UI
 
@@ -167,7 +167,7 @@ gh api repos/irykelee/clipmemory/branches/main/protection --jq '.allow_force_pus
 | Declared "all done" after 13 commits without release page check | User had to ping 4 times | **Verify all D1-D6 channels BEFORE declaring done** |
 | Mixed English in 中文 section of release notes | Visual / branding broken | **Each language section is monolingual** — per `docs/release-notes-template.md` |
 | Bumped README header but skipped changelog section | User ping 2 | **A2 is 2-checkboxes per file**: line + changelog entry, not just one |
-| Skipped 5 non-source language READMEs as "follow-up" | User ping 3 | **8 README updates in one batch** — one commit, all languages |
+| Skipped 5 non-source language READMEs as "follow-up" | User ping 3 | **7 README updates in one batch** — one commit, all languages |
 | Cask file was stale at v2.5.6 after push | User ping 1 | **A4 (Cask) is part of pre-push verify**, not post-push |
 | Left `gh release view` title as auto-stub "v2.5.7" | Visible in public release | **D3 explicit check**: title must be bilingual, not stub |
 
@@ -175,4 +175,4 @@ gh api repos/irykelee/clipmemory/branches/main/protection --jq '.allow_force_pus
 
 ## Auto-verify script
 
-Automated inside `Scripts/release.sh`: project.yml version check, 8 README H1 sync, Cask template syntax, `gh release view` title content. **Runs automatically before tagging**. Even when green, **manual sections A2-changelog / A3-translation / D5-tap** still need human eyes (automation doesn't read Chinese nuances).
+Automated inside `Scripts/release.sh`: project.yml version check, 7 README H1 sync, Cask template syntax, `gh release view` title content. **Runs automatically before tagging**. Even when green, **manual sections A2-changelog / A3-translation / D5-tap** still need human eyes (automation doesn't read Chinese nuances).

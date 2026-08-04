@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""sync_readme.py — Propagate a release changelog entry to all 8 READMEs.
+"""sync_readme.py — Propagate a release changelog entry to all 7 READMEs.
 
 Usage:
     python3 Scripts/sync_readme.py --version 2.5.0 --changelog v250-zh.md [--dry-run]
 
 What it does:
-  1. Bumps the `# ... vX.Y.Z` title in all 8 READMEs.
+  1. Bumps the `# ... vX.Y.Z` title in all 7 READMEs.
   2. Inserts the zh-Hans section (your input file, including its `### v...`
      heading) into README.md.
   3. Translates the section into the other 6 languages with DeepSeek
@@ -245,7 +245,7 @@ def translate(source, lang, style_ref, base_url, model, deepseek_key):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync release changelog to all 8 READMEs.")
+    parser = argparse.ArgumentParser(description="Sync release changelog to all 7 READMEs.")
     parser.add_argument("--version", required=True, help="new version, e.g. 2.5.0")
     parser.add_argument("--changelog", required=True, help="zh-Hans changelog markdown file (incl. ### heading)")
     parser.add_argument("--dry-run", action="store_true", help="print generated sections, do not write files")
