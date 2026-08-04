@@ -1,4 +1,4 @@
-# ClipMemory v2.7.7
+# ClipMemory v2.7.8
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.7.8 (2026-08-04) — Otimização da experiência de busca e configurações
+
+- **6 novas instruções de uso nas páginas de configurações (atalhos de teclado, histórico, OCR, aplicativos excluídos, cópia de segurança, feed de atualização) — não é mais preciso adivinhar pelas capturas de tela**
+- **Tamanho mínimo da janela principal aumentado para 850×600; estilo da caixa de pesquisa segue o padrão do macOS 26**
+- **Tamanho da fonte do logotipo da marca unificado em sz(18), consistência visual entre idiomas**
+- **Busca da barra lateral movida para a janela principal; barra de ferramentas com estilo macOS; altura geral aumentada**
+- **Janela de configurações agora centralizada na janela principal, para que não fique oculta**
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.8
 
 ### v2.7.7 (2026-08-01) — Experiência de busca e correções de confiabilidade
 

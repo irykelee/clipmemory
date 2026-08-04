@@ -1,4 +1,4 @@
-# ClipMemory v2.7.7
+# ClipMemory v2.7.8
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.7.8 (2026-08-04) — Search and Settings Experience Improvements
+
+- **Settings pages gain 6 in-context explanations** — Settings pages now have 6 in-context explanations (hotkeys, history, OCR, excluded apps, backup, update feed) so users don't need to guess
+- **Min window size raised to 850×600** — Min window size raised to 850×600; search box matches macOS 26 system default
+- **Brand logo unified at sz(18)** — Brand logo unified at sz(18) across all locales
+- **Sidebar search promoted to main window** — Sidebar search promoted to main window; macOS-style toolbar with taller min height
+- **Settings window centers on main window** — Settings window now centers on the main window when visible
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.8
 
 ### v2.7.7 (2026-08-01) — Search Experience and Reliability Fixes
 

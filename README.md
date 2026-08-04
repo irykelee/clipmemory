@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.7.7
+# 剪忆 ClipMemory v2.7.8
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 更新日志
+
+### v2.7.8 (2026-08-04) — 搜索与设置体验优化
+
+- **设置页 6 处新增使用说明（热键、历史、OCR、排除应用、备份、升级源），不再靠截图猜操作** — Settings pages now have 6 in-context explanations so users don't need to guess
+- **主窗口最小尺寸提升到 850×600，搜索框样式贴近 macOS 26 系统默认** — Min window size raised to 850×600; search box matches macOS 26 system default
+- **品牌 Logo 字号统一为 sz(18)，跨语种视觉一致** — Brand logo unified at sz(18) across all locales
+- **侧边栏搜索搬到主窗口、工具栏加 macOS 风格、整体高度提升** — Sidebar search promoted to main window; macOS-style toolbar with taller min height
+- **设置窗口居于主窗口中央，避免看不见** — Settings window now centers on the main window when visible
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.8
 
 ### v2.7.7 (2026-08-01) — 搜索体验与可靠性修复
 

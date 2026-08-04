@@ -1,4 +1,4 @@
-# ClipMemory v2.7.7
+# ClipMemory v2.7.8
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.7.8 (2026-08-04) — Mejoras en la búsqueda y la experiencia de configuración
+
+- **Se agregaron 6 explicaciones de uso en la página de configuración (atajos de teclado, historial, OCR, exclusión de aplicaciones, copia de seguridad, feed de actualización); ya no es necesario adivinar cómo funcionan mirando capturas de pantalla** — Las páginas de configuración ahora incluyen 6 explicaciones contextuales para que los usuarios no tengan que adivinar
+- **El tamaño mínimo de la ventana principal aumentó a 850×600; el estilo del cuadro de búsqueda se asemeja al predeterminado del sistema macOS 26** — El tamaño mínimo de la ventana se elevó a 850×600; el cuadro de búsqueda coincide con el valor predeterminado del sistema macOS 26
+- **El tamaño de fuente del logotipo de la marca se unificó a sz(18), con una apariencia coherente en todos los idiomas** — El logotipo de la marca se unificó en sz(18) para todas las configuraciones regionales
+- **La búsqueda de la barra lateral se trasladó a la ventana principal; la barra de herramientas adopta el estilo macOS y la altura general aumentó** — La búsqueda de la barra lateral se promovió a la ventana principal; barra de herramientas con estilo macOS y altura mínima mayor
+- **La ventana de configuración ahora se centra en la ventana principal, para que no pase desapercibida** — La ventana de configuración ahora se centra en la ventana principal cuando está visible
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.8
 
 ### v2.7.7 (2026-08-01) — Mejoras en la experiencia de búsqueda y correcciones de fiabilidad
 
