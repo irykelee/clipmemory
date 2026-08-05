@@ -31,11 +31,23 @@
 #
 # Usage:
 #   Scripts/release.sh vX.Y.Z [--yes] [--skip-tests] [--dry-run]
+#                                [--skip-readme-sync] [--verify-install]
 #
-#   --yes          non-interactive: skip the notes-edit and push-confirm gates
-#   --skip-tests   run_preflight without the full xcodebuild test suite
-#   --dry-run      Phase 0 checks + print previews of every generated file
-#                  and every mutating step; touches nothing on disk or remote
+#   --yes              non-interactive: skip the notes-edit and push-confirm gates
+#   --skip-tests       run_preflight without the full xcodebuild test suite
+#   --dry-run          Phase 0 checks + print previews of every generated file
+#                      and every mutating step; touches nothing on disk or remote
+#   --skip-readme-sync 逃生门 (2026-08-05, release-ux-doors): skip the
+#                      sync_readme.py 7-language README sync AND the matching
+#                      README preflight checks. Only for when the 7 READMEs are
+#                      already hand-synced, or this release intentionally does
+#                      not touch the README changelog. User takes over the
+#                      "README state is correct" responsibility.
+#   --verify-install   发布后硬验证门 (2026-08-05, release-ux-doors): after the
+#                      release pipeline passes, locally `brew install/upgrade`
+#                      the cask and verify CFBundleShortVersionString +
+#                      codesign TeamIdentifier. Fails exit 1 (release is already
+#                      live — do NOT re-run the script; fix manually).
 #
 # ⚠️ AI Agent 使用须知（REL-24, 2026-08-04 — 反复出错的防护）：
 #   本脚本的 gate 是为「人」设计的（open -e 编辑器 + read -p 确认）。
@@ -467,6 +479,59 @@ verify_release_remote() {
     return 0
 }
 
+# verify_install VERSION — 2026-08-05 (release-ux-doors): --verify-install 硬验证门。
+# 发布流水线全绿后，在本机实际安装 cask 并核验版本号 + codesign TeamIdentifier，
+# 确认「用户实际会拿到的东西」可用。失败返回 1（release 已在 GitHub 上 live，
+# 不要重跑脚本——按输出指引手动处理）。
+verify_install() {
+    local version="$1"
+    local app_path="/Applications/ClipMemory.app"
+    local expected_team installed team
+    expected_team=$(sed -nE 's/^[[:space:]]*DEVELOPMENT_TEAM: "([^"]+)".*/\1/p' "$PROJECT_DIR/project.yml" | head -1)
+    [[ -n "$expected_team" ]] || { echo "❌ 无法从 project.yml 解析 DEVELOPMENT_TEAM" >&2; return 1; }
+
+    echo "== 本机安装验证: v${version} =="
+
+    # 1. brew install / upgrade。先 brew update 让 tap 的最新 cask 可见——
+    #    release.yml 刚更新 tap，本地 brew 索引可能滞后，直接 upgrade 会
+    #    误报「已是最新」。update 失败（如网络）不阻塞，继续尝试 upgrade，
+    #    版本不符由下面的核验兜底捕获。
+    brew update 2>&1 | tail -1 || true
+    if [[ -d "$app_path" ]]; then
+        brew upgrade --cask clipmemory 2>&1 | tail -3 || true
+    else
+        brew install --cask clipmemory 2>&1 | tail -3 || true
+    fi
+
+    # 2. 版本核验
+    installed=$(defaults read "${app_path}/Contents/Info" CFBundleShortVersionString 2>/dev/null || true)
+    if [[ -z "$installed" ]]; then
+        echo "❌ 安装验证失败: 读取 ${app_path} 版本失败（App 未安装？）" >&2
+        echo "   手动处理: brew install --cask clipmemory 后重验; release 已在 GitHub 上，不要重跑本脚本" >&2
+        return 1
+    fi
+    if [[ "$installed" != "$version" ]]; then
+        # 注意：$version 后紧跟全角（ → 必须用 ${version} 花括号界定变量名，
+        # 否则 bash 5.3 (zh_CN locale) 会把全角首字节 0xEF 拼进变量名报
+        # "version\xEF: unbound variable"（REL-26 同族 bug）。
+        echo "❌ 安装验证失败: 本机版本 ${installed} != 发布版本 ${version}（tap 可能未同步，稍后 brew update && brew upgrade 重试）" >&2
+        echo "   手动处理: brew update && brew upgrade --cask clipmemory; release 已在 GitHub 上，不要重跑本脚本" >&2
+        return 1
+    fi
+    ok "本机 ClipMemory 版本 = ${version}"
+
+    # 3. 签名核验：codesign TeamIdentifier 必须匹配 project.yml DEVELOPMENT_TEAM
+    team=$(codesign -dv "$app_path" 2>&1 | sed -nE 's/^[[:space:]]*TeamIdentifier=([^ ]+)$/\1/p' | head -1)
+    if [[ -n "$team" && "$team" == "$expected_team" ]]; then
+        ok "签名 TeamIdentifier = ${team}（匹配 project.yml）"
+    else
+        echo "❌ 安装验证失败: TeamIdentifier='${team:-（空）}' != 期望 '${expected_team}'" >&2
+        echo "   手动处理: 检查 cask 来源与签名; release 已在 GitHub 上，不要重跑本脚本" >&2
+        return 1
+    fi
+    echo "✅ 安装验证通过"
+}
+
 # --- Inlined push/preflight tooling (2026-07-25 consolidation) ---
 # The retired Scripts/{preflight,pre_push_verify,pre_push_main_sync,safe_push}.sh
 # live on below as functions — same checks, same failure semantics.
@@ -504,8 +569,8 @@ check_project_version() {
     local version="$1" marketing build
     marketing=$(awk -F'"' '/MARKETING_VERSION:/ {print $2; exit}' project.yml)
     build=$(awk -F'"' '/CURRENT_PROJECT_VERSION:/ {print $2; exit}' project.yml)
-    [[ "$marketing" == "$version" ]] || { echo "  ❌ MARKETING_VERSION='$marketing'（期望 $version）"; return 1; }
-    [[ "$build" == "$version" ]] || { echo "  ❌ CURRENT_PROJECT_VERSION='$build'（期望 $version）"; return 1; }
+    [[ "$marketing" == "$version" ]] || { echo "  ❌ MARKETING_VERSION='$marketing'（期望 ${version}）"; return 1; }
+    [[ "$build" == "$version" ]] || { echo "  ❌ CURRENT_PROJECT_VERSION='$build'（期望 ${version}）"; return 1; }
     return 0
 }
 
@@ -598,7 +663,7 @@ check_xcodegen_sync() {
     before=$(shasum -a 256 "$pbx" | awk '{print $1}')
     xlog=$(mktemp -t clipmemory-preflight.XXXXXX)
     if ! xcodegen generate >"$xlog" 2>&1; then
-        echo "  ❌ xcodegen generate 失败（log: $xlog）" >&2
+        echo "  ❌ xcodegen generate 失败（log: ${xlog}）" >&2
         sed 's/^/    /' "$xlog" >&2
         rm -f "$xlog"
         return 1
@@ -656,8 +721,16 @@ run_preflight() {
     local version="$1" with_tests="${2:-}" fails=0
     echo "== preflight: v${version} =="
     check_project_version "$version" && ok "project.yml 双版本号 = $version" || fails=$((fails + 1))
-    check_readmes "$version" && ok "7+1 README 标题 + changelog" || fails=$((fails + 1))
-    check_readme_dedup "$version" && ok "7+1 README 无重复 v${version} heading（DOC-0002 防复发）" || fails=$((fails + 1))
+    if [[ ${SKIP_README_SYNC:-0} -eq 1 ]]; then
+        # 2026-08-05 (release-ux-doors): --skip-readme-sync 逃生门 — 用户显式
+        # 声明 README 状态正确（已手动同步或本次有意不更新 changelog），
+        # preflight 相应跳过 README 检查，避免逃生门失效。
+        log "⏭ 跳过 README 标题/changelog 检查（--skip-readme-sync）"
+        log "⏭ 跳过 README 重复 heading 检查（--skip-readme-sync）"
+    else
+        check_readmes "$version" && ok "7+1 README 标题 + changelog" || fails=$((fails + 1))
+        check_readme_dedup "$version" && ok "7+1 README 无重复 v${version} heading（DOC-0002 防复发）" || fails=$((fails + 1))
+    fi
     check_glossary_consistency && ok "Trash 术语无跨语种污染（DOC-0003 防复发）" || fails=$((fails + 1))
     check_cask_template && ok "Cask 模板语法（reference-only）" || fails=$((fails + 1))
     check_xcodegen_sync && ok "project.pbxproj 与 project.yml 同步" || fails=$((fails + 1))
@@ -697,8 +770,13 @@ run_pre_push_verify() {
     local version="$1" fails=0
     echo "== pre-push verify: v${version} =="
     check_project_version "$version" && ok "project.yml 版本 = tag" || fails=$((fails + 1))
-    check_readmes "$version" && ok "README 标题 + changelog" || fails=$((fails + 1))
-    check_readme_dedup "$version" && ok "README 无重复 v${version} heading（DOC-0002 防复发）" || fails=$((fails + 1))
+    if [[ ${SKIP_README_SYNC:-0} -eq 1 ]]; then
+        log "⏭ 跳过 README 标题/changelog 检查（--skip-readme-sync）"
+        log "⏭ 跳过 README 重复 heading 检查（--skip-readme-sync）"
+    else
+        check_readmes "$version" && ok "README 标题 + changelog" || fails=$((fails + 1))
+        check_readme_dedup "$version" && ok "README 无重复 v${version} heading（DOC-0002 防复发）" || fails=$((fails + 1))
+    fi
     check_glossary_consistency && ok "Trash 术语无跨语种污染（DOC-0003 防复发）" || fails=$((fails + 1))
     check_i18n_placeholders && ok "i18n 占位符顺序（7 语言）" || fails=$((fails + 1))
     check_cask_template && ok "Cask 模板语法" || fails=$((fails + 1))
@@ -717,12 +795,16 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     AUTO_YES=0
     SKIP_TESTS=0
     DRY_RUN=0
+    SKIP_README_SYNC=0
+    VERIFY_INSTALL=0
 
     for arg in "$@"; do
         case "$arg" in
-            --yes)        AUTO_YES=1 ;;
-            --skip-tests) SKIP_TESTS=1 ;;
-            --dry-run)    DRY_RUN=1 ;;
+            --yes)               AUTO_YES=1 ;;
+            --skip-tests)        SKIP_TESTS=1 ;;
+            --dry-run)           DRY_RUN=1 ;;
+            --skip-readme-sync)  SKIP_README_SYNC=1 ;;
+            --verify-install)    VERIFY_INSTALL=1 ;;
             -h|--help)    usage 0 ;;
             v?*.?*.?*)    VERSION="$arg" ;;
             *)            echo "Unknown argument: $arg" >&2; usage 2 ;;
@@ -731,7 +813,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 
     VERSION="${VERSION#v}"
     if ! valid_semver "$VERSION"; then
-        echo "Usage: $0 vX.Y.Z [--yes] [--skip-tests] [--dry-run]" >&2
+        echo "Usage: $0 vX.Y.Z [--yes] [--skip-tests] [--dry-run] [--skip-readme-sync] [--verify-install]" >&2
         exit 2
     fi
 
@@ -842,16 +924,27 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
         rm -f "$TMP_NOTES" "$TMP_CHANGELOG"
         echo ""
         echo "----- 其后将执行 -----"
+        if [[ ${SKIP_README_SYNC:-0} -eq 1 ]]; then
+            SYNC_STEP="⏭ 跳过 python3 Scripts/sync_readme.py（--skip-readme-sync）"
+        else
+            SYNC_STEP="python3 Scripts/sync_readme.py --version ${VERSION} --changelog <段>（需 README_SYNC_API_KEY/DEEPSEEK_API_KEY）"
+        fi
+        if [[ ${VERIFY_INSTALL:-0} -eq 1 ]]; then
+            VERIFY_STEP="10. （--verify-install）brew install/upgrade clipmemory + 版本/签名验证"
+        else
+            VERIFY_STEP=""
+        fi
         cat <<EOF
   1. project.yml MARKETING_VERSION/CURRENT_PROJECT_VERSION → ${VERSION} + xcodegen generate
   2. （人工 gate）编辑 $NOTES 后校验双语章节
-  3. python3 Scripts/sync_readme.py --version ${VERSION} --changelog <段>（需 README_SYNC_API_KEY/DEEPSEEK_API_KEY）
+  3. ${SYNC_STEP}
   4. run_preflight $( [[ $SKIP_TESTS -eq 0 ]] && echo --tests )（内联检查：版本/README/Cask/xcodegen/lint/测试）
   5. commit: chore(release): v${VERSION} — <一句话>（project.yml + pbxproj + 7 README + release notes）
   6. sync_main_with_origin + git push origin main
   7. run_pre_push_verify（内联检查：版本/README/i18n 占位符/Cask/分支漂移）
   8. git tag -a v${VERSION} + git push origin v${VERSION}
   9. gh run watch release.yml → verify_release_remote ${VERSION}
+${VERIFY_STEP}
 EOF
         echo ""
         echo "✅ DRY-RUN 完成 — 未做任何修改"
@@ -888,16 +981,20 @@ EOF
     # Key resolution mirrors sync_readme.py: env first, then the macOS
     # Keychain item `clipmemory-readme-sync` (one-time setup:
     # security add-generic-password -U -s clipmemory-readme-sync -a deepseek -w <key>).
-    if [[ -z "${README_SYNC_API_KEY:-${DEEPSEEK_API_KEY:-}}" ]] && \
-       ! security find-generic-password -s clipmemory-readme-sync -w >/dev/null 2>&1; then
-        die "缺少 README_SYNC_API_KEY（或 DEEPSEEK_API_KEY 或 Keychain 项 clipmemory-readme-sync）— sync_readme.py 需要 LLM 翻译 6 语种 changelog；
+    if [[ ${SKIP_README_SYNC:-0} -eq 1 ]]; then
+        log "⏭ 已跳过 README 7 语言同步（--skip-readme-sync 逃生门）— 确认 7 个 README 已含 v${VERSION} changelog，或本次发版有意不更新 README"
+    else
+        if [[ -z "${README_SYNC_API_KEY:-${DEEPSEEK_API_KEY:-}}" ]] && \
+           ! security find-generic-password -s clipmemory-readme-sync -w >/dev/null 2>&1; then
+            die "缺少 README_SYNC_API_KEY（或 DEEPSEEK_API_KEY 或 Keychain 项 clipmemory-readme-sync）— sync_readme.py 需要 LLM 翻译 6 语种 changelog；
      设置后重跑，或参考 Scripts/sync_readme.py 头部注释换兼容 provider"
+        fi
+        TMP_CHANGELOG=$(mktemp -t clipmemory-readme-changelog.XXXXXX.md)
+        trap 'rm -f "$TMP_CHANGELOG"' EXIT
+        extract_readme_changelog "$NOTES" "$VERSION" "$TMP_CHANGELOG"
+        python3 "$SCRIPT_DIR/sync_readme.py" --version "$VERSION" --changelog "$TMP_CHANGELOG"
+        ok "7 个 README 标题 + changelog 已同步（git diff --stat 可在提交前核对）"
     fi
-    TMP_CHANGELOG=$(mktemp -t clipmemory-readme-changelog.XXXXXX.md)
-    trap 'rm -f "$TMP_CHANGELOG"' EXIT
-    extract_readme_changelog "$NOTES" "$VERSION" "$TMP_CHANGELOG"
-    python3 "$SCRIPT_DIR/sync_readme.py" --version "$VERSION" --changelog "$TMP_CHANGELOG"
-    ok "7 个 README 标题 + changelog 已同步（git diff --stat 可在提交前核对）"
 
     # 5. Mechanical gates incl. full tests (B1.3). CI runs tests again, but a
     #    red suite must stop the release BEFORE the tag exists.
@@ -1020,6 +1117,16 @@ EOF
     # Explicit if/else: failure keeps exit 1 but says the release IS already
     # live on GitHub and where to dig; success prints the remaining steps.
     if verify_release_remote "$VERSION"; then
+        if [[ ${VERIFY_INSTALL:-0} -eq 1 ]]; then
+            echo ""
+            echo "=== 安装验证（--verify-install）==="
+            if verify_install "$VERSION"; then
+                :
+            else
+                echo "❌ 安装验证失败 — release 已 live，不要重跑本脚本；按上方指引手动处理" >&2
+                exit 1
+            fi
+        fi
         echo ""
         echo "🚀 v${VERSION} 发布完成。剩余手动步骤（RELEASE.md B4.12）："
         echo "   1. brew upgrade --cask clipmemory 本机升级验证 + 首启确认"

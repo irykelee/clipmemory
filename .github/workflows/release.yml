@@ -441,35 +441,14 @@ jobs:
           git clone "https://github.com/irykelee/homebrew-clipmemory.git" tap-repo
           mkdir -p tap-repo/Casks
 
-          cat > tap-repo/Casks/clipmemory.rb <<CASK
-          cask "clipmemory" do
-            version "${VERSION}"
-            sha256 "${SHA256}"
-
-            url "https://github.com/irykelee/clipmemory/releases/download/v#{version}/ClipMemory.tar.gz"
-            name "ClipMemory"
-            desc "Clipboard history manager for macOS with encryption and Quick Bar"
-            homepage "https://github.com/irykelee/clipmemory"
-
-            depends_on macos: :ventura
-
-            auto_updates true
-
-            app "ClipMemory.app"
-
-            zap trash: [
-              "~/Library/Application Support/ClipMemory",
-              "~/Library/Preferences/com.clipmemory.app.plist",
-            ],
-            # C1: the root encryption key lives in the Keychain, not in files —
-            # remove it too so zap leaves no key material behind.
-            script: {
-              executable: "/usr/bin/security",
-              args: ["delete-generic-password", "-s", "com.clipmemory.app", "-a", "root-encryption-key"],
-              must_succeed: false,
-            }
-          end
-          CASK
+          # REL-28 (2026-08-05): generate the cask from Scripts/cask-template.rb
+          # instead of an inline heredoc — the heredoc's YAML-block indentation
+          # leaked into every cask line and the stanza layout drifted from
+          # rubocop-cask style (13 offenses, first caught by the new
+          # cask-audit CI on the tap repo). The template is rubocop-clean and
+          # maintained in the main repo.
+          sed -e "s/@VERSION@/${VERSION}/" -e "s/@SHA256@/${SHA256}/" \
+              Scripts/cask-template.rb > tap-repo/Casks/clipmemory.rb
 
           cd tap-repo
           git config user.name "github-actions[bot]"

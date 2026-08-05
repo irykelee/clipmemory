@@ -68,6 +68,8 @@ Scripts/release.sh v2.5.12 --dry-run
 | `--yes` | 非交互模式：跳过两个人工 gate（release notes 只做结构校验，慎用） |
 | `--skip-tests` | preflight 不跑全量 `xcodebuild test`（CI 还会再跑一次） |
 | `--dry-run` | 只校验 + 预览，不修改任何文件 |
+| `--skip-readme-sync` | **逃生门**（2026-08-05）：跳过 `sync_readme.py` 的 7 语言 README 同步及对应 preflight 检查。仅用于 README 已手动同步好、或本次发版有意不更新 changelog 的场景——用户对「README 状态正确」负责 |
+| `--verify-install` | **发布后硬验证门**（2026-08-05）：release 流水线全绿后，本机 `brew install/upgrade` 并核验 `CFBundleShortVersionString` + codesign `TeamIdentifier`。失败 exit 1（release 已 live，不要重跑脚本，按输出手动处理） |
 
 ### 退出码
 
