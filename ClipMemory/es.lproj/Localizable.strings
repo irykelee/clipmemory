@@ -267,6 +267,9 @@
 "settings.excluded.apps.footer" = "El nuevo contenido copiado desde las apps excluidas no se registra; el historial existente no se elimina. Usa Añadir aplicación para elegir apps y pulsa la × junto a una app para reanudar la captura.";
 "settings.backup.footer" = "La copia de seguridad automática se comprueba al iniciar la app y se ejecuta solo si han pasado al menos 24 horas desde la última copia correcta. Las copias locales usan la clave de dispositivo de este Mac; Exportar copia genera un archivo .clipmemory protegido con contraseña que requiere la misma contraseña para importarse.";
 "settings.updateSource.footer" = "Automático prefiere el canal de actualizaciones de GitHub y puede ofrecer el espejo de jsDelivr cuando el canal principal no esté disponible. El espejo solo ofrece información de actualización; las descargas siguen viniendo de GitHub. La selección manual se usa principalmente para diagnosticar problemas de red.";
+"settings.update.statusLine" = "Actual v%1$@ · Última v%2$@ · %3$@";
+"settings.update.statusUpToDate" = "Estás actualizado";
+"settings.update.statusOutOfDate" = "Actualización disponible";
 
 // H6: alertas de fallo de la clave de cifrado
 "alert.key.corrupt.title" = "El archivo de clave de cifrado está dañado";

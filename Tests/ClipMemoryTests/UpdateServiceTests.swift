@@ -95,6 +95,90 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(date, formatter.date(from: "Sat, 18 Jul 2026 03:32:59 +0000"))
     }
 
+    // MARK: - Appcast version parsing (C2: Update tab version display)
+
+    private let sampleAppcastWithVersions = """
+    <?xml version="1.0" encoding="utf-8"?>
+    <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+    <item>
+    <title>ClipMemory 2.7.9</title>
+    <sparkle:shortVersionString>2.7.9</sparkle:shortVersionString>
+    <pubDate>Wed, 05 Aug 2026 15:00:00 +0000</pubDate>
+    </item>
+    <item>
+    <title>ClipMemory 2.7.8</title>
+    <sparkle:shortVersionString>2.7.8</sparkle:shortVersionString>
+    <pubDate>Tue, 04 Aug 2026 15:00:00 +0000</pubDate>
+    </item>
+    <item>
+    <title>ClipMemory 2.7.7</title>
+    <sparkle:shortVersionString>2.7.7</sparkle:shortVersionString>
+    <pubDate>Sun, 02 Aug 2026 15:00:00 +0000</pubDate>
+    </item>
+    </channel>
+    </rss>
+    """
+
+    /// Sparkle convention: newest item appears first in appcast. C2 uses
+    /// "first item" as the source of truth for "latest available version" —
+    /// the UI just needs `==` comparison to current, so semver sorting is
+    /// not needed and the missing defensive code is deliberate.
+    func testLatestVersionStringReturnsFirstShortVersionString() {
+        XCTAssertEqual(UpdateService.latestVersionString(inAppcastXML: sampleAppcastWithVersions),
+                       "2.7.9")
+    }
+
+    /// Single-item feed (initial release or pre-update build) still resolves.
+    func testLatestVersionStringReturnsValueForSingleItem() {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+        <channel>
+        <item>
+        <title>ClipMemory 2.5.0</title>
+        <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
+        <pubDate>Fri, 18 Jul 2026 00:58:03 +0000</pubDate>
+        </item>
+        </channel>
+        </rss>
+        """
+        XCTAssertEqual(UpdateService.latestVersionString(inAppcastXML: xml), "2.5.0")
+    }
+
+    /// Boundary: missing tag, garbage, empty tag — all nil. The UI shows
+    /// only the current version (中性态) in these cases, never claims
+    /// "up to date" without evidence.
+    func testLatestVersionStringReturnsNilForEmptyOrMissing() {
+        XCTAssertNil(UpdateService.latestVersionString(inAppcastXML: "not xml at all"))
+        XCTAssertNil(UpdateService.latestVersionString(inAppcastXML: ""))
+        XCTAssertNil(UpdateService.latestVersionString(inAppcastXML: "<pubDate>Wed, 05 Aug 2026</pubDate>"))
+        XCTAssertNil(UpdateService.latestVersionString(inAppcastXML: "<sparkle:shortVersionString></sparkle:shortVersionString>"))
+        XCTAssertNil(UpdateService.latestVersionString(inAppcastXML: "<sparkle:shortVersionString>   </sparkle:shortVersionString>"))
+    }
+
+    /// The Sparkle-namespaced shortVersionString is what the binary uses
+    /// for `==` against `CFBundleShortVersionString`. A bare `<version>`
+    /// tag (or any other namespace) must NOT be picked up — otherwise a
+    /// future change to the bare `<version>` tag would silently corrupt
+    /// the displayed "latest" version.
+    func testLatestVersionStringIgnoresNonSparkleVersion() {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+        <channel>
+        <item>
+        <title>Misleading</title>
+        <version>99.99.99</version>
+        <sparkle:shortVersionString>2.7.8</sparkle:shortVersionString>
+        </item>
+        </channel>
+        </rss>
+        """
+        XCTAssertEqual(UpdateService.latestVersionString(inAppcastXML: xml), "2.7.8",
+                       "Must match the Sparkle-namespaced tag, not a bare <version>")
+    }
+
     // MARK: - ID-UPDATE-0001 (2026-07-31 Round 5): updater must start after probe
 
 

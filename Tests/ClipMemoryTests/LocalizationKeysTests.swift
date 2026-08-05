@@ -480,6 +480,10 @@ final class LocalizationKeysTests: XCTestCase {
     /// and the updated `settings.ocr.hint` (combined OCR + preview semantics)
     /// must remain present so a future drop would fail the build rather than
     /// silently degrade to English.
+    ///
+    /// 2026-08-05 (v2.7.9 C2): added `settings.update.statusLine`,
+    /// `settings.update.statusUpToDate`, `settings.update.statusOutOfDate`
+    /// for the "current vs latest version" display in the Update tab.
     func testSettingsFooterKeysExistInAllSevenLanguageFiles() throws {
         let keys = [
             "settings.hotkey.footer",
@@ -487,7 +491,10 @@ final class LocalizationKeysTests: XCTestCase {
             "settings.excluded.apps.footer",
             "settings.backup.footer",
             "settings.updateSource.footer",
-            "settings.ocr.hint"
+            "settings.ocr.hint",
+            "settings.update.statusLine",
+            "settings.update.statusUpToDate",
+            "settings.update.statusOutOfDate"
         ]
         let projectRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

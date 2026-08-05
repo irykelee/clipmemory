@@ -267,6 +267,9 @@
 "settings.excluded.apps.footer" = "New content copied from excluded apps is not recorded; existing history is not deleted. Use Add Application to choose apps, and click × beside an app to resume capture.";
 "settings.backup.footer" = "Automatic backup is checked when the app launches and runs once the last successful backup is at least 24 hours old. Local backups use this Mac's device key; Export Backup creates a password-protected .clipmemory file that requires the same password to import.";
 "settings.updateSource.footer" = "Automatic prefers the GitHub update feed and may offer the jsDelivr mirror when the primary feed is unavailable. The mirror provides update information only; downloads still come from GitHub. Manual selection is mainly for network troubleshooting.";
+"settings.update.statusLine" = "Current v%1$@ · Latest v%2$@ · %3$@";
+"settings.update.statusUpToDate" = "Up to date";
+"settings.update.statusOutOfDate" = "Update available";
 
 // H6: encryption key failure alerts
 "alert.key.corrupt.title" = "Encryption Key File Is Corrupted";

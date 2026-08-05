@@ -267,6 +267,9 @@
 "settings.excluded.apps.footer" = "O novo conteúdo copiado a partir de apps excluídos não é registado; o histórico existente não é eliminado. Use Adicionar aplicativo para escolher apps e clique no × junto a um app para retomar a captura.";
 "settings.backup.footer" = "O backup automático é verificado ao iniciar o app e executa-se apenas quando passaram pelo menos 24 horas desde o último backup bem-sucedido. Os backups locais usam a chave deste Mac; Exportar backup cria um ficheiro .clipmemory protegido por palavra-passe que requer a mesma palavra-passe para ser importado.";
 "settings.updateSource.footer" = "Automático prefere o canal de atualizações do GitHub e pode oferecer o espelho jsDelivr quando o canal principal não está disponível. O espelho fornece apenas informação de atualização; as transferências continuam a vir do GitHub. A seleção manual serve principalmente para diagnosticar problemas de rede.";
+"settings.update.statusLine" = "Atual v%1$@ · Última v%2$@ · %3$@";
+"settings.update.statusUpToDate" = "Atualizado";
+"settings.update.statusOutOfDate" = "Atualização disponível";
 
 // H6: alertas de falha da chave de criptografia
 "alert.key.corrupt.title" = "O arquivo da chave de criptografia está corrompido";

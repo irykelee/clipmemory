@@ -263,6 +263,9 @@
 "settings.excluded.apps.footer" = "제외한 앱에서 복사한 새 내용은 기록되지 않습니다. 기존 기록은 삭제되지 않습니다. “앱 추가”로 앱을 선택하고, 앱 칩 옆의 × 를 누르면 해당 앱의 기록이 다시 시작됩니다.";
 "settings.backup.footer" = "자동 백업은 앱 시작 시 확인되며, 마지막 성공 이후 24 시간이 지났을 때만 실행됩니다. 로컬 백업은 이 Mac 의 기기 키로 암호화됩니다. “백업 내보내기”는 비밀번호로 보호되는 .clipmemory 파일을 생성하며, 복원할 때 같은 비밀번호가 필요합니다.";
 "settings.updateSource.footer" = "“자동”은 GitHub 업데이트 피드를 우선 사용하고, 기본 피드에 연결할 수 없으면 jsDelivr 미러 사용을 안내할 수 있습니다. 미러는 업데이트 정보만 제공하며 설치 파일은 GitHub 에서 내려받습니다. 수동 선택은 주로 네트워크 문제 해결용입니다.";
+"settings.update.statusLine" = "현재 v%1$@ · 최신 v%2$@ · %3$@";
+"settings.update.statusUpToDate" = "최신 버전";
+"settings.update.statusOutOfDate" = "업데이트 가능";
 
 // H6: 암호화 키 실패 알림
 "alert.key.corrupt.title" = "암호화 키 파일이 손상되었습니다";

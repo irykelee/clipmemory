@@ -265,6 +265,9 @@
 "settings.excluded.apps.footer" = "排除後，將不再記錄從這些應用複製的新內容；既有歷史不會刪除。點選「新增應用程式」選擇應用，點選應用標籤旁的 × 可恢復記錄。";
 "settings.backup.footer" = "應用啟動時會檢查自動備份；距上次成功備份滿 24 小時才執行。本機備份使用此 Mac 的裝置金鑰加密；「匯出備份」會建立密碼保護的 .clipmemory 檔案，匯入時需要該密碼。";
 "settings.updateSource.footer" = "「自動」會優先使用 GitHub 更新源；主源無法連線時，App 可能提示改用 jsDelivr 鏡像。鏡像只提供更新資訊，安裝檔仍從 GitHub 下載；手動選擇主要用於網路排障。";
+"settings.update.statusLine" = "目前 v%1$@ · 最新 v%2$@ · %3$@";
+"settings.update.statusUpToDate" = "已是最新版本";
+"settings.update.statusOutOfDate" = "有新版本可用";
 
 // H6：加密密鑰失敗彈窗
 "alert.key.corrupt.title" = "加密密鑰檔案已損毀";

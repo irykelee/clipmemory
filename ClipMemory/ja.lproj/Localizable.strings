@@ -263,6 +263,9 @@
 "settings.excluded.apps.footer" = "除外したアプリからコピーした新しい内容は記録されません。既存の履歴は削除されません。「アプリを追加」でアプリを選び、アプリのチップ横の × で記録を再開できます。";
 "settings.backup.footer" = "自動バックアップはアプリ起動時に確認され、前回の成功から 24 時間以上経過している場合に実行されます。ローカルバックアップはこの Mac の端末キーで暗号化されます。「バックアップをエクスポート」はパスワード保護された .clipmemory ファイルを作成し、復元には同じパスワードが必要です。";
 "settings.updateSource.footer" = "「自動」は GitHub の更新フィードを優先し、プライマリ feed が利用できない場合は jsDelivr ミラーの使用を提案することがあります。ミラーが配信するのは更新情報のみで、ダウンロードは GitHub から行われます。手動選択は主にネットワーク障害の調査用です。";
+"settings.update.statusLine" = "現在 v%1$@ · 最新 v%2$@ · %3$@";
+"settings.update.statusUpToDate" = "最新です";
+"settings.update.statusOutOfDate" = "更新があります";
 
 // H6: 暗号化キー失敗アラート
 "alert.key.corrupt.title" = "暗号化キーファイルが破損しています";

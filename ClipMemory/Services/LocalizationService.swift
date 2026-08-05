@@ -355,6 +355,16 @@ struct L10n {
     static var settingsBackupFooter: String { string("settings.backup.footer") }
     static var settingsUpdateSourceFooter: String { string("settings.updateSource.footer") }
 
+    /// C2 (v2.7.9): version comparison line shown in the Update tab.
+    /// `status` argument is the pre-formatted "up to date" / "update available"
+    /// phrase (see `settingsUpdateStatusUpToDate` / `settingsUpdateStatusOutOfDate`).
+    /// Format: "Current v%@ · Latest v%@ · %@" (zh-Hans: "当前 v%@ · 最新 v%@ · %@").
+    static func settingsUpdateStatusLine(_ current: String, _ latest: String, _ status: String) -> String {
+        string("settings.update.statusLine", current, latest, status)
+    }
+    static var settingsUpdateStatusUpToDate: String { string("settings.update.statusUpToDate") }
+    static var settingsUpdateStatusOutOfDate: String { string("settings.update.statusOutOfDate") }
+
     // MARK: - OCR Search Highlight
     /// Placeholder shown under image thumbnails while OCR backfill is in progress.
     static var itemOcrProcessing: String { string("item.ocrProcessing") }

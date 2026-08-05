@@ -240,6 +240,23 @@ final class UpdateService {
         return latest
     }
 
+    /// C2 (v2.7.9): first `<sparkle:shortVersionString>` in the appcast,
+    /// or nil when nothing parses. Sparkle convention puts the newest item
+    /// first, so the first occurrence IS the latest available version.
+    /// Pure for tests; the view layer only needs `==` against
+    /// `CFBundleShortVersionString` (`AppVersion.current`), so semver
+    /// sorting is deliberately NOT implemented here.
+    static func latestVersionString(inAppcastXML xml: String) -> String? {
+        guard let open = xml.range(of: "<sparkle:shortVersionString>"),
+              let close = xml.range(of: "</sparkle:shortVersionString>",
+                                    range: open.upperBound..<xml.endIndex) else {
+            return nil
+        }
+        let raw = String(xml[open.upperBound..<close.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? nil : raw
+    }
+
     /// Mirrors Sparkle's own persisted setting (SUAutomaticallyChecksForUpdates).
     var automaticallyChecksForUpdates: Bool {
         get { updaterController.updater.automaticallyChecksForUpdates }
@@ -328,6 +345,15 @@ final class UpdateService {
                 newBaseline = observed
             }
             Self.lastPrimaryItemDate = newBaseline
+        }
+        // C2 (v2.7.9): publish the latest version string from the same
+        // primary appcast body so the settings panel can show "current vs
+        // latest". No second URLSession call — reuses the body that the
+        // probe already fetched. nil when the primary channel wasn't
+        // reached or the body had no parseable shortVersionString.
+        if let xml = decision.primaryAppcastXML,
+           let latest = Self.latestVersionString(inAppcastXML: xml) {
+            status.latestAvailableVersion = latest
         }
         // resetUpdateCycleAfterShortDelay() does not throw on macOS in
         // Sparkle 2.9.4 — only SPUUpdater.start() does. Fire-and-forget.
