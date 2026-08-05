@@ -213,7 +213,18 @@ generate_release_notes() {
             esac
             continue
         fi
-        line="- **$(strip_commit_prefix "$subject")** — <一句话：用户得到什么>"
+        # REL-27 (2026-08-05): auto-fill a default user-facing description
+        # instead of the bare `<一句话：用户得到什么>` placeholder. The draft
+        # still needs human polish (the commit subject is developer-view),
+        # but this gives the editor a usable starting point per bucket —
+        # much less work than writing every line from scratch.
+        local subject_desc
+        subject_desc=$(strip_commit_prefix "$subject")
+        case "$bucket" in
+            highlights) line="- **${subject_desc}** — 新增/改进：${subject_desc}，详见下方说明" ;;
+            fixes)      line="- **${subject_desc}** — 修复：${subject_desc} 相关问题" ;;
+            other)      line="- **${subject_desc}** — ${subject_desc}" ;;
+        esac
         case "$bucket" in
             highlights) highlights+="$line"$'\n' ;;
             fixes)      fixes+="$line"$'\n' ;;
