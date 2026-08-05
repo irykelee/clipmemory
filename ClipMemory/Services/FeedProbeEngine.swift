@@ -117,6 +117,23 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
                 primaryAppcastXML: nil,
                 primaryLatestDate: nil
             )
+        case .gitee:
+            // GITEE (2026-08-05): user explicitly chose the Gitee mirror —
+            // same "forced, don't probe" semantics as .fallback. The Gitee
+            // appcast copy carries enclosures pointing at Gitee release
+            // assets, so both feed AND download stay on the China-accessible
+            // node. Channels' kinds are primary/fallback only; resolve the
+            // gitee channel by id since kind alone can't distinguish it.
+            guard let gitee = channels.first(where: { $0.id == "gitee-mirror" }) else {
+                return nil
+            }
+            return FeedProbeDecision(
+                chosenURL: gitee.url,
+                usedChannelID: gitee.id,
+                reason: .userForcedFallback,
+                primaryAppcastXML: nil,
+                primaryLatestDate: nil
+            )
         case .automatic:
             return await resolveAutomatic(
                 primary: primary,

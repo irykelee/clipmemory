@@ -130,7 +130,9 @@ final class LocalizationKeysTests: XCTestCase {
             "settings.updateSource.reason.bothDownKeepPrimary",
             "settings.updateSource.reason.mirrorStaleRejected",
             "settings.updateSource.reason.userForced",
-            "settings.updateSource.reason.userForcedFallback"
+            "settings.updateSource.reason.userForcedFallback",
+            // GITEE (2026-08-05): user-selectable mirror channel label.
+            "settings.updateSource.option.gitee"
         ]
         let projectRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

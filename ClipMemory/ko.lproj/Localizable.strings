@@ -287,6 +287,7 @@
 "settings.updateSource.option.automatic" = "자동";
 "settings.updateSource.option.primary" = "기본 (GitHub)";
 "settings.updateSource.option.fallback" = "미러 (jsDelivr)";
+"settings.updateSource.option.gitee" = "미러 (Gitee)";
 "settings.updateSource.statusPanel" = "소스: %1$@ · 마지막 확인: %2$@ · 마지막 전환: %3$@";
 "settings.updateSource.reason.automaticReachable" = "자동 (기본 소스 연결 가능)";
 "settings.updateSource.reason.automaticPrimaryDown" = "자동 (기본 소스에 연결할 수 없어 미러 사용)";

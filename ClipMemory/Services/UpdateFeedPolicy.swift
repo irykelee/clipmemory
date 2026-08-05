@@ -18,10 +18,15 @@ struct FeedChannel: Equatable {
 
 /// The user's persisted update-source choice. Single source of truth
 /// (spec §1.1 invariant #1).
+/// Adding a user-selectable channel = append a `FeedChannel` to
+/// `knownChannels` AND add a matching case here + handle it in
+/// `FeedProbeEngine.resolve` + the settings `Picker` (Swift switches are
+/// exhaustive, the compiler enforces all three).
 enum UpdateFeedPolicy: String, Codable, CaseIterable, Equatable {
     case automatic
     case primary
     case fallback
+    case gitee
 }
 
 enum UpdateFeedPolicies {
@@ -38,6 +43,19 @@ enum UpdateFeedPolicies {
             url: UpdateService.fallbackFeedURL,
             kind: .fallback,
             labelKey: "settings.updateSource.option.fallback"
+        ),
+        // GITEE (2026-08-05): China-accessible mirror for users whose
+        // network can't reach GitHub reliably. The Gitee repo holds a copy
+        // of appcast.xml whose enclosures point at Gitee release assets
+        // (GitHub tarball is mirrored there by Scripts/sync_gitee_release.sh
+        // at every release). User-selectable via the settings picker; never
+        // used by automatic probing (kind .fallback but only reachable via
+        // the explicit .gitee policy — resolve() short-circuits for it).
+        FeedChannel(
+            id: "gitee-mirror",
+            url: requireURL("https://gitee.com/irykelee/clipmemory/raw/main/appcast.xml"),
+            kind: .fallback,
+            labelKey: "settings.updateSource.option.gitee"
         )
     ]
 

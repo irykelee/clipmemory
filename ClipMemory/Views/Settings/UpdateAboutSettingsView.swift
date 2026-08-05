@@ -42,6 +42,7 @@ struct UpdateAboutSettingsView: View {
                         case .automatic: Text(L10n.settingsUpdateSourceOptionAutomatic).tag(policy)
                         case .primary:   Text(L10n.settingsUpdateSourceOptionPrimary).tag(policy)
                         case .fallback:  Text(L10n.settingsUpdateSourceOptionFallback).tag(policy)
+                        case .gitee:     Text(L10n.settingsUpdateSourceOptionGitee).tag(policy)
                         }
                     }
                 }.pickerStyle(.segmented)

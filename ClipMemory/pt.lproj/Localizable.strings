@@ -291,6 +291,7 @@
 "settings.updateSource.option.automatic" = "Automático";
 "settings.updateSource.option.primary" = "Principal (GitHub)";
 "settings.updateSource.option.fallback" = "Espelho (jsDelivr)";
+"settings.updateSource.option.gitee" = "Espelho (Gitee)";
 "settings.updateSource.statusPanel" = "Fonte: %1$@ · Última verificação: %2$@ · Última mudança: %3$@";
 "settings.updateSource.reason.automaticReachable" = "Automático (fonte principal acessível)";
 "settings.updateSource.reason.automaticPrimaryDown" = "Automático (fonte principal inacessível, usando o espelho)";

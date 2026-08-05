@@ -287,6 +287,7 @@
 "settings.updateSource.option.automatic" = "自動";
 "settings.updateSource.option.primary" = "プライマリ（GitHub）";
 "settings.updateSource.option.fallback" = "ミラー（jsDelivr）";
+"settings.updateSource.option.gitee" = "ミラー（Gitee）";
 "settings.updateSource.statusPanel" = "ソース: %1$@ · 最終確認: %2$@ · 切替: %3$@";
 "settings.updateSource.reason.automaticReachable" = "自動（プライマリに接続可能）";
 "settings.updateSource.reason.automaticPrimaryDown" = "自動（プライマリに接続できないためミラーを使用）";

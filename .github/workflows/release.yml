@@ -461,6 +461,22 @@ jobs:
           AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${TAP_GITHUB_TOKEN}" | base64)"
           git -c "http.https://github.com/.extraheader=${AUTH_HEADER}" push origin main
 
+      # GITEE (2026-08-05): China-accessible mirror. Appcast copy with
+      # Gitee enclosures + tarball asset pushed to the Gitee repo; users
+      # behind unreliable GitHub connectivity pick "Mirror (Gitee)" in
+      # Settings → Update Source. Failure here is non-fatal for the GitHub
+      # release (already live) — it only means the mirror lags; the
+      # release.yml run still fails loudly so the operator can re-run the
+      # sync step after fixing connectivity/token.
+      - name: Sync Gitee mirror (China download source)
+        if: github.event_name == 'push'
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          Scripts/sync_gitee_release.sh "v${VERSION}"
+
       - name: Verify post-release state
         if: github.event_name == 'push'
         # P0-3 fix (per docs/RELEASE_PROCESS_AUDIT_2026-07-22.md): the v2.5.10

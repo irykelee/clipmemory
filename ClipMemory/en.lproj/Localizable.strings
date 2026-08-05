@@ -291,6 +291,7 @@
 "settings.updateSource.option.automatic" = "Automatic";
 "settings.updateSource.option.primary" = "Primary (GitHub)";
 "settings.updateSource.option.fallback" = "Mirror (jsDelivr)";
+"settings.updateSource.option.gitee" = "Mirror (Gitee)";
 "settings.updateSource.statusPanel" = "Source: %1$@ · Last check: %2$@ · Last switch: %3$@";
 "settings.updateSource.reason.automaticReachable" = "Automatic (primary reachable)";
 "settings.updateSource.reason.automaticPrimaryDown" = "Automatic (primary unreachable, using mirror)";

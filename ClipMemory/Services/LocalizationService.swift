@@ -416,6 +416,7 @@ struct L10n {
     static var settingsUpdateSourceOptionAutomatic: String { string("settings.updateSource.option.automatic") }
     static var settingsUpdateSourceOptionPrimary: String { string("settings.updateSource.option.primary") }
     static var settingsUpdateSourceOptionFallback: String { string("settings.updateSource.option.fallback") }
+    static var settingsUpdateSourceOptionGitee: String { string("settings.updateSource.option.gitee") }
     static var settingsUpdateSourceStatusPanel: String { string("settings.updateSource.statusPanel") }
 
     static var filterRichText: String { string("filter.richtext") }

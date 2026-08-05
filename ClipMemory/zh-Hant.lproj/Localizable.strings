@@ -289,6 +289,7 @@
 "settings.updateSource.option.automatic" = "自動";
 "settings.updateSource.option.primary" = "主來源（GitHub）";
 "settings.updateSource.option.fallback" = "鏡像（jsDelivr）";
+"settings.updateSource.option.gitee" = "鏡像（Gitee）";
 "settings.updateSource.statusPanel" = "目前來源：%1$@ · 上次檢查：%2$@ · 上次切換：%3$@";
 "settings.updateSource.reason.automaticReachable" = "自動（主來源可連線）";
 "settings.updateSource.reason.automaticPrimaryDown" = "自動（主來源無法連線，已切換至鏡像）";
