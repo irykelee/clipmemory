@@ -461,21 +461,14 @@ jobs:
           AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${TAP_GITHUB_TOKEN}" | base64)"
           git -c "http.https://github.com/.extraheader=${AUTH_HEADER}" push origin main
 
-      # GITEE (2026-08-05): China-accessible mirror. Appcast copy with
-      # Gitee enclosures + tarball asset pushed to the Gitee repo; users
-      # behind unreliable GitHub connectivity pick "Mirror (Gitee)" in
-      # Settings → Update Source. Failure here is non-fatal for the GitHub
-      # release (already live) — it only means the mirror lags; the
-      # release.yml run still fails loudly so the operator can re-run the
-      # sync step after fixing connectivity/token.
-      - name: Sync Gitee mirror (China download source)
-        if: github.event_name == 'push'
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-        run: |
-          set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
-          Scripts/sync_gitee_release.sh "v${VERSION}"
+      # GITEE (2026-08-06): sync moved to its own workflow
+      # `.github/workflows/sync-gitee.yml` so it can be triggered manually
+      # via `gh workflow run sync-gitee.yml -f version=vX.Y.Z` to recover
+      # from a partial/failed sync without re-running the full release
+      # pipeline. The sync workflow auto-triggers on push tags too, so
+      # normal release flow still syncs the mirror — just via a separate
+      # workflow run with its own pass/fail boundary (sync failure is
+      # mirror-lag-only, not release-broken).
 
       - name: Verify post-release state
         if: github.event_name == 'push'

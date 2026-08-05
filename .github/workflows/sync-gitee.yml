@@ -1,0 +1,144 @@
+name: Sync Gitee mirror
+
+# Split out from release.yml on 2026-08-06 so the operator can re-run only
+# the Gitee sync step via `gh workflow run sync-gitee.yml -f version=vX.Y.Z`
+# without re-triggering the full release pipeline (10-20 min build + sign +
+# upload). Manual trigger is the documented recovery path for the two
+# failure modes we already saw:
+#
+#   1. Claude Code sandbox / restricted CI runners hitting GitHub Releases
+#      CDN at ~22KB/s — a 7 MB tarball exceeds the 5-min bash timeout.
+#   2. Gitee-side flakiness (token revoked, repo temporarily 403) — the
+#      push-only release.yml Sync Gitee step's failure surfaces AS a red
+#      GitHub release run, which is misleading (the GitHub release IS
+#      already live). Splitting it into its own workflow makes the failure
+#      boundary honest: sync failure = mirror lags, not release broken.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        # No leading 'v' — the script adds it. Must already be a published
+        # GitHub release (sync downloads the tarball from the release URL).
+        description: 'Version to sync (e.g. 2.7.9). Already-released GitHub tag required.'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+# Same group as release.yml — when a tag push triggers both, this waits for
+# release.yml to finish (so the appcast <item> + GitHub Release assets are
+# public before we download them). `cancel-in-progress: false` matches
+# release.yml: never cancel mid-flight. A manual workflow_dispatch while
+# release.yml is mid-build will wait too — acceptable, since that means
+# the GitHub Release isn't live yet and the sync would 404 on download
+# anyway.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  sync-gitee-mirror:
+    runs-on: macos-latest
+    # sync breakdown on CI runner (network typically faster than sandbox):
+    #   download tarball ~1-3 min, clone Gitee < 1s, appcast sed + commit
+    #   + push < 5s, release create + upload ~30s. 15 min generous; 5 min
+    #   would also work but leaves no headroom for a slow CDN day.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # fetch-depth: 0 so the local appcast.xml matches origin/main
+          # (the script reads it and rewrites github.com enclosures →
+          # gitee.com). Without this, a tag-only checkout has no appcast
+          # <item> yet for the sync script to derive the Gitee copy from.
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          # Basic sanity (the script does its own validation but a clearer
+          # early error message beats a deeper one).
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid version '$VERSION' (expected X.Y.Z, no leading v)"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Syncing v${VERSION} → Gitee mirror"
+
+      - name: Sync Gitee mirror
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: Scripts/sync_gitee_release.sh "v${{ steps.version.outputs.version }}"
+
+      - name: Verify Gitee sync
+        # Cheap post-sync checks (a, b, d from the handoff doc). Run even
+        # on push triggers — the script is idempotent so a re-run after a
+        # partial failure should land clean. We don't enforce c (download
+        # speed) — that's a measurement, not a property.
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="v${{ steps.version.outputs.version }}"
+          OWNER="${GH_OWNER:-irykelee}"
+          REPO="${GH_REPO:-clipmemory}"
+          API="https://gitee.com/api/v5"
+
+          FAILS=0
+          fail() { echo "❌ $*"; FAILS=$((FAILS+1)); }
+          ok()   { echo "✅ $*"; }
+
+          echo "=== Post-sync verification for ${VERSION} ==="
+
+          # (a) Gitee release exists.
+          if curl -sf --max-time 15 "${API}/repos/${OWNER}/${REPO}/releases/tags/${VERSION}?access_token=${GITEE_TOKEN}" >/dev/null; then
+            ok "Gitee release ${VERSION} exists"
+          else
+            fail "Gitee release ${VERSION} missing — re-run sync_gitee_release.sh"
+          fi
+
+          # (b) Gitee appcast <item> enclosure points to gitee.com (not
+          # github.com). Fetch via raw, parse the <enclosure url="..."> for
+          # this version. Single-line python (no shell double-quote
+          # escaping inside the regex); version passed via env var to
+          # avoid `${VERSION#v}` interpolation inside single-quoted python.
+          V="${VERSION#v}"
+          ENCLOSURE=$(V="$V" curl -sf --max-time 15 "https://gitee.com/${OWNER}/${REPO}/raw/main/appcast.xml" \
+            | V="$V" python3 -c 'import re,sys,os; v=os.environ["V"]; m=re.search(r"""<item>.+?ClipMemory v"""+re.escape(v)+r""".+?<enclosure[^>]*url="([^"]+)""", sys.stdin.read(), re.DOTALL); print(m.group(1) if m else "")' 2>/dev/null || echo "")
+          if [[ -z "$ENCLOSURE" ]]; then
+            fail "no Gitee appcast <item> for ${VERSION} — script may not have pushed the copy"
+          elif [[ "$ENCLOSURE" == *"gitee.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz"* ]]; then
+            ok "Gitee enclosure → gitee.com (.../releases/download/${VERSION}/ClipMemory.tar.gz)"
+          else
+            fail "Gitee enclosure unexpected: $ENCLOSURE"
+          fi
+
+          # (d) Two-side sha256 identical (REL-29 byte-consistency proof).
+          GH_SHA=$(curl -sf --max-time 60 "https://github.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz" \
+            | shasum -a 256 | awk '{print $1}')
+          GT_URL=$(curl -sfL --max-time 60 "${API}/repos/${OWNER}/${REPO}/releases/tags/${VERSION}?access_token=${GITEE_TOKEN}" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((a["browser_download_url"] for a in (d.get("attachments") or []) if a.get("name")=="ClipMemory.tar.gz"), ""))')
+          GT_SHA=$(curl -sfL --max-time 60 "$GT_URL" | shasum -a 256 | awk '{print $1}')
+          if [[ -z "$GH_SHA" || -z "$GT_SHA" ]]; then
+            fail "sha256 fetch failed (GH=$GH_SHA / GT=$GT_SHA) — connectivity or asset missing"
+          elif [[ "$GH_SHA" == "$GT_SHA" ]]; then
+            ok "sha256 GH == GT ($GH_SHA)"
+          else
+            fail "sha256 mismatch: GH=$GH_SHA GT=$GT_SHA — REL-29 byte-consistency violated"
+          fi
+
+          if [[ "$FAILS" -gt 0 ]]; then
+            echo ""
+            echo "❌ ${FAILS} post-sync check(s) FAILED."
+            exit 1
+          fi
+          echo ""
+          echo "✅ All post-sync verification checks passed."
