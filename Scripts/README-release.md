@@ -1,6 +1,6 @@
 # release.sh — ClipMemory 一键发布工具
 
-> 本机专用工具，**不入库、不上 GitHub**（已通过 `.git/info/exclude` 本地排除）。
+> **REL-27 (commit `22211d9`) 起已入库正式 git 跟踪**（2026-08-05 工具链实体化，移除原 `.git/info/exclude` 本地排除 + 移除 symlink）；主仓与 clone 用户共享同一份 `Scripts/release.sh`。
 > 串联现有发布流程（`docs/RELEASE.md` B1–B3），只编排、不重复实现：
 > 构建/签名/打包/发布仍由 GitHub Actions `release.yml` 完成。
 
@@ -33,8 +33,8 @@ Scripts/release.sh vX.Y.Z [--yes] [--skip-tests] [--dry-run]
 ## 发版硬规则（吃过亏的，别再犯）
 
 - **升级提示版本号固定写 `v2.4.0 起带自动升级模块（Sparkle）的版本`**，不是「上个版本起」——Sparkle v2.4.0（`a2eadfa`）引入，任何 ≥2.4.0 的版本都能自动更新。模板和生成器已固化此文案，手写 notes 时照抄（2026-07-20 用户反馈，v2.5.13 复发过一次）
-- **release notes 必须手写双语**（`docs/release-notes-template.md`），禁止留生成器 stub；已存在的 notes 文件会被 release.sh 沿用不重生成——可以像 v2.5.13 一样先手写再跑脚本配 `--yes`
-- **§7 母语审校**：发版前确认当期新增 L10n key 的 7 语言文案（controller-supplied draft 需用户过目拍板）
+- **release notes 自动填 + 人工编辑**（REL-27 `7b1f1ea` `generate_release_notes` 按 commit subject 推默认描述：feat → 新增/改进 / fix → 修复 / 其他 → plain；草稿占位符未清除会被校验拦截）；已存在的 notes 文件会被 release.sh 沿用不重生成——可以像 v2.5.13 一样先手写再跑脚本配 `--yes`
+- **7 语言 L10n**：REL-27 后 release notes 7 语言翻译走 `sync_readme.py`（DeepSeek API 自动），**AI 生成作为 final**——CLAUDE.md 2026-07-29 决议已删除母语审校硬条件（原 §7 母语审校停执行；保留 AI 自动生成 + parity test 7 语言一致性验证）
 - **push/tag 必须用户显式确认**（白名单仓库也不例外）；`--yes` 只跳过脚本内 gate，不替代这个授权
 - 全局 pre-commit hook：硬拒段（敏感模式）永不绕过；字段名 advisory 段无 TTY 时用 `yes y | script -q /dev/null git commit` 供 pty
 
@@ -111,9 +111,9 @@ release.sh 的 34 项断言覆盖纯函数：`version_gt`（数值比较，2.10.
 
 ## 设计说明
 
-- **自包含（2026-07-25 起）**：原 `preflight.sh` / `pre_push_verify.sh` / `pre_push_main_sync.sh` / `safe_push.sh` 已作为函数内联（`run_preflight` / `run_pre_push_verify` / `sync_main_with_origin` 等），本工具是 Scripts/ 下唯一 push/release 工具；CI 专用的 `package.sh` / `update_appcast.sh` / `sync_readme.py` 保留不动
+- **自包含（2026-07-25 起）**：原 `preflight.sh` / `pre_push_verify.sh` / `pre_push_main_sync.sh` / `safe_push.sh` 4 个 wrapper **已删除并合并进 release.sh 内联函数**（`run_preflight` / `run_pre_push_verify` / `sync_main_with_origin` 等），本工具是 Scripts/ 下唯一 push/release 工具；CI 专用的 `package.sh` / `update_appcast.sh` / `sync_readme.py` 保留不动
 - **macOS 兼容**：BSD `sort` 无 `-V`，版本比较用 awk；BSD `sed -i ''`
-- **已知细节**：`$VAR` 后直接跟全角字符会被 bash 并入变量名，脚本内一律 `${VAR}`
+- **已知细节**：`$VAR` 后直接跟全角字符会被 bash 并入变量名（bash 5.3 + set -u + zh_CN.UTF-8 locale 下报 unbound；REL-26 `423bceb` → 主仓 `7b1f1ea` + REL-28 `e6a8c2b` 修法 echo → printf + `${var}` 花括号界定，4 处全部覆盖）
 - 全局 pre-commit hook 的 advisory 段在非 TTY 下用 `yes y | script -q /dev/null git commit` 供 pty（RELEASE.md A4）；硬拒段（敏感模式）永不绕过
 
 ## 近期事故与对策（v2.5.12 / v2.5.13）
@@ -133,9 +133,11 @@ release.sh 的 34 项断言覆盖纯函数：`version_gt`（数值比较，2.10.
 
 | 文件 | 追踪状态 | 作用 |
 |---|---|---|
-| `Scripts/release.sh` | **本地**（`.git/info/exclude`） | 本工具，唯一 push/release 入口 |
-| `Scripts/test/test_release.sh` | 本地 | release.sh 纯函数测试 |
-| `Scripts/README-release.md` | 本地 | 本文档 |
+| `Scripts/release.sh` | **已入库**（REL-27 `22211d9` 起正式 git 跟踪） | 本工具，唯一 push/release 入口 |
+| `Scripts/test/test_release.sh` | 已入库（REL-27 `e491372` 实体化） | release.sh 纯函数测试 |
+| `Scripts/README-release.md` | 已入库（REL-27 `e491372` 实体化） | 本文档 |
+| `Scripts/rollback-release.sh` | 已入库（REL-27 `d6d3fc2` 实体化） | 发布回滚工具（93 行） |
+| `Scripts/cask-template.rb` | 已入库（REL-28 `e6a8c2b`） | tap Cask 模板（rubocop-clean） |
 | `Scripts/sync_readme.py` | 已入库 | 8 README 标题 + changelog 7 语种同步（LLM 翻译，内存构建成功后统一落盘） |
 | `Scripts/test/test_sync_readme{,_dedupe}.py` | 已入库 | sync_readme 测试 |
 | `Scripts/package.sh` | 已入库 | CI 打包（含 `verify_package()` 自检） |
