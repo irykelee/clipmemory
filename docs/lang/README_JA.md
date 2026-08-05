@@ -1,4 +1,4 @@
-# ClipMemory v2.7.8
+# ClipMemory v2.7.9
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.7.9 (2026-08-05) — 設定ページにバージョン対照を追加
+
+- **🆕 設定ページの更新フィードに「現在のバージョン vs 最新バージョン」の対照を追加** — アップグレードが必要かどうかが一目でわかる。初回の更新チェックが完了していない間は現在のバージョンのみを表示し、「最新です」マークを出さないため、見せかけの緑を回避
+- **🛠 リリースプロセスを強化（REL-24..28 の5ラウンド最適化）** — AIエージェント向けハードルール5項目のスクリプト冒頭コメント化、`--yes` 非TTY環境での二要素ガード、リリースロールバックツール（`Scripts/rollback-release.sh`）、リリース後の手動手順確認ゲート、リリースノートのデフォルト説明の自動入力、bash 5.3 の全角括弧による unbound 変数バグの修正
+- **🛠 Homebrew tap CI を導入** — `irykelee/homebrew-clipmemory` に `cask-audit.yml`（brew audit + brew style）を追加。これにより Cask のインデント / stanza の順序 / フォーマットエラーをリリース前に検出でき、「tap Cask 不適合」事故の再発を防ぐ
+- **🛠 リリースツールチェーンをメインリポジトリへ実体化** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` が正式に git 追跡対象となった（以前はローカルの並行リポジトリ `ClipMemory-local` を指す symlink で、メインリポジトリを clone するとリンク切れの symlink が取得される状態だった。この並行リポジトリは2026-08-05にアーカイブした）
+- **🛠 Tap Cask のテンプレート化** — `Scripts/cask-template.rb`（rubocop-clean）を追加。Release workflow はテンプレート + プレースホルダーで tap Cask を生成し、インライン heredoc に起因する YAML インデントのずれを解消
+- 完全なchangelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — 検索と設定エクスペリエンスの最適化
 

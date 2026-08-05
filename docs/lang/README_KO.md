@@ -1,4 +1,4 @@
-# ClipMemory v2.7.8
+# ClipMemory v2.7.9
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 변경 로그
+
+### v2.7.9 (2026-08-05) — 설정 페이지에 버전 대조 추가
+
+- **🆕 설정 페이지 업데이트 피드에「현재 버전 vs 최신 버전」대조 추가** — 업그레이드가 필요한지 한눈에 확인 가능; 최초 업데이트 확인이 완료되지 않았을 때는 현재 버전만 표시되고 "최신" 표시가 나타나지 않아 가짜 초록 상태를 방지합니다
+- **🛠 릴리스 프로세스 강화(REL-24..28 5차례 최적화)** — AI 에이전트 하드 규칙 5가지를 스크립트 헤더 주석으로 명시, `--yes` 비-TTY 이중 요소 안전장치, 릴리스 롤백 도구(`Scripts/rollback-release.sh`), 릴리스 후 수동 단계 확인 게이트, 릴리스 노트 기본 설명 자동 입력, bash 5.3 전각 괄호 unbound 변수 버그 수정
+- **🛠 Homebrew tap CI 가동** — `irykelee/homebrew-clipmemory`에 `cask-audit.yml` 추가(brew audit + brew style), 이제 Cask 들여쓰기 / stanza 순서 / 형식 오류를 릴리스 전에 잡아내어 반복되는 "tap Cask 부적합" 사고를 방지합니다
+- **🛠 릴리스 도구 체인을 메인 저장소로 실체화** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh`가 이제 정식 git 추적 대상입니다(기존에는 로컬 병렬 저장소 `ClipMemory-local`을 가리키는 심볼릭 링크였으며, 누구나 메인 저장소를 clone하면 끊어진 심볼릭 링크를 얻게 됨; 해당 병렬 저장소는 2026-08-05에 아카이브 처리)
+- **🛠 Tap Cask 템플릿화** — `Scripts/cask-template.rb` 추가(rubocop-clean), Release workflow는 템플릿 + 플레이스홀더로 tap Cask를 생성하여 인라인 heredoc으로 인한 YAML 들여쓰기 누출을 없앱니다
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — 검색 및 설정 경험 개선
 

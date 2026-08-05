@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.7.8
+# 剪憶 ClipMemory v2.7.9
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 更新日誌
+
+### v2.7.9 (2026-08-05) — 設定頁新增版本對照
+
+- **🆕 設定頁的更新源新增「目前版本 vs 最新版本」對照** — 一眼就能看出是否需要升級；尚未完成首次更新檢查時僅顯示目前版本，不顯示「已是最新」標記，避免假綠
+- **🛠 發佈流程強化（REL-24..28 五輪最佳化）** — AI agent 5 條硬性規則腳本開頭註解、`--yes` 非 TTY 雙因子防護、發佈回滾工具（`Scripts/rollback-release.sh`）、發佈後手動步驟確認關卡、release notes 預設描述自動填入、bash 5.3 全形括號 unbound 變數 bug 修復
+- **🛠 Homebrew tap CI 上線** — `irykelee/homebrew-clipmemory` 新增 `cask-audit.yml`（brew audit + brew style），從此 Cask 縮排 / stanza 順序 / 格式錯誤都能在發佈前抓出，避免再次發生「tap Cask 不合格」事故
+- **🛠 發佈工具鏈實體化納入主儲存庫** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` 現已正式由 git 追蹤（原本是 symlink 指向本機平行儲存庫 `ClipMemory-local`，任何人 clone 主儲存庫都會得到斷裂的 symlink；該平行儲存庫已於 2026-08-05 封存）
+- **🛠 Tap Cask 模板化** — 新增 `Scripts/cask-template.rb`（rubocop-clean），Release workflow 使用模板 + 佔位符產生 tap Cask，告別內聯 heredoc 造成的 YAML 縮排洩漏
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — 搜尋與設定體驗最佳化
 

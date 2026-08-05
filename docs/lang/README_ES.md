@@ -1,4 +1,4 @@
-# ClipMemory v2.7.8
+# ClipMemory v2.7.9
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.7.9 (2026-08-05) — Nueva comparación de versiones en la página de configuración
+
+- **🆕 El feed de actualización de la página de configuración agrega una comparación de «versión actual vs versión más reciente»** — Para ver de un vistazo si es necesario actualizar; cuando la primera comprobación de actualización no se ha completado, solo se muestra la versión actual, sin mostrar la marca "actualizado", evitando falsos positivos.
+- **🛠 Refuerzo del proceso de publicación (cinco rondas de optimización REL-24..28)** — Comentarios de cabecera con 5 reglas estrictas para agentes de IA, salvaguarda de doble factor `--yes` para no-TTY, herramienta de reversión de publicación (`Scripts/rollback-release.sh`), confirmación de pasos manuales posteriores a la publicación, descripción predeterminada de notas de lanzamiento autocompletada, corrección del error de unbound variable con paréntesis de ancho completo en bash 5.3.
+- **🛠 CI de Homebrew tap en línea** — Se agregó `cask-audit.yml` a `irykelee/homebrew-clipmemory` (brew audit + brew style); desde entonces, los errores de sangría de Cask / orden de stanzas / formato pueden detectarse antes del lanzamiento, evitando el incidente recurrente de "tap Cask no cumple con la normativa".
+- **🛠 La cadena de herramientas de publicación se incorporó al repositorio principal** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` ahora tienen seguimiento oficial de git (anteriormente eran enlaces simbólicos que apuntaban al repositorio paralelo local `ClipMemory-local`; cualquiera que clonara el repositorio principal obtendría enlaces simbólicos rotos; dicho repositorio paralelo se archivó el 2026-08-05).
+- **🛠 Plantilla de Tap Cask** — Se agregó `Scripts/cask-template.rb` (rubocop-clean); el flujo de trabajo de Release utiliza plantilla + marcadores de posición para generar el tap Cask, eliminando la fuga de indentación YAML causada por heredoc en línea.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — Mejoras en la búsqueda y la experiencia de configuración
 

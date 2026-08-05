@@ -1,4 +1,4 @@
-# ClipMemory v2.7.8
+# ClipMemory v2.7.9
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.7.9 (2026-08-05) — Nova comparação de versões na página de configurações
+
+- **🆕 Novo comparativo “versão atual vs versão mais recente” no feed de atualização da página de configurações** — permite ver de relance se é necessário atualizar; quando a primeira verificação de atualização ainda não foi concluída, apenas a versão atual é exibida, sem o marcador “já atualizado”, evitando o falso status verde
+- **🛠 Reforço do processo de release (cinco rodadas de otimização REL-24..28)** — 5 regras rígidas para agentes de IA em comentários de cabeçalho de script, salvaguarda de dois fatores para `--yes` em não-TTY, ferramenta de rollback de release (`Scripts/rollback-release.sh`), gate de confirmação para etapas manuais pós-release, preenchimento automático da descrição padrão das notas de release, correção do bug de variável unbound com parênteses de largura total no bash 5.3
+- **🛠 CI do Homebrew tap no ar** — `irykelee/homebrew-clipmemory` ganha `cask-audit.yml` (brew audit + brew style); a partir de agora, erros de indentação do Cask, ordem das stanzas ou formatação podem ser detectados antes do release, evitando a repetição do incidente “tap Cask não conforme”
+- **🛠 Toolchain de release incorporada ao repositório principal** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` agora oficialmente rastreados pelo git (antes, eram symlinks apontando para o repositório local paralelo `ClipMemory-local`; qualquer pessoa que clonasse o repositório principal obteria symlinks quebrados; esse repositório paralelo foi arquivado em 2026-08-05)
+- **🛠 Template do Tap Cask** — novo `Scripts/cask-template.rb` (rubocop-clean); o workflow de release usa template + placeholders para gerar o tap Cask, eliminando o vazamento de indentação YAML causado por heredoc inline
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — Otimização da experiência de busca e configurações
 

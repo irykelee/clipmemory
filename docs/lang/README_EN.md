@@ -1,4 +1,4 @@
-# ClipMemory v2.7.8
+# ClipMemory v2.7.9
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.7.9 (2026-08-05) — Settings page gains version comparison
+
+- **🆕 Update feed in Settings gains a “Current version vs. latest version” comparison** — See at a glance whether an upgrade is needed; before the first update check has completed, only the current version is shown, with no “up to date” badge, to avoid false reassurance
+- **🛠 Release process hardened (REL-24..28, five rounds of fixes)** — 5 hard rules for AI agents added as script header comments, `--yes` non-TTY two-factor guardrail, release rollback tool (`Scripts/rollback-release.sh`), post-release manual step confirmation gate, release notes default description auto-filled, and fixed the bash 5.3 unbound variable bug with full-width parentheses
+- **🛠 Homebrew tap CI is live** — `irykelee/homebrew-clipmemory` now has `cask-audit.yml` (brew audit + brew style); Cask indentation / stanza order / formatting errors can be caught before release, avoiding repeated “tap Cask non-compliant” incidents
+- **🛠 Release toolchain materialized into the main repository** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` are now officially git-tracked (previously symlinks pointing to the local parallel repository `ClipMemory-local`; anyone cloning the main repo would get broken symlinks; that parallel repository was archived on 2026-08-05)
+- **🛠 Tap Cask templated** — Added `Scripts/cask-template.rb` (rubocop-clean); the Release workflow generates the tap Cask from a template with placeholders, ending YAML indentation leaks caused by inline heredocs
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — Search and Settings Experience Improvements
 
