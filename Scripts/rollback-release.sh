@@ -56,13 +56,25 @@ TITLE=$(gh api "repos/${GH_OWNER_REPO}/releases/tags/v${VERSION}" --jq .name 2>/
 ok "确认 release v${VERSION} 存在: '$TITLE'"
 
 # --- Confirm gate ---
+# Mirrors release.sh:1144 (--verify-install + manual-step confirmation):
+# only read /dev/tty when BOTH stdin is a tty AND /dev/tty exists. In
+# agent sandboxes / CI runners, /dev/tty may exist but have no listener
+# — a bare `read ... < /dev/tty` blocks forever instead of returning EOF
+# (exit 137 / timeout). Guard the read so the script dies with exit 3
+# (safe: destructive ops are NOT reached) instead of hanging when run
+# non-interactively.
 if [[ $AUTO_YES -eq 0 ]]; then
     echo "⚠️  即将：删除 GitHub release v${VERSION} + 本地/远端 tag v${VERSION}"
     echo "   并恢复 project.yml 到 v${PREV}。"
     echo "   ⚠️  appcast.xml / tap Cask 已被 release.yml 推送到 main/远端，"
     echo "      本脚本不会自动修复它们——回滚后需要手动处理。"
-    read -r -p "输入 yes 确认回滚: " CONFIRM < /dev/tty || CONFIRM=""
-    [[ "$CONFIRM" == "yes" ]] || { echo "已中止"; exit 3; }
+    if [[ -t 0 && -e /dev/tty ]]; then
+        read -r -p "输入 yes 确认回滚: " CONFIRM < /dev/tty || CONFIRM=""
+        [[ "$CONFIRM" == "yes" ]] || { echo "已中止"; exit 3; }
+    else
+        echo "❌ 非交互环境无法确认回滚 — 中止（--yes 可跳过，但需显式授权）" >&2
+        exit 3
+    fi
 fi
 
 # --- Step 3: delete GitHub release (keeps tag) ---
