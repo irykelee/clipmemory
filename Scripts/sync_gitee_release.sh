@@ -84,8 +84,13 @@ git config user.email "github-actions[bot]@users.noreply.github.com"
 git add appcast.xml
 git diff --cached --quiet || git commit -qm "chore: sync appcast for v${VERSION} (Gitee mirror)"
 AUTH_HEADER="AUTHORIZATION: basic $(echo -n "${GITEE_OWNER}:${GITEE_TOKEN}" | base64)"
-if ! git -c "http.https://gitee.com/.extraheader=${AUTH_HEADER}" push --quiet origin HEAD:main 2>/dev/null; then
-    die "push appcast 副本到 Gitee 失败 — 检查 GITEE_TOKEN 权限（projects）"
+# Surface the real git error on failure (2026-08-06 first run returned
+# exit 1 with no message because --quiet + 2>/dev/null swallowed the
+# auth/permission error; only the message above reached the log).
+PUSH_ERR=$(git -c "http.https://gitee.com/.extraheader=${AUTH_HEADER}" push origin HEAD:main 2>&1)
+PUSH_RC=$?
+if [[ $PUSH_RC -ne 0 ]]; then
+    die "push appcast 副本到 Gitee 失败 (rc=$PUSH_RC) — ${PUSH_ERR}"
 fi
 ok "appcast 副本已推 Gitee main"
 
