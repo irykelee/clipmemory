@@ -114,7 +114,13 @@ ok "appcast 副本已推 Gitee main"
 # ---------- 4. Create Gitee release (idempotent) ----------
 cd "$OLDPWD"
 log "确保 Gitee release $TAG 存在"
-if curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}" >/dev/null 2>&1; then
+# Fetch once; check JSON content. Gitee API quirk: returns 200 OK with
+# literal body `null` for non-existent releases — `-f` only treats 4xx
+# as errors, so a plain exit-code check gives false positives (the
+# existence check said "exists" but the next fetch returned `null`).
+# Inspect the body instead.
+RELEASE_JSON=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}" 2>/dev/null || echo "")
+if [[ -n "$RELEASE_JSON" && "$RELEASE_JSON" != "null" ]]; then
     log "release $TAG 已存在 — 跳过创建"
 else
     curl -sf --max-time 15 -X POST "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
@@ -122,11 +128,12 @@ else
         -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${TAG}\",\"name\":\"ClipMemory v${VERSION}\",\"body\":\"ClipMemory v${VERSION} — Gitee 镜像（下载源）\",\"target_commitish\":\"main\"}" \
         >/dev/null 2>&1 || die "创建 Gitee release 失败 — 检查 GITEE_TOKEN 权限（releases）"
     ok "Gitee release $TAG 已创建"
+    # Re-fetch the just-created release for step 5 (id + attachments).
+    RELEASE_JSON=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}" 2>/dev/null) \
+        || die "获取新建 Gitee release $TAG 失败"
 fi
 
 # ---------- 5. Upload tarball asset (idempotent) ----------
-RELEASE_JSON=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}") \
-    || die "获取 Gitee release $TAG 失败"
 RELEASE_ID=$(echo "$RELEASE_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])") \
     || die "解析 Gitee release id 失败"
 if echo "$RELEASE_JSON" | python3 -c "
