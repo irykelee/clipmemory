@@ -264,21 +264,82 @@ final class UpdateService {
         return latest
     }
 
-    /// C2 (v2.7.9): first `<sparkle:shortVersionString>` in the appcast,
-    /// or nil when nothing parses. Sparkle convention puts the newest item
-    /// first, so the first occurrence IS the latest available version.
+    /// Newest `<sparkle:shortVersionString>` among appcast items, or nil
+    /// when nothing parses. Picks the item whose `<pubDate>` is the most
+    /// recent (same approach as `latestItemDate` above), so the result is
+    /// order-independent — correctly handles both ascending and descending
+    /// appcasts. This matters because:
+    ///   - The repo's `appcast.xml` is historically built in ascending
+    ///     order by `release.yml` (oldest first, newest last), but
+    ///     Sparkle's documented convention is newest-first.
+    ///   - Functions that depend on appcast order silently break when
+    ///     the writer changes ("first" / "last" stop being the same
+    ///     answer after a prepending fix). Selecting by pubDate removes
+    ///     the dependency.
+    ///
+    /// Falls back to the LAST `<sparkle:shortVersionString>` when no
+    /// `<pubDate>` is present (test fixtures, malformed appcasts). This
+    /// preserves the test invariant captured by
+    /// `testLatestVersionStringIgnoresNonSparkleVersion`: a bare `<version>`
+    /// tag (without the `sparkle:` namespace) must be ignored.
+    ///
+    /// Mirrors `latestItemDate` for symmetry: both pick the item with the
+    /// max pubDate, then read the version string from that same item.
+    ///
     /// Pure for tests; the view layer only needs `==` against
     /// `CFBundleShortVersionString` (`AppVersion.current`), so semver
     /// sorting is deliberately NOT implemented here.
     static func latestVersionString(inAppcastXML xml: String) -> String? {
-        guard let open = xml.range(of: "<sparkle:shortVersionString>"),
-              let close = xml.range(of: "</sparkle:shortVersionString>",
-                                    range: open.upperBound..<xml.endIndex) else {
-            return nil
+        var latestDate: Date?
+        var latestVersion: String?
+        var idx = xml.startIndex
+        // First pass: pubDate-driven selection (order-independent).
+        while let pubOpen = xml.range(of: "<pubDate>", range: idx..<xml.endIndex),
+              let pubClose = xml.range(of: "</pubDate>",
+                                       range: pubOpen.upperBound..<xml.endIndex) {
+            let beforePub = xml[idx..<pubOpen.lowerBound]
+            let itemStart = beforePub.range(of: "<item>", options: .backwards)?.upperBound
+                ?? xml.startIndex
+            let itemBody = xml[itemStart..<pubClose.lowerBound]
+            let rawDate = String(xml[pubOpen.upperBound..<pubClose.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawVersion: String? = {
+                guard let verOpen = itemBody.range(of: "<sparkle:shortVersionString>") else {
+                    return nil
+                }
+                let after = itemBody[verOpen.upperBound..<itemBody.endIndex]
+                guard let verClose = after.firstIndex(of: "<") else { return nil }
+                let raw = String(after[..<verClose])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return raw.isEmpty ? nil : raw
+            }()
+            let date = appcastDateFormatter.date(from: rawDate)
+                ?? appcastDateFormatterNamedTZ.date(from: rawDate)
+            if let date, let version = rawVersion,
+               latestDate.map({ date > $0 }) ?? true {
+                latestDate = date
+                latestVersion = version
+            }
+            idx = pubClose.upperBound
         }
-        let raw = String(xml[open.upperBound..<close.lowerBound])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return raw.isEmpty ? nil : raw
+        if latestVersion != nil { return latestVersion }
+        // Fallback: no pubDate found anywhere — find the LAST
+        // <sparkle:shortVersionString>. This matches the original
+        // pre-NEW-5 behavior for inputs that don't carry pubDate at all.
+        var last: String?
+        var scanIdx = xml.startIndex
+        while let open = xml.range(of: "<sparkle:shortVersionString>",
+                                   range: scanIdx..<xml.endIndex) {
+            let after = open.upperBound
+            guard let close = xml[after...].firstIndex(of: "<") else { break }
+            let raw = String(xml[after..<close])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !raw.isEmpty {
+                last = raw
+            }
+            scanIdx = close
+        }
+        return last
     }
 
     /// Mirrors Sparkle's own persisted setting (SUAutomaticallyChecksForUpdates).
