@@ -139,10 +139,13 @@ RELEASE_ID=$(echo "$RELEASE_JSON" | python3 -c "import json,sys; print(json.load
 if echo "$RELEASE_JSON" | python3 -c "
 import json, sys
 # Gitee API v5 release payload uses 'attachments' (not 'assets' — that's
-# GitHub's field). The previous `assets` lookup silently returned [] on
+# GitHub's field). The previous assets lookup silently returned [] on
 # every call → idempotency check always failed → script re-uploaded the
 # same tarball on every run. Trivial in practice (no data corruption),
 # but violated the script's idempotency contract; renamed.
+# NOTE: bash treats backticks inside the outer \"...\" as command
+# substitution → `assets: command not found` warning. Use single quotes
+# for the field name in this comment to avoid that.
 attachments = json.load(sys.stdin).get('attachments') or []
 sys.exit(0 if any(a.get('name') == 'ClipMemory.tar.gz' for a in attachments) else 1)
 " 2>/dev/null; then

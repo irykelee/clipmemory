@@ -111,7 +111,9 @@ jobs:
           # escaping inside the regex); version passed via env var to
           # avoid `${VERSION#v}` interpolation inside single-quoted python.
           V="${VERSION#v}"
-          ENCLOSURE=$(V="$V" curl -sf --max-time 15 "https://gitee.com/${OWNER}/${REPO}/raw/main/appcast.xml" \
+          # `-L` follows the 302 redirect to raw.giteeusercontent.com (otherwise
+          # curl gets the HTML redirect page and the regex finds no <enclosure>).
+          ENCLOSURE=$(V="$V" curl -sfL --max-time 15 "https://gitee.com/${OWNER}/${REPO}/raw/main/appcast.xml" \
             | V="$V" python3 -c 'import re,sys,os; v=os.environ["V"]; m=re.search(r"""<item>.+?ClipMemory v"""+re.escape(v)+r""".+?<enclosure[^>]*url="([^"]+)""", sys.stdin.read(), re.DOTALL); print(m.group(1) if m else "")' 2>/dev/null || echo "")
           if [[ -z "$ENCLOSURE" ]]; then
             fail "no Gitee appcast <item> for ${VERSION} — script may not have pushed the copy"
