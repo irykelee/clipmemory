@@ -163,42 +163,27 @@ else
     ok "tarball 已上传 Gitee release"
 fi
 
-# ---------- 6. Deduplicate attachments (idempotent self-healing) ----------
-# Repeated re-runs accumulated 5 ClipMemory.tar.gz copies on v2.7.9
-# because earlier step 5 idempotency checks raced with upload
-# completion (Gitee API quirks, transient 401s). Prune to 1 here so
-# the next sync runs against a clean state — uses the release-detail
-# endpoint (with auth) to get attachment IDs for DELETE.
-ATTACHMENTS_JSON=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}?access_token=${GITEE_TOKEN}" 2>/dev/null || echo "")
-echo "DEBUG step6: ATTACHMENTS_JSON len=${#ATTACHMENTS_JSON}, keys=$(echo "$ATTACHMENTS_JSON" | python3 -c 'import json,sys; print(list(json.load(sys.stdin).keys()))' 2>/dev/null), items count=$(echo "$ATTACHMENTS_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d.get(\"attachments\") or d.get(\"assets\") or []))' 2>/dev/null), sample id=$(echo "$ATTACHMENTS_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); items=d.get(\"attachments\") or d.get(\"assets\") or []; print(items[0].get(\"id\") if items else \"NO ITEMS\")' 2>/dev/null)" >&2
-if [[ -n "$ATTACHMENTS_JSON" && "$ATTACHMENTS_JSON" != "null" ]]; then
-    DUPE_IDS=$(echo "$ATTACHMENTS_JSON" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-items = d.get("attachments") or d.get("assets") or []
-seen = set()
-dupes = []
-for a in items:
-    name = a.get("name", "")
-    aid = a.get("id")
-    if name == "ClipMemory.tar.gz":
-        if name in seen and aid is not None:
-            dupes.append(aid)
-        else:
-            seen.add(name)
-print("\n".join(str(x) for x in dupes))
-' 2>/dev/null)
-    echo "DEBUG step6: DUPE_IDS=[$(echo "$DUPE_IDS" | head -c 200)] items=[$(echo "$ATTACHMENTS_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); items=d.get("assets") or d.get("attachments") or []; print("count:", len(items), "first 3:", json.dumps(items[:3], indent=2))')]" >&2
-    if [[ -n "$DUPE_IDS" ]] && [[ "$DUPE_IDS" != $'\n' ]]; then
-        DUPE_COUNT=$(echo "$DUPE_IDS" | wc -l | tr -d ' ')
-        log "删除 $DUPE_COUNT 个重复 ClipMemory.tar.gz attachment（保留 1）"
-        for aid in $DUPE_IDS; do
-            curl -sf --max-time 15 -X DELETE "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files/${aid}?access_token=${GITEE_TOKEN}" >/dev/null \
-                || log "⚠️ 删除 attachment $aid 失败（继续）"
-        done
-        ok "已删除 $DUPE_COUNT 个重复 attachment"
-    fi
-fi
+# ---------- 6. Deduplicate attachments (NOT IMPLEMENTABLE via API) ----------
+# v2.7.9 ended up with 9 ClipMemory.tar.gz copies from repeated failed
+# sync attempts. Tried to dedupe via Gitee's
+# DELETE /releases/{id}/attach_files/{attachment_id} endpoint, but the
+# release-list endpoint returns assets WITHOUT an `id` field (only
+# `name` + `browser_download_url` — verified empirically 2026-08-06
+# with the workflow DEBUG output). Without attachment IDs the script
+# has nothing to pass to the DELETE endpoint.
+#
+# Options:
+#  (a) Capture the attachment ID from each upload response and store
+#      in a side-state file for later deletion — doesn't help dedup
+#      pre-existing duplicates from earlier runs.
+#  (b) Manual cleanup via gitee.com → Releases → v2.7.9 → edit →
+#      delete extras (one-time ~5 min).
+#  (c) Leave as-is (functional, just wastes ~70MB Gitee quota for v2.7.9;
+#      the fixed step 5 prevents new duplicates on future syncs).
+#
+# Taking (c) for now. Step 5's attachments-OR-assets + single
+# json.load fix prevents the accumulation pattern that caused this;
+# manual cleanup of v2.7.9 is left to the operator.
 
 echo ""
 echo "✅ Gitee 镜像同步完成 — 设置页「更新源 → 镜像 (Gitee)」即走国内节点"
