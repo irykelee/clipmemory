@@ -58,6 +58,12 @@ GLOSSARY = {
     "更新源": {"en": "update feed", "zh-Hant": "更新源", "ja": "更新フィード", "ko": "업데이트 피드", "es": "feed de actualización", "pt": "feed de atualização"},
     "备份": {"en": "backup", "zh-Hant": "備份", "ja": "バックアップ", "ko": "백업", "es": "copia de seguridad", "pt": "cópia de segurança"},
     "标签": {"en": "tag", "zh-Hant": "標籤", "ja": "タグ", "ko": "태그", "es": "etiqueta", "pt": "etiqueta"},
+    # NEW-6 (2026-08-06): v2.7.9 introduced the Gitee mirror channel
+    # without extending the glossary. The plan's zh-Hant entry was 映像
+    # (disk image semantics), but the app's own strings use 鏡像
+    # (software mirror). This entry fixes the misalignment at the
+    # glossary layer so future translations stay consistent.
+    "镜像": {"en": "mirror", "zh-Hant": "鏡像", "ja": "ミラー", "ko": "미러", "es": "espejo", "pt": "espelho"},
 }
 
 TITLE_RE = re.compile(r"^(# .+? v)\d+\.\d+\.\d+", re.MULTILINE)

@@ -606,6 +606,13 @@ check_readme_dedup() {
 # 当前 preflight 覆盖最常见的 3 类污染 (zh-Hans / zh-Hant / en);更广 Lang
 # 覆盖 (ja/ko/es/pt) 靠 sync_readme.py 重跑 diff,不在 preflight 里硬黑名单
 # (避免误伤合理 narrative 例外如 en 介绍 "X 翻译: Trash in ja = ごみ箱")。
+#
+# NEW-6 (2026-08-06 review): v2.7.9 added the Gitee mirror channel
+# without extending this gate. The plan's zh-Hant used 映像 (disk image
+# semantics) but the app's own strings and other docs use 鏡像
+# (software mirror). The gate now also catches mirror-term drift so
+# future channels/mirrors don't reintroduce the same mismatch.
+# Canonical mirror map lives in sync_readme.py GLOSSARY["镜像"].
 check_glossary_consistency() {
     local fails=0
     if grep -q "垃圾桶" "README.md" 2>/dev/null; then
@@ -618,6 +625,20 @@ check_glossary_consistency() {
     fi
     if grep -qi "Recycle Bin" "docs/lang/README_EN.md" 2>/dev/null; then
         echo "  ❌ README_EN.md 出现 'Recycle Bin' (应只用 'Trash')"
+        fails=$((fails + 1))
+    fi
+    # NEW-6 mirror gate: zh-Hant files must use 鏡像 for software mirror
+    # (映像 = disk image, different semantic). Catch 映像 in zh-Hant
+    # contexts where 鏡像 is the established term (mirrors / Gitee /
+    # jsDelivr settings UI).
+    if grep -nE '映像\s*[\(（]?\s*(Gitee|jsDelivr|鏡像)|(Gitee|jsDelivr)\s*[\)）]?\s*映像' \
+        "docs/lang/README_ZH-HANT.md" 2>/dev/null | grep -v "鏡像" >/dev/null; then
+        echo "  ❌ docs/lang/README_ZH-HANT.md 出现 '映像' 用于 Gitee/jsDelivr 镜像 (应改 '鏡像')"
+        fails=$((fails + 1))
+    fi
+    if grep -nE '映像\s*[\(（]?\s*(Gitee|jsDelivr|鏡像)|(Gitee|jsDelivr)\s*[\)）]?\s*映像' \
+        "ClipMemory/zh-Hant.lproj/Localizable.strings" 2>/dev/null | grep -v "鏡像" >/dev/null; then
+        echo "  ❌ ClipMemory/zh-Hant.lproj/Localizable.strings 出现 '映像' 用于 Gitee/jsDelivr 镜像 (应改 '鏡像')"
         fails=$((fails + 1))
     fi
     return $fails
