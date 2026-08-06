@@ -55,6 +55,8 @@
 - **🛠 Homebrew tap CI is live** — `irykelee/homebrew-clipmemory` now has `cask-audit.yml` (brew audit + brew style); Cask indentation / stanza order / formatting errors can be caught before release, avoiding repeated “tap Cask non-compliant” incidents
 - **🛠 Release toolchain materialized into the main repository** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` are now officially git-tracked (previously symlinks pointing to the local parallel repository `ClipMemory-local`; anyone cloning the main repo would get broken symlinks; that parallel repository was archived on 2026-08-05)
 - **🛠 Tap Cask templated** — Added `Scripts/cask-template.rb` (rubocop-clean); the Release workflow generates the tap Cask from a template with placeholders, ending YAML indentation leaks caused by inline heredocs
+- **🌏 China users can switch to the Gitee mirror** — Settings → Update & About → Update Source → Mirror (Gitee); the Gitee mirror hosts both appcast and install package, so update checks and downloads work without VPN from mainland China
+
 - Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — Search and Settings Experience Improvements
@@ -325,6 +327,12 @@ Sorted by impact (high → medium → low):
 
 - Liquid Glass design — NavigationSplitView sidebar + QuickBar frosted glass popup
 - Keyboard navigation fixes — Scroll and search box arrow key handling
+
+---
+
+## 🌏 China mirror
+
+Settings → Update & About → Update Source → **Mirror (Gitee)** — works in mainland China without VPN. The Gitee mirror hosts both the appcast and the install package (unlike jsDelivr which mirrors appcast only), so downloads also stay domestic. EdDSA signature verification is identical to the GitHub source.
 
 ---
 

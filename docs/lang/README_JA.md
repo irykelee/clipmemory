@@ -55,6 +55,8 @@
 - **🛠 Homebrew tap CI を導入** — `irykelee/homebrew-clipmemory` に `cask-audit.yml`（brew audit + brew style）を追加。これにより Cask のインデント / stanza の順序 / フォーマットエラーをリリース前に検出でき、「tap Cask 不適合」事故の再発を防ぐ
 - **🛠 リリースツールチェーンをメインリポジトリへ実体化** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` が正式に git 追跡対象となった（以前はローカルの並行リポジトリ `ClipMemory-local` を指す symlink で、メインリポジトリを clone するとリンク切れの symlink が取得される状態だった。この並行リポジトリは2026-08-05にアーカイブした）
 - **🛠 Tap Cask のテンプレート化** — `Scripts/cask-template.rb`（rubocop-clean）を追加。Release workflow はテンプレート + プレースホルダーで tap Cask を生成し、インライン heredoc に起因する YAML インデントのずれを解消
+- **🌏 中国ユーザーは Gitee ミラーソースに切替可能** — 設定 → アップデートとこのアプリについて → アップデートソース → ミラー (Gitee)；Gitee ミラーは appcast とインストールパッケージの両方をホスティング、国内ネットワークから VPN なしで更新チェック可能
+
 - 完全なchangelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — 検索と設定エクスペリエンスの最適化
@@ -325,6 +327,12 @@
 
 - Liquid Glass デザイン言語 — NavigationSplitView サイドバー + QuickBar 磨りガラスポップアップ
 - キーボードナビゲーション修正 — スクロールと検索ボックス方向キー処理の修正
+
+---
+
+## 🌏 中国向けミラー
+
+設定 → アップデートとこのアプリについて → アップデートソース → **ミラー (Gitee)** — GitHub に到達できない環境でも、国内ネットワークから 更新チェックとダウンロードが可能。Gitee ミラーは appcast とインストール パッケージの両方をホスティング（jsDelivr は appcast のみ）するため、ダウンロードも国内完結。EdDSA 署名検証は GitHub ソースと同じ。
 
 ---
 

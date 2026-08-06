@@ -55,6 +55,8 @@
 - **🛠 CI do Homebrew tap no ar** — `irykelee/homebrew-clipmemory` ganha `cask-audit.yml` (brew audit + brew style); a partir de agora, erros de indentação do Cask, ordem das stanzas ou formatação podem ser detectados antes do release, evitando a repetição do incidente “tap Cask não conforme”
 - **🛠 Toolchain de release incorporada ao repositório principal** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` agora oficialmente rastreados pelo git (antes, eram symlinks apontando para o repositório local paralelo `ClipMemory-local`; qualquer pessoa que clonasse o repositório principal obteria symlinks quebrados; esse repositório paralelo foi arquivado em 2026-08-05)
 - **🛠 Template do Tap Cask** — novo `Scripts/cask-template.rb` (rubocop-clean); o workflow de release usa template + placeholders para gerar o tap Cask, eliminando o vazamento de indentação YAML causado por heredoc inline
+- **🌏 Usuários na China podem alternar para o espelho Gitee** — Configurações → Atualização e Sobre → Fonte de atualização → Espelho (Gitee); o espelho do Gitee hospeda tanto o appcast quanto o pacote de instalação, então verificações de atualização e downloads funcionam sem VPN a partir da China continental
+
 - Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — Otimização da experiência de busca e configurações
@@ -325,6 +327,12 @@ Ordenadas por impacto (alto → médio → baixo):
 
 - Linguagem de design Liquid Glass — Barra lateral NavigationSplitView + Pop-up QuickBar
 - Correções de navegação de teclado — Tratamento de teclas de seta de rolagem e pesquisa
+
+---
+
+## 🌏 Espelho para usuários na China
+
+Configurações → Atualização e Sobre → Fonte de atualização → **Espelho (Gitee)** — funciona na China continental sem VPN. O espelho do Gitee hospeda tanto o appcast quanto o pacote de instalação (diferente do jsDelivr, que reflete apenas o appcast), então os downloads também permanecem domésticos. A verificação de assinatura EdDSA é idêntica à fonte do GitHub.
 
 ---
 

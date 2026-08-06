@@ -55,6 +55,8 @@
 - **🛠 Homebrew tap CI 上線** — `irykelee/homebrew-clipmemory` 新增 `cask-audit.yml`（brew audit + brew style），從此 Cask 縮排 / stanza 順序 / 格式錯誤都能在發佈前抓出，避免再次發生「tap Cask 不合格」事故
 - **🛠 發佈工具鏈實體化納入主儲存庫** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` 現已正式由 git 追蹤（原本是 symlink 指向本機平行儲存庫 `ClipMemory-local`，任何人 clone 主儲存庫都會得到斷裂的 symlink；該平行儲存庫已於 2026-08-05 封存）
 - **🛠 Tap Cask 模板化** — 新增 `Scripts/cask-template.rb`（rubocop-clean），Release workflow 使用模板 + 佔位符產生 tap Cask，告別內聯 heredoc 造成的 YAML 縮排洩漏
+- **🌏 國內使用者可切換 Gitee 映像源** — 設定 → 更新與關於 → 更新源 → 映像 (Gitee)；Gitee 映像完整託管 appcast + 安裝包，國內網路無需翻牆即可檢查更新
+
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — 搜尋與設定體驗最佳化
@@ -325,6 +327,12 @@
 
 - Liquid Glass 設計語言 — NavigationSplitView 側邊欄 + QuickBar 玻璃彈窗
 - 鍵盤導航優化 — 滾動和搜尋框方向鍵處理修復
+
+---
+
+## 🌏 國內使用者映像源
+
+設定 → 更新與關於 → 更新源 → **映像 (Gitee)** — GitHub 無法連線時，國內網路環境也能正常檢查更新與下載。Gitee 映像完整託管 appcast + 安裝包（不同於 jsDelivr 僅映像 appcast），不需要翻牆、不需要映像 URL 維護。所有功能與 GitHub 來源完全一致，EdDSA 簽章驗證同樣有效。
 
 ---
 

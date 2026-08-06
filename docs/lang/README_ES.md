@@ -55,6 +55,8 @@
 - **🛠 CI de Homebrew tap en línea** — Se agregó `cask-audit.yml` a `irykelee/homebrew-clipmemory` (brew audit + brew style); desde entonces, los errores de sangría de Cask / orden de stanzas / formato pueden detectarse antes del lanzamiento, evitando el incidente recurrente de "tap Cask no cumple con la normativa".
 - **🛠 La cadena de herramientas de publicación se incorporó al repositorio principal** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` ahora tienen seguimiento oficial de git (anteriormente eran enlaces simbólicos que apuntaban al repositorio paralelo local `ClipMemory-local`; cualquiera que clonara el repositorio principal obtendría enlaces simbólicos rotos; dicho repositorio paralelo se archivó el 2026-08-05).
 - **🛠 Plantilla de Tap Cask** — Se agregó `Scripts/cask-template.rb` (rubocop-clean); el flujo de trabajo de Release utiliza plantilla + marcadores de posición para generar el tap Cask, eliminando la fuga de indentación YAML causada por heredoc en línea.
+- **🌏 Los usuarios en China pueden cambiar al espejo Gitee** — Ajustes → Actualización y acerca de → Fuente de actualización → Espejo (Gitee); el espejo de Gitee aloja tanto el appcast como el paquete de instalación, por lo que las comprobaciones de actualización y las descargas funcionan sin VPN desde China continental
+
 - Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — Mejoras en la búsqueda y la experiencia de configuración
@@ -325,6 +327,12 @@ Ordenadas por impacto (alto → medio → bajo):
 
 - Lenguaje de diseño Liquid Glass — Barra lateral NavigationSplitView + Pop-up QuickBar
 - Correcciones de navegación de teclado — Manejo de teclas de flecha de desplazamiento y búsqueda
+
+---
+
+## 🌏 Espejo para usuarios en China
+
+Ajustes → Actualización y acerca de → Fuente de actualización → **Espejo (Gitee)** — funciona en China continental sin VPN. El espejo de Gitee aloja tanto el appcast como el paquete de instalación (a diferencia de jsDelivr, que solo refleja el appcast), por lo que las descargas también se quedan en territorio doméstico. La verificación de firma EdDSA es idéntica a la fuente de GitHub.
 
 ---
 

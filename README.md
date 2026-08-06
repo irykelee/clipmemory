@@ -55,6 +55,8 @@
 - **🛠 Homebrew tap CI 上线** — `irykelee/homebrew-clipmemory` 新增 `cask-audit.yml`（brew audit + brew style），从此 Cask 缩进 / stanza 顺序 / 格式错误能在发版前抓出，避免重复"tap Cask 不合规"事故
 - **🛠 发布工具链实体化进主仓库** — `Scripts/release.sh` + `Scripts/rollback-release.sh` + `Scripts/README-release.md` + `Scripts/test/test_release.sh` 现已正式 git 跟踪（原先是 symlink 指向本地平行仓库 `ClipMemory-local`，任何人 clone 主仓库会得到断链的 symlink；该平行仓库于 2026-08-05 归档）
 - **🛠 Tap Cask 模板化** — 新增 `Scripts/cask-template.rb`（rubocop-clean），Release workflow 用模板 + 占位符生成 tap Cask，告别内联 heredoc 引发的 YAML 缩进泄漏
+- **🌏 国内用户可切换 Gitee 镜像源** — 设置 → 更新与关于 → 更新源 → 镜像 (Gitee)；Gitee 镜像完整托管 appcast + 安装包，国内网络无需翻墙即可检查更新
+
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.7.9
 
 ### v2.7.8 (2026-08-04) — 搜索与设置体验优化
@@ -295,6 +297,12 @@
 
 - Liquid Glass 设计语言 — NavigationSplitView 侧边栏 + QuickBar 玻璃弹窗
 - 键盘导航优化 — 滚动和搜索框方向键处理修复
+
+---
+
+## 🌏 国内用户镜像源
+
+设置 → 更新与关于 → 更新源 → **镜像 (Gitee)** — GitHub 不可达时，国内网络环境也能正常检查更新和下载。Gitee 镜像完整托管 appcast + 安装包（不同于 jsDelivr 仅镜像 appcast），不需要翻墙、不需要镜像 URL 维护。所有功能与 GitHub 源完全一致，EdDSA 签名验证同样有效。
 
 ---
 
