@@ -170,7 +170,7 @@ fi
 # the next sync runs against a clean state — uses the release-detail
 # endpoint (with auth) to get attachment IDs for DELETE.
 ATTACHMENTS_JSON=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}?access_token=${GITEE_TOKEN}" 2>/dev/null || echo "")
-echo "DEBUG step6: ATTACHMENTS_JSON len=${#ATTACHMENTS_JSON}, first 200=$(echo "$ATTACHMENTS_JSON" | head -c 200)" >&2
+echo "DEBUG step6: ATTACHMENTS_JSON len=${#ATTACHMENTS_JSON}, keys=$(echo "$ATTACHMENTS_JSON" | python3 -c 'import json,sys; print(list(json.load(sys.stdin).keys()))' 2>/dev/null), items count=$(echo "$ATTACHMENTS_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d.get(\"attachments\") or d.get(\"assets\") or []))' 2>/dev/null), sample id=$(echo "$ATTACHMENTS_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); items=d.get(\"attachments\") or d.get(\"assets\") or []; print(items[0].get(\"id\") if items else \"NO ITEMS\")' 2>/dev/null)" >&2
 if [[ -n "$ATTACHMENTS_JSON" && "$ATTACHMENTS_JSON" != "null" ]]; then
     DUPE_IDS=$(echo "$ATTACHMENTS_JSON" | python3 -c '
 import json, sys
@@ -188,6 +188,7 @@ for a in items:
             seen.add(name)
 print("\n".join(str(x) for x in dupes))
 ' 2>/dev/null)
+    echo "DEBUG step6: DUPE_IDS=[$(echo "$DUPE_IDS" | head -c 200)]" >&2
     if [[ -n "$DUPE_IDS" ]] && [[ "$DUPE_IDS" != $'\n' ]]; then
         DUPE_COUNT=$(echo "$DUPE_IDS" | wc -l | tr -d ' ')
         log "删除 $DUPE_COUNT 个重复 ClipMemory.tar.gz attachment（保留 1）"
