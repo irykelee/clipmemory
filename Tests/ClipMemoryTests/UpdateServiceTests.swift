@@ -363,6 +363,78 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(decision?.reason, .userForcedFallback)
     }
 
+    // MARK: - Gitee channel (added 2026-08-06)
+
+    private let giteeChannel = FeedChannel(
+        id: "gitee-mirror", url: URL(string: "https://gitee.com/irykelee/clipmemory/raw/main/appcast.xml")!,
+        kind: .fallback, labelKey: "settings.updateSource.option.gitee"
+    )
+
+    /// Gitee is user-forced: short-circuit, don't probe primary or check
+    /// staleness. Identical "forced" semantics as the `.fallback` case
+    /// but uses the gitee channel (resolved by id since its `kind` is
+    /// `.fallback` to keep the kind taxonomy 2-valued).
+    func testProbeManualGiteeShortCircuits() async {
+        // If the engine probed, this stubError would cause a crash; if it
+        // doesn't probe (correct), the stub is irrelevant.
+        MockURLProtocol.stubError = URLError(.notConnectedToInternet)
+        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
+        let decision = await engine.resolve(
+            policy: .gitee, lastKnownDate: nil,
+            channels: [primaryChannel, fallbackChannel, giteeChannel]
+        )
+        XCTAssertEqual(decision?.chosenURL, giteeChannel.url,
+                       "user-forced Gitee must NOT probe primary")
+        XCTAssertEqual(decision?.usedChannelID, "gitee-mirror",
+                       "channel id must be the known Gitee id")
+        XCTAssertEqual(decision?.reason, .userForcedFallback,
+                       "Gitee path reuses userForcedFallback reason (matches .fallback)")
+        XCTAssertNil(decision?.primaryAppcastXML,
+                     "Gitee path must NOT fetch primary — no baseline update")
+        XCTAssertNil(decision?.primaryLatestDate)
+    }
+
+    /// Same probe bypass even when the stale-guard would otherwise kick in.
+    /// Gitee users in China explicitly opt in; we trust their choice.
+    func testProbeManualGiteeBypassesStaleGuard() async {
+        let lastKnown = Date(timeIntervalSince1970: 1_900_000_000) // 2030
+        // Stubs would matter only if probe ran — verify it doesn't by
+        // configuring them to fail and confirming the decision still picks
+        // Gitee cleanly.
+        MockURLProtocol.stubError = URLError(.notConnectedToInternet)
+        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
+        let decision = await engine.resolve(
+            policy: .gitee, lastKnownDate: lastKnown,
+            channels: [primaryChannel, fallbackChannel, giteeChannel]
+        )
+        XCTAssertEqual(decision?.chosenURL, giteeChannel.url)
+        XCTAssertEqual(decision?.reason, .userForcedFallback)
+    }
+
+    /// Negative case: if the channel list doesn't include the Gitee channel
+    /// (e.g. some future build disables it), the .gitee policy must return
+    /// nil rather than silently fall back to GitHub. The UI then shows an
+    /// error rather than misleadingly reporting "up to date" via primary.
+    func testProbeManualGiteeReturnsNilIfChannelMissing() async {
+        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
+        let decision = await engine.resolve(
+            policy: .gitee, lastKnownDate: nil,
+            channels: [primaryChannel, fallbackChannel]
+        )
+        XCTAssertNil(decision, "missing gitee channel must return nil, not silently pick another")
+    }
+
+    /// Sanity: the Gitee channel is registered in knownChannels so the
+    /// .gitee policy actually has something to resolve. Guards against
+    /// accidental removal when refactoring the channel list.
+    func testGiteeChannelRegisteredInKnownChannels() {
+        let gitee = UpdateFeedPolicies.knownChannels.first { $0.id == "gitee-mirror" }
+        XCTAssertNotNil(gitee, "gitee-mirror channel must be registered in UpdateFeedPolicies.knownChannels")
+        XCTAssertEqual(gitee?.kind, .fallback,
+                       "Gitee channel uses kind .fallback — its policy routing lives in FeedProbeEngine.resolve, not in ChannelKind")
+        XCTAssertEqual(gitee?.labelKey, "settings.updateSource.option.gitee")
+    }
+
     // MARK: - Service orchestration (spec §5 tests 10-11)
 
     @MainActor
