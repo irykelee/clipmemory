@@ -92,6 +92,7 @@ AUTH_HEADER="AUTHORIZATION: basic $(echo -n "${GITEE_OWNER}:${GITEE_TOKEN}" | ba
 # so the message survives secret-masking.
 PUSH_ERR=$(git -c "http.https://gitee.com/.extraheader=${AUTH_HEADER}" push origin HEAD:main 2>&1)
 PUSH_RC=$?
+echo "DEBUG: PUSH_RC=$PUSH_RC, PUSH_ERR lines=$(echo "$PUSH_ERR" | wc -l | tr -d ' '), first line=$(echo "$PUSH_ERR" | head -1)" >&2
 if [[ $PUSH_RC -ne 0 ]]; then
     SANITIZED=$(echo "$PUSH_ERR" | grep -E "^(fatal|error|remote):" | head -3 \
         | sed -E 's|://[^[:space:]@/]+@|://[REDACTED]@|g; s|access_token=[^&[:space:]]+|access_token=[REDACTED]|g' \
