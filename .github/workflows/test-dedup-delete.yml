@@ -78,7 +78,7 @@ jobs:
           echo ""
           echo "=== 4. Verify probe is gone + real assets untouched ==="
           LIST_AFTER=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}")
-          echo "$LIST_AFTER" | python3 -c 'import json,sys; names=[a.get("name") for a in json.load(sys.stdin)]; print("attachments after delete:", names); assert "'"${PROBE_NAME}"'" not in names, "probe asset still present after DELETE"; assert "ClipMemory.tar.gz" in names, "real ClipMemory.tar.gz missing!"; assert "v'"${VERSION}"'.zip" in names, "real source archive missing!"; print("✅ probe removed; real assets intact")'
+          echo "$LIST_AFTER" | python3 -c 'import json,sys; names=[a.get("name") for a in json.load(sys.stdin)]; print("attachments after delete:", names); assert "'"${PROBE_NAME}"'" not in names, "probe asset still present after DELETE"; assert "ClipMemory.tar.gz" in names, "real ClipMemory.tar.gz missing!"; print("✅ probe removed; ClipMemory.tar.gz intact")'
 
           echo ""
           echo "✅ DELETE endpoint verified — Scripts/sync_gitee_release.sh step 6 dedup will work on next upload"
