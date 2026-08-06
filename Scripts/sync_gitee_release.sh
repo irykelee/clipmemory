@@ -90,10 +90,18 @@ AUTH_HEADER="AUTHORIZATION: basic $(echo -n "${GITEE_OWNER}:${GITEE_TOKEN}" | ba
 # git's auth-failed URL — operator saw only `exit code 128` with zero
 # diagnostic. Strip `://user:token@` patterns and `access_token=...`
 # so the message survives secret-masking.
-PUSH_ERR=$(git -c "http.https://gitee.com/.extraheader=${AUTH_HEADER}" push origin HEAD:main 2>&1)
-PUSH_RC=$?
-echo "DEBUG: PUSH_RC=$PUSH_RC, PUSH_ERR lines=$(echo "$PUSH_ERR" | wc -l | tr -d ' '), first line=$(echo "$PUSH_ERR" | head -1)" >&2
-if [[ $PUSH_RC -ne 0 ]]; then
+# NOTE: use the explicit if/else (not `PUSH_ERR=$(...)` + later `if`),
+# because `set -e` triggers on a failing command-substitution assignment
+# (verified 2026-08-06 — script silently exited 128 before reaching the
+# diagnostic block, leaving operators with zero info).
+if PUSH_ERR=$(git -c "http.https://gitee.com/.extraheader=${AUTH_HEADER}" push origin HEAD:main 2>&1); then
+    : # push succeeded, continue
+else
+    PUSH_RC=$?
+    # Sanitize PUSH_ERR so the die() message survives GitHub Actions
+    # secret-masking (git's auth-failed URL embeds the token at
+    # `https://user:TOKEN@gitee.com/...` — the whole line gets redacted
+    # without these strip patterns).
     SANITIZED=$(echo "$PUSH_ERR" | grep -E "^(fatal|error|remote):" | head -3 \
         | sed -E 's|://[^[:space:]@/]+@|://[REDACTED]@|g; s|access_token=[^&[:space:]]+|access_token=[REDACTED]|g' \
         | paste -sd '|' -)
