@@ -84,13 +84,20 @@ git config user.email "github-actions[bot]@users.noreply.github.com"
 git add appcast.xml
 git diff --cached --quiet || git commit -qm "chore: sync appcast for v${VERSION} (Gitee mirror)"
 AUTH_HEADER="AUTHORIZATION: basic $(echo -n "${GITEE_OWNER}:${GITEE_TOKEN}" | base64)"
-# Surface the real git error on failure (2026-08-06 first run returned
-# exit 1 with no message because --quiet + 2>/dev/null swallowed the
-# auth/permission error; only the message above reached the log).
+# Capture + sanitize the git push error (2026-08-06 first run: GitHub
+# Actions secret-masking redacted the whole `die` line because PUSH_ERR
+# contained the GITEE_TOKEN via `https://user:TOKEN@gitee.com/...` in
+# git's auth-failed URL — operator saw only `exit code 128` with zero
+# diagnostic. Strip `://user:token@` patterns and `access_token=...`
+# so the message survives secret-masking.
 PUSH_ERR=$(git -c "http.https://gitee.com/.extraheader=${AUTH_HEADER}" push origin HEAD:main 2>&1)
 PUSH_RC=$?
 if [[ $PUSH_RC -ne 0 ]]; then
-    die "push appcast 副本到 Gitee 失败 (rc=$PUSH_RC) — ${PUSH_ERR}"
+    SANITIZED=$(echo "$PUSH_ERR" | grep -E "^(fatal|error|remote):" | head -3 \
+        | sed -E 's|://[^[:space:]@/]+@|://[REDACTED]@|g; s|access_token=[^&[:space:]]+|access_token=[REDACTED]|g' \
+        | paste -sd '|' -)
+    [[ -z "$SANITIZED" ]] && SANITIZED="(no recognizable git error line — see full run log)"
+    die "push appcast 副本到 Gitee 失败 (rc=$PUSH_RC) — ${SANITIZED}"
 fi
 ok "appcast 副本已推 Gitee main"
 
