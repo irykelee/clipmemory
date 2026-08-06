@@ -131,7 +131,11 @@ jobs:
           # because Gitee API returns different field names depending on auth
           # context (verified empirically: with token = attachments; without
           # = assets).
-          GH_SHA=$(curl -sf --max-time 60 "https://github.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz" | shasum -a 256 | awk '{print $1}' || true)
+          # `-L` follows the 302 to S3-backed release-assets host (GitHub
+          # releases URL returns a redirect; without -L curl gets an
+          # empty body and the SHA ends up as e3b0c44... — the empty-file
+          # hash — which fails the REL-29 equality check).
+          GH_SHA=$(curl -sfL --max-time 60 "https://github.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz" | shasum -a 256 | awk '{print $1}' || true)
           GT_URL=$(curl -sfL --max-time 60 "${API}/repos/${OWNER}/${REPO}/releases/tags/${VERSION}?access_token=${GITEE_TOKEN}" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); items=d.get("attachments") or d.get("assets") or []; print(next((a["browser_download_url"] for a in items if a.get("name")=="ClipMemory.tar.gz"), ""))' || true)
           GT_SHA=$(curl -sfL --max-time 60 "$GT_URL" | shasum -a 256 | awk '{print $1}' || true)
