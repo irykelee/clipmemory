@@ -158,12 +158,11 @@ else
     # Explicit filename= so the Gitee asset is named ClipMemory.tar.gz
     # (matching the enclosure URL in the Gitee appcast copy), not the
     # temp file's name. Capture the response body — Gitee returns
-    # the new attachment's id + URL (per API docs / user verification
-    # 2026-08-06), needed by step 6 to DELETE pre-existing dupes.
+    # the new attachment's id, needed by step 6 to delete pre-existing
+    # dupes from earlier broken sync runs.
     UPLOAD_RESP=$(curl -sf --max-time 180 -X POST "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}" \
         -F "file=@${TARBALL_TMP};filename=ClipMemory.tar.gz" 2>/dev/null) \
         || die "上传 tarball 到 Gitee 失败"
-    echo "DEBUG upload response: ${UPLOAD_RESP:0:500}" >&2
     ok "tarball 已上传 Gitee release"
 fi
 
@@ -182,11 +181,12 @@ if [[ -n "$ATTACHMENTS_JSON" && "$ATTACHMENTS_JSON" != "null" ]]; then
 import json, sys
 try:
     d = json.load(sys.stdin)
-    print(d.get('id') or d.get('attachment_id') or d.get('asset', {}).get('id') or '')
+    # Upload response may wrap the attachment in 'asset' key or return
+    # it directly. Try both shapes.
+    print(d.get('id') or d.get('attachment_id') or (d.get('asset') or {}).get('id') or '')
 except Exception:
     print('')
 " 2>/dev/null)
-    echo "DEBUG step6: OUR_ID=[$OUR_ID]" >&2
     DUPE_IDS=$(echo "$ATTACHMENTS_JSON" | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
