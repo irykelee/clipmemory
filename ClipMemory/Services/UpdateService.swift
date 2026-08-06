@@ -76,8 +76,20 @@ final class UpdateService {
     // BUG-033 (2026-07-21): @MainActor so the singleton init can call
     // @MainActor init() of UpdateStatus. First access (always on main)
     // creates the instance; thread-safe via Swift's lazy static init.
+    //
+    // NEW-2 (2026-08-06 review): return `injectedForTest` when set so
+    // snapshot tests can render UpdateAboutSettingsView without firing
+    // the production init's side-effects (Sparkle updater, network probe,
+    // defaults migration). The injected instance is always a test-only
+    // construction with `autoStart: false`.
     @MainActor
-    static let shared = UpdateService()
+    static var shared: UpdateService {
+        if let injected = injectedForTest { return injected }
+        return _sharedDefault
+    }
+
+    @MainActor
+    private static let _sharedDefault = UpdateService()
 
     /// Secondary feed mirrored by jsDelivr from this repo's main branch.
     /// Used when the primary feed (GitHub release asset) is unreachable,
@@ -103,6 +115,18 @@ final class UpdateService {
     /// Swift 6: first candidate for removal once all nonisolated(unsafe)
     /// statics are eliminated from the service layer.
     nonisolated(unsafe) static var defaults: UserDefaults = .standard
+
+    /// NEW-2 (2026-08-06 review): test seam for swapped singleton. When the
+    /// injected service is non-nil, `shared` returns that instance instead of
+    /// the lazily-initialized production singleton. This lets settings
+    /// snapshot tests render the real `UpdateAboutSettingsView` body without
+    /// triggering the production side-effects (Sparkle updater, network
+    /// probe, defaults migration) that previously wrote 6 production keys.
+    ///
+    /// **Production code must never set this.** Tests reset it to nil in
+    /// `tearDown`. Like `defaults`, it's `nonisolated(unsafe)` for the same
+    /// reason — Swift 6 cleanup batch.
+    nonisolated(unsafe) static var injectedForTest: UpdateService?
 
     private let feedProvider = FeedURLProvider()
     private let gentleReminder = GentleUpdateReminder()
