@@ -168,10 +168,14 @@ else
 fi
 
 # ---------- 6. Deduplicate attachments ----------
-# If the upload response includes the new attachment's id, fetch the
-# full release-detail JSON (with auth) to get ALL attachment IDs.
-# Then DELETE every attachment with name "ClipMemory.tar.gz" except
-# the one we just uploaded.
+# The /releases/{id}/attach_files endpoint returns the full attachment
+# list WITH id field (unlike /releases/{id} which has no id). We
+# capture our uploaded attachment's id from step 5's response, then
+# DELETE all attachments named "ClipMemory.tar.gz" except ours.
+#
+# Idempotent: if only 1 attachment exists and it's ours, no
+# deletions happen. If N duplicates accumulated (e.g. v2.7.9 hit 9
+# copies from earlier broken runs), N-1 get deleted.
 ATTACHMENTS_JSON=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}" 2>/dev/null || echo "")
 if [[ -n "$ATTACHMENTS_JSON" && "$ATTACHMENTS_JSON" != "null" ]]; then
     OUR_ID=$(echo "$UPLOAD_RESP" | python3 -c "
@@ -185,8 +189,13 @@ except Exception:
     echo "DEBUG step6: OUR_ID=[$OUR_ID]" >&2
     DUPE_IDS=$(echo "$ATTACHMENTS_JSON" | python3 -c '
 import json, sys
-d = json.load(sys.stdin)
-items = d.get("attachments") or d.get("assets") or []
+data = json.load(sys.stdin)
+# /releases/{id}/attach_files returns a bare JSON array; the older
+# /releases/{id} returns an object with assets/attachments key. Handle both.
+if isinstance(data, list):
+    items = data
+else:
+    items = data.get("attachments") or data.get("assets") or []
 seen = set()
 dupes = []
 for a in items:
@@ -198,8 +207,6 @@ for a in items:
                 dupes.append(aid)
             else:
                 seen.add(name)
-                # First match: assume it is ours (we uploaded or it pre-existed);
-                # step 6 also tries to exclude OUR_ID explicitly below.
 print("\n".join(str(x) for x in dupes))
 ' 2>/dev/null)
     # Exclude OUR_ID from the dupe list (the script may have uploaded a
