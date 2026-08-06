@@ -25,6 +25,24 @@ final class AAASuiteBootstrapTests: XCTestCase {
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         Self.productionPersistentDomainBefore =
             UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
+        // NEW-2 follow-up (2026-08-06): redirect the
+        // `LanguageManager.shared` singleton's underlying UserDefaults
+        // to an isolated test suite BEFORE any other test reads
+        // `LanguageManager.shared`. AAASuiteBootstrapTests is
+        // alphabetically the first test class, so this setUp runs
+        // before any code path that might lazy-init the singleton.
+        // The redirect keeps every test's `applyLanguage` writes
+        // (`AppleLanguages`) and didSet writes (`appLanguage`) out
+        // of the production UserDefaults domain.
+        //
+        // NOTE: there is no `class func tearDown` to restore
+        // `.standard`. The test isolation suite is process-scoped
+        // (UserDefaults caches the suite instance for the process
+        // lifetime), and the test process exits immediately after
+        // the suite finishes. Restoring to `.standard` mid-suite
+        // would invalidate the cached singleton mid-run and cause
+        // subsequent tests to write to the production domain again.
+        LanguageManager.defaults = UserDefaults(suiteName: "LanguageManager-test-isolation") ?? .standard
     }
 
     // MARK: Canary discovery marker

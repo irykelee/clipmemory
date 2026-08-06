@@ -18,6 +18,7 @@ final class UpdateServiceTests: XCTestCase {
         UpdateService.defaults = testDefaults
         MockURLProtocol.stubResponses = [:]
         MockURLProtocol.stubError = nil
+        MockURLProtocol.requestCount = 0
     }
 
     override func tearDownWithError() throws {
@@ -279,12 +280,17 @@ final class UpdateServiceTests: XCTestCase {
 
     // MARK: - Feed probe (spec §5 tests 5-9)
 
+    // NEW-7 (2026-08-06): fixtures use the production-shaped ids
+    // ("github-release" / "jsdelivr-mirror") so they exercise the same id
+    // binding the real engine uses. The old "primary"/"fallback" ids made
+    // the engine's kind-based binding look correct in tests while hiding
+    // a class of order-dependent bugs.
     private let primaryChannel = FeedChannel(
-        id: "primary", url: URL(string: "https://example.com/primary.xml")!,
+        id: "github-release", url: URL(string: "https://example.com/primary.xml")!,
         kind: .primary, labelKey: "x"
     )
     private let fallbackChannel = FeedChannel(
-        id: "fallback", url: URL(string: "https://example.com/fallback.xml")!,
+        id: "jsdelivr-mirror", url: URL(string: "https://example.com/fallback.xml")!,
         kind: .fallback, labelKey: "x"
     )
 
@@ -376,13 +382,16 @@ final class UpdateServiceTests: XCTestCase {
     /// `.fallback` to keep the kind taxonomy 2-valued).
     func testProbeManualGiteeShortCircuits() async {
         // If the engine probed, this stubError would cause a crash; if it
-        // doesn't probe (correct), the stub is irrelevant.
+        // doesn't probe (correct), the stub is irrelevant. The requestCount
+        // assertion below turns that implicit signal into an explicit fail.
         MockURLProtocol.stubError = URLError(.notConnectedToInternet)
         let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
         let decision = await engine.resolve(
             policy: .gitee, lastKnownDate: nil,
             channels: [primaryChannel, fallbackChannel, giteeChannel]
         )
+        XCTAssertEqual(MockURLProtocol.requestCount, 0,
+                       "user-forced Gitee must NOT touch the network")
         XCTAssertEqual(decision?.chosenURL, giteeChannel.url,
                        "user-forced Gitee must NOT probe primary")
         XCTAssertEqual(decision?.usedChannelID, "gitee-mirror",
@@ -407,6 +416,8 @@ final class UpdateServiceTests: XCTestCase {
             policy: .gitee, lastKnownDate: lastKnown,
             channels: [primaryChannel, fallbackChannel, giteeChannel]
         )
+        XCTAssertEqual(MockURLProtocol.requestCount, 0,
+                       "user-forced Gitee must NOT touch the network, even with stale lastKnown")
         XCTAssertEqual(decision?.chosenURL, giteeChannel.url)
         XCTAssertEqual(decision?.reason, .userForcedFallback)
     }
@@ -772,6 +783,11 @@ func dateFromPubDateString(_ raw: String) -> Date {
 final class MockURLProtocol: URLProtocol {
     static var stubResponses: [URL: (status: Int, body: String, delay: TimeInterval?)] = [:]
     static var stubError: Error?
+    /// Number of requests that reached `startLoading`. Tests that expect
+    /// the engine to short-circuit (e.g. user-forced Gitee) assert this
+    /// stays at 0; otherwise a stray probe would crash via `stubError`
+    /// rather than fail the test with a clear message.
+    static var requestCount: Int = 0
 
     override static func canInit(with request: URLRequest) -> Bool {
         stubError != nil || stubResponses.keys.contains(request.url!)
@@ -780,6 +796,7 @@ final class MockURLProtocol: URLProtocol {
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        MockURLProtocol.requestCount += 1
         if let error = MockURLProtocol.stubError {
             client?.urlProtocol(self, didFailWithError: error)
             return

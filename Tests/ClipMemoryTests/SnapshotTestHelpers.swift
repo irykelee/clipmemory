@@ -186,10 +186,42 @@ func assertImageSnapshot(
     // write back as a real 0, polluting production defaults (fontScale=0
     // matches no picker tag and renders the settings row blank).
     snapshotTestSavedFontScale = defaults.object(forKey: "fontScale") as? Double
-    snapshotTestSavedLanguage = LanguageManager.shared.selectedLanguage
-    // Force defaults used by our rendered views to a deterministic baseline
+    // NEW-4 (2026-08-06 review): missing-aware save for language, mirroring
+    // the fontScale pattern. The previous code read
+    // `LanguageManager.shared.selectedLanguage` which returned "en" for an
+    // ABSENT key (LanguageManager:46 fallback), so tearDown would write
+    // "en" back unconditionally — pinning appLanguage to "en" on any host
+    // that never had it set.
+    // NEW-2 follow-up (2026-08-06): no `appLanguage`/`AppleLanguages`
+    // save/restore here. Audit (2026-08-06) confirmed no view reads these
+    // directly from `UserDefaults.standard`; they route through
+    // `LanguageManager.shared`, which is stubbed below. Saving/restore
+    // these would be dead code — and worse, missing-aware restore would
+    // pretend the key existed and write back "en" on a host that never
+    // had `appLanguage`, pinning the user's prefs. Removed.
+    // Force defaults used by our rendered views to a deterministic baseline.
+    // Only `fontScale` is read directly via `@AppStorage` by Views
+    // (QuickBarView, WelcomeView, NewTagSheet, TagPickerSheet). The
+    // language-related keys are routed through `LanguageManager.shared`,
+    // which is stubbed below.
     defaults.set(1.0, forKey: "fontScale")
-    LanguageManager.shared.selectedLanguage = "en"
+    // NEW-2 follow-up (2026-08-06): install a stub LanguageManager so
+    // view bodies that read `LanguageManager.shared.selectedLanguage` see
+    // "en" regardless of the host's real preference. Without this, the
+    // production `LanguageManager.shared` would initialize from the host
+    // defaults (e.g. "zh-Hans" on a Chinese-locale dev machine) and
+    // snapshot tests would render the user's preferred language instead
+    // of the deterministic baseline, breaking the snapshot comparison.
+    //
+    // The stub instance uses an isolated testDefaults suite so its
+    // `applyLanguage()` write to `AppleLanguages` doesn't escape into the
+    // production domain. The `injectedForTest` seam (NEW-2 follow-up)
+    // is reset by `snapshotTestTearDown` below.
+    let stubDefaults = makeTestDefaults()
+    stubDefaults.set("en", forKey: "appLanguage")
+    stubDefaults.set(["en"] as [String], forKey: "AppleLanguages")
+    let stub = LanguageManager(defaults: stubDefaults)
+    LanguageManager.injectedForTest = stub
 }
 
 @MainActor func snapshotTestTearDown() {
@@ -199,11 +231,18 @@ func assertImageSnapshot(
     } else {
         defaults.removeObject(forKey: "fontScale")
     }
-    LanguageManager.shared.selectedLanguage = snapshotTestSavedLanguage
+    // NEW-2 follow-up (2026-08-06): no `appLanguage`/`AppleLanguages`
+    // restore here. See the matching note in setUp — language baseline
+    // is set, not restored, and the stub instance is the only
+    // observation point.
+    // NEW-2 follow-up: detach the stub so subsequent tests see the
+    // production `LanguageManager.shared` again. The stub's side
+    // effects (applyLanguage writes to testDefaults, not the production
+    // domain, so this is a clean detach).
+    LanguageManager.injectedForTest = nil
 }
 
 private var snapshotTestSavedFontScale: Double?
-private var snapshotTestSavedLanguage: String = "en"
 
 // MARK: - M13 Test Infrastructure
 
