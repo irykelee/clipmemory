@@ -143,7 +143,12 @@ import json, sys
 # either response variant. (Earlier script only checked 'attachments';
 # when auth responses used 'assets' the lookup returned [] and the
 # script re-uploaded the tarball every run.)
-items = json.load(sys.stdin).get('attachments') or json.load(sys.stdin).get('assets') or []
+# 2026-08-06 fix: load stdin ONCE — calling json.load(sys.stdin)
+# twice fails because stdin is consumed by the first call; the second
+# call raises JSONDecodeError, the genexpr never runs, and the
+# script uploads anyway. (Same bug was in the step 6 dedup block.)
+data = json.load(sys.stdin)
+items = data.get('attachments') or data.get('assets') or []
 sys.exit(0 if any(a.get('name') == 'ClipMemory.tar.gz' for a in items) else 1)
 " 2>/dev/null; then
     log "资产 ClipMemory.tar.gz 已存在 — 跳过上传"
