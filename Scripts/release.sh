@@ -594,7 +594,8 @@ check_readmes() {
 check_readme_dedup() {
     local version="$1" f count fails=0
     for f in "${README_FILES[@]}"; do
-        count=$(grep -c "^### v${version} (" "$f" 2>/dev/null || echo 0)
+        count=$(grep -c "^### v${version} (" "$f" 2>/dev/null) || true
+        count=${count:-0}
         [[ "$count" -gt 1 ]] \
             && { echo "  ❌ $f 有 ${count} 个 '### v${version} (' heading (预期 ≤ 1,DOC-0002 类缺陷复发)"; fails=$((fails + 1)); }
     done
