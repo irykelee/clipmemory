@@ -83,18 +83,19 @@ git config user.name "github-actions[bot]"
 git config user.email "github-actions[bot]@users.noreply.github.com"
 git add appcast.xml
 git diff --cached --quiet || git commit -qm "chore: sync appcast for v${VERSION} (Gitee mirror)"
-AUTH_HEADER="AUTHORIZATION: basic $(echo -n "${GITEE_OWNER}:${GITEE_TOKEN}" | base64)"
-# Capture + sanitize the git push error (2026-08-06 first run: GitHub
-# Actions secret-masking redacted the whole `die` line because PUSH_ERR
-# contained the GITEE_TOKEN via `https://user:TOKEN@gitee.com/...` in
-# git's auth-failed URL — operator saw only `exit code 128` with zero
-# diagnostic. Strip `://user:token@` patterns and `access_token=...`
-# so the message survives secret-masking.
+# Gitee git push auth — embed token in remote URL (2026-08-06: the
+# previous extraheader pattern `git -c "http.https://gitee.com/.extraheader=Authorization: ..." push`
+# didn't apply on this CI runner's git 2.55; git fell back to asking
+# for Username on the terminal, failed with "Device not configured".
+# Embedding credentials in the URL is git's most-portable auth method —
+# no per-runner config-format quirks, and the URL is only in this
+# variable for the single push command (never persisted to repo config).
+PUSH_URL="https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git"
 # NOTE: use the explicit if/else (not `PUSH_ERR=$(...)` + later `if`),
 # because `set -e` triggers on a failing command-substitution assignment
 # (verified 2026-08-06 — script silently exited 128 before reaching the
 # diagnostic block, leaving operators with zero info).
-if PUSH_ERR=$(git -c "http.https://gitee.com/.extraheader=${AUTH_HEADER}" push origin HEAD:main 2>&1); then
+if PUSH_ERR=$(git push "$PUSH_URL" HEAD:main 2>&1); then
     : # push succeeded, continue
 else
     PUSH_RC=$?
