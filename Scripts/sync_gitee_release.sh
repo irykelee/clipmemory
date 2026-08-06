@@ -170,6 +170,7 @@ fi
 # the next sync runs against a clean state — uses the release-detail
 # endpoint (with auth) to get attachment IDs for DELETE.
 ATTACHMENTS_JSON=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}?access_token=${GITEE_TOKEN}" 2>/dev/null || echo "")
+echo "DEBUG step6: ATTACHMENTS_JSON len=${#ATTACHMENTS_JSON}, first 200=$(echo "$ATTACHMENTS_JSON" | head -c 200)" >&2
 if [[ -n "$ATTACHMENTS_JSON" && "$ATTACHMENTS_JSON" != "null" ]]; then
     DUPE_IDS=$(echo "$ATTACHMENTS_JSON" | python3 -c '
 import json, sys
