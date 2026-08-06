@@ -107,14 +107,15 @@ jobs:
 
           # (b) Gitee appcast <item> enclosure points to gitee.com (not
           # github.com). Fetch via raw, parse the <enclosure url="..."> for
-          # this version. Single-line python (no shell double-quote
-          # escaping inside the regex); version passed via env var to
-          # avoid `${VERSION#v}` interpolation inside single-quoted python.
+          # this version. Item title is "Version 2.7.9" (not "ClipMemory
+          # v2.7.9" — that's the channel title); we anchor on
+          # <sparkle:shortVersionString>2.7.9</sparkle:shortVersionString>
+          # which is the authoritative version match.
           V="${VERSION#v}"
           # `-L` follows the 302 redirect to raw.giteeusercontent.com (otherwise
           # curl gets the HTML redirect page and the regex finds no <enclosure>).
           ENCLOSURE=$(V="$V" curl -sfL --max-time 15 "https://gitee.com/${OWNER}/${REPO}/raw/main/appcast.xml" \
-            | V="$V" python3 -c 'import re,sys,os; v=os.environ["V"]; m=re.search(r"""<item>.+?ClipMemory v"""+re.escape(v)+r""".+?<enclosure[^>]*url="([^"]+)""", sys.stdin.read(), re.DOTALL); print(m.group(1) if m else "")' 2>/dev/null || echo "")
+            | V="$V" python3 -c 'import re,sys,os; v=os.environ["V"]; m=re.search(r"""<item>.+?<sparkle:shortVersionString>"""+re.escape(v)+r"""</sparkle:shortVersionString>.+?<enclosure[^>]*url="([^"]+)""", sys.stdin.read(), re.DOTALL); print(m.group(1) if m else "")' 2>/dev/null || echo "")
           if [[ -z "$ENCLOSURE" ]]; then
             fail "no Gitee appcast <item> for ${VERSION} — script may not have pushed the copy"
           elif [[ "$ENCLOSURE" == *"gitee.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz"* ]]; then
