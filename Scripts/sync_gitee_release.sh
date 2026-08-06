@@ -172,7 +172,7 @@ fi
 # full release-detail JSON (with auth) to get ALL attachment IDs.
 # Then DELETE every attachment with name "ClipMemory.tar.gz" except
 # the one we just uploaded.
-ATTACHMENTS_JSON=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}?access_token=${GITEE_TOKEN}" 2>/dev/null || echo "")
+ATTACHMENTS_JSON=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}" 2>/dev/null || echo "")
 if [[ -n "$ATTACHMENTS_JSON" && "$ATTACHMENTS_JSON" != "null" ]]; then
     OUR_ID=$(echo "$UPLOAD_RESP" | python3 -c "
 import json, sys
