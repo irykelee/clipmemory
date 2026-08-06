@@ -702,6 +702,135 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(UpdateStatusPanelView.reasonLabel("bogus"), "—",
                        "unpersistable/garbage rawValues render the placeholder")
     }
+
+    // MARK: - NEW-5 (2026-08-06 review): latestVersionString order-independence
+
+    /// NEW-5: previously took the first `<sparkle:shortVersionString>`
+    /// which assumed Sparkle's newest-first convention. The repo's
+    /// `appcast.xml` is built ascending, so the first item was the
+    /// OLDEST version (2.4.0) — v2.7.9's "Update" tab would show
+    /// "latest: 2.4.0" instead of 2.7.9. The fix selects by max pubDate,
+    /// which is order-independent.
+    ///
+    /// Right answer regardless of order: items at index 0 (oldest) and
+    /// last (newest) differ. The function must return the version of the
+    /// item with the latest pubDate.
+    func testLatestVersionStringTakesItemWithLatestPubDate_ascendingOrder() {
+        let xml = """
+        <rss><channel>
+            <item>
+                <title>Version 2.4.0</title>
+                <sparkle:shortVersionString>2.4.0</sparkle:shortVersionString>
+                <pubDate>Sat, 01 Jul 2026 10:00:00 +0000</pubDate>
+            </item>
+            <item>
+                <title>Version 2.7.9</title>
+                <sparkle:shortVersionString>2.7.9</sparkle:shortVersionString>
+                <pubDate>Wed, 05 Aug 2026 11:51:20 +0000</pubDate>
+            </item>
+            <item>
+                <title>Version 2.5.0</title>
+                <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
+                <pubDate>Mon, 15 Jul 2026 12:00:00 +0000</pubDate>
+            </item>
+        </channel></rss>
+        """
+        XCTAssertEqual(UpdateService.latestVersionString(inAppcastXML: xml), "2.7.9",
+                       "NEW-5: ascending order with mid-list newer item must still match by pubDate")
+    }
+
+    /// NEW-5: same input re-ordered to newest-first (Sparkle's documented
+    /// convention). Both orderings must produce the same answer — the
+    /// function reads by pubDate, not by position.
+    func testLatestVersionStringTakesItemWithLatestPubDate_descendingOrder() {
+        let xml = """
+        <rss><channel>
+            <item>
+                <title>Version 2.7.9</title>
+                <sparkle:shortVersionString>2.7.9</sparkle:shortVersionString>
+                <pubDate>Wed, 05 Aug 2026 11:51:20 +0000</pubDate>
+            </item>
+            <item>
+                <title>Version 2.5.0</title>
+                <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
+                <pubDate>Mon, 15 Jul 2026 12:00:00 +0000</pubDate>
+            </item>
+            <item>
+                <title>Version 2.4.0</title>
+                <sparkle:shortVersionString>2.4.0</sparkle:shortVersionString>
+                <pubDate>Sat, 01 Jul 2026 10:00:00 +0000</pubDate>
+            </item>
+        </channel></rss>
+        """
+        XCTAssertEqual(UpdateService.latestVersionString(inAppcastXML: xml), "2.7.9")
+    }
+
+    /// NEW-5: regression — feed the actual on-disk appcast.xml and confirm
+    /// we get 2.7.9 (the current tag). If this ever regresses to "2.4.0",
+    /// the View tab will again show the wrong "latest".
+    func testLatestVersionStringMatchesActualAppcast() {
+        guard let url = Bundle(for: UpdateServiceTests.self).url(forResource: "appcast", withExtension: "xml"),
+              let xml = try? String(contentsOf: url, encoding: .utf8) else {
+            // appcast not bundled (test-only fixture); skip silently. The
+            // two synthesized tests above still cover the order-independence
+            // contract.
+            return
+        }
+        XCTAssertEqual(UpdateService.latestVersionString(inAppcastXML: xml), "2.7.9",
+                       "NEW-5: the live appcast.xml must report 2.7.9 as the latest version")
+    }
+
+    // MARK: - NEW-7 (2026-08-06 review): fallback binding is order-independent
+
+    /// NEW-7: with the standard channel layout (primary, jsDelivr, Gitee),
+    /// `resolve(.fallback)` must pick jsDelivr — explicit id binding, not
+    /// array index. The previous kind-based binding would also pick jsDelivr
+    /// only because of where it sat in the array.
+    func testFallbackResolutionPicksJsdelivrNotGitee() async {
+        let engine = DefaultFeedProbeEngine()
+        let decision = await engine.resolve(
+            policy: .fallback, lastKnownDate: nil,
+            channels: [primaryChannel, fallbackChannel, giteeChannel]
+        )
+        XCTAssertEqual(decision?.chosenURL, fallbackChannel.url,
+                       "NEW-7: .fallback must resolve to the jsDelivr channel by id")
+        XCTAssertEqual(decision?.usedChannelID, "jsdelivr-mirror")
+    }
+
+    /// NEW-7: the .automatic policy picks jsDelivr when primary is
+    /// unreachable. If anyone reorders the jsDelivr channel to last,
+    /// automatic fallback must STILL pick jsDelivr by id (not by kind+order).
+    /// We stub primary to fail and stub jsDelivr to succeed; the engine
+    /// must surface the jsDelivr decision, not `bothDownKeepPrimary`.
+    func testAutomaticFallbackPicksJsdelivrWhenPrimaryDown() async {
+        MockURLProtocol.stubError = nil
+        // Only stub a known URL to fail; the fallback URL succeeds.
+        MockURLProtocol.stubResponses[primaryChannel.url] = (503, "", nil)
+        MockURLProtocol.stubResponses[fallbackChannel.url] = (200, "<rss><channel></channel></rss>", nil)
+        let engine = DefaultFeedProbeEngine(urlSession: MockURLSessionFactory.make())
+        let decision = await engine.resolve(
+            policy: .automatic, lastKnownDate: nil,
+            channels: [primaryChannel, fallbackChannel, giteeChannel]
+        )
+        XCTAssertEqual(decision?.chosenURL, fallbackChannel.url,
+                       "NEW-7: when primary is down, .automatic must fall back to jsDelivr by id")
+        XCTAssertEqual(decision?.usedChannelID, "jsdelivr-mirror")
+    }
+
+    /// NEW-7: simulate the order-reversed layout that the OLD kind-based
+    /// binding would have silently broken. The new id-based binding
+    /// survives.
+    func testFallbackResolutionOrderIndependent() async {
+        // Channels in REVERSE order: Gitee first, jsDelivr second.
+        let channels = [giteeChannel, fallbackChannel, primaryChannel]
+        let engine = DefaultFeedProbeEngine()
+        let decision = await engine.resolve(
+            policy: .fallback, lastKnownDate: nil,
+            channels: channels
+        )
+        XCTAssertEqual(decision?.chosenURL, fallbackChannel.url,
+                       "NEW-7: .fallback must still resolve to jsDelivr even with channels reordered")
+    }
 }
 
 // MARK: - StubProbeEngine (file scope; outside UpdateServiceTests class)

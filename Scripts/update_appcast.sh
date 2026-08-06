@@ -48,9 +48,18 @@ insert_appcast_item() {
 
     # NB: the awk variable must not be named "length" — that is awk's builtin
     # (bare `length` evaluates to length($0) of the current line).
+    # REL-30 (NEW-5, 2026-08-06 report): NEW items are PREPENDED right after
+    # the opening <channel> tag, matching Sparkle's documented convention
+    # (newest first). The previous "insert before </channel>" appended to
+    # the end, which produced an ascending-by-version appcast and silently
+    # broke `latestVersionString` (which read the first item and assumed
+    # newest-first). Prepending makes the order convention explicit at
+    # write-time and matches both Sparkle docs and the consumer's
+    # expectations.
     tmp=$(mktemp)
     awk -v version="$version" -v pubdate="$pub_date" -v url="$url" -v filesize="$length" -v sig="$ed_signature" '
-        /<\/channel>/ {
+        /<channel>/ {
+            print
             print "    <item>"
             print "      <title>Version " version "</title>"
             print "      <sparkle:shortVersionString>" version "</sparkle:shortVersionString>"
@@ -61,6 +70,7 @@ insert_appcast_item() {
             print "                 type=\"application/octet-stream\""
             print "                 sparkle:edSignature=\"" sig "\" />"
             print "    </item>"
+            next
         }
         { print }
     ' "$appcast_path" > "$tmp"
