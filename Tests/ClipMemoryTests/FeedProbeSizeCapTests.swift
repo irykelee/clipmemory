@@ -8,12 +8,17 @@ import XCTest
 /// when no Content-Length is present.
 final class FeedProbeSizeCapTests: XCTestCase {
 
+    // NEW-7 (2026-08-06): fixtures use the production-shaped ids
+    // ("github-release" / "jsdelivr-mirror") so they exercise the same
+    // id binding the real engine uses. The old "primary"/"fallback" ids
+    // made the engine's kind-based binding look correct in tests while
+    // hiding a class of order-dependent bugs.
     private let primaryChannel = FeedChannel(
-        id: "primary", url: URL(string: "https://example.com/cap-primary.xml")!,
+        id: "github-release", url: URL(string: "https://example.com/cap-primary.xml")!,
         kind: .primary, labelKey: "x"
     )
     private let fallbackChannel = FeedChannel(
-        id: "fallback", url: URL(string: "https://example.com/cap-fallback.xml")!,
+        id: "jsdelivr-mirror", url: URL(string: "https://example.com/cap-fallback.xml")!,
         kind: .fallback, labelKey: "x"
     )
 
