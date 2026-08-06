@@ -1,0 +1,84 @@
+name: Test Gitee dedup DELETE endpoint
+
+# 2026-08-06 smoke test for Scripts/sync_gitee_release.sh step 6 dedup logic.
+# The only unverified API call is DELETE /releases/{id}/attach_files/{aid}.
+# We know GET works (returned id from /releases/{id}/attach_files) and the
+# dedup python logic is unit-tested, but DELETE has not been exercised
+# against the real Gitee API. This workflow:
+#   1. Uploads a 1-byte test asset to the v2.7.9 release
+#   2. Reads back the attachment id
+#   3. DELETEs the attachment via the same path the dedup script uses
+#   4. Verifies the test asset is gone and the 3 real assets are untouched
+#
+# Zero-impact: the test asset is removed by this workflow itself, and
+# it doesn't touch ClipMemory.tar.gz or the source archives.
+#
+# Trigger: workflow_dispatch only (manual — keep noise out of CI).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag to probe (must already exist on Gitee)'
+        required: true
+        type: string
+        default: '2.7.9'
+
+concurrency:
+  group: dedup-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - name: Upload probe + DELETE + verify
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          TAG="v${VERSION}"
+          GITEE_OWNER="${GH_OWNER:-irykelee}"
+          GITEE_REPO="${GH_REPO:-clipmemory}"
+          GITEE_API="https://gitee.com/api/v5"
+          PROBE_NAME="dedup-probe-$RANDOM.txt"
+          PROBE_BODY="probe upload-then-delete $RANDOM"
+
+          echo "=== 0. Resolve release id ==="
+          RELEASE_ID=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])') || { echo "❌ Could not resolve release id for ${TAG}"; exit 1; }
+          echo "✅ release ${TAG} id=${RELEASE_ID}"
+
+          echo ""
+          echo "=== 1. Upload probe asset ==="
+          UPLOAD_RESP=$(printf '%s' "${PROBE_BODY}" | curl -sf --max-time 60 -X POST "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}" -F "file=@-;filename=${PROBE_NAME}")
+          echo "upload response: ${UPLOAD_RESP:0:300}"
+          PROBE_ID=$(echo "$UPLOAD_RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id") or d.get("attachment_id") or "")') || { echo "❌ Could not parse probe asset id"; exit 1; }
+          [[ -n "$PROBE_ID" ]] || { echo "❌ probe asset id is empty"; exit 1; }
+          echo "✅ probe uploaded: name=${PROBE_NAME} id=${PROBE_ID}"
+
+          echo ""
+          echo "=== 2. Confirm probe is in the list ==="
+          LIST_BEFORE=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}")
+          echo "$LIST_BEFORE" | python3 -c 'import json,sys; names=[a.get("name") for a in json.load(sys.stdin)]; print("attachments:", names); assert "'"${PROBE_NAME}"'" in names, "probe asset not found in list after upload"; print("✅ probe confirmed in attachments list")'
+
+          echo ""
+          echo "=== 3. DELETE probe via dedup script's path ==="
+          DELETE_RC=$(curl -sf -o /tmp/delete-resp.txt -w '%{http_code}' --max-time 15 -X DELETE "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files/${PROBE_ID}?access_token=${GITEE_TOKEN}" || echo "curl-failed")
+          DELETE_BODY=$(cat /tmp/delete-resp.txt 2>/dev/null || true)
+          echo "DELETE HTTP status: ${DELETE_RC}"
+          echo "DELETE response body: ${DELETE_BODY:0:300}"
+          case "${DELETE_RC}" in
+              200|201|202|204|"") echo "✅ DELETE returned success status" ;;
+              404) echo "✅ DELETE 404 = already gone (also acceptable)" ;;
+              *) echo "❌ DELETE returned unexpected status: ${DELETE_RC}"; exit 1 ;;
+          esac
+
+          echo ""
+          echo "=== 4. Verify probe is gone + real assets untouched ==="
+          LIST_AFTER=$(curl -sf --max-time 15 "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}")
+          echo "$LIST_AFTER" | python3 -c 'import json,sys; names=[a.get("name") for a in json.load(sys.stdin)]; print("attachments after delete:", names); assert "'"${PROBE_NAME}"'" not in names, "probe asset still present after DELETE"; assert "ClipMemory.tar.gz" in names, "real ClipMemory.tar.gz missing!"; assert "v'"${VERSION}"'.zip" in names, "real source archive missing!"; print("✅ probe removed; real assets intact")'
+
+          echo ""
+          echo "✅ DELETE endpoint verified — Scripts/sync_gitee_release.sh step 6 dedup will work on next upload"
