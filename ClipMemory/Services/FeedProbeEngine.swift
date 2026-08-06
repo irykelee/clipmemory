@@ -100,7 +100,16 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         timeout: TimeInterval? = nil
     ) async -> FeedProbeDecision? {
         guard let primary = channels.first(where: { $0.kind == .primary }),
-              let fallback = channels.first(where: { $0.kind == .fallback }) else {
+              // NEW-7 (2026-08-06 review): bind the fallback slot by id
+              // ("jsdelivr-mirror") rather than by `kind == .fallback`.
+              // The jsDelivr (kind .fallback) and Gitee (also kind .fallback)
+              // channels share the same enum tag, so the old binding
+              // depended entirely on the order of `knownChannels` in
+              // UpdateFeedPolicy. Removing jsDelivr or reordering the
+              // array would silently route "jsDelivr" selections to the
+              // Gitee URL with no test catching the regression. Id-based
+              // binding makes the choice explicit and order-independent.
+              let fallback = channels.first(where: { $0.id == "jsdelivr-mirror" }) else {
             return nil
         }
         // Per-call override wins; otherwise use engine-level config from init.

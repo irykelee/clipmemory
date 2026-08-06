@@ -48,9 +48,19 @@ enum UpdateFeedPolicies {
         // network can't reach GitHub reliably. The Gitee repo holds a copy
         // of appcast.xml whose enclosures point at Gitee release assets
         // (GitHub tarball is mirrored there by Scripts/sync_gitee_release.sh
-        // at every release). User-selectable via the settings picker; never
-        // used by automatic probing (kind .fallback but only reachable via
-        // the explicit .gitee policy — resolve() short-circuits for it).
+        // at every release). User-selectable via the settings picker.
+        //
+        // NEW-7 (2026-08-06 review): The original comment said "resolve()
+        // short-circuits for it" — that was incomplete and misleading.
+        // `resolve()` does look up the Gitee channel by id ("gitee-mirror")
+        // for the explicit .gitee policy (FeedProbeEngine:127), but this
+        // channel SHARES the `kind: .fallback` tag with the jsDelivr mirror
+        // (index 1). To prevent silent misrouting, FeedProbeEngine:103
+        // binds the fallback slot by id ("jsdelivr-mirror") not by kind;
+        // Gitee is therefore NEVER the .fallback channel, only ever an
+        // explicit .gitee-policy choice. The kind=.fallback tag is kept
+        // because the policy enum has no dedicated .mirror case — adding
+        // one would inflate the picker UI with no semantic gain.
         FeedChannel(
             id: "gitee-mirror",
             url: requireURL("https://gitee.com/irykelee/clipmemory/raw/main/appcast.xml"),
