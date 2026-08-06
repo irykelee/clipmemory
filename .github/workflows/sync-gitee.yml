@@ -125,11 +125,16 @@ jobs:
           fi
 
           # (d) Two-side sha256 identical (REL-29 byte-consistency proof).
-          GH_SHA=$(curl -sf --max-time 60 "https://github.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz" \
-            | shasum -a 256 | awk '{print $1}')
+          # `|| true` on the curl+pipe so a transient empty body / 401 doesn't
+          # trip `set -e` and abort the verify step before the fail() below
+          # can report it. Field-name fallback (attachments vs assets)
+          # because Gitee API returns different field names depending on auth
+          # context (verified empirically: with token = attachments; without
+          # = assets).
+          GH_SHA=$(curl -sf --max-time 60 "https://github.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz" | shasum -a 256 | awk '{print $1}' || true)
           GT_URL=$(curl -sfL --max-time 60 "${API}/repos/${OWNER}/${REPO}/releases/tags/${VERSION}?access_token=${GITEE_TOKEN}" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((a["browser_download_url"] for a in (d.get("attachments") or []) if a.get("name")=="ClipMemory.tar.gz"), ""))')
-          GT_SHA=$(curl -sfL --max-time 60 "$GT_URL" | shasum -a 256 | awk '{print $1}')
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); items=d.get("attachments") or d.get("assets") or []; print(next((a["browser_download_url"] for a in items if a.get("name")=="ClipMemory.tar.gz"), ""))' || true)
+          GT_SHA=$(curl -sfL --max-time 60 "$GT_URL" | shasum -a 256 | awk '{print $1}' || true)
           if [[ -z "$GH_SHA" || -z "$GT_SHA" ]]; then
             fail "sha256 fetch failed (GH=$GH_SHA / GT=$GT_SHA) — connectivity or asset missing"
           elif [[ "$GH_SHA" == "$GT_SHA" ]]; then
