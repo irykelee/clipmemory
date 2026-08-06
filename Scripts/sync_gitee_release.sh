@@ -188,7 +188,7 @@ for a in items:
             seen.add(name)
 print("\n".join(str(x) for x in dupes))
 ' 2>/dev/null)
-    echo "DEBUG step6: DUPE_IDS=[$(echo "$DUPE_IDS" | head -c 200)]" >&2
+    echo "DEBUG step6: DUPE_IDS=[$(echo "$DUPE_IDS" | head -c 200)] items=[$(echo "$ATTACHMENTS_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get("assets") or d.get("attachments") or [])[:600])')]" >&2
     if [[ -n "$DUPE_IDS" ]] && [[ "$DUPE_IDS" != $'\n' ]]; then
         DUPE_COUNT=$(echo "$DUPE_IDS" | wc -l | tr -d ' ')
         log "删除 $DUPE_COUNT 个重复 ClipMemory.tar.gz attachment（保留 1）"
