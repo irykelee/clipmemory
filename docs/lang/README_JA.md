@@ -1,4 +1,4 @@
-# ClipMemory v2.7.9
+# ClipMemory v2.8.0
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,16 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.8.0 (2026-08-07) — Gitee ミラーチャンネル + テスト・品質の強化
+
+- **🆕 Gitee ミラー更新チャンネルを追加** — 中国大陸向けダウンロード高速化：設定 → 更新ソース → Gitee（中国ミラー）。既存の jsDelivr フォールバックと並行して動作し、中国大陸向け Sparkle プッシュ経路がエンドツーエンドで完全に稼働します。
+- **🛡 暗号化の安全性を強化** — `.cryptoKeyPrepared(success)` 時に `pendingFailedIDs` もクリアし、既存の `negativeCache` クリアと整合させます（ID-STORE-0010、HIGH）。従来は `negativeCache` のみがクリアされていたため、復号に失敗した直後のエントリが再起動まで抑制されたままになる問題を修正します。
+- **🛠 テスト基盤を強化（NEW-1..9 + CI ゲート）** — 本番 UserDefaults の分離 + テストでの hermetic な UpdateService + ZZZ canary キャリブレーション + CI での最低テスト実行数の強制
+- **🛠 更新ソースのフォールバック正確性を修正（NEW-5/6/7）** — `latestVersionString` が最後の項目を取得するよう修正 + `FeedProbeEngine` のフォールバックを id でバインド + 繁体字中国語の「镜像/映像」表記 5 箇所を修正
+- **🛠 リリースツールチェーンを強化** — `Scripts/release.sh` の `grep -c` 0 マッチ時の算術エラーを修正 + `Scripts/rollback-release.sh` の Confirm ゲートでエージェントのサンドボックスハングを防止
+
+- 完全な changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.0
 
 ### v2.7.9 (2026-08-05) — 設定ページにバージョン対照を追加
 

@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.7.9
+# 剪憶 ClipMemory v2.8.0
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -47,6 +47,16 @@
 ---
 
 ## 📋 更新日誌
+
+### v2.8.0 (2026-08-07) — 新增 Gitee 鏡像通道 + 測試與品質強化
+
+- **🆕 新增 Gitee 鏡像更新通道** — 中國大陸下載加速器：設定 → 更新來源 → Gitee（中國鏡像），現與既有 jsDelivr 備援並行運作。完整的 Sparkle 中國大陸推送路徑現已全面上線。
+- **🛡 加密安全強化** — 於 `.cryptoKeyPrepared(success)` 時，一併清除 `pendingFailedIDs`，以與既有 `negativeCache` 清除行為一致（ID-STORE-0010，HIGH）。先前僅清除 `negativeCache`，導致剛解密失敗的條目會持續被壓制直到重新啟動。
+- **🛠 測試基礎設施強化 (NEW-1..9 + CI 閘門)** — 生產環境 UserDefaults 套件隔離 + 測試中 hermetic UpdateService + ZZZ canary 校準 + 強制 CI 最低測試執行數量
+- **🛠 更新來源備援正確性 (NEW-5/6/7)** — `latestVersionString` 取最後一項 + `FeedProbeEngine` 備援依 id 綁定 + 5 處 zh-Hant 鏡像/映像 鏡像修正
+- **🛠 發布工具鏈強化** — `Scripts/release.sh` `grep -c` 零匹配算術錯誤修正 + `Scripts/rollback-release.sh` Confirm 閘門防止 agent 沙箱掛死
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.0
 
 ### v2.7.9 (2026-08-05) — 設定頁新增版本對照
 

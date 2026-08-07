@@ -1,4 +1,4 @@
-# ClipMemory v2.7.9
+# ClipMemory v2.8.0
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,16 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.8.0 (2026-08-07) — Canal de espejo Gitee + Endurecimiento de pruebas y calidad
+
+- **🆕 Nuevo canal de actualización por espejo Gitee** — Un acelerador de descargas para China continental: Ajustes → Fuente de actualización → Gitee (espejo de China), ahora operando en paralelo con el respaldo existente de jsDelivr. La ruta completa de envío de Sparkle para China continental ya está activa de extremo a extremo.
+- **🛡 Seguridad criptográfica endurecida** — al recibir `.cryptoKeyPrepared(success)`, también se limpia `pendingFailedIDs` para alinearse con la limpieza existente de `negativeCache` (ID-STORE-0010, ALTA). Anteriormente solo se limpiaba `negativeCache`, por lo que una entrada que acababa de fallar en el descifrado permanecía suprimida hasta reiniciar.
+- **🛠 Infraestructura de pruebas endurecida (NEW-1..9 + puerta CI)** — aislamiento de UserDefaults de producción + UpdateService hermético en pruebas + calibración de canario ZZZ + recuento mínimo de ejecución de pruebas impuesto en CI
+- **🛠 Corrección del respaldo de fuentes de actualización (NEW-5/6/7)** — `latestVersionString` toma el último elemento + el respaldo de `FeedProbeEngine` se vincula por id + corrección de 5 términos de espejo en zh-Hant
+- **🛠 Herramientas de lanzamiento endurecidas** — corrección del error aritmético de `grep -c` con 0 coincidencias en `Scripts/release.sh` + protección de la puerta Confirm en `Scripts/rollback-release.sh` contra bloqueos del sandbox del agente
+
+- Notas de la versión completas: https://github.com/irykelee/clipmemory/releases/tag/v2.8.0
 
 ### v2.7.9 (2026-08-05) — Nueva comparación de versiones en la página de configuración
 

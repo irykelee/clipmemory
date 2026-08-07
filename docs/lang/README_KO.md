@@ -1,4 +1,4 @@
-# ClipMemory v2.7.9
+# ClipMemory v2.8.0
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -47,6 +47,16 @@
 ---
 
 ## 📋 변경 로그
+
+### v2.8.0 (2026-08-07) — Gitee 미러 채널 + 테스트 및 품질 강화
+
+- **🆕 새로운 Gitee 미러 업데이트 채널** — 중국 본토 다운로드 가속: 설정 → 업데이트 소스 → Gitee(중국 미러), 기존 jsDelivr 폴백과 병행 운영
+- **🛡 암호화 보안 강화** — 시작 시 `.cryptoKeyPrepared(success)`에서 `pendingFailedIDs`를 새로 비우고 기존 `negativeCache` 비우기와 정렬(ID-STORE-0010 HIGH) — cryptoKey 재준비 후 이전 항목이 영구적으로 억제되던 문제 수정
+- **🛠 테스트 인프라 강화 (NEW-1..9 + CI 게이트)** — 프로덕션 UserDefaults 격리 + UpdateService hermetic + ZZZ canary 보정 + CI 최소 테스트 수 강제
+- **🛠 업데이트 소스 폴백 정확성 (NEW-5/6/7)** — `latestVersionString`이 마지막 항목을 취하도록 + `FeedProbeEngine` 폴백이 id별로 바인딩 + 중국어 번체 5곳 미러 용어 수정
+- **🛠 릴리스 도구 체인 강화** — `Scripts/release.sh` `grep -c` 산술 오류 수정 + `Scripts/rollback-release.sh` Confirm 게이트로 에이전트 중단 방지
+
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.8.0
 
 ### v2.7.9 (2026-08-05) — 설정 페이지에 버전 대조 추가
 

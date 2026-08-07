@@ -1,4 +1,4 @@
-# ClipMemory v2.7.9
+# ClipMemory v2.8.0
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,16 @@
 ---
 
 ## 📋 Changelog
+
+### v2.8.0 (2026-08-07) — Gitee Mirror Channel + Test & Quality Hardening
+
+- **🆕 New Gitee mirror update channel** — A mainland-China download accelerator: Settings → Update Source → Gitee (China mirror), now operating in parallel with the existing jsDelivr fallback. The full mainland-Sparkle-push path is now live end-to-end.
+- **🛡 Crypto safety hardened** — on `.cryptoKeyPrepared(success)`, also clear `pendingFailedIDs` to match the existing `negativeCache` clear (ID-STORE-0010, HIGH). Previously only `negativeCache` was cleared, so an entry that just failed decryption stayed suppressed until a restart.
+- **🛠 Test infrastructure hardened (NEW-1..9 + CI gate)** — production UserDefaults suite isolation + hermetic UpdateService in tests + ZZZ canary calibration + CI minimum test execution count enforced
+- **🛠 Update source fallback correctness (NEW-5/6/7)** — `latestVersionString` picks the last item + `FeedProbeEngine` fallback binds by id + 5 zh-Hant 镜像/映像 镜像 fix
+- **🛠 Release tooling hardened** — `Scripts/release.sh` `grep -c` 0-match arithmetic fix + `Scripts/rollback-release.sh` Confirm gate guard against agent-sandbox hang
+
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.0
 
 ### v2.7.9 (2026-08-05) — Settings page gains version comparison
 
