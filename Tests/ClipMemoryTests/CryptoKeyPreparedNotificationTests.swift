@@ -59,4 +59,58 @@ final class CryptoKeyPreparedNotificationTests: XCTestCase {
 
         XCTAssertTrue(store.diagnostics.dismissed, "failure notification must NOT reset dismissed")
     }
+
+    // MARK: - ID-STORE-NEG-CACHE-SYNC (2026-08-07)
+
+    /// Verifies that `.cryptoKeyPrepared(success: true)` clears the
+    /// `pendingFailedIDs` buffer — mirrors CryptoService's
+    /// `negativeCache.removeAll()` on the same event so the two
+    /// failed-state tracking layers stay aligned. Without the fix,
+    /// items whose decrypt failed (`.dataCorrupted` / `.internalError`)
+    /// right before the key re-ready event get merged into
+    /// `items[].decryptionFailed = true` on the next main-loop tick,
+    /// permanently skipping the item for the rest of the session
+    /// (`prewarmDecryptionCache:1651` short-circuits on the flag).
+    func testPendingFailedIDsClearedOnSuccessNotification() {
+        let id = UUID()
+        store.testAddPendingFailedID(id)
+        XCTAssertTrue(
+            store.testContainsPendingFailedID(id),
+            "precondition: pendingFailedIDs must contain the staged id"
+        )
+
+        NotificationCenter.default.post(
+            name: .cryptoKeyPrepared, object: nil, userInfo: ["success": true]
+        )
+
+        let exp = expectation(description: "wait observer")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertFalse(
+            store.testContainsPendingFailedID(id),
+            "pendingFailedIDs must be cleared on key re-ready (mirrors negativeCache.removeAll)"
+        )
+    }
+
+    /// Negative case: a `success: false` notification must NOT touch the
+    /// buffer — failures are terminal for the in-flight items, so a
+    /// pendingFailedIDs snapshot stays valid for whatever follows.
+    func testPendingFailedIDsPreservedOnFailureNotification() {
+        let id = UUID()
+        store.testAddPendingFailedID(id)
+
+        NotificationCenter.default.post(
+            name: .cryptoKeyPrepared, object: nil, userInfo: ["success": false]
+        )
+
+        let exp = expectation(description: "wait observer")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertTrue(
+            store.testContainsPendingFailedID(id),
+            "failure notification must NOT clear pendingFailedIDs"
+        )
+    }
 }
