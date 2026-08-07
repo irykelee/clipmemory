@@ -70,6 +70,31 @@ private final class GentleUpdateReminder: NSObject, SPUStandardUserDriverDelegat
     }
 }
 
+#if DEBUG
+/// NEW-3 (2026-08-07 Session 4): production-side no-op probe engine.
+/// `UpdateService._sharedDefault` returns an instance wired with this engine
+/// (and `autoStart: false`) when `isRunningTests` is true, so any test that
+/// accidentally touches `UpdateService.shared` without setting
+/// `injectedForTest` still gets a hermetic stub — no real appcast probe,
+/// no Sparkle `SPUStandardUpdaterController` startup.
+///
+/// Companion to `Tests/ClipMemoryTests/UpdateServiceStubProbeEngine.swift`
+/// (the public-tests version used by snapshot tests). This one lives in
+/// production so the lazy `_sharedDefault` can reference it directly under
+/// the `#if DEBUG` guard; the test-only version is kept for tests that want
+/// to type-explicit reference without going through the type-checked seam.
+private final class NoOpFeedProbeEngine: FeedProbeEngine, @unchecked Sendable {
+    func resolve(
+        policy: UpdateFeedPolicy,
+        lastKnownDate: Date?,
+        channels: [FeedChannel],
+        timeout: TimeInterval?
+    ) async -> FeedProbeDecision? {
+        return nil
+    }
+}
+#endif
+
 /// Singleton wrapper around Sparkle's updater so the rest of the app
 /// (AppDelegate, settings UI) never touches SPU* types directly.
 final class UpdateService {
@@ -88,8 +113,37 @@ final class UpdateService {
         return _sharedDefault
     }
 
+    /// NEW-3 (2026-08-07 Session 4): XCTest detection, same idiom as
+    /// `CryptoService.isRunningTests` (line 240) and `ImageStorage.isRunningTests`
+    /// (line 14). Defined here too because `isRunningTests` is a per-file
+    /// `private static` in each service that needs it; we haven't (yet) hoisted
+    /// it to a shared utility. If a third service needs the same check,
+    /// consider extracting to `ServiceTestEnvironment.isRunningTests`.
+    private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
     @MainActor
-    private static let _sharedDefault = UpdateService()
+    private static let _sharedDefault: UpdateService = {
+        // NEW-3 (2026-08-07 Session 4): gate the production singleton to a
+        // hermetic stub when running under XCTest. This catches any test
+        // that triggers `UpdateService.shared` (directly or transitively
+        // through view rendering) without first setting `injectedForTest`.
+        // Without this guard, the first access lazily constructs a real
+        // UpdateService which kicks off a real appcast HTTP probe and
+        // starts Sparkle's `SPUStandardUpdaterController`, polluting the
+        // production UserDefaults domain with `LastPrimaryAppcastItemDate`,
+        // `UpdateFeedPolicy`, and three `SU*` keys (NEW-3 evidence).
+        //
+        // Tests that want richer probe behavior (e.g. `StubProbeEngine`
+        // with decision enqueueing in UpdateServiceTests) still set
+        // `injectedForTest` in setUp — that path is checked first in
+        // `shared` (line 87) and bypasses this guard entirely.
+        #if DEBUG
+        if isRunningTests {
+            return UpdateService(probeEngine: NoOpFeedProbeEngine(), autoStart: false)
+        }
+        #endif
+        return UpdateService()
+    }()
 
     /// Secondary feed mirrored by jsDelivr from this repo's main branch.
     /// Used when the primary feed (GitHub release asset) is unreachable,
