@@ -23,18 +23,21 @@ on:
         description: 'Version to sync (e.g. 2.7.9). Already-released GitHub tag required.'
         required: true
         type: string
-  push:
-    tags:
-      - 'v*'
+  # RACE-FIX v2 (2026-08-07): trigger ONLY after release.yml completes
+  # successfully. The previous `push: tags` trigger fired sync in
+  # parallel with release.yml; if the GitHub release assets weren't yet
+  # public when sync ran (slow CI / GH CDN blip), the sync would fail
+  # and nothing would re-trigger it until the next tag push. workflow_run
+  # is the only event that crosses workflows — concurrency groups don't.
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
 
 # Same group as release.yml — this serializes multiple sync-gitee runs
-# (so a manual re-run doesn't fight an in-flight sync), but it does NOT
-# wait cross-workflow for release.yml to finish. Both workflows trigger
-# on tag push and run in parallel. RACE-FIX (2026-08-07): the script
-# now fetches appcast.xml from the GitHub release asset (not the local
-# main checkout), so it no longer depends on release.yml's "Publish
-# appcast update" step having pushed to main. Run 31148400716
-# demonstrated this race for v2.8.0.
+# (so a manual re-run doesn't fight an in-flight sync). With the
+# workflow_run trigger, runs typically serialize naturally anyway
+# (release.yml takes 4-5 min, sync waits then runs once). Kept as
+# defense against a manual re-run arriving during an in-flight sync.
 # `cancel-in-progress: false`: never cancel a sync mid-flight.
 concurrency:
   group: release
