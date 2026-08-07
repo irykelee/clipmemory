@@ -22,13 +22,14 @@ import XCTest
 /// Moving the diff into a real test method makes the failure propagate
 /// normally: `xcodebuild` exits non-zero, CI fails the job.
 ///
-/// **Production-safety contract (2026-08-06 rename)**:
+/// **Production-safety contract (2026-08-06 rename + 2026-08-07 NEW-9)**:
 /// the canary has TWO directions and the second is what protects
 /// production:
 ///   - **Forward** (NEW pollution rejected): any key added/changed
-///     that is NOT in `toleratedPollution` is a hard failure. This
-///     is the actual production safety the canary provides —
-///     verified by `testForwardAssertionCatchesNewPollution` below.
+///     that is NOT in `toleratedPollution` AND NOT in `appLifecycleKeys`
+///     is a hard failure. This is the actual production safety the
+///     canary provides — verified by `testForwardAssertionCatchesNewPollution`
+///     below.
 ///   - **Reverse** (shrink enforcement, partial): `environmentInvariants`
 ///     keys must appear in the observed set; their absence means
 ///     a previously-active pollution source silently stopped writing.
@@ -36,13 +37,24 @@ import XCTest
 ///     keys (today: `AppleLanguages`) because Sparkle's `SU*` keys
 ///     are race-conditioned and would flake CI if asserted.
 ///
-/// **NOT a true ratchet** — the `toleratedPollution` set is NOT
-/// monotonically decreasing. Adding a new entry is a code review
-/// event (the reverse-assertion only fires on `environmentInvariants`,
-/// not on the broader set). The terminology was changed from
-/// `knownPollution`/`ratchetEnforcedKeys` to make this explicit —
-/// future maintainers should not assume the suite auto-shrinks the
-/// tolerance set.
+/// **Two allowlists, two shrink paths (NEW-9, 2026-08-07)**:
+///   - `toleratedPollution`: framework/OS writes that bypass every
+///     `defaults` seam (AppleLanguages + Sparkle's `SU*`). SHRINK
+///     target — completes when M13 injection covers them.
+///   - `appLifecycleKeys`: production code `defaults.set(...)` calls
+///     that fire during normal app startup, BOTH in production AND
+///     in test (because the test process IS a real app process).
+///     NOT a shrink target — these are real app behavior, not test
+///     pollution. Option B (M13 init-path seams) is deferred; this
+///     set documents the gap.
+///
+/// **NOT a true ratchet** — neither `toleratedPollution` nor
+/// `appLifecycleKeys` is monotonically decreasing. Adding a new entry
+/// is a code review event (the reverse-assertion only fires on
+/// `environmentInvariants`, not on the broader sets). The terminology
+/// was changed from `knownPollution`/`ratchetEnforcedKeys` to make
+/// this explicit — future maintainers should not assume the suite
+/// auto-shrinks the tolerance set.
 final class ZZZSuiteTeardownTests: XCTestCase {
 
     /// System runtime key prefixes that may legitimately appear/disappear
@@ -106,6 +118,58 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         "SUHasLaunchedBefore",  // Sparkle SPUStandardUpdaterController
         "SULastCheckTime",      // Sparkle SPUStandardUpdaterController
         "SUUpdateGroupIdentifier", // Sparkle SPUStandardUpdaterController (race-conditioned)
+    ]
+
+    /// NEW-9 (2026-08-07): app lifecycle keys that the host process
+    /// writes during normal startup, BOTH in production AND in test.
+    /// These are NOT test pollution — they are real app behavior.
+    /// The test runner launches a real app process (xcodebuild test
+    /// → host bundle's app lifecycle runs), so writes to these keys
+    /// happen during every test run regardless of test fixture content.
+    ///
+    /// **Why separate from `toleratedPollution`**: the two sets have
+    /// fundamentally different shrink paths:
+    ///   - `toleratedPollution`: shrink by completing M13 injection
+    ///     coverage (so test fixtures write to injected suite, not
+    ///     production domain). Goal: empty.
+    ///   - `appLifecycleKeys`: NOT a shrink target. These writes
+    ///     happen because the test process IS a real app process.
+    ///     Removing them would require either (a) running tests in
+    ///     a non-app sandbox (out of scope) or (b) Option B —
+    ///     adding M13 seams to every init path that writes them
+    ///     (deferred, big).
+    ///
+    /// **Calibration**: 2026-08-07 truly-cold-disk run (no
+    /// `com.clipmemory.app.tests.plist` on host, AAA snapshot empty)
+    /// caught these 10 keys. Each one traces to a production code
+    /// `defaults.set(...)` call site (see grep of lastBackupDateKey /
+    /// lastLaunchKey / hasLaunchedKey / lastPrimaryItemDateKey /
+    /// feedPolicyKey / windowFrameKey / itemsStorageKey /
+    /// selectedTabRaw / migrationCompleteKey / startupCleanupKey).
+    /// All 10 are unconditional lifecycle writes — they fire in
+    /// every cold run.
+    ///
+    /// **Cold + warm bidirectionality** (NEW-9 verification contract):
+    /// cold run (no plist) → 10 keys ADDED, all in this set → green.
+    /// warm run (plist from prior run) → 10 keys in AAA baseline,
+    /// 0 ADDED → green. If either run fails, the set has drifted
+    /// from actual app behavior — re-calibrate.
+    private static let appLifecycleKeys: Set<String> = [
+        // AppDelegate init paths (StartupHealth + WelcomeView + BackupService):
+        "lastLaunchTime",            // StartupHealth.swift:24, 144 — set in logSnapshot
+        "hasLaunchedBefore",         // WelcomeView.swift:171, 178 — first launch marker
+        "lastBackupDate",            // BackupService.swift:44, 320 — written when backup >24h interval
+        // UpdateService init + probe:
+        "UpdateFeedPolicy",          // UpdateService.swift:110, 193 — feedPolicyKey didSet
+        "LastPrimaryAppcastItemDate",// UpdateService.swift:109, 216 — startAfterFeedProbe post-probe
+        // WindowManager debounced window-frame write:
+        "WindowFrame",               // WindowManager.swift:62, 248 — windowDidMove/Resize debounced 0.5s
+        // ClipboardStore storage + settings:
+        "ClipboardItems",            // ClipboardStore.swift:239 — itemsStorageKey, written on save
+        "settings.selectedTab",      // SettingsRootView.swift:31 — @AppStorage, didSet on tab click
+        // ImageStorage startup migration + cleanup:
+        "ImageStorageMigrationComplete", // ImageStorage.swift:78, 159, 290 — init-time migration latch
+        "ImageStorageStartupCleanupRan", // ImageStorage.swift:889, 891 — init-time orphan cleanup latch
     ]
 
     /// Environment invariants — keys that MUST be present in the
@@ -181,8 +245,18 @@ final class ZZZSuiteTeardownTests: XCTestCase {
                 // a new one.
                 newPollution.append("key REMOVED: \"\(key)\" (was \(String(describing: beforeVal)))")
             } else if isAdded || isChanged {
-                if !Self.toleratedPollution.contains(key) {
-                    // New pollution — not in toleratedPollution. This is the gate.
+                // NEW-9 (2026-08-07): accept keys in EITHER set:
+                // - `toleratedPollution` = test-side pollution that is a
+                //   shrink target (M13 injection work).
+                // - `appLifecycleKeys` = app lifecycle writes that fire
+                //   in every test run because the test process IS a real
+                //   app. NOT a shrink target.
+                // A key in NEITHER set is genuine new pollution that
+                // should be caught.
+                let inAnyAllowlist = Self.toleratedPollution.contains(key)
+                    || Self.appLifecycleKeys.contains(key)
+                if !inAnyAllowlist {
+                    // New pollution — not in any allowlist. This is the gate.
                     if isAdded {
                         newPollution.append("key ADDED: \"\(key)\" = \(String(describing: afterVal))")
                     } else {
@@ -191,16 +265,15 @@ final class ZZZSuiteTeardownTests: XCTestCase {
                         newPollution.append("key CHANGED: \"\(key)\" — before: \(String(describing: bv)), after: \(String(describing: av))")
                     }
                 }
-                // If toleratedPollution contains the key, no-op: pollution is
-                // accepted as part of the baseline. This is NOT a ratchet
-                // — there's no requirement to shrink the set.
+                // If the key is in either allowlist, no-op. See the
+                // comments on the two sets for why each is acceptable.
             }
         }
 
         if !newPollution.isEmpty {
-            let message = "ZZZ suite teardown: NEW production UserDefaults pollution detected (NOT in toleratedPollution allowlist):\n" +
+            let message = "ZZZ suite teardown: NEW production UserDefaults pollution detected (NOT in `toleratedPollution` or `appLifecycleKeys` allowlists):\n" +
                 newPollution.joined(separator: "\n") +
-                "\n\nIf this key is benign, add it to `toleratedPollution` in ZZZSuiteTeardownTests.swift — but understand that doing so freezes the gate open on that key. The recommended path is to fix the source and remove the entry from the allowlist."
+                "\n\nIf this key is benign app lifecycle, add it to `appLifecycleKeys` in ZZZSuiteTeardownTests.swift — but understand it documents a gap in M13 init-path injection coverage (Option B), not a real bug. If this key is test-side pollution, add it to `toleratedPollution` and follow the M13 shrink path. The recommended path for BOTH is to fix the source and remove the entry."
             XCTFail(message)
             XCTAssert(false, message)
         }
@@ -241,14 +314,23 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         let filteredBefore = stripSystemKeys(before)
         let allKeys = Set(filteredBefore.keys).union(filteredAfter.keys)
 
-        // NEW-2 follow-up (2026-08-06): the environment invariant
-        // check only fires on `environmentInvariants` — keys that are
-        // race-stable and therefore MUST appear in every run when
-        // pollution is happening. Race-conditioned framework writes
-        // (e.g. Sparkle's `SUUpdateGroupIdentifier`, which may or may
-        // not appear in a given run) are accepted in
+        // NEW-2 follow-up (2026-08-06) + NEW-9 (2026-08-07): the
+        // environment invariant check only fires on `environmentInvariants`
+        // — keys that are race-stable and therefore MUST appear in every
+        // run when pollution is happening. Race-conditioned framework
+        // writes (e.g. Sparkle's `SUUpdateGroupIdentifier`, which may
+        // or may not appear in a given run) are accepted in
         // `toleratedPollution` but exempt from this check to avoid
         // CI flake.
+        //
+        // NEW-9 (2026-08-07): observedAllowlistKeys now considers
+        // BOTH `toleratedPollution` and `appLifecycleKeys` — both
+        // are forward-accepted, so both are eligible as "observed"
+        // signal sources. (Only `environmentInvariants` is checked
+        // for strict presence; the appLifecycleKeys are not — they
+        // may or may not fire in a given run depending on test path,
+        // e.g. `WindowFrame` only fires when `showSettingsWindow()`
+        // is called.)
         //
         // For `environmentInvariants`, we count "observed" as "present
         // in either before or after snapshot" — some enforced keys
@@ -264,7 +346,9 @@ final class ZZZSuiteTeardownTests: XCTestCase {
             let isChanged = beforeVal != nil && afterVal != nil
                 && !(beforeVal! as AnyObject).isEqual(afterVal!)
             let isPresent = beforeVal != nil || afterVal != nil
-            if Self.toleratedPollution.contains(key) && (isAdded || isChanged || isPresent) {
+            let inAnyAllowlist = Self.toleratedPollution.contains(key)
+                || Self.appLifecycleKeys.contains(key)
+            if inAnyAllowlist && (isAdded || isChanged || isPresent) {
                 observedAllowlistKeys.insert(key)
             }
         }
@@ -332,11 +416,13 @@ final class ZZZSuiteTeardownTests: XCTestCase {
             let beforeVal = filteredBefore[key]
             let afterVal = filteredAfter[key]
             let isAdded = beforeVal == nil && afterVal != nil
-            if isAdded && !Self.toleratedPollution.contains(key) {
+            let inAnyAllowlist = Self.toleratedPollution.contains(key)
+                || Self.appLifecycleKeys.contains(key)
+            if isAdded && !inAnyAllowlist {
                 caughtNewPollution = true
             }
         }
         XCTAssertTrue(caughtNewPollution,
-                       "Forward assertion: a new pollution key (not in `toleratedPollution`) must be caught. If this fails, the canary's not-in-list check has been disabled.")
+                       "Forward assertion: a new pollution key (not in `toleratedPollution` or `appLifecycleKeys`) must be caught. If this fails, the canary's not-in-list check has been disabled.")
     }
 }
