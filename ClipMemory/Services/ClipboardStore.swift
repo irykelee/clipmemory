@@ -625,6 +625,20 @@ final class ClipboardStore: ObservableObject {
         if success {
             // P0-2 N4: 复位 dismiss（H-2 重放前）
             resetDiagnosticsDismissed()
+            // ID-STORE-NEG-CACHE-SYNC (2026-08-07): mirror CryptoService's
+            // negativeCache.removeAll() on key re-ready. Without this, an
+            // item that hit .dataCorrupted/.internalError right before the
+            // .cryptoKeyPrepared(success) event sits in pendingFailedIDs
+            // and gets merged into items[].decryptionFailed = true on the
+            // next main-loop tick, permanently skipping the item for the
+            // rest of the session (prewarm:1651 short-circuits on the
+            // flag). Clearing the buffer here lets the merge snapshot an
+            // empty set and keeps the in-session state aligned with
+            // CryptoService's "retry transient failures on key ready"
+            // contract.
+            pendingFailedIDsLock.lock()
+            pendingFailedIDs.removeAll()
+            pendingFailedIDsLock.unlock()
             for item in pending { self.addItem(item) }
             // M2 (2026-08-01 roadmap): heal items stored with contentHash = nil
             // while the key was unavailable — backfill their hashes and merge
@@ -1524,6 +1538,21 @@ final class ClipboardStore: ObservableObject {
     /// the getDecryptedContent search path.
     func testAddPendingDiagnostic(_ d: PendingDiagnostic) {
         recordPendingDiagnostic(d)
+    }
+
+    /// ID-STORE-NEG-CACHE-SYNC (2026-08-07): Test-only seams for the
+    /// pendingFailedIDs buffer so tests can stage a "key re-ready with
+    /// pending failures present" scenario without having to manufacture
+    /// a real decrypt failure (which requires a wrong-key ciphertext
+    /// fixture). Mirrors `testAddPendingDiagnostic`.
+    func testAddPendingFailedID(_ id: UUID) {
+        pendingFailedIDsLock.lock()
+        pendingFailedIDs.insert(id)
+        pendingFailedIDsLock.unlock()
+    }
+
+    func testContainsPendingFailedID(_ id: UUID) -> Bool {
+        isDecryptionPendingFailed(id)
     }
     #endif
 
