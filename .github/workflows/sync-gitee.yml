@@ -27,13 +27,15 @@ on:
     tags:
       - 'v*'
 
-# Same group as release.yml — when a tag push triggers both, this waits for
-# release.yml to finish (so the appcast <item> + GitHub Release assets are
-# public before we download them). `cancel-in-progress: false` matches
-# release.yml: never cancel mid-flight. A manual workflow_dispatch while
-# release.yml is mid-build will wait too — acceptable, since that means
-# the GitHub Release isn't live yet and the sync would 404 on download
-# anyway.
+# Same group as release.yml — this serializes multiple sync-gitee runs
+# (so a manual re-run doesn't fight an in-flight sync), but it does NOT
+# wait cross-workflow for release.yml to finish. Both workflows trigger
+# on tag push and run in parallel. RACE-FIX (2026-08-07): the script
+# now fetches appcast.xml from the GitHub release asset (not the local
+# main checkout), so it no longer depends on release.yml's "Publish
+# appcast update" step having pushed to main. Run 31148400716
+# demonstrated this race for v2.8.0.
+# `cancel-in-progress: false`: never cancel a sync mid-flight.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -76,7 +78,54 @@ jobs:
       - name: Sync Gitee mirror
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-        run: Scripts/sync_gitee_release.sh "v${{ steps.version.outputs.version }}"
+        id: sync
+        # RETRY (2026-08-07): if the first attempt fails (network blip,
+        # Gitee 5xx, transient token issue), wait 30s and try once more.
+        # On the second failure, let the step fail normally so the
+        # "Failure summary" step below can post diagnostics.
+        run: |
+          set -euo pipefail
+          ATTEMPTS=2
+          for i in $(seq 1 $ATTEMPTS); do
+            echo "::group::Sync attempt $i/$ATTEMPTS"
+            if Scripts/sync_gitee_release.sh "v${{ steps.version.outputs.version }}"; then
+              echo "::endgroup::"
+              echo "✅ sync succeeded on attempt $i"
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$i" -lt "$ATTEMPTS" ]; then
+              echo "⚠️ attempt $i failed — sleeping 30s before retry"
+              sleep 30
+            fi
+          done
+          echo "❌ Sync failed after $ATTEMPTS attempts"
+          exit 1
+
+      - name: Failure summary
+        # VISIBILITY (2026-08-07): when this workflow fails (sync or verify),
+        # post a GitHub step summary so the failure mode + manual recovery
+        # command is visible at a glance in the Actions tab. Combined with
+        # GitHub's built-in "send notifications for failed workflows" email
+        # toggle (per-user GH setting), this gives the operator proactive
+        # awareness instead of "didn't notice Gitee was stuck on 2.7.9".
+        if: failure()
+        run: |
+          {
+            echo "## ❌ Gitee mirror sync failed for v${{ steps.version.outputs.version }}"
+            echo ""
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo "### Recovery"
+            echo ""
+            echo "Manual re-run (idempotent — script will skip already-pushed assets):"
+            echo '```'
+            echo "gh workflow run sync-gitee.yml -f version=v${{ steps.version.outputs.version }}"
+            echo '```'
+            echo ""
+            echo "If GitHub Release assets are not yet public (release.yml still running),"
+            echo "wait a few minutes before retrying so the asset upload completes first."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify Gitee sync
         # Cheap post-sync checks (a, b, d from the handoff doc). Run even

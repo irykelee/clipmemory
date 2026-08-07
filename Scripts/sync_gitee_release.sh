@@ -38,13 +38,46 @@ TAG="v${VERSION}"
 
 [[ -n "${GITEE_TOKEN:-}" ]] || die "GITEE_TOKEN 未设置 — Gitee 私人令牌（projects + releases 权限）"
 
-APPCAST="appcast.xml"
-[[ -f "$APPCAST" ]] || die "缺少 $APPCAST — 需在项目根运行"
-
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# ---------- 0. Download the tarball FROM GitHub release ----------
+# ---------- 0a. Download the upstream appcast FROM GitHub release ----------
+# RACE-FIX (2026-08-07): previously this script read "$OLDPWD/appcast.xml"
+# from the local checkout. When the sync workflow was triggered by a tag
+# push, it ran concurrently with release.yml. release.yml's "Publish
+# appcast update" step pushed the vX.Y.Z <item> to main at ~04:49:03, but
+# sync-gitee.yml had already checked out main at ~04:45:15 (before the
+# push). Result: local appcast.xml was stale, script's grep self-test
+# failed ("appcast 副本缺少 vX.Y.Z 的 Gitee enclosure"), and the Gitee
+# mirror stayed on the previous version. Run 31148400716 demonstrated
+# this in production for v2.8.0.
+#
+# Fix: fetch the appcast FROM the GitHub release asset, the same way
+# step 0b fetches the tarball. The release asset is published BEFORE
+# sync-gitee.yml can possibly run its main-checkout step (concurrency
+# aside), so this side-steps the race entirely. As a fallback, keep
+# reading the local file — useful for manual local runs where GitHub
+# may not be reachable.
+APPCAST_URL="https://github.com/irykelee/clipmemory/releases/download/${TAG}/appcast.xml"
+APPCAST_TMP="$TMP/upstream-appcast.xml"
+log "从 GitHub release 下载 appcast.xml（race-fix: 不用本地 \$OLDPWD/appcast.xml）"
+if curl -fL --max-time 60 "$APPCAST_URL" -o "$APPCAST_TMP" 2>/dev/null; then
+    UPSTREAM_APPCAST="$APPCAST_TMP"
+    ok "upstream appcast.xml 已下载（$(wc -c < "$APPCAST_TMP" | tr -d ' ') bytes）"
+else
+    # Fallback: local file (manual run on dev box, or GitHub release asset
+    # not yet public — shouldn't happen given the tag push ordering, but
+    # the explicit warning makes the failure mode diagnosable).
+    APPCAST="appcast.xml"
+    if [[ -f "$APPCAST" ]]; then
+        log "⚠️ 上游 appcast 下载失败，回退本地 $APPCAST（可能 stale — 见 RACE-FIX 注释）"
+        UPSTREAM_APPCAST="$APPCAST"
+    else
+        die "本地 + 上游 appcast 都拿不到 — GitHub release ${TAG} 的 appcast.xml 资产不存在？"
+    fi
+fi
+
+# ---------- 0b. Download the tarball FROM GitHub release ----------
 # CRITICAL (2026-08-05 verify): the uploaded bytes MUST equal the GitHub
 # release tarball byte-for-byte — Sparkle verifies the edSignature against
 # the downloaded bytes, and a locally rebuilt tarball differs in gzip
@@ -71,7 +104,7 @@ cd "$TMP/repo"
 # ---------- 2. Generate the Gitee appcast copy ----------
 log "生成 Gitee appcast 副本（enclosure → Gitee 资产 URL）"
 sed "s|https://github.com/irykelee/clipmemory/releases/download/|https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/|g" \
-    "$OLDPWD/$APPCAST" > appcast.xml
+    "$UPSTREAM_APPCAST" > appcast.xml
 grep -q "gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/v${VERSION}/" appcast.xml \
     || die "appcast 副本缺少 v${VERSION} 的 Gitee enclosure（上游 appcast.xml 是否已含 v${VERSION} item？）"
 ! grep -q "github.com/irykelee/clipmemory/releases/download/v${VERSION}/" appcast.xml \
@@ -160,9 +193,9 @@ else
     # temp file's name. Capture the response body — Gitee returns
     # the new attachment's id, needed by step 6 to delete pre-existing
     # dupes from earlier broken sync runs.
-    UPLOAD_RESP=$(curl -sf --max-time 180 -X POST "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}" \
-        -F "file=@${TARBALL_TMP};filename=ClipMemory.tar.gz" 2>/dev/null) \
-        || die "上传 tarball 到 Gitee 失败"
+    UPLOAD_RESP=$(curl -s --max-time 600 -X POST "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}" \
+        -F "file=@${TARBALL_TMP};filename=ClipMemory.tar.gz" 2>/tmp/upload.err) \
+        || { cat /tmp/upload.err | sed -E 's|://[^[:space:]@/]+@|://[REDACTED]@|g; s|access_token=[^&[:space:]]+|access_token=[REDACTED]|g' >&2; die "上传 tarball 到 Gitee 失败"; }
     ok "tarball 已上传 Gitee release"
 fi
 
