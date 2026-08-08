@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.8.0
+# 剪忆 ClipMemory v2.8.1
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 更新日志
+
+### v2.8.1 (2026-08-08) — 修复 saveItems 静默失败 + 5 项审计加固
+
+- **� 修复 saveItems 静默吞错导致剪贴板数据丢失（ID-SILENT-0021 HIGH）** — `ClipboardStore.flushSave()` 现在捕获 `saveItems()` 抛错并 `needsSave = true` 保留重试状态 + post `.clipboardSaveFailed` 通知 UI 通道；之前磁盘满 / 权限错 / iCloud 冲突持续 ≥ 500ms debounce 窗口 + 用户退出前无后续 mutation 时，本次 session 的剪贴板捕获会**永久丢失**（用户不可重建）。触发条件严格化（不是每次失败都丢）：磁盘错持续 + 500ms 窗口 + 期间无 mutation 触发 `saveImmediately` 重存 + 用户退出 → 4 个条件全部成立才真丢；任一不满足被掩盖。新增 `Notification.Name.clipboardSaveFailed` 兜底 UI 通道。
+- **🛠 修复 key re-ready 后 session 内永久空白行（ID-SILENT-0019 MEDIUM）** — `handleCryptoKeyPrepared(success:)` 分支现在除清 `pendingFailedIDs` 外，额外重置所有 `items[].decryptionFailed = false`；之前 `mergePendingDecryptionFailures` 把 flag 写下去后即使用户后续收到 key 就绪通知，session 内一直空白、必须重启 app 才恢复。配合 v2.8.0 (ID-STORE-0010) 形成完整对称：负缓存清 + pendingFailedIDs 清 + decryptionFailed flag 重置 = cold-start key-not-ready 窗口的数据丢失彻底闭环。
+- **🛠 修复 release-config XCTest 隔离失效（ID-SYNC-0006 MEDIUM）** — `NoOpFeedProbeEngine` class + `_sharedDefault` 的 `if isRunningTests` guard 移出 `#if DEBUG`。XCTest framework 设置 `XCTestConfigurationFilePath` env var 与 build config 无关，release-config XCTest 跑测试时 guard 之前会被 `#if DEBUG` 编译掉、真实 `SPUStandardUpdaterController` 启动 + 真实 appcast HTTP probe → 重新触发 NEW-3 想阻止的污染路径。class 安全（`@unchecked Sendable` + 无 mutable state）移出 DEBUG 后 release production 零成本。
+- **🛠 7 项 LOW doc/log 收紧（MISC-0008/0009/0013 + SHELL-0001/0002 + SECURITY-0008 + SILENT-0022）**
+- **🛠 7 处 XCTest notification test 改 observer-driven 等待（ID-TEST-0001）** — `CryptoKeyPreparedNotificationTests` + `ClipboardStoreDecryptionFlagResetTests` 共 7 个 case 把 `DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }` 的 100ms 时间等待换成 `NotificationCenter.addObserver(forName:object:queue:.main) { exp.fulfill() }` + `defer { removeObserver }` 的 observer-driven 模式。CI 负载下 100ms 窗口可能不够 → flaky；idle 机器 100ms 是浪费。observer 注册同步 → wait 在 observer 触发的瞬间返回（典型 <1ms）。
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.1
 
 ### v2.8.0 (2026-08-07) — 新增 Gitee 镜像通道 + 测试与质量硬化
 

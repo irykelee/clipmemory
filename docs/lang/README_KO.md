@@ -1,4 +1,4 @@
-# ClipMemory v2.8.0
+# ClipMemory v2.8.1
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 변경 로그
+
+### v2.8.1 (2026-08-08) — saveItems 무음 실패 수정 + 5가지 감사 강화
+
+- **🐛 saveItems 무음 오류로 인한 클립보드 데이터 손실 수정 (ID-SILENT-0021 HIGH)** — `ClipboardStore.flushSave()`가 이제 `saveItems()`의抛오를 캡처하고 `needsSave = true`를 유지하여 재시도 상태를 보존 + `.clipboardSaveFailed` 알림으로 UI 채널에 전달. 이전에는 디스크 가득 참 / 권한 오류 / iCloud 충돌이 ≥ 500ms 디바운스 창 동안 지속되고 사용자 종료 전에 추가 mutation이 없으면, 이번 세션의 클립보드 캡처가 **영구적으로 손실**되었습니다(사용자가 재구성 불가). 트리거 조건을 엄격히 적용(모든 실패가 손실되는 것은 아님): 디스크 오류 지속 + 500ms 창 + 그 사이에 `saveImmediately` 재저장을 트리거하는 mutation 없음 + 사용자 종료 → 4가지 조건이 모두 충족되어야 실제 손실; 하나라도 충족되지 않으면 가려짐. 새 `Notification.Name.clipboardSaveFailed` 폴백 UI 채널 추가.
+- **🛠 키 재준비 후 세션 내 영구 빈 줄 수정 (ID-SILENT-0019 MEDIUM)** — `handleCryptoKeyPrepared(success:)` 분기가 이제 `pendingFailedIDs`를 비우는 것 외에 모든 `items[].decryptionFailed = false`를 추가로 재설정. 이전에는 `mergePendingDecryptionFailures`가 flag를 기록한 후 사용자가 이후에 키 준비 알림을 받아도 세션 내내 빈 줄이 표시되고 앱을 재시작해야 복구되었습니다. v2.8.0 (ID-STORE-0010)과 함께 완전한 대칭을 형성: 네거티브 캐시 비움 + pendingFailedIDs 비움 + decryptionFailed flag 재설정 = cold-start 키 미준비 창 데이터 손실 완전 종결.
+- **🛠 release-config XCTest 격리 무효화 수정 (ID-SYNC-0006 MEDIUM)** — `NoOpFeedProbeEngine` class + `_sharedDefault`의 `if isRunningTests` guard를 `#if DEBUG` 밖으로 이동. XCTest framework가 `XCTestConfigurationFilePath` env var를 설정하는 것은 build config와 무관하며, release-config XCTest에서 테스트 실행 시 guard가 이전에는 `#if DEBUG`에 의해 컴파일에서 제외되어 실제 `SPUStandardUpdaterController`가 시작되고 실제 appcast HTTP probe가 실행되어 NEW-3가 차단하려는 오염 경로가 다시 트리거되었습니다. class는 안전하며(`@unchecked Sendable` + mutable state 없음) DEBUG 밖으로 이동해도 release 프로덕션에 제로 비용.
+- **🛠 7건의 LOW doc/log 정리 (MISC-0008/0009/0013 + SHELL-0001/0002 + SECURITY-0008 + SILENT-0022)**
+- **🛠 XCTest notification test 7곳을 observer-driven 대기로 변경 (ID-TEST-0001)** — `CryptoKeyPreparedNotificationTests` + `ClipboardStoreDecryptionFlagResetTests`의 총 7개 케이스가 `DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }`의 100ms 시간 대기를 `NotificationCenter.addObserver(forName:object:queue:.main) { exp.fulfill() }` + `defer { removeObserver }`의 observer-driven 패턴으로 교체. CI 부하에서 100ms 창이 부족 → flaky; 유휴 머신에서 100ms는 낭비. observer 등록은 동기식 → observer가 트리거되는 순간 wait가 반환(일반적으로 <1ms).
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.8.1
 
 ### v2.8.0 (2026-08-07) — Gitee 미러 채널 + 테스트 및 품질 강화
 

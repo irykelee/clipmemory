@@ -1,4 +1,4 @@
-# ClipMemory v2.8.0
+# ClipMemory v2.8.1
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.8.1 (2026-08-08) — Fix saveItems silent failure + 5 audit hardening items
+
+- **🛠 Fix saveItems silently swallowing errors causing clipboard data loss (ID-SILENT-0021 HIGH)** — `ClipboardStore.flushSave()` now catches errors thrown by `saveItems()` and sets `needsSave = true` to preserve retry state, plus posts `.clipboardSaveFailed` to notify the UI channel; previously, when a disk-full / permission error / iCloud conflict persisted for ≥ 500ms debounce window and no subsequent mutation occurred before user exit, the current session's clipboard captures were **permanently lost** (unrecoverable by the user). Trigger conditions were tightened (not every failure loses data): persistent disk error + 500ms window + no mutation during that window to trigger `saveImmediately` re-save + user exit — data is actually lost only when all 4 conditions are true; otherwise the loss was masked. Added `Notification.Name.clipboardSaveFailed` as a fallback UI channel.
+- **🛠 Fix permanently blank rows in session after key re-ready (ID-SILENT-0019 MEDIUM)** — `handleCryptoKeyPrepared(success:)` branch now also resets all `items[].decryptionFailed = false` in addition to clearing `pendingFailedIDs`; previously, after `mergePendingDecryptionFailures` wrote the flag, even if the user later received the key-ready notification, the session stayed blank until the app was restarted. Together with v2.8.0 (ID-STORE-0010) this forms a fully symmetric closure: negative cache clear + pendingFailedIDs clear + decryptionFailed flag reset = the cold-start key-not-ready window data-loss gap is completely closed.
+- **🛠 Fix release-config XCTest isolation failure (ID-SYNC-0006 MEDIUM)** — `NoOpFeedProbeEngine` class and the `if isRunningTests` guard on `_sharedDefault` were moved out of `#if DEBUG`. The XCTest framework sets the `XCTestConfigurationFilePath` env var independently of build config, so when release-config XCTest runs tests the guard was previously compiled out by `#if DEBUG`, starting the real `SPUStandardUpdaterController` + real appcast HTTP probe — re-triggering the pollution path NEW-3 was meant to prevent. The class is safe (`@unchecked Sendable` + no mutable state) and moving it out of DEBUG costs zero in release production.
+- **🛠 7 LOW doc/log tightenings (MISC-0008/0009/0013 + SHELL-0001/0002 + SECURITY-0008 + SILENT-0022)**
+- **🛠 7 XCTest notification tests switched to observer-driven waiting (ID-TEST-0001)** — 7 cases across `CryptoKeyPreparedNotificationTests` + `ClipboardStoreDecryptionFlagResetTests` replaced the `DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }` 100ms time-based waits with the observer-driven pattern `NotificationCenter.addObserver(forName:object:queue:.main) { exp.fulfill() }` + `defer { removeObserver }`. Under CI load, the 100ms window may not be enough → flaky; on an idle machine, 100ms is wasted time. Observer registration is synchronous → `wait` returns the moment the observer fires (typically <1ms).
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.1
 
 ### v2.8.0 (2026-08-07) — Gitee Mirror Channel + Test & Quality Hardening
 

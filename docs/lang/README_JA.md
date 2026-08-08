@@ -1,4 +1,4 @@
-# ClipMemory v2.8.0
+# ClipMemory v2.8.1
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.8.1 (2026-08-08) — saveItems のサイレント失敗を修正 + 5 項目の監査強化
+
+- **� saveItems がエラーを静かに飲み込み、クリップボードデータが失われる問題を修正（ID-SILENT-0021 HIGH）** — `ClipboardStore.flushSave()` は `saveItems()` が投げたエラーを捕捉し、`needsSave = true` で再試行状態を保持するようになり、`.clipboardSaveFailed` 通知を UI チャンネルに送信します。以前は、ディスク容量不足 / 権限エラー / iCloud 競合が ≥ 500ms のデバウンスウィンドウにわたって継続し、ユーザーが終了するまでに後続の mutation がなかった場合、このセッションのクリップボードキャプチャは**永久に失われていました**（ユーザーは再構築できません）。トリガー条件を厳格化しました（毎回の失敗で失われるわけではありません）：ディスクエラーが継続 + 500ms ウィンドウ + その間に `saveImmediately` の再保存をトリガーする mutation がない + ユーザー終了 → 4 つの条件がすべて揃った場合のみ実際に失われます。どれか一つでも満たされない場合はマスクされていました。新たに `Notification.Name.clipboardSaveFailed` によるフォールバック用 UI チャンネルを追加しました。
+- **🛠 key 再準備完了後にセッション内で空白行が永続する問題を修正（ID-SILENT-0019 MEDIUM）** — `handleCryptoKeyPrepared(success:)` 分岐は、`pendingFailedIDs` をクリアするだけでなく、すべての `items[].decryptionFailed = false` を追加でリセットするようになりました。以前は `mergePendingDecryptionFailures` がフラグを書き込んだ後、ユーザーが後から key 準備完了通知を受け取っても、セッション中は常に空白のままで、アプリを再起動しないと復旧しませんでした。v2.8.0 (ID-STORE-0010) と組み合わせて完全な対称性が形成されます：negativeCache クリア + pendingFailedIDs クリア + decryptionFailed フラグのリセット = コールドスタート時の key 未準備ウィンドウでのデータ損失を完全にクローズします。
+- **🛠 release-config XCTest の分離が機能しない問題を修正（ID-SYNC-0006 MEDIUM）** — `NoOpFeedProbeEngine` クラスと `_sharedDefault` の `if isRunningTests` ガードを `#if DEBUG` の外に移動。XCTest framework が設定する `XCTestConfigurationFilePath` 環境変数は build config に依存しないため、release-config XCTest でテストを実行すると、以前はガードが `#if DEBUG` によってコンパイル対象から除外され、実際の `SPUStandardUpdaterController` が起動し、実際の appcast HTTP probe が実行される → NEW-3 が防ごうとしていた汚染パスが再発していました。このクラスは安全（`@unchecked Sendable` + mutable state なし）なため、DEBUG の外に移しても release production ではコストはかかりません。
+- **🛠 LOW の doc/log を 7 項目厳格化（MISC-0008/0009/0013 + SHELL-0001/0002 + SECURITY-0008 + SILENT-0022）**
+- **🛠 XCTest の通知テスト 7 箇所を observer-driven 待機に変更（ID-TEST-0001）** — `CryptoKeyPreparedNotificationTests` と `ClipboardStoreDecryptionFlagResetTests` の合計 7 ケースで、`DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }` による 100ms の時間待機を、`NotificationCenter.addObserver(forName:object:queue:.main) { exp.fulfill() }` + `defer { removeObserver }` による observer-driven パターンに置き換えました。CI 負荷時には 100ms ウィンドウが不足する可能性がある → flaky。アイドル状態のマシンでは 100ms は無駄です。observer 登録は同期されるため、wait は observer がトリガーされた瞬間に戻ります（通常 <1ms）。
+- 完全な changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.1
 
 ### v2.8.0 (2026-08-07) — Gitee ミラーチャンネル + テスト・品質の強化
 

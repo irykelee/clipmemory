@@ -1,4 +1,4 @@
-# ClipMemory v2.8.0
+# ClipMemory v2.8.1
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.8.1 (2026-08-08) — Corrección de fallo silencioso de saveItems + 5 elementos de endurecimiento de auditoría
+
+- **� Corrección de error silencioso de saveItems que causaba pérdida de datos del portapapeles (ID-SILENT-0021 HIGH)** — `ClipboardStore.flushSave()` ahora captura los errores lanzados por `saveItems()` y mantiene `needsSave = true` para conservar el estado de reintento + publica `.clipboardSaveFailed` para notificar el canal de UI; anteriormente, si el disco estaba lleno / error de permisos / conflicto de iCloud persistía ≥ 500 ms de ventana de debounce + sin mutaciones posteriores antes de salir, las capturas del portapapeles de esta sesión se perdían **permanentemente** (no reconstruibles por el usuario). Condiciones de activación estrictas (no toda falla pierde): error de disco persistente + ventana de 500 ms + sin mutación durante la ventana que dispare `saveImmediately` para guardar de nuevo + salida del usuario → solo se pierde si se cumplen las 4 condiciones; si alguna no se cumple, se enmascara. Se añade `Notification.Name.clipboardSaveFailed` como canal de UI de respaldo.
+- **🛠 Corrección de fila en blanco permanente en sesión después de key re-ready (ID-SILENT-0019 MEDIUM)** — la rama `handleCryptoKeyPrepared(success:)` ahora, además de limpiar `pendingFailedIDs`, restablece adicionalmente todos los `items[].decryptionFailed = false`; anteriormente, después de que `mergePendingDecryptionFailures` escribía la marca, incluso si el usuario recibía posteriormente la notificación de key lista, la sesión permanecía en blanco y era necesario reiniciar la app para recuperarse. Junto con v2.8.0 (ID-STORE-0010), se forma una simetría completa: limpieza de caché negativa + limpieza de `pendingFailedIDs` + restablecimiento de la marca `decryptionFailed` = cierre completo del bucle de pérdida de datos en la ventana de key-no-lista en arranque en frío.
+- **🛠 Corrección de aislamiento XCTest roto en release-config (ID-SYNC-0006 MEDIUM)** — la clase `NoOpFeedProbeEngine` + el guard `if isRunningTests` de `_sharedDefault` se mueven fuera de `#if DEBUG`. El framework XCTest establece la variable de entorno `XCTestConfigurationFilePath` independientemente de la configuración de build; cuando se ejecutan pruebas XCTest en release-config, el guard anteriormente se compilaba fuera con `#if DEBUG`, provocando que el `SPUStandardUpdaterController` real arrancara + `appcast` HTTP probe real → reactivando la ruta de contaminación que NEW-3 quería bloquear. La clase es segura (`@unchecked Sendable` + sin estado mutable) y moverla fuera de DEBUG tiene costo cero en producción release.
+- **🛠 7 elementos LOW de ajuste de doc/log (MISC-0008/0009/0013 + SHELL-0001/0002 + SECURITY-0008 + SILENT-0022)**
+- **🛠 7 pruebas XCTest de notificación cambiadas a espera dirigida por observer (ID-TEST-0001)** — `CryptoKeyPreparedNotificationTests` + `ClipboardStoreDecryptionFlagResetTests` en total 7 casos reemplazan la espera temporal `DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }` de 100 ms por el patrón dirigido por observer: `NotificationCenter.addObserver(forName:object:queue:.main) { exp.fulfill() }` + `defer { removeObserver }`. Bajo carga de CI, la ventana de 100 ms puede no ser suficiente → flaky; en máquinas idle, 100 ms es un desperdicio. El registro del observer es síncrono → la espera regresa en el momento en que el observer se dispara (típicamente <1 ms).
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.8.1
 
 ### v2.8.0 (2026-08-07) — Canal de espejo Gitee + Endurecimiento de pruebas y calidad
 

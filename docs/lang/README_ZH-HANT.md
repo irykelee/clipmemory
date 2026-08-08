@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.8.0
+# 剪憶 ClipMemory v2.8.1
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 更新日誌
+
+### v2.8.1 (2026-08-08) — 修正 saveItems 靜默失敗 + 5 項稽核強化
+
+- **� 修正 saveItems 靜默吞錯導致剪貼簿資料遺失（ID-SILENT-0021 HIGH）** — `ClipboardStore.flushSave()` 現在會捕獲 `saveItems()` 拋出的錯誤，並以 `needsSave = true` 保留重試狀態，加上 post `.clipboardSaveFailed` 通知 UI 通道；先前若磁碟已滿 / 權限錯誤 / iCloud 衝突持續 ≥ 500ms debounce 視窗，且使用者在結束前沒有後續 mutation，本次 session 的剪貼簿擷取內容會**永久遺失**（使用者無法重建）。觸發條件已嚴格化（不是每次失敗都會遺失）：磁碟錯誤持續 + 500ms 視窗 + 期間無 mutation 觸發 `saveImmediately` 重存 + 使用者結束 → 4 個條件全部成立才會真正遺失；任一條件不滿足就會被掩蓋。新增 `Notification.Name.clipboardSaveFailed` 作為 UI 通道的兜底。
+- **🛠 修正 key re-ready 後 session 內永久空白行（ID-SILENT-0019 MEDIUM）** — `handleCryptoKeyPrepared(success:)` 分支現在除了清除 `pendingFailedIDs` 之外，會額外重置所有 `items[].decryptionFailed = false`；先前 `mergePendingDecryptionFailures` 把 flag 寫下去之後，即使用戶後續收到 key 就緒通知，session 內仍一直空白，必須重新啟動 app 才會恢復。配合 v2.8.0 (ID-STORE-0010) 形成完整對稱：負向快取清 + `pendingFailedIDs` 清 + `decryptionFailed` flag 重置 = cold-start key-not-ready 視窗的資料遺失徹底閉環。
+- **🛠 修正 release-config XCTest 隔離失效（ID-SYNC-0006 MEDIUM）** — `NoOpFeedProbeEngine` class + `_sharedDefault` 的 `if isRunningTests` guard 移出 `#if DEBUG`。XCTest framework 設定 `XCTestConfigurationFilePath` env var 與 build config 無關，release-config XCTest 執行測試時 guard 之前會被 `#if DEBUG` 編譯掉、真實 `SPUStandardUpdaterController` 啟動 + 真實 appcast HTTP probe → 重新觸發 NEW-3 想阻止的污染路徑。class 安全（`@unchecked Sendable` + 無 mutable state）移出 DEBUG 後 release production 零成本。
+- **🛠 7 項 LOW doc/log 收緊（MISC-0008/0009/0013 + SHELL-0001/0002 + SECURITY-0008 + SILENT-0022）**
+- **🛠 7 處 XCTest notification test 改為 observer-driven 等待（ID-TEST-0001）** — `CryptoKeyPreparedNotificationTests` + `ClipboardStoreDecryptionFlagResetTests` 共 7 個 case 把 `DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }` 的 100ms 時間等待換成 `NotificationCenter.addObserver(forName:object:queue:.main) { exp.fulfill() }` + `defer { removeObserver }` 的 observer-driven 模式。CI 負載下 100ms 視窗可能不夠 → flaky；idle 機器 100ms 是浪費。observer 註冊同步 → wait 在 observer 觸發的瞬間返回（典型 <1ms）。
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.1
 
 ### v2.8.0 (2026-08-07) — 新增 Gitee 鏡像通道 + 測試與品質強化
 
