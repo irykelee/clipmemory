@@ -34,9 +34,19 @@ extension StorageBackend {
 
 // MARK: - File Storage (UserDefaults)
 
-/// Production backend backed by UserDefaults.
-/// Writes are synchronous so `flushPendingSaves()` can guarantee data hits disk
-/// before the app terminates.
+/// Production backend backed by UserDefaults — **despite the name, it
+/// does NOT touch the filesystem**. The "File" in the name is a
+/// historical artifact from when this protocol was first introduced
+/// (then FileStorageBackend was intended to write to disk via
+/// `~/Library/Application Support/ClipMemory/...`; that plan was
+/// dropped in favor of UserDefaults for atomicity). Reads and writes
+/// go through `UserDefaults.standard` only — see `init`, `load`,
+/// `save`, `saveBlob`. Tests that want real disk isolation should use
+/// a different backend or wrap with `testDefaults` via the
+/// `makeTestDefaults()` test seam.
+///
+/// Writes are synchronous so `flushPendingSaves()` can guarantee data hits
+/// the UserDefaults store before the app terminates.
 final class FileStorageBackend: StorageBackend {
     // ID-PERF-0001 (2026-07-30 audit): hoist JSONEncoder allocation.
     // JSONEncoder is documented thread-safe for `.encode()` since macOS 10.15,
