@@ -650,6 +650,31 @@ final class ClipboardStore: ObservableObject {
             pendingFailedIDsLock.lock()
             pendingFailedIDs.removeAll()
             pendingFailedIDsLock.unlock()
+            // ID-SILENT-0019 (2026-08-08 audit): paired with the
+            // `pendingFailedIDs.removeAll()` above (ID-STORE-NEG-CACHE-SYNC,
+            // `aeedf6e`). The buffer clear alone is necessary but not
+            // sufficient — `mergePendingDecryptionFailures` runs on the
+            // main loop tick after each `scheduleDecryptionFailedMark` and
+            // sets `items[].decryptionFailed = true`, which then
+            // short-circuits `getDecryptedContent` (`:1471`) and `prewarm`
+            // (`:1651`) for the rest of the session. Without this reset,
+            // items that failed to decrypt during the cold-start key-not-
+            // ready window stay blank until next app launch (which
+            // triggers `loadItems` to re-mark them based on actual
+            // ciphertext integrity).
+            //
+            // On key re-ready, transient failures (key-unavailable → data
+            // genuinely fine) heal in-session. Permanent failures
+            // (genuine dataCorrupted) will re-fail on next getDecrypted
+            // and re-trip the flag — same observable behavior as pre-fix
+            // for those items, with one wasted retry per key-ready event.
+            rebuildItemIndexIfStale()
+            var flagResetChanged = false
+            for index in items.indices where items[index].decryptionFailed {
+                items[index].decryptionFailed = false
+                flagResetChanged = true
+            }
+            if flagResetChanged { objectWillChange.send() }
             for item in pending { self.addItem(item) }
             // M2 (2026-08-01 roadmap): heal items stored with contentHash = nil
             // while the key was unavailable — backfill their hashes and merge
