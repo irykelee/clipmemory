@@ -141,6 +141,7 @@
 		D53F9D6DE94F744B8BBFA242 /* ClipboardStorePrewarmTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 130616BF434B4287D413CCC5 /* ClipboardStorePrewarmTests.swift */; };
 		D61C7E8F6FA342BE56F5DB3D /* ImagePreviewPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C63DA186B15CCC8937235FB /* ImagePreviewPanel.swift */; };
 		D6F09D6C2A4BA87DCF45861B /* CryptoKeyPreparedNotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F6F57974E3B6AFF40A7E7C0 /* CryptoKeyPreparedNotificationTests.swift */; };
+		DCAADC0BB575FFCDACDA9125 /* NotificationObserverAssertionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 822F6841520DF018FBAFBCCB /* NotificationObserverAssertionTests.swift */; };
 		DFCF4552D5219344183442AA /* SettingsWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0737D413E239E7267B3B46B /* SettingsWindowTests.swift */; };
 		E0C4844592EA65246C9EC5C5 /* ClipboardItemRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3837DC25F85BAAC0D17B957C /* ClipboardItemRowTests.swift */; };
 		E11CDAFAE74870EB54100534 /* ClipboardStoreSaveFailureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB120FC542F0DC0670338FFC /* ClipboardStoreSaveFailureTests.swift */; };
@@ -260,6 +261,7 @@
 		77AE865BB02BB4CB6A78CACD /* UIObservabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIObservabilityTests.swift; sourceTree = "<group>"; };
 		7B1E4EEEB18148D99A25B6FD /* RichTextParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextParser.swift; sourceTree = "<group>"; };
 		814FC521762331411B0823A5 /* ClipMemoryTests.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ClipMemoryTests.entitlements; sourceTree = "<group>"; };
+		822F6841520DF018FBAFBCCB /* NotificationObserverAssertionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationObserverAssertionTests.swift; sourceTree = "<group>"; };
 		82E1F13FC9F44D0F33F760C5 /* ConditionalClearSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConditionalClearSheet.swift; sourceTree = "<group>"; };
 		839CBF46AA3C928BA9AE620F /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = ko; path = ko.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
 		83F24A9E0B6E2D942D6515B4 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = en; path = en.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
@@ -468,6 +470,7 @@
 				6DE0A37C5B380B1D3129ECBA /* LegacyImageMigrationTests.swift */,
 				D308A232E245A43D294015ED /* LocalizationKeysTests.swift */,
 				67B0F06D9FC3DEEF030857E5 /* NewTagLogicTests.swift */,
+				822F6841520DF018FBAFBCCB /* NotificationObserverAssertionTests.swift */,
 				60F4F14EE74FA6296B38BAC1 /* OCRTests.swift */,
 				2914AA3EEABA4BF9DF482852 /* QuickBarOCRTests.swift */,
 				C423473D7E4BD0CAE37EB7D3 /* QuickBarViewTests.swift */,
@@ -785,6 +788,7 @@
 				31D986129C9F15C065BEF82B /* LegacyImageMigrationTests.swift in Sources */,
 				BE8B6E90F6C7908C56E5FE5A /* LocalizationKeysTests.swift in Sources */,
 				F9D0CA5FF9ADDF71F71F9F72 /* NewTagLogicTests.swift in Sources */,
+				DCAADC0BB575FFCDACDA9125 /* NotificationObserverAssertionTests.swift in Sources */,
 				268F00592F6257266F2BE904 /* OCRTests.swift in Sources */,
 				868914B1AF4B89BD3A4881EB /* QuickBarOCRTests.swift in Sources */,
 				D0C9F9F34B9E362919FC02D0 /* QuickBarViewTests.swift in Sources */,
