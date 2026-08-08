@@ -193,6 +193,17 @@ else
     # temp file's name. Capture the response body — Gitee returns
     # the new attachment's id, needed by step 6 to delete pre-existing
     # dupes from earlier broken sync runs.
+    # ID-SHELL-0001 (2026-08-08 audit): --max-time 600 (10 min) — Gitee
+    # upload of a ~7 MB tarball can be slow on constrained networks; the
+    # sync-gitee workflow timeout-minutes is 15 (900s), so 600 leaves
+    # headroom for the workflow's own kill. Was 180 before 3530fa7; the
+    # 3.3x increase matched observed upload time on slow connections.
+    # ID-SHELL-0002 (2026-08-08 audit): stderr redirected to /tmp/upload.err
+    # (not 2>&1) because the err-redirect-then-cat-and-redact idiom needs
+    # the file as a buffer to grep `://[user]@` and `access_token=` patterns
+    # out before echoing to the operator. Inline 2>&1 piping would short-
+    # circuit the redaction pass and leak the Gitee access token to the
+    # CI log on any upload failure.
     UPLOAD_RESP=$(curl -s --max-time 600 -X POST "${GITEE_API}/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}" \
         -F "file=@${TARBALL_TMP};filename=ClipMemory.tar.gz" 2>/tmp/upload.err) \
         || { cat /tmp/upload.err | sed -E 's|://[^[:space:]@/]+@|://[REDACTED]@|g; s|access_token=[^&[:space:]]+|access_token=[REDACTED]|g' >&2; die "上传 tarball 到 Gitee 失败"; }

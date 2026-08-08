@@ -978,7 +978,16 @@ class CryptoService: CryptoServiceProtocol {
             // timing side-channel forgery of the auth tag)
             let ivAndCiphertext = combined.dropLast(hmacSize)
             let computedHMAC = computeHMAC(data: Data(ivAndCiphertext), key: key)
+            // ID-SILENT-0022 (2026-08-08 audit): distinguish HMAC mismatch
+            // from other decrypt failures. Pre-fix, this path returned nil
+            // silently and the caller (`decryptWithReason`) logged a generic
+            // "decryptBytes returned nil" — operators diagnosing "why can't
+            // I read old items" had no signal that the failure was auth vs
+            // format corruption. `decryptV2` already distinguishes via
+            // CryptoKit's `authenticationFailure` error; this brings the
+            // legacy path to parity.
             guard Self.constantTimeCompare(computedHMAC, storedHMAC) else {
+                Self.logger.error("HMAC mismatch on legacy decrypt — stored vs computed tag diverge (key? tampered ciphertext? pre-1.2.0 no-HMAC branch?)")
                 return nil
             }
 
@@ -1022,6 +1031,15 @@ class CryptoService: CryptoServiceProtocol {
     /// Constant-time byte comparison. Defends HMAC tag verification against
     /// timing side channels — `Data ==` short-circuits on first mismatch and
     /// leaks information about the stored tag.
+    ///
+    /// ID-SECURITY-0008 (2026-08-08 audit): the `a.count == b.count` early
+    /// return technically leaks tag length via timing. In practice the only
+    /// caller is HMAC-SHA256 verification, where the tag is fixed at 32
+    /// bytes — so the leak is theoretical, not exploitable. Acceptable for
+    /// the legacy decrypt path; the primary AES-GCM v2 path uses CryptoKit's
+    /// authenticated decryption, which doesn't rely on this function. If a
+    /// future caller passes variable-length secrets, replace the early
+    /// return with a length-padded XOR over `max(a.count, b.count)`.
     static func constantTimeCompare(_ a: Data, _ b: Data) -> Bool {
         guard a.count == b.count else { return false }
         var result: UInt8 = 0

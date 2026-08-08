@@ -53,10 +53,11 @@ enum UpdateFeedPolicies {
         // NEW-7 (2026-08-06 review): The original comment said "resolve()
         // short-circuits for it" — that was incomplete and misleading.
         // `resolve()` does look up the Gitee channel by id ("gitee-mirror")
-        // for the explicit .gitee policy (FeedProbeEngine:127), but this
-        // channel SHARES the `kind: .fallback` tag with the jsDelivr mirror
-        // (index 1). To prevent silent misrouting, FeedProbeEngine:103
-        // binds the fallback slot by id ("jsdelivr-mirror") not by kind;
+        // for the explicit .gitee policy (FeedProbeEngine.swift:136), but
+        // this channel SHARES the `kind: .fallback` tag with the jsDelivr
+        // mirror (index 1). To prevent silent misrouting,
+        // FeedProbeEngine.swift:112 binds the fallback slot by id
+        // ("jsdelivr-mirror") not by kind;
         // Gitee is therefore NEVER the .fallback channel, only ever an
         // explicit .gitee-policy choice. The kind=.fallback tag is kept
         // because the policy enum has no dedicated .mirror case — adding
