@@ -374,7 +374,13 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// stays discoverable even if the diff body is ever refactored to a
     /// helper (defensive against the 2026-08-03 "build passed, zero tests
     /// executed" bug recurring).
-    func testSuiteTeardownMarker() {}
+    func testSuiteTeardownMarker() {
+        // ID-MISC-0013 (2026-08-08 audit): bare method body looked like a
+        // forgotten test, but it's a class-discovery marker (XCTest skips
+        // classes with zero testXxx methods). Trivial assertion makes the
+        // intent explicit for future readers.
+        XCTAssertTrue(true)
+    }
 
     /// NEW-1 follow-up (2026-08-06): forward-assertion smoke test.
     /// Ratchet baseline tests are about shrink enforcement (allowlist

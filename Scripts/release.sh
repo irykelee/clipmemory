@@ -594,7 +594,7 @@ check_readmes() {
 check_readme_dedup() {
     local version="$1" f count fails=0
     for f in "${README_FILES[@]}"; do
-        count=$(grep -c "^### v${version} (" "$f" 2>/dev/null) || true
+        count=$(grep -c "^### v${version} (" "$f" 2>/dev/null) || true  # NEW-8 (2026-08-08 audit): grep -c returns exit 1 + newline on 0 matches; `|| true` suppresses so count assignment proceeds with the literal 0 (not empty + a 2nd 0 from `|| echo 0`, which would trigger bash arithmetic error in `[[ $count -gt 1 ]]`). `count=${count:-0}` further defends against empty. Both required together — dropping either re-introduces the noise.
         count=${count:-0}
         [[ "$count" -gt 1 ]] \
             && { echo "  ❌ $f 有 ${count} 个 '### v${version} (' heading (预期 ≤ 1,DOC-0002 类缺陷复发)"; fails=$((fails + 1)); }
