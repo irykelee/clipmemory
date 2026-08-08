@@ -64,8 +64,24 @@ jobs:
       - name: Determine version
         id: version
         run: |
+          # Three trigger paths:
+          #   - workflow_dispatch: operator passes version via `inputs.version`
+          #   - push: tags / push: branches (legacy, still kept as defense):
+          #     GITHUB_REF_NAME is the ref that triggered (tag or branch)
+          #   - workflow_run (RACE-FIX v2, 2026-08-07): triggered after
+          #     release.yml completes — GITHUB_REF_NAME is the REF THAT
+          #     TRIGGERED THE WORKFLOW (release.yml's ref, typically `main`),
+          #     NOT the tag. The fix: read the latest semver tag via
+          #     `git describe --tags`. RACE-FIX v3 (2026-08-08): this
+          #     step was previously broken because the `else` branch only
+          #     handled push-trigger semantics; on workflow_run it produced
+          #     VERSION="main" → sanity check failed → Sync Gitee step
+          #     skipped → Gitee mirror lagged.
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             VERSION="${{ inputs.version }}"
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            # checkout step above has fetch-depth: 0 → tags are local.
+            VERSION="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' | sed 's/^v//')"
           else
             VERSION="${GITHUB_REF_NAME#v}"
           fi
