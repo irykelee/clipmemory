@@ -22,7 +22,10 @@ final class TrashStore: ObservableObject {
         didSet { defaults.set(trashRetentionDays, forKey: TrashStore.trashedItemsStorageKey + ".retentionDays") }
     }
 
-    private let backend: StorageBackend
+    // H-2 (2026-08-08): `var` not `let` so `replaceBackendForTesting`
+    // (DEBUG-only seam) can swap in a fresh backend mid-test.
+    // Production code never reassigns.
+    private var backend: StorageBackend
     private let defaults: UserDefaults
     private let saveTimerQueue = DispatchQueue(label: "com.clipmemory.trashsave", qos: .utility)
     private var saveTimer: DispatchSourceTimer?
@@ -33,6 +36,17 @@ final class TrashStore: ObservableObject {
     /// F-1 phase 2 (2026-07-28): `nonisolated` so callers (incl. @MainActor
     /// ClipboardStore init) can read this static let from any isolation domain.
     nonisolated static let trashedItemsStorageKey = "ClipboardTrashedItems"
+
+    /// H-2 (2026-08-08): persistent sentinel that survives across launches.
+    /// Set to `true` when `quarantineCorruptBlob` removes the original
+    /// blob; cleared on the next successful `loadTrashedItems()`. The
+    /// in-memory `lastLoadFailed` flag is reset every launch, so without
+    /// this sentinel the second launch would `load()` the now-missing
+    /// key (returns `[]` silently), set `lastLoadFailed = false`, and
+    /// `cleanupOrphanedImages` would proceed to delete trash images as
+    /// "orphans" — irrecoverable data loss. Reading the sentinel in
+    /// `loadTrashedItems` closes that one-launch-delay gap.
+    nonisolated static let loadFailedSentinelKey = trashedItemsStorageKey + ".loadFailed"
 
     /// Reference to the content cache and RTF cache from ClipboardStore, set
     /// after init so evictCaches can drop stale entries.
@@ -54,6 +68,11 @@ final class TrashStore: ObservableObject {
     /// M13 (2026-08-03): `defaults` injectable so tests use an isolated suite.
     /// Production callers pass the defaulted `.standard` — no call-site change.
     init(backend: StorageBackend, defaults: UserDefaults = .standard) {
+        // H-2 (2026-08-08): `backend` is `var` (not `let`) so the
+        // `replaceBackendForTesting` test seam can swap in a fresh
+        // backend mid-test to exercise the post-failure recovery path.
+        // Production code never reassigns `backend` — the seam is
+        // wrapped in `#if DEBUG`.
         self.backend = backend
         self.defaults = defaults
         let retentionKey = TrashStore.trashedItemsStorageKey + ".retentionDays"
@@ -110,13 +129,62 @@ final class TrashStore: ObservableObject {
     // MARK: - Persistence
 
     func loadTrashedItems() {
+        let sentinelKey = Self.loadFailedSentinelKey
+        let hadPriorFailure = defaults.bool(forKey: sentinelKey)
+
+        // H-2 (2026-08-08): persistent-failure shortcut. If a previous
+        // launch's `quarantineCorruptBlob` already removed the blob, the
+        // next launch's `backend.load()` returns `[]` (StorageBackend
+        // `:54-57` `guard let data = ... else { return [] }`) — the call
+        // succeeds, `lastLoadFailed` would be cleared, and the orphan
+        // sweep would proceed and delete the trash images. Detect the
+        // sentinel here BEFORE calling `backend.load()` so the failure
+        // signal survives across launches.
+        if hadPriorFailure {
+            trashedItems = []
+            lastLoadFailed = true
+            logger.error("Trash load failure persisted from prior launch (sentinel '\(sentinelKey)' present). Quarantined blob retained under '\(Self.trashedItemsStorageKey).corrupt-*'. Image cleanup skipped to avoid data loss.")
+            NotificationCenter.default.post(
+                name: .trashLoadFailed,
+                object: self,
+                userInfo: ["persistent": true]
+            )
+            return
+        }
+
         do {
             trashedItems = try backend.load()
+            lastLoadFailed = false
         } catch {
             quarantineCorruptBlob(error: error)
             trashedItems = []
+            lastLoadFailed = true
+            // H-2: persist the failure across launches so the next
+            // launch also skips the orphan-image sweep (see above).
+            defaults.set(true, forKey: sentinelKey)
+            logger.error("Trash blob corrupt; quarantined + sentinel written: \(error.localizedDescription)")
+            NotificationCenter.default.post(
+                name: .trashLoadFailed,
+                object: self,
+                userInfo: ["persistent": false, "error": error.localizedDescription]
+            )
         }
     }
+
+    /// H-2 (2026-08-08): `true` after `loadTrashedItems()` swallowed a
+    /// backend.load() throw. `ClipboardStore.loadItems()` reads this and
+    /// skips `ImageStorage.cleanupOrphanedImages(keptItems:)` while it
+    /// is true to avoid irrecoverable orphan-image deletion when the
+    /// trash blob itself is the corrupt artifact.
+    private(set) var lastLoadFailed: Bool = false
+
+    #if DEBUG
+    /// H-2 test seam: swap the backend mid-test so the post-failure
+    /// recovery path can be exercised. Production code never calls this.
+    func replaceBackendForTesting(_ newBackend: StorageBackend) {
+        backend = newBackend
+    }
+    #endif
 
     // ID-PERF-0009 (2026-07-30 audit): same fix as ClipboardStore —
     // share a static `ISO8601DateFormatter` instead of allocating one

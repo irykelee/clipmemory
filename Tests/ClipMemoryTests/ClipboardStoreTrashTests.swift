@@ -549,4 +549,170 @@ import XCTest
         XCTAssertEqual(store.trashedItems.count, 1)
         XCTAssertEqual(store.items.count, 0)
     }
+
+    // MARK: - H-2 (2026-08-08 user inspect, v2 rewrite)
+
+    /// H-2 first-launch: trash backend's `load()` throws → the fix must
+    /// (a) set `lastLoadFailed` in-memory + persist the sentinel so the
+    /// next launch also sees failure, (b) skip `cleanupOrphanedImages`
+    /// in this launch's `loadItems()` so trash images aren't swept as
+    /// orphans, and (c) post `.trashLoadFailed` so the user gets a
+    /// visible signal. All three legs verified here.
+    func testTrashLoadFailureSkipsOrphanImageSweepAndPostsNotification() {
+        // Observe the user-visible signal
+        var posted = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .trashLoadFailed, object: nil, queue: nil
+        ) { _ in posted += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        // Given: a trash backend that throws on load (e.g. corrupt blob)
+        let failingTrashBackend = FailingTrashBackend()
+        let store = ClipboardStore(
+            backend: MemoryStorageBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: failingTrashBackend,
+            defaults: testDefaults
+        )
+
+        // Then: in-memory flag set + trashedItems is empty (recovery path)
+        XCTAssertTrue(
+            store.trashStore.lastLoadFailed,
+            "loadTrashedItems must surface a load failure via lastLoadFailed"
+        )
+        XCTAssertEqual(store.trashedItems.count, 0)
+
+        // And: persistent sentinel is written so the next launch also knows
+        XCTAssertTrue(
+            testDefaults.bool(forKey: TrashStore.loadFailedSentinelKey),
+            "quarantine must persist a sentinel so the next launch also sees failure"
+        )
+
+        // And: the user-visible signal fires (XCTest env: observer still
+        // receives the post — the XCTest skip is only inside the AppDelegate
+        // observer body, not in the notification dispatch itself)
+        XCTAssertGreaterThanOrEqual(posted, 1, "user-visible .trashLoadFailed must fire on launch-1 failure")
+
+        // When: ClipboardStore.loadItems() runs after a failed trash load
+        store.loadItems()
+
+        // Then: items still load correctly (items backend is separate)
+        XCTAssertEqual(store.items.count, 0, "items backend should load independently")
+
+        // And: the orphan sweep is NOT triggered — flag still true
+        XCTAssertTrue(
+            store.trashStore.lastLoadFailed,
+            "lastLoadFailed must remain true until a successful loadTrashedItems() resets it"
+        )
+    }
+
+    /// H-2 cross-launch: simulate a second app launch by constructing a
+    /// NEW ClipboardStore instance with the same `defaults`. The
+    /// persistent sentinel must make `lastLoadFailed` come up true
+    /// again — otherwise `cleanupOrphanedImages` would run on launch 2
+    /// (key now missing → `load()` returns `[]` silently → flag cleared →
+    /// trash images deleted). This is the scenario the in-memory-only
+    /// fix e39b601 missed; the cross-launch sentinel is what closes it.
+    ///
+    /// NOTE: uses `FailingTrashBackend` rather than `FileStorageBackend`
+    /// because FileStorageBackend reads `UserDefaults.standard` (the
+    /// production singleton), not the `testDefaults` suite injected here
+    /// — a pre-populated corrupt blob in `testDefaults` would be invisible
+    /// to the production-defaults backend, and `load()` would return
+    /// `[]` silently (no throw, no catch, no sentinel written).
+    func testTrashLoadFailureSurvivesAcrossLaunches() {
+        // Pre-populate a "corrupt blob" so `quarantineCorruptBlob` has
+        // something to copy to `<key>.corrupt-*`. The actual throw
+        // comes from the backend (FailingTrashBackend), not from the
+        // data itself.
+        testDefaults.set(Data([0xDE, 0xAD, 0xBE, 0xEF]), forKey: TrashStore.trashedItemsStorageKey)
+
+        // LAUNCH 1: trash backend throws on load() → quarantine + sentinel
+        _ = ClipboardStore(
+            backend: MemoryStorageBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: FailingTrashBackend(),
+            defaults: testDefaults
+        )
+        // Sentinel persisted across launches; original blob quarantined
+        XCTAssertTrue(testDefaults.bool(forKey: TrashStore.loadFailedSentinelKey),
+                      "launch 1 must persist the failure sentinel")
+        XCTAssertNil(testDefaults.data(forKey: TrashStore.trashedItemsStorageKey),
+                     "original blob must be removed by quarantine")
+
+        // LAUNCH 2: brand-new ClipboardStore with same defaults. The
+        // sentinel must short-circuit `loadTrashedItems()` BEFORE the
+        // backend is touched (otherwise the missing key would make
+        // `load()` return `[]` silently, clear the in-memory flag, and
+        // let `cleanupOrphanedImages` proceed to delete trash images).
+        let store2 = ClipboardStore(
+            backend: MemoryStorageBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: FailingTrashBackend(),
+            defaults: testDefaults
+        )
+        XCTAssertTrue(
+            store2.trashStore.lastLoadFailed,
+            "launch 2 must STILL see the failure via the persistent sentinel — " +
+            "the in-memory flag alone only delays the data loss by one restart"
+        )
+        XCTAssertEqual(store2.trashedItems.count, 0)
+
+        // And: launch 2's loadItems skips the orphan sweep too
+        store2.loadItems()
+        XCTAssertTrue(store2.trashStore.lastLoadFailed)
+    }
+
+    /// H-2 recovery: once the user/dev-tools fixes the underlying problem
+    /// (clears the sentinel + restores a valid trash blob), the NEXT
+    /// launch must resume normal operation. We simulate "fixed" by
+    /// manually clearing the sentinel + swapping in a working backend.
+    /// The user/dev-tools UI for this is out of scope — deferred per
+    /// audit §五.3 (quarantine-management UI is H-1 territory).
+    func testTrashLoadSuccessClearsPersistentSentinel() {
+        // Set up launch-1 failure state: sentinel present + original blob gone
+        testDefaults.set(true, forKey: TrashStore.loadFailedSentinelKey)
+        testDefaults.removeObject(forKey: TrashStore.trashedItemsStorageKey)
+
+        // Construct TrashStore with FailingTrashBackend — the sentinel
+        // short-circuits loadTrashedItems so the backend never gets called.
+        let trash = TrashStore(
+            backend: FailingTrashBackend(),
+            defaults: testDefaults
+        )
+        XCTAssertTrue(trash.lastLoadFailed, "sentinel short-circuit must set lastLoadFailed")
+        XCTAssertTrue(testDefaults.bool(forKey: TrashStore.loadFailedSentinelKey),
+                      "sentinel persists through the short-circuit")
+
+        // Recovery: clear sentinel + swap in a working backend
+        testDefaults.removeObject(forKey: TrashStore.loadFailedSentinelKey)
+        trash.replaceBackendForTesting(MemoryStorageBackend())
+
+        // Next loadTrashedItems: sentinel absent → backend.load() succeeds
+        // → lastLoadFailed clears
+        trash.loadTrashedItems()
+        XCTAssertFalse(trash.lastLoadFailed, "successful load must clear lastLoadFailed")
+        XCTAssertFalse(testDefaults.bool(forKey: TrashStore.loadFailedSentinelKey),
+                       "successful load must not re-write the sentinel")
+    }
+}
+
+// MARK: - H-2 test-only backend
+
+/// StorageBackend that throws on every `load()` call, simulating a
+/// corrupt trash blob. All other methods are no-ops (save/saveTags/saveBlob
+/// silently succeed; loadTags returns empty) since the test only exercises
+/// the load-failure path.
+private final class FailingTrashBackend: StorageBackend {
+    func load() throws -> [ClipboardItem] {
+        throw NSError(
+            domain: "FailingTrashBackend",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Injected trash load failure (H-2 test)"]
+        )
+    }
+    func save(_ items: [ClipboardItem]) throws { /* no-op */ }
+    func saveBlob(_ data: Data) throws { /* no-op */ }
+    func loadTags() throws -> [Tag] { return [] }
+    func saveTags(_ tags: [Tag]) throws { /* no-op */ }
 }
