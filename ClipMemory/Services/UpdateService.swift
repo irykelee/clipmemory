@@ -70,7 +70,6 @@ private final class GentleUpdateReminder: NSObject, SPUStandardUserDriverDelegat
     }
 }
 
-#if DEBUG
 /// NEW-3 (2026-08-07 Session 4): production-side no-op probe engine.
 /// `UpdateService._sharedDefault` returns an instance wired with this engine
 /// (and `autoStart: false`) when `isRunningTests` is true, so any test that
@@ -80,9 +79,18 @@ private final class GentleUpdateReminder: NSObject, SPUStandardUserDriverDelegat
 ///
 /// Companion to `Tests/ClipMemoryTests/UpdateServiceStubProbeEngine.swift`
 /// (the public-tests version used by snapshot tests). This one lives in
-/// production so the lazy `_sharedDefault` can reference it directly under
-/// the `#if DEBUG` guard; the test-only version is kept for tests that want
-/// to type-explicit reference without going through the type-checked seam.
+/// production so the lazy `_sharedDefault` can reference it directly;
+/// the test-only version is kept for tests that want to type-explicit
+/// reference without going through the type-checked seam.
+///
+/// ID-SYNC-0006 (2026-08-08 audit): this class is **not** wrapped in
+/// `#if DEBUG` because XCTest framework sets `XCTestConfigurationFilePath`
+/// regardless of build configuration — release-config XCTest runs would
+/// otherwise bypass the `_sharedDefault` guard (still inside `#if DEBUG`
+/// at `:140`), trigger a real `SPUStandardUpdaterController` startup, and
+/// re-pollute production `UserDefaults`. The class itself is safe in
+/// release builds: `@unchecked Sendable`, no mutable state, only fires
+/// when `isRunningTests` resolves true.
 private final class NoOpFeedProbeEngine: FeedProbeEngine, @unchecked Sendable {
     func resolve(
         policy: UpdateFeedPolicy,
@@ -93,7 +101,6 @@ private final class NoOpFeedProbeEngine: FeedProbeEngine, @unchecked Sendable {
         return nil
     }
 }
-#endif
 
 /// Singleton wrapper around Sparkle's updater so the rest of the app
 /// (AppDelegate, settings UI) never touches SPU* types directly.
@@ -136,12 +143,17 @@ final class UpdateService {
         // Tests that want richer probe behavior (e.g. `StubProbeEngine`
         // with decision enqueueing in UpdateServiceTests) still set
         // `injectedForTest` in setUp — that path is checked first in
-        // `shared` (line 87) and bypasses this guard entirely.
-        #if DEBUG
+        // `shared` (line 111) and bypasses this guard entirely.
+        //
+        // ID-SYNC-0006 (2026-08-08 audit): guard is unconditional (no
+        // `#if DEBUG`) because XCTest sets `XCTestConfigurationFilePath`
+        // regardless of build config — wrapping in `#if DEBUG` would let
+        // release-config XCTest runs bypass the hermetic stub and
+        // re-trigger NEW-3 pollution. See NoOpFeedProbeEngine comment
+        // above for the symmetric rationale.
         if isRunningTests {
             return UpdateService(probeEngine: NoOpFeedProbeEngine(), autoStart: false)
         }
-        #endif
         return UpdateService()
     }()
 
