@@ -41,6 +41,17 @@ extension Notification.Name {
     /// because a single transient backend hiccup can fire this repeatedly
     /// before the user takes action.
     static let clipboardSaveFailed = Notification.Name("ClipboardStore.clipboardSaveFailed")
+    /// H-2 (2026-08-08): posted by `TrashStore.loadTrashedItems()` when
+    /// either (a) `backend.load()` throws a fresh error (corrupt blob
+    /// just detected) or (b) the persistent sentinel from a prior
+    /// launch's `quarantineCorruptBlob` is still set (the corrupt blob
+    /// was quarantined on a previous launch and is no longer present,
+    /// but the failure signal must survive). `userInfo["persistent"]
+    /// : Bool` distinguishes (b) from (a). The observer must be in
+    /// production code so the user gets a visible signal — otherwise
+    /// the quarantine + sweep-skip happens silently and the user's
+    /// trash appears empty with no explanation.
+    static let trashLoadFailed = Notification.Name("TrashStore.loadFailed")
 }
 
 extension ClipboardStore: ClipboardMonitorDelegate {
@@ -889,7 +900,22 @@ final class ClipboardStore: ObservableObject {
             // (ID-STORE-0003) if the kill lands before the debounced save.
             moveToTrash(expiredItems)
         }
-        ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
+        // H-2 (2026-08-08 user inspect): the ImageStorage guard
+        // (`cleanupOrphanedImages` `:903`) only catches the case where
+        // BOTH items and trashedItems are empty. If only trashedItems is
+        // empty (because the trash blob was corrupt and `loadTrashedItems`
+        // swallowed the throw by setting `trashedItems = []`), the guard
+        // passes — `keptFilenames` only contains `items`' image filenames
+        // and `deleteAllExcept` sweeps every trash image as an orphan.
+        // That's irrecoverable data loss from a corrupt trash blob.
+        // Skip the sweep entirely while the trash load is in a failed
+        // state; the next successful loadItems() / loadTrashedItems() will
+        // clear the flag and resume the normal sweep path.
+        if !trashStore.lastLoadFailed {
+            ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
+        } else {
+            logger.error("H-2: trash blob load failed; skipping cleanupOrphanedImages to preserve possibly-referenced images. Will retry on next successful loadTrashedItems().")
+        }
 
         if repairedImages || repairedTexts {
             scheduleSave()

@@ -1,8 +1,16 @@
 import AppKit
 import SwiftUI
 import ServiceManagement
+import os.log
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    // H-2 (2026-08-08): shared logger for AppDelegate observers that
+    // currently have no dedicated logger (encryptionFailedObserver uses
+    // NSAlert which logs via osascript/NSAlert's own pipeline; the new
+    // trashLoadFailed observer uses AppKit.log directly so it surfaces
+    // in Console.app and `log show --predicate ...`).
+    private let logger = Logger(subsystem: "com.clipmemory.app", category: "AppDelegate")
+
     // H-1 (2026-07-20 audit): IUO `!` forces an implicit — and unguarded —
     // unwrap at every read site. If the relevant `setup*` step fails partway,
     // the very next read crashes here instead of producing a clear log line.
@@ -15,6 +23,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var windowManager: WindowManager?
     private var languageObserver: NSObjectProtocol?
     private var encryptionFailedObserver: NSObjectProtocol?
+    // H-2 (2026-08-08): observer for `.trashLoadFailed` so the user
+    // sees a signal when the trash blob was corrupt. Without this
+    // observer, the quarantine + sweep-skip happens silently and the
+    // user's trash appears empty with no explanation. Mirror of
+    // `encryptionFailedObserver` lifecycle (registered in
+    // setupObservers, released in deinit).
+    private var trashLoadFailedObserver: NSObjectProtocol?
     // P0-1 (2026-07-28 audit): retry CryptoService.prepareKey after
     // unlock-revealing events (system wake, session-become-active,
     // screen unlock). The original code stranded the clipboard for the
@@ -307,6 +322,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             a.alertStyle = .warning
             a.addButton(withTitle: L10n.buttonConfirm)
             a.runModal()
+        }
+
+        // H-2 (2026-08-08): log .trashLoadFailed to system log. Full
+        // user-visible surfacing (NSAlert + quarantine management UI)
+        // is deferred — the encryptionFailed observer pattern above is the
+        // template when that work lands. For now: the log line is the
+        // only post-fix user signal that a quarantine happened (pre-fix:
+        // zero signal).
+        trashLoadFailedObserver = NotificationCenter.default.addObserver(
+            forName: .trashLoadFailed, object: nil, queue: .main
+        ) { [weak self] note in
+            // Same XCTest guard as encryptionFailedObserver above: tests
+            // deliberately post .trashLoadFailed to verify the notification
+            // fires; an NSAlert here would hang CI forever.
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard let self else { return }
+            let persistent = (note.userInfo?["persistent"] as? Bool) ?? false
+            let suffix = persistent ? " (persisted from prior launch)" : ""
+            let underlying = (note.userInfo?["error"] as? String) ?? "unknown"
+            self.logger.error("Trash load failed\(suffix). Quarantined blob retained under 'ClipboardTrashedItems.corrupt-*'. Underlying error: \(underlying)")
         }
     }
 
