@@ -30,14 +30,24 @@ final class CryptoKeyPreparedNotificationTests: XCTestCase {
             keyUnavailable: false, dataCorruptedCount: 3, internalErrorCount: 0, dismissed: true
         )
 
-        // Post success notification
+        // ID-TEST-0001 (2026-08-08 audit): observer-driven fulfillment
+        // replaces the previous `DispatchQueue.main.asyncAfter + 0.1`
+        // time-based wait. The asyncAfter pattern is brittle under
+        // load (CI agents have noisy 100ms windows) and slow (each
+        // test pays the full 100ms wait). Registering an explicit
+        // observer with `queue: .main` fulfills the expectation as
+        // soon as NotificationCenter.default.post() dispatches the
+        // block, with no time-based guess.
+        let exp = expectation(description: "wait observer")
+        let token = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: .main
+        ) { _ in exp.fulfill() }
+        defer { NotificationCenter.default.removeObserver(token) }
+
         NotificationCenter.default.post(
             name: .cryptoKeyPrepared, object: nil, userInfo: ["success": true]
         )
 
-        // Observer runs on queue: .main — yield to let it fire
-        let exp = expectation(description: "wait observer")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
         wait(for: [exp], timeout: 1.0)
 
         XCTAssertFalse(store.diagnostics.dismissed, "success notification must reset dismissed")
@@ -49,12 +59,17 @@ final class CryptoKeyPreparedNotificationTests: XCTestCase {
             keyUnavailable: true, dataCorruptedCount: 0, internalErrorCount: 0, dismissed: true
         )
 
+        // ID-TEST-0001: same observer-driven pattern (see comment above).
+        let exp = expectation(description: "wait observer")
+        let token = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: .main
+        ) { _ in exp.fulfill() }
+        defer { NotificationCenter.default.removeObserver(token) }
+
         NotificationCenter.default.post(
             name: .cryptoKeyPrepared, object: nil, userInfo: ["success": false]
         )
 
-        let exp = expectation(description: "wait observer")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
         wait(for: [exp], timeout: 1.0)
 
         XCTAssertTrue(store.diagnostics.dismissed, "failure notification must NOT reset dismissed")
@@ -79,12 +94,17 @@ final class CryptoKeyPreparedNotificationTests: XCTestCase {
             "precondition: pendingFailedIDs must contain the staged id"
         )
 
+        // ID-TEST-0001: observer-driven fulfillment.
+        let exp = expectation(description: "wait observer")
+        let token = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: .main
+        ) { _ in exp.fulfill() }
+        defer { NotificationCenter.default.removeObserver(token) }
+
         NotificationCenter.default.post(
             name: .cryptoKeyPrepared, object: nil, userInfo: ["success": true]
         )
 
-        let exp = expectation(description: "wait observer")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
         wait(for: [exp], timeout: 1.0)
 
         XCTAssertFalse(
@@ -96,16 +116,25 @@ final class CryptoKeyPreparedNotificationTests: XCTestCase {
     /// Negative case: a `success: false` notification must NOT touch the
     /// buffer — failures are terminal for the in-flight items, so a
     /// pendingFailedIDs snapshot stays valid for whatever follows.
+    /// ID-TEST-0001 (2026-08-08 audit): observer-driven fulfillment.
+    /// The observer fires for failure notifications too (handler just
+    /// doesn't reset state), so we use the same positive-expectation
+    /// pattern and assert state AFTER — no inverted-expectation trick
+    /// needed.
     func testPendingFailedIDsPreservedOnFailureNotification() {
         let id = UUID()
         store.testAddPendingFailedID(id)
+
+        let exp = expectation(description: "wait observer")
+        let token = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: .main
+        ) { _ in exp.fulfill() }
+        defer { NotificationCenter.default.removeObserver(token) }
 
         NotificationCenter.default.post(
             name: .cryptoKeyPrepared, object: nil, userInfo: ["success": false]
         )
 
-        let exp = expectation(description: "wait observer")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
         wait(for: [exp], timeout: 1.0)
 
         XCTAssertTrue(
