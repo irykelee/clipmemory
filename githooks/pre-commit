@@ -1,0 +1,55 @@
+#!/bin/bash
+# ClipMemory pre-commit hook — build-only gate.
+#
+# Per user 2026-08-08 review: full `xcodebuild test` (756+ tests) is
+# too slow for a per-commit hook (~6+ min). Move the test gate to CI;
+# keep this hook as a fast compile-only sanity check.
+#
+# This hook ALSO chains the global pre-commit at
+# ~/bin/git-hooks/pre-commit so the 5-stage AI-error / sensitive-data
+# / commit-msg checks still run on every commit. Per user: the local
+# hook previously masked the global one (core.hooksPath = .git/hooks
+# override); chaining here restores coverage.
+#
+# Setup: .git/hooks/ is NOT tracked by git. To install on a new
+# checkout, see `githooks/install.sh` (tracked) or manually copy this
+# file. The global hook path is hardcoded below — change `~/bin/git-hooks`
+# if your global hook lives elsewhere.
+set -e
+
+echo "🔍 Running pre-commit checks (ClipMemory build + global chain)..."
+
+# 1. Chain to global pre-commit (5-stage AI guardrails per REL-24)
+if [ -x "$HOME/bin/git-hooks/pre-commit" ]; then
+    echo "🔗 Chaining global ~/bin/git-hooks/pre-commit..."
+    if ! "$HOME/bin/git-hooks/pre-commit"; then
+        echo "❌ Global pre-commit hook failed — see its output above."
+        exit 1
+    fi
+else
+    echo "⚠️  Global ~/bin/git-hooks/pre-commit not found — skipping global chain."
+fi
+
+cd "$(dirname "$0")/../.."
+
+# 2. xcodegen if project.yml changed
+if git diff --cached --name-only | grep -q "project.yml"; then
+    echo "📦 Running xcodegen generate..."
+    xcodegen generate
+fi
+
+# 3. Build (compile-only sanity check; full test gate is in CI)
+echo "🏗 Building ClipMemory..."
+if ! xcodebuild -scheme ClipMemory -configuration Debug build > /dev/null 2>&1; then
+    echo "❌ Build failed. Fix errors before committing."
+    xcodebuild -scheme ClipMemory -configuration Debug build
+    exit 1
+fi
+echo "✅ Build passed"
+
+# 4. Test step REMOVED — too slow for per-commit (~6+ min).
+#    Full test suite runs in GH Actions on PR.
+#    If you need local verification, run:
+#      xcodebuild -scheme ClipMemory -configuration Debug test
+
+echo "✅ Pre-commit checks passed"
