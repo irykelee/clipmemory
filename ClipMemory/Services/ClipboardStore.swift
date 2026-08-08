@@ -30,6 +30,17 @@ extension Notification.Name {
     /// attempt may succeed and overwrite the signal; consumers should
     /// debounce.
     static let tagBackendCorrupted = Notification.Name("ClipboardStore.tagBackendCorrupted")
+    /// ID-SILENT-0021 (2026-08-08 audit): `ClipboardStore.flushSave()` caught
+    /// an error from `saveItems()` (e.g., disk full, permission denied,
+    /// iCloud sync conflict) and previously only logged it while leaving
+    /// `needsSave = false`, so the next debounce timer fired and exited via
+    /// the early `guard` — silently losing the user's clipboard capture for
+    /// the rest of the session. Posted from `flushSave` after restoring
+    /// `needsSave = true` so the next timer retries. Carries no payload —
+    /// consumers (e.g., a future Settings diagnostics banner) should debounce
+    /// because a single transient backend hiccup can fire this repeatedly
+    /// before the user takes action.
+    static let clipboardSaveFailed = Notification.Name("ClipboardStore.clipboardSaveFailed")
 }
 
 extension ClipboardStore: ClipboardMonitorDelegate {
@@ -963,7 +974,7 @@ final class ClipboardStore: ObservableObject {
     /// at utility QoS; only the encoded Data crosses back for the write.
     private let itemEncodingQueue = DispatchQueue(label: "com.clipmemory.itemencode", qos: .utility)
 
-    func saveItems() {
+    func saveItems() throws {
         // CLIP-2: the `.sync` hop is deliberate — saveImmediately()'s
         // write-through contract (clipboard ingestion must be durable before
         // addItem returns, so kill -9 / power loss after the fact can't lose
@@ -976,15 +987,17 @@ final class ClipboardStore: ObservableObject {
         // write-through contract tested by IntegrationTests and
         // ClipboardCaptureLimitTests. Deferred to a future refactor that can
         // plumb async completion through the call sites.
+        //
+        // ID-SILENT-0021 (2026-08-08 audit): rethrows on backend failure so
+        // `flushSave` can restore `needsSave = true` and post
+        // `.clipboardSaveFailed` for UI surfacing. Previously the inner
+        // catch only logged, leaving `needsSave = false`, so the next
+        // debounce timer exited via the early `guard` — silent data loss.
         let snapshot = items
-        do {
-            let data = try itemEncodingQueue.sync {
-                try itemsSaveEncoder.encode(snapshot)
-            }
-            try backend.saveBlob(data)
-        } catch {
-            logger.error("Failed to save items: \(error.localizedDescription)")
+        let data = try itemEncodingQueue.sync {
+            try itemsSaveEncoder.encode(snapshot)
         }
+        try backend.saveBlob(data)
     }
 
     /// Schedules a debounced save — coalesces multiple rapid mutations into a single disk write.
@@ -1033,7 +1046,11 @@ final class ClipboardStore: ObservableObject {
         flushPendingSaves()
     }
 
-    private func flushSave() {
+    // Internal (not private) so tests can pin the failure-recovery contract
+    // without driving the public debounce timer. Production call sites remain
+    // inside this class: `flushPendingSaves`, `saveImmediately`,
+    // `handleWillTerminate`, and the debounce timer's event handler.
+    func flushSave() {
         guard needsSave else { return }
         needsSave = false
         // ID-LIFE-0023 (2026-07-31): do NOT cancel() the timer source here.
@@ -1042,7 +1059,21 @@ final class ClipboardStore: ObservableObject {
         // keep for reuse" pattern killed every debounced save after the
         // first flush. A fired one-shot source stays reusable via
         // schedule(deadline:); deinit/willTerminate cancel it for real.
-        saveItems()
+        do {
+            try saveItems()
+        } catch {
+            // ID-SILENT-0021 (2026-08-08 audit): restore retry state and
+            // surface to UI. Without this, the next debounce timer would
+            // exit via `guard needsSave else { return }` and the user's
+            // clipboard capture would be silently lost for the rest of
+            // the session. The condition for *real* loss is narrow
+            // (disk error persists ≥ 500ms + no subsequent mutation
+            // triggers `saveImmediately` + user quits), but the
+            // notification gives the user a chance to act.
+            needsSave = true
+            logger.error("ID-SILENT-0021: saveItems failed, will retry on next flush: \(error)")
+            NotificationCenter.default.post(name: .clipboardSaveFailed, object: self)
+        }
     }
 
     /// Insert or replace a tag by its UUID. Tags with the same id overwrite
