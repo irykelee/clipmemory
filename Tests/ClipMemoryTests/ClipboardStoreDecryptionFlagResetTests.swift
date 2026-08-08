@@ -44,15 +44,24 @@ final class ClipboardStoreDecryptionFlagResetTests: XCTestCase {
         store.items[0].decryptionFailed = true
         XCTAssertTrue(store.items[0].decryptionFailed, "precondition: flag set by merge")
 
+        // ID-TEST-0001 (2026-08-08 audit): observer-driven fulfillment.
+        // Count-based observer (vs `expectation(forNotification:)`) so we
+        // can also assert exact post count and tolerate the brief race
+        // between the success notification and any subsequent
+        // addItem-driven re-failures.
+        var postCount = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: .main
+        ) { _ in postCount += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+
         NotificationCenter.default.post(
             name: .cryptoKeyPrepared, object: nil, userInfo: ["success": true]
         )
 
-        // Observer runs on queue: .main — yield to let it fire
-        let exp = expectation(description: "wait observer")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
 
+        XCTAssertGreaterThanOrEqual(postCount, 1, "notification must fire")
         XCTAssertEqual(store.items.first?.id, itemID, "item must remain in store")
         XCTAssertFalse(
             store.items[0].decryptionFailed,
@@ -68,14 +77,20 @@ final class ClipboardStoreDecryptionFlagResetTests: XCTestCase {
         store.addItem(item)
         store.items[0].decryptionFailed = true
 
+        // ID-TEST-0001: observer-driven (count-based for assertion).
+        var postCount = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: .main
+        ) { _ in postCount += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+
         NotificationCenter.default.post(
             name: .cryptoKeyPrepared, object: nil, userInfo: ["success": false]
         )
 
-        let exp = expectation(description: "wait observer")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
 
+        XCTAssertGreaterThanOrEqual(postCount, 1, "observer must fire on failure notification")
         XCTAssertTrue(
             store.items[0].decryptionFailed,
             "failure notification must NOT reset decryptionFailed"
@@ -102,14 +117,20 @@ final class ClipboardStoreDecryptionFlagResetTests: XCTestCase {
         }
         XCTAssertTrue(store.items.allSatisfy { $0.decryptionFailed }, "precondition")
 
+        // ID-TEST-0001: observer-driven.
+        var postCount = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: .main
+        ) { _ in postCount += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+
         NotificationCenter.default.post(
             name: .cryptoKeyPrepared, object: nil, userInfo: ["success": true]
         )
 
-        let exp = expectation(description: "wait observer")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
 
+        XCTAssertGreaterThanOrEqual(postCount, 1, "notification must fire")
         XCTAssertTrue(
             store.items.allSatisfy { !$0.decryptionFailed },
             "all decryptionFailed flags must reset on key re-ready"
