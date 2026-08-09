@@ -337,3 +337,9 @@
 "alert.encrypt.failed.count.one" = "敏感資料加密失敗，1 筆內容未儲存。";
 "alert.clear.message.one" = "確定要清除 1 條記錄嗎？
 已釘選的內容不會被刪除。";
+"alert.save.failed" = "儲存剪貼簿資料失敗，內容未儲存。";
+"alert.save.failed.count" = "儲存剪貼簿資料失敗，%d 條內容未儲存。";
+"alert.save.failed.count.one" = "儲存剪貼簿資料失敗，1 條內容未儲存。";
+"alert.trash.load.failed" = "回收桶載入失敗，內容暫時無法使用。";
+"alert.trash.load.failed.count" = "回收桶載入失敗，%d 次復原嘗試均失敗。";
+"alert.trash.load.failed.count.one" = "回收桶載入失敗，1 次復原嘗試失敗。";

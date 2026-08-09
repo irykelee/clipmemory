@@ -334,3 +334,9 @@
 "tag.badge.accessibility.one" = "%d etiqueta";
 "settings.max.items.count.one" = "1 elemento";
 "alert.encrypt.failed.count.one" = "Error al cifrar datos sensibles. 1 elemento no se guardó.";
+"alert.save.failed" = "Error al guardar datos del portapapeles. El elemento no se ha guardado.";
+"alert.save.failed.count" = "Error al guardar datos del portapapeles. %d elementos no se han guardado.";
+"alert.save.failed.count.one" = "Error al guardar datos del portapapeles. 1 elemento no se ha guardado.";
+"alert.trash.load.failed" = "Error al cargar la papelera. Los elementos no están disponibles temporalmente.";
+"alert.trash.load.failed.count" = "Error al cargar la papelera. %d intentos de recuperación fallaron.";
+"alert.trash.load.failed.count.one" = "Error al cargar la papelera. 1 intento de recuperación falló.";

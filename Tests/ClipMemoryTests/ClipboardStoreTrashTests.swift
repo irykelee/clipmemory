@@ -561,9 +561,13 @@ import XCTest
     func testTrashLoadFailureSkipsOrphanImageSweepAndPostsNotification() {
         // Observe the user-visible signal
         var posted = 0
+        var capturedSource: String?
         let token = NotificationCenter.default.addObserver(
             forName: .trashLoadFailed, object: nil, queue: nil
-        ) { _ in posted += 1 }
+        ) { note in
+            posted += 1
+            capturedSource = note.userInfo?["source"] as? String
+        }
         defer { NotificationCenter.default.removeObserver(token) }
 
         // Given: a trash backend that throws on load (e.g. corrupt blob)
@@ -592,6 +596,12 @@ import XCTest
         // receives the post — the XCTest skip is only inside the AppDelegate
         // observer body, not in the notification dispatch itself)
         XCTAssertGreaterThanOrEqual(posted, 1, "user-visible .trashLoadFailed must fire on launch-1 failure")
+
+        // H-1 (2026-08-08 audit): the failure notification must carry a
+        // `source` tag so the AppDelegate Throttler can bucket trash
+        // failures independently from save/encryption sources.
+        XCTAssertEqual(capturedSource, "trashLoadFailed",
+                       "trash load failure must tag source='trashLoadFailed' for Throttler bucketing")
 
         // When: ClipboardStore.loadItems() runs after a failed trash load
         store.loadItems()

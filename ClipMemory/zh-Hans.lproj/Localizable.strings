@@ -333,3 +333,9 @@
 "alert.encrypt.failed.count.one" = "敏感数据加密失败，1 条内容未保存。";
 "alert.clear.message.one" = "确定要清空 1 条记录吗？
 已收藏的内容不会被删除。";
+"alert.save.failed" = "保存剪贴板数据失败，内容未保存。";
+"alert.save.failed.count" = "保存剪贴板数据失败，%d 条内容未保存。";
+"alert.save.failed.count.one" = "保存剪贴板数据失败，1 条内容未保存。";
+"alert.trash.load.failed" = "回收站加载失败，内容暂时不可用。";
+"alert.trash.load.failed.count" = "回收站加载失败，%d 次恢复尝试均失败。";
+"alert.trash.load.failed.count.one" = "回收站加载失败，1 次恢复尝试失败。";

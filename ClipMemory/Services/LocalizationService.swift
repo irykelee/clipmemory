@@ -388,6 +388,17 @@ struct L10n {
     // the `.one` variant ("1 item was not saved" / "1 件保存されませんでした" / etc.).
     // The previous `string()` only ever used the plural form.
     static func alertEncryptFailedCount(_ count: Int) -> String { plural("alert.encrypt.failed.count", count) }
+    // H-1 (2026-08-08 audit): save failure alerts. Reuses the encrypt
+    // failure key style (.one variant for count=1) so count + text
+    // rendering stay consistent across the two alert paths.
+    static var alertSaveFailed: String { string("alert.save.failed") }
+    static func alertSaveFailedCount(_ count: Int) -> String { plural("alert.save.failed.count", count) }
+    // H-1 (2026-08-08 audit): trash load failure alerts. Distinct text
+    // from save/encryption because the underlying cause (corrupt blob)
+    // is recoverable via the quarantined .corrupt-* file rather than
+    // user action on disk.
+    static var alertTrashLoadFailed: String { string("alert.trash.load.failed") }
+    static func alertTrashLoadFailedCount(_ count: Int) -> String { plural("alert.trash.load.failed.count", count) }
 
     // MARK: - Trim Alert
     static var alertTrimTitle: String { string("alert.trim.title") }

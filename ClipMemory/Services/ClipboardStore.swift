@@ -1112,20 +1112,51 @@ final class ClipboardStore: ObservableObject {
         // schedule(deadline:); deinit/willTerminate cancel it for real.
         do {
             try saveItems()
+            // H-1 (2026-08-08 audit): reset the retry counter on success
+            // so a recovered-then-broken-again disk walks the backoff
+            // ladder from the base again.
+            saveRetryState.recordSuccess()
         } catch {
-            // ID-SILENT-0021 (2026-08-08 audit): restore retry state and
-            // surface to UI. Without this, the next debounce timer would
-            // exit via `guard needsSave else { return }` and the user's
-            // clipboard capture would be silently lost for the rest of
-            // the session. The condition for *real* loss is narrow
-            // (disk error persists ≥ 500ms + no subsequent mutation
-            // triggers `saveImmediately` + user quits), but the
-            // notification gives the user a chance to act.
+            // H-1 fix: three legs of the data-persistence gate.
+            // 1. 报错 — loud log with attempt count.
+            // 2. 重试 — autonomous exponential backoff via the same
+            //    saveTimer (reuse, not create a parallel retry queue).
+            // 3. 用户可见 — post .clipboardSaveFailed with sourceKey
+            //    "saveFlush" so the AppDelegate Throttler can bucket
+            //    this independently from .encryptionFailed sources.
             needsSave = true
-            logger.error("ID-SILENT-0021: saveItems failed: \(error) — restored needsSave for the next timer fire. NOTE: there is NO auto-retry today; the retry path is the next user mutation that triggers saveImmediately() (or the next 500ms debounce tick). NSAlert + backoff are deferred to H-1.")
-            NotificationCenter.default.post(name: .clipboardSaveFailed, object: self)
+            saveRetryState.recordFailure()
+            let backoff = saveRetryState.nextBackoffSeconds
+            logger.error("H-1: saveItems failed (attempt \(self.saveRetryState.consecutiveFailures)): \(error) — auto-retry in \(backoff)s")
+            scheduleSaveRetry(after: backoff)
+            NotificationCenter.default.post(
+                name: .clipboardSaveFailed,
+                object: self,
+                userInfo: ["source": "saveFlush"]
+            )
         }
     }
+
+    /// H-1 (2026-08-08 audit): reschedule `saveTimer` to fire after
+    /// `interval` seconds for an autonomous retry. Lazy-creates the timer
+    /// source if needed (matches `scheduleSave()`'s reuse pattern).
+    private func scheduleSaveRetry(after interval: TimeInterval) {
+        let ms = Int(interval * 1000)
+        if saveTimer == nil {
+            let timer = DispatchSource.makeTimerSource(queue: saveTimerQueue)
+            timer.setEventHandler { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.flushSave()
+                }
+            }
+            timer.resume()
+            saveTimer = timer
+        }
+        saveTimer?.schedule(deadline: .now() + .milliseconds(ms))
+    }
+
+    /// H-1: observable retry state — exposed for tests + diagnostics.
+    private(set) var saveRetryState = SaveRetryState()
 
     /// Insert or replace a tag by its UUID. Tags with the same id overwrite
     /// (idempotent rename/recolor). Triggers a debounced tag save.

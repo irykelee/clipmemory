@@ -121,10 +121,10 @@ final class NotificationObserverAssertionTests: XCTestCase {
             shortName: "tagBackendCorrupted",
             ledgerID: "(none — v2 audit H-1 dead channels list at v2 report :28/:34)",
             reason: "Posted in `ClipboardStore.loadTags` only; consumer (Settings diagnostics banner) is reserved channel per audit CLIP-7, no observer yet."),
-        WhitelistEntry(
-            shortName: "clipboardSaveFailed",
-            ledgerID: "ID-SILENT-0021",
-            reason: "POST-ONLY. The fix at 3959fc3 restores `needsSave = true` and POSTs `.clipboardSaveFailed` so the *next* timer fire (or next user mutation that triggers `saveImmediately()`) re-attempts the save. **No auto-retry with backoff** today; the loop is bounded by the next 500ms debounce tick or by user mutation. Throttler + NSAlert + backoff are deferred to H-1 — don't back-door via test green."),
+        // H-1 (2026-08-08): clipboardSaveFailed now has a real consumer
+        // — AppDelegate.clipboardSaveFailedObserver wires NSAlert via the
+        // existing 60s EncryptionFailedAlertThrottler. Removed from the
+        // whitelist so the observer-gate reverse-assertion enforces it.
         WhitelistEntry(
             shortName: "ocrLanguageFallback",
             ledgerID: "ID-SYNC-0004 (post itself FIXED; consumer leg deferred to H-1)",

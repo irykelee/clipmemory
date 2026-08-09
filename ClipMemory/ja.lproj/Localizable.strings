@@ -335,3 +335,9 @@
 "alert.encrypt.failed.count.one" = "機密データの暗号化に失敗しました。1 件保存されませんでした。";
 "alert.clear.message.one" = "1 件の項目をすべて消去しますか？
 ピン留めされた項目は削除されません。";
+"alert.save.failed" = "クリップボードデータの保存に失敗しました。アイテムは保存されませんでした。";
+"alert.save.failed.count" = "クリップボードデータの保存に失敗しました。%d 件のアイテムが保存されませんでした。";
+"alert.save.failed.count.one" = "クリップボードデータの保存に失敗しました。1 件のアイテムが保存されませんでした。";
+"alert.trash.load.failed" = "ゴミ箱の読み込みに失敗しました。一時的にアイテムを利用できません。";
+"alert.trash.load.failed.count" = "ゴミ箱の読み込みに失敗しました。%d 回の復元試行が失敗しました。";
+"alert.trash.load.failed.count.one" = "ゴミ箱の読み込みに失敗しました。1 回の復元試行が失敗しました。";

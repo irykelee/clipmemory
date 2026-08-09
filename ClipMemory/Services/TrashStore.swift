@@ -147,7 +147,13 @@ final class TrashStore: ObservableObject {
             NotificationCenter.default.post(
                 name: .trashLoadFailed,
                 object: self,
-                userInfo: ["persistent": true]
+                userInfo: [
+                    "persistent": true,
+                    // H-1 (2026-08-08 audit): tag the source so the
+                    // AppDelegate Throttler can bucket trash failures
+                    // independently from save / encryption failures.
+                    "source": "trashLoadFailed"
+                ]
             )
             return
         }
@@ -166,7 +172,14 @@ final class TrashStore: ObservableObject {
             NotificationCenter.default.post(
                 name: .trashLoadFailed,
                 object: self,
-                userInfo: ["persistent": false, "error": error.localizedDescription]
+                userInfo: [
+                    "persistent": false,
+                    "error": error.localizedDescription,
+                    // H-1 (2026-08-08 audit): tag the source so the
+                    // AppDelegate Throttler can bucket trash failures
+                    // independently from save / encryption failures.
+                    "source": "trashLoadFailed"
+                ]
             )
         }
     }
