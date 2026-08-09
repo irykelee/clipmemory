@@ -334,3 +334,9 @@
 "tag.badge.accessibility.one" = "%d etiqueta";
 "settings.max.items.count.one" = "1 item";
 "alert.encrypt.failed.count.one" = "Falha ao criptografar dados sensíveis. 1 item não foi salvo.";
+"alert.save.failed" = "Falha ao guardar dados da área de transferência. O item não foi salvo.";
+"alert.save.failed.count" = "Falha ao guardar dados da área de transferência. %d itens não foram salvos.";
+"alert.save.failed.count.one" = "Falha ao guardar dados da área de transferência. 1 item não foi salvo.";
+"alert.trash.load.failed" = "Falha ao carregar a lixeira. Itens estão temporariamente indisponíveis.";
+"alert.trash.load.failed.count" = "Falha ao carregar a lixeira. %d tentativas de recuperação falharam.";
+"alert.trash.load.failed.count.one" = "Falha ao carregar a lixeira. 1 tentativa de recuperação falhou.";

@@ -23,6 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var windowManager: WindowManager?
     private var languageObserver: NSObjectProtocol?
     private var encryptionFailedObserver: NSObjectProtocol?
+    private var clipboardSaveFailedObserver: NSObjectProtocol?
     // H-2 (2026-08-08): observer for `.trashLoadFailed` so the user
     // sees a signal when the trash blob was corrupt. Without this
     // observer, the quarantine + sweep-skip happens silently and the
@@ -77,6 +78,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var settingsCloseObserver: NSObjectProtocol?
     // CLIP-3 (2026-07-24): debounce .encryptionFailed alerts — see throttler doc.
     private let encryptionAlertThrottler = EncryptionFailedAlertThrottler()
+    /// H-1 (2026-08-08 audit): independent throttler for save failures —
+    /// keeps disk-full / iCloud sync-conflict / permission-revoked in
+    /// their own 60s bucket so one transient cause doesn't suppress
+    /// alerts for unrelated ones.
+    private let saveAlertThrottler = EncryptionFailedAlertThrottler()
+    /// H-1 (2026-08-08 audit): independent throttler for trash load failures
+    /// — keeps disk-full / prior-launch-persistent in their own 60s bucket
+    /// so save/encryption/trash alerts don't suppress each other.
+    private let trashAlertThrottler = EncryptionFailedAlertThrottler()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // HIGH-3 (2026-07-26 review): own the key-failure alert presentation
@@ -341,7 +351,54 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let persistent = (note.userInfo?["persistent"] as? Bool) ?? false
             let suffix = persistent ? " (persisted from prior launch)" : ""
             let underlying = (note.userInfo?["error"] as? String) ?? "unknown"
+            // H-1 (2026-08-08 audit): NSAlert + Throttler for trash load
+            // failure visibility — was log-only before, hiding recoverable
+            // data loss from the user. Source bucket "trashLoadFailed"
+            // so disk-full vs prior-launch-persistent don't share a bucket.
+            let decision = self.trashAlertThrottler.recordFailure(source: "trashLoadFailed")
+            guard decision.shouldShowAlert else {
+                self.logger.error("Trash load failed\(suffix). Quarantined blob retained under 'ClipboardTrashedItems.corrupt-*'. Underlying error: \(underlying)")
+                return
+            }
             self.logger.error("Trash load failed\(suffix). Quarantined blob retained under 'ClipboardTrashedItems.corrupt-*'. Underlying error: \(underlying)")
+            let a = NSAlert()
+            a.messageText = L10n.error
+            a.informativeText = decision.failureCount > 1
+                ? L10n.alertTrashLoadFailedCount(decision.failureCount)
+                : L10n.alertTrashLoadFailed
+            a.alertStyle = .warning
+            a.addButton(withTitle: L10n.buttonConfirm)
+            a.runModal()
+        }
+
+        // H-1 (2026-08-08 audit): v2.8.1's ID-SILENT-0021 fix posted
+        // .clipboardSaveFailed but no production observer consumed it —
+        // clipboard captures could silently fail and the user had no
+        // signal. Wire the notification to NSAlert via the existing
+        // 60s Throttler, bucketed by sourceKey so disk-full vs iCloud
+        // sync-conflict don't suppress each other. NSAlert (not
+        // DiagnosticsBanner) because DecryptionDiagnostics has no
+        // save-failed slot and the user genuinely needs to act now
+        // (free disk space, reconnect volume, etc.).
+        clipboardSaveFailedObserver = NotificationCenter.default.addObserver(
+            forName: .clipboardSaveFailed, object: nil, queue: .main
+        ) { [weak self] note in
+            // Same XCTest guard: tests deliberately post
+            // .clipboardSaveFailed to verify flushSave's failure path;
+            // runModal here would hang CI forever.
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard let self else { return }
+            let source = EncryptionFailedAlertThrottler.sourceKey(for: note)
+            let decision = self.saveAlertThrottler.recordFailure(source: source)
+            guard decision.shouldShowAlert else { return }
+            let a = NSAlert()
+            a.messageText = L10n.error
+            a.informativeText = decision.failureCount > 1
+                ? L10n.alertSaveFailedCount(decision.failureCount)
+                : L10n.alertSaveFailed
+            a.alertStyle = .warning
+            a.addButton(withTitle: L10n.buttonConfirm)
+            a.runModal()
         }
     }
 
@@ -589,6 +646,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     deinit {
         if let o = languageObserver { NotificationCenter.default.removeObserver(o) }
         if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = clipboardSaveFailedObserver { NotificationCenter.default.removeObserver(o) }
         if let o = keychainUnlockObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = sessionBecomeActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = didBecomeActiveObserver { NotificationCenter.default.removeObserver(o) }

@@ -334,3 +334,9 @@
 "tag.badge.accessibility.one" = "%d tag";
 "settings.max.items.count.one" = "1 item";
 "alert.encrypt.failed.count.one" = "Failed to encrypt sensitive data. 1 item was not saved.";
+"alert.save.failed" = "Failed to save clipboard data. Item was not saved.";
+"alert.save.failed.count" = "Failed to save clipboard data. %d items were not saved.";
+"alert.save.failed.count.one" = "Failed to save clipboard data. 1 item was not saved.";
+"alert.trash.load.failed" = "Failed to load recycle bin. Items are temporarily unavailable.";
+"alert.trash.load.failed.count" = "Failed to load recycle bin. %d recovery attempts failed.";
+"alert.trash.load.failed.count.one" = "Failed to load recycle bin. 1 recovery attempt failed.";
