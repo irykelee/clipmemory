@@ -33,17 +33,19 @@ final class NotificationObserverAssertionTests: XCTestCase {
     /// `"ClipboardStore.encryptionFailed"`). They can differ when
     /// the module prefix and the short suffix don't share a common
     /// tail — e.g., `.trashLoadFailed` with rawValue
-    /// `"TrashStore.loadFailed"`.
+    /// `"TrashStore.loadFailed"`. Also matches the explicit-arg
+    /// form `static let X = Notification.Name(rawValue: "Y")`.
     private static let staticNotificationPattern =
-        #"static\s+let\s+(\w+)\s*=\s*Notification\.Name\("([\w.]+)"\)"#
+        #"static\s+let\s+(\w+)\s*=\s*Notification\.Name\((?:rawValue:\s*)?"([\w.]+)"\)"#
 
     /// Pattern B — inline literal `Notification.Name("Y")` style
     /// (no `static let` declaration). Captures only the rawValue;
     /// the shortName is derived from the rawValue's last segment.
     /// Excludes matches already captured by Pattern A (so we don't
-    /// double-count when a file uses both styles).
+    /// double-count when a file uses both styles). Also matches
+    /// the explicit-arg form `Notification.Name(rawValue: "Y")`.
     private static let inlineNotificationPattern =
-        #"Notification\.Name\("([\w.]+)"\)"#
+        #"Notification\.Name\((?:rawValue:\s*)?"([\w.]+)"\)"#
 
     /// Custom notifications derived from a source scan.
     /// (`shortName`, `rawValue`, `declaredAt`) — `declaredAt` is
@@ -54,8 +56,9 @@ final class NotificationObserverAssertionTests: XCTestCase {
         let declaredAt: String
     }
 
-    /// Lazy because the file walker is slow under Debug+coverage
-    /// instrumentation (~60+ s); cache the result for the test run.
+    /// Lazy so the source scan runs once per test target (the file
+    /// walker is fast even under Debug+coverage instrumentation — ~0.2s
+    /// for ~70 files; the cache is a nicety, not a correctness need).
     private static let cachedDeclared: [DeclaredNotification] = {
         declaredNotifications()
     }()
