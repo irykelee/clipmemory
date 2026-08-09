@@ -1122,7 +1122,7 @@ final class ClipboardStore: ObservableObject {
             // triggers `saveImmediately` + user quits), but the
             // notification gives the user a chance to act.
             needsSave = true
-            logger.error("ID-SILENT-0021: saveItems failed, will retry on next flush: \(error)")
+            logger.error("ID-SILENT-0021: saveItems failed: \(error) — restored needsSave for the next timer fire. NOTE: there is NO auto-retry today; the retry path is the next user mutation that triggers saveImmediately() (or the next 500ms debounce tick). NSAlert + backoff are deferred to H-1.")
             NotificationCenter.default.post(name: .clipboardSaveFailed, object: self)
         }
     }

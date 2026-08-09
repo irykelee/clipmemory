@@ -23,21 +23,25 @@ if [ ! -f "$HOOK_SRC" ]; then
     exit 1
 fi
 
+# Per user 2026-08-08 review: this MUST run BEFORE the existing-hook
+# guard. The guard's early-exit (`exit 0` on existing .git/hooks/pre-commit)
+# is intentional for first-time install — but on RE-runs (after
+# pulling githooks/ changes), the guard skips the cp AND would also
+# skip the git config below. Without the git config, the LOCAL hook
+# is masked by global core.hooksPath = /Users/iryke/bin/git-hooks
+# and the fix silently breaks. So: set core.hooksPath FIRST, then
+# maybe overwrite the hook.
+git config --local core.hooksPath .git/hooks
+
 # Don't overwrite an existing local hook unless --force
 if [ -f "$HOOK_DST" ] && [ "$1" != "--force" ]; then
     echo "⚠️  Hook already exists at $HOOK_DST (use --force to overwrite)"
+    echo "   core.hooksPath already set to .git/hooks above"
     exit 0
 fi
 
 cp "$HOOK_SRC" "$HOOK_DST"
 chmod +x "$HOOK_DST"
-
-# Per user 2026-08-08 review: local .git/hooks/ alone is masked by
-# global core.hooksPath. Set the LOCAL core.hooksPath so the local
-# hook takes precedence over the global one. (Without this, the
-# fix silently breaks on fresh clones — the global mask would still
-# win.)
-git config --local core.hooksPath .git/hooks
 
 echo "✅ Installed pre-commit hook to $HOOK_DST"
 echo "   Source: $HOOK_SRC"
