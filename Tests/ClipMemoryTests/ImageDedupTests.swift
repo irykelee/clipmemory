@@ -183,4 +183,162 @@ import XCTest
         XCTAssertEqual(store.items.count, 2,
                        "image items without a contentHash must not be deduped")
     }
+
+    // MARK: - H-3 (2026-08-08 audit): recover broken entries via re-copy
+
+    /// When the dedup hit lands on an existing entry whose image file is
+    /// already missing on disk, the duplicate's just-written file must be
+    /// KEPT and the existing entry's `content` rewritten to point at it.
+    /// Otherwise the user can never self-heal a missing-image entry by
+    /// re-copying the picture.
+    func testAddItem_dedupHit_existingImageMissing_keepsNewFileAndSwapsContent() throws {
+        let imageData = Data((0..<512).map { UInt8($0 % 251) })
+        let hash = try XCTUnwrap(ClipboardMonitor.imageContentHash(for: imageData))
+
+        let id1 = newTestUUID()
+        let id2 = newTestUUID()
+        saveImageBlocking(imageData, id: id1)
+        store.addItem(ClipboardItem(id: id1, content: Self.filename(id1), type: .image, contentHash: hash))
+        store.flushPendingSaves()
+        XCTAssertEqual(store.items.count, 1)
+
+        // Simulate the on-disk file going missing (user delete / disk error).
+        try FileManager.default.removeItem(at: fileURL(id1))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL(id1).path))
+
+        // Mark the entry as missing — exactly what runImageIntegrityScan
+        // populates after the disk state changes.
+        store.imageMissingIds = [id1]
+        XCTAssertTrue(store.imageMissingIds.contains(id1))
+
+        // User re-copies the same image: new file lands under id2's UUID.
+        saveImageBlocking(imageData, id: id2)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL(id2).path))
+
+        store.addItem(ClipboardItem(id: id2, content: Self.filename(id2), type: .image, contentHash: hash))
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items.count, 1,
+                       "dedup must still collapse to one entry")
+        XCTAssertEqual(store.items[0].id, id1,
+                       "the original entry is kept (moved to top, not deleted)")
+        XCTAssertEqual(store.items[0].content, Self.filename(id2),
+                       "existing entry's content must point to the new (good) file")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL(id2).path),
+                      "new file must survive the dedup hit — H-3 swap")
+        XCTAssertFalse(store.imageMissingIds.contains(id1),
+                       "id1 must be cleared from the missing set after recovery")
+    }
+
+    /// Same scenario but the existing image is *corrupt* (decryption fails)
+    /// rather than missing. Old file may still be on disk, so it must be
+    /// actively deleted to avoid leaving a stale corrupt blob behind.
+    func testAddItem_dedupHit_existingImageCorrupted_keepsNewFileAndSwapsContent() throws {
+        let imageData = Data((0..<512).map { UInt8($0 % 251) })
+        let hash = try XCTUnwrap(ClipboardMonitor.imageContentHash(for: imageData))
+
+        let id1 = newTestUUID()
+        let id2 = newTestUUID()
+        saveImageBlocking(imageData, id: id1)
+        store.addItem(ClipboardItem(id: id1, content: Self.filename(id1), type: .image, contentHash: hash))
+        store.flushPendingSaves()
+        XCTAssertEqual(store.items.count, 1)
+
+        // File still on disk (corrupt on read), entry flagged via the
+        // integrity-scan set.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL(id1).path))
+        store.imageCorruptedIds = [id1]
+
+        saveImageBlocking(imageData, id: id2)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL(id2).path))
+
+        store.addItem(ClipboardItem(id: id2, content: Self.filename(id2), type: .image, contentHash: hash))
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items.count, 1,
+                       "dedup must still collapse to one entry")
+        XCTAssertEqual(store.items[0].id, id1,
+                       "the original entry is kept (moved to top)")
+        XCTAssertEqual(store.items[0].content, Self.filename(id2),
+                       "existing entry's content must point to the new (good) file")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL(id2).path),
+                      "new file must survive the dedup hit — H-3 swap")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL(id1).path),
+                       "old corrupt file must be deleted as part of the swap")
+        XCTAssertFalse(store.imageCorruptedIds.contains(id1),
+                       "id1 must be cleared from the corrupted set after recovery")
+    }
+
+    /// Healthy baseline must still hold: if existing's image file is fine
+    /// (not missing, not corrupted), the duplicate's just-written file is
+    /// deleted and the existing entry's content is unchanged. Sanity check
+    /// that the H-3 fix doesn't regress the original dedup contract.
+    func testAddItem_dedupHit_existingImageHealthy_keepsOldFileAndDeletesDuplicate() throws {
+        let imageData = Data((0..<512).map { UInt8($0 % 251) })
+        let hash = try XCTUnwrap(ClipboardMonitor.imageContentHash(for: imageData))
+
+        let id1 = newTestUUID()
+        let id2 = newTestUUID()
+        saveImageBlocking(imageData, id: id1)
+        saveImageBlocking(imageData, id: id2)
+        store.addItem(ClipboardItem(id: id1, content: Self.filename(id1), type: .image, contentHash: hash))
+        store.flushPendingSaves()
+
+        // No missing/corrupted flags — this is the original CLIP-1 path.
+        XCTAssertTrue(store.imageMissingIds.isEmpty)
+        XCTAssertTrue(store.imageCorruptedIds.isEmpty)
+
+        store.addItem(ClipboardItem(id: id2, content: Self.filename(id2), type: .image, contentHash: hash))
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.items[0].id, id1)
+        XCTAssertEqual(store.items[0].content, Self.filename(id1),
+                       "healthy baseline: existing's content pointer must NOT change")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL(id1).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL(id2).path),
+                       "healthy baseline: duplicate file must be deleted")
+    }
+
+    /// Race window: existing's image file is missing on disk but the
+    /// integrity-scan sets (`imageMissingIds` / `imageCorruptedIds`) have
+    /// not yet been populated — the fallback `!ImageStorage.fileExists`
+    /// sub-clause is the only thing that can detect this case. Without
+    /// it the freshly-saved good file would be deleted, exactly like
+    /// the set-populated case.
+    func testAddItem_dedupHit_fileExistsReturnsFalse_keepsNewFileAndSwapsContent() throws {
+        let imageData = Data((0..<512).map { UInt8($0 % 251) })
+        let hash = try XCTUnwrap(ClipboardMonitor.imageContentHash(for: imageData))
+
+        let id1 = newTestUUID()
+        let id2 = newTestUUID()
+        saveImageBlocking(imageData, id: id1)
+        store.addItem(ClipboardItem(id: id1, content: Self.filename(id1), type: .image, contentHash: hash))
+        store.flushPendingSaves()
+
+        // Disk state: id1's file is gone (user delete / external corruption).
+        try FileManager.default.removeItem(at: fileURL(id1))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL(id1).path))
+
+        // Sets NOT populated — the only signal for the swap is the
+        // direct FileManager check inside the fix.
+        XCTAssertFalse(store.imageMissingIds.contains(id1),
+                       "race precondition: integrity scan has not yet seen the missing file")
+        XCTAssertFalse(store.imageCorruptedIds.contains(id1))
+
+        saveImageBlocking(imageData, id: id2)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL(id2).path))
+
+        store.addItem(ClipboardItem(id: id2, content: Self.filename(id2), type: .image, contentHash: hash))
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items.count, 1,
+                       "race-window dedup must still collapse to one entry")
+        XCTAssertEqual(store.items[0].id, id1,
+                       "the original entry is kept (moved to top)")
+        XCTAssertEqual(store.items[0].content, Self.filename(id2),
+                       "existing entry's content must point to the new (good) file — proves fileExists fallback")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL(id2).path),
+                      "new file must survive the dedup hit — fileExists fallback swap")
+    }
 }

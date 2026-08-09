@@ -1440,11 +1440,37 @@ final class ClipboardStore: ObservableObject {
             if let existingIndex = items.firstIndex(where: { $0.contentHash == newHash && $0.type == newItem.type }) {
                 var existing = items.remove(at: existingIndex)
                 existing = existing.with(createdAt: Date(), contentHash: existing.contentHash ?? newHash)
+                // H-3 (2026-08-08 audit): if the existing entry's image file
+                // is already missing/corrupt, the user can never self-heal
+                // by re-copying — the branch below would unconditionally
+                // delete the freshly-saved good file and leave the broken
+                // entry in place. Swap instead: point `existing.content` at
+                // the new file, drop the old (if still on disk), and clear
+                // the id from the integrity-scan sets so ContentView's
+                // "image missing" badge disappears reactively.
+                if newItem.type == .image, newItem.content != existing.content {
+                    let existingIsBroken = imageMissingIds.contains(existing.id)
+                        || imageCorruptedIds.contains(existing.id)
+                        || !ImageStorage.shared.fileExists(filename: existing.content)
+                    if existingIsBroken {
+                        let oldFilename = existing.content
+                        existing = existing.with(content: newItem.content)
+                        imageMissingIds.remove(existing.id)
+                        imageCorruptedIds.remove(existing.id)
+                        // Old file may already be missing (no delete
+                        // needed, and deleteImage would log a misleading
+                        // "orphan left on disk" error). Skip the call in
+                        // that case to keep the log honest.
+                        if ImageStorage.shared.fileExists(filename: oldFilename) {
+                            ImageStorage.shared.deleteImage(filename: oldFilename)
+                        }
+                        logger.info("H-3 swap: recovered broken image entry \(existing.id, privacy: .public) with new file \(newItem.content, privacy: .public)")
+                    } else {
+                        ImageStorage.shared.deleteImage(filename: newItem.content)
+                    }
+                }
                 items.insert(existing, at: 0)
                 invalidateItemIndex()
-                if newItem.type == .image, newItem.content != existing.content {
-                    ImageStorage.shared.deleteImage(filename: newItem.content)
-                }
             } else {
                 // Hash in set but item not found (stale from incomplete
                 // rebuild after a prior mutation). Insert as new and
