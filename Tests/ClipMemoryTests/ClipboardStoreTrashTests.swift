@@ -399,7 +399,14 @@ import XCTest
 
     // MARK: - Auto cleanup does not trash
 
-    func testTrimToMaxItemsDoesNotTrash() {
+    /// M-2 (2026-08-08 audit): cap-driven evictions must route through
+    /// the recycle bin (recoverable) rather than be physically deleted.
+    /// Pre-fix, `trimToMaxItems()` called `ImageStorage.deleteImage` +
+    /// `items.removeAll` — silent data loss for both steady-state
+    /// `addItem` overflow and bulk `importBackupItems` overflow.
+    /// The old `testTrimToMaxItemsDoesNotTrash` (renamed to this one)
+    /// pinned the buggy behavior; this is its corrected M-2 contract.
+    func testTrimToMaxItemsOverflowsToTrash() {
         // maxItems persists to UserDefaults via didSet — restore it so later
         // test classes (e.g. IntegrationTests) don't inherit the tiny cap.
         // M-3 (2026-07-24) widened init acceptance from {50,100,200,500} to
@@ -423,8 +430,8 @@ import XCTest
         }
         store.flushPendingSaves()
 
-        XCTAssertEqual(store.items.count, 2)
-        XCTAssertEqual(store.trashedItems.count, 0, "trimToMaxItems should permanently delete, not trash")
+        XCTAssertEqual(store.items.count, 2, "active list capped at maxItems")
+        XCTAssertEqual(store.trashedItems.count, 3, "M-2 fix: cap overflow lands in trash (recoverable), not physical delete")
     }
 
     // MARK: - ID-STORE-0002 (2026-07-31 audit): expiry cleanup goes to trash

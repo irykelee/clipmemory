@@ -15,6 +15,16 @@ import CryptoKit
     private var originalCrypto: CryptoServiceProtocol?
     private var store: ClipboardStore!
 
+    /// Snapshot of production `maxClipboardItems` taken in setUp.
+    /// `maxItems` didSet writes to `UserDefaults.standard` unconditionally
+    /// (NOT the injected `defaults` suite), so absent a restore the
+    /// ZZZ `testNoProductionPollution` teardown sees a NEW key and
+    /// fails the build. NEW-1 (2026-08-03) absence-aware pattern:
+    /// if the key didn't exist before, remove it; else restore the
+    /// snapshot. M-2 (2026-08-08): introduced because 3 new tests
+    /// set `store.maxItems` to trigger the overflow path.
+    private var maxItemsSnapshot: Any?
+
     override func setUp() {
         super.setUp()
         tempRoot = FileManager.default.temporaryDirectory
@@ -28,10 +38,17 @@ import CryptoKit
         // (re-encrypted with that key) are readable; restored in tearDown.
         originalCrypto = ServiceContainer.crypto
         ServiceContainer.setCryptoForTesting(localCrypto)
-        store = ClipboardStore(backend: MemoryStorageBackend())
+        store = ClipboardStore(backend: MemoryStorageBackend(), defaults: defaults)
+        maxItemsSnapshot = UserDefaults.standard.object(forKey: "maxClipboardItems")
     }
 
     override func tearDown() {
+        if let snapshot = maxItemsSnapshot {
+            UserDefaults.standard.set(snapshot, forKey: "maxClipboardItems")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
+        }
+        maxItemsSnapshot = nil
         if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         try? FileManager.default.removeItem(at: tempRoot)
@@ -840,5 +857,113 @@ import CryptoKit
                 return
             }
         }
+    }
+
+    // MARK: - M-2 (2026-08-08 audit): import overflow must route through trash
+
+    /// M-2 fix: when an import blows past `maxItems`, the overflow must
+    /// land in the recycle bin (recoverable) rather than be physically
+    /// deleted. Pre-fix, `trimToMaxItems()` called `ImageStorage.deleteImage`
+    /// + `items.removeAll` — silent data loss for "switch to a new machine"
+    /// style imports that legitimately exceed the local cap.
+    func testImportOverflowRoutesOverflowedItemsToTrashNotPhysicalDelete() throws {
+        // Seed the store at maxItems with stable, identifiable content.
+        store.maxItems = 3
+        for i in 0..<3 {
+            let encrypted = try XCTUnwrap(localCrypto.encrypt("existing \(i)"))
+            let hash = try XCTUnwrap(localCrypto.hmacHex(for: "existing \(i)"))
+            store.addItem(ClipboardItem(content: encrypted, type: .text, isEncrypted: true, contentHash: hash))
+        }
+        XCTAssertEqual(store.items.count, 3)
+        XCTAssertEqual(store.trashedItems.count, 0, "no pre-existing trash")
+
+        // Import 1 item — total 4, maxItems=3, overflow = 1.
+        let encrypted = try XCTUnwrap(localCrypto.encrypt("imported 0"))
+        let hash = try XCTUnwrap(localCrypto.hmacHex(for: "imported 0"))
+        let newItems = [ClipboardItem(content: encrypted, type: .text, isEncrypted: true, contentHash: hash)]
+        let (imported, skipped) = store.importBackupItems(newItems, trashedItems: [])
+
+        XCTAssertEqual(imported, 1)
+        XCTAssertEqual(skipped, 0)
+        XCTAssertEqual(store.items.count, 3, "maxItems cap enforced — only 3 active items")
+        // M-2 fix: the 1 overflow item lands in trash, recoverable, NOT deleted.
+        XCTAssertEqual(store.trashedItems.count, 1,
+                       "overflow item must land in the recycle bin (recoverable), not be physically deleted")
+    }
+
+    /// M-2 fix: image overflow items must have their image files preserved
+    /// (image lives in Images/, referenced from the trashed ClipboardItem)
+    /// rather than be physically deleted from disk.
+    func testImportOverflowImageFileIsPreservedNotDeleted() throws {
+        // Build an image item with a real on-disk file.
+        let imageData = Data((0..<128).map { UInt8($0) })
+        let imageID = UUID()
+        let filename = "\(imageID.uuidString).png"
+        // Save image to the test images directory (XCTest sandboxed).
+        let imageURL = imagesDir.appendingPathComponent(filename)
+        try imageData.write(to: imageURL)
+        defer { try? FileManager.default.removeItem(at: imageURL) }
+
+        let hash = try XCTUnwrap(ClipboardMonitor.imageContentHash(for: imageData))
+        store.maxItems = 1  // force every extra addItem to overflow
+
+        // First import: lands in active (under max).
+        store.addItem(ClipboardItem(id: imageID, content: filename, type: .image, contentHash: hash))
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: imageURL.path),
+                      "image file must exist on disk while item is active")
+
+        // Second import of a DIFFERENT image — should overflow the first to trash.
+        let image2Data = Data((128..<255).map { UInt8($0) })
+        let image2ID = UUID()
+        let filename2 = "\(image2ID.uuidString).png"
+        let image2URL = imagesDir.appendingPathComponent(filename2)
+        try image2Data.write(to: image2URL)
+        defer { try? FileManager.default.removeItem(at: image2URL) }
+        let hash2 = try XCTUnwrap(ClipboardMonitor.imageContentHash(for: image2Data))
+
+        store.addItem(ClipboardItem(id: image2ID, content: filename2, type: .image, contentHash: hash2))
+        XCTAssertEqual(store.items.count, 1, "active list capped at maxItems")
+        XCTAssertEqual(store.trashedItems.count, 1, "first image overflowed to trash")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: imageURL.path),
+                      "M-2 fix: image file of overflowed item must be PRESERVED on disk (referenced from trash), not deleted")
+    }
+
+    /// M-2 fix: pinned items must still be exempt from trim even when the
+    /// overflow routes through trash. The C-1 exemption applies to the
+    /// import path too.
+    func testImportOverflowExemptsPinnedItems() throws {
+        store.maxItems = 2
+
+        // Pin one existing item — must survive import overflow.
+        let pinnedContent = try XCTUnwrap(localCrypto.encrypt("pinned"))
+        let pinnedHash = try XCTUnwrap(localCrypto.hmacHex(for: "pinned"))
+        let pinnedItem = ClipboardItem(content: pinnedContent, type: .text, isPinned: true,
+                                        isEncrypted: true, contentHash: pinnedHash)
+        store.addItem(pinnedItem)
+        let pinnedID = store.items[0].id
+
+        // Fill to cap.
+        for i in 0..<1 {
+            let encrypted = try XCTUnwrap(localCrypto.encrypt("existing \(i)"))
+            let hash = try XCTUnwrap(localCrypto.hmacHex(for: "existing \(i)"))
+            store.addItem(ClipboardItem(content: encrypted, type: .text, isEncrypted: true, contentHash: hash))
+        }
+        XCTAssertEqual(store.items.count, 2)
+
+        // Import 3 more — total 5 items, maxItems=2, pinned must survive.
+        var newItems: [ClipboardItem] = []
+        for i in 0..<3 {
+            let encrypted = try XCTUnwrap(localCrypto.encrypt("imported \(i)"))
+            let hash = try XCTUnwrap(localCrypto.hmacHex(for: "imported \(i)"))
+            newItems.append(ClipboardItem(content: encrypted, type: .text, isEncrypted: true, contentHash: hash))
+        }
+        store.importBackupItems(newItems, trashedItems: [])
+
+        XCTAssertEqual(store.items.count, 2, "capped at maxItems")
+        XCTAssertTrue(store.items.contains { $0.id == pinnedID },
+                      "M-2 + C-1 fix: pinned item survives even when overflow goes through trash")
+        XCTAssertGreaterThanOrEqual(store.trashedItems.count, 1,
+                                    "non-pinned overflow items should still land in trash")
     }
 }
