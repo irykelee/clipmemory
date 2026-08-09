@@ -1568,7 +1568,15 @@ final class ClipboardStore: ObservableObject {
         if imported > 0 {
             items.sort { $0.createdAt > $1.createdAt }
         invalidateItemIndex()
+            // M-2 (2026-08-08 audit): `trimToMaxItems` now routes every
+            // cap-driven overflow through the recycle bin. For imports
+            // specifically, log how much overflowed so users debugging
+            // "where did my old entries go?" find the answer in unified log.
+            let overflowCount = itemsExceedingMaxItems().count
             trimToMaxItems()
+            if overflowCount > 0 {
+                logger.warning("M-2: import overflowed \(overflowCount) item(s) beyond maxItems=\(self.maxItems); routed to trash (recoverable for \(self.trashStore.trashRetentionDays)-day retention)")
+            }
             updatePinnedItems()
             saveImmediately()
             rebuildDedupHashSet()
@@ -2070,42 +2078,34 @@ final class ClipboardStore: ObservableObject {
     func emptyTrash() { trashStore.emptyTrash() }
     func purgeExpiredTrash() { trashStore.purgeExpiredTrash() }
 
-    func trimToMaxItems() {
-        guard items.count > maxItems else { return }
-        // C-1 fix (2026-07-20 audit): pinned items are an explicit retention
-        // guarantee the user opted into — never silently evict them to make
-        // room for non-pinned history. If the user pins more than maxItems,
-        // pinned overflows the cap; non-pinned is shrunk to whatever slots
-        // remain (possibly zero). Trade-off: the active list may exceed
-        // maxItems; alternative policies (rejecting new pins at cap, separate
-        // pinned cap) are policy decisions for the user, not silent data loss.
+    /// M-2 (2026-08-08 audit): pure helper that returns the items that
+    /// would be evicted to make `items` fit within `maxItems` — without
+    /// applying any side effects. Lets callers choose the eviction path
+    /// (physical delete vs. trash) without duplicating the trim math.
+    /// C-1 pinned exemption lives here; non-pinned overflow candidates
+    /// are returned in their original `items` order.
+    private func itemsExceedingMaxItems() -> [ClipboardItem] {
+        guard items.count > maxItems else { return [] }
         let pinned = items.filter { $0.isPinned }
         var nonPinned = items.filter { !$0.isPinned }
         let allowedNonPinned = max(0, maxItems - pinned.count)
         nonPinned = Array(nonPinned.prefix(allowedNonPinned))
-        // BUG-014 (2026-07-21): `pinned + nonPinned` (previous) + L1100
-        // `items = trimmed` moved ALL pinned items to the front of the
-        // array, breaking the time-descending order — a pinned 8:00 item
-        // could appear before a non-pinned 9:00 item. Compute the
-        // surviving-id set and removeAll in place so original ordering is
-        // preserved.
         let trimmedIds = Set((pinned + nonPinned).map { $0.id })
-        let removedItems = items.filter { !trimmedIds.contains($0.id) }
-        for item in removedItems {
-            contentCache.removeObject(forKey: item.id.uuidString as NSString)
-            // CLIP-5 (2026-07-24 review): also drop the derived OCR cache key.
-            contentCache.removeObject(forKey: (item.id.uuidString + ".ocr") as NSString)
-            rtfPlaintextCache.removeObject(forKey: item.id.uuidString as NSString)
-        }
-        let removedImages = removedItems.filter { $0.type == .image }
-        for item in removedImages {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
-        items.removeAll { !trimmedIds.contains($0.id) }
-        invalidateItemIndex()
-        updatePinnedItems()
-        scheduleSave()
-        rebuildDedupHashSet()
+        return items.filter { !trimmedIds.contains($0.id) }
+    }
+
+    func trimToMaxItems() {
+        let overflow = itemsExceedingMaxItems()
+        guard !overflow.isEmpty else { return }
+        // M-2 (2026-08-08 audit): route every cap-driven eviction
+        // through the recycle bin instead of physically deleting. This
+        // covers both bulk imports (the audit's primary concern) AND
+        // steady-state addItem / togglePin / loadItems overflow, where the
+        // same "silent data loss on cap hit" bug applies. Image files
+        // stay on disk referenced from the trashed ClipboardItem — the
+        // user can restore them via the recycle bin UI.
+        // C-1 pinned exemption: `overflow` already excludes pinned items.
+        moveToTrash(overflow)
     }
 
     func deleteItem(_ item: ClipboardItem) {

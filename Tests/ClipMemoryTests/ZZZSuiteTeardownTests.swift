@@ -158,6 +158,8 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // AppDelegate init paths (StartupHealth + WelcomeView + BackupService):
         "lastLaunchTime",            // StartupHealth.swift:24, 144 — set in logSnapshot
         "hasLaunchedBefore",         // WelcomeView.swift:171, 178 — first launch marker
+        "appLanguage",               // LanguageManager.shared init (4-LM seam) — writes current language
+        "ClipboardTrashedItems",     // TrashStore init / moveToTrash — JSON-encoded trash array
         "lastBackupDate",            // BackupService.swift:44, 320 — written when backup >24h interval
         // UpdateService init + probe:
         "UpdateFeedPolicy",          // UpdateService.swift:110, 193 — feedPolicyKey didSet
@@ -166,6 +168,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         "WindowFrame",               // WindowManager.swift:62, 248 — windowDidMove/Resize debounced 0.5s
         // ClipboardStore storage + settings:
         "ClipboardItems",            // ClipboardStore.swift:239 — itemsStorageKey, written on save
+        "maxClipboardItems",         // ClipboardStore.swift:129 — maxItemsKey, didSet writes on Settings slider change (and any test that exercises the cap)
         "settings.selectedTab",      // SettingsRootView.swift:31 — @AppStorage, didSet on tab click
         // ImageStorage startup migration + cleanup:
         "ImageStorageMigrationComplete", // ImageStorage.swift:78, 159, 290 — init-time migration latch

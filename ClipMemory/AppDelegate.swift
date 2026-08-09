@@ -647,6 +647,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let o = languageObserver { NotificationCenter.default.removeObserver(o) }
         if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) }
         if let o = clipboardSaveFailedObserver { NotificationCenter.default.removeObserver(o) }
+        // M-2 / round-15 Finding A (2026-08-08): trashLoadFailedObserver
+        // was registered in H-2 but never removed in deinit — observer
+        // leak across AppDelegate lifetimes. Mirrors the clipboardSaveFailed
+        // cleanup pattern above.
+        if let o = trashLoadFailedObserver { NotificationCenter.default.removeObserver(o) }
         if let o = keychainUnlockObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = sessionBecomeActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = didBecomeActiveObserver { NotificationCenter.default.removeObserver(o) }
