@@ -217,6 +217,11 @@ final class NotificationObserverAssertionTests: XCTestCase {
                 let matches = inlineRe.matches(in: line, options: [], range: range)
                 for m in matches where m.numberOfRanges >= 2 {
                     let rawValue = (line as NSString).substring(with: m.range(at: 1))
+                    // De-duplicate: if a `static let X = Notification.Name("Y")`
+                    // already added this rawValue in Pass 1, skip the inline
+                    // duplicate. (System notifications like NSCalendarDayChanged-
+                    // Notification appear inline only — they get added once
+                    // here, then dedup is a no-op on subsequent lines.)
                     if rawValues.contains(rawValue) { continue }
                     rawValues.insert(rawValue)
                     // For inline literals, derive shortName from rawValue's
@@ -290,7 +295,7 @@ final class NotificationObserverAssertionTests: XCTestCase {
                     // (e.g. "ImageStorageMigrationCompleted"). We index by
                     // both so the lookup finds a match regardless of which
                     // form the consumer used.
-                    let inlineMatches = matches(in: window, pattern: #"forName:\s*Notification\.Name\("([\w.]+)"\)"#)
+                    let inlineMatches = matchesPattern(in: window, pattern: #"forName:\s*Notification\.Name\("([\w.]+)"\)"#)
                     for rawValue in inlineMatches {
                         result[rawValue, default: []].append("\(rel):\(lineNum)")
                         // Also index by last segment so a consumer that
@@ -301,22 +306,18 @@ final class NotificationObserverAssertionTests: XCTestCase {
                         }
                     }
                 }
-                if let range = line.range(of: "publisher(for:") {
-                    let afterColon = line[range.upperBound...]
-                    var idx = afterColon.startIndex
-                    while idx < afterColon.endIndex, afterColon[idx].isWhitespace {
-                        idx = afterColon.index(after: idx)
-                    }
-                    if idx < afterColon.endIndex, afterColon[idx] == "." {
-                        let nameStart = afterColon.index(after: idx)
-                        var endIdx = nameStart
-                        while endIdx < afterColon.endIndex,
-                              afterColon[endIdx].isLetter || afterColon[endIdx].isNumber || afterColon[endIdx] == "_" {
-                            endIdx = afterColon.index(after: endIdx)
-                        }
-                        if endIdx > nameStart {
-                            let name = String(afterColon[nameStart..<endIdx])
-                            result[name, default: []].append("\(rel):\(lineNum)")
+                if line.contains("publisher(") {
+                    // publisher( is the call start; for: .X or
+                    // for: Notification.Name(...rawValue...) may be on
+                    // the same line or the next 1-2 lines. Use a window
+                    // so multi-line forms are captured.
+                    let window = (idx..<min(lines.count, idx + 3))
+                        .map { lines[$0] }
+                        .joined(separator: "\n")
+                    let names = matchesPattern(in: window, pattern: #"for:\s*(?:Notification\.Name\((?:rawValue:\s*)?"([\w.]+)"|\.([\w.]+))"#)
+                    for short in names {
+                        if !short.isEmpty {
+                            result[short, default: []].append("\(rel):\(lineNum)")
                         }
                     }
                 }
@@ -346,18 +347,25 @@ final class NotificationObserverAssertionTests: XCTestCase {
         return String(afterMarker[nameStart..<idx])
     }
 
-    /// Returns captured group 1 values for each regex match in `text`.
-    /// Used for inline `Notification.Name("X")` patterns where the
-    /// captured group is the rawValue (not a shortName).
-    private func matches(in text: String, pattern: String) -> [String] {
+    /// Returns captured group values for each regex match in `text`.
+    /// Tries groups 1..<n in order and returns the first non-empty
+    /// value. This handles alternation patterns where the value
+    /// appears in different groups depending on which branch matched
+    /// (e.g., publisher regex matches either `Notification.Name("X")`
+    /// — value in group 1 — or `.X` — value in group 2).
+    private func matchesPattern(in text: String, pattern: String) -> [String] {
         guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
         let nsText = text as NSString
         let range = NSRange(location: 0, length: nsText.length)
         return re.matches(in: text, options: [], range: range).compactMap { result -> String? in
-            guard result.numberOfRanges >= 2 else { return nil }
-            let r = result.range(at: 1)
-            guard r.location != NSNotFound else { return nil }
-            return nsText.substring(with: r)
+            for i in 1..<result.numberOfRanges {
+                let r = result.range(at: i)
+                if r.location != NSNotFound {
+                    let s = nsText.substring(with: r)
+                    if !s.isEmpty { return s }
+                }
+            }
+            return nil
         }
     }
 }
