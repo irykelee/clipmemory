@@ -542,6 +542,15 @@ class ImageStorage {
         }
     }
 
+    /// H-3 (2026-08-08 audit): race-safe file-existence check used by
+    /// ClipboardStore's dedup path to detect broken images even when the
+    /// startup integrity scan hasn't seen the latest disk state yet.
+    /// Cheaper than `imageStatus(for:)` because it never reads the bytes.
+    func fileExists(filename: String) -> Bool {
+        guard Self.isValidFilename(filename) else { return false }
+        return fileManager.fileExists(atPath: imagesDirectory.appendingPathComponent(filename).path)
+    }
+
     /// Returns the availability status of an image file without caching.
     /// Used by the UI to distinguish "file missing" from "decryption failed"
     /// so users are not prompted to delete entries whose key has been corrupted.
