@@ -116,16 +116,16 @@ final class NotificationObserverAssertionTests: XCTestCase {
     private let knownZeroObserverWhitelist: [WhitelistEntry] = [
         WhitelistEntry(
             shortName: "tagBackendCorrupted",
-            ledgerID: "(none — see audit §五.3 dead channels)",
+            ledgerID: "(none — v2 audit H-1 dead channels list at v2 report :28/:34)",
             reason: "Posted in `ClipboardStore.loadTags` only; consumer (Settings diagnostics banner) is reserved channel per audit CLIP-7, no observer yet."),
         WhitelistEntry(
             shortName: "clipboardSaveFailed",
             ledgerID: "ID-SILENT-0021",
-            reason: "Notification posted + persistent retry in fix e39b601 / 3959fc3; consumer (NSAlert + Throttler + backoff) is H-1 scope — don't back-door via test green."),
+            reason: "POST-ONLY. The fix at 3959fc3 restores `needsSave = true` and POSTs `.clipboardSaveFailed` so the *next* timer fire (or next user mutation that triggers `saveImmediately()`) re-attempts the save. **No auto-retry with backoff** today; the loop is bounded by the next 500ms debounce tick or by user mutation. Throttler + NSAlert + backoff are deferred to H-1 — don't back-door via test green."),
         WhitelistEntry(
             shortName: "ocrLanguageFallback",
             ledgerID: "ID-SYNC-0004 (post itself FIXED; consumer leg deferred to H-1)",
-            reason: "Posted in OCRService when language list unsupported; consumer (Settings banner 'OCR using English') is reserved channel per audit, no observer yet."),
+            reason: "Posted in OCRService when language list unsupported; consumer (Settings banner 'OCR using English') is reserved channel per v2 audit H-1 (dead channels list at v2 report :28/:34), no observer yet."),
     ]
 
     // MARK: - Source scan
