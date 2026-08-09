@@ -157,8 +157,8 @@ jobs:
         # OOM, infrastructure hang), the test process exits before ZZZ
         # fires and CI reports "TEST SUCCEEDED" with `Executed 0 tests`.
         # Asserting a minimum test count catches this: a real run is
-        # currently 742 (update the threshold when adding/deleting
-        # suites). The threshold is intentionally tight (740 leaves
+        # currently 755 (update the threshold when adding/deleting
+        # suites). The threshold is intentionally tight (753 leaves
         # 2 tests of slack for non-locale filter effects) — a 12-test
         # cushion would let a partial-suite abort hide.
         run: |
@@ -166,8 +166,8 @@ jobs:
           xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-test.log
           executed=$(grep -oE 'Executed [0-9]+ test' /tmp/xcb-test.log | tail -1 | grep -oE '[0-9]+')
           echo "Test execution count: $executed"
-          if [[ -z "$executed" || "$executed" -lt 740 ]]; then
-            echo "❌ Blind spot 6: test count $executed is below the 740 lower bound — ZZZ canary may not have run. Investigate the log for early-terminated suites."
+          if [[ -z "$executed" || "$executed" -lt 753 ]]; then
+            echo "❌ Blind spot 6: test count $executed is below the 753 lower bound — ZZZ canary may not have run. Investigate the log for early-terminated suites."
             exit 1
           fi
 
