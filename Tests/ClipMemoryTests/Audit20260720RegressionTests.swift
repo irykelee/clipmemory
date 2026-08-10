@@ -180,4 +180,81 @@ import AppKit
         UserDefaults.standard.set(2.0, forKey: key)
         XCTAssertEqual(sz(16), 32, "scale == 2.0 within bounds must multiply")
     }
+
+    // MARK: - FontScaling: Settings-picker 3-step regression (FONT-0001)
+
+    /// FONT-0001 (2026-08-10): the Settings Picker exposes exactly three
+    /// font-scale steps (1.0 / 1.2 / 1.4 in `GeneralSettingsView.swift:80-84`).
+    /// The 250ms-debounce + clamp behavior above protects against bad values
+    /// landing in UserDefaults, but the multiplicative correctness of the
+    /// three "happy path" values themselves was not previously exercised.
+    /// Pin the math here so a future refactor of the clamp condition
+    /// (e.g. changing `< 4` to `<= 4`) cannot silently break the visible
+    /// picker output.
+    func testFontScalingThreeStepPickerMultiplies() {
+        let key = "fontScale"
+        let original = UserDefaults.standard.object(forKey: key) as? Double
+        defer {
+            if let original { UserDefaults.standard.set(original, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+
+        // scale == 1.0 (small) — identity, no scaling.
+        UserDefaults.standard.set(1.0, forKey: key)
+        XCTAssertEqual(sz(10), 10, "scale == 1.0 (small) must be identity")
+        XCTAssertEqual(sz(16), 16)
+
+        // scale == 1.2 (medium) — Settings design team tuned this value.
+        // Pin the exact multiplicative result so a future drift (e.g.
+        // someone "rounds" 1.2 to 1.25 in the Picker) is caught by the
+        // picker-preview test, not by a user complaint.
+        UserDefaults.standard.set(1.2, forKey: key)
+        XCTAssertEqual(sz(10), 12, accuracy: 0.001, "scale == 1.2 (medium) multiplies exactly")
+        XCTAssertEqual(sz(16), 19.2, accuracy: 0.001)
+
+        // scale == 1.4 (large) — same rationale as medium.
+        UserDefaults.standard.set(1.4, forKey: key)
+        XCTAssertEqual(sz(10), 14, accuracy: 0.001, "scale == 1.4 (large) multiplies exactly")
+        XCTAssertEqual(sz(16), 22.4, accuracy: 0.001)
+    }
+
+    /// FONT-0001 (2026-08-10): the clamp upper bound is `scale < 4` (strict
+    /// less-than). The original M-5 test exercised `5.0` (well above 4) but
+    /// never the exact boundary value `4.0`. Without this test, an off-by-one
+    /// edit (e.g. `< 4` → `<= 4` to "match Settings' tag upper bound") would
+    /// pass the M-5 test (5.0 still clamped) while silently changing behavior
+    /// at the boundary.
+    func testFontScalingClampBoundaryExactlyFourIsBase() {
+        let key = "fontScale"
+        let original = UserDefaults.standard.object(forKey: key) as? Double
+        defer {
+            if let original { UserDefaults.standard.set(original, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+
+        // scale == 4.0 — strict `<` must clamp to base.
+        UserDefaults.standard.set(4.0, forKey: key)
+        XCTAssertEqual(sz(16), 16, "scale == 4.0 must clamp to base (strict < boundary)")
+
+        // scale == 3.999 — just below boundary, must multiply.
+        UserDefaults.standard.set(3.999, forKey: key)
+        XCTAssertEqual(sz(16), 63.984, accuracy: 0.001, "scale == 3.999 (just below boundary) must multiply")
+    }
+
+    /// FONT-0001 (2026-08-10): M-5's negative-input check tests `-2.0`,
+    /// but `scale == 0` is the *most* dangerous bad value — `0 * 16 = 0`
+    /// produces `Text().font(.system(size: 0))` which collapses the layout
+    /// just like `.infinity` did before the fix. The guard `scale > 0`
+    /// must reject exactly zero.
+    func testFontScalingScaleZeroClampsToBase() {
+        let key = "fontScale"
+        let original = UserDefaults.standard.object(forKey: key) as? Double
+        defer {
+            if let original { UserDefaults.standard.set(original, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+
+        UserDefaults.standard.set(0.0, forKey: key)
+        XCTAssertEqual(sz(16), 16, "scale == 0.0 must clamp to base (0 * base = 0 collapses SwiftUI layout)")
+    }
 }
