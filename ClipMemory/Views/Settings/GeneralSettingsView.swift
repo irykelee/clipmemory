@@ -99,7 +99,7 @@ struct GeneralSettingsView: View {
         stopKeyEventMonitor()
         keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard isRecordingHotKey else { return event }
-            if event.keyCode == 53 { // Esc
+            if event.keyCode == UInt16(kVK_Escape) {
                 isRecordingHotKey = false
                 stopKeyEventMonitor()
                 return event
