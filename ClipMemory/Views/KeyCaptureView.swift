@@ -1,5 +1,9 @@
 import SwiftUI
 import AppKit
+// HOTKEY-0001 (2026-08-10): Carbon kVK_* constants for keyCode comparisons
+// — replaces bare numeric literals (126/125/36/53/3) that the audit
+// flagged as unreadable + typo-prone.
+import Carbon.HIToolbox
 
 /// Invisible NSViewRepresentable that captures global keyboard events.
 /// Used by QuickBar and main window for keyboard navigation.
@@ -79,7 +83,7 @@ final class KeyCaptureNSView: NSView {
             }
             // Cmd+F — menu key equivalent is consumed before local monitor sees it,
             // so we rely on `.onCommand` in ContentView instead.
-            if event.modifierFlags.contains(.command) && event.keyCode == 3 {
+            if event.modifierFlags.contains(.command) && event.keyCode == UInt16(kVK_ANSI_F) {
                 self.onCommandF?()
                 return nil
             }
@@ -93,12 +97,12 @@ final class KeyCaptureNSView: NSView {
             // field has focus. Without this guard, pressing Esc while editing a
             // tag name would silently close the main window.
             let shouldCaptureEnterEsc = !isTextInput
-            switch event.keyCode {
-            case 126: if shouldCaptureArrows { self.onUp?(); return nil }; return event      // UpArrow
-            case 125: if shouldCaptureArrows { self.onDown?(); return nil }; return event    // DownArrow
-            case 36:  if shouldCaptureEnterEsc { self.onReturn?(); return nil }; return event // Return
-            case 53:  if shouldCaptureEnterEsc { self.onEscape?(); return nil }; return event // Escape
-            default:  return event
+            switch Int(event.keyCode) {
+            case kVK_UpArrow:    if shouldCaptureArrows    { self.onUp?();      return nil }; return event
+            case kVK_DownArrow:  if shouldCaptureArrows    { self.onDown?();    return nil }; return event
+            case kVK_Return:     if shouldCaptureEnterEsc  { self.onReturn?();  return nil }; return event
+            case kVK_Escape:     if shouldCaptureEnterEsc  { self.onEscape?();  return nil }; return event
+            default:             return event
             }
         }
     }
