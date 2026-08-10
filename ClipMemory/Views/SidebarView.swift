@@ -49,7 +49,7 @@ struct SidebarView: View {
                         .frame(width: 16, height: 16)
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: sz(9), weight: .semibold))
                 }
                 TextField(L10n.searchPlaceholder, text: $searchText)
                     .textFieldStyle(.plain)
