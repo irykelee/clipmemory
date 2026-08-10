@@ -14,6 +14,14 @@ import os.log
 /// fullscreen machinery stays disengaged) and we set
 /// `collectionBehavior = .fullScreenNone` so the green button falls
 /// back to `performZoom`. Windowed mode, traffic lights
+///
+/// WINDOW-0001 (2026-08-10): frame persistence is now handled by
+/// AppKit via `setFrameAutosaveName(_:)` — see `MainWindow.init` below.
+/// `userFrame` is the zoom-toggle's separate state (NOT persistence):
+/// the green button toggles between the user-resized frame and the
+/// screen-full visibleFrame. Keeping `userFrame` in-memory only is
+/// intentional — autosave handles persistence, this property just
+/// remembers what the user resized to.
 final class MainWindow: NSWindow {
     private var userFrame: NSRect?
 
@@ -28,9 +36,9 @@ final class MainWindow: NSWindow {
             && currentFrame.height >= screenFrame.height - 20
         // INFRA-5 (2026-07-24 review): validate the saved frame is still
         // on-screen before restoring it (same visibleFrame.intersects check
-        // as WindowManager.savedWindowFrame) — a frame saved on a since-
-        // detached external display would otherwise zoom the window into
-        // unreachable space. Off-screen saved frames are ignored.
+        // the old `WindowManager.savedWindowFrame` did) — a frame saved on a
+        // since-detached external display would otherwise zoom the window
+        // into unreachable space. Off-screen saved frames are ignored.
         if isBigEnough, let saved = userFrame,
            NSScreen.screens.contains(where: { $0.visibleFrame.intersects(saved) }) {
             setFrame(saved, display: true, animate: true)
@@ -41,25 +49,12 @@ final class MainWindow: NSWindow {
     }
 }
 
-/// L-23 (2026-07-24 audit): typed Codable shape for the persisted window
-/// frame. Replaces the previous `JSONSerialization` round-trip via a
-/// `[String: CGFloat]` dictionary — same wire format ("x"/"y"/"w"/"h" keys
-/// with numeric values) so any existing UserDefaults blob continues to
-/// decode without migration.
-struct WindowFrame: Codable, Equatable {
-    var x: CGFloat
-    var y: CGFloat
-    var w: CGFloat
-    var h: CGFloat
-}
-
 class WindowManager: NSObject, NSWindowDelegate {
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "WindowManager")
     private(set) var mainWindow: NSWindow?
     private var quickBarPopover: NSPopover?
     private var quickBarHostingController: NSHostingController<QuickBarView>?
     private var statusItem: NSStatusItem?
-    private let windowFrameKey = "WindowFrame"
     /// C2 fix: keep a stable ContentView instance to preserve @State across window show/hide cycles
     private(set) var mainContentView: ContentView?
     /// B-6 (2026-07-27): secondary windows (settings, welcome) registered by
@@ -80,10 +75,13 @@ class WindowManager: NSObject, NSWindowDelegate {
     }
 
     /// M13 (2026-08-03): test seam — static injectable UserDefaults suite.
-    /// `nonisolated(unsafe)` because the savedWindowFrame accessor is
-    /// nonisolated (window frame read from a DispatchWorkItem callback).
-    /// Swift 6: first candidate for removal once all nonisolated(unsafe)
-    /// statics are eliminated from the service layer.
+    /// WINDOW-0001 (2026-08-10): no longer used by WindowManager itself
+    /// (frame persistence moved to AppKit's `setFrameAutosaveName`).
+    /// Kept as a forward-compatible seam so future code that needs a
+    /// test-injectable defaults suite (e.g. settings overlays) doesn't
+    /// have to re-introduce the static. `nonisolated(unsafe)` to match
+    /// the Swift 6 concurrency posture of the original (this property
+    /// is read from main-thread WindowManager methods only).
     nonisolated(unsafe) static var defaults: UserDefaults = .standard
 
     override init() { super.init() }
@@ -153,11 +151,27 @@ class WindowManager: NSObject, NSWindowDelegate {
             // branches — a guard makes the invariant explicit and avoids
             // a crash if the property is ever nil at this line.
             guard let contentView = mainContentView else { return }
+            // WINDOW-0001 (2026-08-10): pass an empty contentRect — AppKit's
+            // `setFrameAutosaveName` restores the user's saved frame from
+            // defaults BEFORE the window first shows, so any initial rect we
+            // pass here would be overridden. An empty rect lets AppKit center
+            // the window on its first launch (no prior autosave), then
+            // restore on every subsequent launch.
             let window = MainWindow(
-                contentRect: savedWindowFrame,
+                contentRect: .zero,
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered, defer: false
             )
+            // WINDOW-0001: hand frame persistence to AppKit. The name is
+            // global to the app (NSWindow uses a single NSUserDefaults key
+            // derived from it), so a stable, namespaced identifier avoids
+            // colliding with any future secondary-window autosave names.
+            // AppKit auto-handles:
+            //   - save on move/resize (no 0.5s debounce needed — we trust it)
+            //   - restore on show
+            //   - off-screen defense (frame on a since-detached display
+            //     is pulled back to the main visibleFrame on restore)
+            window.setFrameAutosaveName("com.clipmemory.app.MainWindow")
             window.delegate = self
             window.isReleasedWhenClosed = false
             // 2026-07-25: on macOS 26 (Tahoe) the title bar layer renders
@@ -196,10 +210,8 @@ class WindowManager: NSObject, NSWindowDelegate {
     private var saveFrameWorkItem: DispatchWorkItem?
 
     func windowWillClose(_ notification: Notification) {
-        // Persist the final frame immediately before hiding so a later quit
-        // or crash does not lose the user's last window position.
-        saveFrameWorkItem?.cancel()
-        if let w = mainWindow { savedWindowFrame = w.frame }
+        // WINDOW-0001 (2026-08-10): frame persistence is handled by AppKit
+        // via setFrameAutosaveName — we no longer write the frame here.
         // Keep mainWindow and mainContentView alive so @State survives close/reopen.
         // isReleasedWhenClosed=false already prevents the window from deallocating.
         // B-6 (2026-07-27): only sink to .accessory when no other registered
@@ -215,43 +227,9 @@ class WindowManager: NSObject, NSWindowDelegate {
         }
     }
 
-    private func saveWindowFrameDebounced() {
-        saveFrameWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self = self, let window = self.mainWindow else { return }
-            self.savedWindowFrame = window.frame
-        }
-        saveFrameWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
-    }
-
-    private var savedWindowFrame: NSRect {
-        get {
-            let defaultFrame = NSRect(x: 0, y: 0, width: 680, height: 500)
-            guard let data = Self.defaults.data(forKey: windowFrameKey),
-                  let frame = try? JSONDecoder().decode(WindowFrame.self, from: data) else { return defaultFrame }
-            let saved = NSRect(x: frame.x, y: frame.y, width: frame.w, height: frame.h)
-            if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(saved) }) {
-                let v = NSScreen.main?.visibleFrame ?? defaultFrame
-                return NSRect(x: v.midX - 340, y: v.midY - 250, width: 680, height: 500)
-            }
-            return saved
-        }
-        set {
-            let f = WindowFrame(x: newValue.origin.x, y: newValue.origin.y, w: newValue.size.width, h: newValue.size.height)
-            // ID-04 (2026-07-30 audit): JSONEncoder on a 4-Double struct
-            // doesn't realistically fail, but if a future refactor adds a
-            // non-encodable field the user's window position/size preference
-            // would silently drop on next launch. Log the failure.
-            do {
-                let data = try JSONEncoder().encode(f)
-                Self.defaults.set(data, forKey: windowFrameKey)
-            } catch {
-                logger.error("Failed to persist window frame (position/size lost on next launch): \(error.localizedDescription, privacy: .public)")
-            }
-        }
-    }
-
-    func windowDidMove(_ n: Notification) { saveWindowFrameDebounced() }
-    func windowDidResize(_ n: Notification) { saveWindowFrameDebounced() }
+    // WINDOW-0001 (2026-08-10): saveWindowFrameDebounced + savedWindowFrame
+    // + windowDidMove/Resize removed — AppKit's setFrameAutosaveName persists
+    // the frame to NSUserDefaults automatically on move/resize and restores
+    // it on show, with built-in off-screen defense (frame on a since-
+    // detached display is pulled back to the main visibleFrame).
 }

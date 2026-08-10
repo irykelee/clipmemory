@@ -164,8 +164,11 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // UpdateService init + probe:
         "UpdateFeedPolicy",          // UpdateService.swift:110, 193 — feedPolicyKey didSet
         "LastPrimaryAppcastItemDate",// UpdateService.swift:109, 216 — startAfterFeedProbe post-probe
-        // WindowManager debounced window-frame write:
-        "WindowFrame",               // WindowManager.swift:62, 248 — windowDidMove/Resize debounced 0.5s
+        // WINDOW-0001 (2026-08-10): "WindowFrame" key removed from the
+        // whitelist. Frame persistence moved to AppKit's setFrameAutosaveName,
+        // which writes to NSUserDefaults under a derived key (NSWindow Frame
+        // <autosave name>) — NOT under "WindowFrame". If autosave ever writes
+        // a key matching "WindowFrame" in the future, that's a regression.
         // ClipboardStore storage + settings:
         "ClipboardItems",            // ClipboardStore.swift:239 — itemsStorageKey, written on save
         // ID-STORE-0014 (2026-08-10): maxClipboardItems removed from
@@ -180,6 +183,9 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         "ImageStorageStartupCleanupRan", // ImageStorage.swift:889, 891 — init-time orphan cleanup latch
     ]
 
+    /// Cold-disk calibration (2026-08-06) found 18 keys; the 4 removed
+    /// for documented reasons are listed in the comment block above.
+    ///
     /// Environment invariants — keys that MUST be present in the
     /// observed set on every run. Their absence means a previously-
     /// active source silently stopped writing (a real shrink, not a
