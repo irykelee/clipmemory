@@ -252,6 +252,9 @@
 "trash.title" = "Lixeira";
 "trash.empty" = "A lixeira está vazia";
 "trash.restore" = "Restaurar";
+"trash.batch.restore" = "Restaurar %d itens";
+"trash.batch.restore.one" = "Restaurar 1 item";
+"trash.selectAll" = "Selecionar tudo";
 "trash.emptyConfirm.title" = "Esvaziar lixeira";
 "trash.emptyConfirm.message" = "%d itens serão apagados permanentemente. Esta ação não pode ser desfeita.";
 "trash.emptyConfirm.message.one" = "1 item será apagado permanentemente. Esta ação não pode ser desfeita.";

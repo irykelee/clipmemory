@@ -522,4 +522,46 @@ final class LocalizationKeysTests: XCTestCase {
             }
         }
     }
+
+    /// NEW-batch-restore: parity pin for the trash multi-select keys
+    /// added in 2026-08-10. Both keys must exist in all 7 languages
+    /// or the trash toolbar will silently fall back to the key name.
+    /// `trash.batch.restore` is a plural key — must have a `.one`
+    /// variant in en/es/pt (the languages that inflect singular/plural).
+    func testTrashBatchRestoreKeysExistInAllSevenLanguageFiles() throws {
+        let keys = ["trash.batch.restore", "trash.selectAll"]
+        let pluralKeys = ["trash.batch.restore"]
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appResDir = projectRoot.appendingPathComponent("ClipMemory", isDirectory: true)
+
+        let languages = ["en", "es", "ja", "ko", "pt", "zh-Hans", "zh-Hant"]
+        for lang in languages {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            for key in keys {
+                XCTAssertTrue(
+                    content.contains("\"\(key)\""),
+                    "\(lang).lproj/Localizable.strings is missing key '\(key)'"
+                )
+            }
+        }
+        // Plural variants: en/es/pt must have a `.one` form for the singular count.
+        for lang in ["en", "es", "pt"] {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            for key in pluralKeys {
+                XCTAssertTrue(
+                    content.contains("\"\(key).one\""),
+                    "\(lang).lproj/Localizable.strings is missing singular key '\(key).one'"
+                )
+            }
+        }
+    }
 }

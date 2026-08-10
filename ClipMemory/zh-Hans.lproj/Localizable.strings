@@ -247,6 +247,9 @@
 "trash.title" = "回收站";
 "trash.empty" = "回收站是空的";
 "trash.restore" = "恢复";
+"trash.batch.restore" = "恢复 %d 项";
+"trash.batch.restore.one" = "恢复 1 项";
+"trash.selectAll" = "全选";
 "trash.emptyConfirm.title" = "清空回收站";
 "trash.emptyConfirm.message" = "%d 条记录将被永久删除，此操作无法撤销。";
 "trash.retentionDays" = "回收站保留天数";

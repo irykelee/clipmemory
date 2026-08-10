@@ -249,6 +249,9 @@
 "trash.title" = "휴지통";
 "trash.empty" = "휴지통이 비어 있습니다";
 "trash.restore" = "복원";
+"trash.batch.restore" = "%d개 항목 복원";
+"trash.batch.restore.one" = "1개 항목 복원";
+"trash.selectAll" = "모두 선택";
 "trash.emptyConfirm.title" = "휴지통 비우기";
 "trash.emptyConfirm.message" = "%d개의 항목이 영구적으로 삭제됩니다. 이 작업은 취소할 수 없습니다.";
 "trash.retentionDays" = "휴지통 보관 일수";

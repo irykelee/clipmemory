@@ -137,6 +137,47 @@ import XCTest
         XCTAssertEqual(d, "Second", "Restored item should be at top")
     }
 
+    /// NEW-batch-restore: pass an array of items, all should be restored
+    /// to the top of the active list in array order (first arg → top).
+    /// Mirrors per-item `restoreFromTrash` behavior but lets the UI
+    /// restore N items in one call (so saves / invalidations batch).
+    func testRestoreFromTrashArrayMovesAllBack() {
+        // Seed 3 items, delete all 3 to trash (order: "Third", "Second", "First")
+        let item1 = ClipboardItem(content: "First", type: .text)
+        let item2 = ClipboardItem(content: "Second", type: .text)
+        let item3 = ClipboardItem(content: "Third", type: .text)
+        store.addItem(item1)
+        store.addItem(item2)
+        store.addItem(item3)
+        store.flushPendingSaves()
+
+        store.deleteItem(store.items[0]) // "Third"
+        store.deleteItem(store.items[0]) // "Second"
+        store.deleteItem(store.items[0]) // "First"
+        store.flushPendingSaves()
+        XCTAssertEqual(store.trashedItems.count, 3)
+
+        // Restore all 3 in the order they were trashed (Third, Second, First).
+        // After per-item insert(at: 0), each subsequent restore pushes the
+        // previous to position 1. The final array order from top is the
+        // REVERSE of the restore order — i.e. insertion-order preserved
+        // with the OLDEST trashed at the top.
+        let trashed = store.trashedItems
+        store.restoreFromTrash(trashed)
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items.count, 3, "All 3 trash items must be restored")
+        XCTAssertEqual(store.trashedItems.count, 0, "Trash must be empty")
+        XCTAssertNil(store.items[0].deletedAt, "Restored item must have deletedAt cleared")
+        XCTAssertNil(store.items[1].deletedAt)
+        XCTAssertNil(store.items[2].deletedAt)
+        XCTAssertEqual(store.getDecryptedContent(store.items[0]), "Third",
+                       "Most-recently-trashed ends at top after batch restore")
+        XCTAssertEqual(store.getDecryptedContent(store.items[1]), "Second")
+        XCTAssertEqual(store.getDecryptedContent(store.items[2]), "First",
+                       "Oldest-trashed ends at bottom")
+    }
+
     // MARK: - ID-CRASH-0001 (2026-07-31 Round 5): itemIndex invalidation on trash paths
 
     /// ID-CRASH-0001: `moveToTrash` mutated `items` without calling

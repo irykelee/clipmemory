@@ -280,6 +280,12 @@ struct ItemListView: View {
 
     // MARK: - Trash sub-view
 
+    /// NEW-batch-restore: selection state for the trash list's multi-select
+    /// mode. Local to ItemListView (not exposed to ContentView) — trash
+    /// selection has no meaning outside the trash view, so parent coupling
+    /// would be over-engineering.
+    @State private var selectedTrashIDs: Set<UUID> = []
+
     private var trashView: some View {
         VStack(spacing: 0) {
             if store.trashedItems.isEmpty {
@@ -294,7 +300,7 @@ struct ItemListView: View {
                 }
                 Spacer()
             } else {
-                List {
+                List(selection: $selectedTrashIDs) {
                     ForEach(store.trashedItems) { item in
                         TrashItemRow(
                             item: item,
@@ -307,6 +313,48 @@ struct ItemListView: View {
                     }
                 }
                 .listStyle(.plain)
+                .overlay(alignment: .top) {
+                    // NEW-batch-restore: selection toolbar — mirrors the
+                    // active-items batch toolbar style. Shows "Select All" when
+                    // nothing's selected; shows "Restore N" + Cancel when
+                    // ≥1 item is selected.
+                    HStack(spacing: 12) {
+                        if selectedTrashIDs.isEmpty {
+                            Spacer()
+                            Button(action: {
+                                selectedTrashIDs = Set(store.trashedItems.map(\.id))
+                            }, label: {
+                                Text(L10n.trashSelectAll)
+                                    .font(.system(size: sz(12)))
+                            })
+                            .buttonStyle(.plain)
+                        } else {
+                            Text(L10n.trashBatchRestore(selectedTrashIDs.count))
+                                .font(.system(size: sz(12)))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Button(action: {
+                                let toRestore = store.trashedItems.filter { selectedTrashIDs.contains($0.id) }
+                                store.restoreFromTrash(toRestore)
+                                selectedTrashIDs.removeAll()
+                            }, label: {
+                                Label(L10n.trashRestore, systemImage: "arrow.uturn.left")
+                                    .font(.system(size: sz(12)))
+                            })
+                            .buttonStyle(.plain)
+                            Button(action: { selectedTrashIDs.removeAll() }, label: {
+                                Text(L10n.buttonCancel)
+                                    .font(.system(size: sz(12)))
+                            })
+                            .buttonStyle(.plain)
+                            .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial)
+                }
+                .animation(.easeInOut(duration: 0.15), value: selectedTrashIDs.isEmpty)
             }
         }
     }
