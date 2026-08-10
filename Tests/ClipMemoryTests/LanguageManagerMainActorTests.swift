@@ -50,7 +50,7 @@ final class LanguageManagerMainActorTests: XCTestCase {
 
         var observerSawAtNotificationTime: String?
         let token = NotificationCenter.default.addObserver(
-            forName: Notification.Name("LanguageDidChange"),
+            forName: .languageDidChange,
             object: nil,
             queue: nil
         ) { _ in

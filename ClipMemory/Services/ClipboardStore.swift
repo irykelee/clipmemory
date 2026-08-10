@@ -52,6 +52,18 @@ extension Notification.Name {
     /// the quarantine + sweep-skip happens silently and the user's
     /// trash appears empty with no explanation.
     static let trashLoadFailed = Notification.Name("TrashStore.loadFailed")
+    /// NOTIFY-0001 (2026-08-10): posted by `LanguageManager` after the
+    /// in-memory mirror is updated so any consumer reacting to the
+    /// notification (e.g. AppDelegate refreshing `NSApp.appearance`) sees
+    /// the new language code. Carries no payload — read `LanguageManager
+    /// .currentLanguageCode` from the observer.
+    static let languageDidChange = Notification.Name("LanguageManager.languageDidChange")
+    /// NOTIFY-0001: posted by `ImageStorage.migrateFromLegacyIfNeeded`
+    /// when a legacy plaintext image file has been re-encrypted into the
+    /// v2 AES-GCM format. `userInfo["migratedFilenames"]: [String]` lists
+    /// the filenames that were just migrated (used by `ClipboardStore`
+    /// to flip `isEncrypted` on the matching items).
+    static let imageStorageMigrationCompleted = Notification.Name("ImageStorage.migrationCompleted")
 }
 
 extension ClipboardStore: ClipboardMonitorDelegate {
@@ -434,7 +446,7 @@ final class ClipboardStore: ObservableObject {
         // thread (SwiftUI @Published mutations + AppKit state). Replaces the
         // previous defensive `DispatchQueue.main.async` wrap inside each handler.
         imageMigrationObserver = NotificationCenter.default.addObserver(
-            forName: Notification.Name("ImageStorageMigrationCompleted"), object: nil, queue: .main
+            forName: .imageStorageMigrationCompleted, object: nil, queue: .main
         ) { [weak self] notification in
             guard let self else { return }
             guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }

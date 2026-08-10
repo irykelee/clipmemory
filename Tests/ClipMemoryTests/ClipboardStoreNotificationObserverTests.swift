@@ -46,7 +46,7 @@ final class ClipboardStoreNotificationObserverTests: XCTestCase {
         // is `ImageStorage.migrateFromLegacyIfNeeded`). The block-based
         // observer with `queue: .main` fires on main thread synchronously.
         NotificationCenter.default.post(
-            name: Notification.Name("ImageStorageMigrationCompleted"),
+            name: .imageStorageMigrationCompleted,
             object: nil,
             userInfo: ["migratedFilenames": [filename]]
         )

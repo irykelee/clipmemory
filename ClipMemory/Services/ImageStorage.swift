@@ -296,7 +296,7 @@ class ImageStorage {
         if !migratedFilenames.isEmpty {
             DispatchQueue.main.async {
                 NotificationCenter.default.post(
-                    name: Notification.Name("ImageStorageMigrationCompleted"),
+                    name: .imageStorageMigrationCompleted,
                     object: nil,
                     userInfo: ["migratedFilenames": migratedFilenames]
                 )

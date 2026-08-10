@@ -304,7 +304,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupLanguageObserver() {
-        languageObserver = NotificationCenter.default.addObserver(forName: Notification.Name("LanguageDidChange"), object: nil, queue: .main) { [weak self] _ in
+        languageObserver = NotificationCenter.default.addObserver(forName: .languageDidChange, object: nil, queue: .main) { [weak self] _ in
             self?.statusItem?.button?.toolTip = L10n.appName
         }
         encryptionFailedObserver = NotificationCenter.default.addObserver(
