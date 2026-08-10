@@ -154,7 +154,15 @@ struct QuickBarView: View {
                             searchDebounce?.cancel()
                             let item = DispatchWorkItem { searchTextDebounced = newValue }
                             searchDebounce = item
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
+                            // SEARCH-0001 (2026-08-10): unify with ContentView's
+                            // 250ms debounce — same delay the main list uses.
+                            // Previously QuickBar ran at 150ms (snappier for a
+                            // popup, but inconsistent with the main filter —
+                            // typing the same query in both surfaces produced
+                            // different results windows, which the audit
+                            // (docs/superpowers/audits/2026-08-10-apple-api-reuse-audit.md
+                            // C3) flagged as a consistency defect).
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
                         }
                     }
                 if !searchText.isEmpty {
