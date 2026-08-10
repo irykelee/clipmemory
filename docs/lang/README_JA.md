@@ -1,4 +1,4 @@
-# ClipMemory v2.8.1
+# ClipMemory v2.8.2
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.8.2 (2026-08-10) — ゴミ箱の一括復元 + 5 項目のデータセーフティ強化
+
+- **🆕 ゴミ箱の一括復元（NEW-batch-restore）** — ゴミ箱タブに複数選択 + ワンクリック復元を追加：行内チェックボックス + 上部のマスターチェックボックス（全選択/全解除/部分選択の三状態）+ Shift+クリック範囲選択 + 選択数に応じて「Restore N items」と動的に表示される復元ボタン。「一項目ずつクリック」の歴史は終わりました。
+- **🛡 開発版が本番版を汚染してクリップボードデータが静かに消える問題を修正（ID-STORE-0014, CRITICAL）** — `ClipboardStore.swift:129` の `maxItems` didSet は以前は `UserDefaults.standard` に書き込んでおり、注入されたデフォルトスイートではありませんでした。XCTest テスト実行がユーザーの本番 `com.clipmemory.app` ドメインの cap を 3 に静かに設定し、次回起動時に古いエントリが切り詰められていました。修正は `xcTestDefaults` 静的 seam + XCTestObservation テストごとのクリーンアップ + 4 つの sibling didSets + 4 つの init reads をすべて注入デフォルトスイートに切り替え。ユーザーの「今後の開発版が本番アプリの使用に影響しないようにしてほしい」という要求の根本的な修正です。
+- **🛠 import オーバーフローをゴミ箱へ（M-2）** — `importBackupItems` がインポート後のアイテム数が maxItems を超えたことを検出し、オーバーフローしたアイテムを `moveToTrash` 経由でゴミ箱にルーティングします（復元可能）。
+- **🛠 audit 駆動の「システムデフォルトを使う」リファクタリング 7 件（PR #40-#47）** — SelectCheckbox/CloseButton 共有コンポーネントの抽出 + NSWindow.setFrameAutosaveName + Notification.Name レジストリ穴埋め + 4 箇所の keyCode → Carbon `kVK_*` + 検索デバウンスを 250ms に統一 + sz() clamp コメント + L24 sweep。
+- 完全な changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.2
 
 ### v2.8.1 (2026-08-08) — saveItems のサイレント失敗を修正 + 5 項目の監査強化
 

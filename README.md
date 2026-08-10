@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.8.1
+# 剪忆 ClipMemory v2.8.2
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 更新日志
+
+### v2.8.2 (2026-08-10) — 回收站批量恢复 + 5 项数据安全加固
+
+- **🆕 回收站批量恢复（NEW-batch-restore）** — Trash tab 现在支持多选 + 一键恢复：行内 checkbox + 顶部 master checkbox（全选/全不选/部分选中三态）+ Shift+点击选区 + Restore 按钮根据选中数动态显示「Restore N items」。「一条一条点」历史结束。
+- **🛡 修复开发版污染正式版导致的剪贴板数据丢失（ID-STORE-0014, CRITICAL）** — `ClipboardStore.swift:129` 的 `maxItems` didSet 之前写 `UserDefaults.standard` 而非注入 defaults；XCTest 测试（如 `M-2 testXxx.maxItems = 3`）会污染用户生产 `com.clipmemory.app` 域，cap 被静默设为 3，下次启动时旧条目会被裁剪。修复用 `xcTestDefaults` 静态 seam + XCTestObservation per-test 清 isolated suite + 4 sibling didSets + 4 init reads 全切换到注入 defaults。这是用户原话"以后开发版不要影响我正式版的使用"的根本修复。
+- **🛠 import 溢出走回收站（M-2）** — `importBackupItems` 检测到导入后条目数 > maxItems 时，溢出条目经 `moveToTrash` 走回收站（保留可恢复）而非直接丢弃。
+- **🛠 7 项 audit 驱动的"用系统默认"重构（PR #40-#47）** — SelectCheckbox/CloseButton 共享组件抽取 + NSWindow.setFrameAutosaveName 替换手写 JSON + Notification.Name 注册表补漏 + 4 处 keyCode → Carbon `kVK_*` + 搜索防抖统一 250ms + sz() clamp 注释 + L24 sweep。
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.2
 
 ### v2.8.1 (2026-08-08) — 修复 saveItems 静默失败 + 5 项审计加固
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.8.1
+# ClipMemory v2.8.2
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.8.2 (2026-08-10) — Restauração em lote da lixeira + 5 reforços de segurança de dados
+
+- **🆕 Restauração em lote da lixeira (NEW-batch-restore)** — A aba Lixeira agora suporta seleção múltipla + restauração com um clique: caixa de seleção por linha + caixa mestra superior (três estados: todos/nenhum/misto) + seleção de intervalo com Shift+clique + botão Restaurar que exibe dinamicamente "Restore N items". O histórico de "um clique por vez" acabou.
+- **🛡 Correção de perda silenciosa de dados da área de transferência por contaminação de produção por builds de desenvolvimento (ID-STORE-0014, CRITICAL)** — O didSet `maxItems` em `ClipboardStore.swift:129` antes escrevia em `UserDefaults.standard` em vez do conjunto de defaults injetado; execuções de XCTest silenciosamente definiam o cap de produção do usuário `com.clipmemory.app` como 3, e entradas antigas eram aparadas no próximo lançamento. A correção usa costura estática `xcTestDefaults` + limpeza por teste via XCTestObservation + 4 didSets irmãos + 4 leituras init todas alteradas para o conjunto de defaults injetado. Esta é a correção raiz do requisito do usuário "builds de desenvolvimento futuros não devem afetar o uso do app em produção".
+- **🛠 Overflow de importação vai para a lixeira (M-2)** — `importBackupItems` detecta quando a contagem de itens pós-importação excede maxItems e roteia o overflow através de `moveToTrash` (recuperável) em vez dedescartá-lo.
+- **🛠 7 refatorações "usar padrões do sistema" orientadas por auditoria (PR #40-#47)** — Extração de componentes compartilhados SelectCheckbox/CloseButton + NSWindow.setFrameAutosaveName + preenchimento de lacunas no registro Notification.Name + 4 keyCodes → constantes Carbon `kVK_*` + unificação do debounce de busca para 250ms + comentário de clamp de sz() + varredura L24.
+- Registro de alterações completo: https://github.com/irykelee/clipmemory/releases/tag/v2.8.2
 
 ### v2.8.1 (2026-08-08) — Correção da falha silenciosa do saveItems + 5 endurecimentos de auditoria
 

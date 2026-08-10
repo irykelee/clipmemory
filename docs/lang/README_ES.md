@@ -1,4 +1,4 @@
-# ClipMemory v2.8.1
+# ClipMemory v2.8.2
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.8.2 (2026-08-10) — Restauración por lotes de la papelera + 5 refuerzos de seguridad de datos
+
+- **🆕 Restauración por lotes de la papelera (NEW-batch-restore)** — La pestaña Papelera ahora admite selección múltiple + restauración con un clic: casilla por fila + casilla maestra superior (tres estados: todos/ninguno/mezclado) + selección de rango con Shift+clic + botón Restaurar que muestra dinámicamente "Restore N items". Se acabó el historial de "un clic a la vez".
+- **🛡 Corrección de pérdida silenciosa de datos del portapapeles por contaminación de producción por compilaciones de desarrollo (ID-STORE-0014, CRITICAL)** — El didSet `maxItems` en `ClipboardStore.swift:129` antes escribía en `UserDefaults.standard` en lugar del conjunto de defaults inyectado; las ejecuciones de XCTest fijaban silenciosamente el cap de producción del usuario `com.clipmemory.app` en 3, y las entradas antiguas se recortaban en el siguiente inicio. La corrección usa `xcTestDefaults` static seam + XCTestObservation limpieza por prueba + 4 didSets hermanos + 4 lecturas init cambiadas al conjunto de defaults inyectado. Esta es la corrección raíz del requisito del usuario "las versiones de desarrollo futuras no deben afectar el uso de la aplicación en producción".
+- **🛠 Desbordamiento de importación va a la papelera (M-2)** — `importBackupItems` detecta cuando el recuento de elementos tras la importación excede maxItems y enruta el desbordamiento a través de `moveToTrash` (recuperable) en lugar dedescartarlo.
+- **🛠 7 refactorizaciones "usar valores predeterminados del sistema" impulsadas por auditoría (PR #40-#47)** — Extracción de componentes compartidos SelectCheckbox/CloseButton + NSWindow.setFrameAutosaveName + relleno del registro Notification.Name + 4 keyCodes → constantes Carbon `kVK_*` + unificación del debounce de búsqueda a 250 ms + comentario de clamp de sz() + barrido L24.
+- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.8.2
 
 ### v2.8.1 (2026-08-08) — Corrección de fallo silencioso de saveItems + 5 elementos de endurecimiento de auditoría
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.8.1
+# ClipMemory v2.8.2
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 변경 로그
+
+### v2.8.2 (2026-08-10) — 휴지통 일괄 복원 + 5가지 데이터 안전 강화
+
+- **🆕 휴지통 일괄 복원 (NEW-batch-restore)** — 휴지통 탭에 다중 선택 + 원클릭 복원 추가: 행별 체크박스 + 상단 마스터 체크박스(전체 선택/해제/부분 선택 삼상태) + Shift+클릭 범위 선택 + 선택 수에 따라 동적으로 "Restore N items" 표시되는 복원 버튼. "한 항목씩 클릭"의 역사 끝.
+- **🛡 개발 빌드가 프로덕션을 오염하여 클립보드 데이터가 무음 손실되는 문제 수정 (ID-STORE-0014, CRITICAL)** — `ClipboardStore.swift:129`의 `maxItems` didSet는 이전에 `UserDefaults.standard`에 쓰고 있었으며 주입된 defaults suite가 아니었습니다. XCTest 실행이 사용자 프로덕션 `com.clipmemory.app` 도메인의 cap을 3으로 무음 설정하여 다음 실행 시 오래된 항목이 잘렸습니다. 수정으로 `xcTestDefaults` 정적 seam + XCTestObservation 테스트별 정리 + 4개의 sibling didSets + 4개의 init reads를 모두 주입된 defaults suite로 전환. 사용자의 "향후 개발 버전이 프로덕션 앱 사용에 영향을 주지 않아야 한다"는 요구의 근본 수정입니다.
+- **🛠 import 오버플로우를 휴지통으로 라우팅 (M-2)** — `importBackupItems`가 가져오기 후 항목 수가 maxItems를 초과하는 것을 감지하고, 오버플로우 항목을 `moveToTrash`로 라우팅하여(복구 가능) 버리지 않음.
+- **🛠 audit 기반 "시스템 기본값 사용" 리팩토링 7건 (PR #40-#47)** — SelectCheckbox/CloseButton 공유 컴포넌트 추출 + NSWindow.setFrameAutosaveName + Notification.Name 레지스트리 보강 + 4개 keyCode → Carbon `kVK_*` + 검색 디바운스 250ms 통일 + sz() clamp 주석 + L24 sweep.
+- 전체 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.2
 
 ### v2.8.1 (2026-08-08) — saveItems 무음 실패 수정 + 5가지 감사 강화
 

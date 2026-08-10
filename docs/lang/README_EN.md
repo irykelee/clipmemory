@@ -1,4 +1,4 @@
-# ClipMemory v2.8.1
+# ClipMemory v2.8.2
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,14 @@
 ---
 
 ## 📋 Changelog
+
+### v2.8.2 (2026-08-10) — Trash batch restore + 5 data-safety hardening
+
+- **🆕 Trash batch restore (NEW-batch-restore)** — Trash tab now supports multi-select + one-click restore: per-row checkbox + top master checkbox (tri-state all/none/mixed) + Shift+click range select + Restore button that dynamically shows "Restore N items". The "one click at a time" history is over.
+- **🛡 Fix dev-build polluting production UserDefaults causing silent clipboard data loss (ID-STORE-0014, CRITICAL)** — `ClipboardStore.swift:129` `maxItems` didSet previously wrote to `UserDefaults.standard` instead of the injected defaults suite; XCTest runs would silently set the user's production `com.clipmemory.app` cap to 3, and old entries would be trimmed on next launch. Fix uses `xcTestDefaults` static seam + XCTestObservation per-test cleanup + 4 sibling didSets + 4 init reads all switched to the injected defaults suite. This is the root-level fix for the user's "future dev versions must not affect production app use" requirement.
+- **🛠 Import overflow routes through trash (M-2)** — `importBackupItems` detects post-import item count exceeding maxItems and routes overflow through `moveToTrash` (recoverable) instead of dropping.
+- **🛠 7 audit-driven "use Apple defaults" refactors (PR #40-#47)** — SelectCheckbox/CloseButton shared component extraction + NSWindow.setFrameAutosaveName + Notification.Name registry gap-fill + 4 keyCodes → Carbon `kVK_*` + search debounce unify to 250ms + sz() clamp comment + L24 sweep.
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.2
 
 ### v2.8.1 (2026-08-08) — Fix saveItems silent failure + 5 audit hardening items
 
