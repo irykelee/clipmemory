@@ -178,4 +178,53 @@ final class TestHostIsolationTests: XCTestCase {
             ".standard must NOT be written by maxItems didSet — that path leaks test pollution into production"
         )
     }
+
+    /// ID-STORE-0014 (2026-08-10): the convenience-init XCTest branch
+    /// (`ClipboardStore()` → convenience init → XCTest guard → designated
+    /// init with `backend: MemoryStorageBackend()`) must inject an isolated
+    /// defaults suite. Pre-fix, this branch only swapped the backend and
+    /// left `defaults = .standard`, so any test using `ClipboardStore()`
+    /// (e.g. `testProductionDefaultsKeysAreNotMutated`, line 78) leaked
+    /// `store.maxItems = 12345` straight into the production
+    /// `com.clipmemory.app` plist — that's the path that put the user's
+    /// settings into `maxClipboardItems = 3` and trimmed 109 real items
+    /// into the recycle bin on every test run.
+    ///
+    /// This test is the **must-pass regression** for user round 3's veto:
+    /// the existing `testMaxItemsDidSetUsesInjectedDefaultsNotStandard` only
+    /// exercises the explicit-`defaults:` injection path (already isolated
+    /// in baseline) and never exercised the convenience init — that's the
+    /// design gap that let PR #38 ship as "fix" without actually fixing the
+    /// user-visible bug. **Run order matters**: this test must run BEFORE
+    /// any convenience-init-using test mutates `store.maxItems`.
+    @MainActor
+    func testConvenienceInitStoreUnderXCTestDoesNotPolluteProduction() {
+        let key = "maxClipboardItems"
+        let standardBefore = UserDefaults.standard.object(forKey: key)
+        let isolatedSuite = ClipboardStore.xcTestDefaults
+        let isolatedBefore = isolatedSuite.object(forKey: key)
+        defer {
+            if let standardBefore {
+                UserDefaults.standard.set(standardBefore, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            isolatedSuite.removePersistentDomain(forName: "ClipboardStore-XCTest-isolation")
+        }
+
+        // The convenience init goes through the XCTest branch, which must
+        // inject `xcTestDefaults` (an isolated suite under XCTest).
+        let store = ClipboardStore()
+        let newValue = 250
+        store.maxItems = newValue
+
+        XCTAssertEqual(
+            isolatedSuite.object(forKey: key) as? Int, newValue,
+            "convenience init's XCTest branch must wire `defaults` to xcTestDefaults (isolated suite)"
+        )
+        XCTAssertEqual(
+            UserDefaults.standard.object(forKey: key) as? Int, standardBefore as? Int,
+            "convenience init's XCTest branch must NOT leave `defaults = .standard` — that leaks into production"
+        )
+    }
 }
