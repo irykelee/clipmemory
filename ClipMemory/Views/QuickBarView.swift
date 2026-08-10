@@ -159,9 +159,7 @@ struct QuickBarView: View {
                     }
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }, label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                            .font(.system(size: sz(11)))
+                        CloseButton {}
                     })
                     .buttonStyle(.plain)
                 }

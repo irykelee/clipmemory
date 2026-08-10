@@ -255,6 +255,8 @@
 "trash.batch.restore" = "Restaurar %d elementos";
 "trash.batch.restore.one" = "Restaurar 1 elemento";
 "trash.selectAll" = "Seleccionar todo";
+"trash.selectItem" = "Seleccionar";
+"trash.deselectItem" = "Deseleccionar";
 "trash.emptyConfirm.title" = "Vaciar papelera";
 "trash.emptyConfirm.message" = "%d elementos serán eliminados permanentemente. Esta acción no se puede deshacer.";
 "trash.emptyConfirm.message.one" = "1 elemento será eliminado permanentemente. Esta acción no se puede deshacer.";

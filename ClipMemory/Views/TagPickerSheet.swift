@@ -281,9 +281,10 @@ struct TagPickerSheet: View {
             // Tap anywhere on row = toggle attachment
             Button(action: { toggleAttachment(tag: tag) }, label: {
                 HStack(spacing: 8) {
-                    Image(systemName: isAttached ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(isAttached ? .accentColor : .secondary)
-                        .font(.system(size: sz(14)))
+                    SelectCheckbox(
+                        shape: .circle,
+                        state: isAttached ? .selected : .unselected
+                    )
                     TagChip(tag: tag)
                     Spacer()
                 }

@@ -69,9 +69,7 @@ struct SidebarView: View {
                         searchText = ""
                         isSearchFocused = true
                     }, label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                            .font(.system(size: sz(11)))
+                        CloseButton {}
                     })
                     .buttonStyle(.plain)
                     // ID-L10N-0002: localized VoiceOver label.

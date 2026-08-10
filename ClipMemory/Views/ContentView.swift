@@ -984,9 +984,7 @@ struct ContentView: View {
                 .font(.system(size: sz(11)))
                 .lineLimit(1)
             Button(action: { selectedTagIds.remove(tag.id) }) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: sz(10)))
-                    .foregroundColor(.secondary)
+                CloseButton {}
             }
             .buttonStyle(.plain)
             .help(L10n.tagFilterRemoveTag)
