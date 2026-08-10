@@ -254,6 +254,8 @@
 "trash.batch.restore" = "復原 %d 項";
 "trash.batch.restore.one" = "復原 1 項";
 "trash.selectAll" = "全選";
+"trash.selectItem" = "選擇";
+"trash.deselectItem" = "取消選擇";
 "trash.emptyConfirm.title" = "清空垃圾桶";
 "trash.emptyConfirm.message" = "%d 條記錄將被永久刪除，此操作無法撤銷。";
 "trash.retentionDays" = "垃圾桶保留天數";

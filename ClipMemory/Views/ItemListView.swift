@@ -283,8 +283,18 @@ struct ItemListView: View {
     /// NEW-batch-restore: selection state for the trash list's multi-select
     /// mode. Local to ItemListView (not exposed to ContentView) — trash
     /// selection has no meaning outside the trash view, so parent coupling
-    /// would be over-engineering.
+    /// would be over-engineering. Drives per-row checkboxes via TrashItemRow's
+    /// `isSelected` prop, NOT a native `List(selection:)` binding — the
+    /// latter hid checkmarks when nothing was selected and showed a frosted
+    /// `.regularMaterial` overlay that read as a "deep blue bar" in dark mode.
+    /// Explicit row checkboxes are clearer and the toolbar can stay minimal.
     @State private var selectedTrashIDs: Set<UUID> = []
+    /// NEW-batch-restore (revised, user round 6 feedback): anchor for
+    /// Windows-style Shift+click range selection. Click an item → this
+    /// records the click; Shift+click a different item → select the
+    /// range from anchor to current. Matches the OS file-manager pattern
+    /// so power users don't have to retrain their muscle memory.
+    @State private var lastClickedTrashID: UUID?
 
     private var trashView: some View {
         VStack(spacing: 0) {
@@ -300,62 +310,121 @@ struct ItemListView: View {
                 }
                 Spacer()
             } else {
-                List(selection: $selectedTrashIDs) {
+                // NEW-batch-restore (revised twice):
+                // (user round 5: drop .regularMaterial blue bar)
+                // (user round 6: 全选 button on LEFT with icon — was lost
+                //  on the right with only Spacer+text), always-visible
+                //  master checkbox with tri-state (square / dash / check
+                //  based on selection state), action buttons right.
+                HStack(spacing: 8) {
+                    // Master "全选" on the LEFT — always visible, with icon
+                    // so it's obvious how to multi-select.
+                    Button(action: {
+                        if trashAllSelected {
+                            selectedTrashIDs.removeAll()
+                        } else {
+                            selectedTrashIDs = Set(store.trashedItems.map(\.id))
+                        }
+                    }, label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: trashAllSelected
+                                  ? "checkmark.square.fill"
+                                  : (selectedTrashIDs.isEmpty ? "square" : "minus.square"))
+                                .font(.system(size: sz(12)))
+                                .foregroundColor(selectedTrashIDs.isEmpty ? .secondary : .accentColor)
+                            Text(L10n.trashSelectAll)
+                                .font(.system(size: sz(12)))
+                        }
+                    })
+                    .buttonStyle(.plain)
+
+                    if !selectedTrashIDs.isEmpty {
+                        Spacer()
+                        Text(L10n.trashBatchRestore(selectedTrashIDs.count))
+                            .font(.system(size: sz(12)))
+                            .foregroundColor(.secondary)
+                        Button(action: {
+                            let toRestore = store.trashedItems.filter { selectedTrashIDs.contains($0.id) }
+                            store.restoreFromTrash(toRestore)
+                            selectedTrashIDs.removeAll()
+                            lastClickedTrashID = nil
+                        }, label: {
+                            Label(L10n.trashRestore, systemImage: "arrow.uturn.left")
+                                .font(.system(size: sz(12)))
+                        })
+                        .buttonStyle(.plain)
+                        Button(action: {
+                            selectedTrashIDs.removeAll()
+                            lastClickedTrashID = nil
+                        }, label: {
+                            Text(L10n.buttonCancel)
+                                .font(.system(size: sz(12)))
+                        })
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                    } else {
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .overlay(Divider(), alignment: .bottom)
+
+                List {
                     ForEach(store.trashedItems) { item in
                         TrashItemRow(
                             item: item,
                             store: store,
                             onRestore: { store.restoreFromTrash(item) },
-                            onDeletePermanently: { store.deletePermanently(item) }
+                            onDeletePermanently: { store.deletePermanently(item) },
+                            isSelected: selectedTrashIDs.contains(item.id),
+                            onToggleSelection: { handleTrashToggle(for: item.id) }
                         )
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(.plain)
-                .overlay(alignment: .top) {
-                    // NEW-batch-restore: selection toolbar — mirrors the
-                    // active-items batch toolbar style. Shows "Select All" when
-                    // nothing's selected; shows "Restore N" + Cancel when
-                    // ≥1 item is selected.
-                    HStack(spacing: 12) {
-                        if selectedTrashIDs.isEmpty {
-                            Spacer()
-                            Button(action: {
-                                selectedTrashIDs = Set(store.trashedItems.map(\.id))
-                            }, label: {
-                                Text(L10n.trashSelectAll)
-                                    .font(.system(size: sz(12)))
-                            })
-                            .buttonStyle(.plain)
-                        } else {
-                            Text(L10n.trashBatchRestore(selectedTrashIDs.count))
-                                .font(.system(size: sz(12)))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Button(action: {
-                                let toRestore = store.trashedItems.filter { selectedTrashIDs.contains($0.id) }
-                                store.restoreFromTrash(toRestore)
-                                selectedTrashIDs.removeAll()
-                            }, label: {
-                                Label(L10n.trashRestore, systemImage: "arrow.uturn.left")
-                                    .font(.system(size: sz(12)))
-                            })
-                            .buttonStyle(.plain)
-                            Button(action: { selectedTrashIDs.removeAll() }, label: {
-                                Text(L10n.buttonCancel)
-                                    .font(.system(size: sz(12)))
-                            })
-                            .buttonStyle(.plain)
-                            .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.regularMaterial)
-                }
-                .animation(.easeInOut(duration: 0.15), value: selectedTrashIDs.isEmpty)
             }
+        }
+    }
+
+    /// NEW-batch-restore (revised, user round 6): tri-state "全选" derived
+    /// value. `true` only when every trash item is selected; empty/partial
+    /// selections drive the indeterminate `minus.square` icon in the toolbar.
+    /// Empty trash (no items at all) also returns `true` — but the toolbar
+    /// itself isn't rendered in that state, so this is a no-op.
+    private var trashAllSelected: Bool {
+        !store.trashedItems.isEmpty && selectedTrashIDs.count == store.trashedItems.count
+    }
+
+    /// NEW-batch-restore (revised, user round 6): Windows-style multi-select
+    /// handler. Reads NSEvent.modifierFlags so the same callback supports
+    /// single-click toggle, shift-click range select, and the
+    /// master-checkbox's select-all action. Mirrors Finder's row-click
+    /// pattern so the user doesn't have to learn a new interaction model.
+    private func handleTrashToggle(for itemID: UUID) {
+        let shift = NSEvent.modifierFlags.contains(.shift)
+        if shift, let anchor = lastClickedTrashID,
+           let anchorIdx = store.trashedItems.firstIndex(where: { $0.id == anchor }),
+           let currentIdx = store.trashedItems.firstIndex(where: { $0.id == itemID }) {
+            // Range select: include every item from anchor to current
+            // inclusive, in array order (newest first since `trashedItems`
+            // is sorted with the most recently trashed on top).
+            let lo = min(anchorIdx, currentIdx)
+            let hi = max(anchorIdx, currentIdx)
+            for i in lo...hi {
+                selectedTrashIDs.insert(store.trashedItems[i].id)
+            }
+        } else {
+            // Plain click: toggle this item. Update the anchor so the next
+            // shift+click can range from this position.
+            if selectedTrashIDs.contains(itemID) {
+                selectedTrashIDs.remove(itemID)
+            } else {
+                selectedTrashIDs.insert(itemID)
+            }
+            lastClickedTrashID = itemID
         }
     }
 

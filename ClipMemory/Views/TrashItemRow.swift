@@ -11,6 +11,15 @@ struct TrashItemRow: View, Equatable {
     let store: ClipboardStore
     let onRestore: () -> Void
     let onDeletePermanently: () -> Void
+    /// NEW-batch-restore (2026-08-10): batch selection state — drives
+    /// the explicit checkbox column at the row's leading edge. Owned by
+    /// the parent `ItemListView` (selectedTrashIDs: Set<UUID>) so this
+    /// row stays a pure renderer.
+    let isSelected: Bool
+    /// NEW-batch-restore: tap the checkbox to toggle selection. Kept
+    /// separate from `onRestore`/`onDeletePermanently` so the parent can
+    /// route each tap to a distinct action.
+    let onToggleSelection: () -> Void
 
     @State private var isHovered = false
     // F-3 (2026-07-23 audit): keyboard users Tab through the trash list
@@ -33,7 +42,7 @@ struct TrashItemRow: View, Equatable {
     @AppStorage("fontScale") private var fontScale: Double = 1.0
 
     static func == (lhs: TrashItemRow, rhs: TrashItemRow) -> Bool {
-        lhs.item.id == rhs.item.id
+        lhs.item.id == rhs.item.id && lhs.isSelected == rhs.isSelected
     }
 
     private var rowBackground: Color {
@@ -59,6 +68,19 @@ struct TrashItemRow: View, Equatable {
         // font-size changes never re-rendered. See ClipboardItemRow.
         let _ = fontScale
         HStack(alignment: .center, spacing: 8) {
+            // NEW-batch-restore (2026-08-10): explicit selection column.
+            // Always visible (not just when ≥1 selected) so users see how
+            // to multi-select without trial-and-error. Toggle via the button's
+            // own action — does NOT interfere with the inline Restore/Delete
+            // buttons (Button hits don't propagate to row tap).
+            Button(action: onToggleSelection) {
+                SelectCheckbox(
+                    shape: .circle,
+                    state: isSelected ? .selected : .unselected
+                )
+            }
+            .buttonStyle(.plain)
+            .help(isSelected ? L10n.trashDeselectItem : L10n.trashSelectItem)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .top) {
                     if item.type == .image {
