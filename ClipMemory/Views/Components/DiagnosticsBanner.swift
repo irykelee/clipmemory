@@ -16,15 +16,11 @@ struct DiagnosticsBanner: View {
                     .font(.callout)
                     .foregroundStyle(.primary)
                 Spacer()
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                // ID-L10N-0019 (2026-07-31 audit): tooltip was bound to the
-                // "Confirm" key — this button dismisses the banner, so it
-                // must read "Close" in every language.
-                .help(L10n.buttonClose)
+                CloseButton(action: onDismiss)
+                    // ID-L10N-0019 (2026-07-31 audit): tooltip was bound to the
+                    // "Confirm" key — this button dismisses the banner, so it
+                    // must read "Close" in every language.
+                    .help(L10n.buttonClose)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)

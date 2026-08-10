@@ -17,9 +17,10 @@ struct SidebarTagRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 6) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .accentColor : .secondary)
-                    .font(.system(size: sz(12)))
+                SelectCheckbox(
+                    shape: .circle,
+                    state: isSelected ? .selected : .unselected
+                )
                 Circle()
                     .fill(Color(hex: tag.colorHex))
                     .frame(width: 8, height: 8)
