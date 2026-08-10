@@ -93,7 +93,7 @@ class LanguageManager: ObservableObject {
             Self.currentLanguageCode = selectedLanguage
             defaults.set(selectedLanguage, forKey: "appLanguage")
             applyLanguage()
-            NotificationCenter.default.post(name: Notification.Name("LanguageDidChange"), object: nil)
+            NotificationCenter.default.post(name: .languageDidChange, object: nil)
         }
     }
 

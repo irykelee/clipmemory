@@ -131,7 +131,7 @@ final class LegacyImageMigrationTests: XCTestCase {
         var observedOnMain = false
         var observedFilenames: [String] = []
         let observer = NotificationCenter.default.addObserver(
-            forName: Notification.Name("ImageStorageMigrationCompleted"),
+            forName: .imageStorageMigrationCompleted,
             object: nil,
             queue: nil
         ) { note in
