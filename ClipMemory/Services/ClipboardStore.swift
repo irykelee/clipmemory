@@ -109,6 +109,33 @@ final class ClipboardStore: ObservableObject {
     static let minMaxItems = 1
     static let maxMaxItems = 10_000
 
+    /// ID-STORE-0014 (2026-08-10): XCTest-only isolated `UserDefaults` suite.
+    /// Returned by the `defaults:` parameter default in `init(backend:...)`
+    /// and used by the convenience init's XCTest branch — together they ensure
+    /// that every ClipboardStore instantiation under XCTest reads/writes through
+    /// a dedicated test suite instead of the production `com.clipmemory.app`
+    /// plist (which is what `.standard` resolves to in the XCTest host
+    /// process — the test bundle is injected into the host app, so
+    /// `Bundle.main.bundleIdentifier == "com.clipmemory.app"`).
+    ///
+    /// Production behavior unchanged: when `XCTestConfigurationFilePath` is
+    /// not set (i.e. real app run), returns `.standard`.
+    ///
+    /// The suite name is process-scoped (UserDefaults caches by name); the
+    /// underlying plist lives in `~/Library/Preferences/` and accumulates
+    /// keys during the test run, but those keys never cross into production
+    /// because `.standard` keeps pointing at the host's `com.clipmemory.app`
+    /// plist. The ZZZ canary (`testNoProductionPollution`) enforces this.
+    ///
+    /// `nonisolated` so the `defaults:` parameter default (which is evaluated
+    /// outside the class's actor isolation) can reference it.
+    nonisolated static var xcTestDefaults: UserDefaults {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            return .standard
+        }
+        return UserDefaults(suiteName: "ClipboardStore-XCTest-isolation") ?? .standard
+    }
+
     // @Published with didSet for automatic UserDefaults persistence
     @Published var maxItems: Int {
         didSet {
@@ -156,7 +183,10 @@ final class ClipboardStore: ObservableObject {
                 _sensitiveClearHours = newValue
                 return old != newValue
             }
-            UserDefaults.standard.set(newValue, forKey: sensitiveClearHoursKey)
+            // ID-STORE-0014 (2026-08-10): write to the injected `defaults`
+            // suite (not UserDefaults.standard). Production (.standard) and
+            // XCTest (isolated suite) flows both go through here.
+            defaults.set(newValue, forKey: sensitiveClearHoursKey)
             if changed { objectWillChange.send() }
         }
     }
@@ -169,13 +199,17 @@ final class ClipboardStore: ObservableObject {
     }
 
     @Published var captureRichText: Bool = true {
-        didSet { UserDefaults.standard.set(captureRichText, forKey: captureRichTextKey) }
+        // ID-STORE-0014 (2026-08-10): write to the injected `defaults`
+        // suite (not UserDefaults.standard).
+        didSet { defaults.set(captureRichText, forKey: captureRichTextKey) }
     }
 
     /// Comma-separated bundle IDs of apps excluded from clipboard monitoring
     @Published var excludedBundleIdsString: String {
         didSet {
-            UserDefaults.standard.set(excludedBundleIdsString, forKey: excludedBundleIdsKey)
+            // ID-STORE-0014 (2026-08-10): write to the injected `defaults`
+            // suite (not UserDefaults.standard).
+            defaults.set(excludedBundleIdsString, forKey: excludedBundleIdsKey)
             // MED-5: sync excluded apps via closure set by AppDelegate
             onExcludedAppsChanged?(parseExcludedBundleIds())
         }
@@ -317,8 +351,16 @@ final class ClipboardStore: ObservableObject {
         // ("N 条损坏") and can overwrite real user data. ID-MON-0002 stopped
         // the live monitor; this closes the remaining persistence path.
         // Isolate all three backends in memory; production behavior unchanged.
+        //
+        // ID-STORE-0014 (2026-08-10): XCTest branch now ALSO passes the
+        // isolated defaults suite (parallels the backend isolation above —
+        // was only swapping backend, leaving `defaults = .standard`, which
+        // caused `IntegrationTests.testTrimToMaxItemsRemovesOldest` and
+        // friends to leak `maxClipboardItems = 3` into the production
+        // `com.clipmemory.app` plist). `xcTestDefaults` is a no-op
+        // (`.standard`) when XCTestConfigurationFilePath is unset.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
-            self.init(backend: MemoryStorageBackend())
+            self.init(backend: MemoryStorageBackend(), defaults: Self.xcTestDefaults)
             return
         }
         self.init(backend: FileStorageBackend(),
@@ -330,10 +372,19 @@ final class ClipboardStore: ObservableObject {
     /// `tagBackend` and `trashBackend` default to fresh in-memory backends so
     /// existing tests that only care about items don't accidentally hit UserDefaults.
     /// `defaults` allows tests to isolate TrashStore writes to a test suite.
+    ///
+    /// ID-STORE-0014 (2026-08-10): `defaults` parameter defaults to
+    /// `Self.xcTestDefaults` instead of `.standard`. Under XCTest, that
+    /// returns an isolated suite so the production `com.clipmemory.app`
+    /// UserDefaults stays untouched (1-arg `ClipboardStore(backend: ...)`
+    /// convenience init's XCTest branch passes the same isolated suite
+    /// explicitly; the rest of this designated init's body reads/writes
+    /// via `defaults` so they stay isolated). Under production, returns
+    /// `.standard` — behavior unchanged.
     init(backend: StorageBackend,
          tagBackend: StorageBackend = MemoryStorageBackend(),
          trashBackend: StorageBackend = MemoryStorageBackend(),
-         defaults: UserDefaults = .standard) {
+         defaults: UserDefaults = ClipboardStore.xcTestDefaults) {
         self.backend = backend
         self.tagBackend = tagBackend
         self.defaults = defaults
@@ -350,10 +401,10 @@ final class ClipboardStore: ObservableObject {
         // Absent key must default to 100, NOT clamp: integer(forKey:)
         // returns 0 for a missing key, and clamping 0 yields minMaxItems
         // (1) — fresh installs would silently cap history at a single item.
-        let savedMaxItems = UserDefaults.standard.object(forKey: maxItemsKey) as? Int
+        let savedMaxItems = defaults.object(forKey: maxItemsKey) as? Int
         let clampedInit = savedMaxItems.map { max(Self.minMaxItems, min($0, Self.maxMaxItems)) } ?? 100
         if savedMaxItems != nil && clampedInit != savedMaxItems {
-            UserDefaults.standard.set(clampedInit, forKey: maxItemsKey)
+            defaults.set(clampedInit, forKey: maxItemsKey)
         }
         // M-4: tune the caches to match the resolved value. Done BEFORE the
         // `maxItems =` write because Swift's definite-init rules forbid
@@ -367,13 +418,13 @@ final class ClipboardStore: ObservableObject {
         // M-4 (2026-07-25 audit): `sensitiveClearHours` is now a computed
         // property over `_sensitiveClearHours`. Initialize the backing stored
         // property directly here to satisfy Swift's definite-init rules.
-        if UserDefaults.standard.object(forKey: sensitiveClearHoursKey) != nil {
-            _sensitiveClearHours = UserDefaults.standard.integer(forKey: sensitiveClearHoursKey)
+        if defaults.object(forKey: sensitiveClearHoursKey) != nil {
+            _sensitiveClearHours = defaults.integer(forKey: sensitiveClearHoursKey)
         } else {
             _sensitiveClearHours = 24
         }
 
-        excludedBundleIdsString = UserDefaults.standard.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
+        excludedBundleIdsString = defaults.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
 
         // trashRetentionDays init moved to TrashStore (HIGH-1, 2026-07-26)
 

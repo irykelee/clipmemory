@@ -43,6 +43,30 @@ final class AAASuiteBootstrapTests: XCTestCase {
         // would invalidate the cached singleton mid-run and cause
         // subsequent tests to write to the production domain again.
         LanguageManager.defaults = UserDefaults(suiteName: "LanguageManager-test-isolation") ?? .standard
+
+        // ID-STORE-0014 (2026-08-10): per-test cleanup of the
+        // `ClipboardStore-XCTest-isolation` UserDefaults suite. Without this,
+        // any test that mutates state via `ClipboardStore.xcTestDefaults`
+        // (e.g. `store.maxItems = 3` in `IntegrationTests:178`) leaks the
+        // value to subsequent tests within the same process — which were
+        // silently relying on `.standard` having user-pollution values like
+        // `maxClipboardItems = 3`. Clearing before each test gives every
+        // test a fresh isolated suite, so reads default to `nil → 100` (the
+        // init fallback) regardless of what earlier tests in the suite
+        // happened to write. The observer is registered once here
+        // (`class func setUp` runs once per class); the XCTestObservation
+        // center keeps it active for the rest of the process.
+        XCTestObservationCenter.shared.addTestObserver(ClipboardStoreXcTestObserver())
+    }
+
+    /// XCTestObservation observer (ID-STORE-0014 part 2). Fires before
+    /// each test case in the suite; clears the `ClipboardStore-XCTest-
+    /// isolation` persistent domain so per-test mutations don't leak.
+    private final class ClipboardStoreXcTestObserver: NSObject, XCTestObservation {
+        func testCaseWillStart(_ testCase: XCTestCase) {
+            let suiteName = "ClipboardStore-XCTest-isolation"
+            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        }
     }
 
     // MARK: Canary discovery marker
