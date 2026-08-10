@@ -164,7 +164,6 @@ jobs:
         # multiple runs doesn't spam new issues; existing open issue is
         # updated with the latest run link instead.
         if: failure()
-        needs: [sync]
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
