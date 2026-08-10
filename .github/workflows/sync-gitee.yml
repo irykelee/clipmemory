@@ -98,25 +98,32 @@ jobs:
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         id: sync
-        # RETRY (2026-08-07): if the first attempt fails (network blip,
-        # Gitee 5xx, transient token issue), wait 30s and try once more.
-        # On the second failure, let the step fail normally so the
-        # "Failure summary" step below can post diagnostics.
+        # RETRY v2 (2026-08-10): bump from 2 to 4 attempts with exponential
+        # backoff (30s / 60s / 120s = ~3.5min total wall time) to absorb the
+        # transient Gitee-side failures we saw on the v2.8.2 sync attempt
+        # (SSL connection timeout on attempt 2 after a token-permission
+        # blip on attempt 1). Each retry has a distinct failure mode
+        # captured in the step summary, so an operator looking at the run
+        # knows whether the failure was consistent (network issue, escalate)
+        # or transient (likely self-resolves by retry).
         run: |
           set -euo pipefail
-          ATTEMPTS=2
+          ATTEMPTS=4
+          BACKOFFS=(0 30 60 120)
           for i in $(seq 1 $ATTEMPTS); do
-            echo "::group::Sync attempt $i/$ATTEMPTS"
+            BACKOFF=${BACKOFFS[$((i-1))]}
+            if [ "$BACKOFF" -gt 0 ]; then
+              echo "::group::Sync attempt $i/$ATTEMPTS (backoff ${BACKOFF}s)"
+              sleep "$BACKOFF"
+            else
+              echo "::group::Sync attempt $i/$ATTEMPTS"
+            fi
             if Scripts/sync_gitee_release.sh "v${{ steps.version.outputs.version }}"; then
               echo "::endgroup::"
               echo "✅ sync succeeded on attempt $i"
               exit 0
             fi
             echo "::endgroup::"
-            if [ "$i" -lt "$ATTEMPTS" ]; then
-              echo "⚠️ attempt $i failed — sleeping 30s before retry"
-              sleep 30
-            fi
           done
           echo "❌ Sync failed after $ATTEMPTS attempts"
           exit 1
@@ -145,6 +152,74 @@ jobs:
             echo "If GitHub Release assets are not yet public (release.yml still running),"
             echo "wait a few minutes before retrying so the asset upload completes first."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open GH issue on persistent failure
+        # FEEDBACK (2026-08-10): when sync-gitee fails after all retries,
+        # proactively open a GitHub Issue so the failure is visible without
+        # anyone having to remember to check the Actions tab. The issue
+        # body captures run URL, failure context, and the recovery command
+        # so the next maintainer (human or AI) sees the alert immediately
+        # when opening the repo or scrolling notifications. Deduplicated by
+        # an `sync-gitee-failure` label so a persistent failure across
+        # multiple runs doesn't spam new issues; existing open issue is
+        # updated with the latest run link instead.
+        if: failure()
+        needs: [sync]
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="v${{ steps.version.outputs.version }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          LABEL="sync-gitee-failure"
+
+          # Search for an existing open issue with this label.
+          EXISTING=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          BODY="## Gitee mirror sync failed for ${VERSION}
+
+          Run: ${RUN_URL}
+
+          This issue auto-opened by \`.github/workflows/sync-gitee.yml\` after all retries failed.
+          A new run will update this issue body with the latest run link instead of creating
+          a duplicate.
+
+          ### Recovery
+
+          \`\`\`bash
+          # Manual re-run (idempotent — script skips already-pushed assets):
+          gh workflow run sync-gitee.yml -f version=${VERSION#v}
+          \`\`\`
+
+          If GitHub Release assets are not yet public, wait a few minutes before retrying.
+
+          ---
+          _Last sync run: ${RUN_URL}_"
+
+          if [ -n "$EXISTING" ]; then
+            echo "Updating existing issue #$EXISTING"
+            gh issue edit "$EXISTING" --body "$BODY" --add-label "$LABEL"
+            echo "ISSUE_URL=https://github.com/${{ github.repository }}/issues/$EXISTING" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Opening new issue"
+            NEW_URL=$(gh issue create --title "Gitee sync failed for ${VERSION}" --body "$BODY" --label "$LABEL")
+            echo "ISSUE_URL=$NEW_URL" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Auto-close on next successful run
+        # If this run succeeded after a previous failure, find any auto-opened
+        # issue for this version and comment + close. Keeps the issue list
+        # clean without manual cleanup.
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          LABEL="sync-gitee-failure"
+          VERSION="v${{ steps.version.outputs.version }}"
+          for ISSUE_NUM in $(gh issue list --label "$LABEL" --state open --search "Gitee sync failed for ${VERSION} in:" --json number --jq '.[].number' 2>/dev/null); do
+            echo "Closing auto-issue #$ISSUE_NUM (sync succeeded this run)"
+            gh issue close "$ISSUE_NUM" --comment "Auto-closing: sync succeeded for ${VERSION} on run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          done
 
       - name: Verify Gitee sync
         # Cheap post-sync checks (a, b, d from the handoff doc). Run even
