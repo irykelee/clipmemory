@@ -249,6 +249,9 @@
 "trash.title" = "ごみ箱";
 "trash.empty" = "ごみ箱は空です";
 "trash.restore" = "復元";
+"trash.batch.restore" = "%d 件の項目を復元";
+"trash.batch.restore.one" = "1 件の項目を復元";
+"trash.selectAll" = "すべて選択";
 "trash.emptyConfirm.title" = "ごみ箱を空にする";
 "trash.emptyConfirm.message" = "%d 件の項目が完全に削除されます。この操作は取り消せません。";
 "trash.retentionDays" = "ごみ箱の保持日数";

@@ -252,6 +252,9 @@
 "trash.title" = "Trash";
 "trash.empty" = "Trash is empty";
 "trash.restore" = "Restore";
+"trash.batch.restore" = "Restore %d items";
+"trash.batch.restore.one" = "Restore 1 item";
+"trash.selectAll" = "Select All";
 "trash.emptyConfirm.title" = "Empty Trash";
 "trash.emptyConfirm.message" = "%d items will be permanently deleted. This action cannot be undone.";
 "trash.emptyConfirm.message.one" = "1 item will be permanently deleted. This action cannot be undone.";

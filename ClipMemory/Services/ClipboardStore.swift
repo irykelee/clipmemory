@@ -2133,6 +2133,20 @@ final class ClipboardStore: ObservableObject {
         })
     }
 
+    /// NEW-batch-restore: restore N trash items in one call. Delegates
+    /// to the single-item path per element so each restore gets its own
+    /// dedup rebuild + index invalidation (one bad item doesn't fail the
+    /// whole batch). Insertion order in the resulting `items` array is
+    /// the REVERSE of the input order — each `insert(at: 0)` pushes the
+    /// previous to position 1, so the LAST item in the input ends up at
+    /// index 0. UI callers should pass items in the order they want them
+    /// to appear top-to-bottom.
+    func restoreFromTrash(_ items: [ClipboardItem]) {
+        for item in items {
+            restoreFromTrash(item)
+        }
+    }
+
     func deletePermanently(_ item: ClipboardItem) { trashStore.deletePermanently(item) }
     func emptyTrash() { trashStore.emptyTrash() }
     func purgeExpiredTrash() { trashStore.purgeExpiredTrash() }

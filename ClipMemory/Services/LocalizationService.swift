@@ -240,6 +240,9 @@ struct L10n {
     static var trashTitle: String { string("trash.title") }
     static var trashEmpty: String { string("trash.empty") }
     static var trashRestore: String { string("trash.restore") }
+    // NEW-batch-restore: multi-select toolbar labels
+    static func trashBatchRestore(_ count: Int) -> String { plural("trash.batch.restore", count) }
+    static var trashSelectAll: String { string("trash.selectAll") }
     static var trashEmptyConfirmTitle: String { string("trash.emptyConfirm.title") }
     static func trashEmptyConfirmMessage(_ count: Int) -> String { plural("trash.emptyConfirm.message", count) }
     static var trashRetentionDays: String { string("trash.retentionDays") }
