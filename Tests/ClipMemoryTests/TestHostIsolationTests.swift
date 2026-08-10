@@ -128,4 +128,54 @@ final class TestHostIsolationTests: XCTestCase {
             }
         }
     }
+
+    /// Regression test (2026-08-10): ClipboardStore.maxItems didSet must write
+    /// to the INJECTED defaults suite, not UserDefaults.standard. The previous
+    /// `.standard.set(...)` line meant every test that drove the cap (M-2's
+    /// `store.maxItems = 3` and friends) silently polluted the production
+    /// `com.clipmemory.app` UserDefaults, leaving the running app with an
+    /// out-of-picker-range value (e.g. 3) → blank settings max-items dropdown.
+    ///
+    /// Both assertions are required: the positive one proves the write went
+    /// somewhere useful (the injected suite), the negative one is the actual
+    /// guard against test→production pollution. A test that only asserts the
+    /// write succeeded without checking WHERE would let a future regression
+    /// to `.standard.set` slip through unnoticed.
+    ///
+    /// The `.standard` snapshot+restore defers below are mandatory: without
+    /// them the RED-phase run itself would leave the host's production
+    /// UserDefaults with `250` (the value set below), re-creating the very
+    /// bug under test on every developer machine that runs the test.
+    @MainActor
+    func testMaxItemsDidSetUsesInjectedDefaultsNotStandard() {
+        let key = "maxClipboardItems"
+        let standardBefore = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let standardBefore {
+                UserDefaults.standard.set(standardBefore, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+
+        let suiteName = "Regression-MaxItems-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        let store = ClipboardStore(backend: MemoryStorageBackend(), defaults: suite)
+        // 250 is deliberately outside the settings picker's [50, 100, 200, 500]
+        // range — matches the production failure mode (user's picker went
+        // blank because the saved value was 3, not in the picker list).
+        let newValue = 250
+        store.maxItems = newValue
+
+        XCTAssertEqual(
+            suite.object(forKey: key) as? Int, newValue,
+            "didSet must write the new value into the injected suite"
+        )
+        XCTAssertEqual(
+            UserDefaults.standard.object(forKey: key) as? Int, standardBefore as? Int,
+            ".standard must NOT be written by maxItems didSet — that path leaks test pollution into production"
+        )
+    }
 }

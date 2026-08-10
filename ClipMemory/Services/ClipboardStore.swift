@@ -126,7 +126,15 @@ final class ClipboardStore: ObservableObject {
             // `rtfPlaintextCache` shares the same shape; tune both.
             contentCache.countLimit = max(maxItems, Self.minCacheCountLimit)
             rtfPlaintextCache.countLimit = max(maxItems, Self.minCacheCountLimit)
-            UserDefaults.standard.set(maxItems, forKey: maxItemsKey)
+            // ID-STORE-0014 (2026-08-10): write to the INJECTED defaults suite,
+            // not UserDefaults.standard — every test that drove `store.maxItems`
+            // (M-2's `store.maxItems = 3` and friends) silently polluted the
+            // production `com.clipmemory.app` UserDefaults with values outside
+            // the picker range (e.g. 3), leaving the running app's settings
+            // max-items dropdown blank. Production behavior unchanged because
+            // `defaults` is `.standard` in the convenience init path; tests
+            // that inject a test suite now stay isolated.
+            defaults.set(maxItems, forKey: maxItemsKey)
         }
     }
     /// M-4: lower bound for the cache `countLimit` so a user with a small
