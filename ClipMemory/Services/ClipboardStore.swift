@@ -118,6 +118,20 @@ final class ClipboardStore: ObservableObject {
     /// straight to UserDefaults, leading to `trimToMaxItems()` running
     /// with `maxItems = -1` (trims everything) or `maxItems = 1_000_000_000`
     /// (no trimming at all, then UI breaks). Clamp to a sane range.
+    ///
+    /// Two-tier strategy (v2.8.4):
+    /// - **`minMaxItems = 1` / `maxMaxItems = 10_000`** — hard safety clamp.
+    ///   Defends the store against corrupted / externally-edited UserDefaults
+    ///   values that would otherwise break trim or UI. NEVER raised without
+    ///   re-running the 1000-items audit in `maxItems-audit-1000.swift`.
+    /// - **UI Picker preset is 1000 (since v2.8.4)** — soft product cap.
+    ///   Power users can pick 1000 from `HistoryCaptureSettingsView`; the
+    ///   underlying clamp still allows up to 10_000 if a future feature or
+    ///   migration path needs it. Audit 2026-08-11: 1000 items → 673 KB
+    ///   JSON, 7.9 ms decode on M-series — well under the 50 ms startup
+    ///   budget. Beyond ~1000 items the data becomes harder to manage
+    ///   (search/tags/cleanup become mandatory) without a corresponding
+    ///   value bump; the picker stops at 1000 to discourage data graveyards.
     static let minMaxItems = 1
     static let maxMaxItems = 10_000
 
