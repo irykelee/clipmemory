@@ -39,7 +39,26 @@ TAG="v${VERSION}"
 [[ -n "${GITEE_TOKEN:-}" ]] || die "GITEE_TOKEN 未设置 — Gitee 私人令牌（projects + releases 权限）"
 
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+# SILENT-SUCCESS GUARD (2026-08-11 drill): under macOS's /bin/bash (3.2 —
+# what this script's shebang gets on a macos runner), a `set -u` abort runs
+# the EXIT trap and then reports the TRAP's status, not the abort's. With a
+# plain `trap 'rm -rf "$TMP"' EXIT` the successful `rm` made an aborted run
+# exit 0, so sync-gitee.yml's `if Scripts/sync_gitee_release.sh …` saw
+# SUCCESS: no retry, no failure summary, no alert issue. Observed live in
+# run 31453166197 — the script died on line 73 and the workflow printed
+# "✅ sync succeeded on attempt 1".
+#
+# Preserving `$?` in the trap does NOT fix it: by the time the trap runs on
+# a `set -u` abort, `$?` is already 0 (verified under bash 3.2 — the
+# obvious `trap 'rc=$?; …; exit $rc'` still exits 0). Only an explicit
+# completion sentinel distinguishes "finished" from "aborted", so DONE is
+# set on the last line and anything else that reaches the trap with a zero
+# status is forced to 1.
+#
+# Verified under bash 3.2 across all three paths: `set -u` abort → 1,
+# explicit `die` → 1, normal completion → 0.
+DONE=0
+trap 'rc=$?; rm -rf "$TMP"; if [[ "${DONE:-0}" != 1 && $rc -eq 0 ]]; then rc=1; fi; exit $rc' EXIT
 
 # ---------- 0a. Download the upstream appcast FROM GitHub release ----------
 # RACE-FIX (2026-08-07): previously this script read "$OLDPWD/appcast.xml"
@@ -70,7 +89,7 @@ else
     # the explicit warning makes the failure mode diagnosable).
     APPCAST="appcast.xml"
     if [[ -f "$APPCAST" ]]; then
-        log "⚠️ 上游 appcast 下载失败，回退本地 $APPCAST（可能 stale — 见 RACE-FIX 注释）"
+        log "⚠️ 上游 appcast 下载失败，回退本地 ${APPCAST}（可能 stale — 见 RACE-FIX 注释）"
         UPSTREAM_APPCAST="$APPCAST"
     else
         die "本地 + 上游 appcast 都拿不到 — GitHub release ${TAG} 的 appcast.xml 资产不存在？"
@@ -89,7 +108,7 @@ TAG_URL="https://github.com/irykelee/clipmemory/releases/download/${TAG}/ClipMem
 TARBALL_TMP="$TMP/ClipMemory-${TAG}.tar.gz"
 log "从 GitHub release 下载 tarball（字节 = edSignature 签名对象）"
 if ! curl -fL --max-time 300 "$TAG_URL" -o "$TARBALL_TMP" 2>/dev/null; then
-    die "从 GitHub 下载 tarball 失败（$TAG_URL）— GitHub release 已存在且可访问？"
+    die "从 GitHub 下载 tarball 失败（${TAG_URL}）— GitHub release 已存在且可访问？"
 fi
 [[ -s "$TARBALL_TMP" ]] || die "下载的 tarball 为空"
 ok "tarball 已下载（$(wc -c < "$TARBALL_TMP" | tr -d ' ') bytes）"
@@ -272,3 +291,8 @@ fi
 
 echo ""
 echo "✅ Gitee 镜像同步完成 — 设置页「更新源 → 镜像 (Gitee)」即走国内节点"
+
+# Reached only on a clean run — see the SILENT-SUCCESS GUARD comment on the
+# EXIT trap. Anything that reaches the trap without this set is treated as
+# an abort and forced to a non-zero exit.
+DONE=1
