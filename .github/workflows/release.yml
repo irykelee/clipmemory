@@ -127,7 +127,14 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             xcodebuild -scheme ClipMemory -configuration Release build CODE_SIGN_IDENTITY="-"
           else
-            xcodebuild -scheme ClipMemory -configuration Release build
+            # M-6 (ID-SECURITY-0009, 2026-08-11 audit): add --timestamp to
+            # get RFC 3161 secure timestamp. Without it, Xcode defaults
+            # to --timestamp=none for Apple Development cert, so the
+            # signature has no trusted time anchor — after cert expires
+            # 2027-07-19, Gatekeeper will refuse to launch. PR dry-run
+            # path uses CODE_SIGN_IDENTITY="-" (ad-hoc, untimestamped by
+            # definition) and is intentionally untouched.
+            xcodebuild -scheme ClipMemory -configuration Release build OTHER_CODE_SIGN_FLAGS=--timestamp
           fi
 
       # B2 (2026-07-23 ship-review): run unit tests before packaging. Previously
