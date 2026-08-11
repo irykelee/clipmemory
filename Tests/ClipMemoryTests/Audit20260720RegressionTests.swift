@@ -98,6 +98,53 @@ import AppKit
                        "Active list may exceed maxItems when pinned overflows (regression of C-1)")
     }
 
+    // MARK: - NEW: maxItems 1000 boundary (v2.8.4 Picker preset)
+
+    /// v2.8.4 raised the upper Picker preset from 500 to 1000. The underlying
+    /// `maxMaxItems = 10_000` already accepts 1000, but Picker-side reachability
+    /// + cache rescaling deserve an explicit boundary test so a future
+    /// lowering of `maxMaxItems` (e.g. STORAGE-0001 audit decision) cannot
+    /// silently re-clamp the new UI preset.
+    ///
+    /// Guards:
+    /// 1. `maxItems = 1000` is NOT clamped by didSet (still 1000 after assign)
+    /// 2. `contentCache.countLimit` rescaled to 1000 (≥ 1000, since the
+    ///    floor is `minCacheCountLimit = 500`; for maxItems ≥ 500 the cap
+    ///    follows maxItems exactly)
+    /// 3. `trimToMaxItems()` with 1100 items + maxItems=1000 yields
+    ///    exactly 1000 items (no off-by-one at the new boundary)
+    func testMaxItems1000BoundaryNewUIPreset() {
+        let maxItemsBefore = UserDefaults.standard.object(forKey: "maxClipboardItems")
+        defer {
+            if let maxItemsBefore {
+                UserDefaults.standard.set(maxItemsBefore, forKey: "maxClipboardItems")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
+            }
+        }
+
+        store.maxItems = 1000
+        XCTAssertEqual(store.maxItems, 1000,
+                       "maxItems=1000 must NOT be clamped by didSet (new Picker upper preset)")
+
+        // Insert 1100 items so trim has something to do.
+        for i in 0..<1100 {
+            let item = ClipboardItem(
+                content: "boundary-\(i)", type: .text, isPinned: false
+            )
+            store.addItem(item)
+        }
+        store.flushPendingSaves()
+
+        store.trimToMaxItems()
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.items.count, 1000,
+                       "trimToMaxItems must respect the new 1000 boundary exactly")
+        XCTAssertLessThanOrEqual(store.items.count, 1000,
+                                 "trim must NEVER leave more than maxItems items")
+    }
+
     // MARK: - I-7: MemoryStorageBackend must serialize concurrent reads/writes
 
     /// Audit I-7: `MemoryStorageBackend.items` / `tags` were public mutable

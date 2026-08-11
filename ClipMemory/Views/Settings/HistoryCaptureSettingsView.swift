@@ -45,7 +45,7 @@ struct HistoryCaptureSettingsView: View {
                         }
                     }
                 )) {
-                    ForEach([50, 100, 200, 500], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).tag($0) }
+                    ForEach([100, 500, 1000], id: \.self) { Text(L10n.settingsMaxItemsCount($0)).tag($0) }
                 }.id(languageManager.selectedLanguage)
                 Picker(L10n.trashRetentionDays, selection: $store.trashRetentionDays) {
                     // ID-L10N-0009 (2026-07-30 audit): see BackupSettingsView.
