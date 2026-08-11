@@ -569,6 +569,20 @@ final class ClipboardStore: ObservableObject {
         itemIndexVersion &+= 1
     }
 
+    /// ID-PERF-0026 (2026-08-11 audit): O(1) item lookup by id. Replaces
+    /// the row-level `liveIndexByID` computed property that rebuilt a
+    /// full `[UUID: ClipboardItem]` dict on every property access —
+    /// measured 11× slower than the pre-ID-PERF-0012 `first(where:)`
+    /// baseline under multi-access-per-body call patterns.
+    /// `rebuildItemIndexIfStale()` keeps the index amortized O(1);
+    /// `items.indices.contains` defends against the index/map drift
+    /// window that a raw `items[dict[id]!]` would not.
+    func item(forID id: UUID) -> ClipboardItem? {
+        rebuildItemIndexIfStale()
+        guard let idx = itemIndex[id], items.indices.contains(idx) else { return nil }
+        return items[idx]
+    }
+
     /// P2: rebuild dedupHashes from current items array.
     private func rebuildDedupHashSet() {
         dedupHashes = Set(items.compactMap { $0.contentHash })

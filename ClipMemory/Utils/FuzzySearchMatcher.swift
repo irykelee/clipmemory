@@ -27,6 +27,20 @@ enum FuzzySearchMatcher {
         return cache
     }()
 
+    // ID-PERF-0025 (2026-08-11 audit): the lowercased()+folding() pair
+    // for every `content` × every search keystroke was the next
+    // bottleneck after pinyin was cached. 5000 items × ~2KB content
+    // × ICU bridge × every keystroke ≈ 250ms/keystroke. Same
+    // NSCache-per-content pattern as pinyin — same key, same eviction
+    // semantics, same memory ceiling. Pinyin path is untouched; this
+    // only memoizes the latin-normalized form the token check runs
+    // against first.
+    private static let normalizedCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 16_384
+        return cache
+    }()
+
     /// Returns true when every whitespace-separated token in `searchText`
     /// can be found in `content` or its pinyin transliteration. Tokens
     /// are compared case-insensitive and diacritic-insensitive.
@@ -37,9 +51,7 @@ enum FuzzySearchMatcher {
             .map(String.init)
         guard !tokens.isEmpty else { return true }
 
-        let normalized = content
-            .lowercased()
-            .folding(options: .diacriticInsensitive, locale: nil)
+        let normalized = cachedNormalized(of: content)
 
         let pinyin: String? = tokens.contains(where: { !normalized.contains($0) })
             ? cachedPinyin(of: content)
@@ -53,6 +65,26 @@ enum FuzzySearchMatcher {
             if !py.contains(token) { return false }
         }
         return true
+    }
+
+    /// ID-PERF-0025 (2026-08-11 audit): memoize the
+    /// lowercased()+folding(.diacriticInsensitive) result. `content` is
+    /// stable across keystrokes (only `searchText` changes per keystroke),
+    /// so a per-content NSCache hit means matches() costs the token scan
+    /// only — not the ICU bridge per item per keystroke. Same pattern
+    /// as cachedPinyin; intentionally a separate cache because the
+    /// key/value shape is the same string, but mixing them would let
+    /// one evict the other on memory pressure.
+    private static func cachedNormalized(of content: String) -> String {
+        let key = content as NSString
+        if let cached = normalizedCache.object(forKey: key) {
+            return cached as String
+        }
+        let result = content
+            .lowercased()
+            .folding(options: .diacriticInsensitive, locale: nil)
+        normalizedCache.setObject(result as NSString, forKey: key)
+        return result
     }
 
     /// ID-PERF-0011: pinyin output for a given content string. Memoized
