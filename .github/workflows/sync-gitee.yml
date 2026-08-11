@@ -319,6 +319,16 @@ jobs:
           LABEL="sync-gitee-failure"
           ISSUE_TITLE="Gitee sync failed for ${VERSION}"
 
+          # `gh issue create --label X` FAILS outright when X does not exist
+          # in the repo, and this label never did — so even with the token
+          # scope and step order fixed, issue creation died with
+          # "could not add label: 'sync-gitee-failure' not found" (drill,
+          # run 31455507286). Create it up front; `--force` makes this
+          # idempotent and keeps a fresh fork working without manual setup.
+          gh label create "$LABEL" --force \
+            --color "d73a4a" \
+            --description "Gitee mirror sync failed — opened automatically by sync-gitee.yml"
+
           # Dedupe per VERSION, not per label. Picking `.[0]` of everything
           # carrying the label meant a still-open issue from an older
           # version got its body overwritten with this version's details
