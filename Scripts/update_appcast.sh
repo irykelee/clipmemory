@@ -79,6 +79,62 @@ insert_appcast_item() {
     echo "Inserted appcast item for v${version} (length=${length})"
 }
 
+# Remove the <item> block for $2 from the appcast at $1.
+#
+# The inverse of insert_appcast_item, needed by rollback-release.sh: when a
+# release is rolled back the tag and GitHub release are deleted, but
+# release.yml has already pushed this version's <item> to main. Left in
+# place, the feed keeps advertising a version whose tarball 404s, and
+# Sparkle offers users an update that cannot download.
+#
+# Idempotent: if no item for $2 exists, this is a no-op (exit 0), so a
+# partially-completed rollback can be re-run safely.
+# Fails (exit 1) when the appcast has no </channel> tag, mirroring the
+# REL-4 guard on insert — refusing beats silently rewriting a malformed
+# feed.
+# Args:
+#   $1 — absolute path to appcast.xml
+#   $2 — version string (e.g. "2.4.0")
+remove_appcast_item() {
+    local appcast_path="$1"
+    local version="$2"
+
+    if ! grep -qF '</channel>' "$appcast_path"; then
+        echo "ERROR: ${appcast_path} has no </channel> tag; refusing to update a malformed appcast" >&2
+        return 1
+    fi
+
+    if ! grep -qF "<sparkle:version>${version}</sparkle:version>" "$appcast_path"; then
+        echo "appcast has no item for v${version}; skipping (idempotent)"
+        return 0
+    fi
+
+    local tmp
+    tmp=$(mktemp)
+    # Buffer each <item>…</item> block, then emit it only if it does NOT
+    # carry the target version. Matching on the full
+    # <sparkle:version>X</sparkle:version> element (not a bare substring)
+    # is what keeps "9.9.1" from matching "9.9.10" — index() on the raw
+    # version would take the wrong block out of the feed.
+    awk -v marker="<sparkle:version>${version}</sparkle:version>" '
+        /<item>/ { in_item = 1; buf = $0; drop = 0; next }
+        in_item {
+            buf = buf ORS $0
+            if (index($0, marker)) drop = 1
+            if ($0 ~ /<\/item>/) {
+                if (!drop) print buf
+                in_item = 0
+                buf = ""
+            }
+            next
+        }
+        { print }
+    ' "$appcast_path" > "$tmp"
+    mv "$tmp" "$appcast_path"
+
+    echo "Removed appcast item for v${version}"
+}
+
 # --- Main body: only runs when executed, not sourced ---
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     if [ "$#" -ne 4 ]; then

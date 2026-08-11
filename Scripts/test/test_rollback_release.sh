@@ -40,7 +40,31 @@ MARKETING_VERSION: "2.7.9"
 CURRENT_PROJECT_VERSION: "2.7.9"
 DEVELOPMENT_TEAM: "G59B692W3M"
 EOF
-git add project.yml && git commit -qm "fake init"
+# Fake appcast carrying the item for the release we roll back (2.7.9) plus a
+# sibling (2.7.8) that must survive Step 6 untouched.
+cat > appcast.xml <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>ClipMemory Updates</title>
+    <item>
+      <title>Version 2.7.9</title>
+      <sparkle:shortVersionString>2.7.9</sparkle:shortVersionString>
+      <sparkle:version>2.7.9</sparkle:version>
+      <enclosure url="https://github.com/irykelee/clipmemory/releases/download/v2.7.9/ClipMemory.tar.gz"
+                 sparkle:edSignature="SIG_ROLLED_BACK=" />
+    </item>
+    <item>
+      <title>Version 2.7.8</title>
+      <sparkle:shortVersionString>2.7.8</sparkle:shortVersionString>
+      <sparkle:version>2.7.8</sparkle:version>
+      <enclosure url="https://github.com/irykelee/clipmemory/releases/download/v2.7.8/ClipMemory.tar.gz"
+                 sparkle:edSignature="SIG_KEEP=" />
+    </item>
+  </channel>
+</rss>
+EOF
+git add project.yml appcast.xml && git commit -qm "fake init"
 git tag v2.7.8
 git tag v2.7.9  # the release we want to roll back
 git symbolic-ref HEAD refs/heads/main 2>/dev/null || git checkout -b main
@@ -64,7 +88,11 @@ cat > "$FAKE_BIN/gh" <<EOF
 echo "gh \$*" >> "$GH_STATE/calls.log"
 case "\$1 \$2" in
   "api repos/"*)
-    if [[ -f "$GH_STATE/release-v2.7.9.json" ]]; then
+    # Step 7 asks for the PREV release's tarball digest; Gate 2 asks for the
+    # rolled-back release's title. Distinguish by the --jq expression.
+    if [[ "\$*" == *"assets"* ]]; then
+      echo "sha256:feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface"
+    elif [[ -f "$GH_STATE/release-v2.7.9.json" ]]; then
       cat "$GH_STATE/release-v2.7.9.json"
     else
       echo "null"
@@ -82,8 +110,20 @@ esac
 EOF
 chmod +x "$FAKE_BIN/gh"
 
+# Stub curl so the jsDelivr purge in Step 6 never leaves the sandbox.
+cat > "$FAKE_BIN/curl" <<EOF
+#!/bin/bash
+echo "curl \$*" >> "$GH_STATE/curl.log"
+exit 0
+EOF
+chmod +x "$FAKE_BIN/curl"
+
 cat > "$FAKE_BIN/git" <<EOF
 #!/bin/bash
+# SAFETY: intercept every command that would touch a real remote. The fake
+# repo has no 'origin', so an escape would fail rather than mutate real
+# state — but these are stubbed explicitly so the logs prove what the
+# script issued.
 case "\$1 \$2" in
   "tag -d")
     echo "[fake-git] tag -d \$3" >> "$FAKE_REPO/.git/fake-tag-deletes.log"
@@ -93,7 +133,32 @@ case "\$1 \$2" in
     echo "[fake-git] push \$*" >> "$FAKE_REPO/.git/fake-push.log"
     exit 0
     ;;
+  "pull --ff-only")
+    echo "[fake-git] pull \$*" >> "$FAKE_REPO/.git/fake-pull.log"
+    exit 0
+    ;;
+  "clone --quiet")
+    # Step 7 clones the tap repo. Materialise a minimal working copy at the
+    # requested destination (last arg) so the script's sed/commit/push path
+    # is exercised for real.
+    DEST="\${@: -1}"
+    mkdir -p "\$DEST/Casks"
+    /usr/bin/git init -q "\$DEST"
+    /usr/bin/git -C "\$DEST" config user.email test@example.com
+    /usr/bin/git -C "\$DEST" config user.name Test
+    /usr/bin/git -C "\$DEST" config commit.gpgsign false
+    printf 'cask "clipmemory" do\n  version "2.7.9"\n  sha256 "deadbeef"\nend\n' > "\$DEST/Casks/clipmemory.rb"
+    /usr/bin/git -C "\$DEST" add Casks/clipmemory.rb
+    /usr/bin/git -C "\$DEST" commit -qm "seed"
+    echo "[fake-git] clone -> \$DEST" >> "$FAKE_REPO/.git/fake-clone.log"
+    exit 0
+    ;;
 esac
+# Intercept pushes issued via -C <dir> (Step 7's tap push) before passthrough.
+if [[ "\$1" == "-C" && "\$3" == "push" ]]; then
+    echo "[fake-git] tap push \$*" >> "$FAKE_REPO/.git/fake-tap-push.log"
+    exit 0
+fi
 # Pass everything else through to real git (status, branch, etc.)
 exec /usr/bin/git "\$@"
 EOF
@@ -106,7 +171,16 @@ chmod +x "$FAKE_BIN/git"
 # also tracks it under Scripts/.
 cp "$SCRIPT_DIR/rollback-release.sh" "$FAKE_REPO/Scripts/rollback-release.sh"
 chmod +x "$FAKE_REPO/Scripts/rollback-release.sh"
-git add Scripts/rollback-release.sh && git commit -qm "track rollback"
+# Step 6 sources update_appcast.sh for remove_appcast_item; Step 7 renders
+# cask-template.rb. Both must exist at the same SCRIPT_DIR the script derives.
+cp "$SCRIPT_DIR/update_appcast.sh" "$FAKE_REPO/Scripts/update_appcast.sh"
+cp "$SCRIPT_DIR/cask-template.rb" "$FAKE_REPO/Scripts/cask-template.rb"
+git add Scripts/rollback-release.sh Scripts/update_appcast.sh Scripts/cask-template.rb
+git commit -qm "track rollback"
+
+# Baseline commit for reset_state: Step 6 commits appcast.xml, so rewinding
+# needs a hard reset rather than a working-tree rewrite.
+BASE_REF=$(/usr/bin/git -C "$FAKE_REPO" rev-parse HEAD)
 
 PASS=0; FAIL=0
 ok()  { echo "  ✅ $*"; PASS=$((PASS + 1)); }
@@ -120,6 +194,7 @@ expect_rc() {
 
 # Helper: rewind fake-repo state to "release v2.7.9 exists + project.yml = 2.7.9"
 reset_state() {
+    /usr/bin/git -C "$FAKE_REPO" reset --hard -q "$BASE_REF"
     cat > "$FAKE_REPO/project.yml" <<'EOF'
 MARKETING_VERSION: "2.7.9"
 CURRENT_PROJECT_VERSION: "2.7.9"
@@ -127,7 +202,10 @@ DEVELOPMENT_TEAM: "G59B692W3M"
 EOF
     echo "v2.7.8 — fake release for test / 测试用" > "$GH_STATE/release-v2.7.9.json"
     : > "$GH_STATE/calls.log"
-    rm -f "$FAKE_REPO/.git/fake-tag-deletes.log" "$FAKE_REPO/.git/fake-push.log"
+    : > "$GH_STATE/curl.log"
+    rm -f "$FAKE_REPO/.git/fake-tag-deletes.log" "$FAKE_REPO/.git/fake-push.log" \
+          "$FAKE_REPO/.git/fake-pull.log" "$FAKE_REPO/.git/fake-clone.log" \
+          "$FAKE_REPO/.git/fake-tap-push.log"
 }
 
 # Helper: run the fake rollback with PATH override
@@ -190,6 +268,54 @@ grep -q 'release delete' "$GH_STATE/calls.log" \
 grep -q '"2.7.9"' "$FAKE_REPO/project.yml" \
     && ok "project.yml still 2.7.9 (Step 5 not reached after Confirm die)" \
     || bad "project.yml was modified despite aborted run"
+
+echo "=== Path 6: Step 6 removes the rolled-back appcast item, keeps siblings ==="
+reset_state
+run_fake_rollback v2.7.9 v2.7.8 --yes >/dev/null 2>&1
+grep -qF '<sparkle:version>2.7.9</sparkle:version>' "$FAKE_REPO/appcast.xml" \
+    && bad "appcast still advertises rolled-back v2.7.9 (Sparkle would 404 on download)" \
+    || ok "Step 6: v2.7.9 item removed from appcast.xml"
+grep -qF '<sparkle:version>2.7.8</sparkle:version>' "$FAKE_REPO/appcast.xml" \
+    && ok "Step 6: sibling v2.7.8 item survived" \
+    || bad "Step 6 removed the wrong item — sibling v2.7.8 is gone"
+grep -qF 'SIG_ROLLED_BACK=' "$FAKE_REPO/appcast.xml" \
+    && bad "orphan enclosure fragment left in appcast" \
+    || ok "Step 6: no orphan fragment from the removed item"
+grep -q 'push origin main' "$FAKE_REPO/.git/fake-push.log" \
+    && ok "Step 6: appcast change pushed to main" \
+    || bad "Step 6 did not push the appcast fix"
+grep -q 'purge.jsdelivr.net' "$GH_STATE/curl.log" \
+    && ok "Step 6: jsDelivr mirror purged (stale feed would persist 7d otherwise)" \
+    || bad "Step 6 did not purge jsDelivr"
+
+echo "=== Path 7: Step 7 restores tap Cask to PREV ==="
+reset_state
+run_fake_rollback v2.7.9 v2.7.8 --yes >/dev/null 2>&1
+[[ -s "$FAKE_REPO/.git/fake-clone.log" ]] \
+    && ok "Step 7: tap repo cloned" \
+    || bad "Step 7 never cloned the tap repo"
+grep -q 'tap push' "$FAKE_REPO/.git/fake-tap-push.log" 2>/dev/null \
+    && ok "Step 7: tap Cask rollback pushed (brew upgrade would 404 otherwise)" \
+    || bad "Step 7 did not push the tap Cask rollback"
+
+echo "=== Path 8: appcast remediation failure is loud, not silent ==="
+# Corrupt the appcast so remove_appcast_item refuses (no </channel>). The
+# script must still report and exit non-zero rather than claim success —
+# rollback is exactly when a silently-skipped step does the most damage.
+reset_state
+printf '<?xml version="1.0"?>\n<rss><channel><item></item>\n' > "$FAKE_REPO/appcast.xml"
+/usr/bin/git -C "$FAKE_REPO" add appcast.xml
+/usr/bin/git -C "$FAKE_REPO" commit -qm "corrupt appcast"
+OUT=$(run_fake_rollback v2.7.9 v2.7.8 --yes 2>&1) && RC=0 || RC=$?
+[[ "$RC" -ne 0 ]] \
+    && ok "Path 8: exits non-zero when a remediation step fails (rc=$RC)" \
+    || bad "Path 8: exited 0 despite a failed remediation step"
+grep -q '补救步骤失败' <<< "$OUT" \
+    && ok "Path 8: failure surfaced in output" \
+    || bad "Path 8: failure not reported to the operator"
+grep -q 'tag -d v2.7.9' "$FAKE_REPO/.git/fake-tag-deletes.log" \
+    && ok "Path 8: earlier destructive steps still completed (no partial abort)" \
+    || bad "Path 8: appcast failure aborted the earlier rollback steps"
 
 echo ""
 if [[ $FAIL -eq 0 ]]; then
