@@ -77,6 +77,7 @@
 		68A5470D43D3DC52FC731B8A /* LogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AEF14CE6FF2688FFE2407F /* LogoView.swift */; };
 		68E55D78B8A0ECAD531C5237 /* TagSuggestionLengthCapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1261BEEA56B02715F37CFB4 /* TagSuggestionLengthCapTests.swift */; };
 		6918B08B90FB33A00F652210 /* SettingsRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EE582F61471AE5A6BCE6560 /* SettingsRootView.swift */; };
+		69DECDEA4AF107076EB344B2 /* ClipboardStore+Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03697EFE66B85C25E61BE996 /* ClipboardStore+Persistence.swift */; };
 		6AC71D8A8F44EA37B7F7F486 /* TagPickerLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72273B00BF3BBC48397B157 /* TagPickerLogic.swift */; };
 		6B6A6AE9BC38FF5F46C8F5E9 /* TestHostIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97E8E72C0DB7F434491E5A61 /* TestHostIsolationTests.swift */; };
 		6B95B60ED409D91E95058E03 /* ClearItemsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237CA88DED2CB364143484CA /* ClearItemsTests.swift */; };
@@ -181,6 +182,7 @@
 
 /* Begin PBXFileReference section */
 		0241038F2EDC1BDE095706D8 /* DateHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateHelpers.swift; sourceTree = "<group>"; };
+		03697EFE66B85C25E61BE996 /* ClipboardStore+Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ClipboardStore+Persistence.swift"; sourceTree = "<group>"; };
 		041EF969E5FDC60DD678DFD3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		043D7BEC02F3AB2D812024BD /* ImagePreviewPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewPanelTests.swift; sourceTree = "<group>"; };
 		0494294A654E1B59A1072CE4 /* ClipboardMonitorDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardMonitorDelegate.swift; sourceTree = "<group>"; };
@@ -582,6 +584,7 @@
 				4499CFF1A5F60ED377D402EB /* ClipboardStore.swift */,
 				6AF866368EC7C8C9C63F8E6B /* ClipboardStore+Diagnostics.swift */,
 				6173144B0E0698A4915528BA /* ClipboardStore+OCR.swift */,
+				03697EFE66B85C25E61BE996 /* ClipboardStore+Persistence.swift */,
 				8F250C19E7199E18D95521A3 /* CryptoService.swift */,
 				28996AE01C5C1C22507EFA6D /* EncryptionFailedAlertThrottler.swift */,
 				D52B7E6165B766117D1BC7F2 /* FeedProbeEngine.swift */,
@@ -849,6 +852,7 @@
 				A9DC6DB797E74F073944C008 /* ClipboardMonitorDelegate.swift in Sources */,
 				1C6D446C7F937C79D390F6A3 /* ClipboardStore+Diagnostics.swift in Sources */,
 				B75F3E8EC44F8B14D17B6C5E /* ClipboardStore+OCR.swift in Sources */,
+				69DECDEA4AF107076EB344B2 /* ClipboardStore+Persistence.swift in Sources */,
 				BF8CC00B3E0A62207FBAE413 /* ClipboardStore.swift in Sources */,
 				2F3E8BA6FE1C887E9140AF8D /* CloseButton.swift in Sources */,
 				E2D37FD02B4E86B5F2E4DAAD /* ColorHex.swift in Sources */,

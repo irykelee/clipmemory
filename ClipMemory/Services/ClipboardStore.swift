@@ -7,7 +7,10 @@ import os.log
 // (not class-scope) because ClipboardStore is @MainActor and the encode
 // runs on itemEncodingQueue — file-scope `let` is non-isolated and JSONEncoder
 // is documented thread-safe for `.encode()` since macOS 10.15.
-private let itemsSaveEncoder = JSONEncoder()
+// ARCH-0002 PR #1 (2026-08-11): visibility loosened from `private` to
+// `internal` so the methods moved to `ClipboardStore+Persistence.swift`
+// can read this file-scope encoder. Logic unchanged.
+let itemsSaveEncoder = JSONEncoder()
 
 // swiftlint:disable file_length
 // (1) Justification: ClipboardStore is the central coordinator of clipboard flow
@@ -328,13 +331,18 @@ final class ClipboardStore: ObservableObject {
     /// UserDefaults key for persisted items.
     static let itemsStorageKey = "ClipboardItems"
     // trashedItemsStorageKey moved to TrashStore (HIGH-1, 2026-07-26)
-    private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
+    // ARCH-0002 PR #1 (2026-08-11): visibility loosened from `private`
+    // to `internal` so the methods moved to `ClipboardStore+Persistence.swift`
+    // can call `logger.error(...)` from the extension. Logic unchanged.
+    let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
     /// UserDefaults key for persisted tags. Public so tests can pre-populate or clean up.
     static let tagStorageKey = "ClipMemoryTags"
 
     /// E.1: Pluggable storage backend (default: FileStorageBackend via UserDefaults)
-    private let backend: StorageBackend
+    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
+    // so extension can call `backend.saveBlob(...)`. Logic unchanged.
+    let backend: StorageBackend
 
     /// Separate storage backend for the tag dictionary. Defaults to an in-memory
     /// backend in tests; production wires a FileStorageBackend keyed by `tagStorageKey`.
@@ -638,20 +646,28 @@ final class ClipboardStore: ObservableObject {
     private var willTerminateObserver: NSObjectProtocol?
 
     private var cleanupTimer: DispatchSourceTimer?
-    private var saveTimer: DispatchSourceTimer?
+    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
+    // so `ClipboardStore+Persistence.swift` can manage the debounce timer.
+    var saveTimer: DispatchSourceTimer?
     /// Trash refresh fix (2026-07-27): forwards `trashStore.objectWillChange`
     /// to our own publisher so views observing `ClipboardStore` re-render
     /// when the trash mutates (deletePermanently, emptyTrash, restore).
     private var cancellables: Set<AnyCancellable> = []
     /// M-2 (2026-07-25 audit): reuse a single serial queue for the save timer
     /// instead of creating a new `DispatchQueue` on every `scheduleSave()` call.
-    private let saveTimerQueue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
+    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
+    // so extension can reference the queue when (re)creating saveTimer.
+    let saveTimerQueue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
     /// HIGH-4 (2026-07-26 review): reuse a single serial queue for the tag
     /// save timer, matching the M-2 reuse pattern applied to saveTimerQueue.
     private let tagSaveTimerQueue = DispatchQueue(label: "com.clipmemory.tagsave", qos: .utility)
     // trashSaveTimerQueue moved to TrashStore (HIGH-1, 2026-07-26)
-    private var needsSave = false
-    private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
+    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
+    // so extension can read/write the dirty flag.
+    var needsSave = false
+    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
+    // so extension's scheduleSave() can compute debounce deadlines.
+    let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
     /// H-2 (2026-07-25 audit): captures that arrive before the detached
     /// `CryptoService.prepareKey()` task finishes on first launch are held here
@@ -1122,140 +1138,18 @@ final class ClipboardStore: ObservableObject {
     /// thread on every clipboard ingestion (addItem → saveImmediately); with a
     /// large history that blocked the UI per capture. The encode now runs here
     /// at utility QoS; only the encoded Data crosses back for the write.
-    private let itemEncodingQueue = DispatchQueue(label: "com.clipmemory.itemencode", qos: .utility)
-
-    func saveItems() throws {
-        // CLIP-2: the `.sync` hop is deliberate — saveImmediately()'s
-        // write-through contract (clipboard ingestion must be durable before
-        // addItem returns, so kill -9 / power loss after the fact can't lose
-        // it) and flushPendingSaves()' terminate-path guarantee both depend on
-        // saveItems() staying synchronous. Only the encoding CPU moves off
-        // the calling thread; the durability semantics are unchanged.
-        // Deadlock-free: saveItems() is main-thread only and nothing else
-        // dispatches to this queue.
-        // M-5 (2026-07-25 audit): converting this to async would break the
-        // write-through contract tested by IntegrationTests and
-        // ClipboardCaptureLimitTests. Deferred to a future refactor that can
-        // plumb async completion through the call sites.
-        //
-        // ID-SILENT-0021 (2026-08-08 audit): rethrows on backend failure so
-        // `flushSave` can restore `needsSave = true` and post
-        // `.clipboardSaveFailed` for UI surfacing. Previously the inner
-        // catch only logged, leaving `needsSave = false`, so the next
-        // debounce timer exited via the early `guard` — silent data loss.
-        let snapshot = items
-        let data = try itemEncodingQueue.sync {
-            try itemsSaveEncoder.encode(snapshot)
-        }
-        try backend.saveBlob(data)
-    }
-
-    /// Schedules a debounced save — coalesces multiple rapid mutations into a single disk write.
-    /// The actual write happens after `saveDebounceInterval` seconds of inactivity.
-    func scheduleSave() {
-        needsSave = true
-        // M-2 (2026-07-25 audit): lazily create and reuse the timer source.
-        // Repeated scheduleSave() calls previously allocated a new DispatchQueue
-        // + DispatchSource on every keystroke / tag change, which showed up in
-        // Instruments as allocation churn. `schedule(deadline:)` restarts the
-        // existing source's fire time.
-        if saveTimer == nil {
-            let timer = DispatchSource.makeTimerSource(queue: saveTimerQueue)
-            timer.setEventHandler { [weak self] in
-                Task { @MainActor [weak self] in
-                    self?.flushSave()
-                }
-            }
-            timer.resume()
-            saveTimer = timer
-        }
-        saveTimer?.schedule(deadline: .now() + saveDebounceInterval)
-    }
-
-    /// Write-through for clipboard ingestion. New clipboard content is the one
-    /// thing the user cannot re-create, and a kill -9 / power loss inside the
-    /// 500ms debounce window would silently lose it — bypass the debounce here.
-    /// Metadata mutations (pin/tag/delete/trash) keep the debounced path.
-    func saveImmediately() {
-        needsSave = true
-        flushSave()
-    }
-
-    /// Flushes pending item, tag, and trash saves to disk immediately. Called by the debounce timer,
-    /// on deinit, or from AppDelegate.applicationWillTerminate to prevent data loss on quit.
-    func flushPendingSaves() {
-        flushSave()
-        flushTagSave()
-        trashStore.flushPendingSave()
-    }
-
-    /// Internal: the actual willTerminate handler body. Extracted so tests
-    /// can pin the contract without `NotificationCenter.post` global side
-    /// effects (which would fire NSApp + AppDelegate observers).
-    func handleWillTerminate() {
-        flushPendingSaves()
-    }
-
-    // Internal (not private) so tests can pin the failure-recovery contract
-    // without driving the public debounce timer. Production call sites remain
-    // inside this class: `flushPendingSaves`, `saveImmediately`,
-    // `handleWillTerminate`, and the debounce timer's event handler.
-    func flushSave() {
-        guard needsSave else { return }
-        needsSave = false
-        // ID-LIFE-0023 (2026-07-31): do NOT cancel() the timer source here.
-        // DispatchSource.cancel() is irreversible — a cancelled source
-        // silently ignores later schedule() calls, so the old "cancel but
-        // keep for reuse" pattern killed every debounced save after the
-        // first flush. A fired one-shot source stays reusable via
-        // schedule(deadline:); deinit/willTerminate cancel it for real.
-        do {
-            try saveItems()
-            // H-1 (2026-08-08 audit): reset the retry counter on success
-            // so a recovered-then-broken-again disk walks the backoff
-            // ladder from the base again.
-            saveRetryState.recordSuccess()
-        } catch {
-            // H-1 fix: three legs of the data-persistence gate.
-            // 1. 报错 — loud log with attempt count.
-            // 2. 重试 — autonomous exponential backoff via the same
-            //    saveTimer (reuse, not create a parallel retry queue).
-            // 3. 用户可见 — post .clipboardSaveFailed with sourceKey
-            //    "saveFlush" so the AppDelegate Throttler can bucket
-            //    this independently from .encryptionFailed sources.
-            needsSave = true
-            saveRetryState.recordFailure()
-            let backoff = saveRetryState.nextBackoffSeconds
-            logger.error("H-1: saveItems failed (attempt \(self.saveRetryState.consecutiveFailures)): \(error) — auto-retry in \(backoff)s")
-            scheduleSaveRetry(after: backoff)
-            NotificationCenter.default.post(
-                name: .clipboardSaveFailed,
-                object: self,
-                userInfo: ["source": "saveFlush"]
-            )
-        }
-    }
-
-    /// H-1 (2026-08-08 audit): reschedule `saveTimer` to fire after
-    /// `interval` seconds for an autonomous retry. Lazy-creates the timer
-    /// source if needed (matches `scheduleSave()`'s reuse pattern).
-    private func scheduleSaveRetry(after interval: TimeInterval) {
-        let ms = Int(interval * 1000)
-        if saveTimer == nil {
-            let timer = DispatchSource.makeTimerSource(queue: saveTimerQueue)
-            timer.setEventHandler { [weak self] in
-                Task { @MainActor [weak self] in
-                    self?.flushSave()
-                }
-            }
-            timer.resume()
-            saveTimer = timer
-        }
-        saveTimer?.schedule(deadline: .now() + .milliseconds(ms))
-    }
+    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
+    // so extension's saveItems() can dispatch encoding to utility QoS.
+    let itemEncodingQueue = DispatchQueue(label: "com.clipmemory.itemencode", qos: .utility)
 
     /// H-1: observable retry state — exposed for tests + diagnostics.
-    private(set) var saveRetryState = SaveRetryState()
+    /// (State stays in main class — Swift extensions can't have stored properties.)
+    /// H-1: observable retry state — exposed for tests + diagnostics.
+    /// ARCH-0002 PR #1 (2026-08-11): visibility loosened from `private(set)`
+    /// to `internal` so `ClipboardStore+Persistence.swift` can call
+    /// `saveRetryState.recordSuccess()` / `recordFailure()` (mutating
+    /// methods require write access). Logic unchanged.
+    var saveRetryState = SaveRetryState()
 
     /// Insert or replace a tag by its UUID. Tags with the same id overwrite
     /// (idempotent rename/recolor). Triggers a debounced tag save.
@@ -1491,7 +1385,9 @@ final class ClipboardStore: ObservableObject {
         tagSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
     }
 
-    private func flushTagSave() {
+    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
+    // so extension's flushPendingSaves() can call it.
+    func flushTagSave() {
         guard tagNeedsSave else { return }
         tagNeedsSave = false
         // ID-LIFE-0023 (2026-07-31): no cancel() here — see flushSave().
