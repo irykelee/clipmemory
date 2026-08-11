@@ -29,6 +29,11 @@ on:
   # public when sync ran (slow CI / GH CDN blip), the sync would fail
   # and nothing would re-trigger it until the next tag push. workflow_run
   # is the only event that crosses workflows — concurrency groups don't.
+  #
+  # `types: [completed]` is as narrow as the trigger itself gets: the
+  # event carries no conclusion filter, so a failed or cancelled
+  # release.yml fires this too. The "successfully" half of the intent is
+  # enforced by the job-level `if:` below — see the comment there.
   workflow_run:
     workflows: [Release]
     types: [completed]
@@ -46,6 +51,20 @@ concurrency:
 jobs:
   sync-gitee-mirror:
     runs-on: macos-latest
+    # The `workflow_run` trigger above fires on ANY completion of
+    # release.yml, including failure and cancellation — the event type has
+    # no conclusion filter, so the "…completes successfully" half of the
+    # RACE-FIX v2 intent has to be enforced here. Without this the sync
+    # runs against a release whose assets were never published, burns the
+    # full retry ladder on 404s, and (since 2026-08-11) files a spurious
+    # failure issue for a release that was never made.
+    #
+    # The condition is written as "not workflow_run OR succeeded" so
+    # workflow_dispatch keeps working: manual recovery runs must stay
+    # available precisely when the automatic path has failed.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     # PERMISSIONS (2026-08-11 audit): this repo's default workflow token is
     # read-only (`gh api repos/OWNER/REPO/actions/permissions/workflow` →
     # {"default_workflow_permissions":"read"}), so the two issue steps below
@@ -197,9 +216,17 @@ jobs:
           VERSION="v${{ steps.version.outputs.version }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           LABEL="sync-gitee-failure"
+          ISSUE_TITLE="Gitee sync failed for ${VERSION}"
 
-          # Search for an existing open issue with this label.
-          EXISTING=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          # Dedupe per VERSION, not per label. Picking `.[0]` of everything
+          # carrying the label meant a still-open issue from an older
+          # version got its body overwritten with this version's details
+          # while its title kept naming the old one — so the alert lied
+          # about which release was stuck, and the auto-close step below
+          # (which matches on title) could never find it again. Matching
+          # the exact title on both sides keeps open/update/close coherent.
+          EXISTING=$(gh issue list --label "$LABEL" --state open --json number,title \
+              --jq ".[] | select(.title == \"${ISSUE_TITLE}\") | .number" 2>/dev/null | head -1 || echo "")
           BODY="## Gitee mirror sync failed for ${VERSION}
 
           Run: ${RUN_URL}
@@ -226,7 +253,7 @@ jobs:
             echo "ISSUE_URL=https://github.com/${{ github.repository }}/issues/$EXISTING" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Opening new issue"
-            NEW_URL=$(gh issue create --title "Gitee sync failed for ${VERSION}" --body "$BODY" --label "$LABEL")
+            NEW_URL=$(gh issue create --title "$ISSUE_TITLE" --body "$BODY" --label "$LABEL")
             echo "ISSUE_URL=$NEW_URL" >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -241,7 +268,15 @@ jobs:
           set -euo pipefail
           LABEL="sync-gitee-failure"
           VERSION="v${{ steps.version.outputs.version }}"
-          for ISSUE_NUM in $(gh issue list --label "$LABEL" --state open --search "Gitee sync failed for ${VERSION} in:" --json number --jq '.[].number' 2>/dev/null); do
+          ISSUE_TITLE="Gitee sync failed for ${VERSION}"
+          # `--search "… in:"` left a dangling qualifier (`in:` with no
+          # field), which GitHub search does not interpret as "match this
+          # title" — it degraded to a loose full-text match that could
+          # close an issue for a different version. Filter the label's open
+          # issues on exact title instead; same predicate the open/update
+          # step above uses.
+          for ISSUE_NUM in $(gh issue list --label "$LABEL" --state open --json number,title \
+                  --jq ".[] | select(.title == \"${ISSUE_TITLE}\") | .number" 2>/dev/null); do
             echo "Closing auto-issue #$ISSUE_NUM (sync succeeded this run)"
             gh issue close "$ISSUE_NUM" --comment "Auto-closing: sync succeeded for ${VERSION} on run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           done
