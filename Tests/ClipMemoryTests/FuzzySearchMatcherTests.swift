@@ -127,4 +127,45 @@ final class FuzzySearchMatcherTests: XCTestCase {
         let elapsed = Date().timeIntervalSince(start) * 1000
         XCTAssertLessThan(elapsed, 200, "1000 cached pinyin matches should take <200 ms, took \(elapsed) ms")
     }
+
+    // MARK: - ID-PERF-0025 (2026-08-11 audit): normalized cache
+
+    /// Determinism: same `content` must yield the same normalized form
+    /// on repeated calls. The cache is keyed by content; the
+    /// lowercased()+folding() pipeline is deterministic so this is
+    /// also the regression guard for "cache stores something other
+    /// than the computed value".
+    func testCachedNormalizedReturnsSameResultForSameContent() {
+        let first = FuzzySearchMatcher.matches(content: "Café Résumé", searchText: "CAFE")
+        let second = FuzzySearchMatcher.matches(content: "Café Résumé", searchText: "RESUME")
+        XCTAssertTrue(first, "case-insensitive + diacritic-insensitive must work on first call")
+        XCTAssertTrue(second, "case-insensitive + diacritic-insensitive must work after first call warmed the cache")
+    }
+
+    /// Performance regression: with ID-PERF-0025 cache, 1000 `matches`
+    /// calls on the same ~2KB content should complete in single-digit ms.
+    /// Without the cache, each call re-runs lowercased()+folding() on
+    /// the full content (audit measured 250ms/keystroke for 5000 items;
+    /// the per-call cost for a single ~2KB content is ~50µs, so 1000
+    /// calls ≈ 50ms without cache). Threshold of 30ms is generous enough
+    /// for CI noise while still catching "cache broken" regressions.
+    /// This test is the post-landing validation of the 251ms → ~5ms
+    /// improvement the user reported pre-audit; if the cache regresses
+    /// (e.g. someone removes the cache and inlines the lowercased
+    /// again), this test should fail.
+    func testCachedNormalizedPerformance() {
+        // ~2KB content: mirrors the audit's 5000×2KB measurement shape
+        let content = "Hello World " + String(repeating: "the quick brown fox jumps over the lazy dog ", count: 50)
+        let search = "hello world quick"
+        // Warm both normalized and pinyin caches
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: content, searchText: search))
+        // Measure cached path
+        let start = Date()
+        for _ in 0..<1000 {
+            _ = FuzzySearchMatcher.matches(content: content, searchText: search)
+        }
+        let elapsed = Date().timeIntervalSince(start) * 1000
+        XCTAssertLessThan(elapsed, 30,
+                          "1000 cached-normalized matches should take <30 ms, took \(elapsed) ms — cache regression?")
+    }
 }
