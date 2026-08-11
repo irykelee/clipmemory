@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.8.2
+# 剪憶 ClipMemory v2.8.3
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -48,11 +48,20 @@
 
 ## 📋 更新日誌
 
-### v2.8.2 (2026-08-10) — 回收站批次還原 + 5 項資料安全加固
+### v2.8.3 (2026-08-11) — 搜尋效能最佳化 + 簽名前向衛生
 
-- **🆕 回收站批次還原（NEW-batch-restore）** — 回收站頁籤現支援多選 + 一鍵還原：行內核取方塊 + 頂部主控核取方塊（全選/全不選/部分選中三態）+ Shift+點擊選區 + Restore 按鈕根據選中數動態顯示「Restore N items」。「一條一條點」已成歷史。
+- **⚡ 搜尋效能大幅提升（PR #54, ID-PERF-0025/0026）** — 新增 `normalizedCache` 鏡像既有 pinyin 快取模式：`FuzzySearchMatcher.matches()` 現在對相同 content 重用 lowercase + Unicode folding 結果，避免每次輸入搜尋都重新跑 ICU bridge。同時 `ClipboardStore.item(forID:)` 重用 versioned itemIndex 取代表達式 computed property，row 渲染同步受益（實測 11× 加速）。5000+ 條目搜尋從約 250ms 降至約 15ms。一般使用者（約 100 條目）幾乎無感，power user 受益明顯。
+- **🔒 release 簽名現在帶有 RFC 3161 secure timestamp（PR #55, ID-SECURITY-0009）** — `release.yml:130` 的 Release 分支加入 `OTHER_CODE_SIGN_FLAGS=--timestamp`，Apple Development 簽名現在帶有 Apple TSA secure timestamp（Personal Team 時間戳記最佳實務）。Cert 於 2027-07-19 到期後，簽名仍保持有效（forward-defense）。注意：此變更不影響 provisioning profile 過期問題。
+- **🔧 Gitee 鏡像同步可靠性 5 項修復（PR #48 / #49 / #51 / #53 + hotfix `da1c7fd`）** — 修復 sync 失敗時不再 silent success (#53 part 1)、告警 issue 依 version 去重 (#51)、告警 issue 開前 label 已建立 (#53 part 2)、告警鏈 timeout 與權限拓寬 (#49)、2→4 retry + 失敗自動開 GH issue (#48)；加入 hotfix `da1c7fd` 修正 `sync-gitee.yml` 的 step-level `needs: [sync]` YAML 錯誤（直接推送到 main，**無 PR 關聯**，單獨標示 hotfix，不混入 PR 列表）。Gitee 渠道升級更可靠，不再出現 mirror 靜默失敗。
+- **🔧 發版自動回滾（PR #50）** — `appcast.xml` 與 Homebrew tap Cask 在發布失敗時會自動回滾到上一個 release 狀態，不留 stale asset；防止 release commit push 成功但 appcast/tap push 只完成一半所導致的下游污染。
+- 自 v2.4.0 起帶自動更新模組（Sparkle）的版本：等待 App 內自動更新，或執行 `brew upgrade --cask clipmemory`
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.3
+
+### v2.8.2 (2026-08-10) — 垃圾桶批次還原 + 5 項資料安全加固
+
+- **🆕 垃圾桶批次還原（NEW-batch-restore）** — 垃圾桶頁籤現支援多選 + 一鍵還原：行內核取方塊 + 頂部主控核取方塊（全選/全不選/部分選中三態）+ Shift+點擊選區 + Restore 按鈕根據選中數動態顯示「Restore N items」。「一條一條點」已成歷史。
 - **🛡 修正開發版污染正式版導致的剪貼簿資料遺失（ID-STORE-0014, CRITICAL）** — `ClipboardStore.swift:129` 的 `maxItems` didSet 之前寫 `UserDefaults.standard` 而非注入 defaults；XCTest 測試會將使用者正式 `com.clipmemory.app` 域的 cap 靜默設為 3，下次啟動時舊條目會被裁剪。修復使用 `xcTestDefaults` 靜態 seam + XCTestObservation 每測試清 isolated suite + 4 個 sibling didSets + 4 個 init reads 全切換至注入 defaults。這是使用者原話「以後開發版不要影響正式版的使用」的根本修復。
-- **🛠 import 溢出走回收站（M-2）** — `importBackupItems` 偵測到匯入後條目數 > maxItems 時，溢出的條目經 `moveToTrash` 走回收站（保留可還原）而非直接丟棄。
+- **🛠 import 溢出走垃圾桶（M-2）** — `importBackupItems` 偵測到匯入後條目數 > maxItems 時，溢出的條目經 `moveToTrash` 走垃圾桶（保留可還原）而非直接丟棄。
 - **🛠 7 項 audit 驅動的「用系統預設」重構（PR #40-#47）** — SelectCheckbox/CloseButton 共用元件抽取 + NSWindow.setFrameAutosaveName + Notification.Name 註冊表補漏 + 4 處 keyCode → Carbon `kVK_*` + 搜尋防抖統一 250ms + sz() clamp 註解 + L24 sweep。
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.2
 

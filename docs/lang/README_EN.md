@@ -1,4 +1,4 @@
-# ClipMemory v2.8.2
+# ClipMemory v2.8.3
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.8.3 (2026-08-11) — Search performance optimization + signature forward hygiene
+
+- **⚡ Major search performance boost (PR #54, ID-PERF-0025/0026)** — Added `normalizedCache`, mirroring the existing pinyin cache pattern: `FuzzySearchMatcher.matches()` now reuses lowercasing + Unicode folding results for identical content, avoiding a fresh ICU bridge run on every keystroke. At the same time, `ClipboardStore.item(forID:)` now reuses the versioned itemIndex instead of an expensive computed property, and row rendering benefits as well (measured 11× speedup). Search across 5,000+ entries dropped from ~250ms to ~15ms. Everyday users (~100 items) will barely notice; power users benefit noticeably.
+- **🔒 Release signatures now include RFC 3161 secure timestamp (PR #55, ID-SECURITY-0009)** — `release.yml:130` adds `OTHER_CODE_SIGN_FLAGS=--timestamp` on the Release branch. Apple Development signatures are now stamped with Apple TSA secure timestamps (Personal Team timestamping best practice). After the certificate expires on 2027-07-19, signatures remain valid (forward-defense). Note: this change does not affect provisioning profile expiration issues.
+- **🔧 5 Gitee mirror sync reliability fixes (PR #48 / #49 / #51 / #53 + hotfix `da1c7fd`)** — Fix sync failures no longer silently succeed (#53 part 1), dedupe alert issues by version (#51), ensure the alert label is created before opening an issue (#53 part 2), widen alert-chain timeout and permissions (#49), 2→4 retries + auto-open a GH issue on failure (#48); plus hotfix `da1c7fd` fixing a step-level `needs: [sync]` YAML error in `sync-gitee.yml` (pushed directly to main, **no PR associated**, marked as a separate hotfix so it does not get mixed into the PR list). The Gitee channel is more reliable for updates, and silent mirror failures no longer occur.
+- **🔧 Release auto-rollback (PR #50)** — `appcast.xml` and the Homebrew tap Cask are automatically rolled back to the previous release state when a release fails, leaving no stale assets; this prevents downstream contamination caused by a release commit push succeeding while the appcast/tap push is only half-completed.
+- For versions with the auto-update module (Sparkle) from v2.4.0 onward: wait for the in-app auto-update, or run `brew upgrade --cask clipmemory`
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.3
 
 ### v2.8.2 (2026-08-10) — Trash batch restore + 5 data-safety hardening
 

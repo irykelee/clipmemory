@@ -1,4 +1,4 @@
-# ClipMemory v2.8.2
+# ClipMemory v2.8.3
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.8.3 (2026-08-11) — 検索パフォーマンス最適化 + 署名の前向き衛生
+
+- **⚡ 検索パフォーマンス大幅向上（PR #54, ID-PERF-0025/0026）** — `normalizedCache` を追加し、既存の pinyin キャッシュパターンをミラー：`FuzzySearchMatcher.matches()` は同じ content に対して小文字化 + Unicode folding の結果を再利用するため、キー入力のたびに ICU bridge を再実行しません。同時に `ClipboardStore.item(forID:)` は versioned itemIndex を再利用して、表現的な computed property の代わりとし、row 描画も同期して改善（実測 11× 高速化）。5000+ 項目の検索が約 250ms から約 15ms に短縮。一般ユーザー（約 100 項目）はほぼ体感なし、power user には大きなメリットです。
+- **🔒 リリース署名に RFC 3161 secure timestamp を付与（PR #55, ID-SECURITY-0009）** — `release.yml:130` の Release ブランチに `OTHER_CODE_SIGN_FLAGS=--timestamp` を追加。Apple Development 署名は Apple TSA secure timestamp 付きに（Personal Team のタイムスタンプベストプラクティス）。Cert が 2027-07-19 に失効した後も署名は有効を維持（forward-defense）。注意：この変更は provisioning profile の有効期限問題には影響しません。
+- **🔧 Gitee ミラー同期の信頼性に関する 5 件の修正（PR #48 / #49 / #51 / #53 + hotfix `da1c7fd`）** — sync 失敗時に silent success とならないよう修正 (#53 part 1)、アラート issue を version ごとに重複排除 (#51)、アラート issue を開く前に label が作成済みであることを保証 (#53 part 2)、アラートチェーンのタイムアウトと権限を拡大 (#49)、2→4 回にリトライ + 失敗時に自動で GH issue を起票 (#48)；hotfix `da1c7fd` で `sync-gitee.yml` の step-level `needs: [sync]` YAML エラーを修正（main に直接 push、**PR 関連なし**、hotfix として単独表示し PR リストに混在させない）。Gitee チャネルのアップグレードがより信頼性高くなり、ミラーが静かに失敗することがなくなります。
+- **🔧 リリース時自動ロールバック（PR #50）** — `appcast.xml` と Homebrew tap Cask はリリース失敗時に前のリリース状態へ自動ロールバックし、古いアセットを残しません。release commit の push は成功したが appcast/tap push が中途半端に完了したことによる下流汚染を防止します。
+- v2.4.0 以降の自動アップデートモジュール（Sparkle）搭載版：アプリ内の自動アップデートをお待ちいただくか、`brew upgrade --cask clipmemory`
+- 完全な changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.3
 
 ### v2.8.2 (2026-08-10) — ゴミ箱の一括復元 + 5 項目のデータセーフティ強化
 

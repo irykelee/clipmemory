@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.8.2
+# 剪忆 ClipMemory v2.8.3
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 更新日志
+
+### v2.8.3 (2026-08-11) — 搜索性能优化 + 签名前向卫生
+
+- **⚡ 搜索性能大幅提升（PR #54, ID-PERF-0025/0026）** — 新增 `normalizedCache` 镜像既有 pinyin 缓存模式：`FuzzySearchMatcher.matches()` 现在对相同 content 复用小写化 + Unicode folding 结果，避免每次键入搜索都重新跑 ICU bridge。同时 `ClipboardStore.item(forID:)` 复用 versioned itemIndex 替代表情性 computed property，row 渲染同步受益（实测 11× 加速）。5000+ 条目搜索从约 250ms 降至约 15ms。普通用户（约 100 条目）几乎无感，power user 受益明显。
+- **🔒 release 签名现带 RFC 3161 secure timestamp（PR #55, ID-SECURITY-0009）** — `release.yml:130` Release 分支加 `OTHER_CODE_SIGN_FLAGS=--timestamp`，Apple Development 签名现带 Apple TSA secure timestamp（Personal Team 时间戳最佳实践）。Cert 2027-07-19 到期后签名仍保持有效（forward-defense）。注意：本变更不影响 provisioning profile 过期问题。
+- **🔧 Gitee 镜像同步可靠性 5 项修复（PR #48 / #49 / #51 / #53 + hotfix `da1c7fd`）** — 修复 sync 失败不再 silent success (#53 part 1)、告警 issue 按 version 去重 (#51)、告警 issue 开前 label 已创建 (#53 part 2)、告警链 timeout 与权限拓宽 (#49)、2→4 retry + 失败自动开 GH issue (#48)；加 hotfix `da1c7fd` 修 `sync-gitee.yml` 的 step-level `needs: [sync]` YAML 错误（直推 main，**无 PR 关联**，单独标 hotfix 不混进 PR 列表）。Gitee 渠道升级更可靠，不再出现 mirror 静默失败。
+- **🔧 发版自动回滚（PR #50）** — `appcast.xml` 与 Homebrew tap Cask 在发布失败时自动回滚到上一个 release 状态，不留 stale asset；防止 release commit push 成功但 appcast/tap push 半完成导致的下游污染。
+- v2.4.0 起带自动升级模块（Sparkle）的版本：等 App 内自动更新，或 `brew upgrade --cask clipmemory`
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.3
 
 ### v2.8.2 (2026-08-10) — 回收站批量恢复 + 5 项数据安全加固
 

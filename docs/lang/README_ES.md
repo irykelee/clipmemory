@@ -1,4 +1,4 @@
-# ClipMemory v2.8.2
+# ClipMemory v2.8.3
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.8.3 (2026-08-11) — Optimización del rendimiento de búsqueda + higiene prospectiva de firma
+
+- **⚡ Gran mejora del rendimiento de búsqueda (PR #54, ID-PERF-0025/0026)** — Nuevo `normalizedCache` que refleja el patrón de caché pinyin existente: `FuzzySearchMatcher.matches()` ahora reutiliza los resultados de minúsculas + plegado Unicode para el mismo content, evitando volver a ejecutar el bridge ICU en cada tecla escrita. Además, `ClipboardStore.item(forID:)` reutiliza el versioned itemIndex en lugar de una computed property perezosa, y el renderizado de filas se beneficia de forma síncrona (11× de aceleración medida). La búsqueda de 5000+ elementos se reduce de ~250 ms a ~15 ms. Los usuarios normales (~100 elementos) apenas lo notan; los power users lo notan claramente.
+- **🔒 La firma de release ahora incluye sello de tiempo seguro RFC 3161 (PR #55, ID-SECURITY-0009)** — En `release.yml:130`, la rama Release añade `OTHER_CODE_SIGN_FLAGS=--timestamp`; la firma de Apple Development ahora lleva el sello de tiempo seguro de Apple TSA (mejor práctica para Personal Team). La firma sigue siendo válida después de que el certificado expire el 2027-07-19 (defensa prospectiva). Nota: este cambio no afecta al problema de caducidad del perfil de aprovisionamiento.
+- **🔧 5 correcciones de fiabilidad para la sincronización del espejo Gitee (PR #48 / #49 / #51 / #53 + hotfix `da1c7fd`)** — Se corrige que el fallo de sync ya no sea un éxito silencioso (#53 parte 1), deduplicación de issues de alerta por version (#51), creación de label antes de abrir el issue de alerta (#53 parte 2), ampliación de timeout y permisos de la cadena de alertas (#49), 2→4 reintentos + apertura automática de GH issue en caso de fallo (#48); además, el hotfix `da1c7fd` corrige el error YAML de `needs: [sync]` a nivel de paso en `sync-gitee.yml` (push directo a main, **sin PR asociado**, marcado como hotfix por separado y no mezclado en la lista de PR). El canal Gitee es ahora más fiable y ya no produce fallos silenciosos del mirror.
+- **🔧 Rollback automático de releases (PR #50)** — `appcast.xml` y el Cask del tap de Homebrew vuelven automáticamente al estado del release anterior cuando falla la publicación, sin dejar assets obsoletos; evita la contaminación descendente causada por un push exitoso del commit de release pero un push a medias de appcast/tap.
+- Versiones con módulo de actualización automática (Sparkle) desde v2.4.0: espera la actualización automática dentro de la app, o `brew upgrade --cask clipmemory`
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.8.3
 
 ### v2.8.2 (2026-08-10) — Restauración por lotes de la papelera + 5 refuerzos de seguridad de datos
 

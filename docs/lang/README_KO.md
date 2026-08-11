@@ -1,4 +1,4 @@
-# ClipMemory v2.8.2
+# ClipMemory v2.8.3
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 변경 로그
+
+### v2.8.3 (2026-08-11) — 검색 성능 최적화 + 서명 전방위 위생
+
+- **⚡ 검색 성능 대폭 향상（PR #54, ID-PERF-0025/0026）** — 기존 pinyin 캐시 패턴을 미러링하는 `normalizedCache` 신규 추가: `FuzzySearchMatcher.matches()`가 이제 동일 content에 대해 소문자화 + Unicode folding 결과를 재사용하여, 키 입력 시마다 ICU bridge를 다시 실행하지 않습니다. 동시에 `ClipboardStore.item(forID:)`가 versioned itemIndex를 재사용하여 기존의 계산형 property를 대체, row 렌더링도 함께 개선되었습니다(측정 결과 11× 가속). 5000개 이상 항목 검색이 약 250ms에서 약 15ms로 단축되었습니다. 일반 사용자(약 100개 항목)는 체감하기 어렵지만, power user에게는 확실한 이점이 있습니다.
+- **🔒 release 서명에 RFC 3161 secure timestamp 적용（PR #55, ID-SECURITY-0009）** — `release.yml:130` Release 브랜치에 `OTHER_CODE_SIGN_FLAGS=--timestamp` 추가, Apple Development 서명에 Apple TSA secure timestamp가 포함됩니다(Personal Team 타임스탬프 모범 사례). Cert 2027-07-19 만료 후에도 서명 유효성이 유지됩니다(forward-defense). 참고: 본 변경은 provisioning profile 만료 문제에는 영향을 주지 않습니다.
+- **🔧 Gitee 미러 동기화 신뢰성 5건 수정（PR #48 / #49 / #51 / #53 + hotfix `da1c7fd`）** — sync 실패가 더 이상 silent success가 아니도록 수정(#53 part 1), 알림 issue를 version 기준으로 중복 제거(#51), 알림 issue 생성 전 label 사전 생성(#53 part 2), 알림 체인 timeout 및 권한 확대(#49), 2→4회 retry + 실패 시 GH issue 자동 생성(#48); hotfix `da1c7fd`로 `sync-gitee.yml`의 step-level `needs: [sync]` YAML 오류 수정(main에 직접 푸시, **PR 연관 없음**, PR 목록과 분리하여 hotfix로 별도 표기). Gitee 채널 업그레이드가 더욱 안정적이며, mirror의 조용한 실패가 더 이상 발생하지 않습니다.
+- **🔧 릴리스 자동 롤백（PR #50）** — `appcast.xml` 및 Homebrew tap Cask가 릴리스 실패 시 자동으로 이전 릴리스 상태로 롤백되어 stale asset이 남지 않습니다. release commit push는 성공했지만 appcast/tap push가 일부만 완료되어 발생하는 하위 오염을 방지합니다.
+- v2.4.0부터 자동 업데이트 모듈(Sparkle) 탑재 버전: 앱 내 자동 업데이트를 기다리거나 `brew upgrade --cask clipmemory` 실행
+- 전체 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.3
 
 ### v2.8.2 (2026-08-10) — 휴지통 일괄 복원 + 5가지 데이터 안전 강화
 
