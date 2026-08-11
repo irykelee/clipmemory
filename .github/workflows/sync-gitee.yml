@@ -173,6 +173,107 @@ jobs:
           echo "❌ Sync failed after $ATTEMPTS attempts"
           exit 1
 
+      - name: Verify Gitee sync
+        # Cheap post-sync checks (a, b, d from the handoff doc). Run even
+        # on push triggers — the script is idempotent so a re-run after a
+        # partial failure should land clean. We don't enforce c (download
+        # speed) — that's a measurement, not a property.
+        #
+        # ORDERING (2026-08-11 drill): this used to be the LAST step, after
+        # the alerting steps. Since `if: failure()` reads the job status at
+        # the moment the step is evaluated, a run where sync "passed" but
+        # verification failed skipped both alert steps and still ran
+        # `Auto-close` — closing a legitimate open alert while the mirror
+        # was broken. Verification has to fail BEFORE the steps that react
+        # to failure. Observed live in run 31453166197.
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="v${{ steps.version.outputs.version }}"
+          OWNER="${GH_OWNER:-irykelee}"
+          REPO="${GH_REPO:-clipmemory}"
+          API="https://gitee.com/api/v5"
+          WORK=$(mktemp -d)
+
+          FAILS=0
+          fail() { echo "❌ $*"; FAILS=$((FAILS+1)); }
+          ok()   { echo "✅ $*"; }
+
+          echo "=== Post-sync verification for ${VERSION} ==="
+
+          # (a) Gitee release exists.
+          # Gitee answers a MISSING tag with HTTP 200 and a literal `null`
+          # body, so `curl -sf` (status-only) reported success for a release
+          # that does not exist — verified in the drill against tag v9.9.9,
+          # which Gitee has never had. Check the body, not the status.
+          GITEE_REL=$(curl -sf --max-time 15 "${API}/repos/${OWNER}/${REPO}/releases/tags/${VERSION}?access_token=${GITEE_TOKEN}" || echo "")
+          if [[ -n "$GITEE_REL" && "$GITEE_REL" != "null" ]]; then
+            ok "Gitee release ${VERSION} exists"
+          else
+            fail "Gitee release ${VERSION} missing — re-run sync_gitee_release.sh"
+          fi
+
+          # (b) Gitee appcast <item> enclosure points to gitee.com (not
+          # github.com). Fetch via raw, parse the <enclosure url="..."> for
+          # this version. Item title is "Version 2.7.9" (not "ClipMemory
+          # v2.7.9" — that's the channel title); we anchor on
+          # <sparkle:shortVersionString>2.7.9</sparkle:shortVersionString>
+          # which is the authoritative version match.
+          V="${VERSION#v}"
+          # `-L` follows the 302 redirect to raw.giteeusercontent.com (otherwise
+          # curl gets the HTML redirect page and the regex finds no <enclosure>).
+          ENCLOSURE=$(V="$V" curl -sfL --max-time 15 "https://gitee.com/${OWNER}/${REPO}/raw/main/appcast.xml" \
+            | V="$V" python3 -c 'import re,sys,os; v=os.environ["V"]; m=re.search(r"""<item>.+?<sparkle:shortVersionString>"""+re.escape(v)+r"""</sparkle:shortVersionString>.+?<enclosure[^>]*url="([^"]+)""", sys.stdin.read(), re.DOTALL); print(m.group(1) if m else "")' 2>/dev/null || echo "")
+          if [[ -z "$ENCLOSURE" ]]; then
+            fail "no Gitee appcast <item> for ${VERSION} — script may not have pushed the copy"
+          elif [[ "$ENCLOSURE" == *"gitee.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz"* ]]; then
+            ok "Gitee enclosure → gitee.com (.../releases/download/${VERSION}/ClipMemory.tar.gz)"
+          else
+            fail "Gitee enclosure unexpected: $ENCLOSURE"
+          fi
+
+          # (d) Two-side sha256 identical (REL-29 byte-consistency proof).
+          # Download to FILES and require both to be non-empty before
+          # comparing. Piping curl straight into shasum meant a failed
+          # download hashed an empty stream, and when BOTH sides failed the
+          # two empty-file hashes matched — the check reported
+          # "✅ sha256 GH == GT (e3b0c44…)" for a release that existed on
+          # neither side (drill, run 31453166197). e3b0c44… IS the empty
+          # hash; the old comment even named it while the code let it pass.
+          # Field-name fallback (attachments vs assets) because the Gitee
+          # API returns different field names depending on auth context
+          # (verified empirically: with token = attachments; without = assets).
+          # `-L` follows the 302 to the S3-backed release-assets host.
+          GH_TARBALL="${WORK}/gh-ClipMemory.tar.gz"
+          GT_TARBALL="${WORK}/gt-ClipMemory.tar.gz"
+          curl -sfL --max-time 60 -o "$GH_TARBALL" "https://github.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz" || true
+          GT_URL=$(printf '%s' "${GITEE_REL:-}" \
+            | python3 -c 'import json,sys; raw=sys.stdin.read().strip(); d=json.loads(raw) if raw and raw!="null" else {}; items=(d.get("attachments") or d.get("assets") or []) if isinstance(d,dict) else []; print(next((a["browser_download_url"] for a in items if a.get("name")=="ClipMemory.tar.gz"), ""))' 2>/dev/null || echo "")
+          if [[ -n "$GT_URL" ]]; then
+            curl -sfL --max-time 60 -o "$GT_TARBALL" "$GT_URL" || true
+          fi
+          if [[ ! -s "$GH_TARBALL" || ! -s "$GT_TARBALL" ]]; then
+            fail "tarball download empty or missing (GH=$(wc -c < "$GH_TARBALL" 2>/dev/null || echo 0)B / GT=$(wc -c < "$GT_TARBALL" 2>/dev/null || echo 0)B) — asset missing on one side"
+          else
+            GH_SHA=$(shasum -a 256 "$GH_TARBALL" | awk '{print $1}')
+            GT_SHA=$(shasum -a 256 "$GT_TARBALL" | awk '{print $1}')
+            if [[ "$GH_SHA" == "$GT_SHA" ]]; then
+              ok "sha256 GH == GT ($GH_SHA)"
+            else
+              fail "sha256 mismatch: GH=$GH_SHA GT=$GT_SHA — REL-29 byte-consistency violated"
+            fi
+          fi
+
+          rm -rf "$WORK"
+          if [[ "$FAILS" -gt 0 ]]; then
+            echo ""
+            echo "❌ ${FAILS} post-sync check(s) FAILED."
+            exit 1
+          fi
+          echo ""
+          echo "✅ All post-sync verification checks passed."
+
       - name: Failure summary
         # VISIBILITY (2026-08-07): when this workflow fails (sync or verify),
         # post a GitHub step summary so the failure mode + manual recovery
@@ -280,80 +381,3 @@ jobs:
             echo "Closing auto-issue #$ISSUE_NUM (sync succeeded this run)"
             gh issue close "$ISSUE_NUM" --comment "Auto-closing: sync succeeded for ${VERSION} on run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           done
-
-      - name: Verify Gitee sync
-        # Cheap post-sync checks (a, b, d from the handoff doc). Run even
-        # on push triggers — the script is idempotent so a re-run after a
-        # partial failure should land clean. We don't enforce c (download
-        # speed) — that's a measurement, not a property.
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-        run: |
-          set -euo pipefail
-          VERSION="v${{ steps.version.outputs.version }}"
-          OWNER="${GH_OWNER:-irykelee}"
-          REPO="${GH_REPO:-clipmemory}"
-          API="https://gitee.com/api/v5"
-
-          FAILS=0
-          fail() { echo "❌ $*"; FAILS=$((FAILS+1)); }
-          ok()   { echo "✅ $*"; }
-
-          echo "=== Post-sync verification for ${VERSION} ==="
-
-          # (a) Gitee release exists.
-          if curl -sf --max-time 15 "${API}/repos/${OWNER}/${REPO}/releases/tags/${VERSION}?access_token=${GITEE_TOKEN}" >/dev/null; then
-            ok "Gitee release ${VERSION} exists"
-          else
-            fail "Gitee release ${VERSION} missing — re-run sync_gitee_release.sh"
-          fi
-
-          # (b) Gitee appcast <item> enclosure points to gitee.com (not
-          # github.com). Fetch via raw, parse the <enclosure url="..."> for
-          # this version. Item title is "Version 2.7.9" (not "ClipMemory
-          # v2.7.9" — that's the channel title); we anchor on
-          # <sparkle:shortVersionString>2.7.9</sparkle:shortVersionString>
-          # which is the authoritative version match.
-          V="${VERSION#v}"
-          # `-L` follows the 302 redirect to raw.giteeusercontent.com (otherwise
-          # curl gets the HTML redirect page and the regex finds no <enclosure>).
-          ENCLOSURE=$(V="$V" curl -sfL --max-time 15 "https://gitee.com/${OWNER}/${REPO}/raw/main/appcast.xml" \
-            | V="$V" python3 -c 'import re,sys,os; v=os.environ["V"]; m=re.search(r"""<item>.+?<sparkle:shortVersionString>"""+re.escape(v)+r"""</sparkle:shortVersionString>.+?<enclosure[^>]*url="([^"]+)""", sys.stdin.read(), re.DOTALL); print(m.group(1) if m else "")' 2>/dev/null || echo "")
-          if [[ -z "$ENCLOSURE" ]]; then
-            fail "no Gitee appcast <item> for ${VERSION} — script may not have pushed the copy"
-          elif [[ "$ENCLOSURE" == *"gitee.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz"* ]]; then
-            ok "Gitee enclosure → gitee.com (.../releases/download/${VERSION}/ClipMemory.tar.gz)"
-          else
-            fail "Gitee enclosure unexpected: $ENCLOSURE"
-          fi
-
-          # (d) Two-side sha256 identical (REL-29 byte-consistency proof).
-          # `|| true` on the curl+pipe so a transient empty body / 401 doesn't
-          # trip `set -e` and abort the verify step before the fail() below
-          # can report it. Field-name fallback (attachments vs assets)
-          # because Gitee API returns different field names depending on auth
-          # context (verified empirically: with token = attachments; without
-          # = assets).
-          # `-L` follows the 302 to S3-backed release-assets host (GitHub
-          # releases URL returns a redirect; without -L curl gets an
-          # empty body and the SHA ends up as e3b0c44... — the empty-file
-          # hash — which fails the REL-29 equality check).
-          GH_SHA=$(curl -sfL --max-time 60 "https://github.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz" | shasum -a 256 | awk '{print $1}' || true)
-          GT_URL=$(curl -sfL --max-time 60 "${API}/repos/${OWNER}/${REPO}/releases/tags/${VERSION}?access_token=${GITEE_TOKEN}" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); items=d.get("attachments") or d.get("assets") or []; print(next((a["browser_download_url"] for a in items if a.get("name")=="ClipMemory.tar.gz"), ""))' || true)
-          GT_SHA=$(curl -sfL --max-time 60 "$GT_URL" | shasum -a 256 | awk '{print $1}' || true)
-          if [[ -z "$GH_SHA" || -z "$GT_SHA" ]]; then
-            fail "sha256 fetch failed (GH=$GH_SHA / GT=$GT_SHA) — connectivity or asset missing"
-          elif [[ "$GH_SHA" == "$GT_SHA" ]]; then
-            ok "sha256 GH == GT ($GH_SHA)"
-          else
-            fail "sha256 mismatch: GH=$GH_SHA GT=$GT_SHA — REL-29 byte-consistency violated"
-          fi
-
-          if [[ "$FAILS" -gt 0 ]]; then
-            echo ""
-            echo "❌ ${FAILS} post-sync check(s) FAILED."
-            exit 1
-          fi
-          echo ""
-          echo "✅ All post-sync verification checks passed."
