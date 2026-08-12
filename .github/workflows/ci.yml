@@ -205,3 +205,12 @@ jobs:
           # Excludes main itself, so retro-edits to historical files don't false-positive.
           git fetch origin main
           ./Scripts/lint-audit-ids.sh --diff origin/main
+      # ID-CI-0002 (2026-08-12): hotkey drift lint catches the canonical
+      # modifier vs docs/UI drift that caused the 2026-07-16 S-3 →
+      # 2026-07-21 BUG-011 → 2026-08-12 ID-DOCS-0001 cycle. See
+      # feedback/2026-08-12-hotkey-drift-history.md.
+      - name: Hotkey drift check (ID-CI-0002)
+        run: |
+          set -euo pipefail
+          chmod +x Scripts/lint-hotkey-drift.sh
+          ./Scripts/lint-hotkey-drift.sh

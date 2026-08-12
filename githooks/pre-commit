@@ -62,6 +62,22 @@ else
     echo "⚠️  Scripts/lint-audit-ids.sh not found or not executable — skipping L18 lint."
 fi
 
+# 4b. Hotkey drift lint (per feedback/2026-08-12-hotkey-drift-history.md).
+#     Companion to .github/workflows/ci.yml lint-ids job (ID-CI-0002).
+#     Enforces that HotKeyManager.swift:10 defaultConfig stays the single
+#     source of truth — catches the kind of drift that caused the 2026-07-16
+#     S-3 → 2026-07-21 BUG-011 → 2026-08-12 ID-DOCS-0001 cycle.
+if [ -x "./Scripts/lint-hotkey-drift.sh" ]; then
+    echo "🔍 Hotkey drift check (ID-CI-0002)..."
+    if ! ./Scripts/lint-hotkey-drift.sh; then
+        echo "❌ Hotkey drift lint failed — see output above for remediation."
+        exit 1
+    fi
+    echo "✅ Hotkey drift lint passed"
+else
+    echo "⚠️  Scripts/lint-hotkey-drift.sh not found or not executable — skipping hotkey drift lint."
+fi
+
 # 5. Test step REMOVED — too slow for per-commit (~6+ min).
 #    Full test suite runs in GH Actions on PR.
 #    If you need local verification, run:
