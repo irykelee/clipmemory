@@ -34,7 +34,7 @@
 |---------|----|----|
 | **Interacción** | Menú → menú → ventana (3 pasos) | Quick Bar emergente (1 paso) |
 | **Ventana principal** | Ancho fijo, sin barra lateral | Barra lateral fija, cambia tipo libremente |
-| **Atajo global** | Solo Cmd+Ctrl+V | Grabación personalizada soportada |
+| **Atajo global** | ⌘⇧V (predeterminado) | Grabación personalizada soportada |
 | **Quick Bar** | Ninguna | 8 elementos recientes, buscar y copiar al instante |
 | **Resalte de búsqueda** | Resalte sobre texto | Sin distinción de mayúsculas/minúsculas, sin caracteres rotos |
 | **Vista previa larga** | Ninguna | 0.4s revela texto completo / sensible / imagen |

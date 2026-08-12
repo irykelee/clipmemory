@@ -267,7 +267,7 @@
 "item.ocr.copy" = "Copiar texto de la imagen";
 "settings.ocr.enabled" = "Reconocimiento de texto en imágenes (OCR)";
 "settings.ocr.hint" = "El texto de las imágenes se reconoce en el dispositivo y nunca sale de tu Mac; activar OCR procesa las nuevas imágenes automáticamente. “Mostrar texto OCR” solo controla la vista previa en los resultados de búsqueda de imágenes, no activa ni desactiva el reconocimiento.";
-"settings.hotkey.footer" = "Usa este atajo desde cualquier app para abrir QuickBar. Tras pulsar Cambiar, presiona una combinación de modificador y tecla; pulsa Escape para cancelar.";
+"settings.hotkey.footer" = "Usa este atajo desde cualquier app para abrir la ventana principal. Tras pulsar Cambiar, presiona una combinación de modificador y tecla; pulsa Escape para cancelar.";
 "settings.history.footer" = "El número máximo de elementos solo afecta al historial sin anclar; los anclados se conservan aunque se supere el límite. Al confirmar un límite más bajo, se eliminan inmediatamente los elementos sin anclar más antiguos; los elementos de la papelera que superen el periodo de conservación se eliminan definitivamente.";
 "settings.excluded.apps.footer" = "El nuevo contenido copiado desde las apps excluidas no se registra; el historial existente no se elimina. Usa Añadir aplicación para elegir apps y pulsa la × junto a una app para reanudar la captura.";
 "settings.backup.footer" = "La copia de seguridad automática se comprueba al iniciar la app y se ejecuta solo si han pasado al menos 24 horas desde la última copia correcta. Las copias locales usan la clave de dispositivo de este Mac; Exportar copia genera un archivo .clipmemory protegido con contraseña que requiere la misma contraseña para importarse.";

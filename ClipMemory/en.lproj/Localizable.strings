@@ -267,7 +267,7 @@
 "item.ocr.copy" = "Copy Text from Image";
 "settings.ocr.enabled" = "Image text recognition (OCR)";
 "settings.ocr.hint" = "Image text is recognized on-device and never leaves your Mac; enabling OCR processes new images automatically. \"Show OCR text\" only controls the preview in image search results, not recognition itself.";
-"settings.hotkey.footer" = "Use this shortcut from any app to open QuickBar. After choosing Change, press a modifier-and-key combination; press Escape to cancel.";
+"settings.hotkey.footer" = "Use this shortcut from any app to open the main window. After choosing Change, press a modifier-and-key combination; press Escape to cancel.";
 "settings.history.footer" = "Max Items limits unpinned history only; pinned items remain even above the limit. After confirming a lower limit, the oldest unpinned items are removed immediately; Trash items older than the retention period are permanently deleted.";
 "settings.excluded.apps.footer" = "New content copied from excluded apps is not recorded; existing history is not deleted. Use Add Application to choose apps, and click × beside an app to resume capture.";
 "settings.backup.footer" = "Automatic backup is checked when the app launches and runs once the last successful backup is at least 24 hours old. Local backups use this Mac's device key; Export Backup creates a password-protected .clipmemory file that requires the same password to import.";

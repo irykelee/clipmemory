@@ -34,7 +34,7 @@
 |--------|----|----|
 | **Interaction** | Menu → menu → window (3 steps) | Quick Bar popup (1 step) |
 | **Main interface** | Fixed width, no sidebar | Fixed sidebar, switch types anytime |
-| **Global hotkey** | Cmd+Ctrl+V only | Custom recording supported |
+| **Global hotkey** | ⌘⇧V (default) | Custom recording supported |
 | **Quick Bar** | None | 8 recent items popup, search & copy instantly |
 | **Search highlight** | Text overlay highlight | Case-insensitive, no garbled text |
 | **Long-press preview** | None | 0.4s reveals full text / sensitive / image |

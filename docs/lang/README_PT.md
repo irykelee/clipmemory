@@ -34,7 +34,7 @@
 |---------|----|----|
 | **Interação** | Menu → menu → janela (3 passos) | Quick Bar popup (1 passo) |
 | **Janela principal** | Largura fixa, sem barra lateral | Barra lateral fixa, alterna tipo livremente |
-| **Atalho global** | Apenas Cmd+Ctrl+V | Gravação personalizada suportada |
+| **Atalho global** | ⌘⇧V (padrão) | Gravação personalizada suportada |
 | **Quick Bar** | Nenhuma | 8 itens recentes, pesquisar e copiar instantaneamente |
 | **Destaque de pesquisa** | Destaque sobre texto | Não diferencia maiúsculas/minúsculas, sem caracteres corrompidos |
 | **Visualização longa** | Nenhuma | 0.4s revela texto completo / sensível / imagem |
