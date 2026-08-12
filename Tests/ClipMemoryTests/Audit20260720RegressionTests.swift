@@ -127,6 +127,16 @@ import AppKit
         XCTAssertEqual(store.maxItems, 1000,
                        "maxItems=1000 must NOT be clamped by didSet (new Picker upper preset)")
 
+        // PR56-L1 (v2.8.4 latent bug batch): was missing — the maxItems didSet
+        // must also rescale the contentCache so decrypted-content caching
+        // follows the user's Picker value, not the pre-bump 500 floor.
+        // Without this assert, a future regression that broke the cache
+        // rescaling would silently cap decrypted-content lookups at 500
+        // even with maxItems = 1000 (per ID-PERF-0025 cache-discipline
+        // contract from v2.8.3).
+        XCTAssertGreaterThanOrEqual(store.contentCache.countLimit, 1000,
+                                   "maxItems=1000 didSet must rescale contentCache.countLimit to ≥1000")
+
         // Insert 1100 items so trim has something to do.
         for i in 0..<1100 {
             let item = ClipboardItem(
