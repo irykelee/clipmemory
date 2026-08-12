@@ -607,9 +607,32 @@ final class ClipboardStore: ObservableObject {
     /// `items.indices.contains` defends against the index/map drift
     /// window that a raw `items[dict[id]!]` would not.
     func item(forID id: UUID) -> ClipboardItem? {
+        // PR54-H (v2.8.4 latent bug batch): route through `resolvedIndex(for:)`
+        // so the rebuild-stale + bounds-check dance lives in exactly one
+        // place — the other 5 internal callers (`addTag`, `removeTag`,
+        // `togglePin`, `togglePinItems`, `moveToTop`) plus the
+        // `mergePendingDecryptionFailures` site in `ClipboardStore+Encryption`
+        // share the same stale-defending contract.
+        guard let idx = resolvedIndex(for: id) else { return nil }
+        return items[idx]
+    }
+
+    /// PR54-H (v2.8.4 latent bug batch): single chokepoint for
+    /// "find the index of the item with this id". Wraps the
+    /// `rebuildItemIndexIfStale()` + `itemIndex[id]` + `items.indices.contains`
+    /// trio so a future caller can't accidentally read a stale or
+    /// out-of-bounds index. Returns `nil` when the id is unknown or the
+    /// cached map is being rebuilt — callers then early-return or no-op.
+    ///
+    /// The bounds check (`items.indices.contains`) defends the staleness
+    /// window between an `items.remove/insert` and the next
+    /// `invalidateItemIndex()` — a raw `items[itemIndex[id]!]` would crash
+    /// or silently target the wrong item there. `item(forID:)` already
+    /// had this guard; this helper extracts it for the 5+1 other sites.
+    func resolvedIndex(for id: UUID) -> Int? {
         rebuildItemIndexIfStale()
         guard let idx = itemIndex[id], items.indices.contains(idx) else { return nil }
-        return items[idx]
+        return idx
     }
 
     /// P2: rebuild dedupHashes from current items array.
@@ -1135,10 +1158,11 @@ final class ClipboardStore: ObservableObject {
     func addTag(to itemId: UUID, tagId: UUID) {
         // ID-PERF-0015 (2026-07-30 audit): use the maintained UUID→index
         // map for O(1) lookup instead of `firstIndex(where:)` (O(n) per
-        // call). The map is rebuilt by `rebuildItemIndexIfStale()` after
-        // every items mutation, so it's correct under the O(1) read.
-        rebuildItemIndexIfStale()
-        guard let index = itemIndex[itemId] else { return }
+        // call). The map is rebuilt by `rebuildItemIndexIfStale()` (inside
+        // `resolvedIndex(for:)`) after every items mutation, so it's
+        // correct under the O(1) read. PR54-H (v2.8.4): route through
+        // `resolvedIndex(for:)` for the bounds-check guard.
+        guard let index = resolvedIndex(for: itemId) else { return }
         items[index].tagIds.insert(tagId)
         scheduleSave()
     }
@@ -1146,9 +1170,8 @@ final class ClipboardStore: ObservableObject {
     /// Detach a tag from an item. Does not delete the tag itself; for that use
     /// deleteTag(id:). Safe to call when the tag isn't attached (no-op).
     func removeTag(from itemId: UUID, tagId: UUID) {
-        // ID-PERF-0015: see addTag above.
-        rebuildItemIndexIfStale()
-        guard let index = itemIndex[itemId] else { return }
+        // ID-PERF-0015 + PR54-H (v2.8.4): see addTag above.
+        guard let index = resolvedIndex(for: itemId) else { return }
         items[index].tagIds.remove(tagId)
         scheduleSave()
     }
@@ -1740,25 +1763,32 @@ final class ClipboardStore: ObservableObject {
     }
 
     func togglePin(_ item: ClipboardItem) {
-        rebuildItemIndexIfStale()
-        if let index = itemIndex[item.id] {
-            items[index].isPinned.toggle()
-            trimToMaxItems()
-            updatePinnedItems()
-            scheduleSave()
-        }
+        // PR54-H (v2.8.4): route through `resolvedIndex(for:)` — the bounds
+        // check defends against the staleness window after any concurrent
+        // items mutation that this method doesn't itself trigger.
+        guard let index = resolvedIndex(for: item.id) else { return }
+        items[index].isPinned.toggle()
+        trimToMaxItems()
+        updatePinnedItems()
+        scheduleSave()
     }
 
     func togglePinItems(_ itemsToToggle: [ClipboardItem]) {
-        rebuildItemIndexIfStale()
+        // PR54-H (v2.8.4): same `resolvedIndex` chokepoint. Note we resolve
+        // each index INSIDE the loop — between iterations of a rapid-fire
+        // batch (or interleaved with another mutator on the main actor),
+        // a previous index could go stale. `resolvedIndex` rebuilds the
+        // map on each call so the per-iteration lookup is always fresh.
+        var didToggleAny = false
         for item in itemsToToggle {
-            if let index = itemIndex[item.id] {
+            if let index = resolvedIndex(for: item.id) {
                 items[index].isPinned.toggle()
+                didToggleAny = true
             }
         }
         trimToMaxItems()
         updatePinnedItems()
-        scheduleSave()
+        if didToggleAny { scheduleSave() }
     }
 
     func deleteItems(_ itemsToDelete: [ClipboardItem]) {
@@ -2011,8 +2041,11 @@ final class ClipboardStore: ObservableObject {
     }
 
     private func moveToTop(_ item: ClipboardItem) {
-        rebuildItemIndexIfStale()
-        guard let index = itemIndex[item.id] else { return }
+        // PR54-H (v2.8.4): route through `resolvedIndex(for:)`. Note this
+        // method also `invalidateItemIndex()` below because `remove/insert`
+        // reorders `items` — the index is invalidated, not relied on, after
+        // the initial lookup.
+        guard let index = resolvedIndex(for: item.id) else { return }
         var moved = items.remove(at: index)
         moved = moved.with(createdAt: Date())
         items.insert(moved, at: 0)
