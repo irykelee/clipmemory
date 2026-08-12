@@ -333,9 +333,13 @@ extension ClipboardStore {
         // `items.firstIndex(where:)` per id — O(n·k) → O(n+k) for batched
         // failure merges. Property-only mutation below doesn't reorder
         // `items`, so the index stays valid (no invalidateItemIndex).
-        rebuildItemIndexIfStale()
+        //
+        // PR54-H (v2.8.4 latent bug batch): route through `resolvedIndex`
+        // so the rebuild-stale + bounds-check trio lives in one place — the
+        // other 5 sites in `ClipboardStore.swift` and this extension's
+        // decryption-merge site share the same stale-defending contract.
         for id in ids {
-            if let index = itemIndex[id],
+            if let index = resolvedIndex(for: id),
                !items[index].decryptionFailed {
                 items[index].decryptionFailed = true
                 changed = true
