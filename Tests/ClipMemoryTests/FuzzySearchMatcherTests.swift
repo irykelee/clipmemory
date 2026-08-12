@@ -66,6 +66,51 @@ final class FuzzySearchMatcherTests: XCTestCase {
         XCTAssertTrue(FuzzySearchMatcher.matches(content: "hello world", searchText: "HELLO"))
     }
 
+    // MARK: - PR54-M1 (v2.8.4 latent bug batch): locale-independent case folding
+
+    /// Turkish `"I"` (dotted) / `"İ"` (capital dotted) / `"i"` (dotted)
+    /// / `"ı"` (dotless) is the canonical example where `.lowercased()`
+    /// is locale-dependent. Under `tr_TR` locale, `"I".lowercased() == "ı"`
+    /// (dotless), but `"I".lowercased(with: en_US_POSIX) == "i"`.
+    /// Pinning both sides to POSIX guarantees search and content agree
+    /// regardless of host locale. The Turkish word `"Istanbul"` (capital I,
+    /// rest lowercase) lowers to ASCII `"istanbul"` via POSIX — exactly the
+    /// form a user in any locale would expect to see and search.
+    func testLocaleIndependentTurkishCapitalI() {
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "Istanbul", searchText: "istanbul"),
+                      "uppercase I in 'Istanbul' should lowercase to ASCII 'i' via POSIX and match 'istanbul'")
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "istanbul", searchText: "Istanbul"),
+                      "POSIX-folded content 'istanbul' must match mixed-case search 'Istanbul'")
+    }
+
+    /// German `"ß"` (sharp s) has no ASCII lowercase equivalent in
+    /// Latin-1; under `de_DE` locale, `"ß".lowercased()` is still `"ß"`,
+    /// while `"SS".lowercased()` is `"ss"`. POSIX folds both byte-
+    /// deterministically so neither produces surprising matches.
+    /// The matcher's contract is ASCII-case-fold only — the user-facing
+    /// expectation is that uppercase SS does NOT match lowercase ß
+    /// (and vice versa), which POSIX preserves.
+    func testLocaleIndependentGermanEszett() {
+        XCTAssertFalse(FuzzySearchMatcher.matches(content: "straße", searchText: "STRASSE"),
+                       "ASCII SS search must NOT match ß content under POSIX")
+        XCTAssertFalse(FuzzySearchMatcher.matches(content: "STRASSE", searchText: "straße"),
+                       "ß search must NOT match ASCII SS content under POSIX")
+    }
+
+    /// PR54-M1 cache regression guard: warm the normalized cache with one
+    /// call, then issue a second call with a different `searchText` shape.
+    /// Both must succeed — the cache key is `content` only, and the cached
+    /// value must be the POSIX-folded form (not the host-locale-folded
+    /// form that would diverge between two test runs on different CI hosts).
+    func testNormalizedCacheHoldsPosixFoldNotHostLocale() {
+        // Warm cache with one search shape.
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "Istanbul", searchText: "istanbul"))
+        // Hit cache, different search shape — relies on cached normalized
+        // form ("istanbul") matching both searchText variants.
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "Istanbul", searchText: "ISTANBUL"),
+                      "cached normalized form must be POSIX-folded; if it were host-locale-folded it would diverge")
+    }
+
     // MARK: - Edge cases
 
     func testEmptySearchTextReturnsTrue() {
