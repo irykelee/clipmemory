@@ -1,4 +1,4 @@
-# ClipMemory v2.8.3
+# ClipMemory v2.8.4
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,17 @@
 ---
 
 ## 📋 Changelog
+
+### v2.8.4 (2026-08-12) — Privacy Manifest + Security Upgrade + Latent Bug Fixes + Regression Gate
+
+- **🔒 Sparkle upgrade 2.9.4 → 2.9.5 (ID-CI-0001)** — Includes the "Harden patching delta file against symbolic link at destination path" security fix. The Sparkle auto-update channel is enabled by default — users won't notice; the fix prevents the symbolic-link attack vector on delta patch paths.
+- **🍎 Privacy Manifest (PrivacyInfo.xcprivacy, ID-PRIVACY-0001)** — Required by Apple 2024+ for any macOS app heading to the Mac App Store or Notarization. This release adds the file declaring `NSPrivacyTracking=false`, `NSPrivacyCollectedDataTypes` for clipboard content + OCR text (linked, App Functionality purpose), and `NSPrivacyAccessedAPITypes` for 4 required-reason APIs (UserDefaults / File Timestamp / Disk Space / System Boot Time). Transparent to users; removes the compliance barrier for open-source distribution via the Mac App Store.
+- **🛠 4 latent bug fixes (PR #61)** — Real fixes: PR54-H chokepoint helper (itemIndex staleness window bounds check) + PR54-M1 locale pinning (Turkish/German diacritic cache poisoning) + PR56-M dead code removal (XCTest isolation makes the original code no-op) + PR56-L1 countLimit assert (prevents future didSet regressions from shrinking cache rescale).
+- **📋 7 README hotkey + L10n consistency (ID-DOCS-0001)** — 14 `Cmd+Ctrl+V` residue lines across 7 README files updated to `⌘⇧V` (matching `HotKeyManager.swift:10` defaultConfig `cmdKey | shiftKey`) + 7 L10n `settings.hotkey.footer` entries aligned to "open main window".
+- **🛡 Hotkey drift CI lint enabled (ID-CI-0002)** — `Scripts/lint-hotkey-drift.sh` automatically verifies 7 README + 7 L10n footer consistency against `HotKeyManager.swift:10` defaultConfig, forbids historical drift forms. Any future hotkey change → CI red → 6-layer sync enforced.
+
+- For versions with the auto-update module (Sparkle) from v2.4.0 onward: wait for the in-app auto-update, or run `brew upgrade --cask clipmemory`
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.4
 
 ### v2.8.3 (2026-08-11) — Search performance optimization + signature forward hygiene
 

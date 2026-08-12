@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.8.3
+# 剪憶 ClipMemory v2.8.4
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -47,6 +47,17 @@
 ---
 
 ## 📋 更新日誌
+
+### v2.8.4 (2026-08-12) — 隱私清單 + 安全升級 + 潛在 bug 修復 + 防回歸門
+
+- **🔒 Sparkle 升級 2.9.4 → 2.9.5 (ID-CI-0001)** — 升級含 symlink 安全修復 (delta patching 路徑硬防 symbolic link 攻擊)。Sparkle 自動升級通道預設開啟，使用者無感；修復防 delta patch 路徑攻擊向量。
+- **🍎 隱私清單 (PrivacyInfo.xcprivacy, ID-PRIVACY-0001)** — Apple 2024+ 要求新建 `PrivacyInfo.xcprivacy`。本 release 新增此檔案，宣告 Tracking=false + 剪貼簿/OCR 資料用途 + 4 類 required-reason API。使用者透明，但消除開源分發到 Mac App Store 路徑的合規壁壘。
+- **🛠 4 項 latent bug 修復 (PR #61)** — 4 項真潛在 bug 修復：PR54-H chokepoint helper (itemIndex staleness window bounds check) + PR54-M1 locale pinning (Turkish/German diacritic cache poisoning 修復) + PR56-M dead code 刪 (XCTest 隔離後 no-op) + PR56-L1 countLimit assert (防未來 didSet 偷砍 cache rescale)。
+- **📋 7 README 統一快捷鍵 + L10n 閉環 (ID-DOCS-0001)** — 7 語種 README 14 處 `Cmd+Ctrl+V` 殘餘 → `⌘⇧V` (匹配 `HotKeyManager.swift:10` defaultConfig `cmdKey | shiftKey`) + 7 L10n `settings.hotkey.footer` 「open QuickBar」→「open main window」統一。
+- **🛡 Hotkey drift CI lint 上線 (ID-CI-0002)** — `Scripts/lint-hotkey-drift.sh` 自動校驗 7 README + 7 L10n footer 與 `HotKeyManager.swift:10` defaultConfig 一致性，禁歷史 drift forms。下次 hotkey 改 → CI 紅 → 強制 6 層同步。
+
+- v2.4.0 起帶自動升級模組（Sparkle）的版本：等 App 內自動更新，或 `brew upgrade --cask clipmemory`
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.4
 
 ### v2.8.3 (2026-08-11) — 搜尋效能最佳化 + 簽名前向衛生
 

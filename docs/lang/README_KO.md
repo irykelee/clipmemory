@@ -1,4 +1,4 @@
-# ClipMemory v2.8.3
+# ClipMemory v2.8.4
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -47,6 +47,17 @@
 ---
 
 ## 📋 변경 로그
+
+### v2.8.4 (2026-08-12) — 개인 정보 매니페스트 + 보안 업그레이드 + 잠재 버그 수정 + 회귀 게이트
+
+- **🔒 Sparkle 업그레이드 2.9.4 → 2.9.5 (ID-CI-0001)** — "Harden patching delta file against symbolic link at destination path" 보안 수정 포함. Sparkle 자동 업데이트 채널은 기본적으로 활성화되어 있어 사용자는 변경을 알아차리지 못함; 델타 패치 경로의 심볼릭 링크 공격 벡터 방지.
+- **🍎 개인 정보 매니페스트 (PrivacyInfo.xcprivacy, ID-PRIVACY-0001)** — Apple 2024+에서 Mac App Store 또는 공증을 위한 모든 macOS 앱에 요구됨. 이번 릴리스에서 `NSPrivacyTracking=false`, 클립보드 + OCR 텍스트의 `NSPrivacyCollectedDataTypes` (linked, App Functionality 목적), 4가지 required-reason API를 선언하는 파일 추가. 사용자에게 투명함; Mac App Store를 통한 오픈 소스 배포의 규정 준수 장벽 제거.
+- **🛠 4개의 잠재 버그 수정 (PR #61)** — 실제 수정: PR54-H chokepoint helper (itemIndex staleness window bounds check) + PR54-M1 locale pinning (Turkish/German diacritic cache poisoning) + PR56-M dead code 제거 (XCTest 격리 후 no-op) + PR56-L1 countLimit assert (미래 didSet 축소 방지).
+- **📋 7 README 핫키 + L10n 일관성 (ID-DOCS-0001)** — 7개 언어 README 14개 위치의 `Cmd+Ctrl+V` 잔여 → `⌘⇧V` (`HotKeyManager.swift:10` defaultConfig `cmdKey | shiftKey` 일치) + 7 L10n `settings.hotkey.footer` "open main window" 통일.
+- **🛡 Hotkey drift CI lint 활성화 (ID-CI-0002)** — `Scripts/lint-hotkey-drift.sh`가 7 README + 7 L10n footer의 `HotKeyManager.swift:10` 일관성을 자동 검증, 과거 drift 형식 금지. 향후 변경 → CI 빨강 → 6 레이어 동기화 강제.
+
+- v2.4.0 이후 자동 업데이트 모듈(Sparkle) 버전: 앱 내 자동 업데이트를 기다리거나 `brew upgrade --cask clipmemory`
+- 전체 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.8.4
 
 ### v2.8.3 (2026-08-11) — 검색 성능 최적화 + 서명 전방위 위생
 

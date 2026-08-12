@@ -1,4 +1,4 @@
-# ClipMemory v2.8.3
+# ClipMemory v2.8.4
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,17 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.8.4 (2026-08-12) — Manifesto de privacidade + Atualização de segurança + Correções de bugs latentes + Porta de regressão
+
+- **🔒 Atualização do Sparkle 2.9.4 → 2.9.5 (ID-CI-0001)** — Inclui a correção de segurança "Harden patching delta file against symbolic link at destination path". O canal de atualização automática do Sparkle está ativado por padrão; os usuários não perceberão a mudança; a correção evita o vetor de ataque de link simbólico em caminhos de patch delta.
+- **🍎 Manifesto de privacidade (PrivacyInfo.xcprivacy, ID-PRIVACY-0001)** — Exigido pela Apple 2024+ para qualquer aplicativo macOS destinado à Mac App Store ou Notarização. Esta versão adiciona o arquivo declarando `NSPrivacyTracking=false`, `NSPrivacyCollectedDataTypes` para conteúdo da área de transferência + texto OCR (vinculado, propósito de funcionalidade do aplicativo), e `NSPrivacyAccessedAPITypes` para 4 APIs necessárias (UserDefaults / carimbo de data/hora de arquivo / espaço em disco / tempo de inicialização do sistema). Transparente para os usuários; remove a barreira de conformidade para distribuição de código aberto via Mac App Store.
+- **🛠 4 correções de bugs latentes (PR #61)** — Correções reais: PR54-H chokepoint helper (verificação de limites de janela de obsolescência do itemIndex) + PR54-M1 locale pinning (envenenamento de cache diacrítico turco/alemão) + PR56-M remoção de código morto (no-op após isolamento XCTest) + PR56-L1 asserção countLimit (evita que regressões futuras de didSet reduzam o reescalonamento de cache).
+- **📋 Consistência de tecla de atalho + L10n em 7 READMEs (ID-DOCS-0001)** — 14 linhas residuais de `Cmd+Ctrl+V` em 7 arquivos README atualizadas para `⌘⇧V` (correspondendo a `HotKeyManager.swift:10` defaultConfig `cmdKey | shiftKey`) + 7 entradas L10n `settings.hotkey.footer` alinhadas para "open main window".
+- **🛡 Lint CI de desvio de tecla de atalho habilitado (ID-CI-0002)** — `Scripts/lint-hotkey-drift.sh` verifica automaticamente a consistência de 7 READMEs + 7 L10n footer com `HotKeyManager.swift:10` defaultConfig, proíbe formas de desvio históricas. Qualquer alteração futura → CI vermelho → sincronização de 6 camadas forçada.
+
+- Para versões com módulo de atualização automática (Sparkle) a partir de v2.4.0: aguarde a atualização automática no aplicativo, ou execute `brew upgrade --cask clipmemory`
+- Registro de alterações completo: https://github.com/irykelee/clipmemory/releases/tag/v2.8.4
 
 ### v2.8.3 (2026-08-11) — Otimização do desempenho de busca + higiene de assinatura à prova de futuro
 
