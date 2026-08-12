@@ -402,7 +402,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 - ☑️ Seleção múltipla para fixar / excluir em lote
 - ✅ Feedback visual verde ao copiar
 - ⚙️ Detecção automática de conflito de atalho na primeira inicialização
-- ⌨️ Atalho global `Cmd+Ctrl+V`
+- ⌨️ Atalho global `⌘⇧V`
 - 🖥 Iniciar na sessão (ativar nas Configurações)
 - 📐 Tamanho da fonte (Pequeno / Médio / Grande)
 - 🎨 Aparência (Claro / Escuro / Seguir sistema)
@@ -417,7 +417,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 |------|------|
 | Abrir Quick Bar | Clique no 📋 da barra de menu |
 | Copiar item | Clique no item / ↑↓ + Enter |
-| Abrir janela completa | `Cmd+Ctrl+V` (atalho global) / Quick Bar → "Abrir área de transferência" |
+| Abrir janela completa | `⌘⇧V` (atalho global) / Quick Bar → "Abrir área de transferência" |
 | Pesquisar | Digite para filtrar, correspondências destacadas |
 | Fixar / Desfixar | Clique ⭐ ou clique duplo na linha |
 | Excluir | Clique 🗑 ou menu contextual |

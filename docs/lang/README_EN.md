@@ -402,7 +402,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 - ☑️ Multi-select batch pin / delete
 - ✅ Green flash feedback on successful copy
 - ⚙️ Auto-detects hotkey conflicts on first launch
-- ⌨️ Global hotkey `Cmd+Ctrl+V`
+- ⌨️ Global hotkey `⌘⇧V`
 - 🖥 Launch at login (enable in Settings)
 - 📐 Font scaling (Small / Medium / Large)
 - 🎨 Appearance (Light / Dark / Follow system)
@@ -417,7 +417,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 |--------|-----|
 | Open Quick Bar | Left-click menu bar 📋 icon |
 | Copy item | Click item / keyboard ↑↓ + Enter |
-| Open full window | `Cmd+Ctrl+V` (global hotkey) / Quick Bar → "Open Clipboard" |
+| Open full window | `⌘⇧V` (global hotkey) / Quick Bar → "Open Clipboard" |
 | Search | Type keyword, matches highlighted |
 | Pin / Unpin | Click ⭐ or double-click item |
 | Delete | Click 🗑 or right-click menu |

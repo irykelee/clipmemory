@@ -402,7 +402,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 - ☑️ Selección múltiple para fijar / eliminar en lote
 - ✅ Retroalimentación visual verde al copiar
 - ⚙️ Detección automática de conflicto de atajo en el primer inicio
-- ⌨️ Atajo global `Cmd+Ctrl+V`
+- ⌨️ Atajo global `⌘⇧V`
 - 🖥 Iniciar con la sesión (activar en Ajustes)
 - 📐 Tamaño de fuente (Pequeño / Mediano / Grande)
 - 🎨 Apariencia (Claro / Oscuro / Seguir sistema)
@@ -417,7 +417,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 |--------|------|
 | Abrir Quick Bar | Clic en 📋 de barra menú |
 | Copiar elemento | Clic en elemento / ↑↓ + Enter |
-| Abrir ventana completa | `Cmd+Ctrl+V` (atajo global) / Quick Bar → "Abrir portapapeles" |
+| Abrir ventana completa | `⌘⇧V` (atajo global) / Quick Bar → "Abrir portapapeles" |
 | Buscar | Escribir para filtrar, coincidencias resaltadas |
 | Fijar / Desfijar | Clic ⭐ o doble clic en fila |
 | Eliminar | Clic 🗑 o menú contextual |
