@@ -44,9 +44,20 @@ enum FuzzySearchMatcher {
     /// Returns true when every whitespace-separated token in `searchText`
     /// can be found in `content` or its pinyin transliteration. Tokens
     /// are compared case-insensitive and diacritic-insensitive.
+    ///
+    /// PR54-M1 (v2.8.4 latent bug batch): both `searchText.lowercased()`
+    /// (here) and `content.lowercased()` (in `cachedNormalized`) used to
+    /// rely on the host's default locale. Under Turkish locale `"I"` /
+    /// `"İ"` / `"i"` map non-intuitively (dotless/dotted i), and under
+    /// German locale `"ß"` is preserved (no lowercase equivalent). Two
+    /// callers in different locales could see different match results
+    /// for the same content+search pair — and the cache in
+    /// `cachedNormalized` would freeze the bug into the session. Pin
+    /// both sides to `en_US_POSIX` so byte-deterministic ASCII folding
+    /// matches between search and content, independent of host locale.
     static func matches(content: String, searchText: String) -> Bool {
         let tokens = searchText
-            .lowercased()
+            .lowercased(with: Locale(identifier: "en_US_POSIX"))
             .split(separator: " ")
             .map(String.init)
         guard !tokens.isEmpty else { return true }
@@ -75,13 +86,22 @@ enum FuzzySearchMatcher {
     /// as cachedPinyin; intentionally a separate cache because the
     /// key/value shape is the same string, but mixing them would let
     /// one evict the other on memory pressure.
+    ///
+    /// PR54-M1 (v2.8.4 latent bug batch): `.lowercased()` is locale-dependent
+    /// — under Turkish locale `"I".lowercased() == "ı"` (dotless) and
+    /// `"İ".lowercased() == "i"` (dotted), so a cache hit could return a
+    /// form that mismatches what `searchText.lowercased()` produces under
+    /// the same locale, or what users in other locales see on screen.
+    /// Pin to `en_US_POSIX` so case-folding is byte-deterministic across
+    /// every host locale — exactly the contract the cache needs to be safe
+    /// to memoize.
     private static func cachedNormalized(of content: String) -> String {
         let key = content as NSString
         if let cached = normalizedCache.object(forKey: key) {
             return cached as String
         }
         let result = content
-            .lowercased()
+            .lowercased(with: Locale(identifier: "en_US_POSIX"))
             .folding(options: .diacriticInsensitive, locale: nil)
         normalizedCache.setObject(result as NSString, forKey: key)
         return result
@@ -105,12 +125,19 @@ enum FuzzySearchMatcher {
     /// Converts Chinese characters to their pinyin transliteration.
     /// Non-CJK characters pass through unchanged and lowercased.
     /// Example: "中文 test" → "zhongwen test"
+    ///
+    /// PR54-M1 (v2.8.4 latent bug batch): pin `.lowercased()` to
+    /// `en_US_POSIX` for the same reason as `matches` and
+    /// `cachedNormalized` — host-locale-dependent folding on the
+    /// post-transform string would diverge between users in different
+    /// regions (and would silently change the cache contract if the
+    /// `cachedPinyin` path is ever memoized by region).
     static func toPinyin(_ text: String) -> String {
         let mutable = NSMutableString(string: text)
         CFStringTransform(mutable, nil, kCFStringTransformToLatin, false)
         CFStringTransform(mutable, nil, kCFStringTransformStripDiacritics, false)
         return (mutable as String)
-            .lowercased()
+            .lowercased(with: Locale(identifier: "en_US_POSIX"))
             .replacingOccurrences(of: " ", with: "")
     }
 }
