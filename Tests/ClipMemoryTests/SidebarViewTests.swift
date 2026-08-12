@@ -47,4 +47,28 @@ import SwiftUI
 
         _ = SidebarViewTestHost(store: store, tag: tag)
     }
+
+    // ID-VIEW-0029 (2026-08-13, user-driven): sidebar badge for .pinned was
+    // the only filter tab without a count. Assert computeTabCounts now
+    // returns the correct .pinned aggregate, alongside the existing type
+    // counts (regression guard).
+    func testComputeTabCountsIncludesPinnedCount() {
+        let items: [ClipboardItem] = [
+            ClipboardItem(content: "a", type: .text, isPinned: true),
+            ClipboardItem(content: "b", type: .text, isPinned: true),
+            ClipboardItem(content: "c", type: .image, isPinned: false),
+            ClipboardItem(content: "d", type: .link, isPinned: true),
+            ClipboardItem(content: "e", type: .text, isPinned: false),
+            ClipboardItem(content: "f", type: .richText, isPinned: true),
+            ClipboardItem(content: "g", type: .image, isPinned: true)
+        ]
+        let counts = ContentView.computeTabCounts(items: items)
+
+        XCTAssertEqual(counts[.all], 7)
+        XCTAssertEqual(counts[.text], 3)
+        XCTAssertEqual(counts[.image], 2)
+        XCTAssertEqual(counts[.link], 1)
+        XCTAssertEqual(counts[.richText], 1)
+        XCTAssertEqual(counts[.pinned], 5, ".pinned must aggregate across all types")
+    }
 }

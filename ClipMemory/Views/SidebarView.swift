@@ -108,6 +108,7 @@ struct SidebarView: View {
                 }
                 Section {
                     Label(SidebarTab.pinned.label, systemImage: SidebarTab.pinned.icon)
+                        .badge(tabCounts[.pinned] ?? 0)
                         .tag(SidebarTab.pinned)
                     Label(SidebarTab.trash.label, systemImage: SidebarTab.trash.icon)
                         .badge(store.trashedItems.count)

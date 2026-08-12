@@ -455,7 +455,10 @@ struct ContentView: View {
 
     /// O(n) recompute helper. Called only when cachedTabCountsVersion resets
     /// (initial render) or when invalidated by `.onChange(of: store.items.count)`.
-    private static func computeTabCounts(items: [ClipboardItem]) -> [SidebarTab: Int] {
+    // ID-VIEW-0029 (2026-08-13): `static` (not `private static`) so the
+    // sidebar-pinned-count test can drive this directly via @testable import.
+    // Pure function, no state — safe to expose at module scope.
+    static func computeTabCounts(items: [ClipboardItem]) -> [SidebarTab: Int] {
         var counts: [SidebarTab: Int] = [.all: items.count]
         for item in items { switch item.type {
         case .text: counts[.text, default: 0] += 1
@@ -463,6 +466,14 @@ struct ContentView: View {
         case .link: counts[.link, default: 0] += 1
         case .richText: counts[.richText, default: 0] += 1
         } }
+        // ID-VIEW-0029 (2026-08-13, user-driven): sidebar shows pinned count
+        // for parity with .text/.image/.link/.richText/.trash tabs. .pinned
+        // was the only filter tab without a badge. Cache invalidation rides
+        // on the existing `.onChange(of: store.items)` watcher (toggle of
+        // isPinned replaces the items array).
+        for item in items where item.isPinned {
+            counts[.pinned, default: 0] += 1
+        }
         return counts
     }
 
