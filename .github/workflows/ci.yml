@@ -184,3 +184,24 @@ jobs:
             echo "❌ Blind spot 6 (zh-Hans): test count $executed is below the 755 lower bound"
             exit 1
           fi
+
+  # L18 enforcement: audit finding references must use ID-DOMAIN-NNNN format.
+  # Shipped alongside ID-PRIVACY-0001 / ID-STORE-0015 renumbering (2026-08-12 audit
+  # retro correction, see feedback/audit-2026-08-12-id-renumbering.md). Catches
+  # [HIGH-N] / M-N / L-N style refs in PR commit messages and added file lines.
+  # Linux runner is sufficient — only needs bash + git.
+  lint-ids:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: L18 audit-ID format check
+        run: |
+          set -euo pipefail
+          chmod +x Scripts/lint-audit-ids.sh
+          # --diff main  = check all changes introduced by this PR (commits + files)
+          # Excludes main itself, so retro-edits to historical files don't false-positive.
+          git fetch origin main
+          ./Scripts/lint-audit-ids.sh --diff origin/main

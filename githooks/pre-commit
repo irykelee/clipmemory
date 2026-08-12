@@ -47,7 +47,22 @@ if ! xcodebuild -scheme ClipMemory -configuration Debug build > /dev/null 2>&1; 
 fi
 echo "✅ Build passed"
 
-# 4. Test step REMOVED — too slow for per-commit (~6+ min).
+# 4. L18 audit-ID format lint (per feedback/audit-2026-08-12-id-renumbering.md).
+#    Companion to the .github/workflows/ci.yml lint-ids job (0730eb2).
+#    Catches [HIGH-N] / M-N / L-N style refs in staged files before commit;
+#    CI catches them in PRs that bypass this hook.
+if [ -x "./Scripts/lint-audit-ids.sh" ]; then
+    echo "🔍 L18 audit-ID format check (staged changes)..."
+    if ! ./Scripts/lint-audit-ids.sh --staged; then
+        echo "❌ L18 audit-ID lint failed — see output above for remediation."
+        exit 1
+    fi
+    echo "✅ L18 audit-ID lint passed"
+else
+    echo "⚠️  Scripts/lint-audit-ids.sh not found or not executable — skipping L18 lint."
+fi
+
+# 5. Test step REMOVED — too slow for per-commit (~6+ min).
 #    Full test suite runs in GH Actions on PR.
 #    If you need local verification, run:
 #      xcodebuild -scheme ClipMemory -configuration Debug test
