@@ -21,16 +21,24 @@ import AppKit
     private var tagBackend: MemoryStorageBackend!
     private var trashBackend: MemoryStorageBackend!
     private var store: ClipboardStore!
+    // PR56-M (v2.8.4 latent bug batch): per-test defaults suite so the
+    // `store.maxItems = N` didSet writes stay isolated from any other test
+    // (and from `UserDefaults.standard`, which the XCTest host process maps
+    // to the production `com.clipmemory.app` plist). Mirrors the pattern
+    // in `ClipboardStoreItemForIDTests.setUp/tearDown`.
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
+        testDefaults = makeTestDefaults()
         backend = MemoryStorageBackend()
         tagBackend = MemoryStorageBackend()
         trashBackend = MemoryStorageBackend()
         store = ClipboardStore(
             backend: backend,
             tagBackend: tagBackend,
-            trashBackend: trashBackend
+            trashBackend: trashBackend,
+            defaults: testDefaults
         )
     }
 
@@ -39,6 +47,8 @@ import AppKit
         backend = nil
         tagBackend = nil
         trashBackend = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 
@@ -51,21 +61,12 @@ import AppKit
     /// from disk. The fix keeps all pinned items; non-pinned is what gets
     /// shrunk.
     func testTrimToMaxItemsPreservesPinnedOverflow() {
-        // maxItems persists to UserDefaults via didSet — restore it so later
-        // tests (and the host app's own defaults domain) are unaffected.
-        // NEW-1 (2026-08-03 audit): absence-aware restore — on a fresh CI
-        // sandbox `maxClipboardItems` may not exist; reading `store.maxItems`
-        // returns the parsed default 100, and `store.maxItems = 100` would
-        // fire didSet and plant a brand-new key, tripping ZZZ's `key ADDED`
-        // canary. Mirror TestHostIsolationTests.swift :95-101.
-        let maxItemsBefore = UserDefaults.standard.object(forKey: "maxClipboardItems")
-        defer {
-            if let maxItemsBefore {
-                UserDefaults.standard.set(maxItemsBefore, forKey: "maxClipboardItems")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
-            }
-        }
+        // PR56-M (v2.8.4 latent bug batch): the original `UserDefaults.standard`
+        // save/restore was defensive dead code — `store.maxItems = N` writes
+        // through the injected `defaults` (now `testDefaults`), not `.standard`,
+        // so the read of `.standard` always returned nil and the restore was
+        // a no-op. Per-test `testDefaults` isolation in setUp/tearDown replaces
+        // it (matches `ClipboardStoreItemForIDTests`).
         store.maxItems = 50
         var pinnedIDs = Set<UUID>()
         for i in 0..<60 {
@@ -114,15 +115,10 @@ import AppKit
     /// 3. `trimToMaxItems()` with 1100 items + maxItems=1000 yields
     ///    exactly 1000 items (no off-by-one at the new boundary)
     func testMaxItems1000BoundaryNewUIPreset() {
-        let maxItemsBefore = UserDefaults.standard.object(forKey: "maxClipboardItems")
-        defer {
-            if let maxItemsBefore {
-                UserDefaults.standard.set(maxItemsBefore, forKey: "maxClipboardItems")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
-            }
-        }
-
+        // PR56-M (v2.8.4 latent bug batch): `UserDefaults.standard` save/restore
+        // was defensive dead code under XCTest — `store.maxItems = 1000` writes
+        // to the injected `testDefaults` suite, not `.standard`. setUp/tearDown
+        // now handle isolation uniformly.
         store.maxItems = 1000
         XCTAssertEqual(store.maxItems, 1000,
                        "maxItems=1000 must NOT be clamped by didSet (new Picker upper preset)")
