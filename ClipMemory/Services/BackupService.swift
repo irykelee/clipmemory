@@ -476,4 +476,97 @@ final class BackupService {
         // strict as the previous per-character check.
         return backupDirNameFormatter.string(from: date) == name
     }
+
+    /// Lists auto-backups available for restore. Synchronous and
+    /// non-isolated (`BackupService` is `final class` with no
+    /// `@MainActor`). Callers MUST dispatch to a background queue —
+    /// on `@MainActor` the recursive directory walk + JSON reads stall
+    /// the UI. (Same pattern as `BackupSettingsView.importBackup():164`
+    /// which dispatches to `.userInitiated`.)
+    func listAvailableBackups() -> [LocalBackup] {
+        let fm = fileManager
+        let entries: [URL]
+        do {
+            entries = try fm.contentsOfDirectory(
+                at: backupsDirectory,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            logger.error("listAvailableBackups: failed to list \(self.backupsDirectory.path): \(error.localizedDescription)")
+            return []
+        }
+
+        var backups: [LocalBackup] = []
+        for url in entries {
+            // Skip non-directories (defensive — backups dir should only contain dirs).
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { continue }
+
+            let name = url.lastPathComponent
+            // Skip non-timestamped names.
+            guard Self.isBackupDirName(name) else { continue }
+
+            let date = Self.backupDirNameFormatter.date(from: name) ?? Date.distantPast
+
+            // Incomplete detection — KEEP in list (UI disables selection per §4.4).
+            let markerPath = url.appendingPathComponent(Self.incompleteMarkerName).path
+            let isIncomplete = fm.fileExists(atPath: markerPath)
+
+            let itemsCount = decodeCount(url: url.appendingPathComponent("items.json"))
+            let tagsCount = decodeCount(url: url.appendingPathComponent("tags.json"))
+            let imagesCount = countPNGs(in: url.appendingPathComponent("Images", isDirectory: true))
+            let sizeBytes = Self.directoryTotalSize(at: url)
+
+            backups.append(LocalBackup(
+                id: url,
+                directoryName: name,
+                date: date,
+                sizeBytes: sizeBytes,
+                itemsCount: itemsCount,
+                tagsCount: tagsCount,
+                imagesCount: imagesCount,
+                isIncomplete: isIncomplete
+            ))
+        }
+        // Newest first; incomplete sink to the bottom.
+        return backups.sorted { lhs, rhs in
+            if lhs.isIncomplete != rhs.isIncomplete { return !lhs.isIncomplete }
+            return lhs.date > rhs.date
+        }
+    }
+
+    /// Recursive size of a directory tree. Best-effort: returns 0 on any
+    /// FS error (permissions, broken symlink). Used only for UI display.
+    private static func directoryTotalSize(at url: URL) -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.fileSizeKey, .isSymbolicLinkKey]
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let entry as URL in enumerator {
+            let values = try? entry.resourceValues(forKeys: [.fileSizeKey, .isSymbolicLinkKey])
+            if values?.isSymbolicLink == true { continue }
+            total += Int64(values?.fileSize ?? 0)
+        }
+        return total
+    }
+
+    /// Decode JSON array and return its count. Nil on read failure or
+    /// missing file.
+    private func decodeCount(url: URL) -> Int? {
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        // Try [ClipboardItem] first (items.json, trash.json), then [Tag] (tags.json).
+        if let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) { return items.count }
+        if let tags = try? JSONDecoder().decode([Tag].self, from: data) { return tags.count }
+        return nil
+    }
+
+    /// Count .png files in a directory. Nil if directory missing.
+    private func countPNGs(in dir: URL) -> Int? {
+        guard fileManager.fileExists(atPath: dir.path) else { return nil }
+        guard let entries = try? fileManager.contentsOfDirectory(atPath: dir.path) else { return nil }
+        return entries.filter { $0.hasSuffix(".png") }.count
+    }
 }
