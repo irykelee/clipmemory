@@ -114,40 +114,90 @@ enum ShareService {
 
         guard panel.runModal() == .OK, let folderURL = panel.url else { return }
 
-        for sourceURL in urls {
-            let dest = folderURL.appendingPathComponent(sourceURL.lastPathComponent)
+        // ID-VIEW-0038 (2026-08-13, code-review follow-up): delegate
+        // the copy + conflict loop to `copyImagesToFolder`, exposing
+        // the conflict resolver as an injectable closure so tests can
+        // drive Replace / Keep Both / Cancel paths without NSAlert.
+        copyImagesToFolder(
+            sources: urls,
+            to: folderURL,
+            conflictChoice: { filename in
+                presentConflictAlert(filename: filename) ?? .cancel
+            }
+        )
+    }
+
+    /// What the user chose when a destination file already exists.
+    /// Surfaces only via `conflictChoice` callback — the helper itself
+    /// never shows UI. Internal so `ShareServiceTests` can exercise
+    /// each branch without NSAlert.
+    enum ConflictChoice {
+        case replace, keepBoth, cancel
+    }
+
+    /// What `copyImagesToFolder` did. `cancelledAt` is the index of
+    /// the file the user cancelled on (so tests can assert that
+    /// files 0..<cancelledAt were written and the rest weren't).
+    struct ExportResult {
+        let copied: [URL]
+        let keptBoth: [URL]
+        let cancelledAt: Int?
+    }
+
+    /// ID-VIEW-0038 (2026-08-13, code-review follow-up): the actual
+    /// copy + conflict-resolution loop. Pulled out of `saveToFolder`
+    /// so tests can inject a `conflictChoice` closure and drive
+    /// Replace / Keep Both / Cancel without modal NSAlert prompts.
+    /// The default closure never fires (each source is checked for
+    /// collision and only prompts on actual conflict). NSAlert.error
+    /// notifications remain inline so I/O failures are still surfaced.
+    @MainActor
+    static func copyImagesToFolder(
+        sources: [URL],
+        to folder: URL,
+        conflictChoice: (String) -> ConflictChoice = { _ in .cancel }
+    ) -> ExportResult {
+        var copied: [URL] = []
+        var keptBoth: [URL] = []
+
+        for (index, sourceURL) in sources.enumerated() {
+            let dest = folder.appendingPathComponent(sourceURL.lastPathComponent)
             if FileManager.default.fileExists(atPath: dest.path) {
-                let choice = presentConflictAlert(filename: sourceURL.lastPathComponent)
-                switch choice {
+                switch conflictChoice(sourceURL.lastPathComponent) {
                 case .replace:
                     do {
                         try FileManager.default.removeItem(at: dest)
                         try FileManager.default.copyItem(at: sourceURL, to: dest)
+                        copied.append(dest)
                     } catch {
                         NSAlert(error: error).runModal()
                     }
                 case .keepBoth:
-                    let newDest = uniqueDestination(in: folderURL, baseName: sourceURL.lastPathComponent)
+                    let newDest = uniqueDestination(in: folder, baseName: sourceURL.lastPathComponent)
                     do {
                         try FileManager.default.copyItem(at: sourceURL, to: newDest)
+                        keptBoth.append(newDest)
                     } catch {
                         NSAlert(error: error).runModal()
                     }
-                case .cancel, .none:
-                    return
+                case .cancel:
+                    return ExportResult(
+                        copied: copied,
+                        keptBoth: keptBoth,
+                        cancelledAt: index
+                    )
                 }
             } else {
                 do {
                     try FileManager.default.copyItem(at: sourceURL, to: dest)
+                    copied.append(dest)
                 } catch {
                     NSAlert(error: error).runModal()
                 }
             }
         }
-    }
 
-    private enum ConflictChoice {
-        case replace, keepBoth, cancel
+        return ExportResult(copied: copied, keptBoth: keptBoth, cancelledAt: nil)
     }
 
     @MainActor
@@ -167,8 +217,9 @@ enum ShareService {
     }
 
     /// Append " (1)", " (2)", … until a non-existent path is found.
-    /// Mirrors Finder's "Keep Both" naming convention.
-    private static func uniqueDestination(in folder: URL, baseName: String) -> URL {
+    /// Mirrors Finder's "Keep Both" naming convention. Internal so
+    /// `ShareServiceTests` can verify the suffix logic in isolation.
+    static func uniqueDestination(in folder: URL, baseName: String) -> URL {
         let fm = FileManager.default
         let ext = (baseName as NSString).pathExtension
         let stem = (baseName as NSString).deletingPathExtension
