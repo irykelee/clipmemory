@@ -1025,4 +1025,149 @@ final class BackupPackage {
         }
         return data
     }
+
+    // MARK: - Local backup import
+
+    /// Imports from a local automatic backup directory.
+    ///
+    /// Unlike `importPackage` (external `.clipmemory` with passphrase),
+    /// this path reads blobs already encrypted under the LOCAL machine
+    /// key — no passphrase, no key re-derivation, no per-item re-encryption
+    /// (same local key in/out). Items/tags are decoded directly; images
+    /// are copied as-is (already encrypted under the local key).
+    ///
+    /// Pre-conditions the CALLER must guarantee (not enforced here so
+    /// unit tests can target the function in isolation):
+    ///   1. `backupService.backupNow()` succeeded before this call.
+    ///      Without a snapshot, a mid-import failure leaves the user
+    ///      with no rollback point.
+    ///   2. `isIncomplete == false` for `directory`. Incomplete backups
+    ///      are crash leftovers and must not be imported.
+    ///   3. Caller is on a background thread. Store mutations hop to
+    ///      MainActor via `onMain` internally; calling from main will
+    ///      deadlock (NSLock-style re-entry hazard).
+    static func importFromLocalBackup(
+        _ directory: URL,
+        store: ClipboardStore,
+        imagesDirectory: URL,
+        defaults: UserDefaults = .standard
+    ) throws -> BackupImportResult {
+        let items = try decodeItems(from: directory, name: "items.json", source: .items)
+        let trash = try decodeItems(from: directory, name: "trash.json", source: .trash)
+        let tags = try decodeTags(from: directory, name: "tags.json", source: .tags)
+
+        let crypto = ServiceContainer.crypto
+        let (reencryptedItems, itemCorrupt) = reencryptItemsWithCorruptCount(items, from: crypto, to: crypto)
+        let (reencryptedTrash, trashCorrupt) = reencryptItemsWithCorruptCount(trash, from: crypto, to: crypto)
+
+        var result = BackupImportResult()
+        result.itemsSkippedCorrupt = itemCorrupt + trashCorrupt
+
+        let merge = onMain { store.importBackupItems(reencryptedItems, trashedItems: reencryptedTrash) }
+        result.itemsImported = merge.imported
+        result.itemsSkipped = merge.skipped
+        result.tagsImported = onMain { store.importBackupTags(tags) }
+
+        do {
+            result.imagesImported = try importImagesFromLocal(
+                sourceImagesDir: directory.appendingPathComponent("Images", isDirectory: true),
+                imagesDirectory: imagesDirectory
+            )
+        } catch {
+            result.imageImportFailed = true
+            logger.error("Local backup image copy failed: \(error.localizedDescription)")
+        }
+
+        logger.info("Imported local backup: \(result.itemsImported) items, \(result.tagsImported) tags, \(result.imagesImported) images")
+        return result
+    }
+
+    /// Copy .png files from backup's Images/ dir to local images directory.
+    /// Skips invalid filenames, skips files that already exist at destination,
+    /// sets 0o600 on copied files. Returns count imported.
+    private static func importImagesFromLocal(
+        sourceImagesDir: URL,
+        imagesDirectory: URL
+    ) throws -> Int {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: sourceImagesDir.path) else { return 0 }
+        let files = try fm.contentsOfDirectory(atPath: sourceImagesDir.path)
+            .filter { $0.hasSuffix(".png") && ImageStorage.isValidFilename($0) }
+        var count = 0
+        for file in files {
+            let src = sourceImagesDir.appendingPathComponent(file)
+            let dst = imagesDirectory.appendingPathComponent(file)
+            if fm.fileExists(atPath: dst.path) { continue }
+            try fm.copyItem(at: src, to: dst)
+            // Defense in depth: 0o600 (matches ImageStorage.saveImage + importPackage).
+            try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: dst.path)
+            count += 1
+        }
+        return count
+    }
+
+    // MARK: - External package validation
+
+    /// Validates an external `.clipmemory` archive BEFORE wizard step 3 (preview).
+    /// Returns the parsed `BackupManifest` on success; throws canonical
+    /// `BackupPackageError` for all failure modes (mapped here, not in VM —
+    /// single source of truth for password + size validation).
+    ///
+    /// Reuses private `guardStoreBlobSize` + canonical `.wrongPassword` mapping
+    /// (per `importPackage:606-632`) so the wizard gets identical behavior to
+    /// the actual import path. Solves F9 (CryptoKitError → .wrongPassword) +
+    /// F10 (size guards) + the prior LOW double-unzip issue.
+    static func validateExternalPackage(at url: URL, passphrase: String) throws -> BackupManifest {
+        let staging = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clip-wizard-validate-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+
+        // ditto -x (same archive path as importPackage).
+        let ditto = Process()
+        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        ditto.arguments = ["-x", "-k", url.path, staging.path]
+        try ditto.run()
+        ditto.waitUntilExit()
+        guard ditto.terminationStatus == 0 else {
+            throw BackupPackageError.archiveFailed
+        }
+
+        // F10: size guards BEFORE Data(contentsOf:) — hostile oversized files
+        // would OOM the process. Same pattern as importPackage:577/600.
+        let manifestURL = staging.appendingPathComponent("manifest.json")
+        try guardStoreBlobSize(url: manifestURL, name: "manifest.json", source: .manifest, maxBytes: maxManifestBytes)
+        let manifestData = try Data(contentsOf: manifestURL)
+        let manifest = try JSONDecoder().decode(BackupManifest.self, from: manifestData)
+
+        let keyEncURL = staging.appendingPathComponent("key.enc")
+        try guardStoreBlobSize(url: keyEncURL, name: "key.enc", source: .manifest, maxBytes: maxManifestBytes)
+        let sealedKeyData = try Data(contentsOf: keyEncURL)
+
+        // Canonical error mapping (per importPackage:606-632).
+        guard let salt = Data(base64Encoded: manifest.keySalt), salt.count >= 16 else {
+            throw BackupPackageError.invalidPackage
+        }
+        let derivedKey = try deriveKey(passphrase: passphrase, salt: salt, version: manifest.keyDerivationVersion)
+        guard sealedKeyData.count == 12 + 32 + 16 else {
+            throw BackupPackageError.corruptedData(
+                "key.enc has unexpected length \(sealedKeyData.count) (expected 60)", .manifest
+            )
+        }
+        let sealedBox: AES.GCM.SealedBox
+        do {
+            sealedBox = try AES.GCM.SealedBox(combined: sealedKeyData)
+        } catch {
+            throw BackupPackageError.corruptedData(
+                "key.enc is not a valid AES-GCM sealed box", .manifest
+            )
+        }
+        do {
+            _ = try AES.GCM.open(sealedBox, using: derivedKey)
+        } catch {
+            // F9: CryptoKitError.authenticationFailure → BackupPackageError.wrongPassword.
+            throw BackupPackageError.wrongPassword
+        }
+        return manifest
+    }
 }

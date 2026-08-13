@@ -84,6 +84,7 @@
 		6B95B60ED409D91E95058E03 /* ClearItemsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237CA88DED2CB364143484CA /* ClearItemsTests.swift */; };
 		6F0487DF4038DF4E549256DE /* CryptoServiceDecryptReasonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270894846B9A0CF787544456 /* CryptoServiceDecryptReasonTests.swift */; };
 		711427879C941E2EEFA71EC5 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DAFDFD190E318162FEC7CC /* SidebarView.swift */; };
+		742D86BF198E8C04C168CB9B /* BackupPackageValidateExternalPackageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6B34DE652477552079142D3 /* BackupPackageValidateExternalPackageTests.swift */; };
 		75B8EB8E40E9E24D5A74C858 /* SidebarTagFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C34BF23E51FBB908BA8B075 /* SidebarTagFilter.swift */; };
 		77C11312B197598CD4632E49 /* DecryptionFailedLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DF9D5EC30A4297B53974BF /* DecryptionFailedLoopTests.swift */; };
 		79F78E18A3821860B491550D /* ZZZSuiteTeardownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E58C1F503A1DDCC104FC9E7 /* ZZZSuiteTeardownTests.swift */; };
@@ -143,6 +144,7 @@
 		C6C779D182E2FC466D1E535A /* LocalBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12E24C384F1F3C8AE8E24102 /* LocalBackup.swift */; };
 		C898FF7F77B517841D8B1E46 /* TrashStoreMainActorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464B18CF83545FA192E6BABB /* TrashStoreMainActorTests.swift */; };
 		CA65D74CB492C0091B80457F /* QuickBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F26B268CA5CF8662C3C930 /* QuickBarView.swift */; };
+		CBDB1962F845E54282C5DA3E /* BackupPackageImportFromLocalBackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 560139C0F75E8A292267BB24 /* BackupPackageImportFromLocalBackupTests.swift */; };
 		CCCC9FFCF1EB417F74198F26 /* EncryptionFailedAlertThrottlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C6F13182E51140986AB1201 /* EncryptionFailedAlertThrottlerTests.swift */; };
 		CE551C64250E58C046EC78C3 /* LanguageManagerMainActorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD54AB9BB7B3D33A39561936 /* LanguageManagerMainActorTests.swift */; };
 		CF07E8F9B986D6676EE302C2 /* ClipboardStore+Encryption.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCD80AD431514537E75C8D85 /* ClipboardStore+Encryption.swift */; };
@@ -252,6 +254,7 @@
 		5049D99F09B4A896E1FDAEE9 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		50DFCD74156527865D80F825 /* ServiceProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceProtocols.swift; sourceTree = "<group>"; };
 		55270E699A2FC9E14942B846 /* CloseButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloseButton.swift; sourceTree = "<group>"; };
+		560139C0F75E8A292267BB24 /* BackupPackageImportFromLocalBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupPackageImportFromLocalBackupTests.swift; sourceTree = "<group>"; };
 		570938040C2111DF0905CF03 /* HistoryCaptureSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryCaptureSettingsView.swift; sourceTree = "<group>"; };
 		576BC9BCA44C3479F2691F5B /* AppVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersion.swift; sourceTree = "<group>"; };
 		57CCB6D91997FD344D04495D /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
@@ -358,6 +361,7 @@
 		E43B0B34746697091DC83794 /* TipsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipsView.swift; sourceTree = "<group>"; };
 		E44057AE8FB730B25A6F1C13 /* UpdateServiceStubProbeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateServiceStubProbeEngine.swift; sourceTree = "<group>"; };
 		E6A9858314698ABA922E1B24 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = es; path = es.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
+		E6B34DE652477552079142D3 /* BackupPackageValidateExternalPackageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupPackageValidateExternalPackageTests.swift; sourceTree = "<group>"; };
 		E8D75A92FDF0E0DE3ACCDF12 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E9DA1199ECD933699D11DC9D /* UIObservability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIObservability.swift; sourceTree = "<group>"; };
 		EC84EAD674ADB8FC9DF0F7BC /* Tag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tag.swift; sourceTree = "<group>"; };
@@ -441,7 +445,9 @@
 				AA672B12AE7F6167EAD741A5 /* AppDirectoriesTests.swift */,
 				6A5663AC4E8DBEB2E909A774 /* Audit20260720RegressionTests.swift */,
 				ACF4631498BC58DA355E35D5 /* BackupIncompleteMarkerTests.swift */,
+				560139C0F75E8A292267BB24 /* BackupPackageImportFromLocalBackupTests.swift */,
 				DE40F85AB73ADECAB89A3D0C /* BackupPackageSecurityTests.swift */,
+				E6B34DE652477552079142D3 /* BackupPackageValidateExternalPackageTests.swift */,
 				AC0EBBE4EBF90483898C0967 /* BackupServiceListAvailableBackupsTests.swift */,
 				D811280F543ADD5CF1BAB54A /* BackupServiceTests.swift */,
 				237CA88DED2CB364143484CA /* ClearItemsTests.swift */,
@@ -782,7 +788,9 @@
 				918C9F3970589F50C7E06374 /* AppDirectoriesTests.swift in Sources */,
 				D30B948C6C153685A64D6053 /* Audit20260720RegressionTests.swift in Sources */,
 				663FC589C8FE074CDB8B5FA3 /* BackupIncompleteMarkerTests.swift in Sources */,
+				CBDB1962F845E54282C5DA3E /* BackupPackageImportFromLocalBackupTests.swift in Sources */,
 				F07D572ED1239E93F9399EBB /* BackupPackageSecurityTests.swift in Sources */,
+				742D86BF198E8C04C168CB9B /* BackupPackageValidateExternalPackageTests.swift in Sources */,
 				C353799CDD8D0B6FAF3AC9FC /* BackupServiceListAvailableBackupsTests.swift in Sources */,
 				A462756FFA11EDCD580018A3 /* BackupServiceTests.swift in Sources */,
 				6B95B60ED409D91E95058E03 /* ClearItemsTests.swift in Sources */,
