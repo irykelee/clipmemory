@@ -78,6 +78,22 @@ else
     echo "⚠️  Scripts/lint-hotkey-drift.sh not found or not executable — skipping hotkey drift lint."
 fi
 
+# ID-LINT-0001 (2026-08-13): every key in LocalizationService.swift must
+# exist in all 7 *.lproj/Localizable.strings files. Catches missing
+# translations that would silently fall back to en (the BUG-032
+# alertUpdateFallback* pattern — keys left in place after their alert
+# was deleted, never re-cleaned).
+if [ -x "./Scripts/lint-translations.sh" ]; then
+    echo "🔍 Translation parity check (ID-LINT-0001)..."
+    if ! ./Scripts/lint-translations.sh; then
+        echo "❌ Translation parity lint failed — see output above for remediation."
+        exit 1
+    fi
+    echo "✅ Translation parity lint passed"
+else
+    echo "⚠️  Scripts/lint-translations.sh not found or not executable — skipping translation lint."
+fi
+
 # 5. Test step REMOVED — too slow for per-commit (~6+ min).
 #    Full test suite runs in GH Actions on PR.
 #    If you need local verification, run:

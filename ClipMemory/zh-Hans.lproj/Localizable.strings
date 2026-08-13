@@ -292,11 +292,6 @@
 "alert.key.storage.message" = "密钥无法保存到系统钥匙串（钥匙串已锁定或访问被拒）。可以退出应用，或重试。";
 "alert.key.button.reset" = "重置密钥";
 "alert.key.button.retry" = "重试";
-// H1：更新镜像源确认弹窗
-"alert.update.fallback.title" = "无法连接更新服务器";
-"alert.update.fallback.message" = "无法连接 GitHub 更新服务器。是否改用 jsDelivr 镜像源（cdn.jsdelivr.net）检查更新？更新包仍经过同样的签名验证。你的选择会被记住。";
-"alert.update.fallback.use.mirror" = "使用镜像源";
-"alert.update.fallback.primary.only" = "仅用 GitHub";
 
 // 更新源切换 (Task 6)
 "settings.updateSource.title" = "更新源";

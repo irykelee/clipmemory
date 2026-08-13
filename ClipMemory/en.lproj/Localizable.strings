@@ -298,11 +298,6 @@
 "alert.key.storage.message" = "The key could not be saved to the macOS Keychain (locked or access denied). Quit, or retry.";
 "alert.key.button.reset" = "Reset Key";
 "alert.key.button.retry" = "Retry";
-// H1: update mirror consent alert
-"alert.update.fallback.title" = "Update Server Unreachable";
-"alert.update.fallback.message" = "Cannot reach the GitHub update server. Use the jsDelivr mirror (cdn.jsdelivr.net) to check for updates instead? Updates stay signed and verified the same way. Your choice is remembered.";
-"alert.update.fallback.use.mirror" = "Use Mirror";
-"alert.update.fallback.primary.only" = "GitHub Only";
 
 // Update Source Switch (Task 6)
 "settings.updateSource.title" = "Update Source";

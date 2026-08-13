@@ -294,11 +294,6 @@
 "alert.key.storage.message" = "キーを macOS キーチェーンに保存できませんでした（ロック中またはアクセス拒否）。終了するか、再試行してください。";
 "alert.key.button.reset" = "キーをリセット";
 "alert.key.button.retry" = "再試行";
-// H1: 更新ミラー確認アラート
-"alert.update.fallback.title" = "更新サーバーに接続できません";
-"alert.update.fallback.message" = "GitHub の更新サーバーに接続できません。代わりに jsDelivr ミラー（cdn.jsdelivr.net）で更新を確認しますか？更新は同じ署名検証で保護されます。選択は記憶されます。";
-"alert.update.fallback.use.mirror" = "ミラーを使用";
-"alert.update.fallback.primary.only" = "GitHub のみ";
 
 // アップデート ソース切替 (Task 6)
 "settings.updateSource.title" = "アップデート ソース";

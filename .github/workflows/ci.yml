@@ -214,3 +214,13 @@ jobs:
           set -euo pipefail
           chmod +x Scripts/lint-hotkey-drift.sh
           ./Scripts/lint-hotkey-drift.sh
+      # ID-LINT-0001 (2026-08-13): every key referenced via
+      # string("X") / plural("X") in LocalizationService.swift must
+      # exist in all 7 *.lproj/Localizable.strings files. Catches
+      # missing translations that would silently fall back to en in
+      # non-en locales (the BUG-032 / alertUpdateFallback* pattern).
+      - name: Translation parity check (ID-LINT-0001)
+        run: |
+          set -euo pipefail
+          chmod +x Scripts/lint-translations.sh
+          ./Scripts/lint-translations.sh

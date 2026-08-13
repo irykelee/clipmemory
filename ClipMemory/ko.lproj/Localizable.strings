@@ -294,11 +294,6 @@
 "alert.key.storage.message" = "키를 macOS 키체인에 저장할 수 없습니다(잠김 또는 접근 거부). 종료하거나 다시 시도하세요.";
 "alert.key.button.reset" = "키 재설정";
 "alert.key.button.retry" = "다시 시도";
-// H1: 업데이트 미러 확인 알림
-"alert.update.fallback.title" = "업데이트 서버에 연결할 수 없습니다";
-"alert.update.fallback.message" = "GitHub 업데이트 서버에 연결할 수 없습니다. 대신 jsDelivr 미러(cdn.jsdelivr.net)로 업데이트를 확인하시겠습니까? 업데이트는 동일한 서명 검증으로 보호됩니다. 선택이 저장됩니다.";
-"alert.update.fallback.use.mirror" = "미러 사용";
-"alert.update.fallback.primary.only" = "GitHub만 사용";
 
 // 업데이트 소스 전환 (Task 6)
 "settings.updateSource.title" = "업데이트 소스";

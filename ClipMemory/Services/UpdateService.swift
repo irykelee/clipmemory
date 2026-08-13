@@ -552,9 +552,10 @@ final class UpdateService {
     // BUG-032 (2026-07-21): askFallbackConsent (private @MainActor) was
     // dead code — never called. Fallback is handled automatically by
     // FeedProbeEngine's .automatic policy. Method deleted.
-    // L10n keys (alertUpdateFallback*) left in place — removing them
-    // requires 7-language .strings edits, deferred to a release that
-    // touches i18n.
+    // ID-LINT-0001 (2026-08-13): alertUpdateFallback* L10n keys (and
+    // their 7-language .strings entries) cleaned up — see commit that
+    // adds Scripts/lint-translations.sh; that script would now FAIL
+    // any future re-introduction of dead keys.
 
     @MainActor
     private func startUpdater() {

@@ -434,12 +434,6 @@ struct L10n {
     static var alertKeyButtonReset: String { string("alert.key.button.reset") }
     static var alertKeyButtonRetry: String { string("alert.key.button.retry") }
 
-    // MARK: - Update Fallback Consent Alert (H1)
-    static var alertUpdateFallbackTitle: String { string("alert.update.fallback.title") }
-    static var alertUpdateFallbackMessage: String { string("alert.update.fallback.message") }
-    static var alertUpdateFallbackUseMirror: String { string("alert.update.fallback.use.mirror") }
-    static var alertUpdateFallbackPrimaryOnly: String { string("alert.update.fallback.primary.only") }
-
     // MARK: - Update Source Switch (Task 6)
     static var settingsUpdateSourceTitle: String { string("settings.updateSource.title") }
     static var settingsUpdateSourceOptionAutomatic: String { string("settings.updateSource.option.automatic") }

@@ -296,11 +296,6 @@
 "alert.key.storage.message" = "密鑰無法儲存到系統鑰匙圈（鑰匙圈已鎖定或存取被拒）。可以結束 App，或重試。";
 "alert.key.button.reset" = "重置密鑰";
 "alert.key.button.retry" = "重試";
-// H1：更新鏡像源確認彈窗
-"alert.update.fallback.title" = "無法連接更新伺服器";
-"alert.update.fallback.message" = "無法連接 GitHub 更新伺服器。是否改用 jsDelivr 鏡像源（cdn.jsdelivr.net）檢查更新？更新套件仍經過相同的簽章驗證。你的選擇會被記住。";
-"alert.update.fallback.use.mirror" = "使用鏡像源";
-"alert.update.fallback.primary.only" = "僅用 GitHub";
 
 // 更新來源切換 (Task 6)
 "settings.updateSource.title" = "更新來源";
