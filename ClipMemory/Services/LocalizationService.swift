@@ -559,4 +559,42 @@ struct L10n {
     static func tagBadgeAccessibility(_ count: Int) -> String {
         plural("tag.badge.accessibility", count)
     }
+
+    // MARK: - Restore wizard (ID-BACKUP-0002)
+    static var restoreWizardTitle: String { string("restore.wizard.title") }
+    static var restoreStepSelectSource: String { string("restore.step.selectSource") }
+    static var restoreStepValidate: String { string("restore.step.validate") }
+    static var restoreStepPreview: String { string("restore.step.preview") }
+    static var restoreStepConfirmApply: String { string("restore.step.confirmApply") }
+    static var restoreStepResult: String { string("restore.step.result") }
+    static var restoreSourceLocal: String { string("restore.source.local") }
+    static var restoreSourceLocalEmpty: String { string("restore.source.local.empty") }
+    static var restoreSourceLocalEmptyHint: String { string("restore.source.local.empty.hint") }
+    static var restoreSourceLocalIncompleteTooltip: String { string("restore.source.local.incomplete.tooltip") }
+    static var restoreSourceExternal: String { string("restore.source.external") }
+    static var restoreSourceExternalPick: String { string("restore.source.external.pick") }
+    static var restoreSourceExternalPassword: String { string("restore.source.external.password") }
+    static var restoreSourceExternalPasswordWrong: String { string("restore.source.external.passwordWrong") }
+    static var restorePreviewItems: String { string("restore.preview.items") }
+    static var restorePreviewTags: String { string("restore.preview.tags") }
+    static var restorePreviewImages: String { string("restore.preview.images") }
+    static var restorePreviewCreatedAt: String { string("restore.preview.createdAt") }
+    static var restorePreviewAppVersion: String { string("restore.preview.appVersion") }
+    static var restorePreviewWarningIncomplete: String { string("restore.preview.warning.incomplete") }
+    static var restoreConfirmTitle: String { string("restore.confirm.title") }
+    static var restoreConfirmBody: String { string("restore.confirm.body") }
+    static var restoreConfirmApply: String { string("restore.confirm.apply") }
+    static var restoreProgressSnapshot: String { string("restore.progress.snapshot") }
+    static var restoreProgressImport: String { string("restore.progress.import") }
+    static var restoreResultTitle: String { string("restore.result.title") }
+    static var restoreResultBody: String { string("restore.result.body") }
+    static var restoreResultImageFailed: String { string("restore.result.imageFailed") }
+    static var restoreResultClose: String { string("restore.result.close") }
+    static var restoreErrorCorrupted: String { string("restore.error.corrupted") }
+    static var restoreErrorUnsupportedVersion: String { string("restore.error.unsupportedVersion") }
+    static var restoreErrorUnsupportedKDF: String { string("restore.error.unsupportedKDF") }
+    static var restoreErrorArchiveFailed: String { string("restore.error.archiveFailed") }
+    static var restoreErrorKeychain: String { string("restore.error.keychain") }
+    static var restoreErrorSnapshotFailed: String { string("restore.error.snapshotFailed") }
+    static var restoreErrorDiskFull: String { string("restore.error.diskFull") }
 }
