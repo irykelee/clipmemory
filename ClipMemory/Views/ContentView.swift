@@ -764,7 +764,15 @@ struct ContentView: View {
         // 850×600pt. With the larger logo (ID-VIEW-0027) and the
         // completed layout, the sidebar at 190pt wide + content at 660pt
         // wide is the smallest proportions that still feel balanced.
-        .frame(minWidth: 850, minHeight: 600)
+        // ID-VIEW-0034 (2026-08-13, user-driven): min width raised from
+        // 850 to 950pt. After ID-VIEW-0032 added a toolbar Share button
+        // (square.and.arrow.up), the clear button was observed folded
+        // into NavigationSplitView's » overflow menu even at the 850pt
+        // minimum — invisible by default, which violates the principle
+        // "users should see all controls, not have them hidden". 950pt
+        // gives ~100pt buffer so the full toolbar (logo + 4 date chips
+        // + Share + clear) stays visible at the minimum window size.
+        .frame(minWidth: 950, minHeight: 600)
         .toolbar { self.toolbarContent }
         // ID-VIEW-0024 (2026-08-03, user-driven): brand logo as a
         // topLeading overlay instead of a toolbar item. The overlay sits
