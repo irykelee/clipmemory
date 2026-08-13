@@ -36,6 +36,15 @@
 "action.share" = "Share...";
 "action.share.count" = "Share %d Images...";
 "action.share.count.one" = "Share 1 Image...";
+// ID-VIEW-0036 (2026-08-13): direct save-to-folder in toolbar menu
+"action.export" = "Export to Folder...";
+// ID-VIEW-0036 (2026-08-13): NSOpenPanel + conflict-resolution strings
+"export.panel.message" = "Choose a folder to save %d images";
+"export.panel.message.one" = "Choose a folder to save 1 image";
+"export.file.exists.title" = "\"%@\" already exists";
+"export.file.exists.body" = "What do you want to do?";
+"export.conflict.replace" = "Replace";
+"export.conflict.keep.both" = "Keep Both";
 "action.show.content" = "Show Content";
 "action.hide.content" = "Hide Content";
 // F-19 (2026-07-23 audit): VoiceOver labels for select checkbox

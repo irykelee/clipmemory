@@ -36,6 +36,15 @@
 "action.share" = "공유...";
 "action.share.count" = "이미지 %d개 공유...";
 "action.share.count.one" = "이미지 1개 공유...";
+// ID-VIEW-0036 (2026-08-13): 폴더로 직접 내보내기
+"action.export" = "폴더로 내보내기...";
+// ID-VIEW-0036 (2026-08-13): NSOpenPanel + 충돌 해결
+"export.panel.message" = "%d개의 이미지를 저장할 폴더 선택";
+"export.panel.message.one" = "1개의 이미지를 저장할 폴더 선택";
+"export.file.exists.title" = "\"%@\"이(가) 이미 있습니다";
+"export.file.exists.body" = "어떻게 하시겠습니까?";
+"export.conflict.replace" = "바꾸기";
+"export.conflict.keep.both" = "둘 다 유지";
 "action.show.content" = "내용 보기";
 "action.hide.content" = "내용 숨기기";
 // F-19 (2026-07-23 audit): VoiceOver labels for select checkbox

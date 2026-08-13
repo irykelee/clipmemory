@@ -36,6 +36,15 @@
 "action.share" = "Compartir...";
 "action.share.count" = "Compartir %d imágenes...";
 "action.share.count.one" = "Compartir 1 imagen...";
+// ID-VIEW-0036 (2026-08-13): guardar directamente en carpeta
+"action.export" = "Exportar a carpeta...";
+// ID-VIEW-0036 (2026-08-13): NSOpenPanel + resolución de conflictos
+"export.panel.message" = "Elige una carpeta para guardar %d imágenes";
+"export.panel.message.one" = "Elige una carpeta para guardar 1 imagen";
+"export.file.exists.title" = "\"%@\" ya existe";
+"export.file.exists.body" = "¿Qué quieres hacer?";
+"export.conflict.replace" = "Reemplazar";
+"export.conflict.keep.both" = "Conservar ambos";
 "action.show.content" = "Mostrar contenido";
 "action.hide.content" = "Ocultar contenido";
 // F-19 (2026-07-23 audit): VoiceOver labels for select checkbox

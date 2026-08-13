@@ -36,6 +36,15 @@
 "action.share" = "分享...";
 "action.share.count" = "分享 %d 張圖片...";
 "action.share.count.one" = "分享 1 張圖片...";
+// ID-VIEW-0036 (2026-08-13): 直接匯出到資料夾
+"action.export" = "匯出到資料夾...";
+// ID-VIEW-0036 (2026-08-13): NSOpenPanel + 衝突解決
+"export.panel.message" = "選擇資料夾以儲存 %d 張圖片";
+"export.panel.message.one" = "選擇資料夾以儲存 1 張圖片";
+"export.file.exists.title" = "「%@」已存在";
+"export.file.exists.body" = "你想要怎麼做？";
+"export.conflict.replace" = "取代";
+"export.conflict.keep.both" = "保留兩者";
 "action.show.content" = "顯示內容";
 "action.hide.content" = "收合內容";
 // F-19 (2026-07-23 audit): VoiceOver labels for select checkbox

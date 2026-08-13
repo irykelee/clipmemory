@@ -36,6 +36,15 @@
 "action.share" = "共有...";
 "action.share.count" = "%d 枚の画像を共有...";
 "action.share.count.one" = "1 枚の画像を共有...";
+// ID-VIEW-0036 (2026-08-13): フォルダに直接エクスポート
+"action.export" = "フォルダにエクスポート...";
+// ID-VIEW-0036 (2026-08-13): NSOpenPanel + 衝突解決
+"export.panel.message" = "%d 枚の画像を保存するフォルダを選択";
+"export.panel.message.one" = "1 枚の画像を保存するフォルダを選択";
+"export.file.exists.title" = "「%@」は既に存在します";
+"export.file.exists.body" = "どうしますか？";
+"export.conflict.replace" = "置き換える";
+"export.conflict.keep.both" = "両方を残す";
 "action.show.content" = "内容を表示";
 "action.hide.content" = "内容を非表示";
 // F-19 (2026-07-23 audit): VoiceOver labels for select checkbox

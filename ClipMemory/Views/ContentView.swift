@@ -59,14 +59,99 @@ struct PendingMaxItemsReduction: Equatable {
     let new: Int
 }
 
-// ID-VIEW-0035 (2026-08-13, user-driven): PreferenceKey used by the
-// toolbar Share button to bubble its current global-frame up to the
-// ContentView body root, where `.onPreferenceChange` stores it in
-// `@State shareButtonFrame` for NSSharingServicePicker anchoring.
-private struct ShareButtonFramePreferenceKey: PreferenceKey {
-    static var defaultValue: NSRect = .zero
-    static func reduce(value: inout NSRect, nextValue: () -> NSRect) {
-        value = nextValue()
+// ID-VIEW-0035 (2026-08-13, user-driven): toolbar Share button as a
+// real NSButton via NSViewRepresentable. SwiftUI's GeometryReader +
+// PreferenceKey path couldn't deliver an AppKit-correct rect because
+// SwiftUI's top-down y and AppKit's bottom-up y don't agree on what
+// "near the top" means. Wrapping as an NSButton lets us hand the view
+// itself to NSSharingServicePicker, which converts coords internally
+// and gets the popup anchored directly under the button.
+// ID-VIEW-0036 (2026-08-13, user-driven): promote to NSPopUpButton
+// with a 2-item menu — "Share..." (NSSharingServicePicker) and
+// "Export to Folder..." (NSOpenPanel). User reported the menu was
+// all share targets, hiding the direct save-to-folder path; this
+// surfaces both at one click from the toolbar.
+struct ToolbarExportMenuButton: NSViewRepresentable {
+    let getItemsToShare: () -> [ClipboardItem]
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton(frame: .zero, pullsDown: true)
+        button.bezelStyle = .recessed
+        button.image = NSImage(
+            systemSymbolName: "square.and.arrow.up",
+            accessibilityDescription: L10n.actionShare
+        )
+        button.toolTip = L10n.actionShare
+
+        let menu = NSMenu()
+        let share = NSMenuItem(
+            title: L10n.actionShare,
+            action: #selector(Coordinator.shareClicked(_:)),
+            keyEquivalent: ""
+        )
+        share.target = context.coordinator
+        share.image = NSImage(
+            systemSymbolName: "square.and.arrow.up",
+            accessibilityDescription: L10n.actionShare
+        )
+        menu.addItem(share)
+
+        let export = NSMenuItem(
+            title: L10n.actionExport,
+            action: #selector(Coordinator.exportClicked(_:)),
+            keyEquivalent: ""
+        )
+        export.target = context.coordinator
+        export.image = NSImage(
+            systemSymbolName: "folder",
+            accessibilityDescription: L10n.actionExport
+        )
+        menu.addItem(export)
+
+        button.menu = menu
+        return button
+    }
+
+    func updateNSView(_ nsView: NSPopUpButton, context: Context) {
+        // Coordinator captures the button for share-sheet anchoring.
+        context.coordinator.button = nsView
+        nsView.isEnabled = !getItemsToShare().isEmpty
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(getItemsToShare: getItemsToShare)
+    }
+
+    final class Coordinator: NSObject {
+        var getItemsToShare: () -> [ClipboardItem]
+        weak var button: NSPopUpButton?
+
+        init(getItemsToShare: @escaping () -> [ClipboardItem]) {
+            self.getItemsToShare = getItemsToShare
+        }
+
+        // ID-VIEW-0035: hand the NSView directly so AppKit handles
+        // coord-space translation internally — avoids the SwiftUI
+        // top-down / AppKit bottom-up mismatch that earlier rect-based
+        // anchoring hit.
+        @objc func shareClicked(_ sender: NSMenuItem) {
+            guard let button = button else { return }
+            MainActor.assumeIsolated {
+                ShareService.presentShareSheet(
+                    for: getItemsToShare(),
+                    anchorView: button
+                )
+            }
+        }
+
+        // ID-VIEW-0036: direct save-to-folder via NSOpenPanel. User
+        // wanted a one-click path that doesn't go through the share
+        // sheet's "Save to Files" hidden option.
+        @objc func exportClicked(_ sender: NSMenuItem) {
+            MainActor.assumeIsolated {
+                ShareService.saveToFolder(for: getItemsToShare())
+            }
+        }
     }
 }
 
@@ -113,10 +198,6 @@ struct ContentView: View {
     @State private var lastCopiedId: UUID?
     @State private var scrollAnchor: UUID?
     @State private var selectedItems: Set<UUID> = []
-    // ID-VIEW-0035 (2026-08-13, user-driven): captured frame of the
-    // toolbar Share button, used to anchor NSSharingServicePicker next
-    // to the button instead of at contentView's top-left.
-    @State private var shareButtonFrame: NSRect = .zero
     @State private var collapsedGroups: Set<TimeGroup> = {
         guard let data = UserDefaults.standard.string(forKey: "collapsedGroups")?.data(using: .utf8) else {
             return []
@@ -789,13 +870,6 @@ struct ContentView: View {
         // + Share + clear) stays visible at the minimum window size.
         .frame(minWidth: 950, minHeight: 600)
         .toolbar { self.toolbarContent }
-        // ID-VIEW-0035 (2026-08-13, user-driven): capture the toolbar
-        // Share button's frame (bubbled up via ShareButtonFramePreferenceKey)
-        // so the share sheet anchors next to the button, not at the
-        // contentView's top-left.
-        .onPreferenceChange(ShareButtonFramePreferenceKey.self) { newFrame in
-            shareButtonFrame = newFrame
-        }
         // ID-VIEW-0024 (2026-08-03, user-driven): brand logo as a
         // topLeading overlay instead of a toolbar item. The overlay sits
         // in the title bar area (traffic lights occupy ~70pt; the toolbar
@@ -870,34 +944,16 @@ struct ContentView: View {
             .padding(.horizontal, 4)
         }
         // ID-VIEW-0032 (2026-08-13, user-driven): toolbar Share button.
-        // Selection-aware: if ≥1 image is selected, shares the selection;
-        // else shares the current filter's images. Disabled when neither
-        // scope has any images — matches macOS conventions (Photos,
-        // Finder) and avoids an empty share sheet.
-        // ID-VIEW-0035 (2026-08-13, user-driven): capture the button's
-        // frame so NSSharingServicePicker anchors next to the button
-        // (not at contentView's top-left, which felt like the picker
-        // was floating mid-window). PreferenceKey bubbles the frame up
-        // to `.onPreferenceChange` on the body root.
+// ID-VIEW-0035 (2026-08-13, user-driven): use NSViewRepresentable
+// (NSPopUpButton) so the click handler can hand the NSView itself to
+// NSSharingServicePicker — AppKit converts coords internally, no
+// SwiftUI↔AppKit axis-flip guesswork required.
+// ID-VIEW-0036 (2026-08-13, user-driven): menu has 2 entries
+// (Share... / Export to Folder...). User reported the share sheet
+// hid the direct save-to-folder use case; one click on the toolbar
+// now surfaces both paths.
         ToolbarItem(id: "share") {
-            Button(action: {
-                ShareService.presentShareSheet(
-                    for: shareableImages,
-                    anchorRect: shareButtonFrame
-                )
-            }) {
-                Image(systemName: "square.and.arrow.up")
-            }
-            .disabled(shareableImages.isEmpty)
-            .help(L10n.actionShare)
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(
-                        key: ShareButtonFramePreferenceKey.self,
-                        value: NSRect(origin: geo.frame(in: .global).origin, size: geo.size)
-                    )
-                }
-            )
+            ToolbarExportMenuButton(getItemsToShare: { shareableImages })
         }
         ToolbarItem(id: "clear") {
             if selectedTab == .trash {

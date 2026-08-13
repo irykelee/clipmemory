@@ -48,24 +48,38 @@ enum ShareService {
         }
     }
 
-    /// Presents the macOS share sheet anchored to `anchorRect` (in the
-    /// key window's contentView coordinate space). When `anchorRect` is
-    /// nil, falls back to a centered position on the contentView —
-    /// callers should pass the triggering button's frame for native
-    /// "popup appears next to the button" UX. Silently no-ops if no key
-    /// window or no shareable items.
+    /// Presents the macOS share sheet anchored to `anchorView`. When the
+    /// anchor is provided, the picker positions itself relative to that
+    /// view's bounds — AppKit handles coord-space conversion internally,
+    /// avoiding the SwiftUI top-down / AppKit bottom-up mismatch that
+    /// made earlier rect-based anchoring land at the wrong screen
+    /// position. When `anchorView` is nil, falls back to the key
+    /// window's contentView top-center. Silently no-ops if no key window
+    /// or no shareable items.
     @MainActor
-    static func presentShareSheet(for items: [ClipboardItem], anchorRect: NSRect? = nil) {
+    static func presentShareSheet(for items: [ClipboardItem], anchorView: NSView? = nil) {
         let urls = makeShareableFileURLs(for: items)
-        guard !urls.isEmpty, let view = NSApp.keyWindow?.contentView else { return }
+        guard !urls.isEmpty, let contentView = NSApp.keyWindow?.contentView else { return }
         let picker = NSSharingServicePicker(items: urls)
-        let rect = anchorRect ?? NSRect(
-            x: view.bounds.midX,
-            y: view.bounds.maxY,
-            width: 0,
-            height: 0
-        )
-        picker.show(relativeTo: rect, of: view, preferredEdge: .minY)
+        if let anchorView = anchorView {
+            // ID-VIEW-0035 (2026-08-13, user-driven): the toolbar Share
+            // button is a real NSButton (via NSViewRepresentable), so we
+            // can hand its NSView + bounds directly to AppKit — no
+            // SwiftUI↔AppKit coord-system translation required.
+            // preferredEdge .maxY places the picker below the button
+            // (matches Safari / Mail / Photos toolbar share buttons).
+            picker.show(relativeTo: anchorView.bounds, of: anchorView, preferredEdge: .maxY)
+        } else {
+            // Fallback for callers without a captured view (e.g., future
+            // programmatic invocations from non-toolbar triggers).
+            let fallback = NSRect(
+                x: contentView.bounds.midX,
+                y: contentView.bounds.maxY,
+                width: 0,
+                height: 0
+            )
+            picker.show(relativeTo: fallback, of: contentView, preferredEdge: .minY)
+        }
     }
 
     /// ID-VIEW-0031 (2026-08-13, user-driven): build NSItemProviders for drag.
@@ -76,6 +90,95 @@ enum ShareService {
         items.compactMap { item in
             guard let url = try? makeShareableFileURL(for: item) else { return nil }
             return NSItemProvider(contentsOf: url)
+        }
+    }
+
+    /// ID-VIEW-0036 (2026-08-13, user-driven): direct save-to-folder path.
+    /// Opens NSOpenPanel in directory-pick mode, copies each item's temp
+    /// file to the chosen folder using `item.content` as the destination
+    /// filename. Filename collisions are surfaced via NSAlert per L18 —
+    /// user must explicitly choose Replace / Keep Both / Cancel; we never
+    /// silently overwrite (see `feedback/data-loss-prevention-discipline`).
+    /// Files that fail to load are skipped before this is reached.
+    @MainActor
+    static func saveToFolder(for items: [ClipboardItem]) {
+        let urls = makeShareableFileURLs(for: items)
+        guard !urls.isEmpty else { return }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = L10n.actionExport
+        panel.message = L10n.exportPanelMessage(urls.count)
+
+        guard panel.runModal() == .OK, let folderURL = panel.url else { return }
+
+        for sourceURL in urls {
+            let dest = folderURL.appendingPathComponent(sourceURL.lastPathComponent)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                let choice = presentConflictAlert(filename: sourceURL.lastPathComponent)
+                switch choice {
+                case .replace:
+                    do {
+                        try FileManager.default.removeItem(at: dest)
+                        try FileManager.default.copyItem(at: sourceURL, to: dest)
+                    } catch {
+                        NSAlert(error: error).runModal()
+                    }
+                case .keepBoth:
+                    let newDest = uniqueDestination(in: folderURL, baseName: sourceURL.lastPathComponent)
+                    do {
+                        try FileManager.default.copyItem(at: sourceURL, to: newDest)
+                    } catch {
+                        NSAlert(error: error).runModal()
+                    }
+                case .cancel, .none:
+                    return
+                }
+            } else {
+                do {
+                    try FileManager.default.copyItem(at: sourceURL, to: dest)
+                } catch {
+                    NSAlert(error: error).runModal()
+                }
+            }
+        }
+    }
+
+    private enum ConflictChoice {
+        case replace, keepBoth, cancel
+    }
+
+    @MainActor
+    private static func presentConflictAlert(filename: String) -> ConflictChoice? {
+        let alert = NSAlert()
+        alert.messageText = L10n.exportFileExistsTitle(filename)
+        alert.informativeText = L10n.exportFileExistsBody
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.exportConflictReplace)
+        alert.addButton(withTitle: L10n.exportConflictKeepBoth)
+        alert.addButton(withTitle: L10n.buttonCancel)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .replace
+        case .alertSecondButtonReturn: return .keepBoth
+        default: return .cancel
+        }
+    }
+
+    /// Append " (1)", " (2)", … until a non-existent path is found.
+    /// Mirrors Finder's "Keep Both" naming convention.
+    private static func uniqueDestination(in folder: URL, baseName: String) -> URL {
+        let fm = FileManager.default
+        let ext = (baseName as NSString).pathExtension
+        let stem = (baseName as NSString).deletingPathExtension
+        var index = 1
+        while true {
+            let candidate = ext.isEmpty
+                ? folder.appendingPathComponent("\(stem) (\(index))")
+                : folder.appendingPathComponent("\(stem) (\(index)).\(ext)")
+            if !fm.fileExists(atPath: candidate.path) { return candidate }
+            index += 1
         }
     }
 
