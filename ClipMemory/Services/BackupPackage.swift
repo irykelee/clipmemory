@@ -108,7 +108,7 @@ extension BackupManifest {
     }
 }
 
-struct BackupImportResult {
+struct BackupImportResult: Equatable {
     var itemsImported = 0
     var itemsSkipped = 0
     var tagsImported = 0
