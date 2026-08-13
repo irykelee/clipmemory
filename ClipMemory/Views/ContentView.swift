@@ -59,6 +59,17 @@ struct PendingMaxItemsReduction: Equatable {
     let new: Int
 }
 
+// ID-VIEW-0035 (2026-08-13, user-driven): PreferenceKey used by the
+// toolbar Share button to bubble its current global-frame up to the
+// ContentView body root, where `.onPreferenceChange` stores it in
+// `@State shareButtonFrame` for NSSharingServicePicker anchoring.
+private struct ShareButtonFramePreferenceKey: PreferenceKey {
+    static var defaultValue: NSRect = .zero
+    static func reduce(value: inout NSRect, nextValue: () -> NSRect) {
+        value = nextValue()
+    }
+}
+
 struct ContentView: View {
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "ContentView")
     // ID-PERF-0001 (2026-07-30 audit): hoist JSONEncoder. saveCollapsedGroups
@@ -102,6 +113,10 @@ struct ContentView: View {
     @State private var lastCopiedId: UUID?
     @State private var scrollAnchor: UUID?
     @State private var selectedItems: Set<UUID> = []
+    // ID-VIEW-0035 (2026-08-13, user-driven): captured frame of the
+    // toolbar Share button, used to anchor NSSharingServicePicker next
+    // to the button instead of at contentView's top-left.
+    @State private var shareButtonFrame: NSRect = .zero
     @State private var collapsedGroups: Set<TimeGroup> = {
         guard let data = UserDefaults.standard.string(forKey: "collapsedGroups")?.data(using: .utf8) else {
             return []
@@ -774,6 +789,13 @@ struct ContentView: View {
         // + Share + clear) stays visible at the minimum window size.
         .frame(minWidth: 950, minHeight: 600)
         .toolbar { self.toolbarContent }
+        // ID-VIEW-0035 (2026-08-13, user-driven): capture the toolbar
+        // Share button's frame (bubbled up via ShareButtonFramePreferenceKey)
+        // so the share sheet anchors next to the button, not at the
+        // contentView's top-left.
+        .onPreferenceChange(ShareButtonFramePreferenceKey.self) { newFrame in
+            shareButtonFrame = newFrame
+        }
         // ID-VIEW-0024 (2026-08-03, user-driven): brand logo as a
         // topLeading overlay instead of a toolbar item. The overlay sits
         // in the title bar area (traffic lights occupy ~70pt; the toolbar
@@ -804,10 +826,6 @@ struct ContentView: View {
             return imagesInDisplay
         }
         return imagesInDisplay.filter { selectedItems.contains($0.id) }
-    }
-
-    private func performToolbarShare() {
-        ShareService.presentShareSheet(for: shareableImages)
     }
 
     @ToolbarContentBuilder
@@ -856,12 +874,30 @@ struct ContentView: View {
         // else shares the current filter's images. Disabled when neither
         // scope has any images — matches macOS conventions (Photos,
         // Finder) and avoids an empty share sheet.
+        // ID-VIEW-0035 (2026-08-13, user-driven): capture the button's
+        // frame so NSSharingServicePicker anchors next to the button
+        // (not at contentView's top-left, which felt like the picker
+        // was floating mid-window). PreferenceKey bubbles the frame up
+        // to `.onPreferenceChange` on the body root.
         ToolbarItem(id: "share") {
-            Button(action: performToolbarShare) {
+            Button(action: {
+                ShareService.presentShareSheet(
+                    for: shareableImages,
+                    anchorRect: shareButtonFrame
+                )
+            }) {
                 Image(systemName: "square.and.arrow.up")
             }
             .disabled(shareableImages.isEmpty)
             .help(L10n.actionShare)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: ShareButtonFramePreferenceKey.self,
+                        value: NSRect(origin: geo.frame(in: .global).origin, size: geo.size)
+                    )
+                }
+            )
         }
         ToolbarItem(id: "clear") {
             if selectedTab == .trash {

@@ -48,15 +48,24 @@ enum ShareService {
         }
     }
 
-    /// Presents the macOS share sheet anchored at the key window. Falls
-    /// back silently if no window is on-screen (callers — context menu /
-    /// toolbar — should not be reachable in that state anyway).
+    /// Presents the macOS share sheet anchored to `anchorRect` (in the
+    /// key window's contentView coordinate space). When `anchorRect` is
+    /// nil, falls back to a centered position on the contentView —
+    /// callers should pass the triggering button's frame for native
+    /// "popup appears next to the button" UX. Silently no-ops if no key
+    /// window or no shareable items.
     @MainActor
-    static func presentShareSheet(for items: [ClipboardItem]) {
+    static func presentShareSheet(for items: [ClipboardItem], anchorRect: NSRect? = nil) {
         let urls = makeShareableFileURLs(for: items)
         guard !urls.isEmpty, let view = NSApp.keyWindow?.contentView else { return }
         let picker = NSSharingServicePicker(items: urls)
-        picker.show(relativeTo: .zero, of: view, preferredEdge: .minY)
+        let rect = anchorRect ?? NSRect(
+            x: view.bounds.midX,
+            y: view.bounds.maxY,
+            width: 0,
+            height: 0
+        )
+        picker.show(relativeTo: rect, of: view, preferredEdge: .minY)
     }
 
     /// ID-VIEW-0031 (2026-08-13, user-driven): build NSItemProviders for drag.
