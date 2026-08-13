@@ -59,99 +59,34 @@ struct PendingMaxItemsReduction: Equatable {
     let new: Int
 }
 
-// ID-VIEW-0035 (2026-08-13, user-driven): toolbar Share button as a
-// real NSButton via NSViewRepresentable. SwiftUI's GeometryReader +
-// PreferenceKey path couldn't deliver an AppKit-correct rect because
-// SwiftUI's top-down y and AppKit's bottom-up y don't agree on what
-// "near the top" means. Wrapping as an NSButton lets us hand the view
-// itself to NSSharingServicePicker, which converts coords internally
-// and gets the popup anchored directly under the button.
-// ID-VIEW-0036 (2026-08-13, user-driven): promote to NSPopUpButton
-// with a 2-item menu — "Share..." (NSSharingServicePicker) and
-// "Export to Folder..." (NSOpenPanel). User reported the menu was
-// all share targets, hiding the direct save-to-folder path; this
-// surfaces both at one click from the toolbar.
-struct ToolbarExportMenuButton: NSViewRepresentable {
-    let getItemsToShare: () -> [ClipboardItem]
+// ID-VIEW-0036 (2026-08-13, user-driven): toolbar Share button as
+// a SwiftUI Menu with 2 items — "Share..." (NSSharingServicePicker)
+// and "Export to Folder..." (NSOpenPanel). User reported the previous
+// NSPopUpButton wrapper dropped the Share menu item from the rendered
+// dropdown (pullsDown + autoenablesItems quirk); SwiftUI Menu is more
+// predictable. Trade-off: the share sheet's anchor uses the centered
+// fallback (no NSView to pass) — the visible Menu popup provides
+// visual context for the user regardless of share-sheet position.
+private struct ToolbarExportMenu: View {
+    let items: [ClipboardItem]
 
-    func makeNSView(context: Context) -> NSPopUpButton {
-        let button = NSPopUpButton(frame: .zero, pullsDown: true)
-        button.bezelStyle = .recessed
-        button.image = NSImage(
-            systemSymbolName: "square.and.arrow.up",
-            accessibilityDescription: L10n.actionShare
-        )
-        button.toolTip = L10n.actionShare
-
-        let menu = NSMenu()
-        let share = NSMenuItem(
-            title: L10n.actionShare,
-            action: #selector(Coordinator.shareClicked(_:)),
-            keyEquivalent: ""
-        )
-        share.target = context.coordinator
-        share.image = NSImage(
-            systemSymbolName: "square.and.arrow.up",
-            accessibilityDescription: L10n.actionShare
-        )
-        menu.addItem(share)
-
-        let export = NSMenuItem(
-            title: L10n.actionExport,
-            action: #selector(Coordinator.exportClicked(_:)),
-            keyEquivalent: ""
-        )
-        export.target = context.coordinator
-        export.image = NSImage(
-            systemSymbolName: "folder",
-            accessibilityDescription: L10n.actionExport
-        )
-        menu.addItem(export)
-
-        button.menu = menu
-        return button
-    }
-
-    func updateNSView(_ nsView: NSPopUpButton, context: Context) {
-        // Coordinator captures the button for share-sheet anchoring.
-        context.coordinator.button = nsView
-        nsView.isEnabled = !getItemsToShare().isEmpty
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(getItemsToShare: getItemsToShare)
-    }
-
-    final class Coordinator: NSObject {
-        var getItemsToShare: () -> [ClipboardItem]
-        weak var button: NSPopUpButton?
-
-        init(getItemsToShare: @escaping () -> [ClipboardItem]) {
-            self.getItemsToShare = getItemsToShare
-        }
-
-        // ID-VIEW-0035: hand the NSView directly so AppKit handles
-        // coord-space translation internally — avoids the SwiftUI
-        // top-down / AppKit bottom-up mismatch that earlier rect-based
-        // anchoring hit.
-        @objc func shareClicked(_ sender: NSMenuItem) {
-            guard let button = button else { return }
-            MainActor.assumeIsolated {
-                ShareService.presentShareSheet(
-                    for: getItemsToShare(),
-                    anchorView: button
-                )
+    var body: some View {
+        Menu {
+            Button {
+                ShareService.presentShareSheet(for: items)
+            } label: {
+                Label(L10n.actionShare, systemImage: "square.and.arrow.up")
             }
-        }
-
-        // ID-VIEW-0036: direct save-to-folder via NSOpenPanel. User
-        // wanted a one-click path that doesn't go through the share
-        // sheet's "Save to Files" hidden option.
-        @objc func exportClicked(_ sender: NSMenuItem) {
-            MainActor.assumeIsolated {
-                ShareService.saveToFolder(for: getItemsToShare())
+            Button {
+                ShareService.saveToFolder(for: items)
+            } label: {
+                Label(L10n.actionExport, systemImage: "folder")
             }
+        } label: {
+            Image(systemName: "square.and.arrow.up")
         }
+        .disabled(items.isEmpty)
+        .help(L10n.actionShare)
     }
 }
 
@@ -944,16 +879,15 @@ struct ContentView: View {
             .padding(.horizontal, 4)
         }
         // ID-VIEW-0032 (2026-08-13, user-driven): toolbar Share button.
-// ID-VIEW-0035 (2026-08-13, user-driven): use NSViewRepresentable
-// (NSPopUpButton) so the click handler can hand the NSView itself to
-// NSSharingServicePicker — AppKit converts coords internally, no
-// SwiftUI↔AppKit axis-flip guesswork required.
-// ID-VIEW-0036 (2026-08-13, user-driven): menu has 2 entries
-// (Share... / Export to Folder...). User reported the share sheet
-// hid the direct save-to-folder use case; one click on the toolbar
-// now surfaces both paths.
+// ID-VIEW-0035 (2026-08-13, user-driven): originally a standalone
+// NSViewRepresentable NSButton so we could anchor NSSharingServicePicker
+// directly under it.
+// ID-VIEW-0036 (2026-08-13, user-driven): added Export to Folder.
+// ID-VIEW-0037 (2026-08-13, user-driven): replaced NSViewRepresentable
+// with SwiftUI Menu — NSPopUpButton wrapper dropped the Share item from
+// the rendered dropdown (visible menu only had Export to Folder).
         ToolbarItem(id: "share") {
-            ToolbarExportMenuButton(getItemsToShare: { shareableImages })
+            ToolbarExportMenu(items: shareableImages)
         }
         ToolbarItem(id: "clear") {
             if selectedTab == .trash {
