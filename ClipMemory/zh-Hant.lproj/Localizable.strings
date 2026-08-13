@@ -32,6 +32,10 @@
 "action.unpin" = "取消釘選";
 "action.delete" = "刪除";
 "action.copy" = "複製";
+// ID-VIEW-0030/0032 (2026-08-13): 圖片分享走 NSSharingServicePicker
+"action.share" = "分享...";
+"action.share.count" = "分享 %d 張圖片...";
+"action.share.count.one" = "分享 1 張圖片...";
 "action.show.content" = "顯示內容";
 "action.hide.content" = "收合內容";
 // F-19 (2026-07-23 audit): VoiceOver labels for select checkbox

@@ -32,6 +32,10 @@
 "action.unpin" = "ピン留め解除";
 "action.delete" = "削除";
 "action.copy" = "コピー";
+// ID-VIEW-0030/0032 (2026-08-13): 画像を NSSharingServicePicker で共有
+"action.share" = "共有...";
+"action.share.count" = "%d 枚の画像を共有...";
+"action.share.count.one" = "1 枚の画像を共有...";
 "action.show.content" = "内容を表示";
 "action.hide.content" = "内容を非表示";
 // F-19 (2026-07-23 audit): VoiceOver labels for select checkbox

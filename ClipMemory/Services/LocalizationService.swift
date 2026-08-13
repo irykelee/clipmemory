@@ -149,6 +149,9 @@ struct L10n {
     static var actionUnpin: String { string("action.unpin") }
     static var actionDelete: String { string("action.delete") }
     static var actionCopy: String { string("action.copy") }
+    // ID-VIEW-0030/0032 (2026-08-13): share image items via NSSharingServicePicker.
+    static var actionShare: String { string("action.share") }
+    static func actionShareCount(_ count: Int) -> String { plural("action.share.count", count) }
     static var actionShowContent: String { string("action.show.content") }
     static var actionHideContent: String { string("action.hide.content") }
     // F-19 (2026-07-23 audit): VoiceOver labels for the row select checkbox.

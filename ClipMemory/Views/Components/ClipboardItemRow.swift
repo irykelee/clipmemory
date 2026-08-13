@@ -99,6 +99,17 @@ struct ClipboardItemRow: View, Equatable {
     let onSelect: ((Bool) -> Void)?
     let onToggleReveal: () -> Void
     var onEditTags: () -> Void = { }
+    // ID-VIEW-0030/0032 (2026-08-13, user-driven): image share via
+    // NSSharingServicePicker. `shareLabel` provides the menu text — when
+    // this row is part of a multi-image selection, the parent passes a
+    // "Share N Images..." label here so the count is visible before the
+    // user clicks. `onShare` performs the actual sheet presentation.
+    var shareLabel: String? = nil
+    var onShare: (() -> Void)? = nil
+    // ID-VIEW-0031 (2026-08-13, user-driven): drag closure that returns the
+    // NSItemProviders for the current drag. Parent decides the drag scope
+    // (single vs. selection) and which images are eligible. nil = no drag.
+    var onDragProviders: (() -> [NSItemProvider])? = nil
     @State private var isHovered = false
     // E-13 (2026-07-23 audit): the row reads LanguageManager.shared
     // for `cachedAbsoluteDateFormatter(for:)` (line ~140) but didn't
@@ -165,7 +176,10 @@ struct ClipboardItemRow: View, Equatable {
          onDelete: @escaping () -> Void,
          onSelect: ((Bool) -> Void)? = nil,
          onToggleReveal: @escaping () -> Void,
-         onEditTags: @escaping () -> Void = {}) {
+         onEditTags: @escaping () -> Void = {},
+         onShare: (() -> Void)? = nil,
+         shareLabel: String? = nil,
+         onDragProviders: (() -> [NSItemProvider])? = nil) {
         self.item = item
         self.store = store
         self.isRevealed = isRevealed
@@ -180,6 +194,9 @@ struct ClipboardItemRow: View, Equatable {
         self.onSelect = onSelect
         self.onToggleReveal = onToggleReveal
         self.onEditTags = onEditTags
+        self.onShare = onShare
+        self.shareLabel = shareLabel
+        self.onDragProviders = onDragProviders
     }
 
     private var rowBackground: Color {
@@ -635,6 +652,15 @@ struct ClipboardItemRow: View, Equatable {
                 // Live lookup: the row's captured item struct can be stale when
                 // OCR finished after the list rendered (bug: menu looked dead).
                 .disabled(liveOcrText == nil)
+                // ID-VIEW-0030 (2026-08-13, user-driven): share via NSSharingServicePicker.
+                // macOS share sheet natively includes "Save to Files" — single button
+                // covers both share-to-app and save-to-folder without separate UI.
+                // ID-VIEW-0032 (2026-08-13, user-driven): label adapts to selection
+                // count ("Share" for 1, "Share N Images..." for N>1).
+                Button(action: { onShare?() }, label: {
+                    Label(shareLabel ?? L10n.actionShare, systemImage: "square.and.arrow.up")
+                })
+                .disabled(onShare == nil)
             }
             if item.isSensitive {
                 Button(action: onToggleReveal, label: {
@@ -653,6 +679,17 @@ struct ClipboardItemRow: View, Equatable {
             Button(role: .destructive, action: onDelete, label: {
                 Label(L10n.actionDelete, systemImage: "trash")
             })
+        }
+        // ID-VIEW-0031 (2026-08-13, user-driven): drag images out to Finder / apps.
+        // SwiftUI's `.onDrag` accepts only a single NSItemProvider closure —
+        // there is no array overload. So drag is single-item: this row
+        // vends its own image only. Multi-image drag is intentionally NOT
+        // implemented here; users wanting to share N images go through the
+        // toolbar Share button (ID-VIEW-0032) or right-click → "Share N
+        // Images..." which present NSSharingServicePicker and let the user
+        // pick "Save to Files" to land multiple files in a folder.
+        .onDrag {
+            onDragProviders?().first ?? NSItemProvider()
         }
         // ID-VIEW-0003 (2026-07-31 audit): task id gains the
         // `item.ocrText != nil` dimension so a late OCR attach re-runs the

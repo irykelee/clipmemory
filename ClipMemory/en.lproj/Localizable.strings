@@ -32,6 +32,10 @@
 "action.unpin" = "Unpin";
 "action.delete" = "Delete";
 "action.copy" = "Copy";
+// ID-VIEW-0030/0032 (2026-08-13): image item share via NSSharingServicePicker
+"action.share" = "Share...";
+"action.share.count" = "Share %d Images...";
+"action.share.count.one" = "Share 1 Image...";
 "action.show.content" = "Show Content";
 "action.hide.content" = "Hide Content";
 // F-19 (2026-07-23 audit): VoiceOver labels for select checkbox

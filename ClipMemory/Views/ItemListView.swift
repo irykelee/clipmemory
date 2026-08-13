@@ -525,6 +525,49 @@ struct ItemListView: View {
         }
         let revealAction: () -> Void = { self.toggleReveal(itemId) }
         let editTagsAction: () -> Void = { self.tagPickerItem = item }
+        // ID-VIEW-0030/0032 (2026-08-13, user-driven): share context. Only
+        // image items are shareable. When this row is in a multi-image
+        // selection, the action shares the WHOLE selection (not just this
+        // row) and the label shows the count — matches Finder / Photos
+        // right-click conventions.
+        let isImageAndInMultiSelection = item.type == .image
+            && self.selectedItems.contains(item.id)
+            && self.selectedItems.count > 1
+        let selectedImagesCount = self.selectedItems.isEmpty ? 0 : self.displayedItems.filter {
+            self.selectedItems.contains($0.id) && $0.type == .image
+        }.count
+        let shareAction: (() -> Void)? = item.type == .image ? {
+            let itemsToShare: [ClipboardItem]
+            if isImageAndInMultiSelection {
+                itemsToShare = self.displayedItems.filter {
+                    self.selectedItems.contains($0.id) && $0.type == .image
+                }
+            } else {
+                itemsToShare = [item]
+            }
+            ShareService.presentShareSheet(for: itemsToShare)
+        } : nil
+        let shareLabel: String? = item.type == .image ? (
+            isImageAndInMultiSelection && selectedImagesCount > 0
+                ? L10n.actionShareCount(selectedImagesCount)
+                : L10n.actionShare
+        ) : nil
+        // ID-VIEW-0031 (2026-08-13, user-driven): drag scope = the image
+        // items in the current selection (if this row is part of a multi-
+        // select) OR just this row's image. Finder shows stacked icons for
+        // multi-file drops, so the user sees the count visually.
+        let dragProviders: (() -> [NSItemProvider])? = {
+            guard item.type == .image else { return [] }
+            let itemsToDrag: [ClipboardItem]
+            if isImageAndInMultiSelection {
+                itemsToDrag = self.displayedItems.filter {
+                    self.selectedItems.contains($0.id) && $0.type == .image
+                }
+            } else {
+                itemsToDrag = [item]
+            }
+            return ShareService.makeDragProviders(for: itemsToDrag)
+        }
         ClipboardItemRow(item: item,
             store: store,
             isRevealed: revealed,
@@ -538,7 +581,10 @@ struct ItemListView: View {
             onDelete: deleteAction,
             onSelect: selectAction,
             onToggleReveal: revealAction,
-            onEditTags: editTagsAction)
+            onEditTags: editTagsAction,
+            onShare: shareAction,
+            shareLabel: shareLabel,
+            onDragProviders: dragProviders)
     }
 
     // MARK: - Clear-mode plumbing

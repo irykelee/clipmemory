@@ -785,6 +785,23 @@ struct ContentView: View {
         .toolbarBackground(.hidden, for: .windowToolbar))
     }
 
+    // ID-VIEW-0032 (2026-08-13, user-driven): images eligible for toolbar
+    // share. Selection takes precedence — when the user has explicitly
+    // multi-selected, we honor that scope. Otherwise we fall back to
+    // "everything in the current filter that's an image" so a user can
+    // filter down to "today's screenshots" and share them all in one shot.
+    private var shareableImages: [ClipboardItem] {
+        let imagesInDisplay = displayedItems.filter { $0.type == .image }
+        if selectedItems.isEmpty {
+            return imagesInDisplay
+        }
+        return imagesInDisplay.filter { selectedItems.contains($0.id) }
+    }
+
+    private func performToolbarShare() {
+        ShareService.presentShareSheet(for: shareableImages)
+    }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         // ID-VIEW-0025 (2026-08-03, user-driven): brand logo at the
@@ -825,6 +842,18 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal, 4)
+        }
+        // ID-VIEW-0032 (2026-08-13, user-driven): toolbar Share button.
+        // Selection-aware: if ≥1 image is selected, shares the selection;
+        // else shares the current filter's images. Disabled when neither
+        // scope has any images — matches macOS conventions (Photos,
+        // Finder) and avoids an empty share sheet.
+        ToolbarItem(id: "share") {
+            Button(action: performToolbarShare) {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .disabled(shareableImages.isEmpty)
+            .help(L10n.actionShare)
         }
         ToolbarItem(id: "clear") {
             if selectedTab == .trash {
