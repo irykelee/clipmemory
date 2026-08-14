@@ -48,11 +48,16 @@
 
 ## 📋 Registro de cambios
 
-### v2.9.0 (planned)
+### v2.9.0 (2026-08-14) — Asistente de restauración de copias + Compartir y exportar imágenes
 
-- **Nuevo asistente de "Restaurar desde copia de seguridad" (ID-BACKUP-0002):** Flujo visual de 5 pasos con vista previa, instantánea de seguridad, advertencia de elemento incompleto, reintento de contraseña y manejo de errores de espacio en disco; la importación de archivos `.clipmemory` externos utiliza el mismo asistente
-- **Nueva API `BackupService.listAvailableBackups()` + `BackupPackage.importFromLocalBackup()`** para lectura directa de copias de seguridad locales (sin contraseña)
-- **36 nuevas claves L10n (restore.*) × 7 idiomas**
+- **🗂 Asistente de restauración de copias de seguridad (ID-BACKUP-0002)** — Ajustes → Copia de seguridad incorpora la entrada «Restaurar desde copia de seguridad»: un asistente visual de 5 pasos — elegir la copia (lista de copias automáticas diarias o un paquete cifrado `.clipmemory` externo) → introducir la contraseña (solo para paquetes externos) → previsualizar el número de elementos y el intervalo de fechas → confirmar → resultado. Antes de iniciar la restauración se crea automáticamente una instantánea de seguridad; una contraseña incorrecta se puede reintentar sin reiniciar el flujo; las copias incompletas se advierten de antemano y la falta de espacio en disco produce un error explícito. Hasta ahora, recuperar desde una copia automática exigía mover archivos JSON a mano; ahora todo el proceso tiene interfaz.
+- **🖼 Compartir, arrastrar y exportar imágenes a una carpeta (ID-VIEW-0030 – 0038)** — Haz clic derecho en una imagen → «Compartir…» para abrir el panel de compartir del sistema (AirDrop / Mensajes / Mail / Guardar en Archivos); con varios elementos seleccionados pasa a «Compartir N imágenes…». También puedes arrastrar imágenes directamente al Finder o a cualquier aplicación. El menú de compartir de la barra de herramientas suma «Exportar a carpeta…» para exportaciones por lotes, con Reemplazar / Conservar ambos / Cancelar ante nombres duplicados: nunca se sobrescribe nada en silencio. Además, el ancho mínimo de la ventana principal sube de 850 a 950 para que los botones de la barra dejen de plegarse en el menú ».
+- **📌 Insignia con el número de elementos fijados en la barra lateral (ID-VIEW-0029)** — Alinea la pestaña Fijados con el resto de pestañas de filtro, de modo que el recuento se ve de un vistazo.
+- **⚖️ Se añaden MIT LICENSE + Política de privacidad + Términos de servicio (ID-LEGAL-0001)** — Nuevos archivos `LICENSE` (MIT), `PRIVACY.md` y `TERMS.md`. El proyecto era público pero no tenía licencia, lo que jurídicamente equivale a «todos los derechos reservados»: nadie podía bifurcarlo ni redistribuirlo con seguridad. Ahora las condiciones de licencia son explícitas y la política de privacidad indica con claridad que los datos permanecen en tu equipo.
+- **🌐 Barrera de regresión para la paridad de traducciones (ID-LINT-0001)** — El nuevo `Scripts/lint-translations.sh` toma `LocalizationService.swift` como única fuente de verdad y verifica 221 claves en 7 idiomas; basta una traducción ausente para que CI falle (integrado tanto en pre-commit como en CI). De paso se eliminaron 4 claves muertas heredadas de v2.7.x. Así, ninguna función nueva podrá publicarse con un idioma sin traducir que muestre nombres de clave en la interfaz.
+
+- Para versiones con módulo de actualización automática (Sparkle) desde v2.4.0: espera la actualización automática en la aplicación, o ejecuta `brew upgrade --cask clipmemory`
+- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.0
 
 ### v2.8.4 (2026-08-12) — Manifiesto de privacidad + Actualización de seguridad + Corrección de errores latentes + Puerta de regresión
 

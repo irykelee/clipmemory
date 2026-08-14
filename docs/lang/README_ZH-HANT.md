@@ -48,11 +48,16 @@
 
 ## 📋 更新日誌
 
-### v2.9.0 (planned)
+### v2.9.0 (2026-08-14) — 備份還原精靈 + 圖片分享匯出
 
-- 新增「從自動備份還原」精靈（ID-BACKUP-0002）：5 步視覺化流程，含預覽、安全快照、incomplete 提示、密碼錯誤重試、磁碟空間錯誤處理；外部 `.clipmemory` 檔案匯入走同一精靈
-- 新增 `BackupService.listAvailableBackups()` API + `BackupPackage.importFromLocalBackup()` 直讀本地備份（無需密碼）
-- 新增 36 個 L10n key（restore.*）× 7 語種
+- **🗂 備份還原精靈 (ID-BACKUP-0002)** — 設定 → 備份 新增「從備份還原」入口，5 步視覺化精靈：選備份（每日自動備份清單，或外部 `.clipmemory` 加密包）→ 輸入密碼（僅外部包需要）→ 預覽條目數與時間範圍 → 確認 → 結果。還原開始前自動做一次安全快照；密碼輸錯原地重試；備份不完整提前提示，磁碟空間不足給明確錯誤。此前從自動備份復原只能手工搬 JSON，現在全程有 UI。
+- **🖼 圖片分享 / 拖曳 / 匯出到資料夾 (ID-VIEW-0030 ~ 0038)** — 圖片條目右鍵「分享…」叫出系統分享面板（AirDrop / 訊息 / 郵件 / 儲存到檔案），多選時變「分享 N 張圖片…」；也可直接把圖片拖到 Finder 或其他 App；工具列分享選單新增「匯出到資料夾…」批次匯出，同名彈 取代 / 兩者保留 / 取消，絕不靜默覆寫。配套主視窗最小寬度 850 → 950，窄視窗下工具列按鈕不再摺進 » 溢位選單。
+- **📌 側邊欄「置頂」顯示條數徽章 (ID-VIEW-0029)** — 與其他篩選 tab 對齊，一眼看到置頂了幾條。
+- **⚖️ 補齊 MIT LICENSE + 隱私政策 + 使用條款 (ID-LEGAL-0001)** — 新增 `LICENSE`（MIT）、`PRIVACY.md`、`TERMS.md`。此前專案公開但無授權條款，法律上等同「保留所有權利」，他人無法安全 fork 或二次散布；現在授權關係明確，隱私政策也白紙黑字寫明資料只留本機。
+- **🌐 翻譯一致性防迴歸門 (ID-LINT-0001)** — 新增 `Scripts/lint-translations.sh`，以 `LocalizationService.swift` 為唯一真相來源校驗 221 個 key × 7 語種，缺一個翻譯 CI 直接紅（已接進 pre-commit 與 CI），並清掉 4 個 v2.7.x 遺留死 key。以後新功能不會再出現某語種漏翻、介面蹦出英文 key 名。
+
+- v2.4.0 起帶自動升級模組（Sparkle）的版本：等 App 內自動更新，或 `brew upgrade --cask clipmemory`
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.0
 
 ### v2.8.4 (2026-08-12) — 隱私清單 + 安全升級 + 潛在 bug 修復 + 防回歸門
 

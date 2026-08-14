@@ -48,11 +48,16 @@
 
 ## 📋 Changelog
 
-### v2.9.0 (planned)
+### v2.9.0 (2026-08-14) — Backup Restore Wizard + Image Share & Export
 
-- **New "Restore from Backup" wizard (ID-BACKUP-0002):** 5-step visual flow with preview, safety snapshot, incomplete warning, password-retry, and disk-space error handling; external `.clipmemory` file import uses the same wizard
-- **New `BackupService.listAvailableBackups()` API + `BackupPackage.importFromLocalBackup()`** for direct local backup reading (no password required)
-- **New 36 L10n keys (restore.*) × 7 languages**
+- **🗂 Backup restore wizard (ID-BACKUP-0002)** — Settings → Backup now has a "Restore from Backup" entry: a 5-step visual wizard — pick a backup (daily automatic backup list, or an external encrypted `.clipmemory` package) → enter the password (external packages only) → preview item count and date range → confirm → result. A safety snapshot is taken automatically before the restore begins; a wrong password can be retried in place; incomplete backups are flagged up front and insufficient disk space produces an explicit error. Recovering from an automatic backup previously meant moving JSON files by hand — the whole path now has a UI.
+- **🖼 Image share / drag / export to folder (ID-VIEW-0030 – 0038)** — Right-click an image → "Share…" opens the system share sheet (AirDrop / Messages / Mail / Save to Files); with a multi-selection it becomes "Share N Images…". Images can also be dragged straight into Finder or any app. The toolbar share menu gained "Export to Folder…" for bulk export, with Replace / Keep Both / Cancel on filename conflicts — files are never silently overwritten. The main window minimum width was raised 850 → 950 so toolbar buttons stop collapsing into the » overflow menu.
+- **📌 Pinned count badge in the sidebar (ID-VIEW-0029)** — Brings the Pinned tab in line with the other filter tabs, so the count is visible at a glance.
+- **⚖️ MIT LICENSE + Privacy Policy + Terms of Service added (ID-LEGAL-0001)** — New `LICENSE` (MIT), `PRIVACY.md`, and `TERMS.md`. The project was public but unlicensed, which legally means "all rights reserved" — nobody could safely fork or redistribute it. Licensing is now explicit, and the privacy policy states plainly that data stays on your machine.
+- **🌐 Translation parity regression gate (ID-LINT-0001)** — New `Scripts/lint-translations.sh` treats `LocalizationService.swift` as the single source of truth and verifies 221 keys across 7 languages; one missing translation turns CI red (wired into pre-commit and CI). Four dead keys left over from v2.7.x were removed. New features can no longer ship with an untranslated locale leaking raw key names into the UI.
+
+- For versions with the auto-update module (Sparkle) from v2.4.0 onward: wait for the in-app auto-update, or run `brew upgrade --cask clipmemory`
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.0
 
 ### v2.8.4 (2026-08-12) — Privacy Manifest + Security Upgrade + Latent Bug Fixes + Regression Gate
 
