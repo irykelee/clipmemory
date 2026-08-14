@@ -577,6 +577,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Menu `⌘,` handler. Delegates to the independent settings window
     /// instead of the previous main-window tab switch.
+    func showRestoreWizard() {
+        RestoreWizardWindowController.shared.present(
+            backupService: .shared,
+            imagesDirectory: AppDirectories.applicationSupport.appendingPathComponent("ClipMemory/Images", isDirectory: true),
+            defaults: .standard
+        )
+    }
+
     @objc private func showSettings() {
         showSettingsWindow()
     }

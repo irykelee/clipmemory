@@ -45,6 +45,28 @@ enum BackupPackageError: Error, Equatable {
     case snapshotFailed(String)
 }
 
+// MARK: - LocalizedError conformance (F12 fix, ID-BACKUP-0002)
+// Wires each error case to the matching L10n key so views showing
+// `err.localizedDescription` render user-facing strings instead of the
+// Swift default "The operation couldn't be completed..." garbage.
+extension BackupPackageError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .wrongPassword:                return L10n.restoreErrorKeychain  // no .wrongPassword key; use keychain fallback until key added
+        case .invalidPackage:               return L10n.restoreErrorCorrupted
+        case .unsupportedFormatVersion:     return L10n.restoreErrorUnsupportedVersion
+        case .missingKeyMaterial:           return L10n.restoreErrorKeychain
+        case .archiveFailed:                return L10n.restoreErrorArchiveFailed
+        case .secureRandomUnavailable:      return L10n.restoreErrorCorrupted
+        case .pbkdf2Failure:               return L10n.restoreErrorCorrupted
+        case .unsupportedKeyDerivationVersion(let v):
+            return L10n.restoreErrorUnsupportedKDF + " (v\(v))"
+        case .corruptedData:               return L10n.restoreErrorCorrupted
+        case .snapshotFailed(let msg):      return msg  // already localized
+        }
+    }
+}
+
 /// BUG-024 (2026-07-22): identifies which JSON/file in a `.clipmemory`
 /// package failed to read or decode, so logs can pinpoint the offending
 /// file and tests can assert against a stable enum case. `.image` carries

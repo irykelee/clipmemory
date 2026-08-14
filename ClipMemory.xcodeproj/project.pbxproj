@@ -165,6 +165,7 @@
 		E14B1849B64D4BE03B22B3A8 /* HistoryCaptureSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570938040C2111DF0905CF03 /* HistoryCaptureSettingsView.swift */; };
 		E16AA67D6C0B28DA85FC1036 /* HotKeyRetainFailurePathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32ED9328F22F8499A3D161DB /* HotKeyRetainFailurePathTests.swift */; };
 		E2D37FD02B4E86B5F2E4DAAD /* ColorHex.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4560EAC04CA68AA001CAE65 /* ColorHex.swift */; };
+		E2E483625AFCE7496140B62B /* RestoreWizardWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B0167C63BE64D5C84A942B /* RestoreWizardWindowController.swift */; };
 		E3F3F84D2FD8147C830389D5 /* ClipboardStoreItemForIDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75696B4736936F561709E992 /* ClipboardStoreItemForIDTests.swift */; };
 		E4E018508855F4D12CE92115 /* DateFilterButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12B9F675BF991916E52B8FE2 /* DateFilterButton.swift */; };
 		E5DE6F85010F96D2B432B46C /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585B8142B54295BD7545CB64 /* UpdateServiceTests.swift */; };
@@ -307,6 +308,7 @@
 		9168850C81327649C0142FD4 /* StorageBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageBackend.swift; sourceTree = "<group>"; };
 		91D0097CC42906B56F2E5109 /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsView.swift; sourceTree = "<group>"; };
 		96F722DF3757FF81CD7A40CC /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
+		97B0167C63BE64D5C84A942B /* RestoreWizardWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreWizardWindowController.swift; sourceTree = "<group>"; };
 		97E8E72C0DB7F434491E5A61 /* TestHostIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHostIsolationTests.swift; sourceTree = "<group>"; };
 		98A9BEBF6532DD5C9551E963 /* ClipboardStoreRTFCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStoreRTFCacheTests.swift; sourceTree = "<group>"; };
 		98ADF74CF248C9E8B4EE7EA6 /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
@@ -443,6 +445,7 @@
 				C4B9E4A0CBFAE2A5B8C248E7 /* RestoreWizardTypes.swift */,
 				0AFD9F7831D8F532CFBDB848 /* RestoreWizardView.swift */,
 				2826F0BB133B0AC96DB2AB87 /* RestoreWizardViewModel.swift */,
+				97B0167C63BE64D5C84A942B /* RestoreWizardWindowController.swift */,
 			);
 			path = RestoreWizard;
 			sourceTree = "<group>";
@@ -955,6 +958,7 @@
 				0ACA3876473B69F6DB1C0E4E /* RestoreWizardTypes.swift in Sources */,
 				8FDC53C0F29361C3DB018CF9 /* RestoreWizardView.swift in Sources */,
 				35A5BE8D445F109A2D924033 /* RestoreWizardViewModel.swift in Sources */,
+				E2E483625AFCE7496140B62B /* RestoreWizardWindowController.swift in Sources */,
 				FFAC7E103564C9614B82F89B /* RichTextParser.swift in Sources */,
 				3CECE47C3C9D938FFAD546DE /* SaveRetryState.swift in Sources */,
 				52059DDAB707C9190DC2C455 /* SelectCheckbox.swift in Sources */,
