@@ -38,6 +38,11 @@ enum BackupPackageError: Error, Equatable {
     /// these files parse cleanly but contain corrupt data the
     /// decoder or file system rejected.
     case corruptedData(String, BackupFileSource)
+    /// ID-BACKUP-0002 (2026-08-14): snapshot creation (backupNow) failed —
+    /// e.g., disk full, write error, permissions revoked. The VM surfaces
+    /// this as a distinct error so the UI can show the correct L10n message
+    /// instead of a misleading "keychain" error.
+    case snapshotFailed(String)
 }
 
 /// BUG-024 (2026-07-22): identifies which JSON/file in a `.clipmemory`
