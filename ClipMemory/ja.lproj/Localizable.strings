@@ -282,6 +282,9 @@
 "settings.excluded.drop.notApp" = "無視しました：ドロップできるのはアプリケーション（.app）のみです";
 "settings.excluded.drop.unreadable" = "無視しました：このアプリの識別子を読み取れません";
 "settings.excluded.drop.self" = "ClipMemory 自身は除外できません";
+"settings.excluded.update.notice" = "除外リストの更新があります：機能していなかったルールを修正し、主要なパスワード管理アプリを追加します。";
+"settings.excluded.update.apply" = "更新";
+"settings.excluded.update.dismiss" = "無視";
 "settings.backup.footer" = "自動バックアップはアプリ起動時に確認され、前回の成功から 24 時間以上経過している場合に実行されます。ローカルバックアップはこの Mac の端末キーで暗号化されます。「バックアップをエクスポート」はパスワード保護された .clipmemory ファイルを作成し、復元には同じパスワードが必要です。";
 "settings.updateSource.footer" = "「自動」は GitHub の更新フィードを優先し、メインフィードに到達できない場合は jsDelivr ミラー（appcast のみ。インストールパッケージは引き続き GitHub から取得）の使用を提案します。Gitee ミラーは appcast とインストールパッケージの両方を ホスティングするため、中国本土では VPN なしで更新チェックとダウンロードが可能。手動選択は主にネットワークトラブルシューティング用です。";
 "settings.update.statusLine" = "現在 v%1$@ · 最新 v%2$@ · %3$@";

@@ -286,6 +286,9 @@
 "settings.excluded.drop.notApp" = "Ignored: only applications (.app) can be dropped here";
 "settings.excluded.drop.unreadable" = "Ignored: couldn't read that app's identifier";
 "settings.excluded.drop.self" = "ClipMemory can't exclude itself";
+"settings.excluded.update.notice" = "An update to your exclusion list is available: it corrects a rule that never worked and adds common password managers.";
+"settings.excluded.update.apply" = "Update";
+"settings.excluded.update.dismiss" = "Ignore";
 "settings.backup.footer" = "Automatic backup is checked when the app launches and runs once the last successful backup is at least 24 hours old. Local backups use this Mac's device key; Export Backup creates a password-protected .clipmemory file that requires the same password to import.";
 "settings.updateSource.footer" = "Automatic prefers the GitHub update feed and may offer the jsDelivr mirror (appcast-only; downloads still come from GitHub) when the primary feed is unavailable. The Gitee mirror hosts both the appcast and the install package, so it works in mainland China without VPN. Manual selection is mainly for network troubleshooting.";
 "settings.update.statusLine" = "Current v%1$@ · Latest v%2$@ · %3$@";
