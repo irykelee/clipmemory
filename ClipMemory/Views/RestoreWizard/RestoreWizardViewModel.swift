@@ -159,8 +159,8 @@ final class RestoreWizardViewModel: ObservableObject {
                 _ = snapshotURL
             } catch {
                 await MainActor.run {
-                    self?.progress = .failed(.missingKeyMaterial)  // placeholder; use snapshotFailed error
-                    self?.lastError = .corruptedData("Snapshot failed: \(error.localizedDescription)", .manifest)
+                    self?.progress = .failed(.snapshotFailed("Snapshot failed: \(error.localizedDescription)"))
+                    self?.lastError = .snapshotFailed(error.localizedDescription)
                 }
                 return
             }
