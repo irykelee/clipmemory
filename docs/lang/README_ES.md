@@ -463,7 +463,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 
 ## Ajustes
 
-- Máximo de elementos históricos (50 / 100 / 200 / 500)
+- Máximo de elementos históricos (100 / 500 / 1000)
 - Política de borrado automático sensible (1h / 24h / 48h / 7d / nunca)
 - Cambio de idioma (7 idiomas)
 - Grabación de atajo global

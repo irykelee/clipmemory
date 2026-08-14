@@ -463,7 +463,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 
 ## Settings
 
-- Max history items (50 / 100 / 200 / 500)
+- Max history items (100 / 500 / 1000)
 - Sensitive auto-clear policy (1h / 24h / 48h / 7d / never)
 - Language (7 languages)
 - Global hotkey recording
