@@ -244,6 +244,16 @@ final class ClipboardStore: ObservableObject {
         }
     }
 
+    /// ID-EXCLUDE-0002 (2026-08-14): ids the user has declined to add to their
+    /// exclusion list, comma-separated. Recorded per-id rather than as a
+    /// single "dismissed" flag so a later release that curates new apps can
+    /// offer those, without a one-time dismissal silencing it forever.
+    @Published var excludedUpdateDismissedIds: String {
+        didSet {
+            defaults.set(excludedUpdateDismissedIds, forKey: excludedUpdateDismissedIdsKey)
+        }
+    }
+
     /// HIGH-1 (2026-07-26 review): trash subsystem moved to TrashStore.
     /// Forwarding computed properties preserve existing call-site compatibility.
     var trashedItems: [ClipboardItem] {
@@ -296,6 +306,7 @@ final class ClipboardStore: ObservableObject {
     private let sensitiveClearHoursKey = "sensitiveClearHours"
     private let captureRichTextKey = "captureRichText"
     private let excludedBundleIdsKey = "excludedBundleIds"
+    private let excludedUpdateDismissedIdsKey = "excludedUpdateDismissedIds"
     // trashRetentionDaysKey moved to TrashStore (HIGH-1, 2026-07-26)
 
     /// Quarantine a corrupt UserDefaults blob: copy it under
@@ -464,6 +475,7 @@ final class ClipboardStore: ObservableObject {
         // existing stored value is the user's setting and is never rewritten.
         excludedBundleIdsString = defaults.string(forKey: excludedBundleIdsKey)
             ?? KnownExcludedApps.defaultBundleIds.joined(separator: ",")
+        excludedUpdateDismissedIds = defaults.string(forKey: excludedUpdateDismissedIdsKey) ?? ""
 
         // trashRetentionDays init moved to TrashStore (HIGH-1, 2026-07-26)
 

@@ -95,4 +95,53 @@ enum KnownExcludedApps {
         let present = Set(current.map { $0.lowercased() })
         return defaultBundleIds.filter { !present.contains($0) }
     }
+
+    // MARK: - Opt-in update (ID-EXCLUDE-0002)
+
+    /// What an existing install could gain, if the user chooses to take it.
+    struct PendingUpdate: Equatable {
+        /// Ids in the user's list that we know are dead, with their real id.
+        var corrections: [String] = []
+        /// Curated ids the user doesn't have yet.
+        var additions: [String] = []
+
+        var isEmpty: Bool { corrections.isEmpty && additions.isEmpty }
+
+        /// Ids this update would introduce — what gets recorded when the user
+        /// dismisses it, so a later version adding new entries can ask again
+        /// instead of being silenced forever by one dismissal.
+        var introducedIds: [String] {
+            corrections.compactMap { staleReplacements[$0] } + additions
+        }
+    }
+
+    /// Never applied automatically. A shipped default that turns out to be
+    /// wrong is our bug, but the list it lives in is the user's setting — the
+    /// fix is offered, not performed.
+    static func pendingUpdate(current: [String], dismissed: [String]) -> PendingUpdate {
+        let dismissedSet = Set(dismissed.map { $0.lowercased() })
+        let corrections = staleCorrections(for: current)
+            .filter { !dismissedSet.contains($0.new) }
+            .map(\.old)
+        let additions = recommendedAdditions(for: current)
+            .filter { !dismissedSet.contains($0) }
+        return PendingUpdate(corrections: corrections, additions: additions)
+    }
+
+    /// Apply an update to a list: dead ids are replaced in place (keeping their
+    /// position), new ids are appended. Anything the user added themselves is
+    /// untouched.
+    static func applying(_ update: PendingUpdate, to current: [String]) -> [String] {
+        let corrections = Set(update.corrections.map { $0.lowercased() })
+        var result = current.map { id -> String in
+            guard corrections.contains(id.lowercased()),
+                  let replacement = staleReplacements[id.lowercased()] else { return id }
+            return replacement
+        }
+        var present = Set(result.map { $0.lowercased() })
+        for id in update.additions where present.insert(id.lowercased()).inserted {
+            result.append(id)
+        }
+        return result
+    }
 }

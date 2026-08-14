@@ -102,6 +102,7 @@ struct HistoryCaptureSettingsView: View {
                 // target, so the VStack exists to give .onDrop a single frame
                 // covering both the chips and the Add button.
                 VStack(alignment: .leading, spacing: 8) {
+                    exclusionUpdateNotice
                     excludedAppsTags
                     Button(action: { showingAppPicker = true }, label: {
                         Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle")
@@ -264,6 +265,75 @@ struct HistoryCaptureSettingsView: View {
         let dismiss = DispatchWorkItem { withAnimation { dropHint = nil } }
         dropHintDismiss = dismiss
         DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: dismiss)
+    }
+
+    // MARK: - Exclusion List Update Notice (ID-EXCLUDE-0002)
+
+    /// Offers the corrected/expanded curated list to an existing install.
+    ///
+    /// Deliberately a prompt and not a migration. The list is a user setting;
+    /// rewriting it from an app update — even to fix a default we shipped
+    /// wrong — is not ours to do silently. So the user is told and decides.
+    @ViewBuilder
+    private var exclusionUpdateNotice: some View {
+        let update = KnownExcludedApps.pendingUpdate(
+            current: currentExcludedIds,
+            dismissed: store.excludedUpdateDismissedIds
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+        )
+        if !update.isEmpty {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: sz(11)))
+                    .foregroundColor(.accentColor)
+                Text(L10n.settingsExcludedUpdateNotice)
+                    .font(.system(size: sz(11)))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Button(L10n.settingsExcludedUpdateApply) {
+                    let applied = KnownExcludedApps.applying(update, to: currentExcludedIds)
+                    store.excludedBundleIdsString = applied.joined(separator: ",")
+                }
+                .font(.system(size: sz(11)))
+                Button(L10n.settingsExcludedUpdateDismiss) {
+                    dismissExclusionUpdate(update)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: sz(11)))
+                .foregroundColor(.secondary)
+            }
+            .padding(8)
+            .background(Color.accentColor.opacity(0.08))
+            .cornerRadius(6)
+            // Names the notice can't fit, so "what exactly changes?" is
+            // answerable before committing to it.
+            .help(update.introducedIds
+                .map { KnownExcludedApps.displayName(for: $0) ?? $0 }
+                .joined(separator: ", "))
+        }
+    }
+
+    private var currentExcludedIds: [String] {
+        store.excludedBundleIdsString
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Record exactly which ids were declined, so this dismissal doesn't
+    /// suppress a future release's additions.
+    private func dismissExclusionUpdate(_ update: KnownExcludedApps.PendingUpdate) {
+        let existing = store.excludedUpdateDismissedIds
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var seen = Set(existing.map { $0.lowercased() })
+        var merged = existing
+        for id in update.introducedIds where seen.insert(id.lowercased()).inserted {
+            merged.append(id)
+        }
+        store.excludedUpdateDismissedIds = merged.joined(separator: ",")
     }
 
     // MARK: - Excluded Apps Chips

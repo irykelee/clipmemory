@@ -375,6 +375,10 @@ struct L10n {
     static var settingsExcludedDropNotApp: String { string("settings.excluded.drop.notApp") }
     static var settingsExcludedDropUnreadable: String { string("settings.excluded.drop.unreadable") }
     static var settingsExcludedDropSelf: String { string("settings.excluded.drop.self") }
+    // ID-EXCLUDE-0002 (2026-08-14): opt-in exclusion-list update notice.
+    static var settingsExcludedUpdateNotice: String { string("settings.excluded.update.notice") }
+    static var settingsExcludedUpdateApply: String { string("settings.excluded.update.apply") }
+    static var settingsExcludedUpdateDismiss: String { string("settings.excluded.update.dismiss") }
     static var settingsBackupFooter: String { string("settings.backup.footer") }
     static var settingsUpdateSourceFooter: String { string("settings.updateSource.footer") }
 
