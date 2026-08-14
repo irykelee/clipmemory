@@ -1462,9 +1462,15 @@ final class ClipboardStore: ObservableObject {
         var skipped = 0
         // Mutable sets — entries are added as items are imported so duplicates
         // within the package itself (or between active and trash lists) are
-        // also caught, not just collisions with pre-existing content (M3 fix).
+        // also caught, not just collisions with pre-existing content.
+        //
+        // M-3 (2026-08-08 audit, ID-STORE-0012): id dedup MUST include the
+        // trash so we don't end up with the same item in both lists. Hash
+        // dedup MUST NOT include the trash — a backup item that collides with
+        // a trashed hash is a legitimate restore target, otherwise the entry
+        // is silently lost when the trash retention window expires.
         var existingIds = Set(items.map { $0.id } + trashedItems.map { $0.id })
-        var existingHashes = Set(items.compactMap { $0.contentHash } + trashedItems.compactMap { $0.contentHash })
+        var existingHashes = Set(items.compactMap { $0.contentHash })
 
         for item in newItems {
             let hashDuplicate = item.contentHash != nil && existingHashes.contains(item.contentHash!)

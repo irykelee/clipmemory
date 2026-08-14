@@ -966,4 +966,114 @@ import CryptoKit
         XCTAssertGreaterThanOrEqual(store.trashedItems.count, 1,
                                     "non-pinned overflow items should still land in trash")
     }
+
+    // MARK: - M-3 (2026-08-08 audit): trash hash must NOT shield a backup's
+    // matching-hash active item from being restored.
+
+    /// M-3 fix: when a backup contains an item whose contentHash collides
+    /// with one currently sitting in the recycle bin, the backup item must
+    /// still be restored to the active list. Pre-fix, `existingHashes` was
+    /// populated from `trashedItems` too, so any matching-hash entry was
+    /// silently skipped — and if it later fell out of the trash via the
+    /// retention window, the restore was effectively irreversible data loss.
+    func testImportRestoresItemWhenTrashHasSameContentHash() throws {
+        // Seed the recycle bin with one item whose hash will collide with the
+        // backup's incoming item. The active list is empty.
+        let encryptedTrash = try XCTUnwrap(localCrypto.encrypt("will-be-replaced"))
+        let hash = try XCTUnwrap(localCrypto.hmacHex(for: "will-be-replaced"))
+        let trashedID = UUID()
+        store.trashedItems.append(ClipboardItem(
+            id: trashedID,
+            content: encryptedTrash,
+            type: .text,
+            isEncrypted: true,
+            contentHash: hash
+        ))
+        XCTAssertEqual(store.trashedItems.count, 1)
+        XCTAssertEqual(store.items.count, 0)
+
+        // Import a fresh item carrying the SAME contentHash but a different id.
+        let encryptedImport = try XCTUnwrap(localCrypto.encrypt("will-be-replaced"))
+        let newID = UUID()
+        let incoming = [ClipboardItem(
+            id: newID,
+            content: encryptedImport,
+            type: .text,
+            isEncrypted: true,
+            contentHash: hash
+        )]
+        let (imported, skipped) = store.importBackupItems(incoming, trashedItems: [])
+
+        XCTAssertEqual(imported, 1,
+                       "M-3 fix: trash hash must not shield incoming backup item with matching hash")
+        XCTAssertEqual(skipped, 0)
+        XCTAssertTrue(store.items.contains { $0.id == newID },
+                      "backup item must land in active list, not be silently skipped")
+    }
+
+    /// M-3 regression guard: id-level dedup must still treat a trash id as
+    /// authoritative. If the backup re-imports an id currently sitting in the
+    /// recycle bin, the id collision wins (skip) so we don't end up with the
+    /// same item in both lists.
+    func testImportSkipsItemWhoseIDMatchesATrashedEntry() throws {
+        let encrypted = try XCTUnwrap(localCrypto.encrypt("id-collision"))
+        let hash = try XCTUnwrap(localCrypto.hmacHex(for: "id-collision"))
+        let sharedID = UUID()
+        store.trashedItems.append(ClipboardItem(
+            id: sharedID,
+            content: encrypted,
+            type: .text,
+            isEncrypted: true,
+            contentHash: hash
+        ))
+        XCTAssertEqual(store.trashedItems.count, 1)
+
+        let incoming = [ClipboardItem(
+            id: sharedID,
+            content: encrypted,
+            type: .text,
+            isEncrypted: true,
+            contentHash: hash
+        )]
+        let (imported, skipped) = store.importBackupItems(incoming, trashedItems: [])
+
+        XCTAssertEqual(imported, 0)
+        XCTAssertEqual(skipped, 1, "id-level collision with trash must still skip")
+        XCTAssertEqual(store.items.count, 0, "no duplicate active+trash for same id")
+    }
+
+    /// Adjacent invariant: the backup package itself may carry a trashed item
+    /// whose hash collides with an active item in the same package. Importing
+    /// the active item first should NOT prevent the trash entry from landing
+    /// (and vice versa, the trash import order doesn't shield the active).
+    /// This is a regression guard for the existing two-pass design, not an
+    /// M-3 test.
+    func testImportHandlesBackupPackageWithCollidingTrashHash() throws {
+        let hash = try XCTUnwrap(localCrypto.hmacHex(for: "shared-content"))
+        let encrypted = try XCTUnwrap(localCrypto.encrypt("shared-content"))
+
+        // Backup package carries: 1 active item, 1 trashed item, same hash.
+        let activeID = UUID()
+        let trashID = UUID()
+        let newActive = ClipboardItem(
+            id: activeID,
+            content: encrypted,
+            type: .text,
+            isEncrypted: true,
+            contentHash: hash
+        )
+        let backupTrash = ClipboardItem(
+            id: trashID,
+            content: encrypted,
+            type: .text,
+            isEncrypted: true,
+            contentHash: hash
+        )
+        let (imported, skipped) = store.importBackupItems([newActive], trashedItems: [backupTrash])
+
+        XCTAssertEqual(imported, 1,
+                       "M-3 fix: backup's own active item must not be skipped by its own trash hash")
+        XCTAssertEqual(skipped, 0)
+        XCTAssertTrue(store.items.contains { $0.id == activeID })
+    }
 }
