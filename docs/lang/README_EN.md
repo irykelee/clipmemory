@@ -468,7 +468,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 - Language (7 languages)
 - Global hotkey recording
 - Appearance (Light / Dark / Follow system)
-- Excluded apps (custom apps to skip monitoring)
+- Excluded apps (apps to skip monitoring — drag an app onto the list or pick from the browser; common password managers are pre-seeded)
 - Rich text capture toggle
 - Font size (Small / Medium / Large)
 - Launch at login

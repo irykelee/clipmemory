@@ -468,7 +468,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 - Cambio de idioma (7 idiomas)
 - Grabación de atajo global
 - Apariencia (Claro / Oscuro / Seguir sistema)
-- Apps excluidas (apps personalizadas para excluir del monitoreo)
+- Apps excluidas (apps que se omiten del monitoreo: arrastra una app a la lista o elígela en el selector; los gestores de contraseñas habituales vienen preconfigurados)
 - Alternancia de captura Rich Text
 - Tamaño de fuente (Pequeño / Mediano / Grande)
 - Iniciar al arrancar

@@ -468,7 +468,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 - Troca de idioma (7 idiomas)
 - Gravação de atalho global
 - Aparência (Claro / Escuro / Seguir sistema)
-- Apps excluídas (apps personalizadas para excluir do monitoramento)
+- Apps excluídas (apps que ficam fora do monitoramento: arraste uma app para a lista ou escolha no seletor; os gestores de palavras-passe mais comuns já vêm configurados)
 - Alternância de captura Rich Text
 - Tamanho da fonte (Pequeno / Médio / Grande)
 - Iniciar ao fazer login
