@@ -10,6 +10,7 @@
 		015F6AFCB7E44CD524CD45FB /* ImageStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB3E3AEDB1137BDD2F31FA85 /* ImageStorageTests.swift */; };
 		01C3FB73A2872934763AA01B /* KnownExcludedApps.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8E6FA99F0AFF7ED9984A514 /* KnownExcludedApps.swift */; };
 		03BA41D395F89EC1F7622A1B /* ClipboardStoreCryptoKeyNotificationThreadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0909DC8593400A7B0EF771 /* ClipboardStoreCryptoKeyNotificationThreadTests.swift */; };
+		03DB60FEEA95FE468A93E7AA /* ExcludedAppDropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68325F7D3E77C5501E8EA5F0 /* ExcludedAppDropTests.swift */; };
 		0418C3486D2FBD3908758E5C /* Tag.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC84EAD674ADB8FC9DF0F7BC /* Tag.swift */; };
 		04E3A6E2C32F6378821F8690 /* ContentViewTrimAlertTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CCBBEFD86C39FFA6222D0C9 /* ContentViewTrimAlertTests.swift */; };
 		055A727AD6959252460C8B34 /* TagChipStackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09A31D744B299F2270708CBD /* TagChipStackTests.swift */; };
@@ -89,6 +90,7 @@
 		6B95B60ED409D91E95058E03 /* ClearItemsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237CA88DED2CB364143484CA /* ClearItemsTests.swift */; };
 		6F0487DF4038DF4E549256DE /* CryptoServiceDecryptReasonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270894846B9A0CF787544456 /* CryptoServiceDecryptReasonTests.swift */; };
 		711427879C941E2EEFA71EC5 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DAFDFD190E318162FEC7CC /* SidebarView.swift */; };
+		72BA99EB380646A62D666362 /* ExcludedAppChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DFB75BD2CDA2CC7398F96D4 /* ExcludedAppChip.swift */; };
 		742D86BF198E8C04C168CB9B /* BackupPackageValidateExternalPackageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6B34DE652477552079142D3 /* BackupPackageValidateExternalPackageTests.swift */; };
 		75B8EB8E40E9E24D5A74C858 /* SidebarTagFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C34BF23E51FBB908BA8B075 /* SidebarTagFilter.swift */; };
 		77C11312B197598CD4632E49 /* DecryptionFailedLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DF9D5EC30A4297B53974BF /* DecryptionFailedLoopTests.swift */; };
@@ -260,6 +262,7 @@
 		4C63DA186B15CCC8937235FB /* ImagePreviewPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewPanel.swift; sourceTree = "<group>"; };
 		4D555CA30882227C142B6A55 /* CryptoKeyPreparationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoKeyPreparationTests.swift; sourceTree = "<group>"; };
 		4DEE0209000FB7DCDF7C7D7C /* WindowManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManagerTests.swift; sourceTree = "<group>"; };
+		4DFB75BD2CDA2CC7398F96D4 /* ExcludedAppChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExcludedAppChip.swift; sourceTree = "<group>"; };
 		4EE582F61471AE5A6BCE6560 /* SettingsRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRootView.swift; sourceTree = "<group>"; };
 		4F1E8B8BEAEFDB81F652B596 /* ItemListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemListView.swift; sourceTree = "<group>"; };
 		4F6F57974E3B6AFF40A7E7C0 /* CryptoKeyPreparedNotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoKeyPreparedNotificationTests.swift; sourceTree = "<group>"; };
@@ -285,6 +288,7 @@
 		65A0770E96571F6A91A6BDA0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		67B0F06D9FC3DEEF030857E5 /* NewTagLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewTagLogicTests.swift; sourceTree = "<group>"; };
 		67D7342759CC58EA571EF89D /* DiagnosticsBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsBanner.swift; sourceTree = "<group>"; };
+		68325F7D3E77C5501E8EA5F0 /* ExcludedAppDropTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExcludedAppDropTests.swift; sourceTree = "<group>"; };
 		695C5297C0A95951EA8D2A39 /* SelectCheckbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectCheckbox.swift; sourceTree = "<group>"; };
 		6A5663AC4E8DBEB2E909A774 /* Audit20260720RegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audit20260720RegressionTests.swift; sourceTree = "<group>"; };
 		6AF866368EC7C8C9C63F8E6B /* ClipboardStore+Diagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ClipboardStore+Diagnostics.swift"; sourceTree = "<group>"; };
@@ -512,6 +516,7 @@
 				B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */,
 				C4DF9D5EC30A4297B53974BF /* DecryptionFailedLoopTests.swift */,
 				1C6F13182E51140986AB1201 /* EncryptionFailedAlertThrottlerTests.swift */,
+				68325F7D3E77C5501E8EA5F0 /* ExcludedAppDropTests.swift */,
 				3C1913FC2DBD92DCBE886654 /* FeedProbeSizeCapTests.swift */,
 				2D20C3978DF020DCF0F03888 /* FuzzySearchMatcherTests.swift */,
 				735D2A6CED8A32FF5FA2D4F2 /* HangDetectorCaptureGatingTests.swift */,
@@ -595,6 +600,7 @@
 				82E1F13FC9F44D0F33F760C5 /* ConditionalClearSheet.swift */,
 				12B9F675BF991916E52B8FE2 /* DateFilterButton.swift */,
 				67D7342759CC58EA571EF89D /* DiagnosticsBanner.swift */,
+				4DFB75BD2CDA2CC7398F96D4 /* ExcludedAppChip.swift */,
 				BDF83CE3799A1C6382C0CF3D /* FlowLayout.swift */,
 				4C63DA186B15CCC8937235FB /* ImagePreviewPanel.swift */,
 				39AEF14CE6FF2688FFE2407F /* LogoView.swift */,
@@ -857,6 +863,7 @@
 				17DD4FBBF0E756DA8D26C43C /* CryptoServiceTests.swift in Sources */,
 				77C11312B197598CD4632E49 /* DecryptionFailedLoopTests.swift in Sources */,
 				CCCC9FFCF1EB417F74198F26 /* EncryptionFailedAlertThrottlerTests.swift in Sources */,
+				03DB60FEEA95FE468A93E7AA /* ExcludedAppDropTests.swift in Sources */,
 				C0EA88C949796FA870B5859B /* FeedProbeSizeCapTests.swift in Sources */,
 				993F306F7EB5704CD7F4AB07 /* FuzzySearchMatcherTests.swift in Sources */,
 				38F40F34D811AA8D2CC1709A /* HangDetectorCaptureGatingTests.swift in Sources */,
@@ -940,6 +947,7 @@
 				BB9FF1079BD872DBDAC1B04E /* DateHelpers.swift in Sources */,
 				F0564A730DDCDEC5CFF13272 /* DiagnosticsBanner.swift in Sources */,
 				80CA63DE26FA32AD4DD8DB0B /* EncryptionFailedAlertThrottler.swift in Sources */,
+				72BA99EB380646A62D666362 /* ExcludedAppChip.swift in Sources */,
 				9A73423E412F9A346C0D59BE /* FeedProbeEngine.swift in Sources */,
 				4D21B894BBC408664F1CF2D4 /* FlowLayout.swift in Sources */,
 				C47E38577908698BFCED810A /* FontScaling.swift in Sources */,
