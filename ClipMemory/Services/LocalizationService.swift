@@ -370,6 +370,11 @@ struct L10n {
     static var settingsHotkeyFooter: String { string("settings.hotkey.footer") }
     static var settingsHistoryFooter: String { string("settings.history.footer") }
     static var settingsExcludedAppsFooter: String { string("settings.excluded.apps.footer") }
+    // ID-VIEW-0039 (2026-08-14): drag-and-drop rejection feedback. Deliberately
+    // count-free so no plural forms are needed across the 7 languages.
+    static var settingsExcludedDropNotApp: String { string("settings.excluded.drop.notApp") }
+    static var settingsExcludedDropUnreadable: String { string("settings.excluded.drop.unreadable") }
+    static var settingsExcludedDropSelf: String { string("settings.excluded.drop.self") }
     static var settingsBackupFooter: String { string("settings.backup.footer") }
     static var settingsUpdateSourceFooter: String { string("settings.updateSource.footer") }
 
