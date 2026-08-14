@@ -285,6 +285,7 @@
 "settings.excluded.update.notice" = "제외 목록 업데이트가 있습니다: 작동하지 않던 규칙을 수정하고 주요 암호 관리자를 추가합니다.";
 "settings.excluded.update.apply" = "업데이트";
 "settings.excluded.update.dismiss" = "무시";
+"settings.excluded.apps.empty" = "제외된 앱이 없습니다";
 "settings.backup.footer" = "자동 백업은 앱 시작 시 확인되며, 마지막 성공 이후 24 시간이 지났을 때만 실행됩니다. 로컬 백업은 이 Mac 의 기기 키로 암호화됩니다. “백업 내보내기”는 비밀번호로 보호되는 .clipmemory 파일을 생성하며, 복원할 때 같은 비밀번호가 필요합니다.";
 "settings.updateSource.footer" = "\"자동\"은 GitHub 업데이트 피드를 우선 사용하며, 기본 피드에 접속할 수 없을 때 jsDelivr 미러(appcast만, 설치 패키지는 여전히 GitHub에서 다운로드) 사용을 제안할 수 있습니다. Gitee 미러는 appcast와 설치 패키지를 모두 호스팅하므로 중국 본토에서 VPN 없이 업데이트 확인 및 다운로드 가능. 수동 선택은 주로 네트워크 문제 해결용입니다.";
 "settings.update.statusLine" = "현재 v%1$@ · 최신 v%2$@ · %3$@";
