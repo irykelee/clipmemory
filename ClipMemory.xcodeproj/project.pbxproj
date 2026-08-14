@@ -41,6 +41,7 @@
 		31703362387388224F14C74C /* TipsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43B0B34746697091DC83794 /* TipsView.swift */; };
 		31D986129C9F15C065BEF82B /* LegacyImageMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE0A37C5B380B1D3129ECBA /* LegacyImageMigrationTests.swift */; };
 		327D4E28765DDBA110807CBC /* ClipboardMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 162510951570AB9FC4207B0F /* ClipboardMonitorTests.swift */; };
+		35A5BE8D445F109A2D924033 /* RestoreWizardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2826F0BB133B0AC96DB2AB87 /* RestoreWizardViewModel.swift */; };
 		38A15F5CDD3D5D10782D3B85 /* TagChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3E34CEE9BF8F658996168D5 /* TagChip.swift */; };
 		38F40F34D811AA8D2CC1709A /* HangDetectorCaptureGatingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735D2A6CED8A32FF5FA2D4F2 /* HangDetectorCaptureGatingTests.swift */; };
 		3AF90E51CED5B7C8F630019D /* Localizable.stringsdict in Resources */ = {isa = PBXBuildFile; fileRef = F3344C74F51F4D2488984EE7 /* Localizable.stringsdict */; };
@@ -172,6 +173,7 @@
 		EDD4772BEACF49926B32ECA9 /* ConcurrencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */; };
 		F0564A730DDCDEC5CFF13272 /* DiagnosticsBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67D7342759CC58EA571EF89D /* DiagnosticsBanner.swift */; };
 		F07D572ED1239E93F9399EBB /* BackupPackageSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE40F85AB73ADECAB89A3D0C /* BackupPackageSecurityTests.swift */; };
+		F1DB28B410E5D9B4F69A021B /* RestoreWizardViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A1735D775C6172C00D96FA5 /* RestoreWizardViewModelTests.swift */; };
 		F3AF850068F5AB107D392944 /* ClipboardStoreMainActorPhase3Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C023CD1C3CEBD75D29150DA /* ClipboardStoreMainActorPhase3Tests.swift */; };
 		F491AC405AF66962EA59160D /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91D0097CC42906B56F2E5109 /* GeneralSettingsView.swift */; };
 		F51C59FB1F3F9B8ED6078068 /* ItemListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1E8B8BEAEFDB81F652B596 /* ItemListView.swift */; };
@@ -223,6 +225,7 @@
 		1FF6C216A30DEB3F4C1D7E37 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = pt; path = pt.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
 		237CA88DED2CB364143484CA /* ClearItemsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearItemsTests.swift; sourceTree = "<group>"; };
 		270894846B9A0CF787544456 /* CryptoServiceDecryptReasonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoServiceDecryptReasonTests.swift; sourceTree = "<group>"; };
+		2826F0BB133B0AC96DB2AB87 /* RestoreWizardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreWizardViewModel.swift; sourceTree = "<group>"; };
 		28996AE01C5C1C22507EFA6D /* EncryptionFailedAlertThrottler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptionFailedAlertThrottler.swift; sourceTree = "<group>"; };
 		2914AA3EEABA4BF9DF482852 /* QuickBarOCRTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickBarOCRTests.swift; sourceTree = "<group>"; };
 		2A0909DC8593400A7B0EF771 /* ClipboardStoreCryptoKeyNotificationThreadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStoreCryptoKeyNotificationThreadTests.swift; sourceTree = "<group>"; };
@@ -248,6 +251,7 @@
 		45B25AAEAD7B96A95D89746C /* TagSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagSuggestion.swift; sourceTree = "<group>"; };
 		464B18CF83545FA192E6BABB /* TrashStoreMainActorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashStoreMainActorTests.swift; sourceTree = "<group>"; };
 		495C5B38EB5958470DBF2E7C /* TagSuggestionEmailBoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagSuggestionEmailBoundaryTests.swift; sourceTree = "<group>"; };
+		4A1735D775C6172C00D96FA5 /* RestoreWizardViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreWizardViewModelTests.swift; sourceTree = "<group>"; };
 		4C63DA186B15CCC8937235FB /* ImagePreviewPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewPanel.swift; sourceTree = "<group>"; };
 		4D555CA30882227C142B6A55 /* CryptoKeyPreparationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoKeyPreparationTests.swift; sourceTree = "<group>"; };
 		4DEE0209000FB7DCDF7C7D7C /* WindowManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManagerTests.swift; sourceTree = "<group>"; };
@@ -435,6 +439,7 @@
 			isa = PBXGroup;
 			children = (
 				C4B9E4A0CBFAE2A5B8C248E7 /* RestoreWizardTypes.swift */,
+				2826F0BB133B0AC96DB2AB87 /* RestoreWizardViewModel.swift */,
 			);
 			path = RestoreWizard;
 			sourceTree = "<group>";
@@ -520,6 +525,7 @@
 				2914AA3EEABA4BF9DF482852 /* QuickBarOCRTests.swift */,
 				C423473D7E4BD0CAE37EB7D3 /* QuickBarViewTests.swift */,
 				6194DA49D7A0164283389CEF /* ReleaseReadinessTests.swift */,
+				4A1735D775C6172C00D96FA5 /* RestoreWizardViewModelTests.swift */,
 				6C9E730F43E2C2EFDCABE2BC /* SensitiveDetectorTests.swift */,
 				5C48FA49F5D4AEB757E540AF /* SettingsTabSnapshotTests.swift */,
 				F0737D413E239E7267B3B46B /* SettingsWindowTests.swift */,
@@ -862,6 +868,7 @@
 				868914B1AF4B89BD3A4881EB /* QuickBarOCRTests.swift in Sources */,
 				D0C9F9F34B9E362919FC02D0 /* QuickBarViewTests.swift in Sources */,
 				A1B5889D4E6AD5DC1F5BDFE4 /* ReleaseReadinessTests.swift in Sources */,
+				F1DB28B410E5D9B4F69A021B /* RestoreWizardViewModelTests.swift in Sources */,
 				4E3B3A3265DFB035AF5126DA /* SensitiveDetectorTests.swift in Sources */,
 				5D1F10A46133DFBD7C032B1C /* SettingsTabSnapshotTests.swift in Sources */,
 				DFCF4552D5219344183442AA /* SettingsWindowTests.swift in Sources */,
@@ -943,6 +950,7 @@
 				CA65D74CB492C0091B80457F /* QuickBarView.swift in Sources */,
 				1F9610DD03CEC8EFF186F7D2 /* RestoreMode.swift in Sources */,
 				0ACA3876473B69F6DB1C0E4E /* RestoreWizardTypes.swift in Sources */,
+				35A5BE8D445F109A2D924033 /* RestoreWizardViewModel.swift in Sources */,
 				FFAC7E103564C9614B82F89B /* RichTextParser.swift in Sources */,
 				3CECE47C3C9D938FFAD546DE /* SaveRetryState.swift in Sources */,
 				52059DDAB707C9190DC2C455 /* SelectCheckbox.swift in Sources */,
