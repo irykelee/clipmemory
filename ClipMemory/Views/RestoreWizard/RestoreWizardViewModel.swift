@@ -15,7 +15,6 @@ final class RestoreWizardViewModel: ObservableObject {
     @Published var validation: RestoreValidation = .pending
     @Published var progress: RestoreProgress = .idle
     @Published var passphrase: String = ""
-    @Published var lastError: BackupPackageError?
     @Published var result: BackupImportResult?
 
     /// Cancellation token for in-flight loads.
@@ -160,7 +159,6 @@ final class RestoreWizardViewModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     self?.progress = .failed(.snapshotFailed("Snapshot failed: \(error.localizedDescription)"))
-                    self?.lastError = .snapshotFailed(error.localizedDescription)
                 }
                 return
             }

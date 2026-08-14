@@ -481,8 +481,7 @@ final class BackupService {
     /// non-isolated (`BackupService` is `final class` with no
     /// `@MainActor`). Callers MUST dispatch to a background queue —
     /// on `@MainActor` the recursive directory walk + JSON reads stall
-    /// the UI. (Same pattern as `BackupSettingsView.importBackup():164`
-    /// which dispatches to `.userInitiated`.)
+    /// the UI.
     func listAvailableBackups() -> [LocalBackup] {
         let fm = fileManager
         let entries: [URL]

@@ -52,7 +52,7 @@ enum BackupPackageError: Error, Equatable {
 extension BackupPackageError: LocalizedError {
     var errorDescription: String? {
         switch self {
-        case .wrongPassword:                return L10n.restoreErrorKeychain  // no .wrongPassword key; use keychain fallback until key added
+        case .wrongPassword:                return L10n.restoreSourceExternalPasswordWrong
         case .invalidPackage:               return L10n.restoreErrorCorrupted
         case .unsupportedFormatVersion:     return L10n.restoreErrorUnsupportedVersion
         case .missingKeyMaterial:           return L10n.restoreErrorKeychain
@@ -62,7 +62,7 @@ extension BackupPackageError: LocalizedError {
         case .unsupportedKeyDerivationVersion(let v):
             return L10n.restoreErrorUnsupportedKDF + " (v\(v))"
         case .corruptedData:               return L10n.restoreErrorCorrupted
-        case .snapshotFailed(let msg):      return msg  // already localized
+        case .snapshotFailed(let msg):      return L10n.restoreErrorSnapshotFailed + " (" + msg + ")"
         }
     }
 }
