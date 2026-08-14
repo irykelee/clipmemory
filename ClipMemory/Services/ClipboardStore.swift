@@ -458,7 +458,12 @@ final class ClipboardStore: ObservableObject {
             _sensitiveClearHours = 24
         }
 
-        excludedBundleIdsString = defaults.string(forKey: excludedBundleIdsKey) ?? "com.1password.1password,com.agilebits.onepassword7,com.bitwarden.desktop,com.keepassx.keeweb"
+        // ID-EXCLUDE-0001 (2026-08-14): default list moved to
+        // KnownExcludedApps (verified ids + friendly names + the opt-in
+        // correction table share one source). Fresh installs only — an
+        // existing stored value is the user's setting and is never rewritten.
+        excludedBundleIdsString = defaults.string(forKey: excludedBundleIdsKey)
+            ?? KnownExcludedApps.defaultBundleIds.joined(separator: ",")
 
         // trashRetentionDays init moved to TrashStore (HIGH-1, 2026-07-26)
 
