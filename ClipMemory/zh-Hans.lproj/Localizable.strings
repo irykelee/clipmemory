@@ -283,6 +283,7 @@
 "settings.excluded.update.notice" = "排除列表有可用更新：修正失效的规则，并补充常见密码管理器。";
 "settings.excluded.update.apply" = "更新";
 "settings.excluded.update.dismiss" = "忽略";
+"settings.excluded.apps.empty" = "尚未排除任何应用";
 "settings.backup.footer" = "应用启动时会检查自动备份；距上次成功备份满 24 小时才执行。本地备份使用此 Mac 的设备密钥加密；“导出备份”会创建密码保护的 .clipmemory 文件，导入时需要该密码。";
 "settings.updateSource.footer" = "\"自动\"优先使用 GitHub 更新源；主源不可达时，应用可提示改用 jsDelivr 镜像（只镜像 appcast，安装包仍从 GitHub 下载）。Gitee 镜像同时托管 appcast 和安装包，国内用户无需翻墙即可检查和下载更新。手动选择主要用于网络排障。";
 "settings.update.statusLine" = "当前 v%1$@ · 最新 v%2$@ · %3$@";

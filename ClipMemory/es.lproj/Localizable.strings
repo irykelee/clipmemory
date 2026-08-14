@@ -289,6 +289,7 @@
 "settings.excluded.update.notice" = "Hay una actualización para tu lista de exclusiones: corrige una regla que nunca funcionó y añade gestores de contraseñas habituales.";
 "settings.excluded.update.apply" = "Actualizar";
 "settings.excluded.update.dismiss" = "Ignorar";
+"settings.excluded.apps.empty" = "Aún no hay apps excluidas";
 "settings.backup.footer" = "La copia de seguridad automática se comprueba al iniciar la app y se ejecuta solo si han pasado al menos 24 horas desde la última copia correcta. Las copias locales usan la clave de dispositivo de este Mac; Exportar copia genera un archivo .clipmemory protegido con contraseña que requiere la misma contraseña para importarse.";
 "settings.updateSource.footer" = "Automático prefiere el feed de GitHub y puede ofrecer el espejo de jsDelivr (solo appcast; las descargas siguen viniendo de GitHub) cuando el feed principal no está disponible. El espejo de Gitee aloja tanto el appcast como el paquete de instalación, por lo que funciona en China continental sin VPN. La selección manual es principalmente para solución de problemas de red.";
 "settings.update.statusLine" = "Actual v%1$@ · Última v%2$@ · %3$@";

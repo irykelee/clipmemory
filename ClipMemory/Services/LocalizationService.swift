@@ -379,6 +379,7 @@ struct L10n {
     static var settingsExcludedUpdateNotice: String { string("settings.excluded.update.notice") }
     static var settingsExcludedUpdateApply: String { string("settings.excluded.update.apply") }
     static var settingsExcludedUpdateDismiss: String { string("settings.excluded.update.dismiss") }
+    static var settingsExcludedAppsEmpty: String { string("settings.excluded.apps.empty") }
     static var settingsBackupFooter: String { string("settings.backup.footer") }
     static var settingsUpdateSourceFooter: String { string("settings.updateSource.footer") }
 

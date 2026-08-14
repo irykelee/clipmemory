@@ -103,7 +103,7 @@ struct HistoryCaptureSettingsView: View {
                 // covering both the chips and the Add button.
                 VStack(alignment: .leading, spacing: 8) {
                     exclusionUpdateNotice
-                    excludedAppsTags
+                    excludedAppsList
                     Button(action: { showingAppPicker = true }, label: {
                         Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle")
                     }).buttonStyle(.link)
@@ -336,29 +336,44 @@ struct HistoryCaptureSettingsView: View {
         store.excludedUpdateDismissedIds = merged.joined(separator: ",")
     }
 
-    // MARK: - Excluded Apps Chips
+    // MARK: - Excluded Apps List
 
-    /// Local copy of the chips view (see SettingsView's excludedAppsTags).
+    /// ID-VIEW-0041 (2026-08-14): a fixed-height scroller rather than wrapping
+    /// chips. The curated list alone is 14 entries, which wrapped to four rows
+    /// and pushed everything below it down; the section's height now stays put
+    /// no matter how many apps are excluded.
+    ///
     /// L-14 (2026-07-25 audit): @ViewBuilder instead of AnyView to preserve
     /// SwiftUI identity/diffing.
+    private static let visibleRowCount: CGFloat = 5
+
     @ViewBuilder
-    private var excludedAppsTags: some View {
-        if excludedApps.isEmpty {
-            EmptyView()
-        } else {
-            let excludedIds = store.excludedBundleIdsString
-                .split(separator: ",")
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-            FlowLayout(spacing: 6) {
-                ForEach(excludedApps, id: \.bundleId) { app in
-                    ExcludedAppChip(name: app.name, bundleId: app.bundleId) {
-                        let newIds = excludedIds.filter { $0 != app.bundleId }
-                        store.excludedBundleIdsString = newIds.joined(separator: ",")
+    private var excludedAppsList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if excludedApps.isEmpty {
+                    Text(L10n.settingsExcludedAppsEmpty)
+                        .font(.system(size: sz(11)))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 12)
+                } else {
+                    ForEach(excludedApps, id: \.bundleId) { app in
+                        ExcludedAppRow(name: app.name, bundleId: app.bundleId) {
+                            let newIds = currentExcludedIds.filter { $0 != app.bundleId }
+                            store.excludedBundleIdsString = newIds.joined(separator: ",")
+                        }
                     }
                 }
             }
         }
+        .frame(height: ExcludedAppRow.rowHeight() * Self.visibleRowCount)
+        .background(Color(nsColor: .textBackgroundColor))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+        .cornerRadius(6)
     }
 
     /// M-12 (2026-07-24 audit): rebuild the cached `excludedApps` array from

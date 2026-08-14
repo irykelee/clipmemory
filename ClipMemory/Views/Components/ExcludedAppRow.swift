@@ -1,16 +1,16 @@
 import SwiftUI
 import AppKit
 
-/// One chip in the settings "excluded apps" list: app icon + name + remove button.
+/// One row in the settings "excluded apps" list: app icon + name + remove button.
 ///
-/// Extracted from HistoryCaptureSettingsView so the icon can own the async
-/// lookup state (a `@State` per chip), matching AppPickerRow's pattern.
+/// ID-VIEW-0041 (2026-08-14): was a wrapping chip. With 14 curated exclusions
+/// the chips wrapped to four rows and grew with every app the user added, so
+/// the list moved into a fixed-height scroller and the chip became a row.
 ///
-/// The bundle id is deliberately not rendered. A dozen chips reading
-/// `com.agilebits.onepassword7` are unreadable and eat the settings pane; the
-/// id stays reachable as a tooltip, which is also what disambiguates two apps
-/// that share a display name.
-struct ExcludedAppChip: View {
+/// The bundle id is deliberately not rendered — a column of
+/// `com.agilebits.onepassword7` is unreadable. It stays reachable as a
+/// tooltip, which is also what disambiguates two apps sharing a display name.
+struct ExcludedAppRow: View {
     let name: String
     let bundleId: String
     let onRemove: () -> Void
@@ -18,35 +18,37 @@ struct ExcludedAppChip: View {
     // 2026-07-25: invalidation trigger only — see TagChip / ClipboardItemRow.
     @AppStorage("fontScale") private var fontScale: Double = 1.0
     @State private var resolvedIcon: NSImage?
+    @State private var isHovered = false
 
-    /// Chips wrap in a FlowLayout, so a long name must not push a chip past
-    /// the pane width. Middle truncation keeps both ends of a raw bundle id
-    /// legible for apps we have no curated name for.
-    private static let maxNameWidth: CGFloat = 140
+    /// Kept in sync with ExcludedAppsList.visibleRowCount, which multiplies it
+    /// to size the scroller.
+    static func rowHeight() -> CGFloat { sz(24) }
 
     var body: some View {
         let _ = fontScale
-        HStack(spacing: 4) {
+        HStack(spacing: 8) {
             icon
             Text(name)
                 .font(.system(size: sz(11)))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(maxWidth: Self.maxNameWidth, alignment: .leading)
-                .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 8)
             Button(action: onRemove, label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: sz(10)))
+                    .font(.system(size: sz(11)))
                     .foregroundColor(.secondary)
             })
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.appPickerAccessibilityRemove(name))
+            // Only on hover, so a long list isn't a wall of ✕ glyphs.
+            .opacity(isHovered ? 1 : 0.35)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(6)
-        // Restores the detail the chip no longer shows inline.
+        .frame(height: Self.rowHeight())
+        .background(isHovered ? Color.accentColor.opacity(0.08) : Color.clear)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        // Restores the detail the row no longer shows inline.
         .help(bundleId)
         .task(id: bundleId) {
             guard resolvedIcon == nil else { return }
