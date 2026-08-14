@@ -48,6 +48,12 @@
 
 ## 📋 更新日志
 
+### v2.9.0 (planned)
+
+- 新增「从自动备份还原」向导（ID-BACKUP-0002）：5 步可视化流程，含预览、安全快照、incomplete 提示、密码错误重试、磁盘空间错误处理；外部 `.clipmemory` 文件导入走同一向导
+- 新增 `BackupService.listAvailableBackups()` API + `BackupPackage.importFromLocalBackup()` 直读本地备份（无需密码）
+- 新增 36 个 L10n key（restore.*）× 7 语种
+
 ### v2.8.4 (2026-08-12) — 隐私清单 + 安全升级 + 潜在 bug 修复 + 防回归门
 
 - **🔒 Sparkle 升级 2.9.4 → 2.9.5 (ID-CI-0001)** — 升级含 symlink 安全修复 (delta patching 路径硬防 symbolic link attack)。Sparkle 自动升级通道默认开启，用户无感；修复防 delta patch 路径攻击向量。

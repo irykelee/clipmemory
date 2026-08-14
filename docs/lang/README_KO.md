@@ -48,6 +48,12 @@
 
 ## 📋 변경 로그
 
+### v2.9.0 (planned)
+
+- **신규 "백업에서 복원" 마법사 (ID-BACKUP-0002):** 미리보기, 안전 스냅샷, incomplete 경고, 비밀번호 재시도, 디스크 공간 오류 처리를 포함하는 5단계 시각적 흐름; 외부 `.clipmemory` 파일 가져오기도 동일한 마법사 사용
+- **신규 `BackupService.listAvailableBackups()` API + `BackupPackage.importFromLocalBackup()`** 로컬 백업 직접 읽기 (비밀번호 불필요)
+- **신규 36개의 L10n 키 (restore.*) × 7개 언어**
+
 ### v2.8.4 (2026-08-12) — 개인 정보 매니페스트 + 보안 업그레이드 + 잠재 버그 수정 + 회귀 게이트
 
 - **🔒 Sparkle 업그레이드 2.9.4 → 2.9.5 (ID-CI-0001)** — "Harden patching delta file against symbolic link at destination path" 보안 수정 포함. Sparkle 자동 업데이트 채널은 기본적으로 활성화되어 있어 사용자는 변경을 알아차리지 못함; 델타 패치 경로의 심볼릭 링크 공격 벡터 방지.

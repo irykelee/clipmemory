@@ -48,6 +48,12 @@
 
 ## 📋 Changelog
 
+### v2.9.0 (planned)
+
+- **New "Restore from Backup" wizard (ID-BACKUP-0002):** 5-step visual flow with preview, safety snapshot, incomplete warning, password-retry, and disk-space error handling; external `.clipmemory` file import uses the same wizard
+- **New `BackupService.listAvailableBackups()` API + `BackupPackage.importFromLocalBackup()`** for direct local backup reading (no password required)
+- **New 36 L10n keys (restore.*) × 7 languages**
+
 ### v2.8.4 (2026-08-12) — Privacy Manifest + Security Upgrade + Latent Bug Fixes + Regression Gate
 
 - **🔒 Sparkle upgrade 2.9.4 → 2.9.5 (ID-CI-0001)** — Includes the "Harden patching delta file against symbolic link at destination path" security fix. The Sparkle auto-update channel is enabled by default — users won't notice; the fix prevents the symbolic-link attack vector on delta patch paths.

@@ -48,6 +48,12 @@
 
 ## 📋 変更履歴
 
+### v2.9.0 (planned)
+
+- **新規「バックアップから復元」ウィザード（ID-BACKUP-0002）：** プレビュー、安全スナップショット、incomplete 警告、パスワード再試行、ディスク容量エラー処理を含む 5 ステップの視覚的フロー；外部 `.clipmemory` ファイルインポートも同じウィザードを使用
+- **新規 `BackupService.listAvailableBackups()` API + `BackupPackage.importFromLocalBackup()`** ローカルバックアップの直接読み取り（パスワード不要）
+- **新規 36 個の L10n キー（restore.*）× 7 言語**
+
 ### v2.8.4 (2026-08-12) — プライバシーマニフェスト + セキュリティアップグレード + 潜在的バグ修正 + リグレッションゲート
 
 - **🔒 Sparkle アップグレード 2.9.4 → 2.9.5 (ID-CI-0001)** — シンボリックリンクセキュリティ修正を含む ("Harden patching delta file against symbolic link at destination path")。Sparkle の自動更新チャンネルはデフォルトで有効 — ユーザーは変更に気付かない; シンボリックリンク攻撃ベクトルを防ぐ。
