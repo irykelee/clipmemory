@@ -144,22 +144,10 @@ struct HistoryCaptureSettingsView: View {
                 .filter { !$0.isEmpty }
             FlowLayout(spacing: 6) {
                 ForEach(excludedApps, id: \.bundleId) { app in
-                    HStack(spacing: 4) {
-                        Text(app.name).font(.system(size: sz(11)))
-                        Button(action: {
-                            let newIds = excludedIds.filter { $0 != app.bundleId }
-                            store.excludedBundleIdsString = newIds.joined(separator: ",")
-                        }, label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: sz(10)))
-                                .foregroundColor(.secondary)
-                        })
-                        .buttonStyle(.plain)
+                    ExcludedAppChip(name: app.name, bundleId: app.bundleId) {
+                        let newIds = excludedIds.filter { $0 != app.bundleId }
+                        store.excludedBundleIdsString = newIds.joined(separator: ",")
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .cornerRadius(6)
                 }
             }
         }
@@ -182,9 +170,17 @@ struct HistoryCaptureSettingsView: View {
             if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
                 return (url.deletingPathExtension().lastPathComponent, bundleId)
             }
-            // CLIP-4 (2026-07-24 review): an id that resolves nowhere (e.g.
-            // the app was uninstalled) must NOT be dropped — render the raw
-            // bundle id so it stays visible and removable.
+            // ID-VIEW-0040 (2026-08-14): an id that resolves nowhere is the
+            // COMMON case here, not the exception — the seeded password
+            // managers usually aren't installed. Prefer a curated name so the
+            // chip reads "1Password 7" rather than a bundle id.
+            if let curated = KnownExcludedApps.displayName(for: bundleId) {
+                return (curated, bundleId)
+            }
+            // CLIP-4 (2026-07-24 review): with no curated name either, show the
+            // raw bundle id — an unresolvable id must NOT be dropped, it stays
+            // visible and removable. ExcludedAppChip truncates it and exposes
+            // the full value as a tooltip.
             return (bundleId, bundleId)
         }
     }
