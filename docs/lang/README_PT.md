@@ -1,4 +1,4 @@
-# ClipMemory v2.8.4
+# ClipMemory v2.9.0
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.8.4
+# ClipMemory v2.9.0
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
