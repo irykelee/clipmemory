@@ -47,7 +47,9 @@ struct BackupSettingsView: View {
                     NSWorkspace.shared.open(backupService.backupsDirectoryURL)
                 }.buttonStyle(.link)
                 Button(L10n.settingsBackupExport) { exportBackup() }.buttonStyle(.link)
-                Button(L10n.settingsBackupImport) { importBackup() }.buttonStyle(.link)
+                Button(L10n.restoreWizardTitle) {
+                    (NSApp.delegate as? AppDelegate)?.showRestoreWizard()
+                }.buttonStyle(.link)
             } header: { Text(L10n.settingsSectionBackup) } footer: {
                 // 2026-08-04: vertical stack pairs a fixed explanation of when
                 // automatic backup runs and what export produces with the
@@ -152,59 +154,5 @@ struct BackupSettingsView: View {
         }
     }
 
-    private func importBackup() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "clipmemory")].compactMap { $0 }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let passphrase = promptBackupPassphrase() else { return }
-        // Flush + safety snapshot of current data before mutating.
-        ClipboardStore.shared.flushPendingSaves()
-        // Heavy work (unzip, re-keying, image copies) off the main thread;
-        // BackupPackage hops to main for the @Published merges itself.
-        DispatchQueue.global(qos: .userInitiated).async {
-            // M-2 (2026-07-23): pre-import safety snapshot is REQUIRED before
-            // mutating user data. If it fails we must NOT proceed — silently
-            // overwriting history with no rollback point is a data-loss bug.
-            do {
-                _ = try backupService.backupNow()
-            } catch {
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
-                return
-            }
-            do {
-                let result = try BackupPackage.importPackage(
-                    from: url,
-                    passphrase: passphrase,
-                    store: ClipboardStore.shared,
-                    localCrypto: ServiceContainer.crypto,
-                    imagesDirectory: ImageStorage.shared.imagesDirectoryURL
-                )
-                DispatchQueue.main.async {
-                    showBackupInfo(L10n.settingsBackupImportResult(
-                        result.itemsImported,
-                        result.itemsSkipped,
-                        result.itemsSkippedCorrupt,
-                        result.imagesImported
-                    ))
-                    // NEW-3 (2026-08-03 audit): items/tags already
-                    // imported at this point — the success alert alone
-                    // hides the image failure. Surface it as a follow-up
-                    // notice so the user knows their thumbnails were
-                    // lost (and can check Images folder permissions).
-                    if result.imageImportFailed {
-                        showBackupInfo(L10n.settingsBackupImportImagesFailed)
-                    }
-                }
-            } catch BackupPackageError.wrongPassword {
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupPassphraseWrong) }
-            } catch BackupPackageError.corruptedData {
-                // Route corrupted-package errors to the generic 'operation
-                // failed' notice so users recognize "file problem, not
-                // password problem".
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
-            } catch {
-                DispatchQueue.main.async { showBackupInfo(L10n.settingsBackupError) }
-            }
-        }
-    }
 }
+
