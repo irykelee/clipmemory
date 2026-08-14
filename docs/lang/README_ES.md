@@ -48,6 +48,12 @@
 
 ## 📋 Registro de cambios
 
+### v2.9.0 (planned)
+
+- **Nuevo asistente de "Restaurar desde copia de seguridad" (ID-BACKUP-0002):** Flujo visual de 5 pasos con vista previa, instantánea de seguridad, advertencia de elemento incompleto, reintento de contraseña y manejo de errores de espacio en disco; la importación de archivos `.clipmemory` externos utiliza el mismo asistente
+- **Nueva API `BackupService.listAvailableBackups()` + `BackupPackage.importFromLocalBackup()`** para lectura directa de copias de seguridad locales (sin contraseña)
+- **36 nuevas claves L10n (restore.*) × 7 idiomas**
+
 ### v2.8.4 (2026-08-12) — Manifiesto de privacidad + Actualización de seguridad + Corrección de errores latentes + Puerta de regresión
 
 - **🔒 Actualización de Sparkle 2.9.4 → 2.9.5 (ID-CI-0001)** — Incluye la corrección de seguridad "Harden patching delta file against symbolic link at destination path". El canal de actualización automática de Sparkle está habilitado por defecto; los usuarios no notarán el cambio; la corrección evita el vector de ataque de enlace simbólico en rutas de parches delta.
