@@ -57,12 +57,23 @@ final class FileStorageBackend: StorageBackend {
 
     private let storageKey: String
 
-    init(storageKey: String = "ClipboardItems") {
+    // ID-STORE-0015 (2026-08-14, L26 live drill path C): inject the defaults
+    // suite so callers (notably TrashStore.init(backend:defaults:)) can route
+    // the production defaults down to the storage layer. Default `.standard`
+    // keeps every existing call-site working — the convenience inits in
+    // ClipboardStore() now pass their `defaults` (which is `xcTestDefaults`
+    // under XCTest, `.standard` in production) explicitly so this seam is
+    // the only path that ever touches the host UserDefaults.
+    private let defaults: UserDefaults
+
+    init(storageKey: String = "ClipboardItems",
+         defaults: UserDefaults = .standard) {
         self.storageKey = storageKey
+        self.defaults = defaults
     }
 
     func load() throws -> [ClipboardItem] {
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else {
+        guard let data = defaults.data(forKey: storageKey) else {
             return []
         }
         return try JSONDecoder().decode([ClipboardItem].self, from: data)
@@ -70,14 +81,14 @@ final class FileStorageBackend: StorageBackend {
 
     func save(_ items: [ClipboardItem]) throws {
         let data = try Self.itemsEncoder.encode(items)
-        UserDefaults.standard.set(data, forKey: storageKey)
+        defaults.set(data, forKey: storageKey)
     }
 
     /// CLIP-2: persist an already-encoded blob — the write itself is a single
     /// UserDefaults set; the expensive JSONEncoder pass happened on the
     /// caller's encoding queue.
     func saveBlob(_ data: Data) throws {
-        UserDefaults.standard.set(data, forKey: storageKey)
+        defaults.set(data, forKey: storageKey)
     }
 
     func loadTags() throws -> [Tag] {
@@ -86,7 +97,7 @@ final class FileStorageBackend: StorageBackend {
         // key (ClipboardStore.tagStorageKey). This method reads whatever is at
         // `storageKey`; if it's the items array the decode will throw and the
         // caller treats it as empty tags.
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else {
+        guard let data = defaults.data(forKey: storageKey) else {
             return []
         }
         return try JSONDecoder().decode([Tag].self, from: data)
@@ -94,7 +105,7 @@ final class FileStorageBackend: StorageBackend {
 
     func saveTags(_ tags: [Tag]) throws {
         let data = try Self.tagsEncoder.encode(tags)
-        UserDefaults.standard.set(data, forKey: storageKey)
+        defaults.set(data, forKey: storageKey)
     }
 }
 
