@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// History & Capture settings tab: history limits, capture toggles,
 /// sensitive-content auto-clear, and the excluded-apps list.
@@ -29,6 +30,10 @@ struct HistoryCaptureSettingsView: View {
     @State private var searchDebounce: DispatchWorkItem?
     @State private var installedApps: [AppPickerItem] = []
     @State private var isLoadingApps = false
+
+    // ID-VIEW-0039: drag-and-drop rejection feedback, auto-clearing.
+    @State private var dropHint: String?
+    @State private var dropHintDismiss: DispatchWorkItem?
 
     var body: some View {
         let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
@@ -93,10 +98,26 @@ struct HistoryCaptureSettingsView: View {
 
             // Excluded apps
             Section {
-                excludedAppsTags
-                Button(action: { showingAppPicker = true }, label: {
-                    Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle")
-                }).buttonStyle(.link)
+                // ID-VIEW-0039 (2026-08-14): the whole section is one drop
+                // target, so the VStack exists to give .onDrop a single frame
+                // covering both the chips and the Add button.
+                VStack(alignment: .leading, spacing: 8) {
+                    excludedAppsTags
+                    Button(action: { showingAppPicker = true }, label: {
+                        Label(L10n.settingsAddExcludedApp, systemImage: "plus.circle")
+                    }).buttonStyle(.link)
+                    if let dropHint {
+                        Text(dropHint)
+                            .font(.system(size: sz(11)))
+                            .foregroundColor(.secondary)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleAppDrop(providers)
+                }
             } header: { Text(L10n.settingsSectionExcludedApps) }
             footer: { Text(L10n.settingsExcludedAppsFooter).foregroundColor(.secondary) }
         }
@@ -126,6 +147,123 @@ struct HistoryCaptureSettingsView: View {
         if alert.runModal() == .alertFirstButtonReturn {
             ContentView.applyTrimConfirmation(pair: PendingMaxItemsReduction(old: old, new: new), store: store)
         }
+    }
+
+    // MARK: - Drag & Drop (ID-VIEW-0039)
+
+    /// What one batch of dropped URLs resolved to.
+    struct AppDropClassification: Equatable {
+        var bundleIds: [String] = []
+        var notAppCount = 0
+        var unreadableCount = 0
+        var containsSelf = false
+    }
+
+    /// Pure — the `resolveBundleId` seam keeps this testable without needing
+    /// real .app bundles on disk.
+    ///
+    /// Rejection is explained after the drop rather than blocked mid-drag:
+    /// SwiftUI's `.onDrop` can only filter by UTType while dragging, and a
+    /// folder is as much a `.fileURL` as an app is. So everything lands, and
+    /// whatever wasn't usable is reported.
+    static func classifyDroppedURLs(
+        _ urls: [URL],
+        selfBundleId: String?,
+        resolveBundleId: (URL) -> String? = { Bundle(url: $0)?.bundleIdentifier }
+    ) -> AppDropClassification {
+        var result = AppDropClassification()
+        for url in urls {
+            // Dragging from the Dock or an alias can hand over a link.
+            let resolved = url.resolvingSymlinksInPath()
+            guard resolved.pathExtension.lowercased() == "app" else {
+                result.notAppCount += 1
+                continue
+            }
+            guard let bundleId = resolveBundleId(resolved) else {
+                result.unreadableCount += 1
+                continue
+            }
+            if let selfBundleId, bundleId.lowercased() == selfBundleId.lowercased() {
+                // Excluding ourselves would only suppress copies made while
+                // ClipMemory is frontmost — near-zero benefit, and it reads as
+                // the app switching itself off. loadInstalledAppsIfNeeded
+                // hides it from the picker for the same reason; both entry
+                // points must agree or one would offer what the other refuses.
+                result.containsSelf = true
+                continue
+            }
+            result.bundleIds.append(bundleId)
+        }
+        return result
+    }
+
+    /// Merge accepted ids into the stored list, preserving existing entries and
+    /// their order. Returns the new comma-joined value, or nil when nothing
+    /// changed (every dropped app was already excluded) so no write fires.
+    static func mergeExcludedIds(existing: String, adding: [String]) -> String? {
+        let current = existing
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var present = Set(current.map { $0.lowercased() })
+        var merged = current
+        for id in adding where present.insert(id.lowercased()).inserted {
+            merged.append(id)
+        }
+        return merged.count == current.count ? nil : merged.joined(separator: ",")
+    }
+
+    private func handleAppDrop(_ providers: [NSItemProvider]) -> Bool {
+        let fileProviders = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        guard !fileProviders.isEmpty else { return false }
+
+        let group = DispatchGroup()
+        // Provider callbacks arrive on arbitrary queues, so serialize appends.
+        let lock = NSLock()
+        var urls: [URL] = []
+        for provider in fileProviders {
+            group.enter()
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let url {
+                    lock.lock()
+                    urls.append(url)
+                    lock.unlock()
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            applyDrop(Self.classifyDroppedURLs(urls, selfBundleId: Bundle.main.bundleIdentifier))
+        }
+        return true
+    }
+
+    @MainActor
+    private func applyDrop(_ classification: AppDropClassification) {
+        if let merged = Self.mergeExcludedIds(
+            existing: store.excludedBundleIdsString,
+            adding: classification.bundleIds
+        ) {
+            store.excludedBundleIdsString = merged
+        }
+        // One line, most specific reason first. Dropping an app that was
+        // already excluded is not a rejection and says nothing.
+        if classification.containsSelf {
+            showDropHint(L10n.settingsExcludedDropSelf)
+        } else if classification.notAppCount > 0 {
+            showDropHint(L10n.settingsExcludedDropNotApp)
+        } else if classification.unreadableCount > 0 {
+            showDropHint(L10n.settingsExcludedDropUnreadable)
+        }
+    }
+
+    @MainActor
+    private func showDropHint(_ message: String) {
+        dropHintDismiss?.cancel()
+        withAnimation { dropHint = message }
+        let dismiss = DispatchWorkItem { withAnimation { dropHint = nil } }
+        dropHintDismiss = dismiss
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: dismiss)
     }
 
     // MARK: - Excluded Apps Chips
@@ -298,6 +436,9 @@ struct HistoryCaptureSettingsView: View {
                     let appPath = (appDir as NSString).appendingPathComponent(app)
                     let name = (app as NSString).deletingPathExtension
                     if let bundleId = Bundle(url: URL(fileURLWithPath: appPath))?.bundleIdentifier {
+                        // ID-VIEW-0039: hide ClipMemory itself — see
+                        // classifyDroppedURLs for why self-exclusion is refused.
+                        if bundleId.lowercased() == Bundle.main.bundleIdentifier?.lowercased() { continue }
                         results.append(AppPickerItem(name: name, bundleId: bundleId, icon: nil, isRunning: false))
                     }
                 }
