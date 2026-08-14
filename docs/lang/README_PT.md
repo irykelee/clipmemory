@@ -463,7 +463,7 @@ Clique no ícone da barra de menu → NSPopover com 8 itens recentes → clique 
 
 ## Configurações
 
-- Máximo de itens históricos (50 / 100 / 200 / 500)
+- Máximo de itens históricos (100 / 500 / 1000)
 - Política de limpeza automática sensível (1h / 24h / 48h / 7d / nunca)
 - Troca de idioma (7 idiomas)
 - Gravação de atalho global
