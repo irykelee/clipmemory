@@ -53,24 +53,23 @@ final class FeedProbeFallbackChainTests: XCTestCase {
 
     // MARK: - Empty / corrupt body scenarios
 
-    /// Primary returns 200 with an empty body. `fetchBody` returns "" (the
-    /// empty string passes the UTF-8 decode and the status check). The
-    /// decision layer treats `primaryXML = ""` as a success and emits
-    /// `.automaticReachable` with `chosenURL = primary`. Sparkle, on
-    /// receiving an empty appcast, will show "you're up to date" — a SILENT
-    /// failure mode the user cannot distinguish from "the CDN really has
-    /// nothing new."
-    func testAutomaticEmptyPrimaryBodyStillClaimsReachable() async {
+    /// Primary returns 200 with an empty body. **ID-UPDATE-0004 (2026-08-15, L26
+    /// Path F)**: an empty body is no longer treated as a zero-item
+    /// "reachable" feed — `fetchBody` returns nil so the caller falls back
+    /// to `.bothDownKeepPrimary`. This eliminates the silent "Sparkle says
+    /// you're up to date when the CDN silently emptied the appcast" mode.
+    func testAutomaticEmptyPrimaryBodyNowTreatedAsDown() async {
         FallbackChainURLProtocol.stubs[primaryChannel.url] = (200, Data(), nil)
         let decision = await makeEngine().resolve(
             policy: .automatic, lastKnownDate: nil,
             channels: [primaryChannel, fallbackChannel]
         )
-        XCTAssertEqual(decision?.reason, .automaticReachable,
-            "EMPTY primary body is currently indistinguishable from a healthy feed")
-        XCTAssertEqual(decision?.chosenURL, primaryChannel.url)
-        XCTAssertEqual(decision?.primaryAppcastXML, "",
-            "empty body round-trips; Sparkle would receive a zero-item appcast")
+        XCTAssertEqual(decision?.reason, .bothDownKeepPrimary,
+            "EMPTY primary body must be treated as primary-down — no zero-item feed reaches Sparkle")
+        XCTAssertEqual(decision?.chosenURL, primaryChannel.url,
+            "no better choice exists; primary URL kept so Sparkle can retry on next probe")
+        XCTAssertNil(decision?.primaryAppcastXML,
+            "empty body must NOT round-trip; nil signals 'treat as down' to the caller")
     }
 
     /// Primary returns 200 but the body is non-UTF-8 bytes. `fetchBody` (line
@@ -113,39 +112,29 @@ final class FeedProbeFallbackChainTests: XCTestCase {
         XCTAssertEqual(decision?.chosenURL, fallbackChannel.url)
     }
 
-    /// The mirror-stale guard (lines 202-204) ONLY runs if `parseLatestDate`
-    /// returns non-nil. An empty fallback body bypasses the guard
-    /// (`parseLatestDate("") == nil`), so an EMPTY fallback is preferred over
-    /// a stale-with-parseable-date fallback. This is a SILENT FAILURE: the
-    /// user gets a zero-item appcast via the fallback URL when the engine
-    /// would otherwise reject fallback as stale.
-    ///
-    /// Scenario: primary is DOWN (forces fallback to be tried); fallback is
-    /// empty (no parseable date); lastKnownDate is in the future (so any
-    /// parseable fallback date would trigger `mirrorStaleRejected`).
-    ///
-    /// Captured behavior: stale guard skipped → fallback wins. Sparkle sees
-    /// zero items and shows "you're up to date." If this test ever flips,
-    /// re-read the comment + verify it's an intentional fix.
-    func testAutomaticEmptyFallbackBypassesStaleGuard() async {
+    /// **ID-UPDATE-0004 (2026-08-15, L26 Path F)**: an empty fallback body is
+    /// no longer treated as a zero-item "fallback reached" — `fetchBody`
+    /// returns nil for both empty AND non-UTF-8 bodies, so the engine sees
+    /// the fallback as down and falls back to `.bothDownKeepPrimary`. This
+    /// eliminates the previous silent failure where `parseLatestDate("")`
+    /// returning nil bypassed the mirror-stale guard and let the empty
+    /// fallback win over a healthy primary.
+    func testAutomaticEmptyFallbackNowTreatedAsDown() async {
         // Primary: 503 → forces engine to probe fallback.
         FallbackChainURLProtocol.stubs[primaryChannel.url] = (
             503, Data("rate limited".utf8), nil
         )
-        // Fallback: empty body. parseLatestDate("") returns nil → stale check
-        // `if let fallbackDate = parseLatestDate(fallbackXML)` is bypassed.
+        // Fallback: empty body — fetchBody now returns nil, same as non-UTF-8.
         FallbackChainURLProtocol.stubs[fallbackChannel.url] = (200, Data(), nil)
-        // lastKnownDate: 1 day in the future. If fallback had a parseable
-        // date, that date would be < lastKnown → mirrorStaleRejected.
         let lastKnown = Date(timeIntervalSinceNow: 86_400)
         let decision = await makeEngine().resolve(
             policy: .automatic, lastKnownDate: lastKnown,
             channels: [primaryChannel, fallbackChannel]
         )
-        XCTAssertEqual(decision?.reason, .automaticPrimaryDown,
-            "EMPTY fallback bypasses stale guard — silent-failure risk if Sparkle is wired to a zero-item feed")
-        XCTAssertEqual(decision?.chosenURL, fallbackChannel.url,
-            "user receives fallback URL with zero items; Sparkle shows 'up to date'")
+        XCTAssertEqual(decision?.reason, .bothDownKeepPrimary,
+            "EMPTY fallback body must be treated as fallback-down — no zero-item feed reaches Sparkle")
+        XCTAssertEqual(decision?.chosenURL, primaryChannel.url,
+            "no better choice exists; primary URL kept so Sparkle can retry on next probe")
     }
 
     // MARK: - Both-down scenarios

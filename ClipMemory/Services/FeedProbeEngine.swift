@@ -360,6 +360,18 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
             DefaultFeedProbeEngine.logger.error("Feed body returned 200 but failed UTF-8 decode (bytes=\(data.count))")
             return nil
         }
+        // ID-UPDATE-0004 (2026-08-15, L26 Path F): an empty body was
+        // previously treated as a successful (zero-item) appcast — the
+        // decision layer then emitted `.automaticReachable` / `.automaticPrimaryDown`
+        // with `chosenURL` pointing at a feed Sparkle sees as "no items."
+        // The user got "you're up to date" without ever learning the CDN
+        // had silently emptied the appcast. Now treated the same as a
+        // non-UTF-8 body: surfaced as nil so the caller falls back to
+        // `.bothDownKeepPrimary` (no silent failover to a zero-item feed).
+        if body.isEmpty {
+            DefaultFeedProbeEngine.logger.error("Feed body returned 200 but was empty (0 bytes) — treating as feed-down")
+            return nil
+        }
         return body
     }
 
