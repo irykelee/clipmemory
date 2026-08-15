@@ -155,6 +155,15 @@ struct L10n {
     static var emptyNoPinned: String { string("empty.no.pinned") }
     static var emptyHistoryHint: String { string("empty.history.hint") }
     static var emptyPinnedHint: String { string("empty.pinned.hint") }
+    // ID-VIEW-0042 (2026-08-16 audit MEDIUM-5 fix): when the user has
+    // typed a search query but the result set is empty (search/filter
+    // returned no matches), the empty state must NOT say "No clipboard
+    // history" — that's misleading and historically caused users to
+    // think their history was cleared. The empty-state analytics already
+    // distinguishes the two cases (see ItemListView.emptyState's
+    // `.task(id:)` driver), so copy must follow.
+    static var emptyNoFilter: String { string("empty.no.filter") }
+    static var emptyFilterHint: String { string("empty.filter.hint") }
 
     static var actionPin: String { string("action.pin") }
     static var actionUnpin: String { string("action.unpin") }

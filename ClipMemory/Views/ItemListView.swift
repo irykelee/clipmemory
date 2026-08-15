@@ -467,22 +467,37 @@ struct ItemListView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Spacer()
-            Image(systemName: selectedTab == .pinned ? "star" : "tray")
+            // ID-VIEW-0042 (2026-08-16 audit MEDIUM-5 fix): three empty
+            // shapes now read distinctly — pinned tab uses `star`, the
+            // filter_no_match case uses `magnifyingglass` (no results for
+            // the user's query), and the genuine empty history uses `tray`.
+            // Copy follows the same three-way split (pinned hint, filter
+            // hint with "Clear search" suggestion, history hint).
+            let shape = Self.emptyShape(searchText: searchText, selectedTab: selectedTab)
+            Image(systemName: shape.icon)
                 .font(.system(size: sz(40)))
                 .foregroundColor(.secondary)
-            Text(selectedTab == .pinned ? L10n.emptyNoPinned : L10n.emptyNoHistory)
+            Text(shape.title)
                 .font(.system(size: sz(14)))
                 .foregroundColor(.secondary)
-            if selectedTab == .pinned {
-                Text(L10n.emptyPinnedHint)
-                    .font(.system(size: sz(12)))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            } else {
-                Text(L10n.emptyHistoryHint)
-                    .font(.system(size: sz(12)))
-                    .foregroundColor(.secondary)
+            Text(shape.hint)
+                .font(.system(size: sz(12)))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            // ID-VIEW-0042: "Clear search" affordance for the
+            // filter_no_match case. Without this, the user has to find
+            // the search field and ⌫ the query manually, which adds
+            // friction — the whole point of M-5 is to make "no matches"
+            // obviously a search problem, not a missing-history problem.
+            if shape == .filterNoMatch {
+                Button(L10n.searchClear) {
+                    searchText = ""
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: sz(12)))
+                .foregroundColor(.accentColor)
+                .padding(.top, 4)
             }
             Spacer()
         }
@@ -493,6 +508,50 @@ struct ItemListView: View {
         .task(id: "\(store.items.isEmpty ? 1 : 0)|\(store.items.count)") {
             logEmptyStateIfNeeded()
         }
+    }
+
+    /// ID-VIEW-0042 (2026-08-16 audit MEDIUM-5 fix): three-way empty-state
+    /// classifier. The pinned tab always uses pinned copy regardless of
+    /// search (you can't pin what doesn't exist). On the history tab, a
+    /// non-empty search query with zero results means "no matches" — that's
+    /// a search problem, not a missing-history problem, so the copy and
+    /// icon must change. `selectedTab == .trash` is handled separately in
+    /// `trashView` (its own `trashEmpty` view), so by the time we reach
+    /// `emptyState` it's either pinned or history.
+    enum EmptyShape: Equatable {
+        case noHistory
+        case noPinned
+        case filterNoMatch
+
+        var icon: String {
+            switch self {
+            case .noHistory:     return "tray"
+            case .noPinned:      return "star"
+            case .filterNoMatch: return "magnifyingglass"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .noHistory:     return L10n.emptyNoHistory
+            case .noPinned:      return L10n.emptyNoPinned
+            case .filterNoMatch: return L10n.emptyNoFilter
+            }
+        }
+
+        var hint: String {
+            switch self {
+            case .noHistory:     return L10n.emptyHistoryHint
+            case .noPinned:      return L10n.emptyPinnedHint
+            case .filterNoMatch: return L10n.emptyFilterHint
+            }
+        }
+    }
+
+    static func emptyShape(searchText: String, selectedTab: SidebarTab) -> EmptyShape {
+        if selectedTab == .pinned { return .noPinned }
+        if !searchText.isEmpty { return .filterNoMatch }
+        return .noHistory
     }
 
     // MARK: - Row builder + helpers

@@ -28,6 +28,8 @@
 
 /* Empty State */
 "empty.no.history" = "Sin historial del portapapeles";
+"empty.no.filter" = "Sin resultados";
+"empty.filter.hint" = "Prueba con otra búsqueda o bórrala para ver todo el historial";
 "empty.no.pinned" = "Sin favoritos";
 "empty.history.hint" = "Lo copiado aparecerá aquí automáticamente";
 "empty.pinned.hint" = "Fija un elemento para que no se elimine automáticamente";
