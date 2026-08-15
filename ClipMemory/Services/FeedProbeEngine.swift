@@ -238,6 +238,24 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
     /// `dataTask(with:)` drives them. So this delegate is bound to a
     /// per-fetch URLSession and the task's completion is bridged back via
     /// `didCompleteWithError` + a checked continuation.
+    /// ID-STORE-0020 (MEDIUM-16 audit fix, 2026-08-15): the `@unchecked
+    /// Sendable` declaration on this delegate is correct but
+    /// under-documented. Justify it inline so Swift 6 strict-concurrency
+    /// migration (M-14 backlog) doesn't misjudge the type as a Sendable
+    /// violation needing a `nonisolated(unsafe)` refactor.
+    ///
+    /// Thread-safety rationale: this delegate is **per-fetch** (created
+    /// in `fetchBody`, line ~314) and bound to a single
+    /// `URLSession.dataTask(with:)` whose delegate callbacks
+    /// (`didReceive response` / `didReceive data` / `didCompleteWithError`)
+    /// are delivered serially on the URLSession's delegate queue
+    /// (`makeTimerSource(queue:)` → `saveTimerQueue`, line 30). The
+    /// mutable state (`receivedBytes`, `body`, `response`, `continuation`,
+    /// `refusal`) is therefore accessed from one thread at a time —
+    /// URLSession's documented contract — even though Swift's type
+    /// system can't see that. `@unchecked` is the explicit opt-out;
+    /// without this comment a future reviewer (or a `swift migrate`)
+    /// would correctly ask "why isn't this `actor`-isolated?"
     private final class CappedFetchDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         /// Why the fetch was refused; nil while the response is still legal.
         enum Refusal {
