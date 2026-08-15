@@ -621,6 +621,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered, defer: false
         )
         win.title = L10n.settingsWindowTitle
+        // ID-LIFE-0027 (MEDIUM-3 audit fix, 2026-08-15): persist the user's
+        // resized frame across launches via AppKit's frame-autosave. The
+        // MainWindow uses `setFrameAutosaveName("com.clipmemory.app.MainWindow")`
+        // (WINDOW-0001); Settings previously had no equivalent, so any
+        // resize was discarded on next open (window snapped back to the
+        // 560×540 default via `win.center()` below).
+        win.setFrameAutosaveName("com.clipmemory.app.SettingsWindow")
         win.isReleasedWhenClosed = false
         win.contentView = NSHostingView(rootView: rootView)
         // Center relative to the main ItemListView window when it's on
