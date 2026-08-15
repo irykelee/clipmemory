@@ -331,6 +331,7 @@
 "settings.tab.backup" = "Backup";
 "settings.tab.update" = "Update & About";
 "settings.backup.error.last" = "Last backup failed: %@";
+"settings.backup.pruneError.last" = "Last prune failed: %@";
 "item.ocrProcessing" = "OCR processing…";
 "item.ocrUnreadable" = "OCR text unreadable";
 "settings.historyCapture.ocrPreview" = "Show OCR text in image search results";

@@ -332,6 +332,14 @@ struct L10n {
     // all 7 locales can ship the same key without plural rule drift.
     static var settingsBackupImportImagesFailed: String { string("settings.backup.import.imagesFailed") }
     static func settingsBackupLast(_ date: String) -> String { string("settings.backup.last", date) }
+    // ID-STORE-0016 (2026-08-15, L26 Path E): shown when pruneOldBackups
+    // could not list the Backups/ directory. Distinct from
+    // settingsBackupErrorLast because a prune failure is independent of the
+    // backup run (next backupNow can still succeed) — collapsing would hide
+    // the prune signal under a recent backup success.
+    static func settingsBackupPruneErrorLast(_ reason: String) -> String {
+        string("settings.backup.pruneError.last", reason)
+    }
     static func clearTypeAction(_ typeName: String) -> String { string("clear.type.action", typeName) }
     // ID-L10N-0016 (2026-07-30 audit): plural-aware; count=1 uses ".one".
     static func clearTypeConfirm(_ typeName: String, _ count: Int) -> String {

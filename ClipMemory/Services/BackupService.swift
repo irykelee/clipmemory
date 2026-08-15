@@ -50,6 +50,16 @@ final class BackupService {
     // when the most recent failure is newer than the most recent success.
     private static let lastBackupErrorDateKey = "lastBackupErrorDate"
     private static let lastBackupErrorMessageKey = "lastBackupErrorMessage"
+    // ID-STORE-0016 (2026-08-15, L26 Path E): pruneOldBackups' contentsOfDirectory
+    // failure was a silent no-op (line 374-376 catch + return), so a perm-revoked
+    // or deleted Backups/ directory meant prune ran but kept nothing, and
+    // Backups/ grew unbounded with no UI signal. Mirror N-3's UserDefaults pair
+    // so the settings page can show "Last prune failed: <reason>". Distinct from
+    // lastBackupErrorDate because prune failures don't prevent the next
+    // backup (the user can still trigger backupNow manually) — collapsing them
+    // would hide the prune signal under a recent backup success.
+    private static let lastPruneErrorDateKey = "lastPruneErrorDate"
+    private static let lastPruneErrorMessageKey = "lastPruneErrorMessage"
     private static let minimumInterval: TimeInterval = 24 * 60 * 60
     /// H-6 (2026-07-24 audit): marker file dropped at the start of every
     /// backup and removed on success. An orphan timestamped dir carrying
@@ -153,6 +163,22 @@ final class BackupService {
 
     var lastBackupErrorMessage: String? {
         defaults.string(forKey: Self.lastBackupErrorMessageKey)
+    }
+
+    // ID-STORE-0016: see lastPruneErrorDateKey above.
+    var lastPruneErrorDate: Date? {
+        defaults.object(forKey: Self.lastPruneErrorDateKey) as? Date
+    }
+    var lastPruneErrorMessage: String? {
+        defaults.string(forKey: Self.lastPruneErrorMessageKey)
+    }
+
+    // ID-STORE-0016: shared writer used by both pruneOldBackups catch
+    // branches (initial listing + post-incomplete-sweep re-listing). Mirror
+    // of the N-3 pattern in performBackupIfNeeded (line 189-191).
+    private func recordPruneError(message: String) {
+        defaults.set(Date(), forKey: Self.lastPruneErrorDateKey)
+        defaults.set(message, forKey: Self.lastPruneErrorMessageKey)
     }
 
     /// Daily trigger from app launch. Runs on a utility queue; no-op when
@@ -373,6 +399,12 @@ final class BackupService {
             entries = try fileManager.contentsOfDirectory(atPath: backupsPath)
         } catch {
             logger.error("pruneOldBackups: failed to list \(backupsPath): \(error.localizedDescription)")
+            // ID-STORE-0016 (2026-08-15, L26 Path E): record the failure so the
+            // settings page surfaces "Last prune failed: <reason>". Mirror of
+            // N-3's lastBackupErrorDate/Message pair; separated because a prune
+            // failure is distinct from a backup failure (the next backupNow
+            // can still succeed; collapsing them would hide the prune signal).
+            recordPruneError(message: error.localizedDescription)
             return
         }
         // Only prune our own timestamped backup dirs — stray files (.DS_Store,
@@ -386,6 +418,7 @@ final class BackupService {
             surviving = try fileManager.contentsOfDirectory(atPath: backupsPath)
         } catch {
             logger.error("pruneOldBackups: failed to re-list \(backupsPath) after incomplete sweep: \(error.localizedDescription)")
+            recordPruneError(message: error.localizedDescription)
             return
         }
         let validNames = surviving.filter(Self.isBackupDirName)

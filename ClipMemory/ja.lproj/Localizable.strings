@@ -327,6 +327,7 @@
 "settings.tab.backup" = "バックアップ";
 "settings.tab.update" = "アップデートと情報";
 "settings.backup.error.last" = "前回のバックアップに失敗しました：%@";
+"settings.backup.pruneError.last" = "前回の整理に失敗しました：%@";
 "item.ocrProcessing" = "OCR 処理中…";
 "item.ocrUnreadable" = "OCR テキストを読み込めません";
 "settings.historyCapture.ocrPreview" = "画像検索結果に OCR テキストを表示";

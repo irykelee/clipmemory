@@ -115,42 +115,48 @@ final class BackupServiceExceptionPathTests: XCTestCase {
 
     /// If `pruneOldBackups` cannot list `backupsDirectory` at all (parent
     /// gone, permissions revoked, sandbox denied), the method logs an
-    /// error and returns early (line 374-376). Captured behavior:
-    /// prune becomes a silent no-op. **Implication for production**:
-    /// Backups/ grows unbounded if the listing fails repeatedly. The log
-    /// `pruneOldBackups: failed to list <path>` is the only operator
-    /// signal — there is no UI surface for "prune has stopped working."
+    /// error and returns early (line 374-376). **ID-STORE-0016
+    /// (2026-08-15, L26 Path E)**: this is no longer a pure silent no-op —
+    /// the catch branch records `lastPruneErrorDate` + `lastPruneErrorMessage`
+    /// so the BackupSettingsView footer surfaces "Last prune failed: <reason>"
+    /// (distinct from the lastBackupErrorDate footer; a prune failure does
+    /// not invalidate a successful backup run, so both can be shown).
     ///
-    /// This test documents the silent failure so any future change is a
-    /// conscious decision (e.g., post a `.backupPruneFailed` notification
-    /// for the settings panel to consume).
-    func testPruneReturnsSilentlyWhenListFails() throws {
+    /// Backups/ still grows unbounded in this scenario — that's the inherent
+    /// limitation when the listing API itself fails. The improvement is
+    /// operator visibility: a UI signal that prune has stopped working, plus
+    /// a logger.error for Console.app triage.
+    func testPruneListFailureNowRecordsLastPruneErrorForUI() throws {
         try seedBackupDirs(5)
         defaults.set(3, forKey: "backupKeepCount")
-        // Capture the expected name list BEFORE locking the dir (we can't
-        // read it again while locked).
+        XCTAssertNil(service.lastPruneErrorDate,
+            "baseline: no prune error recorded before this test exercises the path")
         let expectedNames = try FileManager.default.contentsOfDirectory(atPath: backupsDir.path)
             .filter { $0.count == 21 }
         XCTAssertEqual(expectedNames.count, 5)
-        // Lock the Backups/ dir itself so contentsOfDirectory fails.
         try FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: 0o000)],
             ofItemAtPath: backupsDir.path
         )
 
-        // pruneOldBackups must NOT throw (it's `func`, not `throws`).
-        // It must also NOT remove anything because it couldn't list.
         service.pruneOldBackups()
 
-        // Unlock before reading the after-state — `try? contentsOfDirectory`
-        // would also fail while the dir is locked, masking the result.
         unlock(backupsDir.path)
+        // After-state on disk: no dir removed (couldn't list).
         let after = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
         let afterValid = after.filter { $0.count == 21 }
         XCTAssertEqual(afterValid.count, 5,
-            "silent failure: prune returned early, all 5 dirs still present")
-        XCTAssertEqual(Set(afterValid), Set(expectedNames),
-            "no dir may have been removed")
+            "prune could not list, so no dirs removed")
+        // ID-STORE-0016: the surface for the operator is the new pair.
+        XCTAssertNotNil(service.lastPruneErrorDate,
+            "list failure must surface via lastPruneErrorDate so BackupSettingsView can show it")
+        XCTAssertNotNil(service.lastPruneErrorMessage,
+            "the localized error description must be recorded for the UI message")
+        XCTAssertFalse(service.lastPruneErrorMessage?.isEmpty ?? true,
+            "empty message would render as 'Last prune failed: ' — unhelpful")
+        // Sanity: the list-failure error is independent of lastBackupErrorDate.
+        XCTAssertNil(service.lastBackupErrorDate,
+            "no backup error in this test; the two surfaces must not collide")
     }
 
     /// `pruneIncompleteBackups` catches per-dir removeItem errors and

@@ -329,6 +329,7 @@
 "settings.tab.backup" = "備份";
 "settings.tab.update" = "更新與關於";
 "settings.backup.error.last" = "上次備份失敗：%@";
+"settings.backup.pruneError.last" = "上次清理失敗：%@";
 "item.ocrProcessing" = "OCR 處理中…";
 "item.ocrUnreadable" = "OCR 文字損壞";
 "settings.historyCapture.ocrPreview" = "圖片搜尋結果顯示 OCR 文字";

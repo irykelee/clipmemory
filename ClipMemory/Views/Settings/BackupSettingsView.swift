@@ -75,6 +75,18 @@ struct BackupSettingsView: View {
                             .foregroundColor(.secondary)
                             .id(backupRefresh)
                     }
+                    // ID-STORE-0016 (2026-08-15, L26 Path E): prune list-failure
+                    // surfaces here. Distinct from lastBackupErrorDate because
+                    // a prune failure does not invalidate a successful backup
+                    // run — both can be shown simultaneously so the user can
+                    // see "your backup is fresh but cleanup is broken" without
+                    // the prune error masking the last successful backup time.
+                    if let pruneErrorDate = backupService.lastPruneErrorDate,
+                       let pruneMessage = backupService.lastPruneErrorMessage {
+                        Text(L10n.settingsBackupPruneErrorLast(pruneMessage))
+                            .foregroundColor(.red)
+                            .id(backupRefresh)
+                    }
                 }
             }
         }

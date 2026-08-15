@@ -331,6 +331,7 @@
 "settings.tab.backup" = "Backup";
 "settings.tab.update" = "Atualização e sobre";
 "settings.backup.error.last" = "Última cópia falhou: %@";
+"settings.backup.pruneError.last" = "Falha na última limpeza: %@";
 "item.ocrProcessing" = "Processando OCR…";
 "item.ocrUnreadable" = "Texto OCR ilegível";
 "settings.historyCapture.ocrPreview" = "Mostrar texto OCR nos resultados de busca de imagens";
