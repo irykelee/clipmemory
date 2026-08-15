@@ -506,6 +506,22 @@ brew install --cask clipmemory
 
 > **首次打開若提示「Apple 無法驗證…」**：這是 macOS 對未公證應用的常規攔截，不是病毒。任選一種：① 右鍵點 App →「打開」→ 再點「打開」；② 系統設定 → 隱私與安全性 → 找到 ClipMemory 點「仍要打開」。僅需操作一次，之後正常。（透過 `brew install` 安裝不會遇到此提示）
 
+### 簽名與分發說明 (ID-DOCS-0003)
+
+**當前簽名身份**: Apple Development (Personal Team, Team ID `G59B692W3M`, 1 年有效, 2027-07-19 到期)。
+
+**這意味著**:
+- ✅ **適用**: 個人開發者本機 + 技術用戶透過 `brew install` 或已信任 Gatekeeper 的機器
+- ⚠️ **首次開啟**: GitHub Releases 下載的 `.tar.gz` 需右鍵 → 開啟一次 (Personal Team 簽名為 ad-hoc, 無公證)
+- ❌ **不適用**: 企業 MDM 推送 / Mac App Store 分發 / 嚴格的零接觸自動更新場景
+
+**正式分發需**:
+1. 維護者自費 $99/年 註冊 Apple Developer Program, 申請 Developer ID Application 證書
+2. Fork 本專案, 改 `project.yml` 的 `CODE_SIGN_IDENTITY` 與 release.yml 加 `notarytool submit` → `stapler staple` → `spctl --assess` 三步
+3. 個人/組織自願承擔分發成本, 本專案無義務提供
+
+這是專案維護者 (2026-07-19 commit `307818e`) 做出的 **已鎖定決策** — Personal Team 路徑免費 + 簡化分發, 不付費註冊 Developer ID。詳見 `CLAUDE.md` 「已鎖定決策」段。
+
 ---
 
 ## 開發

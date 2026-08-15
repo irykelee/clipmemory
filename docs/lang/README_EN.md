@@ -506,6 +506,22 @@ Or download `.tar.gz` from [GitHub Releases](https://github.com/irykelee/clipmem
 
 > **If macOS blocks the first launch with "Apple cannot verify…"**: this is the standard prompt for non-notarized apps, not malware. Either: ① right-click the app → **Open** → **Open** again; or ② System Settings → Privacy & Security → **Open Anyway**. Only needed once. (Users who installed via `brew install` won't see this.)
 
+### Signing & Distribution (ID-DOCS-0003)
+
+**Current signing identity**: Apple Development (Personal Team, Team ID `G59B692W3M`, 1-year valid, expires 2027-07-19).
+
+**What this means**:
+- ✅ **Suitable for**: Personal dev machine + technical users via `brew install` or already-trusted machines
+- ⚠️ **First launch**: GitHub Releases `.tar.gz` requires right-click → Open once (Personal Team signing is ad-hoc, no notarization)
+- ❌ **Not suitable for**: Enterprise MDM push / Mac App Store distribution / strict zero-touch auto-update
+
+**For formal distribution**:
+1. Maintainer pays $99/year to enroll in Apple Developer Program, applies for a Developer ID Application certificate
+2. Fork this project, change `CODE_SIGN_IDENTITY` in `project.yml` and add the 3 steps `notarytool submit` → `stapler staple` → `spctl --assess` to release.yml
+3. Costs are borne voluntarily by the individual/organization; this project is not obligated to provide them
+
+This is a **locked decision** made by the maintainer (2026-07-19 commit `307818e`) — the Personal Team path keeps distribution free and simple, without paying for Developer ID. See `CLAUDE.md` "已锁决策" section.
+
 ---
 
 ## Development

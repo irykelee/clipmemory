@@ -506,6 +506,22 @@ brew install --cask clipmemory
 
 > **初回起動時に「Apple は検証できません…」と表示された場合**：これは未公証アプリへの標準的な警告で、ウイルスではありません。① App を右クリック →「開く」→ 再度「開く」、または ② システム設定 → プライバシーとセキュリティ → ClipMemory の「このまま開く」。一度だけの操作です。（`brew install` でインストールした場合は表示されません）
 
+### 署名と配布について (ID-DOCS-0003)
+
+**現在の署名身份**: Apple Development (Personal Team, Team ID `G59B692W3M`, 1 年有効, 2027-07-19 失効)。
+
+**意味すること**:
+- ✅ **適している**: 個人開発者の本機 + `brew install` または Gatekeeper を既に信頼しているマシンの技術ユーザー
+- ⚠️ **初回起動時**: GitHub Releases の `.tar.gz` は右クリック → 「開く」を 1 回必要 (Personal Team 署名は ad-hoc、公証なし)
+- ❌ **適さない**: エンタープライズ MDM 配布 / Mac App Store 公開 / 厳格なゼロタッチ自動更新
+
+**正式配布には**:
+1. メンテナが年 $99 を払い Apple Developer Program に登録、Developer ID Application 証明書を申請
+2. 本プロジェクトをフォークし `project.yml` の `CODE_SIGN_IDENTITY` を変更、`release.yml` に `notarytool submit` → `stapler staple` → `spctl --assess` の 3 ステップを追加
+3. 個人/組織が自発的に配布コストを負担、本プロジェクトはそれを提供する義務はない
+
+これはメンテナ (2026-07-19 commit `307818e`) が下した **ロック済み決定** です — Personal Team 経路で配布を無料 + シンプルに保ち、有料の Developer ID 登録を行わない。`CLAUDE.md` 「已锁决策」を参照。
+
 ---
 
 ## 開発

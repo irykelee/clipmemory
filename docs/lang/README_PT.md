@@ -506,6 +506,22 @@ Ou baixe `.tar.gz` do [GitHub Releases](https://github.com/irykelee/clipmemory/r
 
 > **Se o macOS bloquear a primeira abertura com "Apple não pode verificar…"**: é o aviso padrão para apps sem notarização, não um vírus. ① Clique com o botão direito no app → **Abrir** → **Abrir** novamente; ou ② Ajustes do Sistema → Privacidade e Segurança → **Abrir Mesmo Assim**. Só na primeira vez. (Quem instalou via `brew install` não verá este aviso.)
 
+### Assinatura e distribuição (ID-DOCS-0003)
+
+**Identidade de assinatura atual**: Apple Development (Personal Team, Team ID `G59B692W3M`, 1 ano válido, expira 2027-07-19).
+
+**Isso significa**:
+- ✅ **Adequado para**: máquina pessoal do desenvolvedor + usuários técnicos via `brew install` ou máquinas com Gatekeeper já confiável
+- ⚠️ **Primeira abertura**: `.tar.gz` do GitHub Releases requer clique direito → Abrir uma vez (assinatura Personal Team = ad-hoc, sem notarização)
+- ❌ **Não adequado para**: distribuição corporativa via MDM / Mac App Store / atualização automática estrita de zero contato
+
+**Para distribuição formal**:
+1. O mantenedor paga $99/ano para se inscrever no Apple Developer Program, solicita um certificado Developer ID Application
+2. Faça fork deste projeto, altere `CODE_SIGN_IDENTITY` em `project.yml` e adicione os 3 passos `notarytool submit` → `stapler staple` → `spctl --assess` no release.yml
+3. Os custos são assumidos voluntariamente pelo indivíduo/organização; este projeto não tem obrigação de fornecê-los
+
+Esta é uma **decisão bloqueada** feita pelo mantenedor (2026-07-19 commit `307818e`) — o caminho Personal Team mantém a distribuição gratuita e simples, sem pagar Developer ID. Ver seção "已锁决策" em `CLAUDE.md`.
+
 ---
 
 ## Desenvolvimento

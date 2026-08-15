@@ -506,6 +506,22 @@ brew install --cask clipmemory
 
 > **처음 실행할 때 "Apple에서 확인할 수 없음…" 경고가 표시되면**: 공증되지 않은 앱에 대한 macOS의 일반적인 차단이며 악성코드가 아닙니다. ① 앱을 우클릭 → 「열기」 → 다시 「열기」, 또는 ② 시스템 설정 → 개인정보 보호 및 보안 → ClipMemory의 「그래도 열기」. 한 번만 하면 됩니다. (`brew install`로 설치한 경우에는 나타나지 않습니다)
 
+### 서명 및 배포 안내 (ID-DOCS-0003)
+
+**현재 서명 신원**: Apple Development (Personal Team, Team ID `G59B692W3M`, 1년 유효, 2027-07-19 만료).
+
+**이것의 의미**:
+- ✅ **적합**: 개인 개발자 본체 + `brew install` 또는 이미 Gatekeeper를 신뢰하는 머신의 기술 사용자
+- ⚠️ **최초 실행**: GitHub Releases `.tar.gz`는 우클릭 → 열기 1회 필요 (Personal Team 서명은 ad-hoc, 공증 없음)
+- ❌ **부적합**: 엔터프라이즈 MDM 배포 / Mac App Store 배포 / 엄격한 무접촉 자동 업데이트
+
+**공식 배포를 위해**:
+1. 유지보수자가 $99/년을 지불하고 Apple Developer Program 등록, Developer ID Application 인증서 신청
+2. 이 프로젝트를 포크하여 `project.yml`의 `CODE_SIGN_IDENTITY` 변경 및 release.yml에 `notarytool submit` → `stapler staple` → `spctl --assess` 3단계 추가
+3. 개인/조직이 자발적으로 배포 비용을 부담; 본 프로젝트는 이를 제공할 의무 없음
+
+이는 유지보수자 (2026-07-19 commit `307818e`)가 내린 **잠긴 결정**입니다 — Personal Team 경로는 배포를 무료 + 단순하게 유지하며 유료 Developer ID 등록을 하지 않음. `CLAUDE.md` 「已锁决策」 섹션 참조.
+
 ---
 
 ## 개발

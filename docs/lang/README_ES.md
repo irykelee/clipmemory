@@ -506,6 +506,22 @@ O descargue `.tar.gz` desde [GitHub Releases](https://github.com/irykelee/clipme
 
 > **Si macOS bloquea el primer inicio con "Apple no puede verificar…"**: es el aviso habitual para apps sin notarización, no un virus. ① Clic derecho en la app → **Abrir** → **Abrir** de nuevo; o ② Ajustes del Sistema → Privacidad y seguridad → **Abrir de todos modos**. Solo la primera vez. (Quienes instalan con `brew install` no verán este aviso.)
 
+### Firma y distribución (ID-DOCS-0003)
+
+**Identidad de firma actual**: Apple Development (Personal Team, Team ID `G59B692W3M`, 1 año válido, expira 2027-07-19).
+
+**Esto significa**:
+- ✅ **Adecuado para**: máquina personal del desarrollador + usuarios técnicos con `brew install` o máquinas con Gatekeeper ya confiable
+- ⚠️ **Primer inicio**: `.tar.gz` de GitHub Releases requiere clic derecho → Abrir una vez (firma Personal Team = ad-hoc, sin notarización)
+- ❌ **No adecuado para**: distribución empresarial por MDM / Mac App Store / actualización automática de cero contacto estricta
+
+**Para distribución formal**:
+1. El mantenedor paga $99/año para inscribirse en Apple Developer Program, solicita un certificado Developer ID Application
+2. Haz fork de este proyecto, cambia `CODE_SIGN_IDENTITY` en `project.yml` y añade los 3 pasos `notarytool submit` → `stapler staple` → `spctl --assess` a release.yml
+3. Los costos los asume voluntariamente el individuo/organización; este proyecto no está obligado a proporcionarlos
+
+Esta es una **decisión bloqueada** tomada por el mantenedor (2026-07-19 commit `307818e`) — la ruta Personal Team mantiene la distribución gratuita y simple, sin pagar Developer ID. Ver `CLAUDE.md` sección "已锁决策".
+
 ---
 
 ## Desarrollo
