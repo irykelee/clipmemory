@@ -148,6 +148,78 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         HangDetector.start()
     }
 
+    // ID-LIFE-0026 (MEDIUM-2, audit 2026-08-15): graceful-quit gate. AppKit calls this
+    // BEFORE `applicationWillTerminate` for normal Cmd+Q quits (NOT for SIGKILL
+    // / Force Quit — those bypass us entirely). When writes are in flight
+    // (large-image backfill mid-write, OCR backfill mid-write, debounced
+    // store flush queued), we return `.terminateLater` and asynchronously drain
+    // before calling `replyToApplicationShouldTerminate(true)`. Without this gate,
+    // `applicationWillTerminate`'s sync drain could race with the dispatch queue
+    // and the last write slips; cleanupOrphanedImages would recover it on next
+    // launch, but the user-visible behavior is "I quit and a record vanished".
+    //
+    // Watchdog: if drain hangs (network-mounted Images/ stuck, etc.) the 5s
+    // timer aborts the quit instead of trapping the user. `hasRepliedToTerminate`
+    // is a one-shot guard so the drain-completion reply and the watchdog reply
+    // race safely (the second call is a no-op per AppKit's documented contract).
+    private static let shouldTerminateTimeout: TimeInterval = 5
+    private let terminateReplyLock = NSLock()
+    private var hasRepliedToTerminate = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let hasPending = ClipboardStore.shared.needsSave
+            || ImageStorage.shared.hasPendingWrites
+        guard hasPending else { return .terminateNow }
+
+        NSLog("[AppDelegate] applicationShouldTerminate: pending writes detected, deferring quit")
+        // Reset the replied flag for the next quit cycle.
+        terminateReplyLock.lock()
+        hasRepliedToTerminate = false
+        terminateReplyLock.unlock()
+
+        // Drain on a global queue so main stays free to fire the watchdog.
+        // ID-LIFE-0007 ordering preserved (image writes before clipboard saves).
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            ImageStorage.shared.drainPendingWrites()
+            ClipboardStore.shared.flushPendingSaves()
+            DispatchQueue.main.async {
+                self?.replyToTermination(allow: true)
+            }
+        }
+        // Watchdog: if the drain doesn't complete in time, abort the quit
+        // rather than trap the user with a frozen quit. They'd retry Cmd+Q.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.shouldTerminateTimeout) {
+            self.replyToTermination(allow: false)
+        }
+        return .terminateLater
+    }
+
+    /// One-shot reply wrapper. The first call wins; subsequent calls are
+    /// no-ops. `allow=false` is the watchdog's "drain timed out" path;
+    /// `allow=true` is the drain-completed path.
+    private func replyToTermination(allow: Bool) {
+        terminateReplyLock.lock()
+        let alreadyReplied = hasRepliedToTerminate
+        if !alreadyReplied {
+            hasRepliedToTerminate = true
+        }
+        terminateReplyLock.unlock()
+        guard !alreadyReplied else { return }
+        if !allow {
+            os_log(.error, log: OSLog(subsystem: "com.clipmemory.app", category: "AppDelegate"),
+                   "applicationShouldTerminate: drain timeout (>%ds), aborting quit",
+                   Int(Self.shouldTerminateTimeout))
+        }
+        // ID-LIFE-0026: `NSApp.reply(toApplicationShouldTerminate:)` is the
+        // macOS 14+ replacement for the legacy `replyToApplicationShouldTerminate`.
+        // Project deployment target is 13.0 (project.yml:21), but the
+        // legacy name is treated as a hard "renamed" error by the 14+
+        // SDK, so the new name is the only path that compiles here.
+        // If 13.x support is required in the future, the pre-14 path
+        // needs a runtime ObjC selector dispatch workaround.
+        NSApp.reply(toApplicationShouldTerminate: allow)
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         // M-6 fix (2026-07-20 audit): the previous terminate hook only
         // flushed the store and stopped the watchdog. Graceful quit is the

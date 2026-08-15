@@ -551,6 +551,18 @@ class ImageStorage {
         return fileManager.fileExists(atPath: imagesDirectory.appendingPathComponent(filename).path)
     }
 
+    /// ID-LIFE-0026 (MEDIUM-2, audit 2026-08-15): true iff `saveImage` has dispatched
+    /// work to `backgroundQueue` whose file write hasn't completed yet.
+    /// AppDelegate's `applicationShouldTerminate` reads this to decide whether
+    /// to defer the quit (`.terminateLater`) until the drain finishes, vs
+    /// allowing the quit immediately (`.terminateNow`). Cheap lock-protected
+    /// read of the existing `pendingFilenames` set; no new tracking needed.
+    var hasPendingWrites: Bool {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        return !pendingFilenames.isEmpty
+    }
+
     /// Returns the availability status of an image file without caching.
     /// Used by the UI to distinguish "file missing" from "decryption failed"
     /// so users are not prompted to delete entries whose key has been corrupted.
