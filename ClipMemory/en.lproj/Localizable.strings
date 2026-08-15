@@ -4,6 +4,11 @@
 "button.settings" = "Settings";
 "button.cancel" = "Cancel";
 "button.delete" = "Delete";
+"accessibility.hint.pin" = "Pins this item to the top of the list.";
+"accessibility.hint.unpin" = "Unpins this item from the top of the list.";
+"accessibility.hint.delete" = "Sends this item to the Trash. You can recover it within 30 days.";
+"accessibility.hint.clear" = "Removes all items in the selected time period. This cannot be undone.";
+"accessibility.hint.restore" = "Restores this item from the Trash to the main history.";
 "button.confirm" = "Confirm";
 "button.close" = "Close";
 "button.done" = "Done";

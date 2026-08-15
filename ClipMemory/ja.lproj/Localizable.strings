@@ -4,6 +4,11 @@
 "button.settings" = "環境設定";
 "button.cancel" = "キャンセル";
 "button.delete" = "削除";
+"accessibility.hint.pin" = "この項目をリストの先頭にピン留めします。";
+"accessibility.hint.unpin" = "この項目のピン留めを解除します。";
+"accessibility.hint.delete" = "この項目をゴミ箱に移動します。30 日以内であれば復元できます。";
+"accessibility.hint.clear" = "選択した期間内のすべての項目を削除します。この操作は元に戻せません。";
+"accessibility.hint.restore" = "この項目をゴミ箱からメイン履歴に復元します。";
 "button.confirm" = "確認";
 "button.close" = "閉じる";
 "button.done" = "完了";

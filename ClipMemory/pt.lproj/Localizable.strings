@@ -4,6 +4,11 @@
 "button.settings" = "Configurações";
 "button.cancel" = "Cancelar";
 "button.delete" = "Excluir";
+"accessibility.hint.pin" = "Fixa este item no topo da lista.";
+"accessibility.hint.unpin" = "Remove a fixação deste item.";
+"accessibility.hint.delete" = "Envia este item para a Lixeira. Você pode recuperá-lo em 30 dias.";
+"accessibility.hint.clear" = "Remove todos os itens do período selecionado. Não pode ser desfeito.";
+"accessibility.hint.restore" = "Restaura este item da Lixeira para o histórico principal.";
 "button.confirm" = "Confirmar";
 "button.close" = "Fechar";
 "button.done" = "Concluído";

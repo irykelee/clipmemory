@@ -126,12 +126,20 @@ struct ItemListView: View {
                                 )
                                 .font(.system(size: sz(12)))
                             })
+                            // ID-APP-0004 (MEDIUM-4 audit fix, 2026-08-15):
+                            // batch pin/unpin — hint distinguishes pin vs unpin
+                            // because the same button does either.
+                            .accessibilityHint(batchAllPinned ? L10n.accessibilityHintUnpin : L10n.accessibilityHintPin)
                             .buttonStyle(.plain)
                             Button(action: {
                                 store.deleteItems(displayedItems.filter { selectedItems.contains($0.id) })
                                 selectedItems.removeAll()
                             }, label: {
                                 Label(L10n.actionDelete, systemImage: "trash")
+                                    // ID-APP-0004: batch delete hint (recoverable
+                                    // within 30 days) so VoiceOver users know
+                                    // the safety net.
+                                    .accessibilityHint(L10n.accessibilityHintDelete)
                                     .font(.system(size: sz(12)))
                             })
                             .buttonStyle(.plain)
@@ -179,15 +187,25 @@ struct ItemListView: View {
                     }
                     pendingTypeClear = nil
                 }
+                // ID-APP-0004: clear-type hint (cannot be undone) makes
+                // the irreversibility explicit — the destructive role
+                // gives VoiceOver the warning, but the hint names what's
+                // lost.
+                .accessibilityHint(L10n.accessibilityHintClear)
             case .clearMode:
                 Button(L10n.buttonCancel, role: .cancel) { pendingClearMode = nil }
                 Button(L10n.buttonClear, role: .destructive) { confirmClear() }
+                    .accessibilityHint(L10n.accessibilityHintClear)
             case .emptyTrash:
                 Button(L10n.buttonCancel, role: .cancel) { showingEmptyTrashAlert = false }
                 Button(L10n.buttonClear, role: .destructive) {
                     store.emptyTrash()
                     showingEmptyTrashAlert = false
                 }
+                // ID-APP-0004: empty-trash is the most destructive —
+                // bypasses the 30-day recovery window. Hint names the
+                // consequence explicitly.
+                .accessibilityHint(L10n.accessibilityHintClear)
             case .none:
                 Button(L10n.buttonCancel, role: .cancel) {}
             }

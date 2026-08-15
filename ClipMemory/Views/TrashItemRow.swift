@@ -204,6 +204,11 @@ struct TrashItemRow: View, Equatable {
                 // announces the action. The `Label(...)` above already
                 // provides visible text, but VoiceOver ignores `.help()`.
                 .accessibilityLabel(L10n.trashRestore)
+                // ID-APP-0004 (MEDIUM-4 audit fix, 2026-08-15): the label
+                // tells VoiceOver WHAT the button is ("Restore"), but not
+                // WHAT IT DOES ("moves this item from Trash to main
+                // history"). The hint makes the side effect explicit.
+                .accessibilityHint(L10n.accessibilityHintRestore)
                 .help(L10n.trashRestore)
 
                 // F-1 + F-2 (2026-07-23 audit): wrap destructive permanent
@@ -219,6 +224,10 @@ struct TrashItemRow: View, Equatable {
                 .buttonStyle(.plain)
                 .foregroundColor(.red)
                 .accessibilityLabel(L10n.actionDelete)
+                // ID-APP-0004: hint explains the consequence (sends to
+                // Trash + recoverable) so VoiceOver users know what they're
+                // about to do, and the recoverability frame.
+                .accessibilityHint(L10n.accessibilityHintDelete)
                 .help(L10n.actionDelete)
             }
             .opacity(isHovered || isFocused ? 1 : 0)

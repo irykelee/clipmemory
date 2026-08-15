@@ -4,6 +4,11 @@
 "button.settings" = "偏好設定";
 "button.cancel" = "取消";
 "button.delete" = "刪除";
+"accessibility.hint.pin" = "將此條目釘選到列表最前。";
+"accessibility.hint.unpin" = "取消此條目的釘選。";
+"accessibility.hint.delete" = "將此條目移入垃圾桶,30 天內可復原。";
+"accessibility.hint.clear" = "刪除所選時間範圍內的所有條目,操作無法復原。";
+"accessibility.hint.restore" = "將此條目從垃圾桶復原到主歷史紀錄。";
 "button.confirm" = "確認";
 "button.close" = "關閉";
 "button.done" = "完成";

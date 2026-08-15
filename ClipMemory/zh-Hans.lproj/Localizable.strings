@@ -4,6 +4,11 @@
 "button.settings" = "偏好设置";
 "button.cancel" = "取消";
 "button.delete" = "删除";
+"accessibility.hint.pin" = "将此条目置顶到列表最前。";
+"accessibility.hint.unpin" = "取消此条目的置顶。";
+"accessibility.hint.delete" = "将此条目移入回收站,30 天内可恢复。";
+"accessibility.hint.clear" = "删除所选时间范围内的所有条目,操作不可撤销。";
+"accessibility.hint.restore" = "将此条目从回收站恢复到主历史记录。";
 "button.confirm" = "确认";
 "button.close" = "关闭";
 "button.done" = "完成";

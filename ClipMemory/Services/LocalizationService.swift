@@ -128,6 +128,17 @@ struct L10n {
 
     static var appName: String { string("app.name") }
     static var buttonClear: String { string("button.clear") }
+    // ID-APP-0004 (MEDIUM-4 audit fix, 2026-08-15): explicit
+    // VoiceOver hints for the 4 destructive actions. Without these,
+    // VoiceOver users hear the button name but not the consequence
+    // ("are they about to delete? from where can it be recovered?").
+    // Each hint is a one-sentence imperative ("Pins this item…") that
+    // makes the side effect explicit without restating the button name.
+    static var accessibilityHintPin: String { string("accessibility.hint.pin") }
+    static var accessibilityHintUnpin: String { string("accessibility.hint.unpin") }
+    static var accessibilityHintDelete: String { string("accessibility.hint.delete") }
+    static var accessibilityHintClear: String { string("accessibility.hint.clear") }
+    static var accessibilityHintRestore: String { string("accessibility.hint.restore") }
     static var buttonSettings: String { string("button.settings") }
     static var buttonCancel: String { string("button.cancel") }
     static var buttonDelete: String { string("button.delete") }
