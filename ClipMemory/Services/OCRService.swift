@@ -357,7 +357,12 @@ final class VisionOCRService: OCRServiceProtocol {
         return supported
     }
 
-    private static func supportedRecognitionLanguages(from requested: [String]) -> [String] {
+    // ID-OCR-0011 (2026-08-15, L26 Path H): internal (not private) so L26 tests
+    // can drive the fallback path directly via stubbed
+    // `recognitionLanguagesQuery`. Production callers still go through
+    // `performRecognition`, which sets `request.recognitionLanguages` from
+    // this function's return value.
+    static func supportedRecognitionLanguages(from requested: [String]) -> [String] {
         if #available(macOS 13.0, *) {
             // The 2-arg overload is deprecated in macOS 12+ in favor of the
             // parameterless form (introduced macOS 15). Suppress the warning
