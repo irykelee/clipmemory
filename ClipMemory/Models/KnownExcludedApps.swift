@@ -16,6 +16,24 @@ import Foundation
 /// `com.keepassx.keeweb` — an id that belongs to no app at all, so that
 /// exclusion had never once fired. Do not add an entry here from memory; look
 /// up the cask (or the installed bundle) first.
+///
+/// ID-EXCLUDE-0003 (2026-08-15): the brew-cask lookup does NOT cover every
+/// entry — `com.agilebits.onepassword7` is the bundle id of the legacy
+/// AgileBits-era 1Password 7 app, which was never packaged on Homebrew (it's
+/// distributed via the Mac App Store + agilebits.com direct download). It was
+/// verified verbatim instead by cross-referencing:
+///   - ProfileManifests/ProfileManifests :: Manifests/ManagedPreferencesApplications/com.agilebits.onepassword7.plist
+///     (Apple MDM-style managed-preferences manifest — the filename IS the
+///      bundle id, and these manifests are only created for real apps)
+///   - raycast/extensions :: extensions/1password/src/v7/utils.ts (references
+///     `~/Library/Containers/com.agilebits.onepassword7/Data/...` — the
+///     sandbox container path that macOS only creates for a real app)
+///   - 8 other open-source projects (Kandji / Jamf / Pareto Security /
+///     ProfileManifests mirror / wincent karabiner / etc.) — all 10
+///     independently list the same id for 1Password 7.
+/// If you add a new entry that isn't on brew (e.g. an AgileBits-era legacy
+/// app, a notarized-but-not-casked direct download), follow the same
+/// cross-reference pattern instead of trusting memory.
 enum KnownExcludedApps {
 
     /// Bundle ids seeded on a fresh install.
