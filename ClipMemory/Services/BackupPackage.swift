@@ -7,9 +7,17 @@ import os.log
 ///
 /// Layout:
 ///   manifest.json  {formatVersion, createdAt, appVersion, keySalt, itemCount, tagCount, imageCount}
-///   key.enc        machine key encrypted with a passphrase-derived key (HKDF-SHA256 + AES-GCM)
+///   key.enc        machine key encrypted with a passphrase-derived key (PBKDF2-SHA256 600k + AES-GCM)
 ///   items.json / tags.json / trash.json   raw encrypted store blobs
 ///   Images/        encrypted image files
+///
+/// ID-DOCS-0004 (LOW audit fix, 2026-08-15): the file-format comment
+/// previously said `HKDF-SHA256 + AES-GCM`. After the M-1 fix
+/// (commit `44cdfee`, v2.5.12) the passphrase-to-key derivation is
+/// PBKDF2-SHA256 with 600k iterations; HKDF only remains for the
+/// legacy read path (`keyDerivationVersion == 1`). Update the comment
+/// to match the current code so future reviewers don't have to grep
+/// the implementation to figure out which KDF is actually in use.
 ///
 /// The passphrase is mandatory: without it the package key would be a bare copy
 /// of the machine's encryption key. GCM's auth tag doubles as passphrase check.
