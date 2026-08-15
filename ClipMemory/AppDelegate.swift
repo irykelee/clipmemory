@@ -99,6 +99,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupWindowManager()
         setupStatusItem()
         setupClipboardMonitor()
+        // ID-STORE-0018 (MEDIUM-6 audit fix, 2026-08-15): start the
+        // network monitor so offline → online transitions trigger an
+        // immediate flush of any queued ClipboardStore / ImageStorage
+        // writes, instead of waiting for the next user copy or the
+        // 16 s × 16 = 256 s backoff ladder to expire.
+        NetworkMonitor.shared.start()
+        setupNetworkRecoveryObserver()
         // A.2: log startup health snapshot BEFORE long-running ops (backup,
         // OCR backfill, Sparkle) so it appears first in `log show` output
         // and is the first thing we look at on the next bug.
@@ -241,6 +248,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         welcomeWindow?.close()
         settingsWindow?.close()
         HangDetector.stop()
+    }
+
+    // ID-STORE-0018 (MEDIUM-6 audit fix, 2026-08-15): when the network
+    // monitor posts `didBecomeReachable`, drain any writes that piled up
+    // during the offline window. Order: image writes first (ID-LIFE-0007
+    // pattern), then ClipboardStore flush. The save retry path's
+    // exponential backoff would eventually retry on its own, but a 30-min
+    // offline window would still delay the queue by up to 256 s of backoff
+    // after the link comes back. This observer short-circuits that.
+    private func setupNetworkRecoveryObserver() {
+        // ID-STORE-0018: register the offline→online observer. The
+        // `forName: Notification.Name("NetworkMonitor.didBecomeReachable")`
+        // form (Pattern B in NotificationObserverAssertionTests) is used
+        // instead of `forName: .didBecomeReachable` (Pattern A) because
+        // `addObserver(forName:)` is typed as `NSNotification.Name?`, and
+        // member-lookup dot syntax would resolve to NSNotification.Name
+        // (which doesn't have `didBecomeReachable`) and fail to compile.
+        // The inline-literal form bypasses the member-lookup entirely
+        // and the test's regex picks it up correctly.
+        NotificationCenter.default.addObserver(forName: Notification.Name("NetworkMonitor.didBecomeReachable"), object: nil, queue: .main) { [weak self] _ in
+            NSLog("[AppDelegate] NetworkMonitor.didBecomeReachable — draining queued writes")
+            ImageStorage.shared.drainPendingWrites()
+            ClipboardStore.shared.flushPendingSaves()
+            _ = self
+        }
     }
 
     @objc func disableFindMenuShortcut() {
