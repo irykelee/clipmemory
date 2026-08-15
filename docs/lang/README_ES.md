@@ -1,4 +1,4 @@
-# ClipMemory v2.9.0
+# ClipMemory v2.9.1
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.9.1 (2026-08-15) — Correcciones de fallos silenciosos y notas sobre los límites de firma
+
+- **🔧 Corrección de restauración de copia de seguridad que fallaba en silencio (ID-STORE-0012 M-3)** — `importBackupItems` antes incluía en el conjunto de deduplicación los elementos de la Papelera con el mismo hash; el resultado era que, **si la Papelera seguía conteniendo elementos con el mismo hash, la restauración de la copia de seguridad «funcionaba», pero en realidad no importaba nada**; cuando la Papelera expira a los 30 días, los datos originales se pierden por completo. Solución: el conjunto de deduplicación solo considera los elementos (items) y ya no los elementos de la Papelera (trashed items). Las pruebas de regresión cubren 3 invariantes adyacentes (RED→GREEN del núcleo + deduplicación por ID + conflicto de hash a nivel de paquete). **Esta es una corrección de pérdida de datos real; se recomienda encarecidamente actualizar.**
+- **🔧 Desbloqueo del aislamiento de pruebas (ID-STORE-0015 C-1)** — `FileStorageBackend` antes estaba acoplado directamente a `UserDefaults.standard`, lo que impedía probar la ruta de fallo de carga de la Papelera de `TrashStore` sin contaminar las claves de producción. Solución: se añade un seam al `init` con `defaults: UserDefaults = .standard` y se cambian 5 usos de `.standard` a `defaults`. **El comportamiento del usuario no cambia** (el valor por defecto sigue siendo `.standard`), pero se desbloquean el aislamiento multi-suite y las pruebas de la ruta real de `TrashStore`. Cambio a nivel de arquitectura, sin breaking changes.
+- **🔧 Corrección del cuerpo vacío en el feed de actualización de Sparkle (ID-UPDATE-0004 F-1 + F-2)** — `FeedProbeEngine.fetchBody` antes devolvía `""` (cadena vacía) ante una respuesta 200 + 0 bytes; la capa superior lo interpretaba como «feed accesible» → Sparkle recibía un appcast con cero elementos → mostraba «ya está actualizado», **pero en realidad la CDN había vaciado el appcast y la nueva versión nunca se recibiría**. Solución: el cuerpo vacío y el cuerpo no UTF-8 se tratan igual (`return nil` + `logger.error`); la capa superior toma la rama de decisión `.bothDownKeepPrimary` (conserva la URL principal y la interfaz muestra «la principal y la de respaldo inaccesibles»). **Esta es la corrección de un fallo silencioso real; se recomienda encarecidamente actualizar.**
+- **🔧 Corrección del fallo en la limpieza de copias de seguridad (ID-STORE-0016 E-1)** — `pruneOldBackups` antes devolvía silenciosamente ante un fallo de `contentsOfDirectory` (permisos revocados / directorio padre eliminado / rechazo del sandbox → Backups/ crece de forma monótona). Solución: en caso de fallo, se registra en UserDefaults el par `lastPruneErrorDate` + `lastPruneErrorMessage`, se añade una línea de aviso en rojo al pie de la página de Ajustes y L10n en 7 idiomas. **Se conserva la URL principal; la interfaz informa explícitamente: «Limpieza detenida».**
+- **🔧 Advertencia de corrupción de la fecha de copia de seguridad (ID-STORE-0017 E-2)** — Si `lastBackupDateKey` se guarda como un tipo que no es `Date` (por uso incorrecto de `defaults.set(Int, ...)` en el código / migración corrupta), `as? Date` devuelve `nil` en silencio → se omite el throttle → la copia de seguridad se ejecuta en cada inicio. Solución: se conserva el comportamiento fail-open (más copias de seguridad = más seguro) y solo se añade `logger.warning` para indicar el tipo de corrupción y el comportamiento (visible para el operador a través de Console.app). **La superficie visible para el usuario se deja para el futuro** (se puede reutilizar el patrón del pie de página de Ajustes de ID-STORE-0016).
+- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.1
 
 ### v2.9.0 (2026-08-14) — Asistente de restauración de copias + Compartir y exportar imágenes
 

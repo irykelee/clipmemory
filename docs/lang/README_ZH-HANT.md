@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.9.0
+# 剪憶 ClipMemory v2.9.1
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 更新日誌
+
+### v2.9.1 (2026-08-15) — 靜默失敗修復與簽名邊界說明
+
+- **🔧 備份還原靜默失敗修復 (ID-STORE-0012 M-3)** — `importBackupItems` 先前會把垃圾桶裡同 hash 的條目算進 dedup set，結果：**垃圾桶裡仍有同 hash 條目時，備份還原會「成功」但實際什麼都沒匯入**；等 30 天垃圾桶過期後，原資料徹底遺失。修正方式：dedup set 只以 items 為準，不再看 trashed items。回歸測試覆蓋 3 種相鄰不變量（核心 RED→GREEN + ID dedup + 套件級 hash 衝突）。**這是真實資料遺失的修復，強烈建議升級**。
+- **🔧 測試隔離解鎖 (ID-STORE-0015 C-1)** — `FileStorageBackend` 先前寫死連到 `UserDefaults.standard`，導致 TrashStore 的垃圾桶載入失敗路徑，無法在不會污染正式環境 keys 的前提下測試。修正方式：init 加上 `defaults: UserDefaults = .standard` seam，5 處 `.standard` 改為 `defaults`。**使用者行為不變**（預設仍是 `.standard`），但未來 multi-suite 隔離與 TrashStore 真實路徑測試解鎖。架構級變動，無 breaking change。
+- **🔧 Sparkle 更新源空 body 修復 (ID-UPDATE-0004 F-1 + F-2)** — `FeedProbeEngine.fetchBody` 先前對 200 + 0 位元組回應回傳 `""`（空字串），上游視為「feed reachable」→ Sparkle 收到 zero-item appcast → 顯示「已是最新」，**但實際上 appcast 已被 CDN 清空，新版永遠收不到**。修正方式：空 body 與非 UTF-8 body 同等處理（return nil + logger.error），上游走 `.bothDownKeepPrimary` 決策分支（保留主要 URL，UI 顯示「主要與備援都不可達」）。**這是真正的 silent failure 修復，強烈建議升級**。
+- **🔧 備份清理失敗修復 (ID-STORE-0016 E-1)** — `pruneOldBackups` 先前在 `contentsOfDirectory` 失敗時會靜默回傳（權限撤銷 / 父目錄被刪除 / 沙盒拒絕 → Backups/ 單調成長）。修正方式：失敗時記錄 `lastPruneErrorDate` + `lastPruneErrorMessage` UserDefaults pair，並在設定頁 footer 加上紅色提示列 + 7 種語系的 L10n。**保留主要 URL，UI 明確顯示「清理已停止」**。
+- **🔧 備份日期損毀警告 (ID-STORE-0017 E-2)** — `lastBackupDateKey` 若被存成非 Date 型別（程式誤用 `defaults.set(Int, ...)` / 損毀的遷移），`as? Date` 會靜默回傳 nil → throttle 跳過 → 每次啟動都會執行備份。修正方式：保留 fail-open 行為（更多備份 = 更安全），僅加上 `logger.warning` 提示損毀型別與行為（操作者可透過 Console.app 看到）。**使用者介面表面暫不更動，留待未來**（可沿用 ID-STORE-0016 的 settings footer 模式）。
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.1
 
 ### v2.9.0 (2026-08-14) — 備份還原精靈 + 圖片分享匯出
 

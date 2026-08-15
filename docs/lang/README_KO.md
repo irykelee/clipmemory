@@ -1,4 +1,4 @@
-# ClipMemory v2.9.0
+# ClipMemory v2.9.1
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 변경 로그
+
+### v2.9.1 (2026-08-15) — 조용한 실패 수정 및 서명 경계 설명
+
+- **🔧 백업 복원 조용한 실패 수정 (ID-STORE-0012 M-3)** — `importBackupItems`가 이전에는 휴지통에 있는 동일 hash 항목을 dedup 세트에 포함했습니다. 그 결과, **휴지통에 동일 hash 항목이 남아 있으면 백업 복원이 "성공"하지만 실제로는 아무것도 가져오지 않았습니다**; 30일 후 휴지통이 만료되면 원본 데이터가 완전히 손실됩니다. 수정 방법: dedup 세트는 items만 보며 trashed items는 더 이상 보지 않습니다. 회귀 테스트는 3가지 인접 불변식을 다룹니다 (핵심 RED→GREEN + ID dedup + 패키지 수준 hash 충돌). **이것은 실제 데이터 손실 수정이므로 업그레이드를 강력히 권장합니다**.
+- **🔧 테스트 격리 잠금 해제 (ID-STORE-0015 C-1)** — `FileStorageBackend`가 이전에는 `UserDefaults.standard`에 하드코딩되어 있어서 TrashStore의 휴지통 로드 실패 경로를 프로덕션 keys를 오염시키지 않고 테스트할 수 없었습니다. 수정 방법: init에 `defaults: UserDefaults = .standard` seam을 추가하고 5곳의 `.standard`를 `defaults`로 변경했습니다. **사용자 동작은 변경되지 않습니다** (기본값은 여전히 `.standard`), 하지만 향후 multi-suite 격리 + TrashStore 실제 경로 테스트가 가능해졌습니다. 아키텍처 수준 변경이며 breaking change는 없습니다.
+- **🔧 Sparkle 업데이트 피드 빈 body 수정 (ID-UPDATE-0004 F-1 + F-2)** — `FeedProbeEngine.fetchBody`가 이전에는 200 + 0 바이트 응답에 대해 `""`(빈 문자열)을 반환했습니다. 업스트림은 “feed reachable”로 간주 → Sparkle이 zero-item appcast를 수신 → “최신 버전입니다”로 표시됩니다. **그러나 실제로는 appcast가 CDN에서 비워져 새 버전을 영원히 받을 수 없습니다**. 수정 방법: 빈 body와 비 UTF-8 body를 동일하게 처리하고(return nil + logger.error), 업스트림은 `.bothDownKeepPrimary` 결정 분기를 따릅니다(기본 URL 유지, UI에 “기본 및 보조 모두 연결할 수 없음” 표시). **이것은 진짜 silent failure 수정이므로 업그레이드를 강력히 권장합니다**.
+- **🔧 백업 정리 실패 수정 (ID-STORE-0016 E-1)** — `pruneOldBackups`가 이전에는 `contentsOfDirectory` 실패 시 조용히 반환했습니다(perms 해제 / 상위 디렉터리 삭제 / 샌드박스 거부 → Backups/가 단조 증가). 수정 방법: 실패 시 `lastPruneErrorDate` + `lastPruneErrorMessage` UserDefaults 쌍을 기록하고 설정 페이지 footer에 빨간색 경고 줄을 추가하며 7개 언어 L10n을 지원합니다. **primary URL을 유지하고 UI에 “정리 중지됨”을 명시적으로 표시합니다**.
+- **🔧 백업 날짜 손상 경고 (ID-STORE-0017 E-2)** — `lastBackupDateKey`가 Date가 아닌 유형으로 저장된 경우(프로그램이 `defaults.set(Int, ...)`을 잘못 사용 / 손상된 마이그레이션), `as? Date`가 조용히 nil을 반환 → throttle이 건너뜀 → 백업이 매 시작 시 실행됩니다. 수정 방법: fail-open 동작을 유지하고(더 많은 백업 = 더 안전), `logger.warning`으로 손상 유형과 동작을 알리기만 합니다(운영자는 Console.app을 통해 확인 가능). **사용자 패널 표면은 향후를 위해 남겨둡니다** (ID-STORE-0016의 settings footer 패턴을 재사용할 수 있음).
+- 전체 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.1
 
 ### v2.9.0 (2026-08-14) — 백업 복원 마법사 + 이미지 공유·내보내기
 

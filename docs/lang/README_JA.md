@@ -1,4 +1,4 @@
-# ClipMemory v2.9.0
+# ClipMemory v2.9.1
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.9.1 (2026-08-15) — サイレント失敗の修正と署名境界の説明
+
+- **🔧 バックアップ復元のサイレント失敗を修正 (ID-STORE-0012 M-3)** — `importBackupItems` は従来、ごみ箱内の同ハッシュの項目を dedup set に数えていました。その結果、**ごみ箱に同ハッシュの項目が残っていると、バックアップ復元が「成功」しても実際には何もインポートされません**。30 日後にごみ箱の期限が切れると、元データは完全に失われます。修正: dedup set は items のみを参照し、trashed items は参照しなくなりました。回帰テストは 3 つの隣接不変条件（コア RED→GREEN + ID dedup + パッケージレベルのハッシュ衝突）をカバーしています。**これは実際のデータ損失を防ぐ修正です。アップグレードを強くお勧めします。**
+- **🔧 テスト分離の有効化 (ID-STORE-0015 C-1)** — `FileStorageBackend` は従来 `UserDefaults.standard` にハードコードされていたため、TrashStore のごみ箱読み込み失敗パスを本番 keys を汚染せずにテストできませんでした。修正: init に `defaults: UserDefaults = .standard` という seam を追加し、5 箇所の `.standard` を `defaults` に変更。**ユーザー動作は変わりません**（デフォルトは依然として `.standard`）が、将来の multi-suite 分離と TrashStore の実パステストが可能になりました。アーキテクチャレベルの変更であり、breaking change はありません。
+- **🔧 Sparkle 更新フィードの空 body 修正 (ID-UPDATE-0004 F-1 + F-2)** — `FeedProbeEngine.fetchBody` は従来、200 + 0 バイトのレスポンスに対して `""`（空文字列）を返し、アップストリームが「feed reachable」と見なしていました → Sparkle が zero-item appcast を受信 → 「最新です」と表示されます。**しかし実際には appcast は CDN によって空にされており、新バージョンは永遠に受信できません**。修正: 空 body を非 UTF-8 body と同様に処理し（return nil + logger.error）、アップストリームは `.bothDownKeepPrimary` の判断分岐（プライマリ URL を維持し、UI に「プライマリとセカンダリの両方が到達不能」と表示）を取ります。**これは本物のサイレント失敗修正です。アップグレードを強くお勧めします。**
+- **🔧 バックアップ整理失敗の修正 (ID-STORE-0016 E-1)** — `pruneOldBackups` は従来、`contentsOfDirectory` の失敗時にサイレント return していました（パーミッション除去 / 親ディレクトリ削除 / サンドボックス拒否 → `Backups/` が単調増加）。修正: 失敗時には `lastPruneErrorDate` + `lastPruneErrorMessage` の UserDefaults ペアを記録し、設定ページのフッターに赤い警告行を追加し、7 言語の L10n に対応。**プライマリ URL を維持し、UI は「クリーンアップが停止しました」と明示します。**
+- **🔧 バックアップ日付の破損警告 (ID-STORE-0017 E-2)** — `lastBackupDateKey` が非 Date 型で保存された場合（プログラムの誤用による `defaults.set(Int, ...)` / 破損したマイグレーション）、`as? Date` はサイレントに nil を返すため、throttle がスキップされ、バックアップが起動のたびに実行されていました。修正: fail-open の動作を維持し（バックアップが多いほど安全）、`logger.warning` で破損の型と動作を通知するだけです（オペレーターは Console.app で確認可能）。**ユーザー向けの表示変更は将来に先送り**（ID-STORE-0016 の設定フッターパターンを再利用可能）。
+- 完全な changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.1
 
 ### v2.9.0 (2026-08-14) — バックアップ復元ウィザード + 画像の共有・書き出し
 

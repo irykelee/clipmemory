@@ -1,4 +1,4 @@
-# ClipMemory v2.9.0
+# ClipMemory v2.9.1
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.9.1 (2026-08-15) — Correção de falha silenciosa e notas sobre limites de assinatura
+
+- **🔧 Correção de falha silenciosa na restauração de backup (ID-STORE-0012 M-3)** — `importBackupItems` anteriormente incluía itens com o mesmo hash na Lixeira no conjunto de deduplicação, resultando em: **quando ainda havia itens com o mesmo hash na Lixeira, a restauração do backup "tinha sucesso" mas na verdade não importava nada**; após a expiração de 30 dias da Lixeira, os dados originais eram perdidos completamente. Correção: o conjunto de deduplicação considera apenas `items`, não mais `trashed items`. O teste de regressão cobre 3 invariantes adjacentes (RED→GREEN central + dedup de ID + conflito de hash em nível de pacote). **Esta é uma correção de perda real de dados; é fortemente recomendado atualizar**.
+- **🔧 Desbloqueio de isolamento de testes (ID-STORE-0015 C-1)** — `FileStorageBackend` anteriormente estava fixado em `UserDefaults.standard`, o que impedia testar o caminho de falha de carregamento da Lixeira do TrashStore sem poluir as chaves de produção. Correção: o init agora recebe um seam `defaults: UserDefaults = .standard`, e 5 ocorrências de `.standard` foram alteradas para `defaults`. **O comportamento do usuário não muda** (o padrão continua sendo `.standard`), mas o isolamento multi-suite futuro e os testes do caminho real do TrashStore ficam desbloqueados. Mudança em nível de arquitetura, sem breaking change.
+- **🔧 Correção do feed de atualização Sparkle com body vazio (ID-UPDATE-0004 F-1 + F-2)** — `FeedProbeEngine.fetchBody` anteriormente retornava `""` (string vazia) para respostas 200 + 0 bytes; o upstream considerava "feed acessível" → o Sparkle recebia um appcast com zero itens → exibia "Já está atualizado", **mas na verdade o appcast havia sido esvaziado pela CDN e a nova versão nunca seria recebida**. Correção: body vazio agora é tratado da mesma forma que body não-UTF-8 (return nil + logger.error), e o upstream segue o ramo de decisão `.bothDownKeepPrimary` (mantém a URL principal, a UI mostra "primário e secundário inacessíveis"). **Esta é uma correção de falha silenciosa real; é fortemente recomendado atualizar**.
+- **🔧 Correção de falha na limpeza de backups (ID-STORE-0016 E-1)** — `pruneOldBackups` anteriormente fazia `silently return` em falha de `contentsOfDirectory` (permissões revogadas / diretório pai removido / sandbox negando → `Backups/` crescendo sem limite). Correção: em caso de falha, registra `lastPruneErrorDate` + `lastPruneErrorMessage` no par de UserDefaults + adiciona linha de aviso em vermelho no rodapé da página de Configurações + L10n em 7 idiomas. **Preserva a URL principal, a UI informa explicitamente "limpeza interrompida"**.
+- **🔧 Aviso de corrupção de data de backup (ID-STORE-0017 E-2)** — Se `lastBackupDateKey` for armazenado com um tipo não-`Date` (uso indevido de `defaults.set(Int, ...)` / migração corrompida), `as? Date` retorna `nil` silenciosamente → o throttle é ignorado → o backup é executado em toda inicialização. Correção: o comportamento de fail-open é mantido (mais backups = mais segurança), apenas adiciona `logger.warning` indicando o tipo de corrupção + comportamento (visível para o operador via Console.app). **Deixa possibilidade futura na superfície do usuário** (pode reutilizar o padrão de rodapé de configurações do ID-STORE-0016).
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.1
 
 ### v2.9.0 (2026-08-14) — Assistente de restauração de backup + Compartilhar e exportar imagens
 

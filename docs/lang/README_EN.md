@@ -1,4 +1,4 @@
-# ClipMemory v2.9.0
+# ClipMemory v2.9.1
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -47,6 +47,15 @@
 ---
 
 ## 📋 Changelog
+
+### v2.9.1 (2026-08-15) — Silent Failure Fixes and Signature Boundary Notes
+
+- **🔧 Backup restore silent failure fix (ID-STORE-0012 M-3)** — `importBackupItems` previously counted Trash entries with the same hash toward the dedup set. Result: when the Trash still contained an entry with the same hash, backup restore would “succeed” but actually import nothing; after the 30-day Trash expiry, the original data was permanently lost. Fix: the dedup set now only looks at items, not trashed items. Regression tests cover 3 adjacent invariants (core RED→GREEN + ID dedup + package-level hash conflict). **This is a real data-loss fix; upgrading is strongly recommended.**
+- **🔧 Test isolation unlocked (ID-STORE-0015 C-1)** — `FileStorageBackend` was previously hard-wired to `UserDefaults.standard`, so TrashStore's Trash-loading failure paths could not be tested without polluting production keys. Fix: added a `defaults: UserDefaults = .standard` seam to `init` and changed 5 `.standard` occurrences to `defaults`. **User behavior is unchanged** (the default is still `.standard`), but future multi-suite isolation and real-path TrashStore tests are now unlocked. Architecture-level change with no breaking change.
+- **🔧 Sparkle update feed empty-body fix (ID-UPDATE-0004 F-1 + F-2)** — `FeedProbeEngine.fetchBody` previously returned `""` (empty string) for a 200 + 0-byte response, so upstream treated it as “feed reachable” → Sparkle received a zero-item appcast → showed “Up to Date”, **but in reality the appcast had been emptied by the CDN, and new versions could never arrive**. Fix: empty bodies are now treated the same as non-UTF-8 bodies (`return nil` + `logger.error`), and upstream takes the `.bothDownKeepPrimary` decision branch (keeps the primary URL; UI shows “Primary and backup unreachable”). **This is a true silent-failure fix; upgrading is strongly recommended.**
+- **🔧 Backup pruning failure fix (ID-STORE-0016 E-1)** — `pruneOldBackups` previously returned silently on `contentsOfDirectory` failure (permissions revoked / parent directory deleted / sandbox denial → `Backups/` grows monotonically). Fix: on failure, record a `lastPruneErrorDate` + `lastPruneErrorMessage` UserDefaults pair, add a red hint line to the Settings footer, and add L10n in 7 languages. **The primary URL is kept; the UI explicitly reports “Pruning stopped”.**
+- **🔧 Backup date corruption warning (ID-STORE-0017 E-2)** — If `lastBackupDateKey` is stored as a non-`Date` type (misuse via `defaults.set(Int, ...)` / corrupted migration), `as? Date` silently returns nil → throttle is skipped → backup runs on every launch. Fix: fail-open behavior preserved (more backups = safer), with only a `logger.warning` added to indicate the corruption type and behavior (visible to operators via Console.app). **The user-facing surface is left for the future** (can reuse the settings footer pattern from ID-STORE-0016).
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.1
 
 ### v2.9.0 (2026-08-14) — Backup Restore Wizard + Image Share & Export
 
