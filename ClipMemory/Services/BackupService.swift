@@ -185,6 +185,18 @@ final class BackupService {
     /// disabled or when the last backup is younger than 24h.
     func performBackupIfNeeded() {
         guard isEnabled else { return }
+        // ID-STORE-0017 (2026-08-15, L26 Path E): a non-Date value at
+        // lastBackupDateKey (e.g., a bad migration or accidental
+        // `defaults.set(Int, ...)`) makes `as? Date` return nil, which
+        // silently skips the throttle block. The backup fires anyway
+        // — fail-open toward backing up — but the operator has no signal
+        // that the throttle is no longer in effect. Log a warning so the
+        // corruption is visible in Console.app without changing the
+        // fail-open behavior (more backups is safer than fewer).
+        if let raw = defaults.object(forKey: Self.lastBackupDateKey),
+           !(raw is Date) {
+            logger.warning("lastBackupDate corrupted (type=\(type(of: raw))), treating as nil so throttle is skipped — backup will fire this launch")
+        }
         if let last = lastBackupDate {
             let elapsed = Date().timeIntervalSince(last)
             // ID-BACKUP-0002 (2026-07-31 audit): the throttle is wall-clock

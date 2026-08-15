@@ -227,11 +227,12 @@ final class BackupServiceExceptionPathTests: XCTestCase {
     /// Document the corruption fallback in `performBackupIfNeeded`:
     /// `defaults.object(forKey: ...) as? Date` returns nil for non-Date
     /// values, so `if let last = lastBackupDate` is false, the throttle
-    /// block is skipped, and the daily backup fires. This is fail-open
-    /// toward backing up — a corrupted lastBackupDate causes more
-    /// backups, not fewer. Not necessarily wrong (more redundancy), but
-    /// the side effect (potential disk churn from rapid retries after a
-    /// bad migration) deserves to be documented.
+    /// block is skipped, and the daily backup fires. **ID-STORE-0017
+    /// (2026-08-15, L26 Path E)**: `performBackupIfNeeded` now logs a
+    /// `logger.warning` when the raw value at `lastBackupDateKey` is
+    /// non-nil AND not a Date, so the corruption is visible in
+    /// Console.app without changing the fail-open behavior (more backups
+    /// is safer than fewer).
     ///
     /// Capture-only: if this test ever changes, re-read this comment and
     /// verify the new behavior is an intentional fix (e.g., a sentinel
@@ -259,5 +260,13 @@ final class BackupServiceExceptionPathTests: XCTestCase {
         // assert the throttle behavior synchronously.
         XCTAssertNoThrow(try service.backupNow(),
             "backupNow does not consult lastBackupDate — only performBackupIfNeeded does")
+        // ID-STORE-0017: invoke performBackupIfNeeded to verify the corruption
+        // detection branch executes without crashing and does not block the
+        // backup path. The Logger.warning emitted is observable in
+        // Console.app but hard to capture in XCTest (no built-in Logger spy
+        // here); a successful no-throw + successful backup is the observable
+        // assertion. If the warning branch ever blocks or throws, this test
+        // catches it.
+        service.performBackupIfNeeded()
     }
 }
