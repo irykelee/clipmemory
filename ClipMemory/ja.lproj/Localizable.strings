@@ -71,6 +71,7 @@
 "settings.section.sensitive" = "プライバシー保護";
 "settings.section.language" = "言語";
 "settings.section.about" = "このアプリについて";
+"settings.privacy.noTelemetry" = "このアプリはテレメトリや分析データを送信しません。クリップボードの内容はすべて Mac 上に保持されます。";
 "settings.max.items" = "最大保存数";
 "settings.max.items.count" = "%d 件";
 "settings.auto.clear" = "自動削除";

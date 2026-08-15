@@ -73,6 +73,7 @@
 "settings.section.language" = "Idioma";
 "settings.section.theme" = "Tema";
 "settings.section.about" = "Acerca de";
+"settings.privacy.noTelemetry" = "Esta app no sube ningún dato de telemetría ni analítica. Todo el contenido del portapapeles permanece en tu Mac.";
 "settings.max.items" = "Máximo de elementos";
 "settings.max.items.count" = "%d elementos";
 "settings.auto.clear" = "Borrado automático";

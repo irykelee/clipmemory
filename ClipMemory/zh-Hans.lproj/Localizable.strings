@@ -73,6 +73,7 @@
 "settings.section.hotkey" = "快捷键";
 "settings.section.excluded.apps" = "排除应用";
 "settings.section.about" = "关于";
+"settings.privacy.noTelemetry" = "本应用不上传任何遥测或分析数据。所有剪贴板内容均保留在您的 Mac 上。";
 "settings.max.items" = "最大条数";
 "settings.max.items.count" = "%d 条";
 "settings.auto.clear" = "自动清理";

@@ -65,6 +65,7 @@ struct UpdateAboutSettingsView: View {
                 }.buttonStyle(.link)
                 Button(L10n.tipsTitle) { showingTips = true }.buttonStyle(.link)
             } header: { Text(L10n.settingsSectionAbout) }
+            footer: { Text(L10n.settingsPrivacyNoTelemetry).foregroundColor(.secondary) }
         }
         .formStyle(.grouped)
         .sheet(isPresented: $showingTips) {

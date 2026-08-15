@@ -72,6 +72,7 @@
 "settings.section.sensitive" = "Dados sensíveis";
 "settings.section.language" = "Idioma";
 "settings.section.about" = "Sobre";
+"settings.privacy.noTelemetry" = "Este app não envia dados de telemetria ou analytics. Todo o conteúdo da área de transferência fica no seu Mac.";
 "settings.max.items" = "Máximo de itens";
 "settings.max.items.count" = "%d itens";
 "settings.auto.clear" = "Exclusão automática";

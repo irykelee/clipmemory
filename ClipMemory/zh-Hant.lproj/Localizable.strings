@@ -75,6 +75,7 @@
 "settings.hotkey.change" = "修改";
 "settings.hotkey.recording" = "請按下新的快捷鍵...";
 "settings.section.about" = "關於";
+"settings.privacy.noTelemetry" = "本應用不上傳任何遙測或分析資料。所有剪貼簿內容均保留在您的 Mac 上。";
 "settings.max.items" = "最大筆記數";
 "settings.max.items.count" = "%d 條";
 "settings.auto.clear" = "自動清理";

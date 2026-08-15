@@ -273,6 +273,11 @@ struct L10n {
     static var settingsSectionHotkey: String { string("settings.section.hotkey") }
     static var settingsSectionExcludedApps: String { string("settings.section.excluded.apps") }
     static var settingsSectionAbout: String { string("settings.section.about") }
+    // ID-PRIVACY-0002 (MEDIUM-11 audit fix, 2026-08-15): explicit
+    // "no telemetry" disclosure. Code has zero telemetry (verified by
+    // §18 grep 0 SDK), but the user has no UI signal confirming it.
+    // Surfaces in the Settings → Privacy section footer.
+    static var settingsPrivacyNoTelemetry: String { string("settings.privacy.noTelemetry") }
     static var settingsMaxItems: String { string("settings.max.items") }
     static func settingsMaxItemsCount(_ count: Int) -> String { plural("settings.max.items.count", count) }
     static var settingsAutoClear: String { string("settings.auto.clear") }

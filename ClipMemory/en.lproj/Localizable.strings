@@ -74,6 +74,7 @@
 "settings.section.hotkey" = "Hotkey";
 "settings.section.excluded.apps" = "Excluded Apps";
 "settings.section.about" = "About";
+"settings.privacy.noTelemetry" = "This app does not upload any telemetry or analytics data. All clipboard content stays on your Mac.";
 "settings.max.items" = "Max Items";
 "settings.max.items.count" = "%d items";
 "settings.auto.clear" = "Auto-Clear";
