@@ -469,6 +469,83 @@ import Vision
         }
     }
 
+    /// ID-OCR-0012 (MEDIUM-7 audit regression, 2026-08-15): the
+    /// `backfillMaxConcurrentOCR` semaphore cap is the BACKPRESSESSING
+    /// mechanism, not a speedup. `VisionOCRService` runs serially
+    /// internally, so the real-world concurrency for OCR calls is 1
+    /// regardless of cap. The cap's role is to bound the number of
+    /// *decrypted image Data buffers* held in memory while waiting
+    /// for the serial queue to drain — a 6K HEIC is ~50 MB
+    /// decrypted, and 4 parallel buffers = ~200 MB resident during
+    /// a backfill burst. This test counts peak in-flight calls and
+    /// asserts the cap is honored, documenting the actual behavior
+    /// so future readers don't conclude the cap is "inert" because
+    /// it doesn't speed up Vision.
+    func testBackfillMaxConcurrentOCRBoundsInFlightCallsToCap() {
+        // Counting mock: increment on entry, decrement on completion,
+        // track peak via a thread-safe counter (NSLock-guarded int).
+        let lock = NSLock()
+        var inFlight = 0
+        var peak = 0
+        let countingOCR = CountingOCR(
+            onStart: {
+                lock.lock()
+                inFlight += 1
+                peak = max(peak, inFlight)
+                lock.unlock()
+            },
+            onComplete: {
+                lock.lock()
+                inFlight -= 1
+                lock.unlock()
+            }
+        )
+
+        // Seed MORE items than backfillMaxConcurrentOCR (4) so the
+        // cap is actually exercised.
+        for _ in 0..<10 {
+            let filename = seedImageFile()
+            store.addItem(ClipboardItem(content: filename, type: .image))
+        }
+
+        let exp = expectation(description: "backfill completes")
+        store.backfillOCRIfNeeded(using: countingOCR, imageStorage: .shared,
+                                  onComplete: { exp.fulfill() })
+        wait(for: [exp], timeout: 10)
+
+        // The semaphore cap is `private static let backfillMaxConcurrentOCR = 4`
+        // in ClipboardStore+OCR.swift:305. Hardcoding 4 here keeps the test
+        // honest — if the production constant changes, this test will fail
+        // and force a reviewer to update both. The constant is private to
+        // discourage production consumers from coupling to it.
+        let cap = 4
+        XCTAssertLessThanOrEqual(peak, cap,
+            "ID-OCR-0012: in-flight OCR calls must not exceed the cap (\(cap)); peak=\(peak) means the cap is broken")
+        XCTAssertGreaterThan(peak, 1,
+            "ID-OCR-0012: cap is meaningful only if at least 2 items run concurrently; peak=\(peak) suggests the cap is loose or items are too small to backpressure")
+    }
+
+    /// ID-OCR-0012 test helper: track in-flight count + peak.
+    private final class CountingOCR: OCRServiceProtocol, @unchecked Sendable {
+        let onStart: () -> Void
+        let onComplete: () -> Void
+        init(onStart: @escaping () -> Void, onComplete: @escaping () -> Void) {
+            self.onStart = onStart
+            self.onComplete = onComplete
+        }
+        func recognizeText(in imageData: Data, completion: @escaping (OCROutcome) -> Void) {
+            onStart()
+            // Decrement after a tiny delay so the increment is observed
+            // by any concurrent caller. We're testing the semaphore,
+            // not async timing — the 10 ms is enough for the in-flight
+            // counter to register.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.01) {
+                self.onComplete()
+                completion(.text("ok"))
+            }
+        }
+    }
+
     private static func renderTextImage(_ text: String) -> NSImage {
         let size = NSSize(width: 400, height: 120)
         let image = NSImage(size: size)
