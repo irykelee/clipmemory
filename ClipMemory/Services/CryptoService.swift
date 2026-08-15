@@ -51,6 +51,16 @@ enum DecryptResult: Equatable {
 /// - v2 (current): "v2" prefix + AES-GCM sealed box (nonce + ciphertext + tag)
 /// - v1 (legacy): AES-CBC + HMAC-SHA256, no prefix, for backwards compatibility
 /// - pre-1.2.0 (AES-CBC without HMAC) is REJECTED (C4): unauthenticated CBC is
+///
+/// ID-DOCS-0005 (LOW §50.12 audit cross-reference, 2026-08-15):
+/// NIST AES-GCM and RFC 4231 HMAC test vectors are NOT integrated.
+/// The v2 AES-GCM path is verified by roundtrip tests
+/// (`CryptoServiceTests.testEncryptDecryptRoundTrip*`) and the legacy
+/// HMAC path by `testLegacyV1Decryption`; both are property-based on
+/// real ClipboardItem fixtures, not on the canonical NIST/RFC vectors.
+/// Adding the official vectors is a LOW-priority backlog item —
+/// a future commit can drop the vectors into a `vectors/` directory
+/// and add a parametrized test that runs them.
 ///   a padding-oracle / tampering hole for anyone who can write UserDefaults.
 class CryptoService: CryptoServiceProtocol {
     static let shared = CryptoService()
