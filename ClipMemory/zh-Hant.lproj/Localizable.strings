@@ -28,6 +28,8 @@
 
 /* Empty State */
 "empty.no.history" = "尚無剪貼簿記錄";
+"empty.no.filter" = "無符合結果";
+"empty.filter.hint" = "嘗試其他關鍵字，或清除搜尋查看全部記錄";
 "empty.no.pinned" = "尚無釘選內容";
 "empty.history.hint" = "複製內容後會自動記錄在這裡";
 "empty.pinned.hint" = "點選「釘選」將內容固定，不會被自動清理";

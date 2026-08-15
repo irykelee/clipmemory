@@ -28,6 +28,8 @@
 
 /* Empty State */
 "empty.no.history" = "クリップボード履歴なし";
+"empty.no.filter" = "一致する結果がありません";
+"empty.filter.hint" = "別のキーワードを試すか、検索をクリアしてすべての履歴を表示";
 "empty.no.pinned" = "ピン留めした項目なし";
 "empty.history.hint" = "コピーした内容がここに自動表示されます";
 "empty.pinned.hint" = "「ピン留め」を押すと自動削除されなくなります";

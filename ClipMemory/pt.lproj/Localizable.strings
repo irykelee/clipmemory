@@ -28,6 +28,8 @@
 
 /* Empty State */
 "empty.no.history" = "Nenhum histórico";
+"empty.no.filter" = "Sem resultados";
+"empty.filter.hint" = "Tente outra pesquisa ou limpe-a para ver todo o histórico";
 "empty.no.pinned" = "Sem itens fixados";
 "empty.history.hint" = "O que você copiar aparecerá aqui";
 "empty.pinned.hint" = "Clique em 'Fixar' para manter um item permanentemente";

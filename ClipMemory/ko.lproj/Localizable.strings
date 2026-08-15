@@ -28,6 +28,8 @@
 
 /* Empty State */
 "empty.no.history" = "클립보드 기록 없음";
+"empty.no.filter" = "일치하는 결과 없음";
+"empty.filter.hint" = "다른 검색어를 시도하거나 검색을 지워 모든 기록 보기";
 "empty.no.pinned" = "고정된 항목 없음";
 "empty.history.hint" = "복사하면 여기에 자동으로 표시됩니다";
 "empty.pinned.hint" = "'고정'을 클릭하면 자동으로 삭제되지 않습니다";

@@ -28,6 +28,8 @@
 
 /* Empty State */
 "empty.no.history" = "No clipboard history";
+"empty.no.filter" = "No matching results";
+"empty.filter.hint" = "Try a different search, or clear it to see all history";
 "empty.no.pinned" = "No pinned items";
 "empty.history.hint" = "Copied content will appear here automatically";
 "empty.pinned.hint" = "Click 'Pin' on an item to pin it. Pinned items won't be auto-cleared";
