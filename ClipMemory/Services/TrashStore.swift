@@ -218,12 +218,60 @@ final class TrashStore: ObservableObject {
         logger.error("Corrupt trash blob quarantined to \(quarantineKey): \(error.localizedDescription)")
     }
 
+    /// ID-STORE-0019 (MEDIUM-15 audit fix, 2026-08-15): the three legs
+    /// of the data-persistence gate now apply to the trash path too —
+    /// previously only the loud-log leg was present. On save failure:
+    ///   1. 报错 — loud log (existing line).
+    ///   2. 重试 — reschedule the existing `saveTimer` at a longer
+    ///      interval so the next attempt happens without waiting for
+    ///      the next user mutation (the same fix pattern as ClipboardStore's
+    ///      flushSave retry on `.saveFlush` source).
+    ///   3. 用户可见 — post `.clipboardSaveFailed` with source
+    ///      `"trashSaveFailed"` so the existing AppDelegate throttler
+    ///      surfaces an NSAlert in the same bucket scheme as `saveFlush`
+    ///      (separate bucket, 60s window — no mutual suppression).
+    /// The data itself is in-memory only after the failed write (trashed
+    /// items live in `self.trashedItems`), so the risk is "next launch
+    /// has no trash" — recoverable but user-visible only on quit.
     func saveTrashedItems() {
         do {
             try backend.save(trashedItems)
         } catch {
-            logger.error("Failed to save trashed items: \(error.localizedDescription)")
+            // 1. loud log
+            logger.error("ID-STORE-0019: Failed to save trashed items: \(error.localizedDescription)")
+            // 2. retry — schedule another save via the existing saveTimer,
+            //    with a longer deadline so we don't tight-loop if the
+            //    backend is in a transient bad state.
+            scheduleSaveRetry()
+            // 3. user-visible — post .clipboardSaveFailed with the
+            //    trash-specific source. The existing AppDelegate
+            //    observer (line 487) reads `note.userInfo["source"]`
+            //    and routes to `saveAlertThrottler.recordFailure`,
+            //    which buckets by source — "trashSaveFailed" is its
+            //    own 60s window, independent of "saveFlush".
+            NotificationCenter.default.post(
+                name: .clipboardSaveFailed,
+                object: self,
+                userInfo: ["source": "trashSaveFailed"]
+            )
         }
+    }
+
+    /// ID-STORE-0019: schedule a retry save via the existing saveTimer
+    /// at a 5s deadline. Uses a longer interval than the 500ms debounce
+    /// (line ?) to avoid tight-looping on a transient bad state; the
+    /// existing scheduleSave() debounce pattern handles coalescing.
+    private func scheduleSaveRetry() {
+        guard needsSave else { return }
+        if saveTimer == nil {
+            let timer = DispatchSource.makeTimerSource(queue: saveTimerQueue)
+            timer.setEventHandler { [weak self] in
+                DispatchQueue.main.async { self?.flushSave() }
+            }
+            timer.resume()
+            saveTimer = timer
+        }
+        saveTimer?.schedule(deadline: .now() + 5)
     }
 
     // MARK: - Operations
