@@ -56,9 +56,22 @@ enum FuzzySearchMatcher {
     /// both sides to `en_US_POSIX` so byte-deterministic ASCII folding
     /// matches between search and content, independent of host locale.
     static func matches(content: String, searchText: String) -> Bool {
+        // ID-SEARCH-0003 (2026-08-16 audit LOW §5 fix): the previous
+        // `.split(separator: " ")` only split on ASCII space. Users paste
+        // search queries from PDFs / IM apps / JIS-keyboard input that
+        // contain U+3000 (fullwidth space, common in CJK / Japanese
+        // text), U+00A0 (non-breaking space, used by web scrapers and
+        // word processors), and sometimes U+2009 (thin space). None of
+        // those are ASCII space, so they silently fused with the
+        // adjacent token — a user typing "foo bar" with a stray
+        // fullwidth space would search for the literal "foo\u{3000}bar"
+        // and never match the two separate "foo" / "bar" tokens
+        // actually in their history. Treat the whole Unicode whitespace
+        // family as separators; U+2009/U+200A come along for free as
+        // they're in the same CharacterSet.
         let tokens = searchText
             .lowercased(with: Locale(identifier: "en_US_POSIX"))
-            .split(separator: " ")
+            .split(omittingEmptySubsequences: true) { $0.isWhitespace || $0 == "\u{3000}" || $0 == "\u{00A0}" }
             .map(String.init)
         guard !tokens.isEmpty else { return true }
 
