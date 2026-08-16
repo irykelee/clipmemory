@@ -1,0 +1,176 @@
+name: TSan (advisory)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # 每日 UTC 04:00 (= 北京时间 12:00) — 避开 CI 高峰
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write  # github-script PR comment 需要
+
+jobs:
+  tsan-pr-subset:
+    # PR 触发: 跑最可能暴露 race 的 87 子集, 15min timeout 友好
+    if: github.event_name == 'pull_request'
+    runs-on: macos-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Verify Xcode
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          if which xcodegen >/dev/null 2>&1; then
+            echo "xcodegen already installed: $(xcodegen --version)"
+          else
+            brew install xcodegen
+          fi
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build + Test (TSan, PR subset)
+        env:
+          TSAN_OPTIONS: "ignore_noninstrumented_modules=1:second_deadlock_stack=1"
+        run: |
+          set -euo pipefail
+          xcodebuild -scheme ClipMemory -configuration Debug \
+            test CODE_SIGN_IDENTITY="-" \
+            -enableThreadSanitizer YES \
+            ENABLE_THREAD_SANITIZER=YES \
+            -only-testing:ClipMemoryTests/ClipboardMonitorTests \
+            -only-testing:ClipMemoryTests/ClipboardMonitorSkipWindowTests \
+            -only-testing:ClipMemoryTests/NetworkMonitorTests \
+            -only-testing:ClipMemoryTests/UpdateServiceTests \
+            -only-testing:ClipMemoryTests/FeedProbeFallbackChainTests \
+            -only-testing:ClipMemoryTests/FeedProbeSizeCapTests \
+            -only-testing:ClipMemoryTests/ClipboardStoreCryptoKeyNotificationThreadTests \
+            -only-testing:ClipMemoryTests/SafeModeServiceTests \
+            -only-testing:ClipMemoryTests/CrashReportServiceTests \
+            2>&1 | tee /tmp/tsan.log
+
+      - name: Build instrumentation canary (compiled evidence)
+        if: always()
+        run: |
+          if grep -qE "sanitize=thread|libclang_rt\.tsan" /tmp/tsan.log; then
+            echo "INSTRUMENTED=YES" >> "$GITHUB_ENV"
+            echo "✅ Build canary passed: TSan instrumentation evidence in log"
+          else
+            echo "INSTRUMENTED=NO" >> "$GITHUB_ENV"
+            echo "❌ Build canary failed: no TSan instrumentation evidence — NOT testing anything"
+            exit 1
+          fi
+
+      - name: Subset executed assertion (PR job only, 防 -only-testing 静默跑 0)
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          executed=$(grep -oE 'Executed [0-9]+ test' /tmp/tsan.log | tail -1 | grep -oE '[0-9]+')
+          if [[ -z "$executed" || "$executed" -ne 87 ]]; then
+            echo "❌ Subset assertion failed: expected 87, got $executed (可能 -only-testing 类名漂移)"
+            exit 1
+          fi
+          echo "✅ Subset assertion passed: 87/87 tests executed"
+
+      - name: Upload TSan log (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsan-log-${{ github.run_id }}
+          path: /tmp/tsan.log
+
+      - name: Comment race count + instrumentation status on PR
+        if: always() && github.event.pull_request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const logPath = '/tmp/tsan.log';
+            const logExists = fs.existsSync(logPath);
+            const log = logExists ? fs.readFileSync(logPath, 'utf8') : '';
+            const raceCount = log ? (log.match(/WARNING: ThreadSanitizer: data race/g) || []).length : 0;
+            const instrumented = process.env.INSTRUMENTED === 'YES';
+            let body;
+            if (!logExists) {
+              body = '⚠️ **TSan 日志缺失**: 前置步骤 (checkout / xcodegen / build) 失败, 本次无结果。检查 workflow logs。';
+            } else {
+              const instLine = instrumented
+                ? '🔧 **Instrumentation**: verified (`sanitize=thread` in build log)'
+                : '⚠️ **Instrumentation**: NOT verified — 本次结果无意义, 请检查 workflow';
+              const raceLine = raceCount > 0
+                ? `🔬 **Races**: ${raceCount} detected. Download \`tsan-log-${context.runId}\` artifact for full trace.`
+                : `✅ **Races**: 0 detected.`;
+              body = [instLine, raceLine].join('\n');
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  tsan-full:
+    # nightly + workflow_dispatch: 跑全套 927 tests, 60min timeout
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Verify Xcode
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          if which xcodegen >/dev/null 2>&1; then
+            echo "xcodegen already installed: $(xcodegen --version)"
+          else
+            brew install xcodegen
+          fi
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build + Test (TSan, full suite)
+        env:
+          TSAN_OPTIONS: "ignore_noninstrumented_modules=1:second_deadlock_stack=1"
+        run: |
+          set -euo pipefail
+          xcodebuild -scheme ClipMemory -configuration Debug \
+            test CODE_SIGN_IDENTITY="-" \
+            -enableThreadSanitizer YES \
+            ENABLE_THREAD_SANITIZER=YES \
+            2>&1 | tee /tmp/tsan.log
+
+      - name: Build instrumentation canary (compiled evidence)
+        if: always()
+        run: |
+          if grep -qE "sanitize=thread|libclang_rt\.tsan" /tmp/tsan.log; then
+            echo "INSTRUMENTED=YES" >> "$GITHUB_ENV"
+            echo "✅ Build canary passed: TSan instrumentation evidence in log"
+          else
+            echo "INSTRUMENTED=NO" >> "$GITHUB_ENV"
+            echo "❌ Build canary failed: no TSan instrumentation evidence — NOT testing anything"
+            exit 1
+          fi
+
+      - name: Upload TSan log (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsan-log-${{ github.run_id }}
+          path: /tmp/tsan.log
