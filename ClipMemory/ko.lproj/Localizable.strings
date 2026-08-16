@@ -419,3 +419,8 @@
 "crash.column.process" = "프로세스";
 "crash.column.exception" = "예외";
 "crash.column.firstFrame" = "첫 프레임";
+"safeMode.active.title" = "안전 모드가 활성화됨";
+"safeMode.active.body" = "연속 %d 회 크래시가 감지되었습니다. 데이터는 안전하지만 추가 문제를 방지하기 위해 백그라운드 작업이 일시 중지되었습니다.";
+"safeMode.active.body.one" = "연속 1 회 크래시가 감지되었습니다. 데이터는 안전하며 크래시가 기록되었습니다.";
+"safeMode.action.viewCrashes" = "최근 크래시 보기";
+"safeMode.action.disable" = "안전 모드 비활성화";

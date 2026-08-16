@@ -980,6 +980,11 @@ struct ContentView: View {
             // plus a "clear all" affordance and a count badge.
             // (Date filter chips live in the window toolbar — ID-VIEW-0015.)
             activeTagFilterStrip
+            // ID-CRASH-0003 (2026-08-16 audit MEDIUM-1 fix): safe-mode
+            // banner shown above the diagnostics banner so it sits at
+            // the very top of the list area. The view itself is a no-op
+            // (renders nothing) when safe-mode isn't active.
+            SafeModeBanner()
             DiagnosticsBanner(
                 diagnostics: store.diagnostics,
                 onDismiss: { store.dismissDiagnostics() }

@@ -419,3 +419,8 @@
 "crash.column.process" = "プロセス";
 "crash.column.exception" = "例外";
 "crash.column.firstFrame" = "最初のフレーム";
+"safeMode.active.title" = "セーフモードが有効です";
+"safeMode.active.body" = "%d 回の連続クラッシュを検出しました。データは安全ですが、さらなる問題を防ぐためバックグラウンド作業を一時停止しています。";
+"safeMode.active.body.one" = "1 回の連続クラッシュを検出しました。データは安全ですが、クラッシュは記録されました。";
+"safeMode.action.viewCrashes" = "最近のクラッシュを表示";
+"safeMode.action.disable" = "セーフモードを無効化";

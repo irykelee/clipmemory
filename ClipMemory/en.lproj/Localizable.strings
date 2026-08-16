@@ -418,3 +418,8 @@
 "crash.column.process" = "Process";
 "crash.column.exception" = "Exception";
 "crash.column.firstFrame" = "First Frame";
+"safeMode.active.title" = "Safe Mode is active";
+"safeMode.active.body" = "%d consecutive crashes detected. Data is safe, but background work has been paused to prevent further issues.";
+"safeMode.active.body.one" = "1 consecutive crash detected. Data is safe, but the crash has been noted.";
+"safeMode.action.viewCrashes" = "View Recent Crashes";
+"safeMode.action.disable" = "Disable Safe Mode";

@@ -421,3 +421,8 @@
 "crash.column.process" = "處理程序";
 "crash.column.exception" = "例外";
 "crash.column.firstFrame" = "首幀";
+"safeMode.active.title" = "安全模式已啟用";
+"safeMode.active.body" = "偵測到 %d 次連續當機。資料安全,但背景工作已暫停以防止問題擴大。";
+"safeMode.active.body.one" = "偵測到 1 次連續當機。資料安全,當機已被記錄。";
+"safeMode.action.viewCrashes" = "檢視最近的當機";
+"safeMode.action.disable" = "退出安全模式";

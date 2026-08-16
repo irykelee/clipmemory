@@ -132,6 +132,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // prewarm, first render). See `setupMemoryWarningObserver` for the
         // iOS-vs-macOS API rationale.
         setupMemoryWarningObserver()
+        // ID-CRASH-0003 (2026-08-16 audit MEDIUM-1 fix): detect whether
+        // the previous launch crashed (no sentinel) and enter safe-mode
+        // after 3 consecutive crashes. Call BEFORE OCR backfill / backup
+        // schedule so a stuck crash loop doesn't repeatedly re-prime
+        // expensive work. The banner observer is registered separately
+        // by ContentView's banner view; this call only updates the
+        // persistent state and posts the change notification.
+        SafeModeService.shared.registerPreviousLaunchDidCrash()
         setupSettingsMenuItem()
         // ID-CRASH-0002 (2026-08-16 audit MEDIUM-1 fix): install Help →
         // View Recent Crashes. The lazy window is created on first
@@ -258,6 +266,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         welcomeWindow?.close()
         settingsWindow?.close()
         HangDetector.stop()
+        // ID-CRASH-0003 (2026-08-16 audit MEDIUM-1 fix): clear the
+        // safe-mode sentinel on graceful exit. If we crash, the
+        // sentinel stays in place and the NEXT launch's
+        // registerPreviousLaunchDidCrash() counts this as a crash.
+        SafeModeService.shared.clearSentinelOnNormalExit()
     }
 
     // ID-STORE-0018 (MEDIUM-6 audit fix, 2026-08-15): when the network

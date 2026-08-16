@@ -318,6 +318,23 @@ final class NotificationObserverAssertionTests: XCTestCase {
                     for short in names {
                         if !short.isEmpty {
                             result[short, default: []].append("\(rel):\(lineNum)")
+                            // ID-CRASH-0003 (2026-08-16 audit MEDIUM-1
+                            // fix): mirror the `addObserver` Pattern B
+                            // last-segment fallback so an inline-literal
+                            // observer (rawValue "Module.shortName") is
+                            // also indexed under "shortName" — that's
+                            // how the declared-side lookup keys
+                            // (`observers[entry.shortName]`) finds it.
+                            // Without this, any
+                            // `.publisher(for: Notification.Name("X.Y"))`
+                            // call would dead-channel the gate even
+                            // though SafeModeBanner-style subscribers
+                            // exist. Same logic as `addObserver` lines
+                            // 304-306.
+                            if let lastSegment = short.split(separator: ".").last,
+                               String(lastSegment) != short {
+                                result[String(lastSegment), default: []].append("\(rel):\(lineNum)")
+                            }
                         }
                     }
                 }
