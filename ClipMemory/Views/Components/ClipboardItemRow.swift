@@ -25,6 +25,25 @@ private let highlightedOcrCache: NSCache<NSString, NSAttributedString> = {
     return c
 }()
 
+/// ID-PERF-0005 (2026-08-16 audit MEDIUM-13 fix): memory-warning flush
+/// for the three row-level highlight caches. NSAttributedString values
+/// are by far the heaviest allocations in this file (full attribute-run
+/// arrays per render), and `countLimit = 500` per cache is well above
+/// the steady-state post-warning level. Explicit flush lets the next
+/// row render rebuild cold — costly, but cheap compared to holding
+/// ~1.5MB of attributed strings while the system is asking for memory.
+///
+/// Wrapped in a file-scope enum so the flush method has a unique
+/// symbol (file-scope `func flushMemoryCaches()` would collide with
+/// other files' identically-named helpers).
+enum ClipboardItemRowCaches {
+    static func flushMemoryCaches() {
+        highlightedCache.removeAllObjects()
+        maskedHighlightedCache.removeAllObjects()
+        highlightedOcrCache.removeAllObjects()
+    }
+}
+
 // MARK: - AppKit NSPressGestureRecognizer for stable image long-press
 struct PressableImage: NSViewRepresentable {
     let onPressChanged: (Bool) -> Void

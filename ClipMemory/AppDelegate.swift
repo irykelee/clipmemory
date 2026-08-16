@@ -127,6 +127,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupHotKey()
         setupLanguageObserver()
         setupKeychainUnlockObserver()
+        // ID-PERF-0005 (2026-08-16 audit MEDIUM-13 fix): install memory-warning
+        // observer before any work that could prime caches (OCR backfill,
+        // prewarm, first render). See `setupMemoryWarningObserver` for the
+        // iOS-vs-macOS API rationale.
+        setupMemoryWarningObserver()
         setupSettingsMenuItem()
         // ID-SECURITY-0001 (2026-07-30 audit): purge in-memory root key
         // when the app loses focus / FileVault locks. See ivar comments.
@@ -355,6 +360,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupWindowManager() { windowManager = WindowManager() }
+
+    /// ID-PERF-0005 (2026-08-16 audit MEDIUM-13 fix): install the macOS
+    /// memory-warning observer. The corresponding iOS-only API is
+    /// `UIApplicationDelegate.applicationDidReceiveMemoryWarning(_:)`;
+    /// on macOS the equivalent signal is the system-wide notification
+    /// posted by `NSApplication` when the system is under memory
+    /// pressure (available since macOS 10.0). We use the raw string
+    /// `NSApplicationDidReceiveMemoryWarningNotification` (rather than
+    /// a Swift overlay name) because the Swift overlay for AppKit
+    /// constants is incomplete — verifying the raw value with the
+    /// notification-name test guards against silent no-ops if Apple
+    /// ever renames either side of the symbol.
+    private func setupMemoryWarningObserver() {
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("NSApplicationDidReceiveMemoryWarningNotification"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            MemoryCacheRegistry.flushAll()
+        }
+    }
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
