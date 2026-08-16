@@ -569,6 +569,16 @@ struct L10n {
     /// Table column: first stack frame, image + offset (no symbolication).
     static var crashColumnFirstFrame: String { string("crash.column.firstFrame") }
 
+    // MARK: - Safe Mode (ID-CRASH-0003, 2026-08-16 audit MEDIUM-1 fix)
+    /// Banner heading shown when safe-mode is active (3+ consecutive crashes).
+    static var safeModeActiveTitle: String { string("safeMode.active.title") }
+    /// Banner body — names the consecutive-crash count.
+    static func safeModeActiveBody(_ count: Int) -> String { plural("safeMode.active.body", count) }
+    /// Banner button: open the Recent Crashes window from safe-mode.
+    static var safeModeActionViewCrashes: String { string("safeMode.action.viewCrashes") }
+    /// Banner button: exit safe-mode (resets the counter).
+    static var safeModeActionDisable: String { string("safeMode.action.disable") }
+
     // MARK: - Tips
     static var tipsTitle: String { string("tips.title") }
     static var tipsActions: String { string("tips.actions") }

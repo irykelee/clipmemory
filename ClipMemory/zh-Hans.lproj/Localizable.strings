@@ -417,3 +417,8 @@
 "crash.column.process" = "进程";
 "crash.column.exception" = "异常";
 "crash.column.firstFrame" = "首帧";
+"safeMode.active.title" = "安全模式已启用";
+"safeMode.active.body" = "检测到 %d 次连续崩溃。数据安全,但后台任务已暂停以防止问题扩大。";
+"safeMode.active.body.one" = "检测到 1 次连续崩溃。数据安全,崩溃已被记录。";
+"safeMode.action.viewCrashes" = "查看最近崩溃";
+"safeMode.action.disable" = "退出安全模式";

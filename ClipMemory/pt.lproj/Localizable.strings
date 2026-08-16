@@ -418,3 +418,8 @@
 "crash.column.process" = "Processo";
 "crash.column.exception" = "Exceção";
 "crash.column.firstFrame" = "Primeiro frame";
+"safeMode.active.title" = "Modo de segurança ativo";
+"safeMode.active.body" = "%d falhas consecutivas detectadas. Os dados estão seguros, mas o trabalho em segundo plano foi pausado para evitar mais problemas.";
+"safeMode.active.body.one" = "1 falha consecutiva detectada. Os dados estão seguros, mas a falha foi registrada.";
+"safeMode.action.viewCrashes" = "Ver falhas recentes";
+"safeMode.action.disable" = "Desativar modo de segurança";
