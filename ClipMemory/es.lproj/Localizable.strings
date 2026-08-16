@@ -407,3 +407,14 @@
 "restore.error.keychain" = "No se puede acceder a Keychain. Comprueba los permisos.";
 "restore.error.snapshotFailed" = "No se puede crear la instantánea de seguridad, restauración cancelada";
 "restore.error.diskFull" = "Disco lleno, algunas imágenes no se han podido restaurar";
+"crash.menu.viewRecent" = "Ver informes de fallos recientes";
+"crash.window.title" = "Informes de fallos recientes";
+"crash.empty.heading" = "Sin informes de fallos";
+"crash.empty.body" = "Cuando ClipMemory falla, macOS escribe un informe aquí. Si ves esto, la aplicación ha estado funcionando sin problemas — eso es algo bueno.";
+"crash.action.revealInFinder" = "Mostrar en Finder";
+"crash.action.openInConsole" = "Abrir en Consola";
+"crash.loading" = "Escaneando informes de diagnóstico…";
+"crash.column.date" = "Fecha";
+"crash.column.process" = "Proceso";
+"crash.column.exception" = "Excepción";
+"crash.column.firstFrame" = "Primer frame";

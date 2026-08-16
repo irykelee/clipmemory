@@ -406,3 +406,14 @@
 "restore.error.keychain" = "无法访问钥匙串，请检查权限。";
 "restore.error.snapshotFailed" = "无法创建安全快照，恢复已中止";
 "restore.error.diskFull" = "磁盘已满，部分图片未能恢复";
+"crash.menu.viewRecent" = "查看最近的崩溃报告";
+"crash.window.title" = "最近的崩溃报告";
+"crash.empty.heading" = "暂无崩溃报告";
+"crash.empty.body" = "ClipMemory 崩溃时，macOS 会把报告写到此处。如果你看到这个空页面，说明应用一直在稳定运行——这是好事。";
+"crash.action.revealInFinder" = "在访达中显示";
+"crash.action.openInConsole" = "在控制台中打开";
+"crash.loading" = "正在扫描诊断报告…";
+"crash.column.date" = "日期";
+"crash.column.process" = "进程";
+"crash.column.exception" = "异常";
+"crash.column.firstFrame" = "首帧";

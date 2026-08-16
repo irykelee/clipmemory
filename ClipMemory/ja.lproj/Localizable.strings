@@ -408,3 +408,14 @@
 "restore.error.keychain" = "キーチェーンにアクセスできません。アクセス許可を確認してください。";
 "restore.error.snapshotFailed" = "安全スナップショットを作成できないため、復元が中止されました";
 "restore.error.diskFull" = "ディスク容量不足のため、一部の画像を復元できませんでした";
+"crash.menu.viewRecent" = "最近のクラッシュレポートを表示";
+"crash.window.title" = "最近のクラッシュレポート";
+"crash.empty.heading" = "クラッシュレポートはありません";
+"crash.empty.body" = "ClipMemory がクラッシュすると、macOS がここにレポートを書き込みます。この空ページが表示されている場合、アプリは安定して動作しています——良いことです。";
+"crash.action.revealInFinder" = "Finder に表示";
+"crash.action.openInConsole" = "コンソールで開く";
+"crash.loading" = "診断レポートをスキャン中…";
+"crash.column.date" = "日時";
+"crash.column.process" = "プロセス";
+"crash.column.exception" = "例外";
+"crash.column.firstFrame" = "最初のフレーム";

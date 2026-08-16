@@ -133,6 +133,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // iOS-vs-macOS API rationale.
         setupMemoryWarningObserver()
         setupSettingsMenuItem()
+        // ID-CRASH-0002 (2026-08-16 audit MEDIUM-1 fix): install Help →
+        // View Recent Crashes. The lazy window is created on first
+        // invocation by `showRecentCrashes`; here we only attach the
+        // menu item to the main menu's Help slot.
+        setupHelpMenuItem()
         // ID-SECURITY-0001 (2026-07-30 audit): purge in-memory root key
         // when the app loses focus / FileVault locks. See ivar comments.
         setupBackgroundPurgeObservers()
@@ -432,6 +437,74 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             appMenu.addItem(settingsItem)
         }
     }
+
+    /// ID-CRASH-0002 (2026-08-16 audit MEDIUM-1 fix): install the
+    /// "Help → View Recent Crashes" menu item. We add it to the
+    /// standard Help menu (created automatically by AppKit's default
+    /// main menu, indexed 3 in a typical layout: App / File / Edit /
+    /// Help / Window / etc.). macOS only creates the Help menu when
+    /// the app's Info.plist sets `CFBundleHelpBookName`, but it
+    /// always reserves a slot — we append the item there regardless
+    /// so the user can find it from the standard menu bar.
+    private func setupHelpMenuItem() {
+        // Find an existing Help menu by title, fall back to creating one.
+        // AppKit's default main menu does NOT include a Help menu unless
+        // the app's Xcode template added one — but the project uses a
+        // minimal main menu (see project.yml's `INFOPLIST_KEY_LSUIElement`
+        // + accessory activation policy), so we may need to create.
+        var helpMenu = NSApp.mainMenu?.items.first(where: { $0.title == "Help" })?.submenu
+        if helpMenu == nil {
+            let created = NSMenuItem()
+            created.title = "Help"
+            NSApp.mainMenu?.addItem(created)
+            let submenu = NSMenu(title: "Help")
+            created.submenu = submenu
+            helpMenu = submenu
+        }
+        guard let helpMenu else { return }
+
+        let crashItem = NSMenuItem(
+            title: L10n.crashMenuViewRecent,
+            action: #selector(showRecentCrashes),
+            keyEquivalent: ""
+        )
+        crashItem.target = self
+        helpMenu.addItem(crashItem)
+    }
+
+    /// ID-CRASH-0002: action wired to Help → View Recent Crashes. Lazily
+    /// creates the window on first invocation; subsequent invocations
+    /// re-focus the existing window. SwiftUI's `.task(id:)` re-runs on
+    /// every `.onAppear`, so re-showing the window refreshes the list
+    /// (matching macOS convention that re-opening a window reflects
+    /// current state).
+    @objc func showRecentCrashes() {
+        if let existing = recentCrashesWindow {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 460),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = L10n.crashWindowTitle
+        window.contentViewController = NSHostingController(
+            rootView: RecentCrashesView()
+        )
+        window.setFrameAutosaveName("com.clipmemory.app.RecentCrashesWindow")
+        window.center()
+        recentCrashesWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// ID-CRASH-0002: window kept alive between Help-menu invocations
+    /// so re-opening restores the user's last position (via
+    /// `setFrameAutosaveName`) instead of recentering every time.
+    private var recentCrashesWindow: NSWindow?
 
     private func setupLanguageObserver() {
         languageObserver = NotificationCenter.default.addObserver(forName: .languageDidChange, object: nil, queue: .main) { [weak self] _ in
