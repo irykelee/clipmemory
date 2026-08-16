@@ -545,6 +545,30 @@ struct L10n {
     static var quickbarNoResults: String { string("quickbar.no.results") }
     static var quickbarOpenFull: String { string("quickbar.open.full") }
 
+    // MARK: - Crash Reports (ID-CRASH-0002, 2026-08-16 audit MEDIUM-1 fix)
+    /// Help menu item title — opens the Recent Crashes window.
+    static var crashMenuViewRecent: String { string("crash.menu.viewRecent") }
+    /// Window title for the Recent Crashes list.
+    static var crashWindowTitle: String { string("crash.window.title") }
+    /// Empty-state heading (no reports found in DiagnosticReports).
+    static var crashEmptyHeading: String { string("crash.empty.heading") }
+    /// Empty-state body explaining where reports would appear.
+    static var crashEmptyBody: String { string("crash.empty.body") }
+    /// Per-row button: reveal the .ips file in Finder.
+    static var crashActionRevealInFinder: String { string("crash.action.revealInFinder") }
+    /// Per-row button: open the .ips file in Console.app.
+    static var crashActionOpenInConsole: String { string("crash.action.openInConsole") }
+    /// Loading placeholder text while the directory is being scanned.
+    static var crashLoadingPlaceholder: String { string("crash.loading") }
+    /// Table column: crash date / time.
+    static var crashColumnDate: String { string("crash.column.date") }
+    /// Table column: process name that crashed.
+    static var crashColumnProcess: String { string("crash.column.process") }
+    /// Table column: exception type (e.g. EXC_BAD_ACCESS / NSException).
+    static var crashColumnException: String { string("crash.column.exception") }
+    /// Table column: first stack frame, image + offset (no symbolication).
+    static var crashColumnFirstFrame: String { string("crash.column.firstFrame") }
+
     // MARK: - Tips
     static var tipsTitle: String { string("tips.title") }
     static var tipsActions: String { string("tips.actions") }

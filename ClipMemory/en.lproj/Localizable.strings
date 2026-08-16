@@ -407,3 +407,14 @@
 "restore.error.keychain" = "Cannot access Keychain. Check permissions.";
 "restore.error.snapshotFailed" = "Cannot create safety snapshot, restore aborted";
 "restore.error.diskFull" = "Disk full, some images were not restored";
+"crash.menu.viewRecent" = "View Recent Crashes";
+"crash.window.title" = "Recent Crash Reports";
+"crash.empty.heading" = "No crash reports yet";
+"crash.empty.body" = "When ClipMemory crashes, macOS writes a report here. If you're seeing this, the app has been running smoothly — that's a good thing.";
+"crash.action.revealInFinder" = "Reveal in Finder";
+"crash.action.openInConsole" = "Open in Console";
+"crash.loading" = "Scanning DiagnosticReports…";
+"crash.column.date" = "Date";
+"crash.column.process" = "Process";
+"crash.column.exception" = "Exception";
+"crash.column.firstFrame" = "First Frame";

@@ -410,3 +410,14 @@
 "restore.error.keychain" = "無法存取鑰匙圈，請檢查權限。";
 "restore.error.snapshotFailed" = "無法建立安全快照，復原已中止";
 "restore.error.diskFull" = "磁碟已滿，部分圖片未能復原";
+"crash.menu.viewRecent" = "檢視最近的當機報告";
+"crash.window.title" = "最近的當機報告";
+"crash.empty.heading" = "暫無當機報告";
+"crash.empty.body" = "ClipMemory 當機時，macOS 會將報告寫到此處。如果你看到這個空頁面，代表應用程式一直在穩定執行——這是好事。";
+"crash.action.revealInFinder" = "在 Finder 中顯示";
+"crash.action.openInConsole" = "在主控台中開啟";
+"crash.loading" = "正在掃描診斷報告…";
+"crash.column.date" = "日期";
+"crash.column.process" = "處理程序";
+"crash.column.exception" = "例外";
+"crash.column.firstFrame" = "首幀";

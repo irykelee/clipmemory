@@ -408,3 +408,14 @@
 "restore.error.keychain" = "키체이너에 접근할 수 없습니다. 권한을 확인하세요.";
 "restore.error.snapshotFailed" = "안전 스냅샷을 생성할 수 없어 복원이 취소되었습니다";
 "restore.error.diskFull" = "디스크가 꽉 찼습니다. 일부 이미지를 복원하지 못했습니다";
+"crash.menu.viewRecent" = "최근 크래시 보고서 보기";
+"crash.window.title" = "최근 크래시 보고서";
+"crash.empty.heading" = "크래시 보고서 없음";
+"crash.empty.body" = "ClipMemory 가 크래시되면 macOS 가 여기에 보고서를 작성합니다. 이 빈 페이지가 보이면 앱이 안정적으로 실행되고 있는 것입니다 — 좋은 신호입니다.";
+"crash.action.revealInFinder" = "Finder 에서 보기";
+"crash.action.openInConsole" = "콘솔에서 열기";
+"crash.loading" = "진단 보고서 스캔 중…";
+"crash.column.date" = "날짜";
+"crash.column.process" = "프로세스";
+"crash.column.exception" = "예외";
+"crash.column.firstFrame" = "첫 프레임";
