@@ -157,31 +157,31 @@ jobs:
         # OOM, infrastructure hang), the test process exits before ZZZ
         # fires and CI reports "TEST SUCCEEDED" with `Executed 0 tests`.
         # Asserting a minimum test count catches this: a real run is
-        # currently 757 (update the threshold when adding/deleting
-        # suites). The threshold is intentionally tight (755 leaves
-        # 2 tests of slack) — a 12-test cushion would let a
+        # currently 927 (update the threshold when adding/deleting
+        # suites). The threshold is intentionally tight (920 leaves
+        # 7 tests of slack) — a 12-test cushion would let a
         # partial-suite abort hide.
         run: |
           set -euo pipefail
           xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-test.log
           executed=$(grep -oE 'Executed [0-9]+ test' /tmp/xcb-test.log | tail -1 | grep -oE '[0-9]+')
           echo "Test execution count: $executed"
-          if [[ -z "$executed" || "$executed" -lt 755 ]]; then
-            echo "❌ Blind spot 6: test count $executed is below the 755 lower bound — ZZZ canary may not have run. Investigate the log for early-terminated suites."
+          if [[ -z "$executed" || "$executed" -lt 920 ]]; then
+            echo "❌ Blind spot 6: test count $executed is below the 920 lower bound — ZZZ canary may not have run. Investigate the log for early-terminated suites."
             exit 1
           fi
 
       - name: Test (zh-Hans locale)
         # Same blind-spot-6 guard for the second locale run. Both
-        # locales run the same 757 tests (locale filter only
+        # locales run the same 927 tests (locale filter only
         # affects L10n string resolution, not test count).
         run: |
           set -euo pipefail
           xcodebuild -scheme ClipMemory -configuration Debug test -testLanguage zh-Hans CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-test-zh.log
           executed=$(grep -oE 'Executed [0-9]+ test' /tmp/xcb-test-zh.log | tail -1 | grep -oE '[0-9]+')
           echo "zh-Hans test execution count: $executed"
-          if [[ -z "$executed" || "$executed" -lt 755 ]]; then
-            echo "❌ Blind spot 6 (zh-Hans): test count $executed is below the 755 lower bound"
+          if [[ -z "$executed" || "$executed" -lt 920 ]]; then
+            echo "❌ Blind spot 6 (zh-Hans): test count $executed is below the 920 lower bound"
             exit 1
           fi
 
