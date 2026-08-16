@@ -578,6 +578,11 @@ struct L10n {
     static var safeModeActionViewCrashes: String { string("safeMode.action.viewCrashes") }
     /// Banner button: exit safe-mode (resets the counter).
     static var safeModeActionDisable: String { string("safeMode.action.disable") }
+    /// Degraded-hint heading shown when the sentinel writer can't
+    /// reach ~/Library/Application Support. ID-CRASH-0004.
+    static var safeModeDegradedTitle: String { string("safeMode.degraded.title") }
+    /// Degraded-hint body — explains why the hint is showing.
+    static var safeModeDegradedBody: String { string("safeMode.degraded.body") }
 
     // MARK: - Tips
     static var tipsTitle: String { string("tips.title") }

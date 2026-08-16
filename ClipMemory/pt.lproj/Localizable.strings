@@ -423,3 +423,5 @@
 "safeMode.active.body.one" = "1 falha consecutiva detectada. Os dados estão seguros, mas a falha foi registrada.";
 "safeMode.action.viewCrashes" = "Ver falhas recentes";
 "safeMode.action.disable" = "Desativar modo de segurança";
+"safeMode.degraded.title" = "Detecção de falhas indisponível";
+"safeMode.degraded.body" = "Não foi possível escrever o arquivo sentinela. A detecção de falhas está offline. Por favor, reporte via Ajuda → Reportar problema.";

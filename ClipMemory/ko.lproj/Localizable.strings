@@ -424,3 +424,5 @@
 "safeMode.active.body.one" = "연속 1 회 크래시가 감지되었습니다. 데이터는 안전하며 크래시가 기록되었습니다.";
 "safeMode.action.viewCrashes" = "최근 크래시 보기";
 "safeMode.action.disable" = "안전 모드 비활성화";
+"safeMode.degraded.title" = "크래시 감지 사용 불가";
+"safeMode.degraded.body" = "실행 센티널 파일을 쓸 수 없습니다. 크래시 감지가 오프라인입니다. 도움말 → 문제 보고 로 알려 주세요.";

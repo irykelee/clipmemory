@@ -16,9 +16,23 @@ import AppKit
 struct SafeModeBanner: View {
     @State private var isInSafeMode: Bool = false
     @State private var crashCount: Int = 0
+    /// ID-CRASH-0004 (2026-08-16 /code-review Standards fix): tracks
+    /// whether the sentinel writer is functional. false after three
+    /// consecutive write failures — the banner then renders a
+    /// separate degraded hint so the user knows crash detection is
+    /// offline even though safe-mode itself isn't active.
+    @State private var sentinelHealthy: Bool = true
 
     var body: some View {
         Group {
+            // ID-CRASH-0004: degraded hint renders BEFORE safe-mode
+            // banner so a user with a working sentinel but
+            // intermittent crashes still sees safe-mode banner
+            // correctly; a user with broken sentinel writes sees the
+            // degraded hint even when safe-mode isn't active.
+            if !sentinelHealthy {
+                degradedContent
+            }
             if isInSafeMode {
                 bannerContent
             }
@@ -38,6 +52,31 @@ struct SafeModeBanner: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SafeModeService.stateDidChange"))) { _ in
             refresh()
         }
+    }
+
+    private var degradedContent: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: sz(14), weight: .semibold))
+                .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L10n.safeModeDegradedTitle)
+                    .font(.system(size: sz(13), weight: .semibold))
+                Text(L10n.safeModeDegradedBody)
+                    .font(.system(size: sz(11)))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.secondary.opacity(0.08))
+        // a11y — single combined region so VoiceOver reads the hint
+        // once on swipe-in rather than announcing each Text view
+        // separately.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(L10n.safeModeDegradedTitle)
+        .accessibilityValue(L10n.safeModeDegradedBody)
     }
 
     private var bannerContent: some View {
@@ -92,5 +131,6 @@ struct SafeModeBanner: View {
         let service = SafeModeService.shared
         isInSafeMode = service.isInSafeMode
         crashCount = service.crashCount
+        sentinelHealthy = service.isSentinelHealthy
     }
 }

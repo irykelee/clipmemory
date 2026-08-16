@@ -424,3 +424,5 @@
 "safeMode.active.body.one" = "1 回の連続クラッシュを検出しました。データは安全ですが、クラッシュは記録されました。";
 "safeMode.action.viewCrashes" = "最近のクラッシュを表示";
 "safeMode.action.disable" = "セーフモードを無効化";
+"safeMode.degraded.title" = "クラッシュ検出は利用できません";
+"safeMode.degraded.body" = "起動センチネルファイルを書き込めませんでした。クラッシュ検出はオフラインです。ヘルプ → 問題を報告 からご報告ください。";
