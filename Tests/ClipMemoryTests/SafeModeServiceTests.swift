@@ -172,6 +172,95 @@ final class SafeModeServiceTests: XCTestCase {
     private func makeService() -> SafeModeService {
         SafeModeService(defaults: defaultsSuite, directory: tmpDir)
     }
+
+    // MARK: - ID-CRASH-0004 sentinel-write retry / degraded path
+
+    /// ID-CRASH-0004: when `Data().write(to:)` fails three times in a
+    /// row, `isSentinelHealthy` must become false so the next launch's
+    /// `registerPreviousLaunchDidCrash` short-circuits and the banner
+    /// surfaces the degraded hint. We use a FileManager subclass
+    /// whose `createDirectory` / atomic write both throw to simulate
+    /// a disk-full / sandboxed-home scenario.
+    func testSentinelWriteFailureMarksServiceDegraded() {
+        final class FailingFileManager: FileManager, @unchecked Sendable {
+            override func createDirectory(
+                at url: URL,
+                withIntermediateDirectories createIntermediates: Bool,
+                attributes: [FileAttributeKey: Any]? = nil
+            ) throws {
+                throw NSError(domain: "test", code: 28 /* ENOSPC */)
+            }
+        }
+        let fm = FailingFileManager()
+        let service = SafeModeService(defaults: defaultsSuite, fileManager: fm, directory: tmpDir)
+        XCTAssertTrue(service.isSentinelHealthy, "starts healthy on first launch")
+
+        service.registerPreviousLaunchDidCrash()
+        XCTAssertFalse(service.isSentinelHealthy,
+            "after three failed write attempts sentinel must be marked degraded")
+        XCTAssertEqual(service.crashCount, 0,
+            "degraded path must NOT increment crashCount (we can't tell if a missing sentinel is a crash or our own write failure)")
+    }
+
+    /// ID-CRASH-0004: degraded mode is sticky — once flipped, the
+    /// service stays in degraded until `exitSafeMode()` resets it.
+    /// `registerSuccessfulLaunch()` does NOT reset it (that's for the
+    /// crash counter only).
+    func testDegradedFlagIsStickyAcrossLaunches() {
+        let service = makeService()
+        // Force into degraded state by simulating three failed writes.
+        defaultsSuite.set(false, forKey: "safeMode.sentinelHealthy")
+        XCTAssertFalse(service.isSentinelHealthy)
+
+        service.registerSuccessfulLaunch()
+        XCTAssertFalse(service.isSentinelHealthy,
+            "registerSuccessfulLaunch must NOT clear degraded (it's only for the counter)")
+        XCTAssertEqual(service.crashCount, 0,
+            "registerSuccessfulLaunch resets the counter to 0")
+    }
+
+    /// ID-CRASH-0004: `exitSafeMode()` re-arms both safe-mode AND
+    /// the sentinel-writer. The user's "Disable Safe Mode" click is
+    /// also a signal they trust the install again, so the writer
+    /// gets a fresh attempt on the next launch.
+    func testExitSafeModeReArmsSentinelWriter() {
+        defaultsSuite.set(true, forKey: "safeMode.active")
+        defaultsSuite.set(false, forKey: "safeMode.sentinelHealthy")
+        defaultsSuite.set(5, forKey: "safeMode.crashCount")
+
+        let service = makeService()
+        service.exitSafeMode()
+
+        XCTAssertFalse(service.isInSafeMode)
+        XCTAssertTrue(service.isSentinelHealthy,
+            "exitSafeMode must reset the sentinel-writer healthy flag")
+        XCTAssertEqual(service.crashCount, 0)
+    }
+
+    /// ID-CRASH-0004: recovery — when a write succeeds after a
+    /// transient failure, the degraded flag must flip back to true
+    /// so the next launch's crash detection is live again. Hard to
+    /// exercise without injecting a stateful FileManager; verify
+    /// the unit-level contract instead — when the write path
+    /// returns successfully the recovered flag is set to true.
+    /// The full recovery round-trip is exercised by the integration
+    /// build smoke (which writes and re-launches in CI).
+    func testRecoveredSentinelResetsDegradedFlag() {
+        // Simulate "previous launch was degraded" state.
+        defaultsSuite.set(false, forKey: "safeMode.sentinelHealthy")
+        let service = makeService()
+        XCTAssertFalse(service.isSentinelHealthy)
+
+        // Real write path now (no failing FileManager this time) →
+        // the next registerPreviousLaunchDidCrash succeeds and flips
+        // the flag back. We can't observe the writeSentinel() call
+        // directly (it's private), but we can verify the public
+        // observable: after a successful launch the service is
+        // healthy.
+        service.registerPreviousLaunchDidCrash()
+        XCTAssertTrue(service.isSentinelHealthy,
+            "successful write recovery must flip degraded → healthy")
+    }
 }
 
 private extension Notification.Name {

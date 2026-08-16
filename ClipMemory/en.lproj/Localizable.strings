@@ -423,3 +423,5 @@
 "safeMode.active.body.one" = "1 consecutive crash detected. Data is safe, but the crash has been noted.";
 "safeMode.action.viewCrashes" = "View Recent Crashes";
 "safeMode.action.disable" = "Disable Safe Mode";
+"safeMode.degraded.title" = "Crash detection unavailable";
+"safeMode.degraded.body" = "Could not write the launch sentinel file. Crash detection is offline until this is resolved — please report via Help → Report Issue.";

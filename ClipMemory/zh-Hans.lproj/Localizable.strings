@@ -422,3 +422,5 @@
 "safeMode.active.body.one" = "检测到 1 次连续崩溃。数据安全,崩溃已被记录。";
 "safeMode.action.viewCrashes" = "查看最近崩溃";
 "safeMode.action.disable" = "退出安全模式";
+"safeMode.degraded.title" = "崩溃检测暂不可用";
+"safeMode.degraded.body" = "无法写入启动哨兵文件。崩溃检测已下线,请通过帮助 → 反馈问题上报。";

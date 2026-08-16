@@ -423,3 +423,5 @@
 "safeMode.active.body.one" = "Se detectó 1 fallo consecutivo. Los datos están a salvo, pero el fallo se ha registrado.";
 "safeMode.action.viewCrashes" = "Ver fallos recientes";
 "safeMode.action.disable" = "Desactivar modo seguro";
+"safeMode.degraded.title" = "Detección de fallos no disponible";
+"safeMode.degraded.body" = "No se pudo escribir el archivo centinela. La detección de fallos está inactiva. Por favor, informe vía Ayuda → Informar de un problema.";

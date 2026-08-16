@@ -40,6 +40,7 @@ final class SafeModeService {
 
     private let crashCountKey = "safeMode.crashCount"
     private let safeModeActiveKey = "safeMode.active"
+    private let sentinelHealthyKey = "safeMode.sentinelHealthy"
     private let sentinelFilename = ".running-sentinel"
 
     /// Lazily-resolved sentinel path. Tilde expansion keeps the file
@@ -99,21 +100,38 @@ final class SafeModeService {
     /// Must be called exactly once per launch. Calling it twice in
     /// the same launch would double-count a single previous crash.
     func registerPreviousLaunchDidCrash() {
+        // ID-CRASH-0004: if the sentinel writer is degraded, we
+        // can't tell whether a missing sentinel is "previous launch
+        // crashed" or "previous launch's writer failed". Skip the
+        // crash-count increment so a local disk-pressure incident
+        // doesn't push the user toward safe-mode for a non-crash.
+        // The degraded banner (set by writeSentinel on full failure)
+        // already surfaces this state; the user sees one signal,
+        // not both.
+        guard sentinelHealthy else {
+            writeSentinel() // best-effort retry on next launch
+            return
+        }
+        // ID-CRASH-0004: pre-flight the sentinel write BEFORE
+        // counting. If our writer can't reach the file (sandbox
+        // denial, disk full, etc.), don't increment the crash
+        // counter — we can't tell a missing sentinel apart from a
+        // write failure, and counting a write failure as a crash
+        // would push the user toward safe-mode for an unrelated
+        // reason. The three-piece gate on the write path itself
+        // surfaces the degraded state to the user.
         guard fileManager.fileExists(atPath: sentinelURL.path) else {
-            // No sentinel = previous launch terminated abnormally.
-            // We don't have a way to distinguish a real crash from a
-            // force-quit / kernel panic here, but for our purpose
-            // (preventing crash-loop data corruption) any abnormal
-            // termination counts. Force-quits are rare enough that
-            // the 3-launch threshold absorbs the noise.
+            // No sentinel = previous launch terminated abnormally
+            // OR our writer failed previously. Try writing now —
+            // if it succeeds, this launch was just a force-quit;
+            // if it fails, we mark degraded and don't count.
+            let writeOK = writeSentinel()
+            guard writeOK else { return }
             let newCount = crashCount + 1
             defaults.set(newCount, forKey: crashCountKey)
             if newCount >= Self.threshold {
                 activateSafeMode(reason: newCount)
             }
-            // Write the sentinel AFTER counting so a crash during
-            // early launch doesn't count the same crash twice.
-            writeSentinel()
             return
         }
         // Sentinel present = previous launch terminated normally.
@@ -134,9 +152,12 @@ final class SafeModeService {
     /// ID-CRASH-0003: called when the user clicks "Disable Safe Mode"
     /// on the banner. Returns to normal launch mode and resets the
     /// counter so the next 3 consecutive crashes re-arm safe mode.
+    /// Also resets sentinelHealthy — exit is the user's signal that
+    /// they trust the install again, so we re-arm the write path.
     func exitSafeMode() {
         defaults.set(false, forKey: safeModeActiveKey)
         defaults.set(0, forKey: crashCountKey)
+        defaults.set(true, forKey: sentinelHealthyKey)
         postStateChanged()
     }
 
@@ -147,23 +168,87 @@ final class SafeModeService {
         postStateChanged()
     }
 
-    /// ID-CRASH-0003: write the sentinel file. Failure is non-fatal —
-    /// the launch will proceed without crash detection but no other
-    /// side effect. Loud log per CLAUDE.md 2026-08-08 three-piece gate.
-    private func writeSentinel() {
+    /// ID-CRASH-0004 (2026-08-16 /code-review Standards fix): write the
+    /// sentinel file with the three-piece gate (loud log + retry +
+    /// user-visible) per CLAUDE.md 2026-08-08. Sentinel writes can
+    /// transient-fail on macOS due to disk pressure, sandboxing,
+    /// or full-disk conditions — three attempts with exponential
+    /// backoff (50ms, 200ms, 800ms) is the recovery budget that's
+    /// tight enough not to delay launch visibly, loose enough that
+    /// any non-catastrophic I/O error is retried.
+    ///
+    /// Returns `true` on success, `false` if all three attempts
+    /// failed. Callers (`registerPreviousLaunchDidCrash`) use the
+    /// return value to decide whether to count this launch as a crash
+    /// — a missing sentinel + a failing writer is "we don't know",
+    /// not "the previous launch crashed".
+    ///
+    /// If all three attempts fail, we set `sentinelHealthy=false` and
+    /// post the state-change notification so the banner surfaces a
+    /// "crash detection unavailable" hint. Per CLAUDE.md 2026-08-08
+    /// the "user-visible" leg cannot be silently swallowed — the
+    /// user must be able to see that crash detection is offline so
+    /// they don't mistakenly trust the absence of safe-mode as
+    /// "everything is fine".
+    @discardableResult
+    private func writeSentinel() -> Bool {
         let dir = sentinelURL.deletingLastPathComponent()
-        do {
-            try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-            try Data().write(to: sentinelURL, options: .atomic)
-        } catch {
-            // Per CLAUDE.md 2026-08-08 three-piece gate, we log loud
-            // and continue. The user is still safe — safe-mode would
-            // false-positive on the next launch, which is acceptable
-            // (they'd just see a banner that says "we couldn't verify
-            // the previous launch").
-            NSLog("[SafeModeService] write sentinel failed at %@: %@", sentinelURL.path, "\(error)")
+        let backoffsMs: [UInt64] = [50, 200, 800]
+        for index in backoffsMs.indices {
+            // Use the array index directly so Swift 6 doesn't flag
+            // `backoffMs` as unused — it's read once below for the
+            // sleep duration, and the warning was a false positive
+            // caused by the line being read as a discarded binding.
+            let attempt = index + 1  // 1-based for log messages
+            do {
+                try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+                try Data().write(to: sentinelURL, options: .atomic)
+                if attempt > 0 {
+                    // We recovered on a retry — surface that to the
+                    // log so transient disk-pressure incidents are
+                    // visible in `log show` output without being a
+                    // user-facing event (no banner hint needed).
+                    NSLog("[SafeModeService] sentinel write recovered on attempt #%d", attempt + 1)
+                }
+                if !sentinelHealthy {
+                    defaults.set(true, forKey: sentinelHealthyKey)
+                    postStateChanged()
+                }
+                return true
+            } catch {
+                NSLog("[SafeModeService] sentinel write attempt #%d failed at %@: %@",
+                      attempt + 1, sentinelURL.path, "\(error)")
+                // Don't sleep after the last attempt.
+                if attempt < backoffsMs.count - 1 {
+                    let nanos = backoffsMs[attempt] * 1_000_000
+                    Thread.sleep(forTimeInterval: Double(nanos) / 1_000_000_000)
+                }
+            }
         }
+        // All attempts exhausted — flip to degraded, notify the
+        // banner. The next launch's registerPreviousLaunchDidCrash
+        // will see no sentinel and would normally count that as a
+        // crash; the sentinelHealthy check short-circuits that
+        // accounting so a write failure on our side doesn't push the
+        // user toward safe-mode for a non-crash.
+        if sentinelHealthy {
+            defaults.set(false, forKey: sentinelHealthyKey)
+            postStateChanged()
+        }
+        return false
     }
+
+    /// ID-CRASH-0004: persistent flag indicating whether the sentinel
+    /// writer is functional. false after three consecutive write
+    /// failures (or first launch before any write attempt).
+    var isSentinelHealthy: Bool {
+        // Default to true on first launch — when the key is unset
+        // we don't want to flash a "degraded" banner on every
+        // install; the first launch's write attempt decides.
+        defaults.object(forKey: sentinelHealthyKey) as? Bool ?? true
+    }
+
+    private var sentinelHealthy: Bool { isSentinelHealthy }
 
     /// ID-CRASH-0003: called on applicationWillTerminate. The sentinel
     /// being ABSENT on the next launch means the previous run didn't

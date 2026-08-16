@@ -426,3 +426,5 @@
 "safeMode.active.body.one" = "偵測到 1 次連續當機。資料安全,當機已被記錄。";
 "safeMode.action.viewCrashes" = "檢視最近的當機";
 "safeMode.action.disable" = "退出安全模式";
+"safeMode.degraded.title" = "當機偵測暫時無法使用";
+"safeMode.degraded.body" = "無法寫入啟動哨兵檔案。當機偵測已離線,請透過說明 → 回報問題告知我們。";
