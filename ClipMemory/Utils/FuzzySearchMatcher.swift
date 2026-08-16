@@ -140,4 +140,16 @@ enum FuzzySearchMatcher {
             .lowercased(with: Locale(identifier: "en_US_POSIX"))
             .replacingOccurrences(of: " ", with: "")
     }
+
+    /// ID-PERF-0005 (2026-08-16 audit MEDIUM-13 fix): explicit flush of
+    /// the pinyin + normalized caches under memory pressure. Both are
+    /// rebuilt cheaply from `content` (CFStringTransform + ICU folding)
+    /// but the rebuild cost is paid on every search keystroke for the
+    /// next 16_384 unique contents, which is the worst place to land
+    /// when the system is already low on memory. The memory-warning
+    /// observer in AppDelegate calls this via `MemoryCacheRegistry`.
+    internal static func flushMemoryCaches() {
+        pinyinCache.removeAllObjects()
+        normalizedCache.removeAllObjects()
+    }
 }

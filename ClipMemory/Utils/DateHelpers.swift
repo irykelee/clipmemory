@@ -69,3 +69,21 @@ func cachedRelativeDateString(from date: Date, relativeTo now: Date, languageCod
     defer { dateFormatterLock.unlock() }
     return cachedRelativeDateFormatter(for: languageCode).localizedString(for: date, relativeTo: now)
 }
+
+// ID-PERF-0005 (2026-08-16 audit MEDIUM-13 fix): memory-warning flush
+// for the date formatter caches. Formatter instances themselves are
+// cheap (a few KB each), but the lock-guarded lookup path makes a fresh
+// formatter creation the dominant cost on the first render after a
+// warning — and we hold 16 of each by `countLimit`, which means a
+// language switch that drops the user's previously-cached locale leaves
+// stale formatter instances in cache until the next eviction pass.
+//
+// Wrapped in a file-scope enum so the flush method has a unique
+// symbol (file-scope `func flushMemoryCaches()` would collide with
+// other files' identically-named helpers).
+enum DateHelpersCache {
+    static func flushMemoryCaches() {
+        absoluteDateFormatterCache.removeAllObjects()
+        relativeDateFormatterCache.removeAllObjects()
+    }
+}

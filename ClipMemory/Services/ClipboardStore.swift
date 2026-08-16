@@ -680,6 +680,36 @@ final class ClipboardStore: ObservableObject {
         return cache
     }()
 
+    /// ID-PERF-0005 (2026-08-16 audit MEDIUM-13 fix): explicit cache flush
+    /// on `NSApplication.didReceiveMemoryWarningNotification`. NSCache
+    /// auto-evicts under pressure, but pre-flushing the decrypted-content
+    /// and parsed-RTF caches when the system signals pressure lets the
+    /// next render skip the AES-decrypt + NSAttributedString-build cost
+    /// entirely (caches stay cold until items are re-accessed). Wired in
+    /// `AppDelegate` via `MemoryCacheRegistry.flushAll()`.
+    ///
+    /// `nonisolated` because the caches themselves are `nonisolated(unsafe)`
+    /// and the method is safe to call from any isolation domain — NSCache
+    /// is documented thread-safe. The UI re-render that follows the
+    /// notification is what actually drives the "cold cache, no
+    /// highlight" visual state.
+    nonisolated internal func flushMemoryCaches() {
+        contentCache.removeAllObjects()
+        rtfPlaintextCache.removeAllObjects()
+    }
+
+    /// ID-PERF-0005 test seam: NSCache doesn't expose a count getter
+    /// (Apple's deliberate API design — see the
+    /// `evictsObjectsWithDiscardedContent` discussion in the NSCache
+    /// docs), so the only way to assert "the cache is empty after
+    /// flushMemoryCaches()" from a unit test is to look up a key we
+    /// know we just put in. Used by `MemoryWarningTests`; production
+    /// code should use `getDecryptedContent`'s hit/miss path instead
+    /// of peeking at the cache directly.
+    nonisolated internal func debugHasCachedContent(for id: UUID) -> Bool {
+        contentCache.object(forKey: id.uuidString as NSString) != nil
+    }
+
     /// Observer for `NSApplication.willTerminateNotification`. Registered in
     /// `init` so the flush logic (`flushPendingSaves`) runs on `.main` and
     /// can safely touch `@MainActor`-isolated state. `deinit` only removes
