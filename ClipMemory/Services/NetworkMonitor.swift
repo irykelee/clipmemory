@@ -20,6 +20,21 @@ import os.log
 /// per-component, and (b) we need the monitor alive for the entire app
 /// lifetime (not per-view-controller), so sharing one instance avoids
 /// `NWPathMonitor` reference-count churn on every deinit.
+///
+/// ID-STORE-0021 (audit MEDIUM-14 foundation, 2026-08-16): explicit
+/// `@unchecked Sendable` rationale for the Swift 6 migration plan
+/// (`docs/SWIFT6_MIGRATION.md` §4 per-module table). Mutable state
+/// (`lastSatisfied`, `hasReceivedInitialUpdate`) is protected by
+/// `stateLock` (line 49, NSLock) — read/written only inside
+/// `handlePathUpdate` (91-96), `stop` (72-75), `resetForTesting`
+/// (83-86). `start()` is lock-free: it only wires
+/// `monitor.pathUpdateHandler` and calls `monitor.start(queue:)`,
+/// never touching the protected pair (init defaults `false`/`false`
+/// suffice). Single call site: `AppDelegate.swift:107`, main
+/// thread, `applicationDidFinishLaunching`, called once — not
+/// restartable. `@unchecked Sendable` is therefore sound: the
+/// state pair is atomic via the lock, and `start()` has no
+/// ordering constraints that require lock protection.
 final class NetworkMonitor: @unchecked Sendable {
     static let shared = NetworkMonitor()
 

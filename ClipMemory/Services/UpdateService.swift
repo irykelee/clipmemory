@@ -83,14 +83,14 @@ private final class GentleUpdateReminder: NSObject, SPUStandardUserDriverDelegat
 /// the test-only version is kept for tests that want to type-explicit
 /// reference without going through the type-checked seam.
 ///
-/// ID-SYNC-0006 (2026-08-08 audit): this class is **not** wrapped in
-/// `#if DEBUG` because XCTest framework sets `XCTestConfigurationFilePath`
-/// regardless of build configuration — release-config XCTest runs would
-/// otherwise bypass the `_sharedDefault` guard (still inside `#if DEBUG`
-/// at `:140`), trigger a real `SPUStandardUpdaterController` startup, and
-/// re-pollute production `UserDefaults`. The class itself is safe in
-/// release builds: `@unchecked Sendable`, no mutable state, only fires
-/// when `isRunningTests` resolves true.
+/// ID-STORE-0021 (audit MEDIUM-14 foundation, 2026-08-16): explicit
+/// `@unchecked Sendable` rationale for the Swift 6 migration plan
+/// (`docs/SWIFT6_MIGRATION.md` §4 per-module table). This type is a
+/// type-level no-op — the minimal `FeedProbeEngine` protocol
+/// implementation used when Sparkle is bypassed. All methods return
+/// static values; the compiler has verified no stored properties
+/// exist. `@unchecked Sendable` is therefore sound: there is no
+/// mutable state to guard.
 private final class NoOpFeedProbeEngine: FeedProbeEngine, @unchecked Sendable {
     func resolve(
         policy: UpdateFeedPolicy,
