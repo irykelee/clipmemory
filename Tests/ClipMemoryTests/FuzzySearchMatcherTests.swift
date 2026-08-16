@@ -213,4 +213,43 @@ final class FuzzySearchMatcherTests: XCTestCase {
         XCTAssertLessThan(elapsed, 30,
                           "1000 cached-normalized matches should take <30 ms, took \(elapsed) ms — cache regression?")
     }
+
+    // MARK: - Unicode whitespace separators (ID-SEARCH-0003)
+
+    /// ID-SEARCH-0003 (2026-08-16 audit LOW §5 fix): U+3000 (fullwidth
+    /// space, common in CJK / Japanese paste-bins) and U+00A0
+    /// (non-breaking space, used by web scrapers and word processors)
+    /// must be treated as token separators. The previous
+    /// `.split(separator: " ")` only split on ASCII space, so a query
+    /// like "foo\u{3000}bar" silently fused into one literal token and
+    /// never matched the two independent "foo" / "bar" entries in
+    /// history.
+    func testFullwidthSpaceIsSeparator() {
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "hello world", searchText: "hello\u{3000}world"),
+                      "U+3000 fullwidth space must split tokens like ASCII space")
+    }
+
+    func testNonBreakingSpaceIsSeparator() {
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "hello world", searchText: "hello\u{00A0}world"),
+                      "U+00A0 NBSP must split tokens like ASCII space")
+    }
+
+    /// ID-SEARCH-0003: fullwidth space at the start/end collapses
+    /// (omittingEmptySubsequences). A query of just separators returns
+    /// an empty token list, which the matcher treats as a match-all
+    /// (`guard !tokens.isEmpty else { return true }`).
+    func testSeparatorOnlySearchMatchesAll() {
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "hello", searchText: " "),
+                      "ASCII-space-only query is match-all (existing behavior preserved)")
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "hello", searchText: "\u{3000}\u{00A0}"),
+                      "U+3000/U+00A0-only query is match-all (must match ASCII-space-only behavior)")
+    }
+
+    /// ID-SEARCH-0003: ASCII space remains the dominant separator (most
+    /// common case). Verify the previous behavior didn't regress.
+    func testAsciiSpaceStillSplits() {
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "hello world", searchText: "hello world"))
+        XCTAssertTrue(FuzzySearchMatcher.matches(content: "hello world", searchText: "  hello   world  "),
+                      "Multiple ASCII spaces collapse and split tokens")
+    }
 }
