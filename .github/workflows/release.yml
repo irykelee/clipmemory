@@ -134,7 +134,15 @@ jobs:
             # 2027-07-19, Gatekeeper will refuse to launch. PR dry-run
             # path uses CODE_SIGN_IDENTITY="-" (ad-hoc, untimestamped by
             # definition) and is intentionally untouched.
-            xcodebuild -scheme ClipMemory -configuration Release build OTHER_CODE_SIGN_FLAGS=--timestamp
+            # ID-CRASH-0001 (2026-08-16 audit MEDIUM-1 fix): pass
+            # DEBUG_INFORMATION_FORMAT=dwarf-with-dsym so the binary
+            # ships with debug-info stubs the post-build `dsymutil`
+            # step can extract. Without this flag, Xcode defaults to
+            # `dwarf` (debug info embedded in the binary) for non-archive
+            # builds and there is no companion dSYM to extract.
+            xcodebuild -scheme ClipMemory -configuration Release build \
+              OTHER_CODE_SIGN_FLAGS=--timestamp \
+              DEBUG_INFORMATION_FORMAT=dwarf-with-dsym
           fi
 
       # B2 (2026-07-23 ship-review): run unit tests before packaging. Previously
@@ -156,6 +164,41 @@ jobs:
         # other publish steps. PR dry-run coverage stops at build + tests.
         if: github.event_name == 'push'
         run: ./Scripts/package.sh
+
+      # ID-CRASH-0001 (2026-08-16 audit MEDIUM-1 fix): extract the dSYM
+      # companion file from the Release binary and tar it for upload as
+      # a GitHub Release asset. Without dSYM, user-reported crash reports
+      # (`.ips` / `.crash` files in `~/Library/Logs/DiagnosticReports/`)
+      # are unreadable — `atos` returns "atos cannot find symbols" on
+      # every frame and we have no way to debug what crashed.
+      #
+      # Step is push-only because (a) PR dry-runs produce an ad-hoc signed
+      # binary that nobody's going to symbolicate, and (b) the package
+      # step is push-only anyway so there's no Releases/ClipMemory.app
+      # to extract from on PR runs.
+      - name: Extract and bundle dSYM
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          APP="Releases/ClipMemory.app"
+          DSYM_DIR="Releases/ClipMemory.app.dSYM"
+          TARBALL="Releases/ClipMemory.dSYM.tar.gz"
+
+          if [[ ! -d "$APP" ]]; then
+            echo "❌ $APP missing — package step should have built it"
+            exit 1
+          fi
+          # dsymutil is part of Xcode CLT (default on macos-latest runners).
+          # Output dir is the canonical `*.dSYM` bundle shape atos expects.
+          /usr/bin/dsymutil -o "$DSYM_DIR" "$APP"
+          # Tar the bundle as a flat .tar.gz — same shape as the appcast
+          # tarball, keeps GitHub Release's asset list uniform. The
+          # `-C Releases` and trailing `.` ensures the tarball contains
+          # the bundle at its original path (`ClipMemory.app.dSYM/`).
+          tar -C Releases -czf "$TARBALL" "ClipMemory.app.dSYM"
+
+          SIZE=$(stat -f%z "$TARBALL" 2>/dev/null || stat -c%s "$TARBALL")
+          echo "✅ dSYM bundled: ${TARBALL} (${SIZE} bytes)"
 
       # REL-3 (2026-07-24): this step is LOCAL-ONLY — sign the tarball and
       # insert the <item> into the working-tree appcast.xml. The git
@@ -313,6 +356,7 @@ jobs:
         with:
           files: |
             Releases/ClipMemory.tar.gz
+            Releases/ClipMemory.dSYM.tar.gz
             appcast.xml
           # NB: the input is `name:`, NOT `title:` — v3 rejects unknown
           # inputs with a warning and silently falls back to the tag name,
@@ -525,7 +569,7 @@ jobs:
           fi
 
           # 4. Both required assets attached (per docs/RELEASE.md B3.8).
-          for asset in "ClipMemory.tar.gz" "appcast.xml"; do
+          for asset in "ClipMemory.tar.gz" "ClipMemory.dSYM.tar.gz" "appcast.xml"; do
             ATTACHED=$(gh api "$API" --jq ".assets[] | select(.name == \"${asset}\") | .name" 2>/dev/null)
             if [[ -n "$ATTACHED" ]]; then
               note_ok "asset ${asset} attached"
