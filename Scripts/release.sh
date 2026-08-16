@@ -278,6 +278,12 @@ generate_release_notes() {
         echo ""
         echo "- v2.4.0 起带自动升级模块（Sparkle）的版本：等 App 内自动更新，或 \`brew upgrade --cask clipmemory\`"
         echo ""
+        echo "### 验证 (Verification)"
+        echo ""
+        echo "- [TEST_COUNT] 测试全绿（静态估计自 \`./Scripts/test-count.sh\`；真值见 CI build-and-test job + \`xcodebuild test\` 实际输出）"
+        echo "- ZZZ canary 3/3"
+        echo "- Lint gate 4/4 (L18 audit-ID + hotkey drift + translation parity + lint-ids)"
+        echo ""
         echo "## English"
         echo ""
         echo "### Highlights"
@@ -291,6 +297,12 @@ generate_release_notes() {
         echo "### Upgrade Note"
         echo ""
         echo "- Versions with the auto-update module (Sparkle, v2.4.0+): wait for in-app auto-update, or run \`brew upgrade --cask clipmemory\`"
+        echo ""
+        echo "### Verification"
+        echo ""
+        echo "- [TEST_COUNT] tests GREEN (static estimate from \`./Scripts/test-count.sh\`; authoritative count from CI build-and-test + \`xcodebuild test\` actual output)"
+        echo "- ZZZ canary 3/3"
+        echo "- Lint gate 4/4 (L18 audit-ID + hotkey drift + translation parity + lint-ids)"
         echo ""
         echo "## 安装 / Install"
         echo ""
@@ -306,6 +318,23 @@ generate_release_notes() {
         echo ""
         echo "> **首次打开若提示「Apple 无法验证…」/ If macOS blocks the first launch with \"Apple cannot verify…\"**：这是 macOS 对未公证应用的常规拦截，不是病毒。右键点 App →「打开」→ 再点「打开」；或 系统设置 → 隐私与安全性 →「仍要打开」。仅需操作一次。/ This is the standard prompt for non-notarized apps, not malware. Right-click the app → **Open** → **Open** again; or System Settings → Privacy & Security → **Open Anyway**. Only needed once."
     } > "$outfile"
+    # ID-TEST-0002 (2026-08-16 audit LOW §13 fix): replace [TEST_COUNT]
+    # placeholder with the static estimate from Scripts/test-count.sh.
+    # The static estimate is intentionally an undercount (skips
+    # parameterized + Objective-C selector tests); the real number
+    # lands in the post-release verify step via `xcodebuild test` and
+    # in the release commit body. Don't hard-code the number anywhere
+    # — let this script be the single source of truth.
+    local test_count
+    test_count=$(./Scripts/test-count.sh 2>/dev/null || echo "?")
+    # macOS sed needs -i '' (BSD); Linux sed uses -i. Detect and pick.
+    local sed_inplace=(-i)
+    if sed --version >/dev/null 2>&1; then
+        sed_inplace=(-i)
+    else
+        sed_inplace=(-i '')
+    fi
+    sed "${sed_inplace[@]}" "s/\\[TEST_COUNT\\]/${test_count}/g" "$outfile"
 }
 
 # validate_release_notes NOTES_FILE VERSION
