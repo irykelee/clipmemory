@@ -182,9 +182,16 @@ final class SensitiveDetectorTests: XCTestCase {
     }
 
     func testVeryLongContentSkipsRegex() {
+        // P1-AUDIT-2026-09-22 (P2-6): formerly asserted that long content
+        // without patterns is NOT flagged — that codified the audit bug.
+        // Conservative "likely sensitive" wins: large pastes (password
+        // dumps, API key lists, JSON blobs) cannot be regex-scanned in
+        // full, so they are conservatively flagged. False positives are
+        // user-recoverable (un-flag in UI); false negatives leak data.
         let longContent = String(repeating: "normal text ", count: 5000)
         let item = makeItem(content: longContent)
-        XCTAssertFalse(item.isSensitive, "Long content without patterns should not be flagged")
+        XCTAssertTrue(item.isSensitive,
+                     "P1-AUDIT-2026-09-22 P2-6: >50KB content conservatively flagged even without patterns")
     }
 
     func testPureAlphanumericNotFlagged() {
