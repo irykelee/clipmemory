@@ -406,7 +406,7 @@ class ClipboardMonitor {
             } else {
                 logger.warning("CLIP-2: clipboard RTF data exceeded \(Self.maxTextCaptureBytes) bytes; falling back to plaintext")
             }
-        } else if let rawContent = pasteboard.string(forType: .string), !rawContent.isEmpty {
+        } else if let rawContent = pasteboard.string(forType: .string), Self.shouldCaptureText(rawContent) {
             // CLIP-2 (2026-07-24): cap capture size BEFORE detectType /
             // detectSensitive / ClipboardItem construction — an unbounded
             // paste (multi-GB log dump) used to flow whole into memory,
@@ -503,6 +503,31 @@ class ClipboardMonitor {
     /// fingerprint, same contract as text items.
     static func imageContentHash(for imageData: Data) -> String? {
         ServiceContainer.crypto.hmacHex(for: imageData.base64EncodedString())
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-7): the previous capture gate used
+    /// `string.isEmpty` only. Whitespace-only strings ("   \n\t  "),
+    /// full-width space (U+3000, common CJK IME accidental submit), and
+    /// non-breaking space (U+00A0) all slipped through, creating empty-ish
+    /// clipboard history entries that cluttered the list.
+    ///
+    /// This predicate rejects any string that is empty or composed entirely
+    /// of Unicode whitespace + U+3000 + U+00A0. Same character set as
+    /// `FuzzySearchMatcher` tokenization (FuzzySearchMatcher.swift:74) so
+    /// "whitespace" means one thing project-wide.
+    ///
+    /// Static so tests can drive the gate directly without a live pasteboard.
+    /// Silent reject — a user pasting whitespace did not intend to create a
+    /// history entry. CLAUDE.md 三环节: 报错 = silent (intentional, no log);
+    /// 重试 = N/A (single capture event); 用户可见 = by design (silent drop
+    /// IS the fix; if user reports "paste missing" that's a separate UX
+    /// concern).
+    static func shouldCaptureText(_ text: String) -> Bool {
+        if text.isEmpty { return false }
+        if text.allSatisfy({ $0.isWhitespace || $0 == "\u{3000}" || $0 == "\u{00A0}" }) {
+            return false
+        }
+        return true
     }
 
     private func detectType(_ content: String) -> ClipboardItemType {
