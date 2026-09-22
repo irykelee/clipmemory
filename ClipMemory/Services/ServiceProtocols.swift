@@ -64,4 +64,38 @@ enum ServiceContainer {
         precondition(inTest, "setCryptoForTesting called outside XCTest")
         crypto = service
     }
+
+    // MARK: - First Launch (P1-AUDIT-2026-09-22 P1-5)
+
+    /// First-launch marker service. Replaces `FirstLaunchManager`'s direct
+    /// `UserDefaults.standard.bool/set(forKey:)` access — the View (`WelcomeView`)
+    /// and `AppDelegate` now read/write via this single service handle.
+    ///
+    /// The key (`"hasLaunchedBefore"`) is preserved so existing user state
+    /// survives this refactor without migration. The key is intentionally
+    /// registered in `ZZZSuiteTeardownTests.appLifecycleKeys` so the
+    /// canary catches accidental new keys appearing on a cold run.
+    ///
+    /// Post-OpenCode-auto-review P2 fix (2026-09-22): the previous `static let`
+    /// made the seam declared in `FirstLaunchService.init(store:)` unreachable
+    /// from production callers (no setter, no DI path). Promoted to
+    /// `static private(set) var` with the same XCTest-only `preconditionFailure`
+    /// guard as `crypto` above; `setFirstLaunchForTesting(_:)` mirrors
+    /// `setCryptoForTesting(_:)` for tests that need to swap the store.
+    static private(set) var firstLaunch: FirstLaunchService = FirstLaunchService() {
+        didSet {
+            let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            if !inTest {
+                preconditionFailure(
+                    "ServiceContainer.firstLaunch reassigned outside XCTest — race risk."
+                )
+            }
+        }
+    }
+
+    static func setFirstLaunchForTesting(_ service: FirstLaunchService) {
+        let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        precondition(inTest, "setFirstLaunchForTesting called outside XCTest")
+        firstLaunch = service
+    }
 }
