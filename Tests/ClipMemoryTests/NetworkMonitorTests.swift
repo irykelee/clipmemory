@@ -84,6 +84,19 @@ final class NetworkMonitorProtocolTests: XCTestCase {
         XCTAssertTrue(mock.isConnected,
                       "Mock can drive multiple transitions in one test")
     }
+
+    /// P1-AUDIT-2026-09-22-FOLLOW-UP-2 (IC-2): Notification.Name rawValue
+    /// stability — observer in AppDelegate.swift:293 uses the literal
+    /// "NetworkMonitor.didBecomeReachable". A rename of the constant's
+    /// rawValue would silently break the observer. Single source of
+    /// truth — keep them in sync.
+    func testPostNameIsStable() {
+        XCTAssertEqual(
+            NetworkMonitor.didBecomeReachable.rawValue,
+            "NetworkMonitor.didBecomeReachable",
+            "P1-AUDIT-2026-09-22-FOLLOW-UP-2 IC-2: rawValue must stay literal for observer contract"
+        )
+    }
 }
 
 /// P1-AUDIT-2026-09-22 (P1-7): test seam for `NetworkMonitorProtocol`.
