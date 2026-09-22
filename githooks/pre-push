@@ -29,7 +29,20 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
         base="$remote_sha"
     fi
     [ -z "$base" ] && continue
-    [ "$base" = "$local_sha" ] && continue   # 无新提交（如把 main 推成新分支/远端已最新）→ 放行
+    if [ "$base" = "$local_sha" ]; then
+        # v3: 塌缩不放行 —— 用 main 链审核点（只读）审真正未审的部分
+        _mark=""
+        [ -f "$ROOT/githooks/.last-reviewed" ] && _mark=$(cat "$ROOT/githooks/.last-reviewed" 2>/dev/null)
+        if [ -z "$_mark" ] && [ -f "$ROOT/.githooks/.last-reviewed" ]; then
+            _mark=$(cat "$ROOT/.githooks/.last-reviewed" 2>/dev/null)
+        fi
+        if [ -n "$_mark" ] && git merge-base --is-ancestor "$_mark" "$local_sha" 2>/dev/null; then
+            [ "$_mark" = "$local_sha" ] && continue   # main 链已全审 → 放行
+            base="$_mark"
+        else
+            base=$(git rev-parse "$local_sha~1" 2>/dev/null) || continue
+        fi
+    fi
     # 前台跑（后台会丢阻断能力）; FAIL/审核失败 → exit 1 阻断, git push --no-verify 可越过
     REVIEW_BLOCK_ON_FAIL=1 REVIEW_RANGE="$base..$local_sha" "$REVIEWER" "$ROOT" < /dev/null || exit 1
     sleep 1   # 报告名含秒级时间戳, 防多分支同秒碰撞
