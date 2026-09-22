@@ -26,6 +26,18 @@ ROOT="$(git rev-parse --show-toplevel)"
 REVIEWER="$ROOT/githooks/orca-auto-review.sh"
 [ -x "$REVIEWER" ] || exit 0
 
-# 后台跑, 不阻塞 git commit 返回
-nohup "$REVIEWER" "$ROOT" >> /tmp/orca-auto-review.log 2>&1 &
+# 后台跑, 不阻塞 git commit 返回。
+# 分离加固: nohup 只防 SIGHUP, 防不了 AI 工具沙箱在会话边界按进程组收割
+# (2026-09-22 实测: WorkBuddy 工具会话里 commit, 后台审核跑到一半被整组 SIGKILL,
+# jsonl 冻结无报告无台账)。setsid 新建会话+进程组, 脱离被收割范围; 进程被
+# launchd 收养, 终端退出也不受影响。macOS 无 setsid 命令, 用 python3 os.setsid()。
+# 兜底纪律: 若仍被杀, mark 不推进 → 下次 commit / pre-push 自动重试, 不会冒充已审。
+(
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$REVIEWER" "$ROOT" >> /tmp/orca-auto-review.log 2>&1 &
+  else
+    python3 -c 'import os,sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])' \
+      "$REVIEWER" "$ROOT" >> /tmp/orca-auto-review.log 2>&1 &
+  fi
+) 2>/dev/null
 exit 0
