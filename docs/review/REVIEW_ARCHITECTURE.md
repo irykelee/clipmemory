@@ -55,7 +55,8 @@ ClipMemory 已有深厚的人工/AI 审查传统（`docs/review/code-review-2026
 ### 2.1 触发
 
 - `.git/hooks/post-commit`（经 `githooks/install.sh` 装入）在 **main 分支每次 commit 后**后台触发 `githooks/orca-auto-review.sh`（opencode 独立模型）。
-- 非 main 分支不自动触发，需手动跑：`bash githooks/orca-auto-review.sh`。
+- **pre-push 门禁**：`git push` 前自动审核所有未审提交（**任何分支**，逐分支显式算范围），VERDICT=FAIL 阻断 push（`--no-verify` 显式越过）——保证离开本机的变更必然被审过。
+- 非 main 分支的 commit 不自动触发（WIP 降噪）；需要时手动跑：`bash githooks/orca-auto-review.sh`，或依赖 pre-push 门禁兜底。
 - 报告写 `docs/reviews/auto-review-<时间戳>.md`（含 FINDINGS + `REVIEW_VERDICT: PASS/FAIL`）。
 
 ### 2.2 义务
@@ -68,7 +69,7 @@ ClipMemory 已有深厚的人工/AI 审查传统（`docs/review/code-review-2026
 
 - **审核范围**：上次审核点（`githooks/.last-reviewed`）→ 当前 HEAD；首次只审最近 1 个提交。
 - **解析 robust**：`opencode --format json` 事件流抽取模型文本，python3 主 + jq 兜底，三层降级。
-- **防空转**：报告必须 ≥300 字节且含 `FINDINGS`/`REVIEW_VERDICT` 且不含余额/限流错误标记；空转/失败不推进审核点、在 `githooks/review-failures.log` 留痕。
+- **防空转**：报告必须 ≥300 字节且含 `FINDINGS`/`REVIEW_VERDICT` 且不含余额/限流错误标记；空转/失败不推进审核点、在 `githooks/review-failures.log` 留痕。**唯一例外**：opencode 二进制缺失时的 SKIP 路径会推进审核点（避免永久卡死），但该推进同样只限 main 链（REVIEW_RANGE/非 main 不写 mark）。
 - **VERDICT 提取**：行首锚定 + 形态判定 + 取最后一次，规避回显/散文污染（详见脚本注释）。
 
 ### 2.4 模型与成本
