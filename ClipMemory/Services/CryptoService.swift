@@ -794,21 +794,41 @@ class CryptoService: CryptoServiceProtocol {
             }
             return .success(result)
         } else {
-            // v2 GCM: 复用 decryptV2 但捕获 throw → 分类 authenticationFailure vs 其他
-            do {
-                let sealedBoxData = combined.dropFirst(2)  // N1 关键：剥 2 字节 "v2" prefix
-                let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
-                guard let key = getKey() else { return .keyUnavailable }  // 双重保险
-                let decrypted = try AES.GCM.open(sealedBox, using: key)
-                guard let result = String(bytes: decrypted, encoding: .utf8) else {
-                    return Self.cacheAndReturn(.internalError, key: cacheKey)
-                }
-                return .success(result)
-            } catch CryptoKitError.authenticationFailure {
+            // P1-AUDIT-2026-09-22 (P2-1) production-path follow-up: this branch
+            // was previously inline GCM (SealedBox + AES.GCM.open) which did
+            // NOT route through `decryptBytes`. For a v2-prefixed legacy
+            // ciphertext (~1/65536 natural IV collision — the audit's exact
+            // scenario), `isOldFormat` returns false (has "v2" prefix), so
+            // control enters THIS branch, the inline GCM throws
+            // `authenticationFailure`, gets mapped to `.dataCorrupted`, and
+            // the live caller (`ClipboardStore+Encryption.getDecryptedContent`)
+            // calls `scheduleDecryptionFailedMark` — the item is then
+            // permanently refused via the `decryptionFailed` short-circuit.
+            // The new fallback added to `decryptBytes` (authFailure →
+            // `decryptLegacy`) never ran because this branch bypassed it.
+            //
+            // Fix: route through `decryptBytes` like the legacy branch above
+            // does. Single source of truth for the C4-bounded fallback —
+            // same RE-EVALUATION trigger condition applies (ciphertext
+            // becoming user-supplied would re-open the C4 oracle relaxation).
+            //
+            // Nil from decryptBytes here means: (a) decryptLegacy fallback
+            // also failed HMAC (dataCorrupted — wrong key, tampered
+            // ciphertext, or real-v2 data the fallback can't read), or
+            // (b) decryptV2 returned .otherFailure (key became unavailable
+            // mid-call — extremely rare race; logged for parity with the
+            // legacy branch above). Both map to .dataCorrupted here for
+            // symmetry with the legacy branch's nil handling.
+            guard let bytes = decryptBytes(from: combined) else {
+                let key = getKey()
+                let keyAvail = key != nil ? "key=OK" : "key=nil"
+                Self.logger.error("decryptWithReason v2: decryptBytes returned nil (\(keyAvail, privacy: .public)), inputLength=\(combined.count, privacy: .public)")
                 return Self.cacheAndReturn(.dataCorrupted, key: cacheKey)
-            } catch {
+            }
+            guard let result = String(bytes: bytes, encoding: .utf8) else {
                 return Self.cacheAndReturn(.internalError, key: cacheKey)
             }
+            return .success(result)
         }
     }
 
@@ -903,40 +923,114 @@ class CryptoService: CryptoServiceProtocol {
 
     // MARK: - Decryption (v2 and legacy)
 
+    /// P1-AUDIT-2026-09-22 (P2-1) — Option B: outcome of a v2 decrypt so the
+    /// dispatch layer can fall back to legacy decryption on format-drift
+    /// (SealedBox parse failure) OR GCM authentication failure. C4
+    /// oracle-defense is bounded-relaxed — see comment on the
+    /// `.authFailure` case below and the `decryptBytes` switch for the
+    /// threat-model rationale (UserDefaults-write attacker already has the
+    /// file contents; ~1/65536 collision = real user data loss otherwise).
+    private enum DecryptV2Result {
+        /// v2 decryption succeeded with these plaintext bytes.
+        case success([UInt8])
+        /// SealedBox combined parse failed (format drift — data too short
+        /// for the 12-byte nonce + 16-byte tag minimum). Caller attempts
+        /// legacy fallback.
+        case parseFailure(Data)
+        /// GCM authentication tag mismatch — may be wrong key, tampered
+        /// ciphertext, OR a legacy ciphertext whose random IV happened to
+        /// collide with "v2" (~1/65536 natural chance; the audit's P2-1
+        /// scenario). Option B: caller attempts legacy fallback. C4 oracle
+        /// defense is bounded-relaxed here — see `decryptBytes` switch.
+        case authFailure
+        /// Key unavailable or any other unexpected error. Caller does NOT
+        /// attempt legacy fallback (no point probing legacy without a key).
+        case otherFailure
+    }
+
     /// Returns nil if decryption fails for any reason.
-    /// Tries v2 (AES-GCM) first, then legacy (AES-CBC+HMAC).
+    /// Tries v2 (AES-GCM) first, then legacy (AES-CBC+HMAC) on format drift
+    /// OR GCM auth failure (the audit's P2-1 scenario).
     private func decryptBytes(from combined: Data) -> [UInt8]? {
         // Detect format by "v2" prefix
         if combined.count >= 2 && combined.prefix(2) == Data("v2".utf8) {
             let sealedBoxData = combined.dropFirst(2)
-            return decryptV2(data: Data(sealedBoxData))
+            switch decryptV2(data: Data(sealedBoxData)) {
+            case .success(let bytes):
+                return bytes
+            case .parseFailure:
+                // P1-AUDIT-2026-09-22 (P2-1) — Option B: both SealedBox parse
+                // failure AND GCM auth failure trigger legacy fallback.
+                // Empirically CryptoKit's `AES.GCM.SealedBox(combined:)` parses
+                // any data ≥28 bytes (12 nonce + ≥0 ct + 16 tag), so the actual
+                // legacy-with-"v2"-prefix collision triggers authFailure, never
+                // parseFailure. Falling back only on parseFailure would leave
+                // ~1/65536 of legacy ciphertexts permanently undecryptable.
+                //
+                // C4 oracle-defense relaxation (Option B): C4 was originally
+                // written to defend against a UserDefaults-write attacker
+                // observing decryption outcomes to probe v2/legacy format.
+                // ClipMemory's ciphertext is app-controlled (not user-
+                // supplied); an attacker with write access to UserDefaults
+                // already has the file contents regardless of fallback. The
+                // ~1/65536 collision rate would otherwise permanently lose
+                // ~0.015% of legacy ciphertexts — worse trade. Bounded: only
+                // the GCM-open() vs legacy-decrypt classification boundary is
+                // relaxed; passphrase derivation is still key-validated.
+                //
+                // RE-EVALUATION: This decision was made under ClipMemory's
+                // current threat model (ciphertext is app-controlled, not
+                // user-supplied). If ciphertext ever becomes user-supplied —
+                // e.g. paste-imported encrypted blobs, email import paths,
+                // network-fetched blobs — re-evaluate. An attacker who can
+                // supply ciphertext AND observe decryption outcomes can use
+                // this fallback as a v2/legacy format oracle; that attacker
+                // model doesn't apply today but should re-open this
+                // relaxation if it ever does.
+                Self.logger.debug("v2 parse failed; attempting legacy fallback")
+                return decryptLegacy(from: combined)
+            case .authFailure:
+                // P1-AUDIT-2026-09-22 (P2-1) — Option B: see case .parseFailure
+                // above. The actual real-world-collision scenario lands here.
+                Self.logger.debug("v2 GCM authFailure; attempting legacy fallback")
+                return decryptLegacy(from: combined)
+            case .otherFailure:
+                // keyUnavailable or other unexpected error — fail fast, no
+                // legacy probe (no point probing legacy without a key).
+                return nil
+            }
         }
         // Legacy format (no prefix)
         return decryptLegacy(from: combined)
     }
 
-    private func decryptV2(data: Data) -> [UInt8]? {
-        guard let key = getKey() else { return nil }
+    private func decryptV2(data: Data) -> DecryptV2Result {
+        guard let key = getKey() else { return .otherFailure }
 
         do {
             let sealedBox = try AES.GCM.SealedBox(combined: data)
             let decrypted = try AES.GCM.open(sealedBox, using: key)
-            return Array(decrypted)
+            return .success(Array(decrypted))
         } catch CryptoKitError.authenticationFailure {
             // ID-SILENT-0011 (2026-07-31 audit): GCM tag mismatch = wrong key
             // or tampered/corrupt ciphertext — an EXPECTED, already-classified
             // failure (decryptWithReason maps it to .dataCorrupted). Keep it
             // out of the error stream so the loud log below stays a reliable
-            // "something is actually wrong" signal.
-            Self.logger.debug("decryptV2 authentication failure (wrong key or corrupt ciphertext)")
-            return nil
+            // "something is actually wrong" signal. P1-AUDIT-2026-09-22
+            // (P2-1) — Option B: this is also the path a legacy ciphertext
+            // with a "v2" IV collision lands on. `decryptBytes` will attempt
+            // legacy fallback on this result.
+            Self.logger.debug("decryptV2 authentication failure (wrong key, corrupt ciphertext, or legacy ciphertext with v2 IV collision)")
+            return .authFailure
         } catch {
             // ID-SILENT-0011 (2026-07-30/31 audits): anything else — malformed
             // `SealedBox` (truncation / format drift), CryptoKit parameter
             // errors, framework hiccups — is unexpected and must be visible.
             // The error message is privacy-safe (no plaintext content).
-            Self.logger.error("decryptV2 unexpected error: \(String(describing: error), privacy: .public)")
-            return nil
+            // P1-AUDIT-2026-09-22 (P2-1) — Option B: caller attempts legacy
+            // fallback here too (same threat-model rationale as .authFailure).
+            Self.logger.error("decryptV2 unexpected error (will attempt legacy fallback): \(String(describing: error), privacy: .public)")
+            return .parseFailure(data)
         }
     }
 
@@ -1084,4 +1178,70 @@ class CryptoService: CryptoServiceProtocol {
         guard status == kCCSuccess, numBytesDecrypted > 0 else { return nil }
         return Data(decryptedBytes.prefix(numBytesDecrypted))
     }
+
+    // Symmetric counterpart to legacyAESDecryptCBC. P1-AUDIT-2026-09-22 (P2-1):
+    // exposed so the test seam `encryptLegacyForTesting` can build the v2-prefix
+    // collision fixture without duplicating the legacy cipher primitive. Not used
+    // on any production code path (legacy decryption is read-only by design — see
+    // migrateToV2 for the only producer-side call site, which goes through the v2
+    // `encryptBytes` path after legacy read).
+    static func legacyAESEncryptCBC(data: Data, key: Data, iv: Data) -> Data? {
+        let bufferSize = data.count + kCCBlockSizeAES128
+        var encryptedBytes = [UInt8](repeating: 0, count: bufferSize)
+        var numBytesEncrypted: size_t = 0
+
+        let status = key.withUnsafeBytes { keyBytes in
+            iv.withUnsafeBytes { ivBytes in
+                data.withUnsafeBytes { dataBytes in
+                    CCCrypt(
+                        CCOperation(kCCEncrypt),
+                        CCAlgorithm(kCCAlgorithmAES),
+                        CCOptions(kCCOptionPKCS7Padding),
+                        keyBytes.baseAddress, 32,
+                        ivBytes.baseAddress,
+                        dataBytes.baseAddress, data.count,
+                        &encryptedBytes, bufferSize,
+                        &numBytesEncrypted
+                    )
+                }
+            }
+        }
+
+        guard status == kCCSuccess, numBytesEncrypted > 0 else { return nil }
+        return Data(encryptedBytes.prefix(numBytesEncrypted))
+    }
+
+#if DEBUG
+    // P1-AUDIT-2026-09-22 (P2-1) test seam: produce a legacy (AES-CBC + HMAC)
+    // blob from plaintext, mirroring `decryptLegacy`'s inverse — 16-byte IV +
+    // AES-CBC ciphertext + 32-byte HMAC-SHA256(IV || ciphertext). Used to
+    // construct the v2-prefix collision fixture (~1/65536 natural chance) so
+    // the v2-GCM-failure → legacy-fallback path can be exercised
+    // deterministically. DEBUG-only because production never writes legacy
+    // ciphertext (migrateToV2 goes through the v2 `encryptBytes` path).
+    //
+    // The IV parameter lets tests deterministically force the IV's first 2
+    // bytes to be "v2" without mutating the ciphertext post-hoc (mutating
+    // would break the HMAC and the legacy fallback would fail). When iv is
+    // nil, a cryptographically random IV is generated.
+    func encryptLegacyForTesting(_ plaintext: Data, iv: Data? = nil) -> Data? {
+        guard let key = getKey() else { return nil }
+        let resolvedIV: Data
+        if let iv = iv {
+            guard iv.count == 16 else { return nil }
+            resolvedIV = iv
+        } else {
+            var randomIV = Data(count: 16)
+            let rc = randomIV.withUnsafeMutableBytes { ptr -> Int32 in
+                SecRandomCopyBytes(kSecRandomDefault, 16, ptr.baseAddress!)
+            }
+            guard rc == errSecSuccess else { return nil }
+            resolvedIV = randomIV
+        }
+        let keyData = key.withUnsafeBytes { Data($0) }
+        guard let ciphertext = Self.legacyAESEncryptCBC(data: plaintext, key: keyData, iv: resolvedIV) else { return nil }
+        let hmac = Self.computeLegacyHMAC(data: resolvedIV + ciphertext, key: keyData)
+        return resolvedIV + ciphertext + hmac
+    }
+#endif
 }
