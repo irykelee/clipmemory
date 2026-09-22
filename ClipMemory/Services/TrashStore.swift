@@ -46,6 +46,16 @@ final class TrashStore: ObservableObject {
     /// `cleanupOrphanedImages` would proceed to delete trash images as
     /// "orphans" — irrecoverable data loss. Reading the sentinel in
     /// `loadTrashedItems` closes that one-launch-delay gap.
+    /// P1-AUDIT-2026-09-22 (audit finding P1-1): the legacy comment claimed
+    /// "cleared on the next successful loadTrashedItems()", but the
+    /// implementation only flipped an in-memory flag. The persistent
+    /// sentinel was never removed, so once it was set, every future launch
+    /// short-circuited to the empty + `lastLoadFailed=true` path even after
+    /// a healthy blob was saved. Survives across launches to prevent the
+    /// second-launch trap where a freshly-saved blob would be silently
+    /// emptied + orphan-image cleanup would delete trash images. Cleared
+    /// (via `removeObject`) by `loadTrashedItems` once a healthy
+    /// `backend.load()` succeeds.
     nonisolated static let loadFailedSentinelKey = trashedItemsStorageKey + ".loadFailed"
 
     /// Reference to the content cache and RTF cache from ClipboardStore, set
@@ -141,6 +151,22 @@ final class TrashStore: ObservableObject {
         // sentinel here BEFORE calling `backend.load()` so the failure
         // signal survives across launches.
         if hadPriorFailure {
+            // P1-AUDIT-2026-09-22 (audit finding P1-1): the persistent-failure
+            // sentinel's only purpose was to keep cleanupOrphanedImages from
+            // deleting trash images while the blob was quarantined. We must still
+            // allow RECOVERY — if backend.load() returns non-empty items, the user
+            // has saved healthier content and we clear the sentinel.
+            do {
+                let recovered = try backend.load()
+                if !recovered.isEmpty {
+                    trashedItems = recovered
+                    lastLoadFailed = false
+                    defaults.removeObject(forKey: Self.loadFailedSentinelKey)
+                    return
+                }
+            } catch {
+                // load() still throws — fall through to persistent-failure path.
+            }
             trashedItems = []
             lastLoadFailed = true
             logger.error("Trash load failure persisted from prior launch (sentinel '\(sentinelKey)' present). Quarantined blob retained under '\(Self.trashedItemsStorageKey).corrupt-*'. Image cleanup skipped to avoid data loss.")
@@ -161,6 +187,10 @@ final class TrashStore: ObservableObject {
         do {
             trashedItems = try backend.load()
             lastLoadFailed = false
+            // P1-AUDIT-2026-09-22: clear the sentinel once a healthy load
+            // completes; covers the first-clean-launch path so the next
+            // launch never starts with a stale flag.
+            defaults.removeObject(forKey: Self.loadFailedSentinelKey)
         } catch {
             quarantineCorruptBlob(error: error)
             trashedItems = []

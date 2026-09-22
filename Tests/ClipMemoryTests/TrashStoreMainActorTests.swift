@@ -124,3 +124,93 @@ final class TrashStoreMainActorTests: XCTestCase {
         XCTAssertEqual(Set(store.trashedItems.map { $0.id }), Set([a.id, b.id]))
     }
 }
+
+#if DEBUG
+// MARK: - P1-AUDIT-2026-09-22 (P1-1) helpers + cross-launch recovery test
+
+/// Minimal StorageBackend double seeded with a fixed items array.
+/// Distinct from production `MemoryStorageBackend` to keep the test
+/// self-contained: the test needs to construct instances with a
+/// pre-known items payload before the recovery attempt, without
+/// touching the production type's internal state.
+final class InMemoryStorageBackend: StorageBackend {
+    private let lock = NSLock()
+    private var items: [ClipboardItem]
+
+    init(items: [ClipboardItem] = []) {
+        self.items = items
+    }
+
+    func load() throws -> [ClipboardItem] {
+        lock.lock(); defer { lock.unlock() }
+        return items
+    }
+
+    func save(_ newItems: [ClipboardItem]) throws {
+        lock.lock(); defer { lock.unlock() }
+        items = newItems
+    }
+
+    func loadTags() throws -> [Tag] { [] }
+
+    func saveTags(_ tags: [Tag]) throws {}
+}
+
+extension ClipboardItem {
+    /// Test helper: minimal stub builder. UUID is fresh each call so two
+    /// stubs don't collide; identity isn't load-bearing in the
+    /// P1-AUDIT-2026-09-22 regression test.
+    static func makeStub(content: String, type: ClipboardItemType) -> ClipboardItem {
+        ClipboardItem(content: content, type: type)
+    }
+}
+
+extension TrashStoreMainActorTests {
+    /// P1-AUDIT-2026-09-22 (audit finding P1-1): once a persistent-failure
+    /// sentinel was set on a previous launch's quarantined blob, the next
+    /// launch must still ATTEMPT backend.load() and clear the sentinel as
+    /// soon as a healthier blob is found. Otherwise every subsequent launch
+    /// short-circuits to trashedItems=[] even after the user recovers.
+    /// Regression test for the cross-launch permanent suppress.
+    func testSentinelClearsOnRecoveryAcrossLaunches() throws {
+        let suiteName = "p1-sentinel-clear-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        // Simulate "Launch N-1 left the sentinel set after a quarantine":
+        // write the persistent-failure flag directly. We don't go through
+        // quarantineCorruptBlob here because that also removes the storage
+        // key — testing recovery means the storage key still has data.
+        suite.set(true, forKey: TrashStore.loadFailedSentinelKey)
+
+        // "Launch N": init with a healthy backend that has data. The
+        // recovery-path branch at TrashStore.swift:143-159 must accept
+        // these items AND clear the persistent sentinel. Otherwise the
+        // cleanupOrphanedImages safety (lastLoadFailed=true) bypasses
+        // everything the user is trying to recover.
+        let healthyBackend = InMemoryStorageBackend(items: [
+            ClipboardItem.makeStub(content: "recovered", type: .text)
+        ])
+        let store = TrashStore(backend: healthyBackend, defaults: suite)
+
+        XCTAssertEqual(store.trashedItems.count, 1,
+                       "P1-AUDIT-2026-09-22: recovered items must surface")
+        XCTAssertFalse(store.lastLoadFailed,
+                       "P1-AUDIT-2026-09-22: lastLoadFailed must clear on recovery")
+        XCTAssertFalse(suite.bool(forKey: TrashStore.loadFailedSentinelKey),
+                       "P1-AUDIT-2026-09-22: sentinel must be removed after recovery")
+
+        // Also verify that the "still quarantined" case keeps the sentinel —
+        // if load returns empty (e.g. user never moved anything + blob was
+        // gone), the persistent-failure mode must persist so cleanupOrphaned
+        // stays disabled. This guards the optimization H-2 introduced.
+        suite.set(true, forKey: TrashStore.loadFailedSentinelKey)
+        let stillQuarantined = InMemoryStorageBackend(items: [])
+        let store2 = TrashStore(backend: stillQuarantined, defaults: suite)
+        XCTAssertTrue(store2.lastLoadFailed,
+                      "Empty load after sentinel=true must stay in persistent-failure mode")
+        XCTAssertTrue(suite.bool(forKey: TrashStore.loadFailedSentinelKey),
+                      "Empty load after sentinel=true must keep sentinel")
+    }
+}
+#endif
