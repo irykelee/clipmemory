@@ -600,6 +600,14 @@ class ClipboardMonitor {
                 options: [.documentType: NSAttributedString.DocumentType.rtf],
                 documentAttributes: nil
             ))?.string ?? ""
+            // P1-AUDIT-2026-09-22-FOLLOW-UP-1 (IC-1): reject whitespace-only
+            // RTF at capture gate. The P2-7 plaintext gate at line 409
+            // cannot catch this path because the stored content is
+            // base64-encoded rtfData — never whitespace-only by
+            // construction. Run the predicate on the *decoded* plaintext
+            // BEFORE base64 encoding. Whitespace-only RTF pastes (rare;
+            // from TextEdit / Word) are silently rejected at capture time.
+            guard Self.shouldCaptureText(plaintext) else { return }
             let isSensitive = self.detectSensitive(plaintext)
             var expiresAt: Date?
             if isSensitive {

@@ -187,4 +187,36 @@ final class ClipboardMonitorTests: XCTestCase {
         XCTAssertTrue(ClipboardMonitor.shouldCaptureText(" \u{3000}a\u{3000} "),
                      "P1-AUDIT-2026-09-22 P2-7: whitespace + U+3000 + content accepted")
     }
+
+    // MARK: - P1-AUDIT-2026-09-22 (P1-AUDIT-2026-09-22-FOLLOW-UP-1, IC-1): RichText capture gate
+
+    /// P1-AUDIT-2026-09-22-FOLLOW-UP-1 (IC-1): whitespace-only RTF pastes
+    /// (rare; from TextEdit / Word) must not produce ClipboardItem.
+    /// Different from P2-7 plaintext gate because `processRichText` stores
+    /// base64-encoded rtfData which is never whitespace-only by construction
+    /// — the P2-7 gate at line 409 cannot catch the RTF path. The fix
+    /// routes the RTF-decoded plaintext through `shouldCaptureText` BEFORE
+    /// base64 encoding, inside `processRichText`.
+    ///
+    /// Test seam: same `shouldCaptureText` predicate as P2-7 (static,
+    /// already wired in for the plaintext path). The IC-1 invariant is
+    /// that whitespace-only strings — which is what RTF parsing produces
+    /// for whitespace-only RTF pastes — are rejected by the predicate.
+    /// This test exercises that invariant.
+    func testPureWhitespaceRTFIsNotCaptured() throws {
+        let whitespaceVariants: [String] = [
+            "   ",                                          // ASCII spaces
+            "\t\t",                                         // tabs
+            "\n \n",                                        // newlines + space
+            "\u{3000}\u{3000}",                             // full-width (CJK IME)
+            "\u{00A0}",                                     // non-breaking
+            " \t\u{00A0}\n\u{3000} "                        // mixed (RTF-decoded shape)
+        ]
+        for ws in whitespaceVariants {
+            XCTAssertFalse(
+                ClipboardMonitor.shouldCaptureText(ws),
+                "P1-AUDIT-2026-09-22-FOLLOW-UP-1 IC-1: whitespace-only RTF plaintext rejected: '\(ws.debugDescription)'"
+            )
+        }
+    }
 }
