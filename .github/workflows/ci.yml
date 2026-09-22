@@ -161,15 +161,41 @@ jobs:
         # suites). The threshold is intentionally tight (920 leaves
         # 7 tests of slack) — a 12-test cushion would let a
         # partial-suite abort hide.
+        #
+        # P2-17 (2026-09-22 audit): enable code coverage + emit
+        # xcresult bundle so the downstream coverage-gate job can
+        # enforce the line-coverage minimum. Coverage instrumentation
+        # is enabled on this first run only (the zh-Hans locale run
+        # below stays as-is to keep CI time flat — coverage data
+        # is identical between locales since the test suite does
+        # not vary, only L10n string resolution).
         run: |
           set -euo pipefail
-          xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-test.log
+          rm -rf "$GITHUB_WORKSPACE/clipmemory-test.xcresult"
+          xcodebuild -scheme ClipMemory -configuration Debug \
+            -enableCodeCoverage YES \
+            -destination 'platform=macOS' \
+            -resultBundlePath "$GITHUB_WORKSPACE/clipmemory-test.xcresult" \
+            test CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-test.log
           executed=$(grep -oE 'Executed [0-9]+ test' /tmp/xcb-test.log | tail -1 | grep -oE '[0-9]+')
           echo "Test execution count: $executed"
           if [[ -z "$executed" || "$executed" -lt 920 ]]; then
             echo "❌ Blind spot 6: test count $executed is below the 920 lower bound — ZZZ canary may not have run. Investigate the log for early-terminated suites."
             exit 1
           fi
+
+      - name: Upload xcresult bundle (P2-17)
+        # Coverage-gate job consumes this artifact. Upload only on
+        # success — if the Test step failed there's nothing meaningful
+        # to gate against and the coverage-gate job is skipped via
+        # its `needs: build-and-test` dependency.
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipmemory-test-coverage
+          path: clipmemory-test.xcresult
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Test (zh-Hans locale)
         # Same blind-spot-6 guard for the second locale run. Both
@@ -224,3 +250,47 @@ jobs:
           set -euo pipefail
           chmod +x Scripts/lint-translations.sh
           ./Scripts/lint-translations.sh
+
+  # P2-17 (2026-09-22 audit): minimum line coverage gate. Parses the
+  # xcresult bundle emitted by build-and-test and fails the job if
+  # coverage falls below COVERAGE_THRESHOLD (default 30% in script,
+  # overridden to 2% in env below — see Run-coverage-gate step for
+  # rationale).
+  #
+  # Independent of lint-ids so coverage regressions don't block
+  # non-coverage fixes (lint-ids + coverage-gate run in parallel once
+  # build-and-test finishes; neither blocks the other). Coverage-gate
+  # only blocks its own required status check on this PR.
+  #
+  # macos-latest is required: xcrun xccov ships with Xcode toolchain.
+  # The downloaded xcresult artifact preserves the directory tree, so
+  # `find ./test-results -name '*.xcresult' -type d` locates it.
+  coverage-gate:
+    runs-on: macos-latest
+    needs: build-and-test
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download xcresult bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: clipmemory-test-coverage
+          path: ./test-results
+      - name: Run coverage gate (P2-17)
+        env:
+          # Empirical baseline (2026-09-22): 2.578% line coverage via
+          # `xcrun xccov view --report --json` on local xcresult bundle.
+          # Threshold set to 2% (just below baseline) so the gate ships
+          # non-blocking. Future audit batch to bump after intentional
+          # coverage work — likely 10% / 25% / 50% milestones.
+          COVERAGE_THRESHOLD: '2'
+        run: |
+          set -uo pipefail
+          chmod +x .github/scripts/coverage-gate.sh
+          xcresult=$(find ./test-results -name '*.xcresult' -type d | head -1)
+          if [ -z "$xcresult" ]; then
+            echo "::error::No xcresult bundle found in downloaded artifact"
+            exit 1
+          fi
+          echo "Analyzing: $xcresult"
+          ./.github/scripts/coverage-gate.sh "$xcresult"
