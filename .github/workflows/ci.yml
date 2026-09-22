@@ -171,11 +171,20 @@ jobs:
         # not vary, only L10n string resolution).
         run: |
           set -euo pipefail
-          rm -rf "$GITHUB_WORKSPACE/clipmemory-test.xcresult"
+          # P2-17 fix (2026-09-22 OpenCode review): wrap the xcresult bundle
+          # in a parent directory so upload-artifact@v4 preserves the
+          # *.xcresult/ directory structure on the consumer side.
+          # upload-artifact@v4 strips its rootDirectory from the archive
+          # paths (see @actions/toolkit upload-zip-specification.ts:
+          # `file.replace(rootDirectory, '')`); without a parent wrapper
+          # the bundle contents flatten to the archive root and the
+          # downstream `find -name '*.xcresult' -type d` returns empty.
+          mkdir -p "$GITHUB_WORKSPACE/results"
+          rm -rf "$GITHUB_WORKSPACE/results/clipmemory-test.xcresult"
           xcodebuild -scheme ClipMemory -configuration Debug \
             -enableCodeCoverage YES \
             -destination 'platform=macOS' \
-            -resultBundlePath "$GITHUB_WORKSPACE/clipmemory-test.xcresult" \
+            -resultBundlePath "$GITHUB_WORKSPACE/results/clipmemory-test.xcresult" \
             test CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-test.log
           executed=$(grep -oE 'Executed [0-9]+ test' /tmp/xcb-test.log | tail -1 | grep -oE '[0-9]+')
           echo "Test execution count: $executed"
@@ -189,11 +198,16 @@ jobs:
         # success — if the Test step failed there's nothing meaningful
         # to gate against and the coverage-gate job is skipped via
         # its `needs: build-and-test` dependency.
+        #
+        # P2-17 fix (2026-09-22 OpenCode review): `path: results` (parent
+        # directory) so upload-artifact@v4's rootDirectory-strip leaves
+        # clipmemory-test.xcresult/ as a sub-directory in the archive.
+        # See Test step comment for the underlying mechanism.
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: clipmemory-test-coverage
-          path: clipmemory-test.xcresult
+          path: results
           retention-days: 7
           if-no-files-found: error
 
@@ -294,3 +308,29 @@ jobs:
           fi
           echo "Analyzing: $xcresult"
           ./.github/scripts/coverage-gate.sh "$xcresult"
+
+  # P2-18 (2026-09-22 audit): SwiftLint gate. Was previously only in
+  # local Scripts/release.sh:733; the global core.hooksPath
+  # (~/bin/git-hooks) can bypass repo-local pre-commit hooks, so CI is
+  # the only authoritative auto gate for lint on every PR. GitHub
+  # Actions macOS runners ship SwiftLint pre-installed (no install
+  # step). Failure (errors) blocks merge; warnings surface as GitHub
+  # annotations via --reporter github-actions-logging. macos-latest
+  # required — SwiftLint needs the Swift toolchain that ubuntu-latest
+  # does not ship.
+  #
+  # P2-18 fix (2026-09-22 OpenCode review): explicit `command -v
+  # swiftlint` canary so a missing SwiftLint on the runner fails
+  # closed with a ::error:: annotation, per REL ("swiftlint missing
+  # must FAIL, not pass") + E-39b601 anti-silence tradition. Avoids
+  # the silent-pass regression path if the runner image ever drops the
+  # pre-installed copy.
+  swiftlint:
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: SwiftLint (P2-18)
+        run: |
+          command -v swiftlint >/dev/null 2>&1 || { echo "::error::swiftlint not installed on runner"; exit 1; }
+          swiftlint lint --config .swiftlint.yml --reporter github-actions-logging

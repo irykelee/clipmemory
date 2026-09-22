@@ -9,20 +9,31 @@
 # "too thin tests".
 #
 # Usage:
-#   coverage-gate.sh path/to/*.xcresult               # check vs default 30%
+#   coverage-gate.sh path/to/*.xcresult               # check vs script default threshold
 #   COVERAGE_THRESHOLD=50 coverage-gate.sh path/to/*.xcresult
 #
-# Exit: 0 = pass (coverage ≥ threshold), 1 = coverage below threshold or
-#       parse failure, 2 = bad invocation.
+# Exit: 0 = pass (coverage >= threshold); 1 = coverage below threshold,
+#       parse failure, missing tool, or non-numeric threshold/value.
 #
-# Threshold choice: 30% per audit brief (current baseline; deliberately
-# conservative to avoid false positives; bump in next audit batch after
-# intentional coverage work). Empirical measurement of this repo on
-# 2026-09-22 reports ~2.6% line coverage — see .superpowers/sdd/.../task-1-report.md
-# "Concerns" for the gap between stated baseline and measured baseline.
+# Threshold notes: script default is 30%; ci.yml env overrides this to
+# 2% because the empirical baseline measured on 2026-09-22 was 2.578%
+# (see git log for the P2-17 audit history). The 30% default is the
+# aspirational target once intentional coverage work ships; until then
+# the lower CI override keeps the gate non-blocking.
+#
+# Fail-closed by design: missing tools (xcrun/python3/awk) cause a
+# hard failure with a GitHub Actions ::error:: annotation, per the
+# REL precedent ("swiftlint missing must FAIL, not pass") and the
+# E-39b601 anti-silence tradition. Float comparison uses awk rather
+# than bc so the gate cannot silently pass when bc is unavailable.
 set -uo pipefail
 
-THRESHOLD="${COVERAGE_THRESHOLD:-30}"  # 30% baseline per audit (P2-17)
+# --- Tool canary (REL precedent / E-39b601: missing tools must FAIL, not pass) ---
+command -v xcrun >/dev/null 2>&1 || { echo "::error::xcrun not found (required to parse xcresult)"; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "::error::python3 not found (required to parse coverage JSON)"; exit 1; }
+command -v awk >/dev/null 2>&1 || { echo "::error::awk not found (required for float comparison)"; exit 1; }
+
+THRESHOLD="${COVERAGE_THRESHOLD:-30}"  # default 30% per audit brief; ci.yml overrides
 XCRESULT_PATH="${1:?usage: coverage-gate.sh path/to/*.xcresult}"
 
 # xcrun xccov view --report --json emits {"lineCoverage": 0.XX, ...}
@@ -36,10 +47,10 @@ if [ -z "$TOTAL" ]; then
 fi
 
 echo "Coverage: ${TOTAL}% (threshold: ${THRESHOLD}%)"
-# bc is available on macOS GitHub-hosted runners (which is the only runner
-# that can run xcrun); use shell comparison after a bc-based float compare.
-if [ "$(echo "$TOTAL < $THRESHOLD" | bc)" = "1" ]; then
-  echo "::error::Coverage $TOTAL% below threshold $THRESHOLD%"
+# awk handles decimal comparison universally (no bc dependency).
+# Exits 0 when total < threshold (FAIL) so the `if` branch fires.
+if awk -v total="$TOTAL" -v threshold="$THRESHOLD" 'BEGIN { exit (total < threshold) ? 0 : 1 }'; then
+  echo "::error::Coverage ${TOTAL}% below threshold ${THRESHOLD}%"
   exit 1
 fi
 exit 0
