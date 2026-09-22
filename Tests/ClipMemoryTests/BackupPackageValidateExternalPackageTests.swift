@@ -112,4 +112,92 @@ final class BackupPackageValidateExternalPackageTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - P1-AUDIT-2026-09-22 (audit finding P1-2): zip-slip regression
+    //
+    // The wizard validateExternalPackage path used a bare `/usr/bin/ditto -x -k`
+    // and never called unzipArchive. A malicious .clipmemory with a `../`
+    // member would write outside the staging dir before validateExtractedTree
+    // had a chance to look. Regression tests for the bypass — they must fail
+    // BEFORE the fix (currently the bare-ditto call lets ditto itself reject
+    // `../`/absolute members with exit status ≠ 0 → throws archiveFailed) and
+    // pass AFTER the fix (unzipArchive routes through validateArchiveMembers
+    // which throws the canonical corruptedData("unsafe archive member: ...")
+    // message).
+
+    /// Builds a real zip archive whose central directory carries the given
+    /// member path. The validator must reject at the unzipArchive layer
+    /// (validateArchiveMembers) before any extraction happens.
+    ///
+    /// System `/usr/bin/zip` and `/usr/bin/ditto -c -k` both refuse `..`-
+    /// named members on creation; `zipfile.ZipFile.writestr` writes whatever
+    /// string is passed. CRC + sizes are filled by zipfile.
+    private func makeMaliciousArchive(member: String) throws -> URL {
+        let archive = tempRoot.appendingPathComponent("malicious-\(UUID().uuidString).zip")
+        let script = "import zipfile,sys\n" +
+            "z=zipfile.ZipFile(sys.argv[1],'w')\n" +
+            "z.writestr(sys.argv[2], b'x')\n" +
+            "z.close()\n"
+        let py = Process()
+        py.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        py.arguments = ["-c", script, archive.path, member]
+        let errPipe = Pipe()
+        py.standardError = errPipe
+        try py.run()
+        py.waitUntilExit()
+        guard py.terminationStatus == 0 else {
+            let err = String(decoding: errPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            throw NSError(
+                domain: "makeMaliciousArchive", code: Int(py.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: "python3 failed: \(err)"]
+            )
+        }
+        return archive
+    }
+
+    /// P1-AUDIT-2026-09-22 (audit finding P1-2): the wizard
+    /// validateExternalPackage path used a bare `ditto -x -k` and never
+    /// called unzipArchive. A malicious .clipmemory with a `../` member
+    /// would write outside the staging dir before validateExtractedTree
+    /// had a chance to look. Regression test for the bypass.
+    func testValidateExternalPackageRejectsZipSlipMember() throws {
+        let archive = try makeMaliciousArchive(member: "../etc/passwd")
+        XCTAssertThrowsError(
+            try BackupPackage.validateExternalPackage(at: archive, passphrase: "anything")
+        ) { error in
+            guard case BackupPackageError.corruptedData(let msg, _) = error else {
+                XCTFail("Expected corruptedData, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("unsafe archive member"), msg)
+        }
+    }
+
+    /// P1-AUDIT-2026-09-22: absolute path member must also reject.
+    func testValidateExternalPackageRejectsAbsolutePathMember() throws {
+        let archive = try makeMaliciousArchive(member: "/tmp/escape")
+        XCTAssertThrowsError(
+            try BackupPackage.validateExternalPackage(at: archive, passphrase: "anything")
+        ) { error in
+            guard case BackupPackageError.corruptedData(let msg, _) = error else {
+                XCTFail("Expected corruptedData, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("unsafe archive member"), msg)
+        }
+    }
+
+    /// P1-AUDIT-2026-09-22: backslash (Windows-style) separator must reject.
+    func testValidateExternalPackageRejectsBackslashMember() throws {
+        let archive = try makeMaliciousArchive(member: "..\\windows")
+        XCTAssertThrowsError(
+            try BackupPackage.validateExternalPackage(at: archive, passphrase: "anything")
+        ) { error in
+            guard case BackupPackageError.corruptedData(let msg, _) = error else {
+                XCTFail("Expected corruptedData, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("unsafe archive member"), msg)
+        }
+    }
 }
