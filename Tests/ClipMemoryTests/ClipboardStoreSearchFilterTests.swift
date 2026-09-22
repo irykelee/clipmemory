@@ -26,7 +26,7 @@ final class ClipboardStoreSearchFilterTests: XCTestCase {
         // 准备 key
         let store = MockKeyStore()
         let key = Data((0..<32).map { UInt8($0 ^ 0xCC) })
-        store.store(key)
+        try store.store(key)
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         // 注入 mock（real encrypt for addItem, simulated keyUnavailable for decrypt）
@@ -54,7 +54,7 @@ final class ClipboardStoreSearchFilterTests: XCTestCase {
         // 准备 key
         let store = MockKeyStore()
         let key = Data((0..<32).map { UInt8($0 ^ 0xCC) })
-        store.store(key)
+        try store.store(key)
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         // real crypto（不替换为 mock）
@@ -83,9 +83,8 @@ final class ClipboardStoreSearchFilterTests: XCTestCase {
             return .notFound
         }
         @discardableResult
-        func store(_ keyData: Data) -> OSStatus {
+        func store(_ keyData: Data) throws {
             stored = keyData
-            return errSecSuccess
         }
         func delete() { stored = nil }
     }

@@ -202,7 +202,7 @@ final class StartupHealthTests: XCTestCase {
         let hasKey: Bool
         init(hasKey: Bool) { self.hasKey = hasKey }
         func load() -> Data? { hasKey ? Data([1, 2, 3, 4]) : nil }
-        func store(_ keyData: Data) -> OSStatus { errSecSuccess }
+        func store(_ keyData: Data) throws {}
         func delete() {}
     }
 }

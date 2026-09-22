@@ -23,7 +23,7 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
     func testDecryptWithReasonSuccess() throws {
         let store = MockKeyStore()
         let key = Data((0..<32).map { UInt8($0 ^ 0xA5) })
-        store.store(key)
+        try store.store(key)
         let prepared = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
         XCTAssertNotNil(prepared)
 
@@ -52,7 +52,7 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
         // 准备真实 key
         let store = MockKeyStore()
         let key = Data((0..<32).map { UInt8($0) })
-        store.store(key)
+        try store.store(key)
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         // 损坏密文：合法 base64 但解密必然 GCM tag 失败
@@ -65,7 +65,7 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
     func testDecryptWithReasonInternalErrorOnNonBase64() throws {
         let store = MockKeyStore()
         let key = Data((0..<32).map { UInt8($0) })
-        store.store(key)
+        try store.store(key)
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         let itemID = UUID()
@@ -79,7 +79,7 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
     func testInternalErrorOnNonBase64WritesNegativeCache() throws {
         let store = MockKeyStore()
         let key = Data((0..<32).map { UInt8($0) })
-        store.store(key)
+        try store.store(key)
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         let itemID = UUID()
@@ -100,7 +100,7 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
     func testNegativeCacheHitOnRepeatedFailure() throws {
         let store = MockKeyStore()
         let key = Data((0..<32).map { UInt8($0) })
-        store.store(key)
+        try store.store(key)
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         let corruptBase64 = Data([0xAA, 0xBB, 0xCC, 0xDD]).base64EncodedString()
@@ -116,7 +116,7 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
     }
 
     // T3: keyUnavailable 不入缓存（NR4 正确性核心）
-    func testKeyUnavailableNotCachedAndRetriesAfterKeyPrepared() {
+    func testKeyUnavailableNotCachedAndRetriesAfterKeyPrepared() throws {
         // Step 1: keyUnavailable
         let itemID = UUID()
         let r1 = CryptoService.shared.decryptWithReason("any", itemID: itemID)
@@ -125,7 +125,7 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
         // Step 2: prepareKey（模拟用户解锁）
         let store = MockKeyStore()
         let key = Data((0..<32).map { UInt8($0 ^ 0x5A) })
-        store.store(key)
+        try store.store(key)
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         // Step 3: 同一 itemID 再调 → 应重新尝试（不应有陈旧 .keyUnavailable 缓存）
@@ -145,7 +145,7 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
     func testDataCorruptedCacheClearedAfterPrepareKey() throws {
         let store = MockKeyStore()
         let key = Data((0..<32).map { UInt8($0) })
-        store.store(key)
+        try store.store(key)
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         let corruptBase64 = Data([0x11, 0x22, 0x33, 0x44]).base64EncodedString()
@@ -154,7 +154,7 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
         XCTAssertEqual(r1, .dataCorrupted)
 
         // 重新 prepareKey（模拟 key 重新就绪）→ 缓存应清空
-        store.store(key)
+        try store.store(key)
         _ = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: { _ in .quit })
 
         // 同一损坏密文再调 → 重新走 AES（虽仍 .dataCorrupted，但证明缓存清空）
@@ -177,9 +177,8 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
             return .notFound
         }
         @discardableResult
-        func store(_ keyData: Data) -> OSStatus {
+        func store(_ keyData: Data) throws {
             stored = keyData
-            return errSecSuccess
         }
         func delete() { stored = nil }
     }

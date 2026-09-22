@@ -580,4 +580,227 @@ final class CryptoServiceTests: XCTestCase {
             XCTFail("decryptWithReason returned .internalError for valid legacy ciphertext")
         }
     }
+
+    // MARK: - P1-AUDIT-2026-09-22 (P2-3) — Keychain migration fail deletes cleartext + alerts
+
+    /// P1-AUDIT-2026-09-22 (P2-3) + OpenCode auto-review (2026-09-23): when
+    /// Keychain store fails during the legacy `.encryption_key` → Keychain
+    /// migration with a PERMANENT error (errSecParam — Keychain definitively
+    /// rejected the request), the cleartext key file MUST be deleted (not
+    /// left on disk with the root key in 0o600) AND a `.encryptionFailed`
+    /// notification must fire with source="keychainMigration.permanent" so
+    /// AppDelegate's `EncryptionFailedAlertThrottler` surfaces an NSAlert.
+    /// Pre-fix the failure path kept the file (next-launch retries) and only
+    /// logged — violating CLAUDE.md three-piece-gate §3 (用户可见).
+    ///
+    /// Transient errors (errSecInteractionNotAllowed / errSecAuthFailed /
+    /// errSecNotAvailable) are tested separately by
+    /// `testKeychainMigrationTransientFailureKeepsFallbackFile` — per the
+    /// OpenCode review, destroying the fallback on a transient error would
+    /// collapse the "self-heal on next launch" design into a permanent
+    /// data-loss event.
+    func testKeychainMigrationFailDeletesFallbackFileAndAlerts() throws {
+        // Arrange: temp dir + 32-byte .encryption_key file
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("p2-3-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let keyURL = tempDir.appendingPathComponent(".encryption_key")
+        let keyData = Data(repeating: 0xAA, count: 32)
+        try keyData.write(to: keyURL, options: .atomic)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: keyURL.path),
+            "test fixture: .encryption_key file must exist before prepareKey"
+        )
+
+        // FailingKeychainStore: loadStatus returns .notFound (triggers
+        // migration path), store throws KeyStoreError.classify(statusToReturn).
+        // P2-3 OpenCode review (2026-09-23): errSecParam is a PERMANENT
+        // failure (Keychain definitively rejected). The pre-fix behavior
+        // deleted the file on any failure; the new behavior must do the same
+        // for permanent errors but KEEP the file for transient errors.
+        let failingKeychain = FailingKeychainStore()
+        failingKeychain.statusToReturn = errSecParam
+
+        // Capture .encryptionFailed notifications posted during prepareKey.
+        var posted: [Notification] = []
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed,
+            object: nil,
+            queue: .main
+        ) { note in
+            posted.append(note)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        // Act: attempt migration with the failing Keychain. failureHandler
+        // is a no-op (regenerate) — store-failure never routes through it;
+        // this just ensures the test doesn't trigger the default AppKit alert.
+        _ = CryptoService.prepareKey(
+            keyURL: keyURL,
+            keyStore: failingKeychain,
+            failureHandler: { _ in .regenerate }
+        )
+
+        // Assert 1: cleartext key file must be deleted on PERMANENT failure
+        // (security: no persistent exposure of the root key).
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: keyURL.path),
+            "P1-AUDIT-2026-09-22 P2-3: .encryption_key fallback must be deleted on PERMANENT Keychain store failure"
+        )
+
+        // Assert 2: .encryptionFailed notification must fire with
+        // userInfo["source"] = "keychainMigration.permanent" so the Throttler
+        // buckets it correctly (separate from .transient / addItem / OCR / etc).
+        XCTAssertFalse(
+            posted.isEmpty,
+            "P1-AUDIT-2026-09-22 P2-3: .encryptionFailed notification must fire on Keychain store failure"
+        )
+        let source = posted.first?.userInfo?["source"] as? String
+        XCTAssertEqual(
+            source, "keychainMigration.permanent",
+            "P2-3 (OpenCode 2026-09-23): permanent failures must use 'keychainMigration.permanent' bucket (separate from .transient)"
+        )
+        let recoverable = posted.first?.userInfo?["recoverable"] as? Bool
+        XCTAssertEqual(
+            recoverable, false,
+            "P2-3 (OpenCode 2026-09-23): permanent failures must NOT be marked recoverable (retry won't help)"
+        )
+    }
+
+    /// P2-3 (OpenCode auto-review, 2026-09-23): on a TRANSIENT Keychain
+    /// store failure (errSecInteractionNotAllowed — Keychain locked at
+    /// launchd start, pre-first-unlock; errSecAuthFailed — same root cause
+    /// from a different code path; errSecNotAvailable — Keychain subsystem
+    /// unavailable), the `.encryption_key` fallback file MUST be preserved
+    /// so the next launch can retry the migration. The pre-fix behavior
+    /// ("delete cleartext fallback on ANY store failure") was destructive
+    /// for these transient cases: deleting the file means the next launch
+    /// sees Keychain-empty + no-file → generateAndStoreKey creates a fresh
+    /// key → all existing encrypted items become permanently undecryptable.
+    func testKeychainMigrationTransientFailureKeepsFallbackFile() throws {
+        // Arrange: temp dir + 32-byte .encryption_key file
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("p2-3-transient-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let keyURL = tempDir.appendingPathComponent(".encryption_key")
+        let keyData = Data(repeating: 0xCC, count: 32)
+        try keyData.write(to: keyURL, options: .atomic)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: keyURL.path),
+            "test fixture: .encryption_key file must exist before prepareKey"
+        )
+
+        // FailingKeychainStore configured with a TRANSIENT status —
+        // errSecInteractionNotAllowed. Keychain is locked (e.g. launchd
+        // started before user logged in); next launch (after unlock) will
+        // succeed.
+        let failingKeychain = FailingKeychainStore()
+        failingKeychain.statusToReturn = errSecInteractionNotAllowed
+
+        // Capture .encryptionFailed notifications posted during prepareKey.
+        var posted: [Notification] = []
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed,
+            object: nil,
+            queue: .main
+        ) { note in
+            posted.append(note)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        // Act: attempt migration with the failing Keychain.
+        _ = CryptoService.prepareKey(
+            keyURL: keyURL,
+            keyStore: failingKeychain,
+            failureHandler: { _ in .regenerate }
+        )
+
+        // Assert 1: fallback file MUST be preserved (transient — retry will fix).
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: keyURL.path),
+            "P2-3 (OpenCode 2026-09-23): .encryption_key fallback MUST be kept on TRANSIENT Keychain errors so next-launch retry can succeed — destroying it loses the only copy of the root key"
+        )
+        XCTAssertEqual(
+            try? Data(contentsOf: keyURL), keyData,
+            "P2-3: the fallback file content must be intact, not partially overwritten"
+        )
+
+        // Assert 2: .encryptionFailed notification must still fire so user is alerted.
+        XCTAssertFalse(
+            posted.isEmpty,
+            "P2-3: .encryptionFailed notification must fire on transient Keychain errors too (user needs to know Keychain migration failed)"
+        )
+        let source = posted.first?.userInfo?["source"] as? String
+        XCTAssertEqual(
+            source, "keychainMigration.transient",
+            "P2-3: transient failures must use 'keychainMigration.transient' bucket (separate from .permanent)"
+        )
+        let recoverable = posted.first?.userInfo?["recoverable"] as? Bool
+        XCTAssertEqual(
+            recoverable, true,
+            "P2-3: transient failures MUST be marked recoverable (next launch will fix)"
+        )
+        let status = posted.first?.userInfo?["status"] as? Int
+        XCTAssertEqual(
+            status, Int(errSecInteractionNotAllowed),
+            "P2-3: status code must be passed in userInfo so the alert can show the underlying Keychain error"
+        )
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-3) regression guard: on Keychain migration
+    /// SUCCESS the legacy file is still removed (existing behavior, pre-fix
+    /// path). Ensures the P2-3 fix did not regress the happy path.
+    func testKeychainMigrationSuccessStillRemovesFallbackFile() throws {
+        // Arrange: temp dir + 32-byte .encryption_key file
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("p2-3-success-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let keyURL = tempDir.appendingPathComponent(".encryption_key")
+        let keyData = Data(repeating: 0xBB, count: 32)
+        try keyData.write(to: keyURL, options: .atomic)
+
+        // Store is in-memory; store() returns errSecSuccess and load()
+        // returns the stored bytes. loadStatus returns .notFound to enter
+        // migration path.
+        let inMemory = InMemoryKeychainStore()
+
+        // Capture .encryptionFailed notifications — should be ZERO
+        // because migration succeeds.
+        var posted: [Notification] = []
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed,
+            object: nil,
+            queue: .main
+        ) { note in
+            posted.append(note)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        _ = CryptoService.prepareKey(
+            keyURL: keyURL,
+            keyStore: inMemory,
+            failureHandler: { _ in .regenerate }
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: keyURL.path),
+            "P2-3 regression: Keychain migration success must still remove .encryption_key"
+        )
+        XCTAssertTrue(
+            posted.isEmpty,
+            "P2-3 regression: Keychain migration success must NOT post .encryptionFailed"
+        )
+    }
 }

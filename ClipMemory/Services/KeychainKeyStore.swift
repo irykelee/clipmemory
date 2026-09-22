@@ -18,6 +18,48 @@ enum KeychainLoadStatus {
     case otherError(OSStatus)
 }
 
+/// P2-3 (OpenCode auto-review, 2026-09-23): distinguishes transient Keychain
+/// store failures (Keychain locked / unavailable / auth-failed — auto-retry
+/// next launch will succeed; callers MUST preserve the fallback key file) from
+/// permanent failures (everything else — Keychain definitively rejected the
+/// request; no retry path; callers may delete the fallback file). This mirrors
+/// `KeychainLoadStatus`'s `.interactionLocked` vs `.otherError` distinction:
+/// before this classification, ANY store failure caused `CryptoService.prepareKey`
+/// to delete `.encryption_key` permanently, destroying the only copy of the
+/// root key when the failure was actually transient (errSecInteractionNotAllowed
+/// at login/pre-first-unlock launch). Per the audit, that collapsed the
+/// "transient-failure self-heals on retry" design into a data-loss event.
+enum KeyStoreError: Error, Equatable {
+    /// Auto-retry next launch will fix. Keep fallback key file. Examples:
+    /// - errSecInteractionNotAllowed (-25308) — launchd start before unlock
+    /// - errSecNotAvailable (-25291) — Keychain subsystem unavailable
+    /// - errSecAuthFailed (-25293) — Keychain locked
+    case transient(OSStatus)
+    /// Keychain definitively rejected the request. No retry path. Caller
+    /// may delete the fallback key file. Examples: errSecParam (-50),
+    /// errSecAllocate (-108), errSecDecode, ACL violations, etc.
+    case permanent(OSStatus)
+
+    /// The underlying `OSStatus` (for logging / user-visible diagnostics).
+    var status: OSStatus {
+        switch self {
+        case .transient(let s): return s
+        case .permanent(let s): return s
+        }
+    }
+
+    /// Maps a raw `OSStatus` to the typed classification. Tests use this
+    /// directly to seed `FailingKeychainStore.statusToReturn`.
+    static func classify(_ status: OSStatus) -> KeyStoreError {
+        switch status {
+        case errSecInteractionNotAllowed, errSecNotAvailable, errSecAuthFailed:
+            return .transient(status)
+        default:
+            return .permanent(status)
+        }
+    }
+}
+
 /// Abstraction over the root-key store so tests can substitute in-memory
 /// fakes and never touch the real Keychain or the real key file (C1).
 protocol KeyStoring {
@@ -31,9 +73,10 @@ protocol KeyStoring {
     /// `notFound`.
     func loadStatus() -> KeychainLoadStatus
     /// Persists key bytes, replacing any existing item.
-    /// Returns errSecSuccess or a Keychain OSStatus.
+    /// Throws `KeyStoreError` on failure (transient vs permanent classification
+    /// per P2-3 OpenCode review, 2026-09-23). Success returns normally.
     @discardableResult
-    func store(_ keyData: Data) -> OSStatus
+    func store(_ keyData: Data) throws
     func delete()
 }
 
@@ -110,7 +153,7 @@ struct KeychainKeyStore: KeyStoring {
     }
 
     @discardableResult
-    func store(_ keyData: Data) -> OSStatus {
+    func store(_ keyData: Data) throws {
         // L-3: SecItemDelete + SecItemAdd had a non-atomic window — if
         // SecItemAdd failed (e.g. ACL violation), the previous key was
         // already deleted. Now try SecItemUpdate first (atomic at OS
@@ -123,6 +166,10 @@ struct KeychainKeyStore: KeyStoring {
         // payload is the 2nd. Apple docs are ambiguous; current macOS
         // silently accepts, but defensive split avoids errSecParam risk
         // on older Security frameworks.
+        // P2-3 (OpenCode auto-review, 2026-09-23): throws KeyStoreError
+        // (transient / permanent) instead of returning OSStatus, so callers
+        // can keep vs delete the .encryption_key fallback based on whether
+        // retry will help.
         let attributesToUpdate: [String: Any] = [
             kSecValueData as String: keyData,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
@@ -130,14 +177,20 @@ struct KeychainKeyStore: KeyStoring {
         ]
         let updateStatus = SecItemUpdate(baseQuery as CFDictionary, attributesToUpdate as CFDictionary)
         if updateStatus != errSecItemNotFound {
-            return updateStatus
+            if updateStatus != errSecSuccess {
+                throw KeyStoreError.classify(updateStatus)
+            }
+            return
         }
         // SecItemAdd needs the full query (class/service/account) + value attrs.
         var addAttributes = baseQuery
         addAttributes[kSecValueData as String] = keyData
         addAttributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         addAttributes[kSecAttrSynchronizable as String] = false
-        return SecItemAdd(addAttributes as CFDictionary, nil)
+        let addStatus = SecItemAdd(addAttributes as CFDictionary, nil)
+        if addStatus != errSecSuccess {
+            throw KeyStoreError.classify(addStatus)
+        }
     }
 
     func delete() {

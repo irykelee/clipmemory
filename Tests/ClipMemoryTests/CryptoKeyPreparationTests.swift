@@ -28,6 +28,10 @@ final class CryptoKeyPreparationTests: XCTestCase {
     /// In-memory key store; store() results can be scripted per call.
     private final class MockKeyStore: KeyStoring {
         private(set) var stored: Data?
+        /// P2-3 (OpenCode auto-review, 2026-09-23): each entry is an OSStatus
+        /// that the test wants `store()` to throw on the next call. errSecSuccess
+        /// → no throw, anything else → KeyStoreError.classify(status). Tests
+        /// can script a sequence to simulate transient-then-success (retry path).
         var storeResults: [OSStatus] = [] // default: always succeed
         private(set) var storeCalls = 0
         /// C-2 (2026-07-24 audit): tests simulating Keychain states that load()
@@ -49,11 +53,14 @@ final class CryptoKeyPreparationTests: XCTestCase {
         }
 
         @discardableResult
-        func store(_ keyData: Data) -> OSStatus {
+        func store(_ keyData: Data) throws {
             storeCalls += 1
             let result = storeResults.isEmpty ? errSecSuccess : storeResults.removeFirst()
-            if result == errSecSuccess { stored = keyData }
-            return result
+            if result == errSecSuccess {
+                stored = keyData
+            } else {
+                throw KeyStoreError.classify(result)
+            }
         }
 
         func delete() {
@@ -87,10 +94,10 @@ final class CryptoKeyPreparationTests: XCTestCase {
 
     // MARK: - Keychain is canonical
 
-    func testPrepareKeyUsesKeychainWhenPresent() {
+    func testPrepareKeyUsesKeychainWhenPresent() throws {
         let store = MockKeyStore()
         let existing = Data((0..<32).map { UInt8($0 ^ 0x5A) })
-        store.store(existing)
+        try store.store(existing)
 
         let recorder = FailureRecorder(actions: [.quit])
         let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
@@ -113,9 +120,9 @@ final class CryptoKeyPreparationTests: XCTestCase {
                        "C1: new keys are never written to the old file path")
     }
 
-    func testKeychainGarbageIsTreatedAsAbsent() {
+    func testKeychainGarbageIsTreatedAsAbsent() throws {
         let store = MockKeyStore()
-        store.store(Data(repeating: 0xFF, count: 10)) // wrong length = unusable
+        try store.store(Data(repeating: 0xFF, count: 10)) // wrong length = unusable
 
         let recorder = FailureRecorder(actions: [.quit])
         let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
@@ -141,21 +148,97 @@ final class CryptoKeyPreparationTests: XCTestCase {
                        "key file must be removed after a verified migration")
     }
 
-    func testMigrationFailureKeepsKeyFileForNextLaunch() throws {
+    func testMigrationFailureDeletesKeyFileAndAlerts() throws {
+        // P1-AUDIT-2026-09-22 (P2-3) + OpenCode auto-review (2026-09-23):
+        // Keychain migration failure on a PERMANENT error (errSecParam
+        // — Keychain definitively rejected the request) used to keep
+        // the .encryption_key file on disk + only log (no user-visible
+        // signal). The audit found that violates CLAUDE.md three-piece-
+        // gate §3 (user-visible) and leaves a persistent cleartext key
+        // on disk if the Keychain remains blocked. New behavior: delete
+        // the cleartext fallback (audit-accepted trade-off — next launch
+        // regenerates, existing items become undecryptable, but persistent
+        // cleartext is worse) + post .encryptionFailed with
+        // source="keychainMigration.permanent" so AppDelegate's Throttler
+        // surfaces an NSAlert.
+        //
+        // NOTE: This test exercises the PERMANENT branch only. The
+        // TRANSIENT branch (errSecInteractionNotAllowed, etc.) is tested
+        // separately by testMigrationFailureTransientKeepsFileForRetry —
+        // the OpenCode finding was that destroying the fallback on a
+        // transient error permanently loses the key.
         let legacy = Data((0..<32).map { UInt8($0) })
         try legacy.write(to: keyURL)
         let store = MockKeyStore()
-        store.storeResults = [errSecInteractionNotAllowed] // keychain locked
+        store.storeResults = [errSecParam] // permanent — Keychain definitively rejected
+
+        var posted: [Notification] = []
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed, object: nil, queue: .main
+        ) { note in posted.append(note) }
+        defer { NotificationCenter.default.removeObserver(observer) }
 
         let recorder = FailureRecorder(actions: [.quit])
         let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
 
-        XCTAssertNotNil(key, "migration failure must not break the app — the file key still works")
-        XCTAssertEqual(recorder.failures, [], "migration fallback is silent (log only), not an alert")
-        XCTAssertEqual(try Data(contentsOf: keyURL), legacy, "key file must survive a failed migration")
-        let attrs = try FileManager.default.attributesOfItem(atPath: keyURL.path)
-        XCTAssertEqual(attrs[.posixPermissions] as? Int, 0o600,
-                       "retained key file gets owner-only perms as defense in depth")
+        XCTAssertNotNil(key, "migration failure must not break the current session — cache populates from the file's key before deletion")
+        XCTAssertEqual(recorder.failures, [], "P2-3 alert path goes through .encryptionFailed + Throttler, not the keyFailureHandler")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keyURL.path),
+                       "P1-AUDIT-2026-09-22 P2-3: cleartext .encryption_key must be deleted on PERMANENT Keychain migration failure (audit-accepted trade-off)")
+        XCTAssertFalse(posted.isEmpty,
+                       "P1-AUDIT-2026-09-22 P2-3: .encryptionFailed notification must fire for Throttler to surface NSAlert")
+        let source = posted.first?.userInfo?["source"] as? String
+        XCTAssertEqual(source, "keychainMigration.permanent",
+                       "P2-3 (OpenCode 2026-09-23): permanent error must use its own bucket so transient alerts don't suppress permanent ones")
+        let recoverable = posted.first?.userInfo?["recoverable"] as? Bool
+        XCTAssertEqual(recoverable, false,
+                       "P2-3 (OpenCode 2026-09-23): permanent errors must NOT be marked recoverable (retry won't help)")
+    }
+
+    /// P2-3 (OpenCode auto-review, 2026-09-23): on a TRANSIENT Keychain
+    /// store failure (errSecInteractionNotAllowed / errSecAuthFailed /
+    /// errSecNotAvailable), the `.encryption_key` fallback file MUST be
+    /// preserved so the next launch can retry the migration. Pre-fix
+    /// behavior was: "delete cleartext fallback on ANY store failure" —
+    /// which collapsed into a permanent data-loss event when the failure
+    /// was actually transient (e.g. launchd start before first unlock —
+    /// exactly the scenario CLAUDE.md documents). Without this test,
+    /// the regression would silently lose the root key on every Keychain
+    /// unlock window.
+    func testMigrationFailureTransientKeepsFileForRetry() throws {
+        let legacy = Data((0..<32).map { UInt8($0) })
+        try legacy.write(to: keyURL)
+        let store = MockKeyStore()
+        // errSecInteractionNotAllowed — Keychain locked (launchd start,
+        // pre-first-unlock). Auto-retry next launch will succeed.
+        store.storeResults = [errSecInteractionNotAllowed]
+
+        var posted: [Notification] = []
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed, object: nil, queue: .main
+        ) { note in posted.append(note) }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let recorder = FailureRecorder(actions: [.quit])
+        let key = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
+
+        XCTAssertNotNil(key, "transient migration failure must not break the current session — cache populates from the file's key")
+        XCTAssertEqual(recorder.failures, [], "P2-3: transient errors alert via .encryptionFailed + Throttler, not the keyFailureHandler")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: keyURL.path),
+                      "P2-3 (OpenCode 2026-09-23): .encryption_key MUST be preserved on transient Keychain errors so next-launch retry can succeed — destroying it loses the only copy of the root key")
+        XCTAssertEqual(try? Data(contentsOf: keyURL), legacy,
+                       "P2-3: the legacy file content must be intact, not partially overwritten or truncated")
+        XCTAssertFalse(posted.isEmpty,
+                       "P2-3: .encryptionFailed notification must fire on transient errors so Throttler surfaces an NSAlert")
+        let source = posted.first?.userInfo?["source"] as? String
+        XCTAssertEqual(source, "keychainMigration.transient",
+                       "P2-3: transient errors must use the 'transient' bucket (separate from 'permanent')")
+        let recoverable = posted.first?.userInfo?["recoverable"] as? Bool
+        XCTAssertEqual(recoverable, true,
+                       "P2-3: transient errors MUST be marked recoverable (next launch will fix)")
+        let status = posted.first?.userInfo?["status"] as? Int
+        XCTAssertEqual(status, Int(errSecInteractionNotAllowed),
+                       "P2-3: status code must be passed in userInfo so the alert can show the underlying Keychain error")
     }
 
     // MARK: - Corrupt file (H6 behavior preserved)
@@ -281,7 +364,7 @@ final class CryptoKeyPreparationTests: XCTestCase {
     /// (errSecInteractionNotAllowed at launchd start), the user must not
     /// be stranded for the rest of the session. After the Keychain
     /// unlocks (login / wake), retryPrepareKeyIfLocked() must succeed.
-    func testRetryPrepareKeyIfLockedAfterUnlock() {
+    func testRetryPrepareKeyIfLockedAfterUnlock() throws {
         let store = MockKeyStore()
         store.lockedStatus = .interactionLocked
 
@@ -292,7 +375,7 @@ final class CryptoKeyPreparationTests: XCTestCase {
         // Simulate Keychain becoming accessible (user logs in / wakes)
         store.lockedStatus = nil
         let stored = Data((0..<32).map { UInt8($0 ^ 0xA5) })
-        store.store(stored) // store() on success sets stored = keyData
+        try store.store(stored) // store() on success sets stored = keyData
 
         let key2 = CryptoService.retryPrepareKeyIfLocked(
             keyURL: keyURL, keyStore: store, failureHandler: recorder.handler
@@ -332,7 +415,7 @@ final class CryptoKeyPreparationTests: XCTestCase {
     /// initial lock, deferred captures must survive until the retry
     /// succeeds; this requires that prepareKey(.interactionLocked) does
     /// NOT post success:false (tested above).
-    func testRetryAfterLockedPreservesSessionUntilUnlock() {
+    func testRetryAfterLockedPreservesSessionUntilUnlock() throws {
         let store = MockKeyStore()
         store.lockedStatus = .interactionLocked
 
@@ -353,7 +436,7 @@ final class CryptoKeyPreparationTests: XCTestCase {
         // Now the user unlocks — Keychain becomes accessible.
         store.lockedStatus = nil
         let stored = Data((0..<32).map { UInt8($0 ^ 0xA5) })
-        store.store(stored)
+        try store.store(stored)
 
         let key3 = CryptoService.retryPrepareKeyIfLocked(
             keyURL: keyURL, keyStore: store, failureHandler: recorder.handler
@@ -366,10 +449,10 @@ final class CryptoKeyPreparationTests: XCTestCase {
     /// P0-1: retry is a no-op when the key is already loaded — does not
     /// re-store or trigger failure paths. This is what makes the wake /
     /// unlock observer safe to fire on every system event.
-    func testRetryPrepareKeyIfLockedIsNoopWhenKeyAlreadyLoaded() {
+    func testRetryPrepareKeyIfLockedIsNoopWhenKeyAlreadyLoaded() throws {
         let store = MockKeyStore()
         let existing = Data((0..<32).map { UInt8($0 ^ 0x5A) })
-        store.store(existing)
+        try store.store(existing)
 
         let recorder = FailureRecorder(actions: [.quit])
         let key1 = CryptoService.prepareKey(keyURL: keyURL, keyStore: store, failureHandler: recorder.handler)
@@ -411,7 +494,7 @@ final class CryptoKeyPreparationTests: XCTestCase {
 
     /// Recovery path: after the transient error clears, the retry must pick
     /// up the real Keychain item (no regeneration happened in between).
-    func testRetrySucceedsAfterTransientKeychainErrorClears() {
+    func testRetrySucceedsAfterTransientKeychainErrorClears() throws {
         let store = MockKeyStore()
         store.lockedStatus = .otherError(errSecServiceNotAvailable)
 
@@ -421,7 +504,7 @@ final class CryptoKeyPreparationTests: XCTestCase {
 
         store.lockedStatus = nil
         let existing = Data((0..<32).map { UInt8($0 ^ 0xA5) })
-        store.store(existing)
+        try store.store(existing)
 
         let key2 = CryptoService.retryPrepareKeyIfLocked(
             keyURL: keyURL, keyStore: store, failureHandler: recorder.handler
@@ -435,10 +518,10 @@ final class CryptoKeyPreparationTests: XCTestCase {
     /// When the Keychain already holds a valid key, a lingering pre-C1
     /// plaintext key file (from an interrupted/failed migration) must be
     /// removed idempotently instead of sitting on disk forever.
-    func testKeychainHitRemovesLingeringLegacyKeyFile() {
+    func testKeychainHitRemovesLingeringLegacyKeyFile() throws {
         let store = MockKeyStore()
         let existing = Data((0..<32).map { UInt8($0 ^ 0x5A) })
-        store.store(existing)
+        try store.store(existing)
         let legacy = Data((0..<32).map { UInt8($0) })
         XCTAssertNoThrow(try legacy.write(to: keyURL))
 
