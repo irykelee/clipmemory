@@ -141,4 +141,50 @@ final class ClipboardMonitorTests: XCTestCase {
         let stub: (NSPasteboard.PasteboardType) -> Data? = { _ in nil }
         XCTAssertNil(ClipboardMonitor.firstImageData(read: stub))
     }
+
+    // MARK: - P1-AUDIT-2026-09-22 (P2-7): pure-whitespace capture gate
+
+    /// P1-AUDIT-2026-09-22 (P2-7): pure-whitespace content must not be
+    /// captured. The existing isEmpty guard at ClipboardMonitor.swift:409
+    /// only catches literal ""; whitespace-only ("   \n\t  ") and
+    /// full-width space (U+3000) strings slip through.
+    func testPureWhitespaceContentIsNotCaptured() throws {
+        let whitespaceVariants: [String] = [
+            " ", "\t", "\n", "\r\n",
+            "   ", "\t\t", " \t \n ",
+            "\u{3000}",              // full-width space (CJK input method)
+            "  \u{3000}  \t",       // mixed
+        ]
+        for ws in whitespaceVariants {
+            // P1-AUDIT-2026-09-22 (P2-7): the monitor's `shouldCapture`
+            // predicate (or equivalent gate) must reject ws.
+            XCTAssertFalse(ClipboardMonitor.shouldCaptureText(ws),
+                          "P1-AUDIT-2026-09-22 P2-2: whitespace-only string rejected: '\(ws)'")
+        }
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-7): non-breaking space (U+00A0) is
+    /// invisible to .isEmpty but is semantically whitespace — must be
+    /// rejected just like ASCII space.
+    func testNonBreakingSpaceIsNotCaptured() {
+        XCTAssertFalse(ClipboardMonitor.shouldCaptureText("\u{00A0}"),
+                      "P1-AUDIT-2026-09-22 P2-7: U+00A0 (non-breaking space) rejected")
+        XCTAssertFalse(ClipboardMonitor.shouldCaptureText("  \u{00A0}  "),
+                      "P1-AUDIT-2026-09-22 P2-7: whitespace + U+00A0 mixed rejected")
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-7): regression guard — strings with
+    /// non-whitespace content (including a single ASCII char, a leading
+    /// or trailing whitespace, or a single CJK ideograph) MUST still be
+    /// captured. The fix is a stricter filter, not a global reject.
+    func testNonWhitespaceContentIsCaptured() {
+        XCTAssertTrue(ClipboardMonitor.shouldCaptureText("a"),
+                     "P1-AUDIT-2026-09-22 P2-7: single ASCII char accepted")
+        XCTAssertTrue(ClipboardMonitor.shouldCaptureText(" hello "),
+                     "P1-AUDIT-2026-09-22 P2-7: leading/trailing whitespace OK if body has content")
+        XCTAssertTrue(ClipboardMonitor.shouldCaptureText("中"),
+                     "P1-AUDIT-2026-09-22 P2-7: single CJK ideograph accepted")
+        XCTAssertTrue(ClipboardMonitor.shouldCaptureText(" \u{3000}a\u{3000} "),
+                     "P1-AUDIT-2026-09-22 P2-7: whitespace + U+3000 + content accepted")
+    }
 }
