@@ -1143,30 +1143,28 @@ final class BackupPackage {
 
     // MARK: - External package validation
 
-    /// Validates an external `.clipmemory` archive BEFORE wizard step 3 (preview).
-    /// Returns the parsed `BackupManifest` on success; throws canonical
-    /// `BackupPackageError` for all failure modes (mapped here, not in VM —
-    /// single source of truth for password + size validation).
-    ///
-    /// Reuses private `guardStoreBlobSize` + canonical `.wrongPassword` mapping
-    /// (per `importPackage:606-632`) so the wizard gets identical behavior to
-    /// the actual import path. Solves F9 (CryptoKitError → .wrongPassword) +
-    /// F10 (size guards) + the prior LOW double-unzip issue.
+    /// P1-AUDIT-2026-09-22 (audit finding P1-2): previously this method
+    /// invoked `/usr/bin/ditto -x -k` directly, skipping the three-layer
+    /// defense that the main import path uses (`unzipArchive` →
+    /// `validateArchiveMembers` → 30s `runDitto` → `validateExtractedTree`).
+    /// Now uses the same `unzipArchive` helper for byte-identical safety.
+    /// This is the public-facing pre-check before the wizard shows the
+    /// archive contents to the user.
     static func validateExternalPackage(at url: URL, passphrase: String) throws -> BackupManifest {
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("clip-wizard-validate-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: staging) }
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
 
-        // ditto -x (same archive path as importPackage).
-        let ditto = Process()
-        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        ditto.arguments = ["-x", "-k", url.path, staging.path]
-        try ditto.run()
-        ditto.waitUntilExit()
-        guard ditto.terminationStatus == 0 else {
-            throw BackupPackageError.archiveFailed
-        }
+        // P1-AUDIT-2026-09-22 (audit finding P1-2): the legacy implementation
+        // used a bare `ditto -x -k` with no safety net. A malicious .clipmemory
+        // received over email/IM would have its `../` members extracted to
+        // outside-staging paths before validateExtractedTree got a chance to
+        // inspect them. Routing through unzipArchive picks up all three layers
+        // the main importPackage path uses: validateArchiveMembers (rejects
+        // `..`/abs/backslash), 30s runDitto timeout, validateExtractedTree
+        // (symlink + resolved-path escape).
+        try unzipArchive(url, to: staging)
 
         // F10: size guards BEFORE Data(contentsOf:) — hostile oversized files
         // would OOM the process. Same pattern as importPackage:577/600.
