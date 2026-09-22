@@ -19,7 +19,13 @@ final class TrashStore: ObservableObject {
 
     /// Number of days trashed items are kept before automatic permanent deletion.
     @Published var trashRetentionDays: Int {
-        didSet { defaults.set(trashRetentionDays, forKey: TrashStore.trashedItemsStorageKey + ".retentionDays") }
+        // P1-AUDIT-2026-09-22 (P2-9): use the central `UserDefaultsKey` rawValue
+        // — the prior `trashedItemsStorageKey + ".retentionDays"` concatenation
+        // was a string-literal pattern that hides the actual key from static
+        // auditing. UserDefaultsKey.trashedItemsRetentionDays has the same
+        // `"ClipboardTrashedItems.retentionDays"` value, so existing data
+        // survives.
+        didSet { defaults.set(trashRetentionDays, forKey: UserDefaultsKey.trashedItemsRetentionDays.rawValue) }
     }
 
     // H-2 (2026-08-08): `var` not `let` so `replaceBackendForTesting`
@@ -35,7 +41,10 @@ final class TrashStore: ObservableObject {
     /// Shared storage key, retained for migration compatibility.
     /// F-1 phase 2 (2026-07-28): `nonisolated` so callers (incl. @MainActor
     /// ClipboardStore init) can read this static let from any isolation domain.
-    nonisolated static let trashedItemsStorageKey = "ClipboardTrashedItems"
+    /// P1-AUDIT-2026-09-22 (P2-9): aliased through `UserDefaultsKey` so the
+    /// raw string lives in exactly one place. Tests still reference this
+    /// constant (`ClipboardStoreTrashTests.swift:686, 698, 733`).
+    nonisolated static let trashedItemsStorageKey = UserDefaultsKey.trashedItems.rawValue
 
     /// H-2 (2026-08-08): persistent sentinel that survives across launches.
     /// Set to `true` when `quarantineCorruptBlob` removes the original
@@ -56,7 +65,11 @@ final class TrashStore: ObservableObject {
     /// emptied + orphan-image cleanup would delete trash images. Cleared
     /// (via `removeObject`) by `loadTrashedItems` once a healthy
     /// `backend.load()` succeeds.
-    nonisolated static let loadFailedSentinelKey = trashedItemsStorageKey + ".loadFailed"
+    /// P1-AUDIT-2026-09-22 (P2-9): the previous expression
+    /// `trashedItemsStorageKey + ".loadFailed"` hid the raw key from static
+    /// auditing and could silently rename if `trashedItemsStorageKey` ever
+    /// changed. Promoted to its own `UserDefaultsKey` case.
+    nonisolated static let loadFailedSentinelKey = UserDefaultsKey.trashedItemsLoadFailedSentinel.rawValue
 
     /// Reference to the content cache and RTF cache from ClipboardStore, set
     /// after init so evictCaches can drop stale entries.
@@ -85,7 +98,7 @@ final class TrashStore: ObservableObject {
         // wrapped in `#if DEBUG`.
         self.backend = backend
         self.defaults = defaults
-        let retentionKey = TrashStore.trashedItemsStorageKey + ".retentionDays"
+        let retentionKey = UserDefaultsKey.trashedItemsRetentionDays.rawValue
         let saved = defaults.integer(forKey: retentionKey)
         let valid = [3, 7, 14, 30]
         if valid.contains(saved) {

@@ -11,7 +11,10 @@ import os
 /// `hasLaunchedBefore` reads/writes away from production `com.clipmemory.app`.
 /// Production keeps `.standard` so existing keys persist.
 final class FirstLaunchService {
-    static let hasLaunchedKey = "hasLaunchedBefore"
+    // P1-AUDIT-2026-09-22 (P2-9): the raw literal was duplicated in
+    // `WelcomeView.FirstLaunchManager.hasLaunchedKey`. Aliased through the
+    // central `UserDefaultsKey` so both sites stay in sync.
+    static let hasLaunchedKey = UserDefaultsKey.hasLaunchedBefore.rawValue
 
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "FirstLaunch")
     private let store: UserDefaults

@@ -4,9 +4,13 @@ import os
 /// OCR-related ClipboardStore extension (kept out of the main file per the
 /// project's small-file guideline). See OCRService.swift for recognition.
 extension ClipboardStore {
-    private static let ocrEnabledKey = "ocrEnabled"
+    // P1-AUDIT-2026-09-22 (P2-9): central `UserDefaultsKey` rawValues — these
+    // were private static let string literals. Aliased through the enum so
+    // the raw string lives in exactly one place. Kept as `var` so the
+    // computed-property access pattern below still works without churn.
+    private static var ocrEnabledKey: String { UserDefaultsKey.ocrEnabled.rawValue }
 
-    private static let ocrPreviewEnabledKey = "ocrPreviewEnabled"
+    private static var ocrPreviewEnabledKey: String { UserDefaultsKey.ocrPreviewEnabled.rawValue }
 
     /// Whether image search results show OCR text snippet + highlight under the
     /// thumbnail. Display-only — filter still uses OCR text even when off. Default on.

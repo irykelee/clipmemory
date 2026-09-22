@@ -75,16 +75,17 @@ class ImageStorage {
         return appSupport.appendingPathComponent("ClipPaste/Images", isDirectory: true)
     }()
 
-    private let migrationCompleteKey = "ImageStorageMigrationComplete"
+    // P1-AUDIT-2026-09-22 (P2-9): central `UserDefaultsKey` rawValues.
+    private var migrationCompleteKey: String { UserDefaultsKey.imageStorageMigrationComplete.rawValue }
     /// Tracks individual filenames that have already been migrated so a
     /// partially-failed migration can resume without re-copying successes.
-    private let migratedFilenamesKey = "ImageStorageMigratedFilenames"
+    private var migratedFilenamesKey: String { UserDefaultsKey.imageStorageMigratedFilenames.rawValue }
     /// STOR-4 (2026-07-24): filenames that are permanently ineligible for
     /// migration (empty, or over the size cap that saveImage enforces).
     /// Such a file can NEVER become eligible, so it is recorded here once,
     /// never retried, and — crucially — does NOT count as a failure that
     /// blocks the global completion flag.
-    private let skippedFilenamesKey = "ImageStorageSkippedLegacyFilenames"
+    private var skippedFilenamesKey: String { UserDefaultsKey.imageStorageSkippedLegacyFilenames.rawValue }
 
     enum ImageLoadStatus: Equatable {
         case available(Data)
@@ -907,7 +908,7 @@ class ImageStorage {
         // guard permanently unarmed, which would risk deleting images on a later launch
         // when items have been re-added but cleanupOrphanedImages runs with a stale
         // view of the world.
-        let startupCleanupKey = "ImageStorageStartupCleanupRan"
+        let startupCleanupKey = UserDefaultsKey.imageStorageStartupCleanupRan.rawValue
         if !defaults.bool(forKey: startupCleanupKey) {
             defaults.set(true, forKey: startupCleanupKey)
             return

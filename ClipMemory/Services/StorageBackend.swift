@@ -71,7 +71,7 @@ final class FileStorageBackend: StorageBackend {
     // the only path that ever touches the host UserDefaults.
     private let defaults: UserDefaults
 
-    init(storageKey: String = "ClipboardItems",
+    init(storageKey: String = UserDefaultsKey.clipboardItems.rawValue,
          defaults: UserDefaults = .standard) {
         self.storageKey = storageKey
         self.defaults = defaults

@@ -12,7 +12,9 @@ import SwiftUI
 /// `scale < 4` upper bound below is wider than any user-facing step. The
 /// difference is intentional — see the long-form note at the clamp.
 func sz(_ base: CGFloat) -> CGFloat {
-    let scale = UserDefaults.standard.double(forKey: "fontScale")
+    // P1-AUDIT-2026-09-22 (P2-9): central `UserDefaultsKey` rawValue —
+    // `"fontScale"` was an inline literal here.
+    let scale = UserDefaults.standard.double(forKey: UserDefaultsKey.fontScale.rawValue)
     // M-5 fix (2026-07-20 audit): UserDefaults can store any IEEE-754 bit
     // pattern including `.infinity` / `NaN` (decimal plist round-trip
     // preserves them). The previous guard only checked `scale > 0`, which

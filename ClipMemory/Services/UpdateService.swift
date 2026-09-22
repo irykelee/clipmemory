@@ -171,9 +171,12 @@ final class UpdateService {
         return url
     }()
 
-    private static let fallbackConsentKey = "UpdateFallbackFeedConsent"
-    private static let lastPrimaryItemDateKey = "LastPrimaryAppcastItemDate"
-    private static let feedPolicyKey = "UpdateFeedPolicy"
+    // P1-AUDIT-2026-09-22 (P2-9): aliased through `UserDefaultsKey` so the
+    // raw strings live in exactly one place. The `var` form preserves the
+    // existing `Self.xxxKey` call sites below without churn.
+    private static var fallbackConsentKey: String { UserDefaultsKey.updateFallbackFeedConsent.rawValue }
+    private static var lastPrimaryItemDateKey: String { UserDefaultsKey.lastPrimaryAppcastItemDate.rawValue }
+    private static var feedPolicyKey: String { UserDefaultsKey.updateFeedPolicy.rawValue }
 
     /// M13 (2026-08-03): test seam — static injectable UserDefaults suite.
     /// `nonisolated(unsafe)` because the static properties that use it are

@@ -426,11 +426,16 @@ final class BackupPackage {
     /// manifest loop to the `BackupFileSource` enum so the `corruptedData`
     /// error pinpoints the failing file rather than collapsing every parse
     /// failure into a generic message.
+    /// P1-AUDIT-2026-09-22 (P2-9): switch arms reference `UserDefaultsKey`
+    /// rawValues so this switch stays in sync with the central registry.
+    /// Adding a new case to the loop without updating this switch would
+    /// type-error at the `case ... : .items` line, which is the desired
+    /// "exhaustive" guarantee.
     private static func source(forKey key: String) -> BackupFileSource {
         switch key {
-        case "ClipboardItems": return .items
-        case "ClipMemoryTags": return .tags
-        case "ClipboardTrashedItems": return .trash
+        case UserDefaultsKey.clipboardItems.rawValue: return .items
+        case UserDefaultsKey.clipboardTags.rawValue: return .tags
+        case UserDefaultsKey.trashedItems.rawValue: return .trash
         default: return .items  // unreachable in current caller, defensive default
         }
     }
@@ -474,14 +479,21 @@ final class BackupPackage {
         // existing package-corruption error, so the export fails loudly
         // instead of producing a misleading manifest.
         var counts = (items: 0, tags: 0, trash: 0)
-        for (filename, key) in [("items.json", "ClipboardItems"), ("tags.json", "ClipMemoryTags"), ("trash.json", "ClipboardTrashedItems")] {
+        for (filename, key) in [
+            // P1-AUDIT-2026-09-22 (P2-9): same source-of-truth fix as
+            // BackupService.swift — the loop's three keys come from the
+            // central `UserDefaultsKey` registry.
+            ("items.json", UserDefaultsKey.clipboardItems.rawValue),
+            ("tags.json", UserDefaultsKey.clipboardTags.rawValue),
+            ("trash.json", UserDefaultsKey.trashedItems.rawValue)
+        ] {
             guard let data = defaults.data(forKey: key) else { continue }
             try data.write(to: staging.appendingPathComponent(filename), options: .atomic)
             do {
                 switch key {
-                case "ClipboardItems":
+                case UserDefaultsKey.clipboardItems.rawValue:
                     counts.items = try JSONDecoder().decode([ClipboardItem].self, from: data).count
-                case "ClipMemoryTags":
+                case UserDefaultsKey.clipboardTags.rawValue:
                     counts.tags = try JSONDecoder().decode([Tag].self, from: data).count
                 default:
                     counts.trash = try JSONDecoder().decode([ClipboardItem].self, from: data).count
