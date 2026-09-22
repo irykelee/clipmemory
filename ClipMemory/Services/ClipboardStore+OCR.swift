@@ -149,7 +149,13 @@ extension ClipboardStore {
         let outcome = ServiceContainer.crypto.decryptWithReason(ciphertext, itemID: item.id)
         switch outcome {
         case .success(let plaintext):
-            contentCache.setObject(plaintext as NSString, forKey: key)
+            // P1-AUDIT-2026-09-22 (P2-15): pass `cost:` so `totalCostLimit`
+            // actually enforces. Without it NSCache treats every entry as
+            // cost=0 and never evicts based on byte budget — a few large
+            // items (book pages, screenshots) crowd out smaller items and
+            // defeat the cache. Mirrors ID-PERF-0017 applied to
+            // rtfPlaintextCache (see ClipboardStore.swift:1697/1704/1712).
+            contentCache.setObject(plaintext as NSString, forKey: key, cost: plaintext.utf8.count)
             return plaintext
         case .keyUnavailable:
             // N10: transient — do NOT mark decryptionFailed
