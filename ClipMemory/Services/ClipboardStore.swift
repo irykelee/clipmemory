@@ -1780,9 +1780,32 @@ final class ClipboardStore: ObservableObject {
     /// previous to position 1, so the LAST item in the input ends up at
     /// index 0. UI callers should pass items in the order they want them
     /// to appear top-to-bottom.
+    ///
+    /// P1-AUDIT-2026-09-22 (P2-4): bulk restore previously could exceed
+    /// `maxItems` and insert duplicate `contentHash` entries. We
+    /// pre-filter by capacity AND by contentHash before delegating to the
+    /// per-item path. Cross-active dedup uses the live `items` content
+    /// so a trashed item with a hash already in the active list is
+    /// skipped (re-insert would silently shadow the active copy).
+    /// Capacity is decremented per accepted item so trim can never
+    /// overrun the cap even if every input item had a unique hash.
     func restoreFromTrash(_ items: [ClipboardItem]) {
+        let initialCapacity = max(0, maxItems - self.items.count)
+        guard initialCapacity > 0 else { return }
+        // Cross-active dedup seed: hashes already present on the active
+        // list. Combined with the per-batch `seenHashes` below, this
+        // guarantees no duplicate contentHash in `items` after restore.
+        var existingHashes = Set(self.items.compactMap { $0.contentHash })
+        var seenHashes = Set<String>()
+        var acceptedCount = 0
         for item in items {
+            if acceptedCount >= initialCapacity { break }
+            if let hash = item.contentHash {
+                if existingHashes.contains(hash) { continue }
+                guard seenHashes.insert(hash).inserted else { continue }
+            }
             restoreFromTrash(item)
+            acceptedCount += 1
         }
     }
 
