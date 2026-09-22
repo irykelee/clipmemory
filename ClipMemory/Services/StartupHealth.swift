@@ -21,7 +21,8 @@ import os.log
 /// function from `ClipboardStore.shared.init()`, `keyStore` is a `KeyStoring`
 /// fake, `imagesDirectory` is a temp dir, `defaults` is an isolated suite.
 enum StartupHealth {
-    private static let lastLaunchKey = "lastLaunchTime"
+    // P1-AUDIT-2026-09-22 (P2-9): central `UserDefaultsKey` rawValue.
+    private static var lastLaunchKey: String { UserDefaultsKey.lastLaunchTime.rawValue }
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "Startup")
 
     /// Items/trashed/tags counts lifted out of `ClipboardStore.shared` so the

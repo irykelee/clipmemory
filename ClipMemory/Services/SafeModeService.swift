@@ -38,9 +38,10 @@ final class SafeModeService {
     /// subscription. See ID-CRASH-0003.
     static let stateDidChange = Notification.Name("SafeModeService.stateDidChange")
 
-    private let crashCountKey = "safeMode.crashCount"
-    private let safeModeActiveKey = "safeMode.active"
-    private let sentinelHealthyKey = "safeMode.sentinelHealthy"
+    // P1-AUDIT-2026-09-22 (P2-9): central `UserDefaultsKey` rawValues.
+    private var crashCountKey: String { UserDefaultsKey.safeModeCrashCount.rawValue }
+    private var safeModeActiveKey: String { UserDefaultsKey.safeModeActive.rawValue }
+    private var sentinelHealthyKey: String { UserDefaultsKey.safeModeSentinelHealthy.rawValue }
     private let sentinelFilename = ".running-sentinel"
 
     /// Lazily-resolved sentinel path. Tilde expansion keeps the file

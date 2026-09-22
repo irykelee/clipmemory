@@ -90,8 +90,10 @@ class LanguageManager: ObservableObject {
             // @MainActor guarantees didSet runs on main; publish to the
             // off-main cache before the notification so any listener that
             // reads `currentLanguageCode` in response sees the new value.
+            // P1-AUDIT-2026-09-22 (P2-9): use the central `UserDefaultsKey`
+            // rawValue — `"appLanguage"` was a string literal here.
             Self.currentLanguageCode = selectedLanguage
-            defaults.set(selectedLanguage, forKey: "appLanguage")
+            defaults.set(selectedLanguage, forKey: UserDefaultsKey.appLanguage.rawValue)
             applyLanguage()
             NotificationCenter.default.post(name: .languageDidChange, object: nil)
         }
@@ -110,7 +112,8 @@ class LanguageManager: ObservableObject {
         // wrote to UserDefaults inconsistently (only the nil branch).
         // Both branches now converge: derive the language, assign; didSet
         // handles persistence and application. Init runs on main in production.
-        let lang = defaults.string(forKey: "appLanguage") ?? Self.getSystemLanguage()
+        // P1-AUDIT-2026-09-22 (P2-9): central `UserDefaultsKey` rawValue.
+        let lang = defaults.string(forKey: UserDefaultsKey.appLanguage.rawValue) ?? Self.getSystemLanguage()
         self.selectedLanguage = lang
         // didSet observers do NOT fire during Swift init, so currentLanguageCode
         // (the nonisolated mirror added in pilot commit 153d25d) must be seeded
@@ -149,12 +152,15 @@ class LanguageManager: ObservableObject {
         // path (no injection) is unchanged.
         // L8: Prepend selectedLanguage to existing AppleLanguages chain instead of
         // replacing it entirely, preserving system language fallback behavior.
-        var languages = defaults.stringArray(forKey: "AppleLanguages") ?? ["en"]
+        // P1-AUDIT-2026-09-22 (P2-9): central `UserDefaultsKey` rawValue.
+        // AppleLanguages is a system convention; the central case preserves
+        // the exact `"AppleLanguages"` string so macOS still recognizes it.
+        var languages = defaults.stringArray(forKey: UserDefaultsKey.appleLanguages.rawValue) ?? ["en"]
         if let existingIndex = languages.firstIndex(of: selectedLanguage) {
             languages.remove(at: existingIndex)
         }
         languages.insert(selectedLanguage, at: 0)
-        defaults.set(languages, forKey: "AppleLanguages")
+        defaults.set(languages, forKey: UserDefaultsKey.appleLanguages.rawValue)
     }
 
     var availableLanguages: [(code: String, name: String)] {

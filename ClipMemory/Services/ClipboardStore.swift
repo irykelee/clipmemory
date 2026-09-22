@@ -190,7 +190,7 @@ final class ClipboardStore: ObservableObject {
             // max-items dropdown blank. Production behavior unchanged because
             // `defaults` is `.standard` in the convenience init path; tests
             // that inject a test suite now stay isolated.
-            defaults.set(maxItems, forKey: maxItemsKey)
+            defaults.set(maxItems, forKey: UserDefaultsKey.maxClipboardItems.rawValue)
         }
     }
     /// M-4: lower bound for the cache `countLimit` so a user with a small
@@ -215,7 +215,7 @@ final class ClipboardStore: ObservableObject {
             // ID-STORE-0014 (2026-08-10): write to the injected `defaults`
             // suite (not UserDefaults.standard). Production (.standard) and
             // XCTest (isolated suite) flows both go through here.
-            defaults.set(newValue, forKey: sensitiveClearHoursKey)
+            defaults.set(newValue, forKey: UserDefaultsKey.sensitiveClearHours.rawValue)
             if changed { objectWillChange.send() }
         }
     }
@@ -230,7 +230,7 @@ final class ClipboardStore: ObservableObject {
     @Published var captureRichText: Bool = true {
         // ID-STORE-0014 (2026-08-10): write to the injected `defaults`
         // suite (not UserDefaults.standard).
-        didSet { defaults.set(captureRichText, forKey: captureRichTextKey) }
+        didSet { defaults.set(captureRichText, forKey: UserDefaultsKey.captureRichText.rawValue) }
     }
 
     /// Comma-separated bundle IDs of apps excluded from clipboard monitoring
@@ -238,7 +238,7 @@ final class ClipboardStore: ObservableObject {
         didSet {
             // ID-STORE-0014 (2026-08-10): write to the injected `defaults`
             // suite (not UserDefaults.standard).
-            defaults.set(excludedBundleIdsString, forKey: excludedBundleIdsKey)
+            defaults.set(excludedBundleIdsString, forKey: UserDefaultsKey.excludedBundleIds.rawValue)
             // MED-5: sync excluded apps via closure set by AppDelegate
             onExcludedAppsChanged?(parseExcludedBundleIds())
         }
@@ -250,7 +250,7 @@ final class ClipboardStore: ObservableObject {
     /// offer those, without a one-time dismissal silencing it forever.
     @Published var excludedUpdateDismissedIds: String {
         didSet {
-            defaults.set(excludedUpdateDismissedIds, forKey: excludedUpdateDismissedIdsKey)
+            defaults.set(excludedUpdateDismissedIds, forKey: UserDefaultsKey.excludedUpdateDismissedIds.rawValue)
         }
     }
 
@@ -302,11 +302,15 @@ final class ClipboardStore: ObservableObject {
         return GroupCounts(today: today, yesterday: yesterday, older: older)
     }
 
-    private let maxItemsKey = "maxClipboardItems"
-    private let sensitiveClearHoursKey = "sensitiveClearHours"
-    private let captureRichTextKey = "captureRichText"
-    private let excludedBundleIdsKey = "excludedBundleIds"
-    private let excludedUpdateDismissedIdsKey = "excludedUpdateDismissedIds"
+    // P1-AUDIT-2026-09-22 (P2-9): the raw string-key constants were inlined
+    // into `UserDefaultsKey`. Kept as deprecated wrappers for now? No —
+    // every call site below already uses the central enum; the wrappers
+    // would be dead code (delete per CLAUDE.md "surgical changes — touch
+    // only what you must"). The legacy aliases that existed at lines
+    // 305-309 (`maxItemsKey`, `sensitiveClearHoursKey`, etc.) are gone;
+    // call sites now use `UserDefaultsKey.X.rawValue` directly.
+    // `lastBackupErrorMessage` was previously a BackupService-private const
+    // not visible here — BackupService now uses `UserDefaultsKey` directly.
     // trashRetentionDaysKey moved to TrashStore (HIGH-1, 2026-07-26)
 
     /// Quarantine a corrupt UserDefaults blob: copy it under
@@ -340,7 +344,11 @@ final class ClipboardStore: ObservableObject {
         logger.error("Corrupt blob \(key) quarantined to \(quarantineKey). First-decoder error: \(error.localizedDescription). The next save will overwrite the original key with the current (empty) in-memory collection; recover from the quarantined copy or a backup before saving.")
     }
     /// UserDefaults key for persisted items.
-    static let itemsStorageKey = "ClipboardItems"
+    /// P1-AUDIT-2026-09-22 (P2-9): aliased through `UserDefaultsKey` so the
+    /// raw string lives in exactly one place. Tests + this file reference
+    /// `ClipboardStore.itemsStorageKey` directly; the alias keeps that API
+    /// stable while pointing at the central registry.
+    static let itemsStorageKey = UserDefaultsKey.clipboardItems.rawValue
     // trashedItemsStorageKey moved to TrashStore (HIGH-1, 2026-07-26)
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened from `private`
     // to `internal` so the methods moved to `ClipboardStore+Persistence.swift`
@@ -348,7 +356,8 @@ final class ClipboardStore: ObservableObject {
     let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardStore")
 
     /// UserDefaults key for persisted tags. Public so tests can pre-populate or clean up.
-    static let tagStorageKey = "ClipMemoryTags"
+    /// P1-AUDIT-2026-09-22 (P2-9): aliased through `UserDefaultsKey`.
+    static let tagStorageKey = UserDefaultsKey.clipboardTags.rawValue
 
     /// E.1: Pluggable storage backend (default: FileStorageBackend via UserDefaults)
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
@@ -446,10 +455,10 @@ final class ClipboardStore: ObservableObject {
         // Absent key must default to 100, NOT clamp: integer(forKey:)
         // returns 0 for a missing key, and clamping 0 yields minMaxItems
         // (1) — fresh installs would silently cap history at a single item.
-        let savedMaxItems = defaults.object(forKey: maxItemsKey) as? Int
+        let savedMaxItems = defaults.object(forKey: UserDefaultsKey.maxClipboardItems.rawValue) as? Int
         let clampedInit = savedMaxItems.map { max(Self.minMaxItems, min($0, Self.maxMaxItems)) } ?? 100
         if savedMaxItems != nil && clampedInit != savedMaxItems {
-            defaults.set(clampedInit, forKey: maxItemsKey)
+            defaults.set(clampedInit, forKey: UserDefaultsKey.maxClipboardItems.rawValue)
         }
         // M-4: tune the caches to match the resolved value. Done BEFORE the
         // `maxItems =` write because Swift's definite-init rules forbid
@@ -463,8 +472,8 @@ final class ClipboardStore: ObservableObject {
         // M-4 (2026-07-25 audit): `sensitiveClearHours` is now a computed
         // property over `_sensitiveClearHours`. Initialize the backing stored
         // property directly here to satisfy Swift's definite-init rules.
-        if defaults.object(forKey: sensitiveClearHoursKey) != nil {
-            _sensitiveClearHours = defaults.integer(forKey: sensitiveClearHoursKey)
+        if defaults.object(forKey: UserDefaultsKey.sensitiveClearHours.rawValue) != nil {
+            _sensitiveClearHours = defaults.integer(forKey: UserDefaultsKey.sensitiveClearHours.rawValue)
         } else {
             _sensitiveClearHours = 24
         }
@@ -473,9 +482,9 @@ final class ClipboardStore: ObservableObject {
         // KnownExcludedApps (verified ids + friendly names + the opt-in
         // correction table share one source). Fresh installs only — an
         // existing stored value is the user's setting and is never rewritten.
-        excludedBundleIdsString = defaults.string(forKey: excludedBundleIdsKey)
+        excludedBundleIdsString = defaults.string(forKey: UserDefaultsKey.excludedBundleIds.rawValue)
             ?? KnownExcludedApps.defaultBundleIds.joined(separator: ",")
-        excludedUpdateDismissedIds = defaults.string(forKey: excludedUpdateDismissedIdsKey) ?? ""
+        excludedUpdateDismissedIds = defaults.string(forKey: UserDefaultsKey.excludedUpdateDismissedIds.rawValue) ?? ""
 
         // trashRetentionDays init moved to TrashStore (HIGH-1, 2026-07-26)
 

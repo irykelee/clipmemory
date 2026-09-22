@@ -9,8 +9,9 @@ struct HotKeyConfig: Codable, Equatable {
 
     static let defaultConfig = HotKeyConfig(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | shiftKey))
 
-    private static let keyCodeKey = "HotKeyKeyCode"
-    private static let modifiersKey = "HotKeyModifiers"
+    // P1-AUDIT-2026-09-22 (P2-9): central `UserDefaultsKey` rawValues.
+    private static var keyCodeKey: String { UserDefaultsKey.hotKeyKeyCode.rawValue }
+    private static var modifiersKey: String { UserDefaultsKey.hotKeyModifiers.rawValue }
 
     func save() {
         UserDefaults.standard.set(Int(keyCode), forKey: Self.keyCodeKey)

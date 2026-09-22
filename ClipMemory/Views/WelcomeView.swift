@@ -178,7 +178,12 @@ struct InstructionRow: View {
 /// via `UserDefaults.standard.bool(forKey:)`, so the production key is
 /// unchanged across this refactor.
 class FirstLaunchManager {
-    static let hasLaunchedKey = "hasLaunchedBefore"
+    // P1-AUDIT-2026-09-22 (P2-9): the raw literal `"hasLaunchedBefore"`
+    // duplicated `FirstLaunchService.hasLaunchedKey`. Aliased to the central
+    // `UserDefaultsKey` so both sites stay in sync. The ZZZ canary
+    // `appLifecycleKeys` whitelist still observes the same string at
+    // `UserDefaults.standard.bool(forKey:)`.
+    static let hasLaunchedKey = UserDefaultsKey.hasLaunchedBefore.rawValue
 
     static var isFirstLaunch: Bool {
         !ServiceContainer.firstLaunch.hasLaunched

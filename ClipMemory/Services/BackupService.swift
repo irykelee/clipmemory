@@ -39,17 +39,22 @@ enum BackupError: LocalizedError {
 final class BackupService {
     static let shared = BackupService()
 
-    private static let enabledKey = "backupEnabled"
-    private static let keepCountKey = "backupKeepCount"
-    private static let lastBackupDateKey = "lastBackupDate"
+    // P1-AUDIT-2026-09-22 (P2-9): the static let `xxxKey` constants used to
+    // hold raw string literals. Replaced with the central `UserDefaultsKey`
+    // enum to make renames static-checkable and prevent collision. The
+    // legacy `Self.enabledKey` / `Self.keepCountKey` / `Self.lastBackupDateKey`
+    // etc. references below now resolve through the enum's rawValue.
+    private static var enabledKey: String { UserDefaultsKey.backupEnabled.rawValue }
+    private static var keepCountKey: String { UserDefaultsKey.backupKeepCount.rawValue }
+    private static var lastBackupDateKey: String { UserDefaultsKey.lastBackupDate.rawValue }
     // N-3 (2026-07-27): pair with `lastBackupDateKey` to surface failures
     // from the auto-backup path. `performBackupIfNeeded` used to swallow
     // every `BackupError` via `try?` — users had no signal that the daily
     // backup had stopped succeeding (disk full, permissions revoked, Keychain
     // locked). The settings page now shows "Last backup failed: <reason>"
     // when the most recent failure is newer than the most recent success.
-    private static let lastBackupErrorDateKey = "lastBackupErrorDate"
-    private static let lastBackupErrorMessageKey = "lastBackupErrorMessage"
+    private static var lastBackupErrorDateKey: String { UserDefaultsKey.lastBackupErrorDate.rawValue }
+    private static var lastBackupErrorMessageKey: String { UserDefaultsKey.lastBackupErrorMessage.rawValue }
     // ID-STORE-0016 (2026-08-15, L26 Path E): pruneOldBackups' contentsOfDirectory
     // failure was a silent no-op (line 374-376 catch + return), so a perm-revoked
     // or deleted Backups/ directory meant prune ran but kept nothing, and
@@ -58,8 +63,8 @@ final class BackupService {
     // lastBackupErrorDate because prune failures don't prevent the next
     // backup (the user can still trigger backupNow manually) — collapsing them
     // would hide the prune signal under a recent backup success.
-    private static let lastPruneErrorDateKey = "lastPruneErrorDate"
-    private static let lastPruneErrorMessageKey = "lastPruneErrorMessage"
+    private static var lastPruneErrorDateKey: String { UserDefaultsKey.lastPruneErrorDate.rawValue }
+    private static var lastPruneErrorMessageKey: String { UserDefaultsKey.lastPruneErrorMessage.rawValue }
     private static let minimumInterval: TimeInterval = 24 * 60 * 60
     /// H-6 (2026-07-24 audit): marker file dropped at the start of every
     /// backup and removed on success. An orphan timestamped dir carrying
@@ -322,9 +327,12 @@ final class BackupService {
         }
 
         let blobs: [(String, String)] = [
-            ("items.json", "ClipboardItems"),
-            ("tags.json", "ClipMemoryTags"),
-            ("trash.json", "ClipboardTrashedItems")
+            // P1-AUDIT-2026-09-22 (P2-9): use the central `UserDefaultsKey`
+            // rawValues instead of inline string literals. BackupPackage.swift
+            // and StorageBackend.swift share the same source.
+            ("items.json", UserDefaultsKey.clipboardItems.rawValue),
+            ("tags.json", UserDefaultsKey.clipboardTags.rawValue),
+            ("trash.json", UserDefaultsKey.trashedItems.rawValue)
         ]
         for (filename, key) in blobs {
             guard let data = defaults.data(forKey: key) else { continue }
