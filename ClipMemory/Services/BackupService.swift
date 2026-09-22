@@ -326,15 +326,13 @@ final class BackupService {
             }
         }
 
-        let blobs: [(String, String)] = [
-            // P1-AUDIT-2026-09-22 (P2-9): use the central `UserDefaultsKey`
-            // rawValues instead of inline string literals. BackupPackage.swift
-            // and StorageBackend.swift share the same source.
-            ("items.json", UserDefaultsKey.clipboardItems.rawValue),
-            ("tags.json", UserDefaultsKey.clipboardTags.rawValue),
-            ("trash.json", UserDefaultsKey.trashedItems.rawValue)
-        ]
-        for (filename, key) in blobs {
+        // P1-AUDIT-2026-09-22 (P2-10): the (filename, key) pairs come from
+        // the central `BackupBlobRegistry` enum. BackupPackage.swift iterates
+        // the same registry, so adding a new blob type = one enum case; both
+        // backup paths get it automatically.
+        for blob in BackupBlobRegistry.allBlobKeys {
+            let filename = blob.filename
+            let key = blob.userDefaultsKey
             guard let data = defaults.data(forKey: key) else { continue }
             do {
                 try data.write(to: destination.appendingPathComponent(filename), options: .atomic)
