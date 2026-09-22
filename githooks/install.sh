@@ -33,6 +33,35 @@ fi
 # maybe overwrite the hook.
 git config --local core.hooksPath .git/hooks
 
+# Install post-commit hook (chains Qoder tracker + opencode auto-review).
+# Placed BEFORE the pre-commit guard's early-exit so it always runs, even when
+# an existing .git/hooks/pre-commit short-circuits the script.
+# Always overwrite: our tracked githooks/post-commit is the source of truth and
+# embeds the Qoder tracker lines, so replacing a Qoder-managed post-commit is safe.
+HOOK_POST_SRC="$REPO_ROOT/githooks/post-commit"
+HOOK_POST_DST="$REPO_ROOT/.git/hooks/post-commit"
+if [ ! -f "$HOOK_POST_SRC" ]; then
+    echo "⚠️  post-commit source not found at $HOOK_POST_SRC — skipping"
+else
+    cp "$HOOK_POST_SRC" "$HOOK_POST_DST"
+    chmod +x "$HOOK_POST_DST"
+    echo "✅ Installed post-commit hook to $HOOK_POST_DST"
+    echo "   Chains: Qoder tracker + opencode auto-review (githooks/orca-auto-review.sh)"
+fi
+
+# Install pre-push hook (opencode review gate: unreviewed commits → FAIL blocks push).
+# Always overwrite: tracked githooks/pre-push is the source of truth.
+HOOK_PUSH_SRC="$REPO_ROOT/githooks/pre-push"
+HOOK_PUSH_DST="$REPO_ROOT/.git/hooks/pre-push"
+if [ ! -f "$HOOK_PUSH_SRC" ]; then
+    echo "⚠️  pre-push source not found at $HOOK_PUSH_SRC — skipping"
+else
+    cp "$HOOK_PUSH_SRC" "$HOOK_PUSH_DST"
+    chmod +x "$HOOK_PUSH_DST"
+    echo "✅ Installed pre-push hook to $HOOK_PUSH_DST"
+    echo "   Gate: reviews all unreviewed commits (any branch); VERDICT=FAIL blocks push"
+fi
+
 # Don't overwrite an existing local hook unless --force
 if [ -f "$HOOK_DST" ] && [ "$1" != "--force" ]; then
     echo "⚠️  Hook already exists at $HOOK_DST (use --force to overwrite)"

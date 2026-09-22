@@ -1,0 +1,31 @@
+#!/bin/sh
+# ClipMemory post-commit: main 分支提交后自动触发独立代码审核（后台, 不阻塞 commit）
+#
+# 串联两段:
+#   ① Qoder AI tracker —— 保留（2026-09-21 由 Qoder 应用直接装入 .git/hooks/post-commit,
+#      此处原样保留, 使 Qoder 的 commit 追踪不丢失）
+#   ② opencode 独立审核 —— 后台触发 githooks/orca-auto-review.sh, 不阻塞 git commit 返回
+#
+# 仅 main 分支触发自动审核, 避免开发中小提交频繁审核; 开发分支提交前手动跑:
+#   bash githooks/orca-auto-review.sh
+#
+# 本文件是 tracked 源（githooks/post-commit）, 经 githooks/install.sh 复制到
+# .git/hooks/post-commit 后生效。若 Qoder 应用之后重装了自己的 post-commit,
+# 重新跑一次 githooks/install.sh 即可恢复本串联版本。
+set -o pipefail
+
+# ① Qoder AI tracker（保留）
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -W 2>/dev/null || pwd)"
+ELECTRON_RUN_AS_NODE=1 "/Applications/Qoder.app/Contents/MacOS/Qoder" "/Applications/Qoder.app/Contents/Resources/app.asar.unpacked/node_modules/@qoder-ai/qoder-agent-sdk/dist/_worker/qoder-worker-runtime.obf.mjs" commit --hook --workspace "$repo_root" 2>/dev/null || true
+
+# ② opencode 独立审核（后台触发, 仅 main 分支）
+BR=$(git branch --show-current 2>/dev/null)
+[ "$BR" = "main" ] || exit 0
+
+ROOT="$(git rev-parse --show-toplevel)"
+REVIEWER="$ROOT/githooks/orca-auto-review.sh"
+[ -x "$REVIEWER" ] || exit 0
+
+# 后台跑, 不阻塞 git commit 返回
+nohup "$REVIEWER" "$ROOT" >> /tmp/orca-auto-review.log 2>&1 &
+exit 0

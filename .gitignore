@@ -42,3 +42,9 @@ __pycache__/
 
 # Agent session memory workspace (Claude Code ephemeral)
 .workbuddy/
+
+# opencode 自动审核运行时产物（githooks/orca-auto-review.sh 写入，非源码）
+githooks/.last-reviewed
+githooks/review-failures.log
+docs/reviews/auto-review-*.md
+docs/reviews/.tmp-review-*.md
