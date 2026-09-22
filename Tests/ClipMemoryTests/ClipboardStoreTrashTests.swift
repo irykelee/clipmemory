@@ -178,6 +178,80 @@ import XCTest
                        "Oldest-trashed ends at bottom")
     }
 
+    // MARK: - P1-AUDIT-2026-09-22 (P2-4): batch restore trims + dedupes by contentHash
+
+    /// P2-4 from `docs/review/code-review-2026-09-21.md`: the array-form
+    /// `restoreFromTrash(_ items:)` could exceed `maxItems` (10K cap) and
+    /// insert duplicates when multiple trashed items shared a
+    /// `contentHash`. Pin both invariants with one fixture: a small cap
+    /// forces the trim, and 100 copies per contentHash force the dedup.
+    ///
+    /// Fixture scale: 1200 items (12 unique contents × 100 copies each)
+    /// against `maxItems = 10`. Trim path must cap active at <= 10,
+    /// dedup path must keep `Set(active contentHashes).count == count`
+    /// (i.e. no duplicate contentHashes in the active list).
+    /// Scaled down from the brief's 12K to keep the test under 1s —
+    /// still exercises both bugs end-to-end.
+    func testRestoreFromTrashBatchTrimsAndDedupes() throws {
+        // testDefaults is suite-isolated so `store.maxItems = 10` writes
+        // don't leak to UserDefaults.standard (ID-STORE-0014 invariant).
+        store.maxItems = 10
+
+        // 1200 items / 12 unique contentHashes. Each content has 100
+        // copies so dedup-by-contentHash must collapse them to 12
+        // entries, then trim to maxItems=10 picks 10 of those 12.
+        var trashed: [ClipboardItem] = []
+        for i in 0..<12 {
+            let content = "x\(i)"
+            let hash = "hash-\(i)"
+            for _ in 0..<100 {
+                trashed.append(ClipboardItem(
+                    content: content,
+                    type: .text,
+                    contentHash: hash
+                ))
+            }
+        }
+        store.moveToTrash(trashed)
+        store.flushPendingSaves()
+
+        XCTAssertEqual(store.trashedItems.count, 1200,
+                       "precondition: all 1200 items fit in trash (unique ids)")
+        XCTAssertEqual(store.items.count, 0,
+                       "precondition: active list is empty before restore")
+
+        // Restore in reverse-trash-order — preserves the existing
+        // behavior pinned by testRestoreFromTrashArrayMovesAllBack and
+        // keeps the test independent of batch pre-sort order.
+        let toRestore = store.trashedItems
+        store.restoreFromTrash(toRestore)
+        store.flushPendingSaves()
+
+        // P2-4 (trim): active list must respect maxItems, regardless of
+        // how many trashed items the caller passed.
+        XCTAssertLessThanOrEqual(
+            store.items.count, store.maxItems,
+            "P2-4: bulk restore must not exceed maxItems cap"
+        )
+        // P2-4 (dedup): every restored item's contentHash must be
+        // unique within the active list. compactMap drops any nil-hash
+        // entries that shouldn't exist here (we set every contentHash
+        // in the fixture); presence of nil hashes would also violate
+        // the dedup invariant.
+        let activeHashes = store.items.compactMap { $0.contentHash }
+        XCTAssertEqual(
+            activeHashes.count, Set(activeHashes).count,
+            "P2-4: bulk restore must dedupe by contentHash"
+        )
+        // Sanity: trim must have fired — restoring 1200 against a cap
+        // of 10 means at least 1190 items are NOT restored (trash
+        // should still hold them).
+        XCTAssertLessThan(
+            store.items.count, 1200,
+            "P2-4: trim must drop the overflow batch"
+        )
+    }
+
     // MARK: - ID-CRASH-0001 (2026-07-31 Round 5): itemIndex invalidation on trash paths
 
     /// ID-CRASH-0001: `moveToTrash` mutated `items` without calling
