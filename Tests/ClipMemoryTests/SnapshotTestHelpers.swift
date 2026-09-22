@@ -65,7 +65,7 @@ import AppKit
 ///
 /// Golden files live at
 /// `<test-file-dir>/__Snapshots__/<TestClassName>/<testName>.png` and are
-/// gitignored.
+/// checked in (P1-AUDIT-2026-09-22 P1-6).
 
 @MainActor
 func renderToImage<V: View>(_ view: V, size: CGSize = CGSize(width: 800, height: 600)) -> CGImage {
@@ -85,14 +85,18 @@ func pngData(from cgImage: CGImage) -> Data {
 
 /// Asserts that `image` matches the golden PNG at the conventional path.
 ///
-/// Behavior:
-/// - If the golden PNG does not exist (first run, or after deletion),
-///   the rendered image is written as the golden and the test PASSES.
+/// Behavior (P1-AUDIT-2026-09-22 P1-6, strict):
+/// - If the golden PNG does not exist, the test FAILS with an actionable
+///   regenerator hint — silent first-run recording was the previous
+///   green-on-CI facade and has been removed.
 /// - If the golden exists, the rendered image is compared byte-for-byte
-///   against it. Mismatch fails the test.
+///   against it. Mismatch fails the test and writes `<test>.actual.png`
+///   next to the golden for Quick Look diffing.
 ///
 /// To regenerate a golden after an intentional visual change: delete the
-/// PNG from `__Snapshots__/<className>/` and re-run the test.
+/// PNG from `__Snapshots__/<className>/` (or run
+/// `Scripts/regenerate-snapshots.sh`) and re-run the test, then commit
+/// the new PNG.
 ///
 /// `className` is the XCTestCase subclass name (passed by the caller since
 /// `assertImageSnapshot` is a free function, not a method).
@@ -109,65 +113,49 @@ func assertImageSnapshot(
     let goldenURL = goldenDir.appendingPathComponent("\(testName).png")
     let actualData = pngData(from: image)
 
-    // CI mode: always re-record. GitHub Actions runners (macos-latest)
-    // render SwiftUI slightly differently from local macOS (different
-    // minor versions, SF Symbols availability, ImageRenderer encoding),
-    // so byte-for-byte comparison is unreliable across environments. On
-    // CI we treat snapshot tests as render smoke tests: confirm the view
-    // can be rendered + written to PNG, skip the visual comparison. Local
-    // runs (env var unset) keep the strict comparison for regression
-    // detection.
-    //
-    // Detect CI via NSHomeDirectory() == "/Users/runner" — GitHub Actions
-    // macOS runners run as the `runner` user with that exact home dir.
-    // xcodebuild test filters out the usual CI env vars (CI,
-    // GITHUB_ACTIONS) when launching xctest, but the home directory
-    // propagates. Fall back to env vars in case the runner image moves.
-    let home = NSHomeDirectory()
-    let env = ProcessInfo.processInfo.environment
-    let isCI = home == "/Users/runner" ||
-               env["GITHUB_ACTIONS"] == "true" ||
-               env["CI"] == "true"
-    if isCI {
-        do {
-            try FileManager.default.createDirectory(at: goldenDir, withIntermediateDirectories: true)
-            try actualData.write(to: goldenURL)
-        } catch {
-            XCTFail("Failed to record golden at \(goldenURL.path) on CI: \(error)", file: file, line: line)
-        }
+    // P1-AUDIT-2026-09-22 (audit finding P1-6): CI was previously treated
+    // as a render smoke test only — auto-record + pass — which meant
+    // CI never actually compared against the goldens. Strict byte compare
+    // every time, in any environment; a missing golden fails fast instead
+    // of silently passing. To regenerate after an intentional visual
+    // change, delete the golden from the repo and re-run the test
+    // locally; the script `Scripts/regenerate-snapshots.sh` writes back
+    // the new baseline as a follow-up commit.
+
+    guard FileManager.default.fileExists(atPath: goldenURL.path) else {
+        XCTFail("""
+            Snapshot golden missing at \(goldenURL.path).
+            Regenerate baselines by deleting the goldens directory and \
+            running tests locally, then commit the new PNGs.
+            See Scripts/regenerate-snapshots.sh.
+            """,
+            file: file, line: line)
         return
     }
 
-    // First-run auto-record. If the golden is missing, write it and pass.
-    // This is the standard Jest/Rspec snapshot pattern: writing new
-    // goldens is implicit; asserting against existing ones is explicit.
-    if !FileManager.default.fileExists(atPath: goldenURL.path) {
-        do {
-            try FileManager.default.createDirectory(at: goldenDir, withIntermediateDirectories: true)
-            try actualData.write(to: goldenURL)
-            print("Snapshot recorded: \(goldenURL.path)")
-            return
-        } catch {
-            XCTFail("Failed to record golden at \(goldenURL.path): \(error)", file: file, line: line)
-            return
-        }
-    }
-
-    guard let expectedData = try? Data(contentsOf: goldenURL) else {
-        XCTFail(
-            "Failed to read golden at \(goldenURL.path). Delete it to re-record.",
-            file: file, line: line
-        )
+    let goldenData: Data
+    do {
+        goldenData = try Data(contentsOf: goldenURL)
+    } catch {
+        XCTFail("Failed to load golden \(goldenURL.path): \(error)",
+                file: file, line: line)
         return
     }
 
-    if expectedData != actualData {
-        XCTFail(
-            "Snapshot mismatch for \(className)/\(testName). " +
-            "Expected \(expectedData.count) bytes, got \(actualData.count) bytes. " +
-            "Delete the golden to regenerate.",
-            file: file, line: line
-        )
+    guard actualData == goldenData else {
+        // Diff hint: write actual next to golden so developers can
+        // eyeball via Quick Look. CI artifacts retain both.
+        let actualURL = goldenURL.deletingLastPathComponent()
+            .appendingPathComponent("\(testName).actual.png")
+        try? actualData.write(to: actualURL)
+        XCTFail("""
+            Snapshot \(testName) mismatch.
+              golden: \(goldenURL.path)
+              actual: \(actualURL.path)
+            If change is intentional, regenerate golden and commit.
+            """,
+            file: file, line: line)
+        return
     }
 }
 
