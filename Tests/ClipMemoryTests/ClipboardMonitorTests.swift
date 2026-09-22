@@ -219,4 +219,24 @@ final class ClipboardMonitorTests: XCTestCase {
             )
         }
     }
+
+    // MARK: - P1-AUDIT-2026-09-22 (P2-6): >50KB content must not silently bypass detection
+
+    /// P1-AUDIT-2026-09-22 (P2-6): content >50KB must not silently return
+    /// `false` from `detectSensitive`. Large sensitive content (password
+    /// dumps, API keys, JSON blobs) was being skipped by the size guard
+    /// without any indication. Conservative "likely sensitive" flag wins:
+    /// false positives are user-recoverable (un-flag in UI), false negatives
+    /// leak data.
+    func testDetectSensitiveOnLargeContentDoesNotReturnFalseSilently() {
+        // "password1234 " is 13 chars × 6_000 = ~78KB utf8 (well over 50KB threshold).
+        let largeText = String(repeating: "password1234 ", count: 6_000)
+        XCTAssertGreaterThan(largeText.utf8.count, 50_000,
+                            "Test fixture must exceed the 50KB threshold")
+        let monitor = ClipboardMonitor()
+        let result = monitor.detectSensitive(largeText)
+        XCTAssertTrue(result,
+                     "P1-AUDIT-2026-09-22 P2-6: >50KB must not silently return false; " +
+                     "conservative 'likely sensitive' flag expected, got \(result)")
+    }
 }

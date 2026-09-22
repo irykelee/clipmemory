@@ -632,8 +632,16 @@ class ClipboardMonitor {
 
     func detectSensitive(_ content: String) -> Bool {
         // Reject pathological inputs that could cause quadratic regex backtracking.
-        // Very long strings (> 50 KB) skip keyword/regex scanning and only check size.
-        guard content.utf8.count <= 50_000 else { return false }
+        // Very long strings (> 50 KB) skip keyword/regex scanning.
+        // P1-AUDIT-2026-09-22 (P2-6): conservatively flag as likely-sensitive
+        // rather than silently return `false`. False positives are
+        // user-recoverable (un-flag in UI); false negatives leak data.
+        // Loud notice log on threshold crossing so the conservative flag
+        // is visible in Diagnostics for later tuning.
+        guard content.utf8.count <= 50_000 else {
+            logger.notice("P2-6: detectSensitive skipped full scan for \(content.utf8.count) bytes; conservative flag")
+            return true
+        }
 
         let range = NSRange(content.startIndex..., in: content)
 
