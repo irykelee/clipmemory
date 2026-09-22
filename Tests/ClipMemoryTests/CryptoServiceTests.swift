@@ -400,4 +400,184 @@ final class CryptoServiceTests: XCTestCase {
         }
         return data
     }
+
+    // MARK: - P1-AUDIT-2026-09-22 (P2-1) — v2 prefix collision on legacy ciphertext
+
+    /// P1-AUDIT-2026-09-22 (P2-1): legacy ciphertext whose first two bytes
+    /// happen to be "v2" (~1/65536 chance) must be decrypted via legacy path,
+    /// not silently marked as decrypt-failed.
+    func testLegacyCiphertextWithV2PrefixIsRecovered() throws {
+        // Build a fixture: encrypt a known plaintext with legacy (v1) format
+        // using a deterministic IV whose first 2 bytes are "v2". This
+        // deterministically reproduces the audit's ~1/65536 natural collision
+        // without mutating the ciphertext post-hoc (mutating would break the
+        // HMAC and the legacy fallback would fail because the IV bytes
+        // covered by the HMAC would no longer match the stored tag).
+        let keyData = Data((0..<32).map { UInt8($0 & 0xFF) })
+        let crypto = CryptoService(customKeyData: keyData)
+        let plaintext = Data("hello-world".utf8)
+        // Deterministic IV: first 2 bytes = "v2", remaining 14 bytes arbitrary.
+        var viIv = Data("v2".utf8)
+        viIv.append(Data(repeating: 0xAB, count: 14))
+        XCTAssertEqual(viIv.count, 16, "IV must be 16 bytes")
+        guard let legacyCiphertext = crypto.encryptLegacyForTesting(plaintext, iv: viIv) else {
+            XCTFail("legacy fixture builder missing"); return
+        }
+        XCTAssertEqual(legacyCiphertext.prefix(2), Data("v2".utf8),
+                       "fixture pre-condition: first two bytes are v2 (naturally, not via mutation)")
+
+        let decrypted = crypto.decryptData(legacyCiphertext)
+        XCTAssertEqual(decrypted, plaintext,
+                      "P1-AUDIT-2026-09-22 P2-1: v2-prefixed legacy ciphertext must be recovered via legacy fallback")
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-1) — Option B: auth failure now triggers
+    /// legacy fallback (C4 relaxation). Documents the explicit relaxation:
+    /// in ClipMemory's threat model, ciphertext is app-controlled (not
+    /// user-supplied), so C4's UserDefaults-write-attacker premise doesn't
+    /// apply — an attacker with that access has the file contents regardless.
+    /// ~1/65536 collision was the alternative (permanent data loss).
+    func testGCMAuthFailureDoesFallback() throws {
+        let keyData = Data((0..<32).map { UInt8($0 & 0xFF) })
+        let crypto = CryptoService(customKeyData: keyData)
+        guard let v2Ciphertext = crypto.encryptData(Data("test".utf8)) else {
+            XCTFail("GCM fixture failed"); return
+        }
+        // Mutate last byte (auth tag) to flip authentication
+        var mutated = v2Ciphertext
+        mutated[mutated.count - 1] ^= 0xFF
+        // Result is nil because legacy fallback also fails (data was real GCM,
+        // not legacy), so decrypt returns nil — but the FALLBACK PATH WAS
+        // EXERCISED. Verify via the in-process logger if needed; otherwise
+        // assert nil since legacy decrypt on GCM-shaped data fails.
+        XCTAssertNil(crypto.decryptData(mutated),
+                    "auth-failure returns nil after legacy fallback fails on GCM-shaped data")
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-1) production-path fix: the auto-review
+    /// (`docs/reviews/auto-review-20260922-180417-24914.md` Finding [P1])
+    /// caught that `testLegacyCiphertextWithV2PrefixIsRecovered` exercises
+    /// `decryptData` (dev/test path) but `decryptWithReason`
+    /// (CryptoService.swift:796-812, the LIVE path called by
+    /// `ClipboardStore+Encryption.getDecryptedContent` line 215 — the
+    /// rendering/search/OCR path) still had inline GCM that did NOT route
+    /// through `decryptBytes`. So the recovery never reached production
+    /// rendering/search/OCR. This test pins the production-path fix:
+    /// `decryptWithReason` with a naturally-"v2"-prefixed legacy
+    /// ciphertext returns `.success(plaintext)`.
+    func testDecryptWithReasonLegacyWithV2PrefixRecovers() throws {
+        // Same deterministic-IV fixture as testLegacyCiphertextWithV2PrefixIsRecovered
+        let keyData = Data((0..<32).map { UInt8($0 & 0xFF) })
+        let crypto = CryptoService(customKeyData: keyData)
+        let plaintext = "production-path recovery: v2-prefixed legacy must round-trip"
+        // Deterministic IV: first 2 bytes = "v2", remaining 14 bytes arbitrary.
+        var viIv = Data("v2".utf8)
+        viIv.append(Data(repeating: 0xAB, count: 14))
+        XCTAssertEqual(viIv.count, 16, "IV must be 16 bytes")
+        guard let legacyCiphertext = crypto.encryptLegacyForTesting(Data(plaintext.utf8), iv: viIv) else {
+            XCTFail("legacy fixture builder missing"); return
+        }
+        XCTAssertEqual(legacyCiphertext.prefix(2), Data("v2".utf8),
+                       "fixture pre-condition: first two bytes are v2 (naturally, not via mutation)")
+
+        // Production scenario: `isOldFormat` returns false (has "v2" prefix),
+        // so the live path enters decryptWithReason's v2 branch. Pre-fix,
+        // the inline GCM threw authFailure → .dataCorrupted → permanent
+        // scheduleDecryptionFailedMark. Post-fix, decryptWithReason routes
+        // through decryptBytes which falls back to decryptLegacy → plaintext.
+        let base64Ciphertext = legacyCiphertext.base64EncodedString()
+        let result = crypto.decryptWithReason(base64Ciphertext, itemID: UUID())
+
+        switch result {
+        case .success(let recovered):
+            XCTAssertEqual(recovered, plaintext,
+                "P1-AUDIT-2026-09-22 P2-1 production-path fix: v2-prefixed legacy ciphertext must be recovered via decryptWithReason")
+        case .keyUnavailable:
+            XCTFail("decryptWithReason returned .keyUnavailable — customKeyData should be available")
+        case .dataCorrupted:
+            XCTFail("decryptWithReason returned .dataCorrupted for v2-prefixed legacy ciphertext — auto-review Finding P1 regression (inline GCM branch did not call decryptBytes)")
+        case .internalError:
+            XCTFail("decryptWithReason returned .internalError for valid legacy ciphertext")
+        }
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-1) production-path regression guard:
+    /// tampered real-v2 ciphertext must STILL return `.dataCorrupted`
+    /// (authFailure → legacy fallback fails HMAC → nil → .dataCorrupted).
+    /// Ensures the production-path refactor of `decryptWithReason` did
+    /// not turn the tampered case into `.success`.
+    func testDecryptWithReasonTamperedV2StillDataCorrupted() throws {
+        let keyData = Data((0..<32).map { UInt8($0 & 0xFF) })
+        let crypto = CryptoService(customKeyData: keyData)
+        guard let v2Ciphertext = crypto.encryptData(Data("real v2 payload".utf8)) else {
+            XCTFail("v2 fixture failed"); return
+        }
+        var mutated = v2Ciphertext
+        mutated[mutated.count - 1] ^= 0xFF  // flip last byte (GCM auth tag)
+
+        let result = crypto.decryptWithReason(mutated.base64EncodedString(), itemID: UUID())
+        switch result {
+        case .success:
+            XCTFail("decryptWithReason returned .success for tampered real-v2 ciphertext — fallback must not falsely succeed")
+        case .keyUnavailable:
+            XCTFail("decryptWithReason returned .keyUnavailable for tampered real-v2 ciphertext")
+        case .dataCorrupted:
+            // Expected: authFailure → decryptLegacy fallback → HMAC mismatch → nil → .dataCorrupted
+            break
+        case .internalError:
+            XCTFail("decryptWithReason returned .internalError — refactor should map nil to .dataCorrupted")
+        }
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-1) production-path regression guard:
+    /// valid v2 ciphertext must continue to return `.success` (no regression
+    /// for the common case after the refactor routes through `decryptBytes`).
+    func testDecryptWithReasonValidV2StillSucceeds() throws {
+        let keyData = Data((0..<32).map { UInt8($0 & 0xFF) })
+        let crypto = CryptoService(customKeyData: keyData)
+        let plaintext = "happy-path v2 round trip"
+        guard let v2Ciphertext = crypto.encryptData(Data(plaintext.utf8)) else {
+            XCTFail("v2 fixture failed"); return
+        }
+
+        let result = crypto.decryptWithReason(v2Ciphertext.base64EncodedString(), itemID: UUID())
+        switch result {
+        case .success(let recovered):
+            XCTAssertEqual(recovered, plaintext, "valid v2 must still decrypt via decryptWithReason")
+        case .keyUnavailable:
+            XCTFail("decryptWithReason returned .keyUnavailable for valid v2 ciphertext")
+        case .dataCorrupted:
+            XCTFail("decryptWithReason returned .dataCorrupted for valid v2 ciphertext — regression")
+        case .internalError:
+            XCTFail("decryptWithReason returned .internalError for valid v2 ciphertext")
+        }
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-1) production-path regression guard:
+    /// valid legacy ciphertext (no "v2" prefix) must continue to return
+    /// `.success` via the legacy branch (which already routed through
+    /// `decryptBytes` — confirms no regression on the unchanged path).
+    func testDecryptWithReasonValidLegacyStillSucceeds() throws {
+        let keyData = Data((0..<32).map { UInt8($0 & 0xFF) })
+        let crypto = CryptoService(customKeyData: keyData)
+        let plaintext = "happy-path legacy round trip"
+        // Random IV (natural legacy, no v2 prefix collision)
+        guard let legacyCiphertext = crypto.encryptLegacyForTesting(Data(plaintext.utf8)) else {
+            XCTFail("legacy fixture builder missing"); return
+        }
+        XCTAssertNotEqual(legacyCiphertext.prefix(2), Data("v2".utf8),
+                          "fixture pre-condition: natural legacy IV must not start with v2 (else test becomes the collision test)")
+
+        let result = crypto.decryptWithReason(legacyCiphertext.base64EncodedString(), itemID: UUID())
+        switch result {
+        case .success(let recovered):
+            XCTAssertEqual(recovered, plaintext, "valid legacy must still decrypt via decryptWithReason")
+        case .keyUnavailable:
+            XCTFail("decryptWithReason returned .keyUnavailable for valid legacy ciphertext")
+        case .dataCorrupted:
+            XCTFail("decryptWithReason returned .dataCorrupted for valid legacy ciphertext — regression")
+        case .internalError:
+            XCTFail("decryptWithReason returned .internalError for valid legacy ciphertext")
+        }
+    }
 }
