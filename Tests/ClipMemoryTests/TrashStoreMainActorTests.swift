@@ -212,5 +212,72 @@ extension TrashStoreMainActorTests {
         XCTAssertTrue(suite.bool(forKey: TrashStore.loadFailedSentinelKey),
                       "Empty load after sentinel=true must keep sentinel")
     }
+
+    /// P1-AUDIT-2026-09-22 (audit finding P1-3): the legacy
+    /// scheduleSaveRetry() guarded on `needsSave`, but flushSave flips
+    /// needsSave=false BEFORE calling saveTrashedItems(). On failure the
+    /// retry guard immediately returned — retry was dead code, just like
+    /// ClipboardStore's pre-H-1 needsSave race that was fixed 2026-08-09.
+    /// Regression test: a failing backend save followed by a healthy one
+    /// 6s later must persist the recovered items.
+    func testRetryActuallyReschedulesAfterSaveFailure() throws {
+        let suiteName = "p1-retry-actually-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        // Backend that fails on first save, then succeeds.
+        let flakyBackend = FlakyStorageBackend(failFirstN: 1)
+
+        let store = TrashStore(backend: flakyBackend, defaults: suite)
+        XCTAssertEqual(store.trashedItems.count, 0, "Starts empty")
+
+        // Move an item to trash. This calls scheduleSave → flushSave →
+        // saveTrashedItems → first save THROWS.
+        let item = ClipboardItem.makeStub(content: "retry-me", type: .text)
+        store.moveToTrash(item, evictCaches: { _ in }, didMove: {})
+
+        // Wait past the 5s retry deadline + buffer.
+        // Use DispatchQueue.main.asyncAfter + wait(for:) so the run loop
+        // spins and the .utility-queue DispatchSourceTimer can dispatch
+        // its flushSave() closure to .main. (A Thread.sleep loop on an
+        // @MainActor-isolated test method blocks the main thread and
+        // prevents the timer→main dispatch chain from ever firing.)
+        let exp = expectation(description: "retry save observed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) {
+            XCTAssertEqual(flakyBackend.savesObserved, 2,
+                           "P1-AUDIT-2026-09-22: failure path must trigger a retry save")
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 8.0)
+    }
+}
+
+/// StorageBackend that fails the first N saves then succeeds.
+final class FlakyStorageBackend: StorageBackend, @unchecked Sendable {
+    private var failuresRemaining: Int
+    private let lock = NSLock()
+    private(set) var savesObserved = 0
+    private var savedItems: [ClipboardItem] = []
+
+    init(failFirstN: Int) { self.failuresRemaining = failFirstN }
+
+    func load() throws -> [ClipboardItem] {
+        lock.lock(); defer { lock.unlock() }
+        return savedItems
+    }
+
+    func save(_ items: [ClipboardItem]) throws {
+        lock.lock(); defer { lock.unlock() }
+        savesObserved += 1
+        if failuresRemaining > 0 {
+            failuresRemaining -= 1
+            throw BackupPackageError.archiveFailed
+        }
+        savedItems = items
+    }
+
+    func loadTags() throws -> [Tag] { [] }
+
+    func saveTags(_ tags: [Tag]) throws {}
 }
 #endif

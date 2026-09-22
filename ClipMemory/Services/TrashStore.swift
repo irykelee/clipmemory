@@ -248,9 +248,12 @@ final class TrashStore: ObservableObject {
         logger.error("Corrupt trash blob quarantined to \(quarantineKey): \(error.localizedDescription)")
     }
 
-    /// ID-STORE-0019 (MEDIUM-15 audit fix, 2026-08-15): the three legs
-    /// of the data-persistence gate now apply to the trash path too —
-    /// previously only the loud-log leg was present. On save failure:
+    /// ID-STORE-0019 (MEDIUM-15 audit fix, 2026-08-15) + P1-AUDIT-2026-09-22
+    /// (audit finding P1-3, retry leg was dead code until needsSave was
+    /// flipped back to true in the catch branch — see saveTrashedItems).
+    /// The three legs of the data-persistence gate now apply to the trash
+    /// path too — previously only the loud-log leg was present. On save
+    /// failure:
     ///   1. 报错 — loud log (existing line).
     ///   2. 重试 — reschedule the existing `saveTimer` at a longer
     ///      interval so the next attempt happens without waiting for
@@ -269,10 +272,22 @@ final class TrashStore: ObservableObject {
         } catch {
             // 1. loud log
             logger.error("ID-STORE-0019: Failed to save trashed items: \(error.localizedDescription)")
+
+            // P1-AUDIT-2026-09-22 (audit finding P1-3): flip needsSave back
+            // to true BEFORE calling scheduleSaveRetry. flushSave sets it to
+            // false at line 376 before invoking saveTrashedItems, so the
+            // legacy retry guard `guard needsSave else { return }` was
+            // instant-dead-code — same anti-pattern as ClipboardStore's
+            // pre-H-1 needsSave race (commit 2026-08-09). The retry timer
+            // will only re-enter via flushSave's guard when needsSave stays
+            // true.
+            needsSave = true
+
             // 2. retry — schedule another save via the existing saveTimer,
             //    with a longer deadline so we don't tight-loop if the
             //    backend is in a transient bad state.
             scheduleSaveRetry()
+
             // 3. user-visible — post .clipboardSaveFailed with the
             //    trash-specific source. The existing AppDelegate
             //    observer (line 487) reads `note.userInfo["source"]`
