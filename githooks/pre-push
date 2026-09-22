@@ -1,0 +1,37 @@
+#!/bin/sh
+# pre-push — opencode 独立审核 push 门禁 v2
+#
+# 规则: 凡即将离开本机、进入项目历史的变更（任何分支、任何文件类型——代码/文档/SPEC）,
+# 必须先被独立审核。VERDICT=FAIL（存在 P0/P1）→ 阻断本次 push。
+#
+# v2 修复（审核模型 2026-09-22 抓出的 2×P1 + 1×P2）:
+#   P1 逐分支显式范围 —— 不再依赖 HEAD/共享 mark: 每个被推分支单独算
+#      remote..local（已有远端）或 merge-base 分叉点..local（新分支）,
+#      push 非检出分支不再被绕过;
+#   P1 mark 污染 —— 走 REVIEW_RANGE 模式, orca-auto-review.sh 不读不写共享审核点;
+#   P2 纯删除 push（删分支/tag）→ 全零 sha 全 continue, 直接放行。
+#
+# 显式绕过: git push --no-verify（不产生审核记录）。
+# 已知取舍: 新分支且无 main/origin/main 可作分叉基点时退化为只审 tip 提交（local~1..local）;
+#           root 提交（仓库首个提交）无法表达为范围, 放行。
+ZERO=0000000000000000000000000000000000000000
+ROOT="$(git rev-parse --show-toplevel)"
+REVIEWER="$ROOT/githooks/orca-auto-review.sh"
+[ -x "$REVIEWER" ] || exit 0
+
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ "$local_sha" = "$ZERO" ] && continue
+    if [ "$remote_sha" = "$ZERO" ]; then
+        base=$(git merge-base origin/main "$local_sha" 2>/dev/null \
+            || git merge-base main "$local_sha" 2>/dev/null \
+            || git rev-parse "$local_sha~1" 2>/dev/null) || continue
+    else
+        base="$remote_sha"
+    fi
+    [ -z "$base" ] && continue
+    [ "$base" = "$local_sha" ] && continue   # 无新提交（如把 main 推成新分支/远端已最新）→ 放行
+    # 前台跑（后台会丢阻断能力）; FAIL/审核失败 → exit 1 阻断, git push --no-verify 可越过
+    REVIEW_BLOCK_ON_FAIL=1 REVIEW_RANGE="$base..$local_sha" "$REVIEWER" "$ROOT" < /dev/null || exit 1
+    sleep 1   # 报告名含秒级时间戳, 防多分支同秒碰撞
+done
+exit 0
