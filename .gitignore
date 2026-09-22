@@ -11,8 +11,8 @@ DerivedData/
 *.perspectivev3
 build/
 
-# swift-snapshot-testing golden PNGs — regenerated locally, not in repo
-__Snapshots__/
+# swift-snapshot-testing golden PNGs — intentionally checked in (P1-AUDIT-2026-09-22 P1-6)
+# __Snapshots__/
 
 # Binary releases — generated locally, not stored in git
 Releases/
