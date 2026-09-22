@@ -25,7 +25,8 @@ auto-review-YYYYMMDD-HHMMSS.md
 
 ## 触发机制
 
-- **自动**：`main` 分支每次 `git commit` 后，`.git/hooks/post-commit`（经 `githooks/install.sh` 安装）后台触发 `githooks/orca-auto-review.sh`。
+- **自动（commit）**：`main` 分支每次 `git commit` 后，`.git/hooks/post-commit`（经 `githooks/install.sh` 安装）后台触发 `githooks/orca-auto-review.sh`。
+- **自动（push）**：任何分支 `git push` 前，pre-push 门禁强制审核所有未审提交，VERDICT=FAIL 阻断 push（`--no-verify` 显式越过）。
 - **手动**（开发分支）：提交前手动跑 `bash githooks/orca-auto-review.sh`，对当前 `HEAD~1..HEAD` 审核。
 - 审核点记在 `githooks/.last-reviewed`，避免重复审核；范围 = 上次审核点 → 当前 HEAD。
 
@@ -63,5 +64,5 @@ auto-review-YYYYMMDD-HHMMSS.md
 ## 维护纪律
 
 - 不删历史报告——保留作 audit trail（如需归档可 `git add -f` 后提交）。
-- 开发分支提交前手动跑脚本；`main` 分支自动触发。
+- 开发分支提交前手动跑脚本（或依赖 pre-push 门禁在 push 时强制审）；`main` 分支 commit 自动触发。
 - 审核在空转（无结论/余额/限流）时会在 `githooks/review-failures.log` 与 `/tmp/orca-auto-review.log` 留痕，不会静默失效。

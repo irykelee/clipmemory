@@ -16,8 +16,6 @@ set -euo pipefail
 #   - 运行时标记落在 githooks/（本仓库 hook 约定用小写 githooks/）
 #   - prompt 针对 Swift/SwiftUI/AppKit 剪贴板管理器
 #
-set -eo pipefail
-
 ROOT="${1:-$(git rev-parse --show-toplevel)}"
 cd "$ROOT" || { echo "无法进入仓库: $ROOT" >&2; exit 1; }
 
@@ -59,8 +57,12 @@ elif [[ -f "$MARK" ]]; then
   if [[ -n "$PREV" ]] && git merge-base --is-ancestor "$PREV" HEAD 2>/dev/null; then
     COUNT=$(git rev-list --count "$PREV..HEAD" 2>/dev/null || echo 0)
     if [[ "${COUNT:-0}" -eq 0 ]]; then
-      # 无新提交, 刷新审核点即可
-      echo "$CUR" > "$MARK"
+      # 无新提交, 刷新审核点即可（main 链专属守卫, 同文末记录点逻辑:
+      # REVIEW_RANGE 模式 / 非 main 分支一律不写 mark, 防跨分支污染）
+      BR0=$(git branch --show-current 2>/dev/null)
+      if [[ -z "${REVIEW_RANGE:-}" && "$BR0" == "main" ]]; then
+        echo "$CUR" > "$MARK"
+      fi
       exit 0
     fi
     RANGE="$PREV..HEAD"
@@ -77,7 +79,7 @@ LOG=$(git log --oneline "$RANGE" 2>/dev/null | head -10 || true)
 
 # ---------------------------------------------------------------- opencode 独立审核
 mkdir -p "$REPORT_DIR"
-STAMP=$(date +%Y%m%d-%H%M%S)
+STAMP="$(date +%Y%m%d-%H%M%S)-$$"   # 附加 PID: post-commit 与 pre-push 同秒并发时报告不互相覆盖
 REPORT="$REPORT_DIR/auto-review-$STAMP.md"
 
 PROMPT="你是独立代码审核员, 审核 ClipMemory 仓库 main 分支的新提交。
@@ -137,7 +139,11 @@ if ! command -v "$OPENCODE" >/dev/null 2>&1; then
     } > "$REPORT"
     # 告警写 review-failures.log（让下次 commit 不再重复告警）
     echo "$STAMP opencode_missing range=$RANGE" >> "$HOOKS_DIR/review-failures.log"
-    echo "$CUR" > "$MARK"
+    # 仅 main 链推进审核点（REVIEW_RANGE / 非 main 不写, 防 mark 被分支 HEAD 污染）
+    BR1=$(git branch --show-current 2>/dev/null)
+    if [[ -z "${REVIEW_RANGE:-}" && "$BR1" == "main" ]]; then
+      echo "$CUR" > "$MARK"
+    fi
     exit 0
 fi
 
