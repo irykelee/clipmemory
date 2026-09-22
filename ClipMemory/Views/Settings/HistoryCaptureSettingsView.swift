@@ -127,6 +127,16 @@ struct HistoryCaptureSettingsView: View {
         .onChange(of: store.excludedBundleIdsString) { _ in refreshExcludedApps() }
         .sheet(isPresented: $showingAppPicker) {
             appPickerSheet.onAppear {
+                // Post-OpenCode-auto-review P2 fix (2026-09-22): invalidate the
+                // service's in-process cache at sheet-appear time so the fresh
+                // background scan picks up apps installed/uninstalled while
+                // the picker was closed. The previous design called clearCache()
+                // inside loadInstalledAppsIfNeeded, which cleared before the
+                // cache could ever serve — every call re-scanned, defeating
+                // the in-process cache optimization. The within-open refresh
+                // path still hits the cache (no flicker); only sheet open
+                // invalidates.
+                appDiscovery.clearCache()
                 appPickerSearchDebounced = appPickerSearch
                 loadInstalledAppsIfNeeded()
             }
@@ -485,56 +495,38 @@ struct HistoryCaptureSettingsView: View {
         .frame(width: 400, height: 450)
     }
 
-    /// M-10 (2026-07-25 audit): the static app cache is read on the main
-    /// thread but written from a `DispatchQueue.main.async` callback. Use a
-    /// lock so a future caller can't race the read/write.
-    private static var cachedApps: [AppPickerItem]?
-    private static let cachedAppsLock = NSLock()
+    /// P1-AUDIT-2026-09-22 (P1-5): app discovery is owned by `AppDiscoveryService`
+    /// — the View holds only the instance plus a completion handler. FileManager
+    /// + NSHomeDirectory() concat + bundle-ID parsing now live entirely in the
+    /// service so this View has no direct disk API surface.
+    private let appDiscovery = AppDiscoveryService()
 
-    /// Kick off a background fetch of installed applications. Icons are loaded
-    /// lazily by AppPickerRow via NSImage, so only the directory scan and bundle
-    /// ID lookup run on the background queue. Results are cached statically.
+    /// Kick off a background fetch of installed applications via
+    /// `AppDiscoveryService`. Icons are loaded lazily by AppPickerRow via NSImage,
+    /// so only the directory scan and bundle ID lookup run on the background queue.
+    /// Results are cached in-process by the service.
     ///
-    /// ID-VIEW-0006 (2026-07-31 audit): the static cache previously never
-    /// expired within the process lifetime, so apps installed/uninstalled
-    /// after the first picker open stayed stale until app restart. Now
-    /// stale-while-revalidate: serve the cache instantly (no flicker), but
-    /// always kick a fresh background scan on every sheet open and swap in
-    /// the new results when they land.
+    /// ID-VIEW-0006 (2026-07-31 audit, preserved): stale-while-revalidate — the
+    /// service's in-process cache is served instantly (no flicker) on first
+    /// call within an open, and the fresh scan triggered by the sheet's
+    /// `.onAppear` (which calls `appDiscovery.clearCache()`) swaps in
+    /// install/uninstall changes detected at runtime.
+    ///
+    /// Post-OpenCode-auto-review P2 fixes (2026-09-22):
+    /// - `clearCache()` moved out of this function into the sheet's `.onAppear`
+    ///   so the cache can serve a within-open refresh. The previous design
+    ///   cleared before every call, making the cache unreachable from
+    ///   production (every call re-scanned).
+    /// - Completion always swaps `installedApps`. The previous equal-count
+    ///   skip (`count != items.count`) missed the case where an app is
+    ///   uninstalled and another installed in the same window — the array
+    ///   length stayed the same but the entries differed.
     private func loadInstalledAppsIfNeeded() {
         guard !isLoadingApps else { return }
-        Self.cachedAppsLock.lock()
-        let cached = Self.cachedApps
-        Self.cachedAppsLock.unlock()
-        if let cached = cached, installedApps.isEmpty {
-            installedApps = cached
-        }
         isLoadingApps = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            var results: [AppPickerItem] = []
-            let fileManager = FileManager.default
-            let appDirs = ["/Applications", NSHomeDirectory() + "/Applications"]
-
-            for appDir in appDirs {
-                guard let apps = try? fileManager.contentsOfDirectory(atPath: appDir) else { continue }
-                for app in apps where app.hasSuffix(".app") {
-                    let appPath = (appDir as NSString).appendingPathComponent(app)
-                    let name = (app as NSString).deletingPathExtension
-                    if let bundleId = Bundle(url: URL(fileURLWithPath: appPath))?.bundleIdentifier {
-                        // ID-VIEW-0039: hide ClipMemory itself — see
-                        // classifyDroppedURLs for why self-exclusion is refused.
-                        if bundleId.lowercased() == Bundle.main.bundleIdentifier?.lowercased() { continue }
-                        results.append(AppPickerItem(name: name, bundleId: bundleId, icon: nil, isRunning: false))
-                    }
-                }
-            }
-            DispatchQueue.main.async {
-                Self.cachedAppsLock.lock()
-                Self.cachedApps = results
-                Self.cachedAppsLock.unlock()
-                self.installedApps = results
-                self.isLoadingApps = false
-            }
+        appDiscovery.discoverInstalledApps { items in
+            self.installedApps = items
+            self.isLoadingApps = false
         }
     }
 }

@@ -166,15 +166,25 @@ struct InstructionRow: View {
     }
 }
 
-/// Manages first launch state
+/// P1-AUDIT-2026-09-22 (P1-5): `FirstLaunchManager` is now a thin
+/// pass-through to `ServiceContainer.firstLaunch` (`FirstLaunchService`).
+/// The `UserDefaults.standard` access moved out of the View layer — this
+/// shim stays so `AppDelegate` keeps using the same call sites without
+/// a separate refactor in this batch.
+///
+/// The `hasLaunchedKey` constant is exposed only because it's referenced
+/// from `ZZZSuiteTeardownTests.swift:160` ("hasLaunchedBefore") in the
+/// appLifecycleKeys whitelist. The canary still observes this exact key
+/// via `UserDefaults.standard.bool(forKey:)`, so the production key is
+/// unchanged across this refactor.
 class FirstLaunchManager {
     static let hasLaunchedKey = "hasLaunchedBefore"
 
     static var isFirstLaunch: Bool {
-        !UserDefaults.standard.bool(forKey: hasLaunchedKey)
+        !ServiceContainer.firstLaunch.hasLaunched
     }
 
     static func markLaunched() {
-        UserDefaults.standard.set(true, forKey: hasLaunchedKey)
+        ServiceContainer.firstLaunch.markLaunched()
     }
 }

@@ -92,9 +92,6 @@ private struct ToolbarExportMenu: View {
 
 struct ContentView: View {
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "ContentView")
-    // ID-PERF-0001 (2026-07-30 audit): hoist JSONEncoder. saveCollapsedGroups
-    // is called from the SwiftUI main-actor context, so this static is safe.
-    private static let collapsedGroupsEncoder = JSONEncoder()
     @ObservedObject var store = ClipboardStore.shared
     @ObservedObject var languageManager = LanguageManager.shared
     @State private var selectedTab: SidebarTab = .all
@@ -133,21 +130,16 @@ struct ContentView: View {
     @State private var lastCopiedId: UUID?
     @State private var scrollAnchor: UUID?
     @State private var selectedItems: Set<UUID> = []
-    @State private var collapsedGroups: Set<TimeGroup> = {
-        guard let data = UserDefaults.standard.string(forKey: "collapsedGroups")?.data(using: .utf8) else {
-            return []
-        }
-        // ID-06 (2026-07-30 audit): a future TimeGroup rename would make every
-        // user's stored collapsed state silently invalid and reset to "all
-        // expanded". Log the decode failure so the regression is visible.
-        do {
-            let arr = try JSONDecoder().decode([String].self, from: data)
-            return Set(arr.compactMap { TimeGroup(rawValue: $0) })
-        } catch {
-            Self.logger.error("Failed to decode persisted collapsed groups (reset to all expanded): \(error.localizedDescription, privacy: .public)")
-            return []
-        }
-    }()
+    // P1-AUDIT-2026-09-22 (P1-5): collapsedGroups persistence moved from
+    // explicit UserDefaults JSON round-trip into SwiftUI's @AppStorage. The
+    // raw string stays at the SAME key ("collapsedGroups") so existing user
+    // data survives this refactor without migration.
+    //
+    // The downstream `collapsedGroups` computed property (declared below)
+    // exposes a `Binding<Set<TimeGroup>>` so callers like `ItemListView`
+    // (which takes `@Binding var collapsedGroups: Set<TimeGroup>`) keep
+    // working unchanged.
+    @AppStorage("collapsedGroups") private var collapsedGroupsRaw: String = ""
     /// Anchor used for "today"/"yesterday" grouping.  Updated by a timer so
     /// items move to the correct section if the app stays open across midnight.
     @State private var currentDate = Date()
@@ -200,7 +192,7 @@ struct ContentView: View {
     private func recomputeVisibleGlobalIndices() {
         cachedVisibleGlobalIndices = Self.computeVisibleGlobalIndices(
             items: cachedDisplayedItems,
-            collapsedGroups: collapsedGroups,
+            collapsedGroups: collapsedGroups.wrappedValue,
             searchText: searchTextDebounced,
             today: startOfToday,
             yesterday: startOfYesterday
@@ -270,23 +262,6 @@ struct ContentView: View {
 
     private func focusSearchField() {
         isSearchFocused = true
-    }
-
-    private func saveCollapsedGroups(_ groups: Set<TimeGroup>) {
-        let arr = groups.map { $0.rawValue }
-        // ID-05 (2026-07-30 audit): JSONEncoder on [String] doesn't realistically
-        // fail, but if a future refactor adds non-encodable elements the user's
-        // collapsed-group preference would silently reset on next launch. Log it.
-        do {
-            let data = try Self.collapsedGroupsEncoder.encode(arr)
-            guard let str = String(data: data, encoding: .utf8) else {
-                Self.logger.error("Failed to convert collapsed-groups JSON to UTF-8 (preference lost)")
-                return
-            }
-            UserDefaults.standard.set(str, forKey: "collapsedGroups")
-        } catch {
-            Self.logger.error("Failed to persist collapsed groups (preference lost on next launch): \(error.localizedDescription, privacy: .public)")
-        }
     }
 
     private func debounceSearch(_ text: String) {
@@ -531,8 +506,54 @@ struct ContentView: View {
         store.tags.values.sorted { $0.createdAt > $1.createdAt }
     }
 
-    /// Toggle a tag in/out of the sidebar selection. Empty selection means
-    /// "no tag filter applied"; multiple selected means "OR within section".
+    /// P1-AUDIT-2026-09-22 (P1-5): exposes a `Binding<Set<TimeGroup>>` on top
+    /// of the `@AppStorage` raw string. Persistence is handled by SwiftUI's
+    /// `AppStorage`; this binding only marshals between `Set<TimeGroup>` and
+    /// the JSON-string representation that `@AppStorage<String>` requires on
+    /// macOS 13 (macOS 14+ gained `Codable` direct support, but the project
+    /// deployment target is macOS 13).
+    ///
+    /// The raw `@AppStorage` key is the same constant (`"collapsedGroups"`)
+    /// the previous JSON round-trip used — users' existing collapsed-state
+    /// preference persists across this refactor without migration.
+    private var collapsedGroups: Binding<Set<TimeGroup>> {
+        Binding(
+            get: {
+                guard let data = self.collapsedGroupsRaw.data(using: .utf8), !data.isEmpty else {
+                    return []
+                }
+                // ID-06 (2026-07-30 audit): a future TimeGroup rename would
+                // make every user's stored collapsed state silently invalid
+                // and reset to "all expanded". Log the decode failure so the
+                // regression is visible.
+                do {
+                    let arr = try JSONDecoder().decode([String].self, from: data)
+                    return Set(arr.compactMap { TimeGroup(rawValue: $0) })
+                } catch {
+                    Self.logger.error("Failed to decode persisted collapsed groups (reset to all expanded): \(error.localizedDescription, privacy: .public)")
+                    return []
+                }
+            },
+            set: { newValue in
+                let arr = newValue.map { $0.rawValue }
+                // ID-05 (2026-07-30 audit): JSONEncoder on [String] doesn't
+                // realistically fail, but if a future refactor adds
+                // non-encodable elements the user's collapsed-group preference
+                // would silently reset on next launch. Log it.
+                do {
+                    let data = try JSONEncoder().encode(arr)
+                    guard let str = String(data: data, encoding: .utf8) else {
+                        Self.logger.error("Failed to convert collapsed-groups JSON to UTF-8 (preference lost)")
+                        return
+                    }
+                    self.collapsedGroupsRaw = str
+                } catch {
+                    Self.logger.error("Failed to persist collapsed groups (preference lost on next launch): \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        )
+    }
+
     private func toggleTag(_ id: UUID) {
         if selectedTagIds.contains(id) {
             selectedTagIds.remove(id)
@@ -583,7 +604,7 @@ struct ContentView: View {
             // fire outside SwiftUI's view-update cycle, so writing
             // cachedVisibleGlobalIndices can't hit "Modifying state during
             // view update".
-            .onChange(of: collapsedGroups) { _ in
+            .onChange(of: collapsedGroups.wrappedValue) { _ in
                 recomputeVisibleGlobalIndices()
             }
             // H-10 (2026-07-24 audit): searchTextDebounced is the "search has
@@ -720,9 +741,6 @@ struct ContentView: View {
                     }
                     updateDisplayedItemsCache()
                 }
-            }
-            .onChange(of: collapsedGroups) { val in
-                self.saveCollapsedGroups(val)
             }
             .onReceive(NotificationCenter.default.publisher(for: .cmdFFindAction)) { _ in self.focusSearchField() }
             // P0-2 F2/F19: view self-observes .cryptoKeyPrepared so the banner
@@ -997,7 +1015,7 @@ struct ContentView: View {
                 batchAllPinned: batchAllPinned,
                 searchText: $searchText,
                 searchTextDebounced: $searchTextDebounced,
-                collapsedGroups: $collapsedGroups,
+                collapsedGroups: collapsedGroups,
                 selectedItems: $selectedItems,
                 keyboardSelectedIndex: $keyboardSelectedIndex,
                 lastCopiedId: $lastCopiedId,
