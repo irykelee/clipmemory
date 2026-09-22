@@ -41,9 +41,18 @@ while [ $# -gt 0 ]; do
 done
 
 # Patterns that indicate non-standard audit ID reference.
-# These are the formats used in 2026-08-12 audit report (H-1..H-6, M-1..M-8, L-1..L-15).
-# We allow ID-DOMAIN-NNNN (4 digits), so the regex below excludes those lines.
-BAD_PATTERN='\[?(HIGH|MEDIUM|LOW)\]?-[0-9]+\]?'
+# These are the formats used in 2026-08-12 audit report (e.g. the HIGH /
+# MEDIUM / LOW rows in `feedback/audit-id-mapping.md`). We allow the
+# canonical ID-DOMAIN-NNNN form (4 digits), so the regex below excludes
+# those lines.
+# P1-AUDIT-2026-09-22 (P2-11): match both full-word (HIGH-N / MEDIUM-N /
+# LOW-N) AND legacy short-form — see `feedback/audit-id-mapping.md` for
+# the canonical old→new table. Short-form was missed by the original
+# regex and produced PASS on files referencing legacy IDs (see e.g.
+# ID-SILENT-0022 / ID-STORE-0011 / ID-TEST-0001 for known back-references).
+# The allow list still exempts CLAUDE.md + docs/superpowers/audits/* +
+# feedback/* + files co-locating ID-DOMAIN-NNNN.
+BAD_PATTERN='\[?(HIGH|MEDIUM|LOW|[HML])\]?-[0-9]+\]?'
 GOOD_PATTERN='ID-[A-Z]+-[0-9]{4}'
 
 # Allow-list: files where non-standard ID references are intentional historical record.
@@ -58,6 +67,7 @@ is_allowlisted() {
   case "$tail" in
     CLAUDE.md) return 0 ;;
     docs/superpowers/audits/*) return 0 ;;
+    feedback/*) return 0 ;;  # Audit ID back-reference mappings (P1-AUDIT-2026-09-22 P2-11)
     Scripts/lint-audit-ids.sh) return 0 ;;
   esac
   case "$abs_tail" in
