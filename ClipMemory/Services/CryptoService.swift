@@ -484,22 +484,21 @@ class CryptoService: CryptoServiceProtocol {
             // E1 (2026-07-29 audit): distinguish "file exists but unreadable"
             // (transient IO/permission error — keep file, do not alert) from
             // "read succeeded but wrong format" (corrupt — alert user).
+            // P2-3 (OpenCode 2026-09-23): store() throws KeyStoreError;
+            // see CryptoService+KeychainMigration.swift for classification.
             let keyData = readKeyFile(at: keyURL, caller: "prepareKey")
             if let keyData, keyData.count == 32 {
-                if keyStore.store(keyData) == errSecSuccess, keyStore.load() == keyData {
-                    secureRemoveKeyFile(at: keyURL)
-                } else {
-                    logger.error("Keychain migration failed; keeping key file until next launch")
-                    // ID-SILENT-0013 (2026-07-30 audit): `try?` previously
-                    // swallowed chmod failures — if the file already
-                    // existed at 0o644 (typical world-readable), the key
-                    // would stay that way until the next successful
-                    // migration. Replace with explicit do/catch + log.
-                    do {
-                        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
-                    } catch {
-                        logger.error("Failed to chmod legacy key file to 0o600: \(error.localizedDescription, privacy: .public)")
+                do {
+                    try keyStore.store(keyData)
+                    if keyStore.load() == keyData {
+                        secureRemoveKeyFile(at: keyURL)
+                    } else {
+                        Self.handleKeychainMigrationFailure(error: .permanent(errSecVerifyFailed), keyURL: keyURL, logger: Self.logger)
                     }
+                } catch let error as KeyStoreError {
+                    Self.handleKeychainMigrationFailure(error: error, keyURL: keyURL, logger: Self.logger)
+                } catch {
+                    Self.handleKeychainMigrationFailure(error: nil, keyURL: keyURL, logger: Self.logger, reason: "\(error)")
                 }
                 return publishToSharedCache(SymmetricKey(data: keyData))
             }
@@ -605,18 +604,21 @@ class CryptoService: CryptoServiceProtocol {
             notifyKeyPreparationFailed()
             return nil
         }
-        let status = keyStore.store(keyData)
-        guard status == errSecSuccess else {
-            logger.error("Failed to store encryption key in Keychain: \(status)")
-            // Offer regenerate (e.g. keychain was locked) or an informed
-            // quit — never crash (H6).
+        do {
+            try keyStore.store(keyData)
+            return publishToSharedCache(SymmetricKey(data: keyData))
+        } catch {
+            // P2-3 (OpenCode 2026-09-23): store now throws KeyStoreError
+            // (transient/permanent). Recovery contract unchanged: offer
+            // regenerate vs quit — never crash (H6).
+            logger.error("Failed to store encryption key in Keychain: \(error)")
+            // Offer regenerate (e.g. keychain was locked) or an informed quit — never crash (H6).
             guard failureHandler(.keyStorageFailed) == .regenerate else {
                 notifyKeyPreparationFailed()
                 return nil
             }
             return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
         }
-        return publishToSharedCache(SymmetricKey(data: keyData))
     }
 
     private static func defaultKeyFailureHandler(_ failure: CryptoKeyFailure) -> KeyFailureAction {
