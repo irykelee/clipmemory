@@ -479,23 +479,29 @@ final class BackupPackage {
         // existing package-corruption error, so the export fails loudly
         // instead of producing a misleading manifest.
         var counts = (items: 0, tags: 0, trash: 0)
-        for (filename, key) in [
-            // P1-AUDIT-2026-09-22 (P2-9): same source-of-truth fix as
-            // BackupService.swift — the loop's three keys come from the
-            // central `UserDefaultsKey` registry.
-            ("items.json", UserDefaultsKey.clipboardItems.rawValue),
-            ("tags.json", UserDefaultsKey.clipboardTags.rawValue),
-            ("trash.json", UserDefaultsKey.trashedItems.rawValue)
-        ] {
+        // P1-AUDIT-2026-09-22 (P2-10): same source-of-truth fix as
+        // BackupService.swift — the loop's (filename, key) pairs come from
+        // the central `BackupBlobRegistry` enum. Round-2: the manifest
+        // count decode is now keyed on the BlobKey case (not the
+        // UserDefaultsKey rawValue), so adding a new blob type = one
+        // enum case + 3 switch arms in `BackupBlobRegistry` (filename /
+        // userDefaultsKey / decodeType); both backup paths get it
+        // automatically with no edits here. `decodeType` is the
+        // registry-declared metadata tested by `testAllBlobKeysDeclareDecodeType`
+        // and used by future callers that want to decode without
+        // hard-coding the concrete element type.
+        for blob in BackupBlobRegistry.allBlobKeys {
+            let filename = blob.filename
+            let key = blob.userDefaultsKey
             guard let data = defaults.data(forKey: key) else { continue }
             try data.write(to: staging.appendingPathComponent(filename), options: .atomic)
             do {
-                switch key {
-                case UserDefaultsKey.clipboardItems.rawValue:
+                switch blob {
+                case .items:
                     counts.items = try JSONDecoder().decode([ClipboardItem].self, from: data).count
-                case UserDefaultsKey.clipboardTags.rawValue:
+                case .tags:
                     counts.tags = try JSONDecoder().decode([Tag].self, from: data).count
-                default:
+                case .trash:
                     counts.trash = try JSONDecoder().decode([ClipboardItem].self, from: data).count
                 }
             } catch {
