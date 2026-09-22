@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 /// E.1: Storage backend protocol for ClipboardStore dependency injection.
 /// Allows swapping between file-based (UserDefaults) and in-memory storage for testing.
@@ -57,6 +58,10 @@ final class FileStorageBackend: StorageBackend {
 
     private let storageKey: String
 
+    // P1-AUDIT-2026-09-22 (P2-2): dedicated logger so silent write
+    // failures surface in Console.app / `log show` for triage.
+    private let logger = Logger(subsystem: "com.clipmemory.app", category: "StorageBackend")
+
     // ID-STORE-0015 (2026-08-14, L26 live drill path C): inject the defaults
     // suite so callers (notably TrashStore.init(backend:defaults:)) can route
     // the production defaults down to the storage layer. Default `.standard`
@@ -87,8 +92,46 @@ final class FileStorageBackend: StorageBackend {
     /// CLIP-2: persist an already-encoded blob — the write itself is a single
     /// UserDefaults set; the expensive JSONEncoder pass happened on the
     /// caller's encoding queue.
+    ///
+    /// P1-AUDIT-2026-09-22 (P2-2) — honest scope (post OpenCode auto-review):
+    ///
+    /// **What this catches** (write-time, via read-back):
+    /// - IN-MEMORY `set()` failure: UserDefaults that was sandbox-blocked
+    ///   at process init and silently dropped the value (rare; backed by
+    ///   `defaults.data(forKey:) == nil` immediately after `set()`).
+    ///   `defaults.synchronize()` is invoked between set and read-back to
+    ///   give the OS one chance to flush before the read-back check, but
+    ///   in practice `synchronize()` only writes the in-memory cache to
+    ///   the cfprefsd daemon — it does not surface write errors here.
+    ///
+    /// **What this does NOT catch** (write-time, despite the audit's
+    /// headline scenarios):
+    /// - ASYNC daemon flush failures (disk-full / permission-denied at
+    ///   cfprefsd's periodic persist): `set()` already returned Void /
+    ///   the cache accepted the value, so a later `synchronize()` /
+    ///   read-back from the same process still returns the cached bytes.
+    ///   The data will silently disappear on next process restart.
+    /// - Process crash between `set()` and the daemon's flush: same.
+    ///
+    /// The sole caller is `ClipboardStore.saveItems()` →
+    /// `flushSave catch` → `.clipboardSaveFailed` notification +
+    /// `SaveRetryState` backoff (ID-SILENT-0022). Throwing on
+    /// in-memory failure flows through that path correctly.
     func saveBlob(_ data: Data) throws {
         defaults.set(data, forKey: storageKey)
+        // Force-flush attempt before read-back. Deprecated since
+        // macOS 10.5 but still functional — it's the only mechanism
+        // we have to nudge the daemon to write the in-memory cache
+        // before we read it back. Suppress the deprecation warning
+        // because every Foundation write code path is "deprecated"
+        // under the same Apple guidance, and ignoring it is the
+        // documented norm.
+        defaults.synchronize()
+        guard let readBack = defaults.data(forKey: storageKey),
+              readBack == data else {
+            logger.error("P1-AUDIT-2026-09-22 P2-2: saveBlob failed read-back for key '\(self.storageKey)' (silent write failure)")
+            throw CocoaError(.fileWriteUnknown)
+        }
     }
 
     func loadTags() throws -> [Tag] {
