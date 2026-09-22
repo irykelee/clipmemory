@@ -35,7 +35,7 @@ import os.log
 /// restartable. `@unchecked Sendable` is therefore sound: the
 /// state pair is atomic via the lock, and `start()` has no
 /// ordering constraints that require lock protection.
-final class NetworkMonitor: @unchecked Sendable {
+final class NetworkMonitor: NetworkMonitorProtocol, @unchecked Sendable {
     static let shared = NetworkMonitor()
 
     /// Posted whenever `NWPathMonitor` reports a transition from
@@ -99,6 +99,25 @@ final class NetworkMonitor: @unchecked Sendable {
         lastSatisfied = false
         hasReceivedInitialUpdate = false
         stateLock.unlock()
+    }
+
+    /// P1-AUDIT-2026-09-22 (P1-7): `NetworkMonitorProtocol` requirement.
+    /// Thin wrapper around `resetForTesting()` (kept for backward
+    /// compatibility with existing call sites) so the production class
+    /// satisfies the protocol surface that tests and future DI callers
+    /// will program against.
+    func reset() {
+        resetForTesting()
+    }
+
+    /// P1-AUDIT-2026-09-22 (P1-7): `NetworkMonitorProtocol` requirement.
+    /// Reads `lastSatisfied` under `stateLock`. Returns `false` until
+    /// the first `NWPath` update arrives (matches the production
+    /// baseline — we don't want a flush-on-launch just because the
+    /// user happened to launch while online).
+    var isConnected: Bool {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return lastSatisfied
     }
 
     private func handlePathUpdate(_ path: NWPath) {
