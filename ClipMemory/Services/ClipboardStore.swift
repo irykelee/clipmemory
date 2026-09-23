@@ -285,36 +285,11 @@ final class ClipboardStore: ObservableObject {
     // not visible here — BackupService now uses `UserDefaultsKey` directly.
     // trashRetentionDaysKey moved to TrashStore (HIGH-1, 2026-07-26)
 
-    /// Quarantine a corrupt UserDefaults blob: copy it under
-    /// `<key>.corrupt-<ISO8601-ts>` then remove the original. Without this,
-    /// the next `saveItems` / `saveTags` / `saveTrashedItems` would
-    /// overwrite the corrupt blob with `[]`, permanently destroying the
-    /// user's history. Quarantining lets recovery tooling (or a future
-    /// "restore from backup" affordance) attempt repair.
-    /// Post-audit-scan fix: previously `loadItems()` / `loadTrashedItems()`
-    /// / `loadTags()` silently swallowed the error and continued with an
-    /// empty in-memory collection — the very next save wiped the persist
-    /// layer permanently.
-    // ID-PERF-0009 (2026-07-30 audit): ISO8601DateFormatter init is ~1 ms
-    // (locale + dateFormat + calendar setup). `quarantineCorruptBlob` is
-    // called from `loadItems` / `loadTags` error paths. Hoist to a
-    // `static let` so all calls share one instance (same pattern as
-    // the date-formatter cache in DateHelpers.swift).
-    private static let iso8601Formatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
+    /// P1-AUDIT-2026-09-22 (P2-8, Task 2 split): `quarantineCorruptBlob` +
+    /// `iso8601Formatter` moved to `ClipboardStore+Utilities.swift`. The
+    /// loadItems call site stays here and dispatches through the extension.
+    /// loadTags (now in `ClipboardStore+Tag.swift`) does the same.
 
-    private func quarantineCorruptBlob(key: String, error: Error) {
-        let defaults = UserDefaults.standard
-        guard let blob = defaults.data(forKey: key) else { return }
-        let timestamp = Self.iso8601Formatter.string(from: Date())
-        let quarantineKey = "\(key).corrupt-\(timestamp)"
-        defaults.set(blob, forKey: quarantineKey)
-        defaults.removeObject(forKey: key)
-        logger.error("Corrupt blob \(key) quarantined to \(quarantineKey). First-decoder error: \(error.localizedDescription). The next save will overwrite the original key with the current (empty) in-memory collection; recover from the quarantined copy or a backup before saving.")
-    }
     /// UserDefaults key for persisted items.
     /// P1-AUDIT-2026-09-22 (P2-9): aliased through `UserDefaultsKey` so the
     /// raw string lives in exactly one place. Tests + this file reference
@@ -340,7 +315,11 @@ final class ClipboardStore: ObservableObject {
     /// backend in tests; production wires a FileStorageBackend keyed by `tagStorageKey`.
     /// Keeping tags independent of items means clearing items doesn't lose tag
     /// definitions, and the item backend stays unaware of the tag schema.
-    private let tagBackend: StorageBackend
+    // P1-AUDIT-2026-09-22 (P2-8, Task 2 split): visibility loosened
+    // `private` → `internal` so the tag methods now in
+    // `ClipboardStore+Tag.swift` (`loadTags` / `saveTags`) can read this
+    // backend. Logic unchanged.
+    let tagBackend: StorageBackend
 
     /// M13 (2026-08-03): injectable UserDefaults suite for TrashStore.
 /// Stored here so it can be passed to TrashStore during init. Production
@@ -718,7 +697,11 @@ final class ClipboardStore: ObservableObject {
     let saveTimerQueue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
     /// HIGH-4 (2026-07-26 review): reuse a single serial queue for the tag
     /// save timer, matching the M-2 reuse pattern applied to saveTimerQueue.
-    private let tagSaveTimerQueue = DispatchQueue(label: "com.clipmemory.tagsave", qos: .utility)
+    // P1-AUDIT-2026-09-22 (P2-8, Task 2 split): visibility loosened
+    // `private` → `internal` so the tag methods now in
+    // `ClipboardStore+Tag.swift` (`scheduleTagSave`) can read this queue.
+    // Logic unchanged.
+    let tagSaveTimerQueue = DispatchQueue(label: "com.clipmemory.tagsave", qos: .utility)
     // trashSaveTimerQueue moved to TrashStore (HIGH-1, 2026-07-26)
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
     // so extension can read/write the dirty flag.
@@ -1155,127 +1138,19 @@ final class ClipboardStore: ObservableObject {
     /// methods require write access). Logic unchanged.
     var saveRetryState = SaveRetryState()
 
-    /// Insert or replace a tag by its UUID. Tags with the same id overwrite
-    /// (idempotent rename/recolor). Triggers a debounced tag save.
-    func addTag(_ tag: Tag) {
-        // E-6 (2026-07-23 audit): trim leading/trailing whitespace +
-        // newlines from the user-supplied tag name before storing.
-        // Without this, a tag named "  Work  " persists as-is and the
-        // sidebar / search / suggestions all see it as a distinct tag
-        // from "Work". Trimming here is defensive — it protects all
-        // callers (NewTagSheet, TagPickerSheet bulk-add, future entry
-        // points) without each needing to remember to trim.
-        let trimmedName = tag.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedName != tag.name {
-            tags[tag.id] = Tag(
-                id: tag.id,
-                name: trimmedName,
-                colorHex: tag.colorHex,
-                isAutoSuggested: tag.isAutoSuggested,
-                createdAt: tag.createdAt
-            )
-        } else {
-            tags[tag.id] = tag
-        }
-        scheduleTagSave()
-    }
+    // P1-AUDIT-2026-09-22 (P2-8, Task 2 split): all tag operations
+    // (`addTag` / `addTag(to:tagId:)` / `removeTag` /
+    // `deleteTag(id:)` / `deleteTag(id:includeItems:)` /
+    // `tags(matchingPrefix:limit:)` / `loadTags` / `saveTags` /
+    // `scheduleTagSave` / `flushTagSave` / `importBackupTags`) moved to
+    // `ClipboardStore+Tag.swift` extension. Tag state (`tagSaveTimer` /
+    // `tagNeedsSave`) and the tag-specific queue / backend / storage key
+    // stay in this main file because Swift extensions can't have stored
+    // instance properties. Visibility loosened `private` → `internal`
+    // where the extension needs to read/write the state (see comments
+    // around each declaration).
 
-    /// Attach an existing tag (by id) to an item. Idempotent — adding the same
-    /// tag twice is a no-op since tagIds is a Set. Schedules both item and tag
-    /// persistence so the attachment survives app restarts.
-    func addTag(to itemId: UUID, tagId: UUID) {
-        // ID-PERF-0015 (2026-07-30 audit): use the maintained UUID→index
-        // map for O(1) lookup instead of `firstIndex(where:)` (O(n) per
-        // call). The map is rebuilt by `rebuildItemIndexIfStale()` (inside
-        // `resolvedIndex(for:)`) after every items mutation, so it's
-        // correct under the O(1) read. PR54-H (v2.8.4): route through
-        // `resolvedIndex(for:)` for the bounds-check guard.
-        guard let index = resolvedIndex(for: itemId) else { return }
-        items[index].tagIds.insert(tagId)
-        scheduleSave()
-    }
-
-    /// Detach a tag from an item. Does not delete the tag itself; for that use
-    /// deleteTag(id:). Safe to call when the tag isn't attached (no-op).
-    func removeTag(from itemId: UUID, tagId: UUID) {
-        // ID-PERF-0015 + PR54-H (v2.8.4): see addTag above.
-        guard let index = resolvedIndex(for: itemId) else { return }
-        items[index].tagIds.remove(tagId)
-        scheduleSave()
-    }
-
-    /// Delete a tag definition AND strip its id from every item's tagIds set.
-    /// This prevents dangling UUIDs (tag references that no longer resolve).
-    /// Safe to call with an unknown id — no-op in that case. Triggers a
-    /// debounced save for both tags and items.
-    func deleteTag(id tagId: UUID) {
-        deleteTag(id: tagId, includeItems: false)
-    }
-
-    /// When `includeItems` is true, items carrying this tag are first moved to
-    /// the recycle bin (recoverable), then the tag definition is deleted and
-    /// its id stripped from any remaining items.
-    func deleteTag(id tagId: UUID, includeItems: Bool) {
-        if includeItems {
-            deleteItems { $0.tagIds.contains(tagId) }
-        }
-        guard tags.removeValue(forKey: tagId) != nil else { return }
-        for index in items.indices where items[index].tagIds.contains(tagId) {
-            items[index].tagIds.remove(tagId)
-        }
-        scheduleTagSave()
-        scheduleSave()
-    }
-
-    /// Case-insensitive prefix search over tag names. Returns up to `limit`
-    /// tags ordered by `createdAt` descending (most recent first), so the
-    /// caller's autocomplete surfaces the user's own latest tag first.
-    /// Empty prefix → empty result (autocomplete is opt-in).
-    func tags(matchingPrefix prefix: String, limit: Int = 8) -> [Tag] {
-        guard !prefix.isEmpty, limit > 0 else { return [] }
-        let needle = prefix.lowercased()
-        return tags.values
-            .filter { $0.name.lowercased().hasPrefix(needle) }
-            .sorted { $0.createdAt > $1.createdAt }
-            .prefix(limit)
-            .map { $0 }
-    }
-
-    // MARK: - Tag persistence
-
-    /// Load the tag dictionary from the tag backend. Called once during init.
-    /// Corrupted data is logged and treated as empty — better to lose tag defs
-    /// than to crash on startup.
-    func loadTags() {
-        do {
-            let loaded = decryptTagNames(try tagBackend.loadTags())
-            tags = Dictionary(loaded.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        } catch {
-            quarantineCorruptBlob(key: Self.tagStorageKey, error: error)
-            logger.error("Failed to load tags: \(error.localizedDescription)")
-            // M-9 (2026-07-24 audit): the previous path was silent beyond
-            // an os_log entry — the user saw an empty tag sidebar with no
-            // explanation. Surface the failure via .tagBackendCorrupted.
-            // CLIP-7 (2026-07-24 review): nothing observes this yet — the
-            // post is the deliberate M-9 hook for a future Settings
-            // diagnostics banner / "restore from backup" affordance.
-            NotificationCenter.default.post(name: .tagBackendCorrupted, object: nil)
-            tags = [:]
-        }
-    }
-
-    /// Synchronously write the current tag dictionary to the tag backend.
-    /// Names are encrypted at the persistence boundary while the in-memory
-    /// `tags` dictionary stays plaintext for UI use.
-    func saveTags() {
-        do {
-            try tagBackend.saveTags(encryptTagNames(Array(tags.values)))
-        } catch {
-            logger.error("Failed to save tags: \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: - Tag name encryption helpers
+    // MARK: - Tag name encryption helpers (state lives here, helpers in Encryption extension)
 
     /// Marker prefixed to encrypted tag names so `decryptTagNames` can tell
     /// them apart from plaintext names. Base64 itself never contains a colon,
@@ -1304,37 +1179,13 @@ final class ClipboardStore: ObservableObject {
     // encryptedTagNamesBackup / Self.lockedPlaceholder / Self.encryptedNamePrefix
     // is the reason those were loosened from `private` to internal.
 
-    /// Debounced tag save — coalesces rapid mutations (addTag/deleteTag) into
-    /// one write, mirroring the existing scheduleSave() pattern for items.
-    private var tagSaveTimer: DispatchSourceTimer?
-    private var tagNeedsSave = false
-    private func scheduleTagSave() {
-        tagNeedsSave = true
-        // HIGH-4 (2026-07-26 review): lazily create the timer once and reuse
-        // it via schedule(deadline:), matching the M-2 pattern in scheduleSave().
-        if tagSaveTimer == nil {
-            let timer = DispatchSource.makeTimerSource(queue: tagSaveTimerQueue)
-            timer.setEventHandler { [weak self] in
-                Task { @MainActor [weak self] in
-                    self?.flushTagSave()
-                }
-            }
-            timer.resume()
-            tagSaveTimer = timer
-        }
-        tagSaveTimer?.schedule(deadline: .now() + saveDebounceInterval)
-    }
-
-    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
-    // so extension's flushPendingSaves() can call it.
-    func flushTagSave() {
-        guard tagNeedsSave else { return }
-        tagNeedsSave = false
-        // ID-LIFE-0023 (2026-07-31): no cancel() here — see flushSave().
-        // A cancelled source silently ignores later schedule() calls,
-        // which used to kill every debounced tag save after the first flush.
-        saveTags()
-    }
+    // P1-AUDIT-2026-09-22 (P2-8, Task 2 split): tag save state — kept in
+    // main file because Swift extensions can't have stored instance
+    // properties. Visibility loosened `private` → `internal` so the tag
+    // methods now in `ClipboardStore+Tag.swift` (`scheduleTagSave` /
+    // `flushTagSave`) can read/write these fields. Logic unchanged.
+    var tagSaveTimer: DispatchSourceTimer?
+    var tagNeedsSave = false
 
     func addItem(_ item: ClipboardItem) {
         var newItem = item
@@ -1541,18 +1392,8 @@ final class ClipboardStore: ObservableObject {
         return (imported, skipped)
     }
 
-    /// Merges imported backup tags by id (existing ids win). Returns count added.
-    @discardableResult
-    func importBackupTags(_ newTags: [Tag]) -> Int {
-        let existingIds = Set(tags.keys)
-        var added = 0
-        for tag in newTags where !existingIds.contains(tag.id) {
-            tags[tag.id] = tag
-            added += 1
-        }
-        if added > 0 { scheduleTagSave() }
-        return added
-    }
+    // P1-AUDIT-2026-09-22 (P2-8, Task 2 split): `importBackupTags` moved
+    // to `ClipboardStore+Tag.swift` extension.
 
     // ARCH-0002 PR #3 (2026-08-12): getDecryptedContent / isDecryptionPendingFailed /
     // recordPendingDiagnostic moved to ClipboardStore+Encryption.swift extension.
@@ -2039,13 +1880,6 @@ final class ClipboardStore: ObservableObject {
     /// bidirectional ClipboardStore ↔ ClipboardMonitor reference.
     var onRecordOwnWrite: (() -> Void)?
     var onExcludedAppsChanged: ((Set<String>) -> Void)?
-
-    func parseExcludedBundleIds() -> Set<String> {
-        Set(excludedBundleIdsString
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-            .filter { !$0.isEmpty })
-    }
 
     private func moveToTop(_ item: ClipboardItem) {
         // PR54-H (v2.8.4): route through `resolvedIndex(for:)`. Note this
