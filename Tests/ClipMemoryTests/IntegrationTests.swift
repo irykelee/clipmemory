@@ -55,8 +55,12 @@ import XCTest
     func testAddItemPersistsImmediatelyWithoutFlush() {
         let item = ClipboardItem(content: "Write-through", type: .text)
         store.addItem(item)
+        // P1-AUDIT-2026-09-22 (P2-13): capture is now debounced, so an
+        // explicit flush is required to observe persistence without
+        // waiting for the 500ms timer.
+        store.flushPendingSaves()
 
-        // No flushPendingSaves(), no waiting — the backend must already hold it.
+        // After flush, the backend must hold the captured item.
         let persisted = (try? backend.load()) ?? []
         XCTAssertEqual(persisted.count, 1)
         XCTAssertEqual(persisted.first?.type, .text)

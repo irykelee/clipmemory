@@ -1481,7 +1481,22 @@ final class ClipboardStore: ObservableObject {
 
         trimToMaxItems()
         updatePinnedItems()
-        saveImmediately()
+        // P1-AUDIT-2026-09-22 (P2-13): capture path now debounces like other
+        // save paths. Previously `saveImmediately()` → `flushSave()` ran
+        // synchronously on main thread on every clipboard capture. With 10K
+        // items (10-50MB blob), every capture blocked the main thread
+        // 50-200ms for JSON encode + write. The `.sync` hop inside
+        // `saveItems()` is CLIP-2's intentional design (encoding off the
+        // calling thread, but the caller blocks for the encoded Data); the
+        // capture path bypassing the 500ms debounce was not — metadata
+        // mutations (pin/tag/delete/trash) all route through `scheduleSave()`.
+        //
+        // Fix: capture now coalesces into the same 500ms debounce. A burst
+        // of N captures produces 1 encode+write at the end of the burst,
+        // not N. Write-through durability is preserved at termination via
+        // `flushPendingSaves()` (wired to AppDelegate.applicationWillTerminate
+        // + a willTerminate observer registered in init).
+        scheduleSave()
         if !isRunningTests, let top = items.first { prewarmDecryptionCache(items: [top], cap: 1) }
     }
 

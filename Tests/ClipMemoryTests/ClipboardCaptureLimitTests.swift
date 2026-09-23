@@ -88,6 +88,10 @@ import XCTest
         let backend = BlobRecordingBackend()
         let store = ClipboardStore(backend: backend)
         store.addItem(ClipboardItem(content: "clip2 blob test", type: .text))
+        // P1-AUDIT-2026-09-22 (P2-13): addItem uses 500ms debounce instead of
+        // write-through. Flush to make this test pin the encode+write contract
+        // without depending on timer fire timing.
+        store.flushPendingSaves()
 
         XCTAssertEqual(backend.savedBlobs.count, 1,
                        "addItem's write-through must persist exactly once via saveBlob")
@@ -106,6 +110,9 @@ import XCTest
         let backend = MemoryStorageBackend()
         let store = ClipboardStore(backend: backend)
         store.addItem(ClipboardItem(content: "clip2 memory round trip", type: .text))
+        // P1-AUDIT-2026-09-22 (P2-13): addItem uses 500ms debounce. Flush to
+        // exercise the encode → saveBlob → default decode → save round-trip.
+        store.flushPendingSaves()
 
         let persisted = try backend.load()
         XCTAssertEqual(persisted.count, 1)
@@ -121,6 +128,9 @@ import XCTest
         let backend = FileStorageBackend(storageKey: key)
         let store = ClipboardStore(backend: backend)
         store.addItem(ClipboardItem(content: "clip2 file round trip", type: .text))
+        // P1-AUDIT-2026-09-22 (P2-13): addItem uses 500ms debounce. Flush to
+        // verify the encoded Data lands in UserDefaults synchronously.
+        store.flushPendingSaves()
 
         guard let data = UserDefaults.standard.data(forKey: key) else {
             XCTFail("saveBlob must write the encoded blob to UserDefaults synchronously")
