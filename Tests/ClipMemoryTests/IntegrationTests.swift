@@ -15,15 +15,6 @@ import XCTest
         super.setUp()
         backend = MemoryStorageBackend()
         store = ClipboardStore(backend: backend)
-        // P1-AUDIT-2026-09-22 (P2-14): init now decodes the JSON blob on
-        // a background task (10K items → 100-300ms main-thread stall
-        // eliminated). For an empty `MemoryStorageBackend` the load is
-        // a trivial `return []`, but the hop back to MainActor still
-        // races with the first `addItem` / `items.count` access below.
-        // Wait for the load to apply before any test reads `items`,
-        // otherwise the load's MainActor.run could fire mid-test and
-        // wipe `items` back to the empty array.
-        _ = store.waitForFirstLoadSync(timeout: 5.0)
     }
 
     override func tearDown() {
@@ -89,9 +80,6 @@ import XCTest
 
         // Simulate restart: new store with same backend
         let store2 = ClipboardStore(backend: backend)
-        // P1-AUDIT-2026-09-22 (P2-14): startup decode now background; wait
-        // for it to apply before asserting on store2.items.
-        _ = store2.waitForFirstLoadSync(timeout: 5.0)
 
         // Items should be recovered
         XCTAssertEqual(store2.items.count, 2)
@@ -115,8 +103,6 @@ import XCTest
 
         // Simulate restart
         let store2 = ClipboardStore(backend: backend)
-        // P1-AUDIT-2026-09-22 (P2-14): wait for background load before reading.
-        _ = store2.waitForFirstLoadSync(timeout: 5.0)
 
         XCTAssertEqual(store2.items.count, 1)
         XCTAssertEqual(store2.items[0].isPinned, true)
@@ -169,8 +155,6 @@ import XCTest
 
         // Restart and verify
         let store2 = ClipboardStore(backend: backend)
-        // P1-AUDIT-2026-09-22 (P2-14): wait for background load before reading.
-        _ = store2.waitForFirstLoadSync(timeout: 5.0)
         XCTAssertTrue(store2.items[0].isPinned)
         XCTAssertEqual(store2.pinnedItems.count, 1)
     }
@@ -234,8 +218,6 @@ import XCTest
         XCTAssertTrue(store.items[0].isExpired)
 
         let store2 = ClipboardStore(backend: backend)
-        // P1-AUDIT-2026-09-22 (P2-14): wait for background load before reading.
-        _ = store2.waitForFirstLoadSync(timeout: 5.0)
         XCTAssertEqual(store2.items.count, 0, "Expired items should be filtered on load")
     }
 
@@ -347,8 +329,6 @@ import XCTest
 
         // Restart
         let store2 = ClipboardStore(backend: backend)
-        // P1-AUDIT-2026-09-22 (P2-14): wait for background load before reading.
-        _ = store2.waitForFirstLoadSync(timeout: 5.0)
         XCTAssertEqual(store2.items.count, 1)
 
         // Add same content again — should still deduplicate
