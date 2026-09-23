@@ -23,18 +23,22 @@ import Foundation
 extension ClipboardStore {
 
     func saveItems() throws {
-        // CLIP-2: the `.sync` hop is deliberate — saveImmediately()'s
-        // write-through contract (clipboard ingestion must be durable before
-        // addItem returns, so kill -9 / power loss after the fact can't lose
-        // it) and flushPendingSaves()' terminate-path guarantee both depend on
-        // saveItems() staying synchronous. Only the encoding CPU moves off
-        // the calling thread; the durability semantics are unchanged.
-        // Deadlock-free: saveItems() is main-thread only and nothing else
-        // dispatches to this queue.
-        // M-5 (2026-07-25 audit): converting this to async would break the
-        // write-through contract tested by IntegrationTests and
-        // ClipboardCaptureLimitTests. Deferred to a future refactor that can
-        // plumb async completion through the call sites.
+        // CLIP-2: the `.sync` hop is deliberate — only the encoding CPU
+        // moves off the calling thread; the durability semantics are
+        // preserved on the caller. Deadlock-free: saveItems() is main-thread
+        // only and nothing else dispatches to this queue.
+        //
+        // P1-AUDIT-2026-09-22 (P2-13): the `.sync` hop is no longer the
+        // capture path's contract — capture now routes through
+        // `scheduleSave()` (500ms debounce), so the only callers that still
+        // demand synchronous durability are:
+        //   - `saveImmediately()` → `flushSave()` (used by `importBackupItems`
+        //     — migration path; needs write-through so a crash mid-restore
+        //     doesn't half-merge a backup)
+        //   - `flushPendingSaves()` (deinit + `applicationWillTerminate` —
+        //     terminate-path guarantee)
+        // The capture path's durability now relies on the terminate-path
+        // flush rather than per-capture write-through.
         //
         // ID-SILENT-0021 (2026-08-08 audit): rethrows on backend failure so
         // `flushSave` can restore `needsSave = true` and post
@@ -70,10 +74,16 @@ extension ClipboardStore {
         saveTimer?.schedule(deadline: .now() + saveDebounceInterval)
     }
 
-    /// Write-through for clipboard ingestion. New clipboard content is the one
-    /// thing the user cannot re-create, and a kill -9 / power loss inside the
-    /// 500ms debounce window would silently lose it — bypass the debounce here.
-    /// Metadata mutations (pin/tag/delete/trash) keep the debounced path.
+    /// Write-through save used by `importBackupItems` (migration path) —
+    /// a crash mid-restore must not half-merge a backup, so the restore
+    /// path bypasses the 500ms debounce and forces an immediate flush.
+    ///
+    /// P1-AUDIT-2026-09-22 (P2-13): capture path no longer calls this.
+    /// Clipboard ingestion (`addItem`) now routes through `scheduleSave()`;
+    /// durability at capture time relies on the `applicationWillTerminate`
+    /// flush path. Metadata mutations (pin/tag/delete/trash) also use the
+    /// debounced path — they're restorable from the live item cache if
+    /// a kill -9 / power loss lands inside the debounce window.
     func saveImmediately() {
         needsSave = true
         flushSave()

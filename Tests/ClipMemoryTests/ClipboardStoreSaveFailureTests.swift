@@ -150,8 +150,12 @@ final class ClipboardStoreSaveFailureTests: XCTestCase {
     func testFlushSaveFailure_incrementsRetryCounter() {
         backend.failNextSave = true
         store.addItem(ClipboardItem(content: "captured", type: .text))
+        // P1-AUDIT-2026-09-22 (P2-13): addItem now debounces via scheduleSave()
+        // instead of writing through. Flush so the first failure fires during
+        // this test, not whenever the debounce timer happens to expire.
+        store.flushPendingSaves()
         XCTAssertEqual(store.saveRetryState.consecutiveFailures, 1,
-                       "first failure (during addItem's write-through) must increment the retry counter")
+                       "first failure (during flush) must increment the retry counter")
     }
 
     /// H-1 fix: a successful save must reset the retry counter so a later
@@ -161,8 +165,12 @@ final class ClipboardStoreSaveFailureTests: XCTestCase {
     func testFlushSaveSuccess_resetsRetryCounter() {
         backend.failNextSave = true
         store.addItem(ClipboardItem(content: "captured", type: .text))
-        // addItem's internal saveImmediately triggered the one allowed
-        // failure; counter is now 1 and failNextSave auto-reset to false.
+        // P1-AUDIT-2026-09-22 (P2-13): addItem now debounces via scheduleSave()
+        // instead of writing through. Flush so the first failure fires during
+        // this test, not whenever the debounce timer happens to expire.
+        store.flushPendingSaves()
+        // flushPendingSaves' flushSave triggered the one allowed failure;
+        // counter is now 1 and failNextSave auto-reset to false.
         XCTAssertEqual(store.saveRetryState.consecutiveFailures, 1)
 
         // Now the backend has recovered — the next flushSave (either the
@@ -227,7 +235,11 @@ final class ClipboardStoreSaveFailureTests: XCTestCase {
     func testFlushSaveFailure_schedulesAutoRetryWithinBackoff() {
         backend.failNextSave = true
         store.addItem(ClipboardItem(content: "captured", type: .text))
-        // addItem's saveImmediately already called saveBlob once (failed);
+        // P1-AUDIT-2026-09-22 (P2-13): addItem now debounces via scheduleSave()
+        // instead of writing through. Flush so the first failure fires during
+        // this test, scheduling the 500ms retry in the catch block.
+        store.flushPendingSaves()
+        // flushPendingSaves' flushSave called saveBlob once (failed);
         // the retry timer was scheduled for 500ms in the catch block.
         let initialCalls = backend.saveCallCount
 
