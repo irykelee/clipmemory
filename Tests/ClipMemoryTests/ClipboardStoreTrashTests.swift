@@ -562,6 +562,10 @@ import XCTest
 
         // Simulate restart which triggers the loadItems expiry path.
         let store2 = ClipboardStore(backend: backend, trashBackend: trashBackend)
+        // P1-AUDIT-2026-09-22 (P2-14): wait for background load before
+        // asserting on items/trashedItems — the trashedItems write is
+        // part of the load's MainActor.run.
+        _ = store2.waitForFirstLoadSync(timeout: 5.0)
 
         XCTAssertEqual(store2.items.count, 0)
         XCTAssertEqual(store2.trashedItems.count, 1,
@@ -587,6 +591,10 @@ import XCTest
 
         // Restart path (loadItems filter).
         let store2 = ClipboardStore(backend: backend, trashBackend: trashBackend)
+        // P1-AUDIT-2026-09-22 (P2-14): wait for background load before
+        // asserting on items — the load's MainActor.run is what applies
+        // the pinned-expired retention filter.
+        _ = store2.waitForFirstLoadSync(timeout: 5.0)
         XCTAssertEqual(store2.items.count, 1,
                        "ID-STORE-0002: pinned expired item must survive load")
         XCTAssertTrue(store2.items[0].isPinned)

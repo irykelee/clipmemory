@@ -540,7 +540,14 @@ final class ClipboardStore: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
-        loadItems()
+        // P1-AUDIT-2026-09-22 (P2-14): startup decode now runs on a
+        // background task so the 10K-item JSON decode (100-300ms) does
+        // not block the main thread. Items appear via observable
+        // updates as the decode progresses; UI sees a brief empty
+        // window before real items arrive. Tests that need to wait for
+        // the initial load can call `waitForFirstLoad()` /
+        // `waitForFirstLoadSync(timeout:)`.
+        loadItemsInBackground()
         loadTags()
         // loadTrashedItems + purgeExpiredTrash moved to TrashStore.init (HIGH-1)
         // excluded apps sync moved to AppDelegate (MED-5)
@@ -983,6 +990,273 @@ final class ClipboardStore: ObservableObject {
     // updateExcludedAppsOnMonitor() removed (MED-5, 2026-07-26).
     // AppDelegate now sets excludedBundleIds on the monitor directly.
 
+    // MARK: - P2-14 Startup Background Load
+
+    /// P1-AUDIT-2026-09-22 (P2-14): holds the in-flight background load
+    /// task so tests / production callers that need to wait for the first
+    /// load can do so via `waitForFirstLoad()` /
+    /// `waitForFirstLoadSync(timeout:)`.
+    private var firstLoadTask: Task<Void, Never>?
+
+    /// Async accessor: awaits the first background load completing.
+    /// Returns immediately if no load is in flight (e.g. before init
+    /// kicks one off, or after a manual reload already finished).
+    func waitForFirstLoad() async {
+        await firstLoadTask?.value
+    }
+
+    /// Synchronous wrapper around `waitForFirstLoad()` for legacy sync
+    /// test paths that cannot `await`. Spins the calling thread's run
+    /// loop until `firstLoadCompleted` flips, or the timeout expires.
+    /// Returns true if the load completed in time, false on timeout.
+    ///
+    /// Uses RunLoop rather than DispatchSemaphore to avoid a deadlock:
+    /// the background load completes by hopping to `MainActor.run` to
+    /// mutate @Published state. A semaphore.wait() would block main
+    /// forever — the MainActor hop can never run while the main thread
+    /// is parked on the semaphore. RunLoop.main.run(mode:before:) lets
+    /// the main run loop drain queued blocks (including MainActor.run)
+    /// while the test waits.
+    @discardableResult
+    func waitForFirstLoadSync(timeout: TimeInterval = 5.0) -> Bool {
+        guard firstLoadTask != nil else { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while !firstLoadCompleted {
+            if Date() >= deadline { return false }
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        return true
+    }
+
+    /// Tracks whether the first background load has finished applying
+    /// its result to @Published state. Set inside `applyLoadResult`
+    /// (already on @MainActor) so polling it from the main thread
+    /// is safe.
+    private var firstLoadCompleted = false
+
+    /// P1-AUDIT-2026-09-22 (P2-14): kicks off a background task that
+    /// does the JSON decode + heavy filtering off the main thread, then
+    /// hops to MainActor to apply the result to @Published state. Init
+    /// returns immediately; the existing `loadItems()` post-load work
+    /// (invalidateItemIndex / updatePinnedItems / trimToMaxItems /
+    /// rebuildDedupHashSet / moveToTrash / runImageIntegrityScan /
+    /// migration) still runs, just on a background hop + main hop
+    /// instead of fully on main.
+    private func loadItemsInBackground() {
+        // Capture the backend reference outside the Task — Task.detached
+        // runs on a background thread and `self.backend` is only safely
+        // reachable through MainActor isolation. Pulling the reference
+        // here (still on main) avoids touching self.backend from bg.
+        let backendRef = self.backend
+        firstLoadTask = Task.detached(priority: .userInitiated) {
+            // Background: do the slow JSON decode + filtering. This is
+            // the work that previously blocked the main thread for
+            // 100-300ms on a 10K-item blob.
+            let result = await Self.performLoadWork(backend: backendRef)
+            // Main: apply to @Published state. Existing post-load
+            // work (orphan sweep, integrity scan, migration) runs in
+            // the same hop, preserving the original ordering.
+            await MainActor.run {
+                self.applyLoadResult(result)
+            }
+        }
+    }
+
+    /// Nonisolated helper: does the heavy backend load + filter/repair
+    /// work without touching main-thread @Published state. Marked
+    /// `nonisolated` so it can run on the background task without
+    /// requiring a MainActor hop. Returns a structured result that
+    /// `applyLoadResult(_:)` then applies on main.
+    private nonisolated static func performLoadWork(backend: StorageBackend) -> LoadResult {
+        let savedItems: [ClipboardItem]
+        do {
+            savedItems = try backend.load()
+        } catch {
+            return LoadResult.failure(error: error)
+        }
+        // ID-STORE-0002: pinned items are exempt from expiry; expired
+        // unpinned items route to the trash (recoverable) below.
+        let expiredItems = savedItems.filter { $0.isExpired && !$0.isPinned }
+        var loadedItems = savedItems.filter { !$0.isExpired || $0.isPinned }
+
+        // Repair legacy image items incorrectly flagged by the old
+        // getDecryptedContent path (see loadItems caller comment for
+        // the audit backstory). Also clear `decryptionFailed` on
+        // non-image items so transient Keychain-lock failures do not
+        // permanently blank a row (ID-FIX-loadItems-text). Truly
+        // corrupt items get the flag re-set on the next failed decrypt.
+        var repairedImages = false
+        var repairedTexts = false
+        for (index, item) in loadedItems.enumerated() where item.type == .image {
+            if item.isEncrypted || item.decryptionFailed {
+                loadedItems[index] = item.with(isEncrypted: false, decryptionFailed: false)
+                repairedImages = true
+            }
+        }
+        for (index, item) in loadedItems.enumerated() where item.type != .image {
+            if item.decryptionFailed {
+                loadedItems[index] = item.with(decryptionFailed: false)
+                repairedTexts = true
+            }
+        }
+
+        return LoadResult.success(
+            items: loadedItems,
+            expired: expiredItems,
+            repairedImages: repairedImages,
+            repairedTexts: repairedTexts
+        )
+    }
+
+    /// Apply the load result to @Published state. Must be called on
+    /// @MainActor. Preserves the original post-load ordering from
+    /// `loadItems()` (invalidate index → update pinned → trim → dedup
+    /// → trash expired → orphan sweep → integrity scan → migration).
+    @MainActor
+    private func applyLoadResult(_ result: LoadResult) {
+        defer { firstLoadCompleted = true }
+        switch result.outcome {
+        case .failure(let error):
+            // P2-14: only apply if items is still the empty placeholder.
+            // If the test / capture path added items while the background
+            // load was in flight, those items take precedence — losing
+            // them to a stale load would silently drop user captures.
+            if items.isEmpty {
+                quarantineCorruptBlob(key: Self.itemsStorageKey, error: error)
+                items = []
+                invalidateItemIndex()
+            } else {
+                logger.error("Background load failed after items already populated; preserving \(self.items.count) items added during load")
+            }
+            return
+        case .success(let loadedItems, let expiredItems, let repairedImages, let repairedTexts):
+            // P2-14: same placeholder-guard — preserve items added
+            // during the background hop. Production startup rarely races
+            // (init runs before user actions), but tests that addItem
+            // immediately after init would otherwise see their items
+            // wiped by the load's MainActor.run.
+            guard items.isEmpty else {
+                logger.error("Background load returned \(loadedItems.count) items but \(self.items.count) already populated; preserving user-added items")
+                return
+            }
+            items = loadedItems
+            invalidateItemIndex()
+            updatePinnedItems()
+            trimToMaxItems()
+            rebuildDedupHashSet()
+            if !expiredItems.isEmpty {
+                // ID-STORE-0002: trash load-time-expired items BEFORE
+                // the orphan-image sweep so their image files stay
+                // referenced (restorable from the bin) instead of
+                // being swept as orphans.
+                moveToTrash(expiredItems)
+            }
+            // ID-STORE-0013: the
+            // ImageStorage guard only catches the case where BOTH
+            // items and trashedItems are empty. Skip the sweep while
+            // the trash load is in a failed state so possibly-
+            // referenced images survive a corrupt trash blob.
+            if !trashStore.lastLoadFailed {
+                ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
+            } else {
+                logger.error("ID-STORE-0013: trash blob load failed; skipping cleanupOrphanedImages to preserve possibly-referenced images. Will retry on next successful loadTrashedItems().")
+            }
+            if repairedImages || repairedTexts {
+                scheduleSave()
+            }
+            runImageIntegrityScan()
+            // Migration / backfill (C6) — already ran via
+            // DispatchQueue.global.utility.async in the original
+            // loadItems; preserve that ordering by re-detecting here.
+            startMigrationIfNeeded()
+        }
+    }
+
+    /// Structured result passed from background `performLoadWork` to
+    /// @MainActor `applyLoadResult`. Carries the loaded items, any
+    /// items that should be trashed at load time, repair flags for
+    /// the `scheduleSave` decision, and a failure error if the
+    /// backend `load()` threw.
+    private struct LoadResult {
+        enum Outcome {
+            case success(items: [ClipboardItem],
+                         expired: [ClipboardItem],
+                         repairedImages: Bool,
+                         repairedTexts: Bool)
+            case failure(error: Error)
+        }
+        let outcome: Outcome
+
+        static func success(items: [ClipboardItem], expired: [ClipboardItem], repairedImages: Bool, repairedTexts: Bool) -> LoadResult {
+            LoadResult(outcome: .success(items: items, expired: expired, repairedImages: repairedImages, repairedTexts: repairedTexts))
+        }
+        static func failure(error: Error) -> LoadResult {
+            LoadResult(outcome: .failure(error: error))
+        }
+    }
+
+    /// Extracted migration trigger (C6) so `applyLoadResult` can fire
+    /// it in the same MainActor hop as the rest of the post-load work.
+    /// The original `loadItems()` inlined this; extracted here to keep
+    /// the apply path readable. The migration itself still runs on
+    /// DispatchQueue.global.utility — only the candidate detection
+    /// lives on main.
+    private func startMigrationIfNeeded() {
+        var migrationCandidates: [(id: UUID, content: String)] = []
+        var backfillCandidates: [(id: UUID, content: String, isEncrypted: Bool)] = []
+        for item in items where item.type != .image {
+            if item.isEncrypted && ServiceContainer.crypto.isOldFormat(item.content) {
+                migrationCandidates.append((item.id, item.content))
+            }
+            if item.contentHash == nil {
+                backfillCandidates.append((item.id, item.content, item.isEncrypted))
+            }
+        }
+        guard !migrationCandidates.isEmpty || !backfillCandidates.isEmpty else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var migratedContents: [UUID: String] = [:]
+            for candidate in migrationCandidates {
+                if let newContent = ServiceContainer.crypto.migrateToV2(candidate.content) {
+                    migratedContents[candidate.id] = newContent
+                }
+            }
+            var hashes: [UUID: String] = [:]
+            for candidate in backfillCandidates {
+                let plaintext: String
+                if candidate.isEncrypted {
+                    guard let decrypted = ServiceContainer.crypto.decrypt(candidate.content) else { continue }
+                    plaintext = decrypted
+                } else {
+                    plaintext = candidate.content
+                }
+                if let hash = ServiceContainer.crypto.hmacHex(for: plaintext) {
+                    hashes[candidate.id] = hash
+                }
+            }
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                var changed = false
+                for (id, newContent) in migratedContents {
+                    guard let index = self.items.firstIndex(where: { $0.id == id }) else { continue }
+                    self.items[index] = self.items[index].with(content: newContent, isEncrypted: true)
+                    changed = true
+                }
+                for (id, hash) in hashes {
+                    guard let index = self.items.firstIndex(where: { $0.id == id }),
+                          self.items[index].contentHash == nil else { continue }
+                    self.items[index].contentHash = hash
+                    changed = true
+                }
+                if changed { self.scheduleSave(); self.rebuildDedupHashSet() }
+            }
+        }
+    }
+
+    /// Synchronous fallback retained for callers that explicitly want
+    /// to re-run the full load path on main (e.g. tests that pre-populate
+    /// a backend, then call `loadItems()` to populate `items` without
+    /// the background hop). Production init now uses
+    /// `loadItemsInBackground()` instead.
     func loadItems() {
         let savedItems: [ClipboardItem]
         do {

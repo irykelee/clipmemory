@@ -113,4 +113,96 @@ final class ClipboardStoreTests: XCTestCase {
         XCTAssertEqual(store.items.count, 100,
                        "all 100 items must still be in-memory even though no disk write has happened yet")
     }
+
+    // MARK: - P2-14: startup decode off main thread
+
+    /// P1-AUDIT-2026-09-22 (P2-14) regression test. Simulates a 10K-item
+    /// history with a backend whose `load()` blocks for 200ms (the order
+    /// of magnitude of the JSON decode the audit measured). Asserts that
+    /// `ClipboardStore.init` returns in well under 100ms — the heavy
+    /// load must happen off the main thread, NOT block init — and that
+    /// items arrive via the background load.
+    func testStartupDoesNotBlockMainThreadOver100ms() {
+        // Build a 10K-item fixture set. Real production JSON would be
+        // 10-50MB; we just need N items so the count assertion is
+        // meaningful — the slow part is the artificial delay, not the
+        // payload size.
+        let tenKItems = (0..<10_000).map { i in
+            ClipboardItem(content: "p2-14-fixture-\(i)", type: .text)
+        }
+        let slowBackend = SlowStorageBackend(
+            items: tenKItems,
+            loadDelaySeconds: 0.2  // ~200ms — audit measured 100-300ms
+        )
+
+        // Pre-populate maxClipboardItems so the post-load `trimToMaxItems()`
+        // does not trim the 10K fixture set down to the default 100-item
+        // cap (which would mask the load and the assertion would pass for
+        // the wrong reason). maxMaxItems hard-clamp is 10_000.
+        let tenKDefaults = makeTestDefaults()
+        tenKDefaults.set(10_000, forKey: "maxClipboardItems")
+
+        let start = Date()
+        let freshStore = ClipboardStore(
+            backend: slowBackend,
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: MemoryStorageBackend(),
+            defaults: tenKDefaults
+        )
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertLessThan(
+            elapsed, 0.1,
+            "P2-14: init must return in <100ms even with 10K-item history; load runs in background. measured=\(elapsed)s"
+        )
+
+        // Background load should still complete (200ms artificial delay).
+        let didLoad = freshStore.waitForFirstLoadSync(timeout: 5.0)
+        XCTAssertTrue(
+            didLoad,
+            "P2-14: background load must complete within 5s; otherwise the items never arrive"
+        )
+        XCTAssertEqual(
+            freshStore.items.count, 10_000,
+            "P2-14: all 10K items must arrive via the background load"
+        )
+
+        // Cleanup so the next test's setUp starts from a fresh defaults suite.
+        removeTestDefaults(tenKDefaults)
+    }
+}
+
+// MARK: - Test helpers (P2-14)
+
+/// StorageBackend whose `load()` blocks for a configurable delay so
+/// P2-14's regression test can simulate the JSON-decode wall-clock cost
+/// of a 10K-item history without actually encoding 10K items into
+/// UserDefaults (which would dominate test setup time). The rest of
+/// the protocol is a no-op pass-through to the in-memory items.
+private final class SlowStorageBackend: StorageBackend {
+    private let storedItems: [ClipboardItem]
+    private let loadDelaySeconds: TimeInterval
+
+    init(items: [ClipboardItem], loadDelaySeconds: TimeInterval) {
+        self.storedItems = items
+        self.loadDelaySeconds = loadDelaySeconds
+    }
+
+    func load() throws -> [ClipboardItem] {
+        // Busy-wait to simulate CPU-bound JSON decode without
+        // depending on Thread.sleep (which under CI scheduling can
+        // return earlier than requested, making the test flaky).
+        let deadline = Date().addingTimeInterval(loadDelaySeconds)
+        var acc: UInt64 = 0
+        while Date() < deadline {
+            // Tight loop — prevents the scheduler from parking us.
+            for k in 0..<1000 { acc &+= UInt64(k) }
+        }
+        _ = acc  // silence unused warning
+        return storedItems
+    }
+
+    func save(_ items: [ClipboardItem]) throws {}
+    func loadTags() throws -> [Tag] { [] }
+    func saveTags(_ tags: [Tag]) throws {}
 }
