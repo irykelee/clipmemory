@@ -158,6 +158,7 @@
 		AEEE27EC31C4AA70E55DDCB9 /* SafeModeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F2A16B5EFE8034192C632AA /* SafeModeService.swift */; };
 		AF45961FCAE09F6D67B04365 /* TrashItemRowSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64CD6E92070A29D73CED4C2 /* TrashItemRowSnapshotTests.swift */; };
 		B0AFA6CAB8B808B97C9B06F3 /* AppDirectories.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B4D4D940383DE2B189A772 /* AppDirectories.swift */; };
+		B1E5E2D8F0E64539FEFBE819 /* ClipboardStore+Tag.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFFDC9E8C959E015C199071E /* ClipboardStore+Tag.swift */; };
 		B262EF7A5FC194FCDFACED79 /* StorageBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9168850C81327649C0142FD4 /* StorageBackend.swift */; };
 		B27B2167A30C48F86AC9423D /* NewTagLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF4F9F675E7C7347B75229CC /* NewTagLogic.swift */; };
 		B5E8195E9EA0DB0AD0C8C23D /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8736B83768848E6CBB1834EA /* WelcomeView.swift */; };
@@ -182,6 +183,7 @@
 		C6C779D182E2FC466D1E535A /* LocalBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12E24C384F1F3C8AE8E24102 /* LocalBackup.swift */; };
 		C898FF7F77B517841D8B1E46 /* TrashStoreMainActorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464B18CF83545FA192E6BABB /* TrashStoreMainActorTests.swift */; };
 		CA65D74CB492C0091B80457F /* QuickBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F26B268CA5CF8662C3C930 /* QuickBarView.swift */; };
+		CBD475D4A83322AF0106B8F7 /* ClipboardStore+Utilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB445D521CEED7F4A2FB3EB /* ClipboardStore+Utilities.swift */; };
 		CBDB1962F845E54282C5DA3E /* BackupPackageImportFromLocalBackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 560139C0F75E8A292267BB24 /* BackupPackageImportFromLocalBackupTests.swift */; };
 		CCCC9FFCF1EB417F74198F26 /* EncryptionFailedAlertThrottlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C6F13182E51140986AB1201 /* EncryptionFailedAlertThrottlerTests.swift */; };
 		CE551C64250E58C046EC78C3 /* LanguageManagerMainActorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD54AB9BB7B3D33A39561936 /* LanguageManagerMainActorTests.swift */; };
@@ -425,6 +427,7 @@
 		C9CFDA4DE370490B4369B899 /* TagPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagPickerSheet.swift; sourceTree = "<group>"; };
 		CB46D62ED9B13AFDE0196EFF /* HangDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HangDetector.swift; sourceTree = "<group>"; };
 		CF23478C1DE9F1F61C1ACFBD /* ContentHashKeyReadyBackfillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentHashKeyReadyBackfillTests.swift; sourceTree = "<group>"; };
+		CFB445D521CEED7F4A2FB3EB /* ClipboardStore+Utilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ClipboardStore+Utilities.swift"; sourceTree = "<group>"; };
 		D0DEC3B7B2D86D84165C1941 /* ClipboardStoreDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStoreDiagnosticsTests.swift; sourceTree = "<group>"; };
 		D1261BEEA56B02715F37CFB4 /* TagSuggestionLengthCapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagSuggestionLengthCapTests.swift; sourceTree = "<group>"; };
 		D308A232E245A43D294015ED /* LocalizationKeysTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationKeysTests.swift; sourceTree = "<group>"; };
@@ -467,6 +470,7 @@
 		FCD6D7725E44DB26E42915AE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		FD395DCC8D9B2A129D37170A /* CryptoService+KeychainMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CryptoService+KeychainMigration.swift"; sourceTree = "<group>"; };
 		FD54AB9BB7B3D33A39561936 /* LanguageManagerMainActorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageManagerMainActorTests.swift; sourceTree = "<group>"; };
+		FFFDC9E8C959E015C199071E /* ClipboardStore+Tag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ClipboardStore+Tag.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -743,6 +747,8 @@
 				6173144B0E0698A4915528BA /* ClipboardStore+OCR.swift */,
 				03697EFE66B85C25E61BE996 /* ClipboardStore+Persistence.swift */,
 				A936C5B797F462B2E7012F25 /* ClipboardStore+Prewarm.swift */,
+				FFFDC9E8C959E015C199071E /* ClipboardStore+Tag.swift */,
+				CFB445D521CEED7F4A2FB3EB /* ClipboardStore+Utilities.swift */,
 				852369BB995F52E3B949D2A4 /* CrashReportService.swift */,
 				8F250C19E7199E18D95521A3 /* CryptoService.swift */,
 				FD395DCC8D9B2A129D37170A /* CryptoService+KeychainMigration.swift */,
@@ -1065,6 +1071,8 @@
 				B75F3E8EC44F8B14D17B6C5E /* ClipboardStore+OCR.swift in Sources */,
 				69DECDEA4AF107076EB344B2 /* ClipboardStore+Persistence.swift in Sources */,
 				BC99EFAE24EF6AFBED232318 /* ClipboardStore+Prewarm.swift in Sources */,
+				B1E5E2D8F0E64539FEFBE819 /* ClipboardStore+Tag.swift in Sources */,
+				CBD475D4A83322AF0106B8F7 /* ClipboardStore+Utilities.swift in Sources */,
 				BF8CC00B3E0A62207FBAE413 /* ClipboardStore.swift in Sources */,
 				2F3E8BA6FE1C887E9140AF8D /* CloseButton.swift in Sources */,
 				E2D37FD02B4E86B5F2E4DAAD /* ColorHex.swift in Sources */,
