@@ -949,4 +949,253 @@ final class ImageStorageTests: XCTestCase {
         XCTAssertEqual(perms & 0o777, 0o600,
                        "saved image file must be owner-only (0o600), got \(String(perms & 0o777, radix: 8))")
     }
+
+    // MARK: - P1-AUDIT-2026-09-22 (P2-16): thumbnail + full-size image pipeline
+
+    /// P2-16 (round-2 redesign): `loadImageObject` is now the row-preview
+    /// thumbnail path. CGImageSourceCreateThumbnailAtIndex with
+    /// kCGImageSourceThumbnailMaxPixelSize:512 must downscale preserving
+    /// the original aspect ratio (no hardcoded 512x512).
+    func testLoadImageObjectReturnsThumbnailPreservingAspectRatio() {
+        let uuid = newTestUUID()
+        // 3840x1080 → 512x144 (3840/1080 = 32/9, so 512/144 = 32/9 too)
+        let data = makeSizedPNG(width: 3840, height: 1080)
+        XCTAssertFalse(data.isEmpty, "Test fixture: 3840x1080 PNG must encode")
+        let filename = saveAndWait(data, uuid: uuid) ?? ""
+
+        let thumb = storage.loadImageObject(filename: filename)
+        XCTAssertNotNil(thumb, "P2-16: thumbnail must load from saved image")
+        XCTAssertEqual(thumb?.size.width, 512,
+                       "P2-16: thumbnail width must be capped at 512px (no upscale for 3840→512)")
+        XCTAssertEqual(thumb?.size.height, 144,
+                       "P2-16: thumbnail height must preserve 32:9 aspect ratio (3840/1080 → 512/144)")
+    }
+
+    /// P2-16: small images (< 512px on both sides) must NOT be upscaled.
+    /// The thumbnail path must keep native dimensions for already-small images.
+    func testLoadImageObjectDoesNotUpscaleSmallImages() {
+        let uuid = newTestUUID()
+        let data = makeSizedPNG(width: 100, height: 200)
+        let filename = saveAndWait(data, uuid: uuid) ?? ""
+
+        let thumb = storage.loadImageObject(filename: filename)
+        XCTAssertNotNil(thumb)
+        XCTAssertEqual(thumb?.size.width, 100,
+                       "P2-16: 100x200 image must NOT upscale width to 512")
+        XCTAssertEqual(thumb?.size.height, 200,
+                       "P2-16: 100x200 image must NOT upscale height to 512")
+    }
+
+    /// P2-16: thumbnail path honours EXIF orientation via
+    /// kCGImageSourceCreateThumbnailWithTransform. A 200x400 image tagged
+    /// with EXIF orientation .right (90° CW) must come out as 400x200 in
+    /// the thumbnail — dimensions swap because the bitmap is rotated
+    /// before the thumbnail decode.
+    func testLoadImageObjectAppliesEXIFOrientationToThumbnail() {
+        let uuid = newTestUUID()
+        // JPEG embeds EXIF orientation cleanly; PNG does not.
+        let data = makeSizedJPEGWithOrientation(
+            width: 200, height: 400, orientation: .right
+        )
+        XCTAssertFalse(data.isEmpty, "Test fixture: JPEG with EXIF orientation must encode")
+        let filename = saveAndWait(data, uuid: uuid) ?? ""
+
+        let thumb = storage.loadImageObject(filename: filename)
+        XCTAssertNotNil(thumb, "P2-16: thumbnail must load from JPEG with EXIF orientation")
+        XCTAssertEqual(thumb?.size.width, 400,
+                       "P2-16: EXIF .right (90° CW) must rotate 200x400 → 400x200 in the thumbnail")
+        XCTAssertEqual(thumb?.size.height, 200,
+                       "P2-16: EXIF .right (90° CW) must swap thumbnail dimensions")
+    }
+
+    /// P2-16: `loadFullSizeImageAsync` returns the full-resolution bitmap,
+    /// not the thumbnail. Callback delivers on main thread (consistent with
+    /// the rest of the app's UI hop pattern).
+    func testLoadFullSizeImageAsyncReturnsFullResolution() {
+        let uuid = newTestUUID()
+        // 800x600 — large enough to be visibly different from any thumbnail.
+        let data = makeSizedPNG(width: 800, height: 600)
+        let filename = saveAndWait(data, uuid: uuid) ?? ""
+
+        let exp = expectation(description: "fullSize async load")
+        var fullSizeImage: NSImage?
+        storage.loadFullSizeImageAsync(filename: filename) { image in
+            fullSizeImage = image
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 5.0)
+
+        XCTAssertNotNil(fullSizeImage, "P2-16: full-size async load must succeed")
+        XCTAssertEqual(fullSizeImage?.size.width, 800,
+                       "P2-16: fullSize must preserve original 800px width (no 512px downscale)")
+        XCTAssertEqual(fullSizeImage?.size.height, 600,
+                       "P2-16: fullSize must preserve original 600px height")
+    }
+
+    /// P2-16: a second call to `loadFullSizeImageAsync` for the same
+    /// filename must hit the fullSizeCache (not re-read disk). We assert
+    /// via the side-effect of file corruption: cache hit returns the
+    /// in-memory image, ignoring the now-corrupt on-disk bytes.
+    func testLoadFullSizeImageAsyncCachesResult() {
+        let uuid = newTestUUID()
+        let data = makeSizedPNG(width: 600, height: 400)
+        let filename = saveAndWait(data, uuid: uuid) ?? ""
+
+        // First call warms the cache
+        let exp1 = expectation(description: "first fullSize load")
+        storage.loadFullSizeImageAsync(filename: filename) { _ in exp1.fulfill() }
+        wait(for: [exp1], timeout: 5.0)
+
+        // Corrupt the file
+        let fileURL = storageDirectoryURL().appendingPathComponent(filename)
+        try? Data([0x00, 0x01]).write(to: fileURL)
+
+        // Second call: cache hit must return the original image, ignoring the corrupted file
+        let exp2 = expectation(description: "second fullSize load (cache hit)")
+        var cachedImage: NSImage?
+        storage.loadFullSizeImageAsync(filename: filename) { image in
+            cachedImage = image
+            exp2.fulfill()
+        }
+        wait(for: [exp2], timeout: 5.0)
+
+        XCTAssertNotNil(cachedImage, "P2-16: cache hit must return the fullSize image")
+        XCTAssertEqual(cachedImage?.size.width, 600,
+                       "P2-16: cache hit must preserve original dimensions (not re-decode corrupted file)")
+        XCTAssertEqual(cachedImage?.size.height, 400)
+    }
+
+    /// P2-16: `cachedFullSizeImageObject` is the warm-path accessor used
+    /// by ClipboardStore.copyToClipboard. After warm-loading, the cache
+    /// hit returns the full-size image synchronously.
+    func testCachedFullSizeImageObjectReturnsWarmHit() {
+        let uuid = newTestUUID()
+        let data = makeSizedPNG(width: 500, height: 300)
+        let filename = saveAndWait(data, uuid: uuid) ?? ""
+
+        // Pre-warm
+        let exp = expectation(description: "warm load")
+        storage.loadFullSizeImageAsync(filename: filename) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 5.0)
+
+        XCTAssertNotNil(storage.cachedFullSizeImageObject(filename: filename),
+                        "P2-16: warm cache must surface full-size synchronously")
+        XCTAssertEqual(storage.cachedFullSizeImageObject(filename: filename)?.size.width, 500)
+        XCTAssertEqual(storage.cachedFullSizeImageObject(filename: filename)?.size.height, 300)
+    }
+
+    /// P2-16: a cold `cachedFullSizeImageObject` returns nil (no disk
+    /// read on the warm-path accessor — copyToClipboard dispatches the
+    /// async load instead).
+    func testCachedFullSizeImageObjectReturnsNilOnMiss() {
+        // A filename that has never been loaded
+        let cold = "\(UUID().uuidString).png"
+        XCTAssertNil(storage.cachedFullSizeImageObject(filename: cold),
+                     "P2-16: cold cache miss must not touch disk")
+    }
+
+    /// P2-16 (per brief): fullSizeCache must be evicted on deleteImage,
+    /// parallel to the existing imageCache eviction (ID-IMG-0001). Without
+    /// this, a deleted image stays resident in fullSizeCache and
+    /// copyToClipboard would write a zombie image to the pasteboard.
+    func testDeleteImageEvictsFullSizeCache() {
+        let uuid = newTestUUID()
+        let data = makeSizedPNG(width: 500, height: 500)
+        let filename = saveAndWait(data, uuid: uuid) ?? ""
+
+        // Warm both caches
+        _ = storage.loadImageObject(filename: filename)
+        let exp = expectation(description: "fullSize warm")
+        storage.loadFullSizeImageAsync(filename: filename) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 5.0)
+
+        XCTAssertNotNil(storage.cachedFullSizeImageObject(filename: filename),
+                        "Test fixture: fullSize cache must be warm before delete")
+
+        storage.deleteImage(filename: filename)
+
+        XCTAssertNil(storage.cachedFullSizeImageObject(filename: filename),
+                     "P2-16: deleteImage must evict fullSizeCache (parallel to imageCache)")
+    }
+
+    /// P2-16: fullSizeCache must be evicted on deleteAllExcept, parallel to
+    /// the imageCache eviction (ID-IMG-0001).
+    func testDeleteAllExceptEvictsFullSizeCache() {
+        let keep = newTestUUID()
+        let drop = newTestUUID()
+        let keepName = "\(keep.uuidString).png"
+        let dropName = "\(drop.uuidString).png"
+        _ = saveAndWait(makeSizedPNG(width: 400, height: 300), uuid: keep)
+        _ = saveAndWait(makeSizedPNG(width: 400, height: 300), uuid: drop)
+
+        // Warm fullSizeCache for both via async loads
+        let exp = expectation(description: "warm both")
+        exp.expectedFulfillmentCount = 2
+        storage.loadFullSizeImageAsync(filename: keepName) { _ in exp.fulfill() }
+        storage.loadFullSizeImageAsync(filename: dropName) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 5.0)
+
+        XCTAssertNotNil(storage.cachedFullSizeImageObject(filename: dropName),
+                        "Test fixture: drop's fullSize cache must be warm before deleteAllExcept")
+
+        storage.deleteAllExcept(filenames: [keepName])
+
+        XCTAssertNil(storage.cachedFullSizeImageObject(filename: dropName),
+                     "P2-16: deleteAllExcept must evict drop's fullSizeCache")
+        XCTAssertNotNil(storage.cachedFullSizeImageObject(filename: keepName),
+                        "P2-16: kept file's fullSizeCache must survive per-file eviction")
+    }
+
+    // MARK: - P2-16 test fixtures
+
+    /// Sized PNG fixture: produces a PNG of exact width×height (used to
+    /// verify aspect-ratio preservation in the thumbnail path).
+    private func makeSizedPNG(width: Int, height: Int) -> Data {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0,
+            bitsPerPixel: 32
+        )
+        guard let rep = rep else { return Data() }
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor.red.setFill()
+        NSRect(x: 0, y: 0, width: width, height: height).fill()
+        return rep.representation(using: .png, properties: [:]) ?? Data()
+    }
+
+    /// Sized JPEG fixture with embedded EXIF orientation. The thumbnail
+    /// path's kCGImageSourceCreateThumbnailWithTransform honours this tag,
+    /// so a 200x400 image tagged `.right` (90° CW) decodes as 400x200.
+    private func makeSizedJPEGWithOrientation(
+        width: Int, height: Int, orientation: CGImagePropertyOrientation
+    ) -> Data {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0,
+            bitsPerPixel: 32
+        )
+        guard let rep = rep, let cgImage = rep.cgImage else { return Data() }
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor.blue.setFill()
+        NSRect(x: 0, y: 0, width: width, height: height).fill()
+
+        let mutableData = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(
+            mutableData, "public.jpeg" as CFString, 1, nil
+        ) else { return Data() }
+        let props: [CFString: Any] = [kCGImagePropertyOrientation: orientation.rawValue]
+        CGImageDestinationAddImage(dest, cgImage, props as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return Data() }
+        return mutableData as Data
+    }
 }

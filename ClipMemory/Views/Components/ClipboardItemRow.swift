@@ -151,6 +151,12 @@ struct ClipboardItemRow: View, Equatable {
     // lands — the previous "retry once after 200ms then give up" path left
     // the row permanently blank when prepareKey took longer.
     @State private var decryptRetryToken = 0
+    // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): race-guard token for
+    // the long-press preview. Each press mints a UUID; the async full-size
+    // load's completion only acts on the result if the current
+    // `previewPressToken` still matches. Prevents a slow load from one
+    // press showing a stale preview after a fast release+repress cycle.
+    @State private var previewPressToken: UUID? = nil
 
     static func == (lhs: ClipboardItemRow, rhs: ClipboardItemRow) -> Bool {
         lhs.item.id == rhs.item.id &&
@@ -538,13 +544,39 @@ struct ClipboardItemRow: View, Equatable {
                         }
                         .animation(.easeIn(duration: 0.3), value: loadedImage)
                         .onChange(of: imageLongPressing) { pressing in
-                            if pressing, let ns = loadedImage {
-                                ImagePreviewPanel.show(image: ns)
+                            // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign):
+                            // long-press preview now routes through
+                            // loadFullSizeImageAsync (background decode,
+                            // fullSizeCache-populating) instead of reusing
+                            // `loadedImage` (now the ≤512 px thumbnail).
+                            // Race-guard via `previewPressToken` so a slow
+                            // load from an earlier press can't show a stale
+                            // preview after a release + repress cycle.
+                            if pressing {
+                                let pressToken = UUID()
+                                self.previewPressToken = pressToken
+                                let filename = item.content
+                                ImageStorage.shared.loadFullSizeImageAsync(filename: filename) { image in
+                                    guard self.previewPressToken == pressToken,
+                                          self.imageLongPressing else { return }
+                                    if let image {
+                                        ImagePreviewPanel.show(image: image)
+                                    } else {
+                                        ImagePreviewPanel.hide()
+                                    }
+                                }
                             } else {
+                                self.previewPressToken = nil
                                 ImagePreviewPanel.hide()
                             }
                         }
-                        .onDisappear { ImagePreviewPanel.hide() }
+                        .onDisappear {
+                            // Invalidate any in-flight long-press load so it
+                            // can't pop the preview panel after the row has
+                            // been recycled.
+                            self.previewPressToken = nil
+                            ImagePreviewPanel.hide()
+                        }
                         .task(id: item.content) {
                             // P0-3 T2: if the startup integrity scan already knows
                             // this image is missing/corrupt, show status immediately

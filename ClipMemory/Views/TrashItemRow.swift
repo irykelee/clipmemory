@@ -37,6 +37,11 @@ struct TrashItemRow: View, Equatable {
     @State private var imageLoadStatus: ImageStorage.ImageLoadStatus?
     @State private var imageLongPressing = false
     @State private var pendingDelete = false
+    // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): race-guard token for
+    // the long-press preview. Each press mints a UUID; the async full-size
+    // load's completion only acts on the result if the current
+    // `previewPressToken` still matches. Symmetric to ClipboardItemRow.
+    @State private var previewPressToken: UUID? = nil
     // CLIP-3 (2026-07-24 review): same guard as ClipboardItemRow — fontScale
     // is only the invalidation trigger; all sizing goes through sz().
     @AppStorage("fontScale") private var fontScale: Double = 1.0
@@ -115,13 +120,43 @@ struct TrashItemRow: View, Equatable {
                             }
                         }
                         .onChange(of: imageLongPressing) { pressing in
-                            if pressing, let ns = loadedImage {
-                                ImagePreviewPanel.show(image: ns)
+                            // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign):
+                            // long-press preview now routes through
+                            // loadFullSizeImageAsync (background decode,
+                            // fullSizeCache-populating) instead of reusing
+                            // `loadedImage` (now the ≤512 px thumbnail).
+                            // Race-guard via `previewPressToken` so a slow
+                            // load from an earlier press can't show a stale
+                            // preview after a release + repress cycle.
+                            // Mirrors ClipboardItemRow (was a batch-6
+                            // round-1 miss — TrashItemRow preview was
+                            // accidentally still using the thumbnail).
+                            if pressing {
+                                let pressToken = UUID()
+                                self.previewPressToken = pressToken
+                                let filename = item.content
+                                ImageStorage.shared.loadFullSizeImageAsync(filename: filename) { image in
+                                    guard self.previewPressToken == pressToken,
+                                          self.imageLongPressing else { return }
+                                    if let image {
+                                        ImagePreviewPanel.show(image: image)
+                                    } else {
+                                        ImagePreviewPanel.hide()
+                                    }
+                                }
                             } else {
+                                self.previewPressToken = nil
                                 ImagePreviewPanel.hide()
                             }
                         }
-                        .onDisappear { ImagePreviewPanel.hide() }
+                        .onDisappear {
+                            // Invalidate any in-flight long-press load so it
+                            // can't pop the preview panel after the row has
+                            // been recycled (e.g., user permanently deletes
+                            // the item from trash).
+                            self.previewPressToken = nil
+                            ImagePreviewPanel.hide()
+                        }
                         .task(id: item.content) {
                             if store.imageMissingIds.contains(item.id) {
                                 imageLoadFailed = true
