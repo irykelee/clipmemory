@@ -2018,6 +2018,19 @@ final class ClipboardStore: ObservableObject {
         return targets.count
     }
 
+    // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): monotonic token for
+    // ordering rapid successive image copies. copyToClipboard increments
+    // `copyGenCounter` per .image call and records the latest in-flight
+    // token in `pendingCopyToken`. When the async full-size load's
+    // completion fires, it compares its captured `myToken` against the
+    // current `pendingCopyToken` — a mismatch means a newer copy has
+    // started, and the older completion drops without writing to the
+    // pasteboard. Without this, rapid A-then-B copies can land in the
+    // wrong order on NSPasteboard.general (whichever cold load finishes
+    // last wins, not the user's intent).
+    private var copyGenCounter: UInt64 = 0
+    private var pendingCopyToken: UInt64?
+
     func copyToClipboard(_ item: ClipboardItem) {
         let pasteboard = NSPasteboard.general
 
@@ -2028,17 +2041,22 @@ final class ClipboardStore: ObservableObject {
 
         switch item.type {
         case .image:
-            // M-5 (2026-07-24 audit): `loadImageObject` runs legacy-migration
-            // disk I/O inside `migrationQueue.sync` — on a cold image that
-            // blocked the main thread (this handler runs from UI actions in
-            // ContentView / ItemListView / QuickBarView). Warm cache (the
-            // common case — the row already rendered the thumbnail) copies
-            // synchronously; a cold image loads via `imageStatusAsync` on the
-            // status queue and finishes the pasteboard write on main.
-            if let cached = ImageStorage.shared.cachedImageObject(filename: item.content) {
+            // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): warm path now
+            // consults `cachedFullSizeImageObject` (the dedicated
+            // fullSizeCache), NOT `cachedImageObject` which now returns the
+            // ≤512 px row-preview thumbnail. Pre-fix (batch-6 round-1)
+            // used the old `cachedImageObject` semantics that returned
+            // whatever `loadImageObject` had cached — which was a
+            // thumbnail after the cache split, silently copying a 512-px
+            // preview to the pasteboard. Cold path uses
+            // `loadFullSizeImageAsync` (global queue, EXIF-aware,
+            // fullSizeCache-populating) with the monotonic token to
+            // discard stale completions if a newer copy started in the
+            // gap.
+            if let cached = ImageStorage.shared.cachedFullSizeImageObject(filename: item.content) {
                 preparedImage = cached
             } else {
-                copyColdImageToClipboard(item)
+                copyFullSizeImageToClipboardAsync(item)
                 return
             }
         case .richText:
@@ -2098,32 +2116,48 @@ final class ClipboardStore: ObservableObject {
         moveToTop(item)
     }
 
-    /// M-5 (2026-07-24 audit): cold-image copy path. Loads via
-    /// `imageStatusAsync` (status queue) so legacy-migration disk I/O never
-    /// touches the main thread, then finishes the copy on main. Ordering
-    /// contracts are preserved: `recordOwnWrite()` still runs BEFORE
-    /// `clearContents()` (M-4) and `moveToTop` still mutates `@Published`
-    /// items on the main thread.
-    private func copyColdImageToClipboard(_ item: ClipboardItem) {
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let status = await ImageStorage.shared.imageStatusAsync(for: item.content)
-            guard case .available(let data) = status,
-                  let image = NSImage(data: data) else { return }
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.onRecordOwnWrite?()
-                let pasteboard = NSPasteboard.general
-                pasteboard.clearContents()
-                // ID-SECURITY-0003 (2026-07-30 audit): mirror the warm-path
-                // marker in copyToClipboard — stamp ConcealedType when the
-                // item is sensitive so well-behaved apps (and our own
-                // ClipboardMonitor read path) suppress/skip the entry.
-                if item.isSensitive {
-                    pasteboard.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
-                }
-                pasteboard.writeObjects([image])
-                self.moveToTop(item)
+    /// P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): cold-path image copy.
+    /// Replaces the pre-fix `copyColdImageToClipboard` which read bytes
+    /// via `imageStatusAsync` and created an NSImage from data on a
+    /// detached task. The new path uses `loadFullSizeImageAsync` (ImageIO
+    /// `CGImageSourceCreateImageAtIndex` with EXIF transform, native
+    /// resolution, cached in `fullSizeCache`).
+    ///
+    /// Ordering token (`copyGenCounter` + `pendingCopyToken`) ensures
+    /// rapid A-then-B copies land on the pasteboard in user-intended
+    /// order even when the slower load finishes last. When B starts, B's
+    /// token is recorded in `pendingCopyToken`; when A's async load
+    /// completes later, A sees its captured `myToken != pendingCopyToken`
+    /// and drops without writing.
+    private func copyFullSizeImageToClipboardAsync(_ item: ClipboardItem) {
+        let myToken = copyGenCounter &+ 1
+        copyGenCounter = myToken
+        pendingCopyToken = myToken
+        ImageStorage.shared.loadFullSizeImageAsync(filename: item.content) { [weak self] image in
+            guard let self else { return }
+            // Stale completion: a newer copyToClipboard has taken over.
+            // Drop without touching pasteboard — the newer call owns the
+            // pasteboard state now.
+            guard self.pendingCopyToken == myToken else { return }
+            guard let image else {
+                // Full-size load failed; clear the token so a subsequent
+                // copy isn't suppressed by this failure.
+                if self.pendingCopyToken == myToken { self.pendingCopyToken = nil }
+                return
             }
+            self.pendingCopyToken = nil
+            self.onRecordOwnWrite?()
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            // ID-SECURITY-0003 (2026-07-30 audit): mirror the warm-path
+            // marker in copyToClipboard — stamp ConcealedType when the
+            // item is sensitive so well-behaved apps (and our own
+            // ClipboardMonitor read path) suppress/skip the entry.
+            if item.isSensitive {
+                pasteboard.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+            }
+            pasteboard.writeObjects([image])
+            self.moveToTop(item)
         }
     }
 

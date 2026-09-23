@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ImageIO
 import os.log
 
 // CryptoService is in the same module, no import needed
@@ -12,13 +13,37 @@ class ImageStorage {
     /// L-11 (2026-07-25 audit): use a Bool probe instead of string-matching
     /// the XCTest environment variable in multiple places.
     private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    /// Memory cache for loaded images — avoids repeated disk I/O for items visible in the list or copied shortly after
+    /// Memory cache for row-preview thumbnails — avoids repeated disk I/O +
+    /// decode for items visible in the list. P1-AUDIT-2026-09-22 (P2-16):
+    /// capped via `thumbnailMaxPixelSize` (512 px) at decode time so a
+    /// 6K screenshot no longer pins 80+ MB of bitmap in this cache.
+    /// The full-size cache (fullSizeCache, below) is the separate cache
+    /// used by `copyToClipboard` and the long-press preview path.
     private let imageCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 100
-        cache.totalCostLimit = 100 * 1024 * 1024 // 100 MB memory cap
+        cache.totalCostLimit = 100 * 1024 * 1024 // 100 MB memory cap (thumbnail size)
         return cache
     }()
+    /// P1-AUDIT-2026-09-22 (P2-16): separate cache for the full-size bitmap
+    /// used by `copyToClipboard` (warm path) and `loadFullSizeImageAsync`
+    /// (cold path). Sized smaller than `imageCache` because full-size bitmaps
+    /// are 5-15× the thumbnail — 8 items / 100 MB is the sweet spot for
+    /// "user clicks a recent image, gets it instantly without re-decode".
+    /// Decoupled from `imageCache` so a thumbnail-prefetch burst can't evict
+    /// the full-size of a row the user is about to copy.
+    private let fullSizeCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 8
+        cache.totalCostLimit = 100 * 1024 * 1024 // 100 MB
+        return cache
+    }()
+    /// P1-AUDIT-2026-09-22 (P2-16): row-preview thumbnail cap. Mirrors
+    /// `OCRService.thumbnailMaxPixelSize` pattern (larger there, 2048, for
+    /// OCR accuracy). 512 px is plenty for the row preview (max-height 80
+    /// at @2x = 160 px physical) and the long-press preview (rendered via
+    /// ImagePreviewPanel which uses native size when it fits the screen).
+    private static let thumbnailMaxPixelSize: CGFloat = 512
 
     // BUG-026 (2026-07-21): Swift lazy is not thread-safe — concurrent first
     // access can cause double initialization. Use `let` with immediate init.
@@ -774,57 +799,152 @@ class ImageStorage {
     }
 
     /// Cache-only variant of `loadImageObject` — returns nil on a cache miss
-    /// without touching disk. `ClipboardStore.copyToClipboard` uses it to
-    /// stay synchronous for warm images (M-5, 2026-07-24 audit).
+    /// without touching disk.
+    ///
+    /// P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): this now returns the
+    /// *thumbnail* from `imageCache`. The previous semantics — "return
+    /// whatever `loadImageObject` would return" — was a bug because the
+    /// row-preview path used to decode the full-size NSImage and stash it
+    /// here, so the warm copy path accidentally copied thumbnails after
+    /// the redesign. `ClipboardStore.copyToClipboard` now consults
+    /// `cachedFullSizeImageObject` for the warm path. The thumbnail cache
+    /// is still thread-safe (NSCache) and shared across all readers.
     func cachedImageObject(filename: String) -> NSImage? {
         guard Self.isValidFilename(filename) else { return nil }
         return imageCache.object(forKey: filename as NSString)
     }
 
-    /// Loads image as NSImage, checking memory cache first for fast repeated access.
-    func loadImageObject(filename: String) -> NSImage? {
-        // Check memory cache first
-        if let cached = cachedImageObject(filename: filename) {
-            return cached
-        }
-        // Load from disk and cache
-        guard let data = loadImage(filename: filename),
-              let image = NSImage(data: data) else {
-            return nil
-        }
-        // BUG-027 (2026-07-21): pass a cost so totalCostLimit (100MB) can
-        // trigger eviction. Without cost:, only countLimit (100) is
-        // effective — 100 large images can far exceed 100MB.
-        // ID-PERF-0016 (2026-07-31 audit): cost was the COMPRESSED byte
-        // count (data.count), underestimating the resident bitmap by 5-15x
-        // — a 6K screenshot compresses to ~5-20MB but decodes to ~81MB, so
-        // the 100MB cap could actually pin ~1GB. Estimate the decoded
-        // bitmap (width*height*4 RGBA bytes) instead. A full ImageIO
-        // thumbnail decode path (like OCRService's 2048px pattern, ~480px
-        // for rows) is deliberately NOT done here: the long-press preview
-        // reuses this cache and may legitimately need the large image, so
-        // downscaling would be a behavior change — left as a follow-up.
-        imageCache.setObject(
-            image, forKey: filename as NSString,
-            cost: Self.bitmapCostEstimate(of: image, fallback: data.count)
-        )
-        return image
+    /// P1-AUDIT-2026-09-22 (P2-16): warm-path accessor for the full-size
+    /// bitmap used by `ClipboardStore.copyToClipboard`. Hits `fullSizeCache`
+    /// synchronously and returns nil on a cold miss — the cold path is
+    /// `loadFullSizeImageAsync` (background queue, monotonic token).
+    ///
+    /// Decoupled from `cachedImageObject` (which now returns the thumbnail)
+    /// so the copy contract can't silently fall back to a 512-px preview
+    /// after a future change to either cache.
+    func cachedFullSizeImageObject(filename: String) -> NSImage? {
+        guard Self.isValidFilename(filename) else { return nil }
+        return fullSizeCache.object(forKey: filename as NSString)
     }
 
-    /// ID-PERF-0016: decoded-bitmap cost estimate for imageCache. NSImage
-    /// loads of PNG/JPEG produce an NSBitmapImageRep whose pixelsWide/
-    /// pixelsHigh reflect the actual backing bitmap; falls back to the
-    /// compressed byte count when no raster representation is available.
-    private static func bitmapCostEstimate(of image: NSImage, fallback: Int) -> Int {
-        for rep in image.representations where rep.pixelsWide > 0 && rep.pixelsHigh > 0 {
-            return rep.pixelsWide * rep.pixelsHigh * 4
+    /// P1-AUDIT-2026-09-22 (P2-16): row-preview THUMBNAIL path. Decodes the
+    /// on-disk bytes via `CGImageSourceCreateThumbnailAtIndex` with
+    /// `kCGImageSourceThumbnailMaxPixelSize: 512` so a 6K screenshot caps
+    /// at a ~512×288 thumbnail instead of pinning an 80+ MB bitmap.
+    ///
+    /// Pre-fix (audit §二 16): `NSImage(data:)` decoded the full bitmap,
+    /// cached the result with a per-pixel cost estimate, and was reused by
+    /// both the row preview AND the copyToClipboard warm path AND the
+    /// long-press preview. The dual-purpose cache meant every cache-miss
+    /// full-decode pinned the large bitmap, and any cache miss in one
+    /// consumer forced the other consumers to full-decode too. Round-2
+    /// redesign splits the cache: imageCache (this method) for thumbnails,
+    /// fullSizeCache (`loadFullSizeImageAsync`) for the full bitmap.
+    ///
+    /// EXIF orientation is honoured via
+    /// `kCGImageSourceCreateThumbnailWithTransform: true` so a portrait
+    /// JPEG shot on a phone displays correctly in the row preview (the
+    /// bitmap is rotated before the thumbnail decode).
+    func loadImageObject(filename: String) -> NSImage? {
+        let cacheKey = filename as NSString
+        // Check memory cache first
+        if let cached = imageCache.object(forKey: cacheKey) {
+            return cached
         }
-        return fallback
+        guard Self.isValidFilename(filename),
+              let data = loadImage(filename: filename),
+              let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return nil
+        }
+        let thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: Self.thumbnailMaxPixelSize,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: false
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(
+            source, 0, thumbnailOptions as CFDictionary
+        ) else {
+            return nil
+        }
+        // Aspect-correct NSImage: the CGImage's dimensions already reflect
+        // the EXIF transform + the max-pixel cap, so constructing NSImage
+        // from cgImage + size preserves the actual aspect ratio (no
+        // hardcoded 512x512 — that was the batch-6 round-1 regression).
+        let nsImage = NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: cgImage.width, height: cgImage.height)
+        )
+        imageCache.setObject(
+            nsImage, forKey: cacheKey,
+            cost: cgImage.width * cgImage.height * 4
+        )
+        return nsImage
+    }
+
+    /// P1-AUDIT-2026-09-22 (P2-16): cold-path full-size loader. Decodes
+    /// the full-resolution bitmap via `CGImageSourceCreateImageAtIndex`
+    /// (no `kCGImageSourceCreateThumbnailFromImageAlways`, so the result
+    /// is at native pixels), honours EXIF orientation via the transform
+    /// flag, caches the result in `fullSizeCache`, and calls `completion`
+    /// on the main thread with the cached NSImage.
+    ///
+    /// Used by:
+    /// - `ClipboardStore.copyToClipboard` cold path (replaces the old
+    ///   `copyColdImageToClipboard` bytes-via-`imageStatusAsync` flow)
+    /// - `ClipboardItemRow` / `TrashItemRow` long-press preview (was
+    ///   reusing the row preview thumbnail before — the long-press then
+    ///   upscaled a 512px bitmap to native screen size)
+    ///
+    /// Cache hit (warm path): the existing `cachedFullSizeImageObject`
+    /// synchronous accessor skips this method entirely. We never call the
+    /// async path on a warm cache.
+    func loadFullSizeImageAsync(
+        filename: String, completion: @escaping (NSImage?) -> Void
+    ) {
+        let cacheKey = filename as NSString
+        if let cached = fullSizeCache.object(forKey: cacheKey) {
+            DispatchQueue.main.async { completion(cached) }
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            guard Self.isValidFilename(filename),
+                  let data = self.loadImage(filename: filename),
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let cgImage = CGImageSourceCreateImageAtIndex(
+                      source, 0, [
+                          kCGImageSourceCreateThumbnailFromImageAlways: false,
+                          kCGImageSourceCreateThumbnailWithTransform: true,
+                          kCGImageSourceShouldCacheImmediately: false
+                      ] as CFDictionary
+                  ) else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            let nsImage = NSImage(
+                cgImage: cgImage,
+                size: NSSize(width: cgImage.width, height: cgImage.height)
+            )
+            self.fullSizeCache.setObject(
+                nsImage, forKey: cacheKey,
+                cost: cgImage.width * cgImage.height * 4
+            )
+            DispatchQueue.main.async { completion(nsImage) }
+        }
     }
 
     func deleteImage(filename: String) {
         guard Self.isValidFilename(filename) else { return }
+        // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): evict BOTH caches
+        // (parallel to ID-IMG-0001 for imageCache). Without fullSizeCache
+        // eviction, a deleted image stays resident in the full-size cache
+        // and copyToClipboard would write a zombie image to the pasteboard.
         imageCache.removeObject(forKey: filename as NSString)
+        fullSizeCache.removeObject(forKey: filename as NSString)
         let fileURL = imagesDirectory.appendingPathComponent(filename)
         // ID-03 (2026-07-30 audit): a swallowed removeItem failure leaves
         // the encrypted file on disk as an orphan. cleanupOrphanedImages
@@ -867,9 +987,14 @@ class ImageStorage {
                 // imageCache — otherwise its NSImage stays resident in memory
                 // and later loadImageObject calls hit the cache and return a
                 // zombie image for a file that no longer exists on disk.
+                // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): also evict
+                // fullSizeCache — same reasoning, separate cache. Without
+                // this, copyToClipboard would write a zombie full-size image
+                // to the pasteboard for a file that no longer exists.
                 // Per-file eviction (not removeAllObjects) so kept files
                 // stay cached.
                 imageCache.removeObject(forKey: file as NSString)
+                fullSizeCache.removeObject(forKey: file as NSString)
             } catch {
                 failed += 1
                 logger.error("deleteAllExcept: removeItem failed during bulk cleanup: \(error.localizedDescription, privacy: .public) file=\(file, privacy: .public)")
