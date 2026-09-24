@@ -48,7 +48,7 @@
 
 ## 📋 Registro de cambios
 
-### v2.9.2 (2026-09-24) — v2.9.2 — Optimización de rendimiento al arrancar y refuerzo de auditoría
+### v2.9.2 (2026-09-24) — Optimización de rendimiento al arrancar y refuerzo de auditoría
 
 - Registro de cambios completo en [v2.9.2 release notes](../release-notes/v2.9.2.md). Destacados: arranque más rápido (decodificación en segundo plano + SyncBarrier), debounce de captura, copia de imagen a resolución completa real, seis correcciones de fallos silenciosos, división del god object.
 

@@ -58,7 +58,7 @@
 
 - **🔧 关键静默失败修复 (P2-2/3/4/6/7/15)** — 6 项 silent failure：saveBlob 检测内存写失败 / Keychain 迁移 transient vs permanent / restoreFromTrash trim+dedup / detectSensitive >50KB / 空白 capture reject / NSCache cost 设置。
 
-- **🛠️ ClipboardStore god object 拆分 (P2-8)** — `ClipboardStore.swift` 2129 行 / 69 func / 19 @Published → 拆为 `+History` / `+OCR` / `+Tag` / `+Utilities` 4 个 topic extension。
+- **🛠️ ClipboardStore 拆分扩展 (P2-8, 部分)** — `ClipboardStore` god object 新增 4 个 topic extension（`+History` / `+OCR` / `+Tag` / `+Utilities`）。主文件仍 2305 行超 swiftlint `file_length.error:1250` 上限，`// swiftlint:disable file_length` 保留 — 进一步拆分待后续 patch。
 
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.2
 

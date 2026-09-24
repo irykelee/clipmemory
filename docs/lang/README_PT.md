@@ -48,7 +48,7 @@
 
 ## 📋 Registro de alterações
 
-### v2.9.2 (2026-09-24) — v2.9.2 — Otimização de desempenho na inicialização e reforço de auditoria
+### v2.9.2 (2026-09-24) — Otimização de desempenho na inicialização e reforço de auditoria
 
 - Registro completo de mudanças em [v2.9.2 release notes](../release-notes/v2.9.2.md). Destaques: inicialização mais rápida (decodificação em segundo plano + SyncBarrier), debounce de captura, cópia de imagem em resolução completa real, seis correções de falhas silenciosas, divisão do god object.
 

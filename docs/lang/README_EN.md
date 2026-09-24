@@ -48,7 +48,7 @@
 
 ## 📋 Changelog
 
-### v2.9.2 (2026-09-24) — v2.9.2 — Startup Performance & Audit Hardening
+### v2.9.2 (2026-09-24) — Startup Performance & Audit Hardening
 
 - See [v2.9.2 release notes](../release-notes/v2.9.2.md) for the full changelog. Highlights: faster startup (background decode + SyncBarrier), capture debounce, real full-resolution image copy, six silent-failure fixes, god-object split.
 
