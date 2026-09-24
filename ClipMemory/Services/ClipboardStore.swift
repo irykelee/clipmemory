@@ -1163,6 +1163,24 @@ final class ClipboardStore: ObservableObject {
     /// in `init` call this without ceremony.
     @discardableResult
     func waitForFirstLoadSync(timeout: TimeInterval = 5.0) -> Bool {
+        // [P1-2 follow-up] Must be called on the main thread. The
+        // barrier pumps `RunLoop.main`, which services main-queue
+        // work — including the pending `MainActor.run {
+        // applyLoadResult }` hop that mutates `@Published items`.
+        // If a bg caller pumps RunLoop.main, those mutations can
+        // land on the bg thread, violating CLAUDE.md's "`@Published`
+        // 只能在 main thread 修改" invariant. BG callers (e.g. the
+        // terminate-drain queue) must hop to main first via
+        // `DispatchQueue.main.sync` — see AppDelegate.swift's
+        // applicationShouldTerminate drain. Trapping here is the
+        // defense-in-depth guard against future callers reintroducing
+        // the race; Thread.isMainThread's release-build fallback keeps
+        // production from crashing if a caller is missed.
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard Thread.isMainThread else {
+            logger.error("P2-14: waitForFirstLoadSync called off-main — returning current state without barrier; caller must DispatchQueue.main.sync first")
+            return firstLoadCompleted
+        }
         let deadline = Date().addingTimeInterval(timeout)
         while !firstLoadCompleted {
             if Date() >= deadline { return false }
