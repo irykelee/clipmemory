@@ -218,7 +218,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // ID-LIFE-0007 ordering preserved (image writes before clipboard saves).
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             ImageStorage.shared.drainPendingWrites()
-            ClipboardStore.shared.flushPendingSaves()
+            // P2-14 round-2 self-review fix [P1-2, follow-up]: the
+            // first-load barrier inside flushPendingSaves pumps
+            // RunLoop.main and reads `@MainActor`-isolated
+            // `firstLoadCompleted`. Both must run on the main thread;
+            // calling them from this bg drain would race the main
+            // thread's NSApp run loop and let `MainActor.run {
+            // applyLoadResult }` execute on the bg thread (mutating
+            // `@Published items` off-main — explicit CLAUDE.md
+            // violation). Hop to main synchronously for the flush.
+            // Safe: main is in NSApp's event loop waiting for the
+            // terminate reply, not blocked on bg work, so the sync
+            // hop completes inside the watchdog budget.
+            DispatchQueue.main.sync {
+                ClipboardStore.shared.flushPendingSaves()
+            }
             DispatchQueue.main.async {
                 self?.replyToTermination(allow: true)
             }
