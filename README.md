@@ -1,4 +1,4 @@
-# 剪忆 ClipMemory v2.9.1
+# 剪忆 ClipMemory v2.9.2
 
 **新一代 macOS 剪贴板管理器 — 一步开启，复制即搜**
 
@@ -47,6 +47,20 @@
 ---
 
 ## 📋 更新日志
+
+### v2.9.2 (2026-09-24) — 启动性能优化与审核加固
+
+- **⚡ 启动主线程不再卡顿 (P2-14)** — `ClipboardStore.init` 此前同步解码全部历史（10K 条目 = 100-300ms main thread stall），并引入 5 个旁路 bug。修法：detached 后台 Task + `SyncBarrier` + merge-instead-of-discard + conditional scheduleSave + terminate drain 加 `DispatchQueue.main.sync` + dispatchPrecondition 防退化。**强烈建议升级（启动体感 + 数据完整性双收）**。
+
+- **⚡ 剪贴板捕获路径优化 (P2-13)** — `addItem` 此前每次都同步写盘（100 次连续复制 = 5-20s 主线程占用）。修法：`scheduleSave` 500ms 防抖 coalesce，保留优雅退出持久性。
+
+- **🖼️ 图片复制现在是真全分辨率 (P2-16)** — `copyToClipboard` 此前可能写 ≤512px 缩略图到 NSPasteboard。Round-2 redesign 拆分 thumbnail cache 与 fullSize cache。
+
+- **🔧 关键静默失败修复 (P2-2/3/4/6/7/15)** — 6 项 silent failure：saveBlob 检测内存写失败 / Keychain 迁移 transient vs permanent / restoreFromTrash trim+dedup / detectSensitive >50KB / 空白 capture reject / NSCache cost 设置。
+
+- **🛠️ ClipboardStore god object 拆分 (P2-8)** — `ClipboardStore.swift` 2129 行 / 69 func / 19 @Published → 拆为 `+History` / `+OCR` / `+Tag` / `+Utilities` 4 个 topic extension。
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.2
 
 ### v2.9.1 (2026-08-15) — 静默失败修复与签名边界说明
 

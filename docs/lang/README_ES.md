@@ -1,4 +1,4 @@
-# ClipMemory v2.9.1
+# ClipMemory v2.9.2
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,10 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.9.2 (2026-09-24) — v2.9.2 — Optimización de rendimiento al arrancar y refuerzo de auditoría
+
+- Registro de cambios completo en [v2.9.2 release notes](../release-notes/v2.9.2.md). Destacados: arranque más rápido (decodificación en segundo plano + SyncBarrier), debounce de captura, copia de imagen a resolución completa real, seis correcciones de fallos silenciosos, división del god object.
 
 ### v2.9.1 (2026-08-15) — Correcciones de fallos silenciosos y notas sobre los límites de firma
 
