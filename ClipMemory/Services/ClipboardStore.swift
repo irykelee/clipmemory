@@ -506,7 +506,14 @@ final class ClipboardStore: ObservableObject {
         // immediately — that's the perf fix.
         loadItemsInBackgroundAsync()
         if isRunningTests {
-            _ = waitForFirstLoadSync(timeout: 5.0)
+            // P2-14 round-2 self-review fix [P2]: log warning if barrier
+            // times out instead of silently discarding the result. A
+            // silent timeout left the store with empty items and surfaced
+            // only as confusing count mismatches further down — making
+            // CI flakes hard to diagnose.
+            if !waitForFirstLoadSync(timeout: 5.0) {
+                logger.error("P2-14: first-load SyncBarrier timed out in tests after 5.0s — items may be empty")
+            }
         }
         loadTags()
         // loadTrashedItems + purgeExpiredTrash moved to TrashStore.init (HIGH-1)
@@ -1308,7 +1315,38 @@ final class ClipboardStore: ObservableObject {
             logger.error("ID-STORE-0016: trash blob load failed; skipping cleanupOrphanedImages")
         }
 
-        if repairedImages || repairedTexts {
+        // P2-14 round-2 self-review fix [P1]: extend the existing
+        // `repairedImages || repairedTexts` save gate with a new
+        // "user captured during load window" trigger.
+        //
+        // Root cause this prevents: prior sync `loadItems()` was a
+        // blocking call — the loaded state was visible from init and no
+        // addItem could outpace it. After the async change,
+        // `setupClipboardMonitor` (AppDelegate.swift:101) fires
+        // addItem shortly after init, and `addItem` calls `scheduleSave`
+        // with a 500ms debounce (ClipboardStore+Persistence.swift:57).
+        // If the disk decode exceeds that debounce — slow disk, large
+        // blob, or pressure pushing the audit's 100-300ms window
+        // further — `flushSave` can race ahead of `applyLoadResult`,
+        // writing a truncated in-memory snapshot of items to disk and
+        // clearing `needsSave`. The merge then completes in memory but
+        // no save is scheduled (only the original
+        // `repairedImages || repairedTexts` trigger fired previously).
+        // If the app dies before any further user action, the merged
+        // in-memory state is lost — exactly the data-loss class the
+        // batch-7 round-1 placeholder guard had, with the timing
+        // inverted.
+        //
+        // Conditional on `!existingNotInLoaded.isEmpty`: the only
+        // scenario where disk can diverge from memory mid-window is
+        // when addItem ran during the decode (otherwise the loaded set
+        // is exactly what was on disk). For the common "no capture
+        // during window" path, init stays cheap (no extra debounced
+        // write per launch) AND the P2-13 100-item coalescing test's
+        // `saveBlobCount == 0` baseline assertion continues to hold.
+        // Preserves the original repair trigger alongside the new
+        // window-trigger so neither is silently lost.
+        if !existingNotInLoaded.isEmpty || repairedImages || repairedTexts {
             scheduleSave()
         }
 
