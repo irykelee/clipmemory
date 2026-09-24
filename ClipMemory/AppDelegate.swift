@@ -167,7 +167,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Daily local backup (throttled internally to once per 24h).
         BackupService.shared.performBackupIfNeeded()
         // One-time OCR backfill for pre-existing image items.
-        ClipboardStore.shared.backfillOCRIfNeeded()
+        // P2-14 round-2 self-review fix [P1-1]: defer backfill until
+        // the async first-load lands, otherwise `items == []` here
+        // (load decode hasn't yet hit the MainActor hop) and the
+        // backfill short-circuits on `candidates.isEmpty` for every
+        // launch — every pre-existing image's `ocrAttempted` flag
+        // stays false forever, BUG-010's "retry next launch" promise
+        // never gets a chance to fire. Test suite stayed green because
+        // OCRTests manually call `store.loadItems()` (the now-test-only
+        // sync path) before invoking backfill.
+        Task { @MainActor in
+            await ClipboardStore.shared.waitForFirstLoad()
+            ClipboardStore.shared.backfillOCRIfNeeded()
+        }
         // C: start HangDetector watchdog last so all prior setup completes
         // before the main-thread heartbeat timer begins ticking.
         HangDetector.start()

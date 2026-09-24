@@ -1130,7 +1130,11 @@ final class ClipboardStore: ObservableObject {
     /// Tracks whether the first background load has finished applying
     /// its result to @Published state. Set inside `applyLoadResult`
     /// (already on @MainActor) so polling from the main thread is safe.
-    private var firstLoadCompleted = false
+    /// `private(set)` lets the Persistence extension read the flag to
+    /// gate `flushPendingSaves` on first-load completion (P2-14
+    /// round-2 self-review fix [P1-2]); writes stay restricted to
+    /// this file.
+    private(set) var firstLoadCompleted = false
 
     /// Async accessor: awaits the first background load completing.
     /// Returns immediately if no load is in flight (e.g. before init

@@ -92,6 +92,29 @@ extension ClipboardStore {
     /// Flushes pending item, tag, and trash saves to disk immediately. Called by the debounce timer,
     /// on deinit, or from AppDelegate.applicationWillTerminate to prevent data loss on quit.
     func flushPendingSaves() {
+        // P2-14 round-2 self-review fix [P1-2]: synchronous first-load
+        // barrier before encoding `items` to disk.
+        //
+        // Root cause: applicationShouldTerminate's drain (AppDelegate.swift:209)
+        // and applicationWillTerminate (AppDelegate.swift:258) both call this.
+        // A user who captures text during the load window and then Cmd+Qs
+        // before decode completes would otherwise have the in-memory truncated
+        // snapshot (post-addItem, pre-applyLoadResult) written to disk,
+        // overwriting the on-disk full history — exactly the data-loss class
+        // the batch-7 round-1 placeholder guard had, with a different exit
+        // vector. f801c64's conditional `!existingNotInLoaded.isEmpty`
+        // scheduleSave only saves when decode lands before the user's next
+        // action; the terminate path bypasses that gate entirely.
+        //
+        // Wait synchronously up to 5s (matches `applicationShouldTerminate`
+        // drain's existing watchdog budget — falls through to write truncated
+        // state if decode doesn't complete). In XCTest, init's auto-wait
+        // already flipped `firstLoadCompleted` so this is a no-op for tests.
+        if !firstLoadCompleted {
+            if !waitForFirstLoadSync(timeout: 5.0) {
+                logger.error("P2-14: flushPendingSaves called before firstLoadCompleted (5s timeout) — encoding current items snapshot; on-disk history may be incomplete if load was racing")
+            }
+        }
         flushSave()
         flushTagSave()
         trashStore.flushPendingSave()
