@@ -510,10 +510,9 @@ jobs:
           # confirmed). Fallback uses `gh api PATCH ?force=true` which
           # authenticates as the workflow owner via GITHUB_TOKEN and DOES
           # have admin bypass for refs the workflow created (see git history
-  # before this fix — the GitHub Actions bot can force-push refs/heads/*
-  # on its own repo, so PATCH with ?force=true is admin-bypassed).
-          # GitHub Actions bot can force-push to refs/heads/* on its own
-          # repo). PATCH with ?force=true sets force=true on the ref update.
+          # before this fix — the GitHub Actions bot can force-push refs/heads/*
+          # on its own repo, so PATCH with ?force=true is admin-bypassed).
+          # PATCH with ?force=true sets force=true on the ref update.
           if ! git rev-parse --verify "origin/${SOURCE_BRANCH}" >/dev/null 2>&1; then
             # Tag was never on a branch — skip force-update
             echo "::warning::origin/${SOURCE_BRANCH} does not exist; skipping gh api fallback."
