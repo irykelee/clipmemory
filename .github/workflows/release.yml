@@ -215,11 +215,16 @@ jobs:
           #     — that's why every previous release (v2.8.3 / v2.9.0 / v2.9.1)
           #     had no `ClipMemory.dSYM.tar.gz` asset despite ID-CRASH-0001
           #     intent. Point dsymutil at the binary inside the bundle.
+          #  3. Existence check: the ID-CRASH-0001 step used
+          #     `[[ ! -d "$APP" ]]` which is FALSE for a file (always
+          #     "missing" — `! -d` is true for both files AND non-existent
+          #     paths). Use `[[ ! -e ]]` (exists — true for both files and
+          #     directories).
           APP="/tmp/ClipMemory.app/Contents/MacOS/ClipMemory"
           DSYM_DIR="Releases/ClipMemory.app.dSYM"
           TARBALL="Releases/ClipMemory.dSYM.tar.gz"
 
-          if [[ ! -d "$APP" ]]; then
+          if [[ ! -e "$APP" ]]; then
             echo "❌ $APP missing — package step should have built it"
             exit 1
           fi
