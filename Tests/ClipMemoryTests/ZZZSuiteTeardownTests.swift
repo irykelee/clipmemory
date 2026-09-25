@@ -181,6 +181,12 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // ImageStorage startup migration + cleanup:
         "ImageStorageMigrationComplete", // ImageStorage.swift:78, 159, 290 — init-time migration latch
         "ImageStorageStartupCleanupRan", // ImageStorage.swift:889, 891 — init-time orphan cleanup latch
+        // ID-FONT-0001 (P1-AUDIT-2026-09-22 v2.9.2 release): fontScale written
+        // by `@AppStorage("fontScale")` defaults in TagPickerSheet + QuickBarView
+        // when a test instantiates those views; default value 1.0 is benign app
+        // lifecycle (sz() function reads it as a multiplier). Add here as a
+        // tolerance rather than silencing the canary on every snapshot run.
+        "fontScale",                  // Utils/FontScaling.swift:17 — @AppStorage default in TagPickerSheet + QuickBarView
     ]
 
     /// Cold-disk calibration (2026-08-06) found 18 keys; the 4 removed
