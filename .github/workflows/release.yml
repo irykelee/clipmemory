@@ -466,6 +466,20 @@ jobs:
               SOURCE_BRANCH="main"
             elif [[ "$(echo "$CANDIDATES" | grep -c . || true)" -eq 1 ]]; then
               SOURCE_BRANCH="$CANDIDATES"
+            elif [[ -z "$CANDIDATES" ]]; then
+              # P1-AUDIT-2026-09-22 v2.9.2 follow-up (2026-09-25):
+              # `git branch --all --contains` returns empty on the GH Actions
+              # runner even with `fetch-depth: 0` when the tag was force-pushed
+              # onto a commit that's an ancestor of main but the runner's
+              # local refs aren't fully populated at this step (e.g. the
+              # checkout ran before force-pushed branches were visible, or
+              # the runner's git config dropped remote refs). Fall back to
+              # the workflow's default branch env (always set by GH Actions)
+              # — it's correct in 99% of releases and the "prefer main when
+              # reachable" release policy (added 2026-07-24, see git log
+              # around the v2.5.12 ship) already maps to this case.
+              echo "⚠️ git branch --all --contains returned empty for ${GITHUB_REF_NAME}^{commit}; falling back to \${GITHUB_DEFAULT_BRANCH:-main}."
+              SOURCE_BRANCH="${GITHUB_DEFAULT_BRANCH:-main}"
             else
               echo "❌ Cannot determine a unique source branch for ${GITHUB_REF_NAME}."
               echo "   Candidate branches containing the tag commit:"
