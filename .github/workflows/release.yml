@@ -199,7 +199,20 @@ jobs:
         if: github.event_name == 'push'
         run: |
           set -euo pipefail
-          APP="Releases/ClipMemory.app"
+          # ID-CRASH-0001 (2026-08-16 audit MEDIUM-1 fix): extract dSYM
+          # companion alongside the app tarball. Post-release verify
+          # checks this third asset.
+          #
+          # P1-AUDIT-2026-09-22 v2.9.2 follow-up (2026-09-25): package.sh
+          # copies the .app to `/tmp/ClipMemory.app/` for tarring but
+          # never extracts to `Releases/`. The ID-CRASH-0001 commit
+          # message assumed package.sh produced `Releases/ClipMemory.app`
+          # but it doesn't — that's why every previous release
+          # (v2.8.3 / v2.9.0 / v2.9.1) had no `ClipMemory.dSYM.tar.gz`
+          # asset. Use `/tmp/ClipMemory.app` directly (package.sh leaves
+          # it in place after tarring; the rm in package.sh only runs
+          # at the *start* of the next invocation).
+          APP="/tmp/ClipMemory.app"
           DSYM_DIR="Releases/ClipMemory.app.dSYM"
           TARBALL="Releases/ClipMemory.dSYM.tar.gz"
 
