@@ -203,16 +203,19 @@ jobs:
           # companion alongside the app tarball. Post-release verify
           # checks this third asset.
           #
-          # P1-AUDIT-2026-09-22 v2.9.2 follow-up (2026-09-25): package.sh
-          # copies the .app to `/tmp/ClipMemory.app/` for tarring but
-          # never extracts to `Releases/`. The ID-CRASH-0001 commit
-          # message assumed package.sh produced `Releases/ClipMemory.app`
-          # but it doesn't — that's why every previous release
-          # (v2.8.3 / v2.9.0 / v2.9.1) had no `ClipMemory.dSYM.tar.gz`
-          # asset. Use `/tmp/ClipMemory.app` directly (package.sh leaves
-          # it in place after tarring; the rm in package.sh only runs
-          # at the *start* of the next invocation).
-          APP="/tmp/ClipMemory.app"
+          # P1-AUDIT-2026-09-22 v2.9.2 follow-up (2026-09-25):
+          #  1. Path bug: package.sh copies .app to `/tmp/ClipMemory.app/`
+          #     for tarring but never extracts to `Releases/`. The
+          #     ID-CRASH-0001 commit message assumed `Releases/ClipMemory.app`
+          #     existed — it doesn't. Use `/tmp/ClipMemory.app/Contents/MacOS/ClipMemory`
+          #     (package.sh leaves /tmp/ClipMemory.app in place after tarring).
+          #  2. dsymutil input must be a Mach-O binary, not a .app bundle.
+          #     The original command `dsymutil -o ... Releases/ClipMemory.app`
+          #     failed with "cannot parse the debug map for ... Is a directory"
+          #     — that's why every previous release (v2.8.3 / v2.9.0 / v2.9.1)
+          #     had no `ClipMemory.dSYM.tar.gz` asset despite ID-CRASH-0001
+          #     intent. Point dsymutil at the binary inside the bundle.
+          APP="/tmp/ClipMemory.app/Contents/MacOS/ClipMemory"
           DSYM_DIR="Releases/ClipMemory.app.dSYM"
           TARBALL="Releases/ClipMemory.dSYM.tar.gz"
 
