@@ -264,6 +264,20 @@ jobs:
           set -euo pipefail
           chmod +x Scripts/lint-translations.sh
           ./Scripts/lint-translations.sh
+      # ID-CI-0010 (2026-09-26): prevents the "class rename → stale
+      # -only-testing filter" bug class. The cdda2a6 (PR #86) commit
+      # renamed NetworkMonitorTests → NetworkMonitorProtocolTests;
+      # tsan.yml kept the old name; 6 race-prone tests silently
+      # stopped running under TSan until ID-CI-0007 fixed it manually
+      # (a4f87e2, 2026-09-26). The script verifies each filter
+      # reference points at a class that actually exists, and that the
+      # static test count in those classes matches SUBSET_EXPECTED=94.
+      # Catches the same failure mode automatically next time.
+      - name: tsan filter lint (ID-CI-0010)
+        run: |
+          set -euo pipefail
+          chmod +x Scripts/lint-tsan-filter.sh
+          ./Scripts/lint-tsan-filter.sh
 
   # P2-17 (2026-09-22 audit): minimum line coverage gate. Parses the
   # xcresult bundle emitted by build-and-test and fails the job if
