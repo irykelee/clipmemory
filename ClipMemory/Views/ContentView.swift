@@ -347,9 +347,29 @@ struct ContentView: View {
                     let ocrKey = (item.id.uuidString + ".ocr") as NSString
                     if let cachedOCR = store.contentCache.object(forKey: ocrKey) as? String {
                         ocrMatch = FuzzySearchMatcher.matches(content: cachedOCR, searchText: searchTextDebounced)
-                    } else if item.ocrText != nil, !item.decryptionFailed {
-                        return false
                     }
+                    // ID-VIEW-0046 (2026-09-26): previously had a
+                    // `return false` fallback when the OCR cache was cold
+                    // (item.ocrText != nil, !item.decryptionFailed). That
+                    // branch suppressed legitimate non-OCR matches too:
+                    // image main content is "<uuid>.png", so a search
+                    // for a UUID fragment or ".png" would correctly
+                    // match `searchableText` but get dropped before the
+                    // combined `(!matches && !ocrMatch)` check ran. Worse,
+                    // a recent attempt to "fix" this by passing
+                    // `item.ocrText` straight to FuzzySearchMatcher
+                    // produced a false-positive flood: that field holds
+                    // AES-GCM ciphertext (per ClipboardItem.swift:31-33),
+                    // and the base64 alphabet overlaps every alphanum
+                    // token — every cold-cache image would match any
+                    // search. Just remove the over-suppression: cold
+                    // OCR cache means no OCR match this pass, but the
+                    // combined `searchableText` check at line 355 still
+                    // runs and can match the filename/uuid fragment.
+                    // P0-3 ("no sync decrypt on main") is preserved —
+                    // we never call `getDecryptedOcrText` from the search
+                    // hot path; the prewarm (ID-VIEW-0012 / ID-PERF-0023)
+                    // fills the OCR cache asynchronously.
                 }
 
                 if !FuzzySearchMatcher.matches(content: searchableText, searchText: searchTextDebounced), !ocrMatch {
