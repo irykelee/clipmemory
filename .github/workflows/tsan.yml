@@ -14,22 +14,6 @@ permissions:
   contents: read
   pull-requests: write  # github-script PR comment 需要
 
-# ID-CI-0006 (2026-09-26): concurrency group for the TSan workflow.
-# Triggers (push + pull_request + schedule + workflow_dispatch) can fire
-# simultaneously — without serialization they race on shared per-runner
-# paths (`/tmp/tsan.log` written by `tee` in the Build step) and on
-# PR comments (`gh.rest.issues.createComment` is per-call atomic but
-# two runs on the same PR post two duplicate comments). `release` and
-# `sync-gitee` workflows share a `release` concurrency group for the
-# same reason. Same-group serialization here costs nothing on the
-# happy path (TSan full run is advisory only, ~10-30 min) and prevents
-# log corruption + duplicate alerts. `cancel-in-progress: false` —
-# never cancel an in-flight TSan run; let it finish (matches release.yml
-# convention).
-concurrency:
-  group: tsan
-  cancel-in-progress: false
-
 jobs:
   tsan-pr-subset:
     # PR 触发: 跑最可能暴露 race 的 87 子集, 15min timeout 友好
