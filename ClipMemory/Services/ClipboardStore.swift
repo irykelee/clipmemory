@@ -511,8 +511,21 @@ final class ClipboardStore: ObservableObject {
             // silent timeout left the store with empty items and surfaced
             // only as confusing count mismatches further down — making
             // CI flakes hard to diagnose.
-            if !waitForFirstLoadSync(timeout: 5.0) {
-                logger.error("P2-14: first-load SyncBarrier timed out in tests after 5.0s — items may be empty")
+            //
+            // ID-STORE-0023 (2026-09-26): bumped 5.0s → 30.0s for the
+            // XCTest auto-wait path. GH Actions `macos-latest` runner has
+            // shown UserDefaults backend.load() latency above 60s (run
+            // 36025732215 + earlier observations) while local runs pass
+            // in <1s. The 5s default was tuned for the local case; CI
+            // needs a wider window to avoid the runner flake surfacing
+            // as a CI failure. 30s covers the observed runner variance
+            // without making local test feedback loop unbearably slow.
+            // The terminate-path caller at ClipboardStore+Persistence.swift:114
+            // keeps its 5s explicit value — that's the
+            // applicationShouldTerminate drain budget (AppDelegate.swift:202),
+            // user-visible, must stay tight.
+            if !waitForFirstLoadSync(timeout: 30.0) {
+                logger.error("P2-14: first-load SyncBarrier timed out in tests after 30.0s — items may be empty")
             }
         }
         loadTags()
@@ -1162,7 +1175,7 @@ final class ClipboardStore: ObservableObject {
     /// on timeout. The `@discardableResult` lets the XCTest auto-wait
     /// in `init` call this without ceremony.
     @discardableResult
-    func waitForFirstLoadSync(timeout: TimeInterval = 5.0) -> Bool {
+    func waitForFirstLoadSync(timeout: TimeInterval = 30.0) -> Bool {
         // [P1-2 follow-up] Must be called on the main thread. The
         // barrier pumps `RunLoop.main`, which services main-queue
         // work — including the pending `MainActor.run {
