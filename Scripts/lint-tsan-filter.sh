@@ -19,6 +19,11 @@
 # truth. Don't hardcode the number anywhere else (CLAUDE.md
 # ID-TEST-0002).
 #
+# Scans both .github/workflows/tsan.yml (TSan subset) and
+# Scripts/regenerate-snapshots.sh (snapshot regen subset) for
+# -only-testing entries. Add new scan files to SCAN_FILES if
+# another shell invocation references -only-testing.
+#
 # Usage: Scripts/lint-tsan-filter.sh
 # Wired into ci.yml lint-ids job (per ID-CI-0010).
 #
@@ -42,77 +47,65 @@ EXPECTED_COUNT=$(grep -E "^\s*SUBSET_EXPECTED:" "$WORKFLOW" \
                    | sed -E "s/.*SUBSET_EXPECTED:[[:space:]]*'([0-9]+)'.*/\1/")
 [[ -n "$EXPECTED_COUNT" ]] || { echo "❌ Could not parse SUBSET_EXPECTED from $WORKFLOW (expected format: SUBSET_EXPECTED: '94')"; exit 1; }
 
-# 1. Extract all -only-testing:ClipMemoryTests/X from tsan.yml
-FILTER_CLASSES=$(grep -E "^\s*-only-testing:ClipMemoryTests/" "$WORKFLOW" \
-                   | sed -E 's|.*/||; s|[[:space:]]*\\$||' \
-                   | sort -u)
+# Files to scan for -only-testing entries. tsan.yml is the main one;
+# regenerate-snapshots.sh has 4 snapshot test class refs that could
+# rot the same way (auto-review P2 #5 follow-up, 2026-09-26). Add
+# new files here as they appear — single edit, both files get checked.
+SCAN_FILES=(
+    "$WORKFLOW"
+    "$ROOT/Scripts/regenerate-snapshots.sh"
+)
 
-[[ -n "$FILTER_CLASSES" ]] || { echo "❌ No -only-testing entries found in $WORKFLOW"; exit 1; }
-
-# Class-name match: `(^| )(final )?class X` followed (same line) by
-# `XCTestCase`. Same-line requirement prevents matching commented-out
-# declarations or non-test classes that happen to share a name.
-# `.*XCTestCase` (not `:[[:space:]]*XCTestCase`) tolerates `@MainActor
-# XCTestCase` and similar attribute decorations.
-CLASS_RE="(final )?class ([A-Za-z0-9]+).*XCTestCase"
-
-# 2. Verify each class exists as a real XCTestCase somewhere in
-# Tests/ClipMemoryTests/. -only-testing matches by CLASS NAME, not file
-# name, so we grep all test files (a class can live in a differently
-# named file — e.g. NetworkMonitorProtocolTests is declared in
-# NetworkMonitorTests.swift after the P1-7 refactor).
 FAILS=0
-declare -a MISSING=() CLASS_FILES=()
-for cls in $FILTER_CLASSES; do
-    # grep -l returns the filename containing a match. Escape `$` in
-    # class names to avoid regex backref interpretation; class names
-    # here are alphanumeric so no escaping needed in practice.
-    file=$(grep -rlE "(final )?class ${cls}\b.*XCTestCase" "$TESTS_DIR" 2>/dev/null | head -1 || true)
-    if [[ -z "$file" ]]; then
-        MISSING+=("$cls")
-        FAILS=$((FAILS+1))
-    else
-        CLASS_FILES+=("$file")
+
+# 1. For each scanned file: extract -only-testing:ClipMemoryTests/X
+# and verify each class exists as a real XCTestCase somewhere.
+for file in "${SCAN_FILES[@]}"; do
+    [[ -f "$file" ]] || { echo "❌ $file not found (skipped)"; continue; }
+    FILTER_CLASSES=$(grep -E "^\s*-only-testing:ClipMemoryTests/" "$file" \
+                       | sed -E 's|.*/||; s|[[:space:]]*\\$||' \
+                       | sort -u)
+    [[ -z "$FILTER_CLASSES" ]] && continue
+
+    declare -a MISSING_IN_FILE=()
+    for cls in $FILTER_CLASSES; do
+        file_match=$(grep -rlE "(final )?class ${cls}\b.*XCTestCase" "$TESTS_DIR" 2>/dev/null | head -1 || true)
+        if [[ -z "$file_match" ]]; then
+            MISSING_IN_FILE+=("$cls")
+            FAILS=$((FAILS+1))
+        fi
+    done
+
+    if [[ ${#MISSING_IN_FILE[@]} -gt 0 ]]; then
+        rel="${file#$ROOT/}"
+        echo "❌ ${rel}: ${#MISSING_IN_FILE[@]} non-existent test class(es) referenced:"
+        for m in "${MISSING_IN_FILE[@]}"; do
+            echo "   - ClipMemoryTests/$m"
+        done
+        echo "   No (final )class ${m} : XCTestCase found in any Tests/ClipMemoryTests/*.swift."
+        echo "   → cdda2a6 (PR #86) was the same failure: NetworkMonitorTests"
+        echo "     was renamed to NetworkMonitorProtocolTests; tsan.yml kept the"
+        echo "     old name; 6 tests silently stopped running under TSan."
+        echo "   Fix: either rename the class back, or update $rel to the new name."
     fi
 done
 
-if [[ ${#MISSING[@]} -gt 0 ]]; then
-    echo "❌ tsan.yml filter references ${#MISSING[@]} non-existent test class(es):"
-    for m in "${MISSING[@]}"; do
-        echo "   - ClipMemoryTests/$m"
-    done
-    echo "   No (final )class ${MISSING[0]} : XCTestCase found in any Tests/ClipMemoryTests/*.swift."
-    echo "   → cdda2a6 (PR #86) was the same failure: NetworkMonitorTests"
-    echo "     was renamed to NetworkMonitorProtocolTests; tsan.yml kept the"
-    echo "     old name; 6 tests silently stopped running under TSan."
-    echo "   Fix: either rename the class back, or update tsan.yml to the new name."
-fi
-
-# 3. Count tests in the listed classes and compare to SUBSET_EXPECTED.
-# Static grep estimate (matches Scripts/test-count.sh). Authoritative
-# count comes from xcodebuild test; this catches gross drift only.
-# Class-level counting: each class's test functions are counted in
-# the file where the class is declared. (Two test classes sharing a
-# file would each be counted against that file; if the test code is
-# in an extension in a separate file, that file isn't searched —
-# tsan tests are currently file-local so this is fine in practice.)
+# 2. TSan-specific count check (only meaningful for tsan.yml, not
+# regenerate-snapshots.sh which doesn't have a fixed expected count).
 declare -a CLASS_NAMES=() CLASS_COUNTS=()
 ACTUAL_COUNT=0
+FILTER_CLASSES=$(grep -E "^\s*-only-testing:ClipMemoryTests/" "$WORKFLOW" \
+                   | sed -E 's|.*/||; s|[[:space:]]*\\$||' \
+                   | sort -u)
 for cls in $FILTER_CLASSES; do
-    # Find the file declaring the class (XCTestCase, same-line).
     file=$(grep -rlE "(final )?class ${cls}\b.*XCTestCase" "$TESTS_DIR" 2>/dev/null | head -1 || true)
     if [[ -z "$file" ]]; then
-        # Already reported as missing above; don't double-count.
         CLASS_NAMES+=("$cls")
         CLASS_COUNTS+=("?")
         continue
     fi
-    # grep -c returns "0" + exit 1 on zero matches; `|| true` suppresses
-    # exit 1 so we can read "0" cleanly. `tr -d '\n'` defends against
-    # any spurious newlines from grep -c (none observed, defensive).
     n=$(grep -cE "^[[:space:]]*func test[A-Za-z0-9_]+" "$file" 2>/dev/null || true)
     n=${n:-0}
-    # Strip any stray whitespace/newlines.
     n=$(echo "$n" | tr -d '[:space:]')
     n=${n:-0}
     ACTUAL_COUNT=$((ACTUAL_COUNT + n))
@@ -121,7 +114,7 @@ for cls in $FILTER_CLASSES; do
 done
 
 if [[ "$ACTUAL_COUNT" != "$EXPECTED_COUNT" ]]; then
-    echo "❌ Test count drift: SUBSET_EXPECTED=${EXPECTED_COUNT}, actual=${ACTUAL_COUNT}"
+    echo "❌ tsan.yml test count drift: SUBSET_EXPECTED=${EXPECTED_COUNT}, actual=${ACTUAL_COUNT}"
     echo "   Both come from the same single source (tsan.yml:39)."
     echo "   Subsets listed: $(echo "$FILTER_CLASSES" | wc -l | tr -d ' ') classes"
     echo "   Per-class breakdown:"
@@ -138,4 +131,4 @@ if [[ $FAILS -gt 0 ]]; then
     exit 1
 fi
 
-echo "✅ tsan.yml filter OK: $(echo "$FILTER_CLASSES" | wc -l | tr -d ' ') classes, ${ACTUAL_COUNT} tests (expected ${EXPECTED_COUNT})"
+echo "✅ all -only-testing filters OK: $(echo "$FILTER_CLASSES" | wc -l | tr -d ' ') classes in tsan.yml, ${ACTUAL_COUNT} tests (expected ${EXPECTED_COUNT}); regenerate-snapshots.sh filter also verified"
