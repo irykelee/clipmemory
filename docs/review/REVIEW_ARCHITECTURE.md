@@ -78,6 +78,17 @@ ClipMemory 已有深厚的人工/AI 审查传统（`docs/review/code-review-2026
 - 复杂推理可切 `REVIEW_MODEL=opencode/nemotron-3-ultra-free bash githooks/orca-auto-review.sh`。
 - 免费期数据可能用于改进模型；审含密钥/业务逻辑片段时慎用（本仓库为个人本地项目，可接受）。
 
+### 2.5 跨项目隔离（2026-09-26 新增）
+
+多个项目都用 opencode 审核时，opencode 默认把所有 session / tool-output / snapshot 写进**单一全局库** `~/.local/share/opencode/opencode.db` + 共享 `tool-output/` 等目录，导致各项目的源码/diff 在 TUI / session list 里互相可见。本仓库的 `orca-auto-review.sh` 已在调用 opencode 前把数据层与配置层重定向到仓库内隔离目录：
+
+- `XDG_DATA_HOME=$ROOT/.opencode-data`：session / 工具输出 / 快照按项目落盘，不再进全局库。
+- `XDG_CONFIG_HOME=$ROOT/.opencode-cfg`：空目录 → 不加载全局 `AGENTS.md` / `mcp.memorix`，顺带关掉跨项目记忆 MCP。
+- 账号凭证 `auth.json` / `account.json` 是账号级（非项目数据），用软链指回全局，模型鉴权不受影响。
+- `.opencode-data/` 与 `.opencode-cfg/` 已加入 `.gitignore`，不入库。
+
+验证：运行前后全局库 mtime 不变、per-project `opencode.db` 被创建、`git status --ignored` 显示二者为忽略态。改法在 WESTERN `.githooks/`、`~/.workbuddy/skills/opencode-review-setup/templates/` 同源同步。
+
 ---
 
 ## 3. 与现有审查传统的衔接

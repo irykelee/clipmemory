@@ -19,6 +19,23 @@ set -euo pipefail
 ROOT="${1:-$(git rev-parse --show-toplevel)}"
 cd "$ROOT" || { echo "无法进入仓库: $ROOT" >&2; exit 1; }
 
+# ---- opencode 数据/配置按项目隔离（防跨项目共享全局库导致项目互相可见）----
+# opencode 默认把所有 session / tool-output / snapshot / session_diff 写进
+# ~/.local/share/opencode/opencode.db（单一全局库）+ 共享 tool-output/ 等目录。
+# 多个项目都用 opencode 审核时, 彼此的源码/diff 会落进同一个共享库, 在 TUI / session
+# list 里互相可见。这里把数据层重定向到仓库内的 .opencode-data/（.gitignore 已排除）,
+# 配置层重定向到 .opencode-cfg/（空目录 → 不加载全局 AGENTS.md / mcp.memorix,
+# 顺带关掉跨项目记忆 MCP）。账号凭证(auth.json/account.json)是账号级、非项目数据,
+# 用软链指回全局, 不复制, 模型鉴权不受影响。
+export XDG_DATA_HOME="$ROOT/.opencode-data"
+export XDG_CONFIG_HOME="$ROOT/.opencode-cfg"
+mkdir -p "$XDG_DATA_HOME/opencode" "$XDG_CONFIG_HOME"
+for _oc_cred in auth.json account.json; do
+  if [[ -e "$HOME/.local/share/opencode/$_oc_cred" ]]; then
+    ln -sf "$HOME/.local/share/opencode/$_oc_cred" "$XDG_DATA_HOME/opencode/$_oc_cred"
+  fi
+done
+
 OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 # 模型链: 免费 + 非 MiniMax（生成端 Claude Code = MiniMax, 避免自己审自己）。
 # 主模型 opencode/big-pickle: opencode 自有免费池、非 MiniMax、代码审查/找 bug 专精

@@ -48,3 +48,8 @@ githooks/.last-reviewed
 githooks/review-failures.log
 docs/reviews/auto-review-*.md
 docs/reviews/.tmp-review-*.md
+
+# opencode 数据/配置按项目隔离目录（opencode-review-setup: 防止跨项目共享全局库）
+# 含本仓审核的 session / tool-output / snapshot, 不入库
+.opencode-data/
+.opencode-cfg/
