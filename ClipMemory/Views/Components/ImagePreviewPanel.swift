@@ -94,6 +94,10 @@ enum ImagePreviewPanel {
             scroll.hasVerticalScroller = true
             scroll.hasHorizontalScroller = true
             scroll.autohidesScrollers = true
+            // USER-FEEDBACK-2026-09-26 (real bug): see origin computation
+            // below. The panel is anchored to the cursor so wheel events
+            // route to the scrollview naturally (no `acceptsFirstMouse`
+            // subclassing needed).
             content = scroll
         } else {
             imageView.frame = NSRect(origin: .zero, size: layout.panelSize)
@@ -115,15 +119,49 @@ enum ImagePreviewPanel {
         // MAIN screen, ignoring the `screen` argument used for sizing above.
         // Center manually within the target screen's visibleFrame so the
         // panel lands where the image actually is on multi-display setups.
+        //
+        // USER-FEEDBACK-2026-09-26 (real bug): "center on screen" put
+        // the preview panel far from the user's mouse cursor, which is
+        // still over the original list row. macOS routes wheel/click
+        // events based on cursor position, so a user trying to scroll
+        // the preview (which showed only a fraction of a large image)
+        // saw no response — the wheel events went to the list view
+        // behind the panel. Anchor the panel to the cursor's screen
+        // location (clamped to the visible frame) so the cursor lands
+        // inside the preview, making wheel-scroll work naturally without
+        // forcing the user to first click the panel.
         if let visibleFrame = screen?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(
-                x: visibleFrame.midX - layout.panelSize.width / 2,
-                y: visibleFrame.midY - layout.panelSize.height / 2
-            ))
+            let mouse = NSEvent.mouseLocation
+            // Prefer the screen the mouse is on; fall back to the
+            // argument-supplied `screen` if NSEvent.mouseLocation is
+            // on a different display.
+            let targetScreen = NSScreen.screens.first(where: {
+                NSMouseInRect(mouse, $0.visibleFrame, false)
+            }) ?? screen
+            let frame = targetScreen?.visibleFrame ?? visibleFrame
+            // Center the panel on the cursor, then clamp so the panel
+            // doesn't extend off the visible area (otherwise the
+            // scrollbar could be unreachable off-screen).
+            var origin = NSPoint(
+                x: mouse.x - layout.panelSize.width / 2,
+                y: mouse.y - layout.panelSize.height / 2
+            )
+            origin.x = max(frame.minX, min(origin.x, frame.maxX - layout.panelSize.width))
+            origin.y = max(frame.minY, min(origin.y, frame.maxY - layout.panelSize.height))
+            panel.setFrameOrigin(origin)
         } else {
             panel.center()
         }
         panel.orderFront(nil)
+        // USER-FEEDBACK-2026-09-26: after orderFront, make the
+        // scrollview first responder so wheel events route there
+        // immediately — without this, the first wheel after
+        // panel-show is sometimes "lost" before the focus chain
+        // settles (NSPanel.becomesKeyOnlyIfNeeded defaults to true so
+        // the panel doesn't promote itself to key just by being shown).
+        if layout.scrollable, let scroll = content as? NSScrollView {
+            panel.makeFirstResponder(scroll)
+        }
         self.panel = panel
     }
 
