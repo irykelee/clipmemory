@@ -56,6 +56,16 @@ enum ImagePreviewPanel {
 
     @MainActor private static var panel: NSPanel?
     @MainActor private static var escapeMonitor: Any?
+    @MainActor private static var scrollWheelMonitor: Any?
+    @MainActor private static var leftMouseUpMonitor: Any?
+    // Timestamp of the most recent scrollWheel event received by the
+    // app, used to filter trackpad two-finger-scroll synthesized
+    // leftMouseUp events (USER-FEEDBACK-2026-09-26 follow-up).
+    // 200ms is generous — trackpad scroll-then-fling can synthesize
+    // a tap within ~100ms of the last scroll; 200ms gives margin
+    // while still accepting a slow deliberate release.
+    @MainActor private static var lastScrollWheelAt: Date = .distantPast
+    private static let scrollSynthesizedThreshold: TimeInterval = 0.2
 
     @MainActor
     static func show(image: NSImage, screen: NSScreen? = NSScreen.main) {
@@ -133,6 +143,29 @@ enum ImagePreviewPanel {
             return event
         }
         escapeMonitor = keyMon
+
+        // USER-FEEDBACK-2026-09-26 (3rd round): install a scrollWheel
+        // monitor alongside the leftMouseUp monitor, and use the
+        // timestamp delta to suppress dismissal when a synthesized
+        // leftMouseUp arrives within ~200ms of a scrollWheel — that's
+        // how trackpad two-finger-scroll triggers Tap-to-Click-style
+        // synthesized mouseUp that previously dismissed mid-scroll. A
+        // real release happens hundreds of ms after the user stops
+        // scrolling, so the threshold is well-separated.
+        let scrollMon = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            Self.lastScrollWheelAt = Date()
+            return event
+        }
+        scrollWheelMonitor = scrollMon
+        let mouseMon = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+            let sinceScroll = Date().timeIntervalSince(Self.lastScrollWheelAt)
+            if sinceScroll < Self.scrollSynthesizedThreshold {
+                return event  // synthesized by trackpad scroll, don't dismiss
+            }
+            hide()
+            return event
+        }
+        leftMouseUpMonitor = mouseMon
         self.panel = panel
     }
 
@@ -146,6 +179,8 @@ enum ImagePreviewPanel {
     @MainActor
     private static func hideUnlocked() {
         if let m = escapeMonitor { NSEvent.removeMonitor(m); escapeMonitor = nil }
+        if let m = scrollWheelMonitor { NSEvent.removeMonitor(m); scrollWheelMonitor = nil }
+        if let m = leftMouseUpMonitor { NSEvent.removeMonitor(m); leftMouseUpMonitor = nil }
         panel?.close()
         panel = nil
     }
