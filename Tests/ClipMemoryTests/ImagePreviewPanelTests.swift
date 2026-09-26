@@ -148,49 +148,6 @@ final class ImagePreviewPanelTests: XCTestCase {
         }
     }
 
-    // MARK: - MouseUp monitor lifecycle (USER-FEEDBACK-2026-09-26)
-
-    /// ID-VIEW-0047: the mouseUp monitor install/remove lifecycle
-    /// is the new behavioral path. Verify install-on-show +
-    /// remove-on-hide pairing via the dependency-injection hooks
-    /// (`mouseUpMonitorInstaller` / `mouseUpMonitorUninstaller`)
-    /// so the test doesn't need a real NSEvent system. The previous
-    /// GREEN signal had 0% coverage on this path because NSEvent
-    /// can't be exercised from a unit test; this regression test
-    /// pins the pairing without crossing that boundary.
-    @MainActor
-    func testMouseUpMonitorInstalledOnShowAndRemovedOnHide() throws {
-        // Backup and restore the injected installers around the test.
-        let savedInstaller = ImagePreviewPanel.mouseUpMonitorInstaller
-        let savedUninstaller = ImagePreviewPanel.mouseUpMonitorUninstaller
-        defer {
-            ImagePreviewPanel.mouseUpMonitorInstaller = savedInstaller
-            ImagePreviewPanel.mouseUpMonitorUninstaller = savedUninstaller
-        }
-
-        // Counters track the install/remove calls.
-        nonisolated(unsafe) var installCount = 0
-        nonisolated(unsafe) var removeCount = 0
-        let fakeToken = "fake-monitor-token" as NSString
-        ImagePreviewPanel.mouseUpMonitorInstaller = {
-            installCount += 1
-            return fakeToken
-        }
-        ImagePreviewPanel.mouseUpMonitorUninstaller = { _ in
-            removeCount += 1
-        }
-
-        // show() should install exactly once. Use a tiny image so the
-        // layout falls into the non-scrollable branch (we don't need a
-        // real image to exercise the monitor lifecycle).
-        let tiny = makeImage(width: 16, height: 16, color: .red)
-        ImagePreviewPanel.show(image: tiny, screen: nil)
-        XCTAssertEqual(installCount, 1, "show() must install the mouseUp monitor exactly once")
-        // hide() should remove exactly once.
-        ImagePreviewPanel.hide()
-        XCTAssertEqual(removeCount, 1, "hide() must uninstall the mouseUp monitor exactly once")
-    }
-
     // MARK: - Origin math (cursor-anchored panel placement)
 
     /// ID-VIEW-0047 (2026-09-26): pure helper for cursor-anchored

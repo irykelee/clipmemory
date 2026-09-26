@@ -55,32 +55,6 @@ enum ImagePreviewPanel {
     }
 
     @MainActor private static var panel: NSPanel?
-    @MainActor private static var mouseUpMonitor: Any?
-    // ID-VIEW-0047 (2026-09-26): install/remove are the only operations
-    // on `mouseUpMonitor`; exposing them as static methods lets a test
-    // verify the install-on-show / remove-on-hide pairing without
-    // requiring a real NSEvent system call. The install closure calls
-    // `hide()`; a fake monitor's `onInstall` closure can record the
-    // call for assertion.
-    @MainActor static var mouseUpMonitorInstaller: (@MainActor () -> Any?)?
-    @MainActor static var mouseUpMonitorUninstaller: ((Any) -> Void)?
-    @MainActor static func installMouseUpMonitor() -> Any? {
-        if let installer = mouseUpMonitorInstaller {
-            let token = installer()
-            return token
-        }
-        return NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
-            hide()
-            return event
-        }
-    }
-    @MainActor static func uninstallMouseUpMonitor(_ token: Any) {
-        if let uninstaller = mouseUpMonitorUninstaller {
-            uninstaller(token)
-        } else {
-            NSEvent.removeMonitor(token)
-        }
-    }
 
     @MainActor
     static func show(image: NSImage, screen: NSScreen? = NSScreen.main) {
@@ -139,10 +113,17 @@ enum ImagePreviewPanel {
         // global — global only sees events to OTHER apps, the
         // release here is to our own panel) while shown so the
         // release dismisses the preview from anywhere on screen.
-        if let existing = mouseUpMonitor {
-            uninstallMouseUpMonitor(existing)
-        }
-        mouseUpMonitor = installMouseUpMonitor()
+        // ID-VIEW-0047 follow-up: no addLocalMonitorForEvents.
+        // An earlier attempt installed a leftMouseUp local monitor to
+        // dismiss the panel on release. Trackpad two-finger-scroll and
+        // Tap-to-Click gestures synthesize .leftMouseUp alongside
+        // .scrollWheel, which made the preview disappear mid-scroll.
+        // NSPressGestureRecognizer tracks the press across views
+        // (started on the list's image NSView, stays in .changed
+        // state while the mouse is over the panel), so the natural
+        // .ended event dismisses via
+        // ClipboardItemRow.onChange(of: imageLongPressing). The
+        // monitor only double-dismissed in race with that path.
         self.panel = panel
     }
 
@@ -155,10 +136,6 @@ enum ImagePreviewPanel {
 
     @MainActor
     private static func hideUnlocked() {
-        if let m = mouseUpMonitor {
-            uninstallMouseUpMonitor(m)
-            mouseUpMonitor = nil
-        }
         panel?.close()
         panel = nil
     }
