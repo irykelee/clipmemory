@@ -148,6 +148,54 @@ final class ImagePreviewPanelTests: XCTestCase {
         }
     }
 
+    // MARK: - Origin math (cursor-anchored panel placement)
+
+    /// ID-VIEW-0047 (2026-09-26): pure helper for cursor-anchored
+    /// origin. The previous `panel.center()`-only path meant a
+    /// large-image preview's scrollbar was unreachable because the
+    /// panel sat far from the user's mouse cursor; macOS routes
+    /// wheel events to the window under the cursor. The fix
+    /// anchors the panel to the cursor with a clamp so the
+    /// scrollbar can't be off-screen.
+    func testOriginCentersPanelOnCursor() {
+        let frame = NSRect(x: 0, y: 0, width: 1000, height: 800)
+        let mouse = NSPoint(x: 500, y: 500)
+        let result = ImagePreviewPanel.origin(panelSize: NSSize(width: 200, height: 100), mouse: mouse, frame: frame)
+        XCTAssertEqual(result.x, 400, accuracy: 0.5, "panel.x = mouse.x - panel.width/2")
+        XCTAssertEqual(result.y, 450, accuracy: 0.5, "panel.y = mouse.y - panel.height/2")
+    }
+
+    /// ID-VIEW-0047: when the panel is bigger than the visible frame
+    /// (e.g. on a small screen with a giant image), the origin math
+    /// must clamp to the frame's minX/minY, not produce a negative
+    /// origin that puts the scrollbar off-screen — which was
+    /// exactly the "scrollbar unreachable" bug the user reported.
+    func testOriginClampsToFrameWhenPanelExceedsFrame() {
+        let frame = NSRect(x: 0, y: 0, width: 500, height: 400)
+        let mouse = NSPoint(x: 250, y: 200)
+        let result = ImagePreviewPanel.origin(panelSize: NSSize(width: 800, height: 600), mouse: mouse, frame: frame)
+        XCTAssertEqual(result.x, 0, "panel clamped to frame.minX")
+        XCTAssertEqual(result.y, 0, "panel clamped to frame.minY")
+    }
+
+    /// ID-VIEW-0047: sizing screen must == positioning screen
+    /// (same call to `origin(panelSize:mouse:frame:)` with the same
+    /// `frame` for both layout sizing and origin clamping). Otherwise
+    /// the panel could be sized against one screen and clamped to
+    /// another, producing an off-screen position.
+    func testOriginClampHonorsSameScreenUsedForSizing() {
+        // Two adjacent screens: primary (1366x768) + secondary (1920x1080)
+        // aligned right-of-left. Frame for layout == frame for clamp.
+        let primary = NSRect(x: 0, y: 0, width: 1366, height: 768)
+        let mouse = NSPoint(x: 800, y: 600)  // within primary
+        let result = ImagePreviewPanel.origin(panelSize: NSSize(width: 400, height: 300), mouse: mouse, frame: primary)
+        // Panel would be centered at (600, 450); clamp to primary's frame.
+        XCTAssertGreaterThanOrEqual(result.x, primary.minX)
+        XCTAssertLessThanOrEqual(result.x, primary.maxX - 400)
+        XCTAssertGreaterThanOrEqual(result.y, primary.minY)
+        XCTAssertLessThanOrEqual(result.y, primary.maxY - 300)
+    }
+
     // MARK: - Test helpers
 
     private func makeImage(width: Int, height: Int, color: NSColor) -> NSImage {

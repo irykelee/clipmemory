@@ -4,10 +4,6 @@ import AppKit
 /// to dismiss. The old in-row enlarge capped at 300 px height, which left
 /// screenshot text unreadable — and did nothing at all for wide shots,
 /// whose width (not height) was the binding constraint.
-///
-/// Sizing: native size whenever it fits the screen; when larger than 90%
-/// of the screen, keep native size inside a scroll view so text stays
-/// crisp instead of downscaling back to unreadable.
 enum ImagePreviewPanel {
 
     struct Layout {
@@ -16,7 +12,11 @@ enum ImagePreviewPanel {
         let scrollable: Bool
     }
 
-    /// Pure sizing decision, unit-tested.
+    /// Pure sizing decision, unit-tested. Takes the visible frame
+    /// size (not the NSScreen) so tests can drive it with a hardcoded
+    /// NSSize. The `show` caller uses `screen.visibleFrame.size` to
+    /// keep sizing screen == positioning screen (the frame used in
+    /// the `origin` helper below).
     static func layout(imageSize: NSSize, screenSize: NSSize) -> Layout {
         let cap = NSSize(width: floor(screenSize.width * 0.9), height: floor(screenSize.height * 0.9))
         guard imageSize.width > 0, imageSize.height > 0 else {
@@ -25,29 +25,12 @@ enum ImagePreviewPanel {
         if imageSize.width <= cap.width && imageSize.height <= cap.height {
             return Layout(panelSize: imageSize, imageSize: imageSize, scrollable: false)
         }
-        // DIAG-2026-07-31: when the image fits in cap.height but is wider
-        // than cap.width (typical: a wide landscape screenshot on a
-        // portrait-rotated main display, e.g. 1313×226 image on a
-        // 1216×2277 cap), the "scrollable" branch used to produce a
-        // giant panel of cap size with the image crammed into a tiny
-        // top strip and ~2000 px of empty white below. Fit the panel
-        // to the image's actual aspect ratio so the user sees a single
-        // tightly-cropped strip instead of a sea of whitespace.
+        // DIAG-2026-07-31: hug the image's actual aspect ratio when only
+        // one dimension overflows, instead of cramming it into a cap-sized
+        // panel with dead space on the other axis.
         if imageSize.height <= cap.height {
-            // The image is shorter than the cap. Don't fill the cap —
-            // it would create dead space. Size the panel to the image
-            // (centered later by the caller) and keep the imageView at
-            // native size. `scrollable: false` because the image fits
-            // within the panel; no scrolling needed.
             return Layout(panelSize: imageSize, imageSize: imageSize, scrollable: false)
         }
-        // Mirror of the wide-short case above: the image fits cap.width
-        // but is taller than cap.height (typical: a near-fullscreen
-        // window screenshot — its height matches the visible frame, e.g.
-        // 700×958 on a 1360×883 cap). The "scrollable" branch below would
-        // size the panel to the FULL cap, leaving cap.width − image.width
-        // of blank panel background to the right of the document. Hug the
-        // image width and cap only the height; scroll vertically.
         if imageSize.width <= cap.width {
             return Layout(
                 panelSize: NSSize(width: imageSize.width, height: cap.height),
@@ -55,34 +38,42 @@ enum ImagePreviewPanel {
                 scrollable: true
             )
         }
-        // Too big in BOTH dimensions: keep native resolution and scroll —
-        // downscaling a wide screenshot makes its text unreadable again.
         return Layout(panelSize: cap, imageSize: imageSize, scrollable: true)
     }
 
-    // L-18 (2026-07-25 audit): `panel` is a static mutable shared across the
-    // main thread and any background callers that touch the preview. Guard
-    // read/write with a lock so `show()` and `hide()` cannot race and leak or
-    // double-close a panel.
-    private static var panel: NSPanel?
+    /// Pure origin math, unit-testable. Centers the panel on `mouse`
+    /// and clamps to `frame` so the scrollbar can't end up off-screen.
+    static func origin(panelSize: NSSize, mouse: NSPoint, frame: NSRect) -> NSPoint {
+        let raw = NSPoint(
+            x: mouse.x - panelSize.width / 2,
+            y: mouse.y - panelSize.height / 2
+        )
+        return NSPoint(
+            x: max(frame.minX, min(raw.x, frame.maxX - panelSize.width)),
+            y: max(frame.minY, min(raw.y, frame.maxY - panelSize.height))
+        )
+    }
 
-    #if DEBUG
-    /// DIAG-2026-07-31: test-only accessor for the active panel. The
-    /// production lock is bypassed because tests always run on the main
-    /// thread; verifying the panel's view tree is the only way to
-    /// reproduce the wide-image long-press bug. Removed once the bug is
-    /// closed.
-    static var testPanel: NSPanel? { panel }
-    #endif
-    private static let panelLock = NSLock()
+    @MainActor private static var panel: NSPanel?
+    @MainActor private static var mouseUpMonitor: Any?
 
+    @MainActor
     static func show(image: NSImage, screen: NSScreen? = NSScreen.main) {
         panelLock.lock()
         defer { panelLock.unlock() }
         hideUnlocked()
-        let screenSize = screen?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
-        let layout = layout(imageSize: image.size, screenSize: screenSize)
 
+        // CLIP-5 (2026-07-24): NSPanel.center() always centers on MAIN
+        // screen. Pick the screen the cursor is on (or the argument as
+        // fallback) and size + position within the SAME screen's visible
+        // frame so a multi-display setup doesn't overflow off-screen.
+        let mouse = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first(where: {
+            NSMouseInRect(mouse, $0.visibleFrame, false)
+        }) ?? screen
+        let frame = targetScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+
+        let layout = layout(imageSize: image.size, screenSize: frame.size)
         let imageView = NSImageView(frame: NSRect(origin: .zero, size: layout.imageSize))
         imageView.image = image
         imageView.imageScaling = .scaleProportionallyUpOrDown
@@ -94,10 +85,6 @@ enum ImagePreviewPanel {
             scroll.hasVerticalScroller = true
             scroll.hasHorizontalScroller = true
             scroll.autohidesScrollers = true
-            // USER-FEEDBACK-2026-09-26 (real bug): see origin computation
-            // below. The panel is anchored to the cursor so wheel events
-            // route to the scrollview naturally (no `acceptsFirstMouse`
-            // subclassing needed).
             content = scroll
         } else {
             imageView.frame = NSRect(origin: .zero, size: layout.panelSize)
@@ -115,64 +102,51 @@ enum ImagePreviewPanel {
         panel.level = .floating
         panel.backgroundColor = .windowBackgroundColor
         panel.hasShadow = true
-        // CLIP-5 (2026-07-24 review): NSPanel.center() always centers on the
-        // MAIN screen, ignoring the `screen` argument used for sizing above.
-        // Center manually within the target screen's visibleFrame so the
-        // panel lands where the image actually is on multi-display setups.
-        //
-        // USER-FEEDBACK-2026-09-26 (real bug): "center on screen" put
-        // the preview panel far from the user's mouse cursor, which is
-        // still over the original list row. macOS routes wheel/click
-        // events based on cursor position, so a user trying to scroll
-        // the preview (which showed only a fraction of a large image)
-        // saw no response — the wheel events went to the list view
-        // behind the panel. Anchor the panel to the cursor's screen
-        // location (clamped to the visible frame) so the cursor lands
-        // inside the preview, making wheel-scroll work naturally without
-        // forcing the user to first click the panel.
-        if let visibleFrame = screen?.visibleFrame {
-            let mouse = NSEvent.mouseLocation
-            // Prefer the screen the mouse is on; fall back to the
-            // argument-supplied `screen` if NSEvent.mouseLocation is
-            // on a different display.
-            let targetScreen = NSScreen.screens.first(where: {
-                NSMouseInRect(mouse, $0.visibleFrame, false)
-            }) ?? screen
-            let frame = targetScreen?.visibleFrame ?? visibleFrame
-            // Center the panel on the cursor, then clamp so the panel
-            // doesn't extend off the visible area (otherwise the
-            // scrollbar could be unreachable off-screen).
-            var origin = NSPoint(
-                x: mouse.x - layout.panelSize.width / 2,
-                y: mouse.y - layout.panelSize.height / 2
-            )
-            origin.x = max(frame.minX, min(origin.x, frame.maxX - layout.panelSize.width))
-            origin.y = max(frame.minY, min(origin.y, frame.maxY - layout.panelSize.height))
-            panel.setFrameOrigin(origin)
-        } else {
-            panel.center()
-        }
+        panel.setFrameOrigin(origin(panelSize: layout.panelSize, mouse: mouse, frame: frame))
         panel.orderFront(nil)
-        // USER-FEEDBACK-2026-09-26: after orderFront, make the
-        // scrollview first responder so wheel events route there
-        // immediately — without this, the first wheel after
-        // panel-show is sometimes "lost" before the focus chain
-        // settles (NSPanel.becomesKeyOnlyIfNeeded defaults to true so
-        // the panel doesn't promote itself to key just by being shown).
-        if layout.scrollable, let scroll = content as? NSScrollView {
-            panel.makeFirstResponder(scroll)
+
+        // USER-FEEDBACK-2026-09-26 follow-up: anchoring to the cursor
+        // puts the panel directly over the cursor, so the mouseUp
+        // release goes to the panel (which is hit-testable, not
+        // .ignoresMouseEvents) — the NSPressGestureRecognizer on
+        // ClipboardItemRow never sees the release and the panel
+        // stays open. Install a LOCAL leftMouseUp monitor (not
+        // global — global only sees events to OTHER apps, the
+        // release here is to our own panel) while shown so the
+        // release dismisses the preview from anywhere on screen.
+        if let existing = mouseUpMonitor { NSEvent.removeMonitor(existing) }
+        mouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+            hide()
+            return event
         }
         self.panel = panel
     }
 
+    @MainActor
     static func hide() {
         panelLock.lock()
         defer { panelLock.unlock() }
         hideUnlocked()
     }
 
+    @MainActor
     private static func hideUnlocked() {
+        if let m = mouseUpMonitor { NSEvent.removeMonitor(m); mouseUpMonitor = nil }
         panel?.close()
         panel = nil
     }
+
+    // Lock guards the panel reference. Now strict @MainActor (added
+    // in this commit) means the lock is belt-and-suspenders; kept for
+    // defence-in-depth in case a future caller bypasses the actor.
+    private static let panelLock = NSLock()
+
+    #if DEBUG
+    /// DIAG-2026-07-31: test-only accessor for the active panel. The
+    /// production lock is bypassed because tests always run on the main
+    /// thread; verifying the panel's view tree is the only way to
+    /// reproduce the wide-image long-press bug. Removed once the bug is
+    /// closed.
+    @MainActor static var testPanel: NSPanel? { panel }
+    #endif
 }
