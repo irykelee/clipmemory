@@ -80,17 +80,32 @@ For each of: `README.md` (zh-Hans), `docs/lang/README_{EN,ZH-HANT,JA,KO,ES,PT}.m
 - [ ] Verify `appcast.xml` has new `<item>` with `edSignature` (in main branch)
 - [ ] Verify external tap repo `irykelee/homebrew-clipmemory` updated (per B3.9) — `curl -s https://raw.githubusercontent.com/irykelee/homebrew-clipmemory/main/Casks/clipmemory.rb | grep version`
 
-### D1. Recovery: tag pushed, CI `Run tests` step failed (ID-CI-0005)
+### §D. CI failure recovery after tag push (ID-CI-0005)
 
-> Triggered by `Scripts/release.sh` dying at the `gh run watch --exit-status` step with "Release workflow 失败". The tag is already on `origin` but no GitHub Release was created (fail-closed test step blocks packaging).
+> Triggered by `Scripts/release.sh` dying at the `gh run watch --exit-status` step with "Release workflow 失败". The tag is already on `origin` but no GitHub Release was created (fail-closed `Run tests` step blocks packaging). Branched by flake vs regression because the recovery paths diverge — the flake branch does NOT delete the tag; the regression branch does.
 
-1. **Identify the failure** — `gh run view <run-id> --log-failed`. Look for `Run tests` step failure.
-2. **Decide flake vs regression**:
-   - **Likely flake** (`FileStorageBackend.load()` >60s, different tests failing each run, tests pass locally with `run_preflight --tests`): Actions tab → **Re-run failed jobs**. If second run passes, original was flake — note in STATUS.md and continue.
-   - **Likely regression** (consistent failure across runs, new test added without `--skip-tests` escape, code change to tested path): do NOT re-tag. Investigate, fix, cut new tag.
-3. **Delete the failed tag** — `git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z` (local + remote delete). The tag must be removed so a new commit + tag can be pushed without "tag already exists" reject.
-4. **Force-push a clean main if the appcast commit landed** — if the `Publish appcast update` step somehow ran despite test failure (shouldn't happen with fail-closed, but defense-in-depth): check `git log origin/main` for the "chore: appcast item for vX.Y.Z [skip ci]" commit and `git push --force-with-lease` to remove it.
-5. **Re-run release** — `Scripts/release.sh vX.Y.Z` after fixing the root cause (or after confirming flake).
+**Identify and triage** (always):
+1. `gh run view <run-id> --log-failed` — look for the `Run tests` step's failure log
+2. Look for the flake signature in the failure log:
+   - "P2-14: first-load SyncBarrier timed out in tests after 5.0s" (ClipboardStore.swift:515) → likely flake
+   - Different tests fail on different runs (compare against earlier failed runs) → flake
+   - Specific XCTest assertion failure, consistent across runs → likely regression
+
+**If flake** (timed-out barrier, varying tests per run):
+1. Actions tab → **Re-run failed jobs**
+2. If second run passes: original was flake — record in `~/Documents/session-resume/YYYY-MM-DD.md` per §E
+3. If second run also fails with same signature: file ID-CI issue to fix flake source (the 5s `waitForFirstLoadSync` timeout has no source-level fix tracked yet)
+4. **Do NOT delete the tag** — the release was NOT published (fail-closed step blocked it). Re-running the workflow reuses the same `vX.Y.Z` tag and proceeds to package + sign + release.
+
+**If regression** (consistent assertion failure across runs):
+1. Investigate root cause: `git log origin/main` for what changed since last green, `xcodebuild test` locally to reproduce
+2. Fix the regression in a new commit on main (or revert the offending commit)
+3. After the fix is pushed and ci.yml's `build-and-test` is green on the fix commit, delete the failed tag: `git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z`
+4. Re-run release: `Scripts/release.sh vX.Y.Z` — will produce a fresh tag, fresh build, fresh release
+
+**If appcast commit landed despite fail-closed** (defense-in-depth — should NOT happen with ID-CI-0005 but documented for paranoia):
+- Check `git log origin/main` for "chore: appcast item for vX.Y.Z [skip ci]"
+- `git push --force-with-lease origin main` to remove it ONLY if no concurrent release is in flight (check `gh run list --workflow=Release` first)
 
 ---
 
