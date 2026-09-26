@@ -145,6 +145,41 @@ final class CrashReportServiceTests: XCTestCase {
                       "legacy .crash files must surface the unparseable hint")
     }
 
+    /// ID-CRASH-0005: pre-Ventura .ips body shape is a JSON ARRAY of
+    /// objects (one line per the spec). The parser must preserve
+    /// signal / usedImages across array elements, not overwrite —
+    /// the per-iteration `signal = ...` and `binaryImages = ...`
+    /// patterns used to clobber prior elements when later elements
+    /// didn't carry the field. Per Apple's docs (Sonoma+ format)
+    /// the body is usually a single multi-line object, but pre-Ventura
+    /// array form has been observed in the wild and any future spec
+    /// change to multi-element body would re-trigger the overwrite.
+    /// This fixture exercises the pre-Ventura array shape (3 objects
+    /// on the same body line).
+    func testParseIpsMergesFieldsAcrossMultipleBodyObjects() throws {
+        let body = """
+        {"app_name":"ClipMemory","timestamp":"2026-08-15 12:00:00.00 +0800","os_version":"macOS 26.6.1 (25G76)"}
+        [{"exception":{"type":"EXC_BAD_ACCESS","signal":"SIGSEGV"},"usedImages":[{"name":"ClipMemory","uuid":"4C4C444C-5555-3144-A15A-729DD5BF04C7","base":"0x100000000"}]},{"exception":{"type":"EXC_BAD_ACCESS"}},{"threads":[{"triggered":true,"name":"main","frames":[{"imageIndex":0,"imageOffset":42,"symbol":"_main"}]}]}]
+        """
+        try writeFixture(name: "ClipMemory-multi.ips", contents: body)
+        let reports = try service.listRecentCrashReports()
+        XCTAssertEqual(reports.count, 1)
+        let r = reports.first!
+        // signal from array element 0 must NOT be cleared by element 1's
+        // missing signal key (the regression this test exists to lock down).
+        XCTAssertEqual(r.exceptionType, "EXC_BAD_ACCESS")
+        XCTAssertEqual(r.signal, "SIGSEGV",
+                       "signal from element 0 must survive element 1's missing field")
+        // usedImages from element 0 must NOT be cleared by element 2's
+        // missing usedImages (no overwrite, no error).
+        XCTAssertEqual(r.binaryImages.count, 1,
+                       "binaryImages from element 0 must survive; element 2 has no usedImages")
+        XCTAssertEqual(r.binaryImages.first?.name, "ClipMemory")
+        // triggered thread from element 2 must be picked up.
+        XCTAssertEqual(r.firstFrames.count, 1)
+        XCTAssertEqual(r.firstFrames.first?.symbol, "_main")
+    }
+
     // MARK: - Helpers
 
     /// Builds a fixture .ips file with the given app name + timestamp

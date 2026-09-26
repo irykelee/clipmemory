@@ -193,12 +193,12 @@ final class CrashReportService {
         let bodyData = Data(body.utf8)
         // The body shape varies by macOS release: pre-Ventura used a
         // JSON array of objects, Sonoma+ uses a single multi-line JSON
-        // object (Apple's "JSON Lines-lite" diff-friendly format).
-        // Accept either by trying array first, falling back to single
-        // object. Missing or malformed body still lets us render the
-        // header (date + process name) — the caller shows the file in
-        // the table with placeholder exception type so the user can
-        // still reveal it in Finder.
+        // object (Apple's diff-friendly format — one object, fields
+        // spread across lines). Accept either by trying array first,
+        // falling back to single object. Missing or malformed body
+        // still lets us render the header (date + process name) — the
+        // caller shows the file in the table with placeholder exception
+        // type so the user can still reveal it in Finder.
         let bodyObjects: [[String: Any]]
         if let parsed = try? JSONSerialization.jsonObject(with: bodyData) {
             if let array = parsed as? [[String: Any]] {
@@ -233,10 +233,19 @@ final class CrashReportService {
         for obj in bodyObjects {
             if let exception = obj["exception"] as? [String: Any] {
                 exceptionType = (exception["type"] as? String) ?? exceptionType
-                signal = exception["signal"] as? String
+                // ID-CRASH-0005: preserve signal across multi-object bodies.
+                // Bare `signal = exception["signal"] as? String` would clear
+                // a prior object's signal when this one's exception has no
+                // "signal" key. exceptionType uses `??` for the same reason;
+                // apply the same defensive pattern to signal.
+                if let s = exception["signal"] as? String { signal = s }
             }
             if let usedImages = obj["usedImages"] as? [[String: Any]] {
-                binaryImages = usedImages.compactMap { dict in
+                // ID-CRASH-0005: append, don't overwrite. Multi-object .ips
+                // (pre-Ventura array format) can carry usedImages on more
+                // than one object; overwriting would drop image entries
+                // from prior objects and break symbolication offsets.
+                let parsed = usedImages.compactMap { dict -> CrashReport.BinaryImage? in
                     guard let name = dict["name"] as? String,
                           let uuid = dict["uuid"] as? String else { return nil }
                     // loadAddress arrives as either a hex string
@@ -251,13 +260,19 @@ final class CrashReportService {
                     }
                     return CrashReport.BinaryImage(name: name, uuid: uuid, loadAddress: loadAddress)
                 }
+                binaryImages.append(contentsOf: parsed)
             }
             if let threads = obj["threads"] as? [[String: Any]] {
                 for thread in threads {
                     let triggered = thread["triggered"] as? Bool ?? false
                     guard triggered else { continue }
                     if let frames = thread["frames"] as? [[String: Any]] {
-                        triggeredThreadFrames = frames.compactMap { dict in
+                        // ID-CRASH-0005: append, don't overwrite. The
+                        // `break` below limits to first triggered thread
+                        // PER OBJECT but multi-object .ips can carry
+                        // triggered threads on later objects — append
+                        // preserves all of them.
+                        let parsed = frames.compactMap { dict -> CrashReport.StackFrame? in
                             let imageIndex = (dict["imageIndex"] as? Int) ?? -1
                             let imageOffset = (dict["imageOffset"] as? Int) ?? 0
                             let symbol = dict["symbol"] as? String
@@ -267,6 +282,7 @@ final class CrashReportService {
                                 symbol: symbol
                             )
                         }
+                        triggeredThreadFrames.append(contentsOf: parsed)
                     }
                     break
                 }
