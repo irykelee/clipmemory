@@ -166,8 +166,8 @@ jobs:
       #      invocation is a re-run, not a regression. Bypass paths
       #      exist (`--skip-tests` flag, direct `git push v*`
       #      skipping preflight — both opt-in escape hatches, not
-      #      default behavior). See RELEASE_PUSH_CHECKLIST §D for the
-      #      "tag pushed, CI failed" recovery path.
+      #      default behavior). See RELEASE_PUSH_CHECKLIST §D-recovery
+      #      for the "tag pushed, CI failed" recovery path.
       #  (b) Defense-in-depth: ci.yml's `build-and-test` check is a
       #      required status check on main and runs the same
       #      xcodebuild test invocation fail-closed on every push.
@@ -176,26 +176,15 @@ jobs:
       #      not the only one. The fail-closed behavior here guards
       #      against the (a) bypass paths and against direct
       #      tag-from-branch flows that skip ci.yml's required check.
-      #  (c) Residual flake risk acknowledged: the 5s barrier timing
-      #      out on a loaded GH Actions runner is observable (≥2 in 24
-      #      tag-push runs since 2026-07-23: 36025732215 +
-      #      36005973801/ID-STORE-0022). Flake signature in the log:
+      #  (c) Residual flake risk acknowledged: the 5s barrier
+      #      timing out on a loaded GH Actions runner is the
+      #      observed failure mode. Flake signature in the log:
       #      "P2-14: first-load SyncBarrier timed out in tests after
       #      5.0s" (ClipboardStore.swift:515). The flake is NOT
       #      mitigated at source — `waitForFirstLoadSync` has been at
-      #      5.0s since a31753b. Bumping the timeout or making load
-      #      deterministic is a separate concern (tracked outside
-      #      this commit). Operator recovery workflow documented in
-      #      §D below.
-      # See docs/reviews/auto-review-20260926-100823-36637.md (P1
-      # finding on this comment rewrite — caught a fabricated ">60s"
-      # flake signature; the real signature is "after 5.0s") and
-      # docs/reviews/auto-review-20260925-195226-93199.md (P1 finding
-      # on the original 1f646d5 advisory step). Companion cleanup
-      # removed the silently-passing `release.sh` "test|Test" job-name
-      # check (the job is named `build-and-release`, so the jq filter
-      # never matched anything and the check returned empty,
-      # printing a warning and letting the release proceed).
+      #      5.0s since a31753b and frequency data is not tracked
+      #      in-repo. Bumping the timeout is a separate concern
+      #      (operator workflow documented in §D-recovery).
       - name: Run tests
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then

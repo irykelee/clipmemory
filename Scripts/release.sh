@@ -501,7 +501,7 @@ verify_release_remote() {
     fi
 
     if [[ $fails -gt 0 ]]; then
-        echo "❌ ${fails} post-release check(s) failed — see docs/RELEASE_PUSH_CHECKLIST.md §D3 for manual fixes"
+        echo "❌ ${fails} post-release check(s) failed — see docs/RELEASE_PUSH_CHECKLIST.md §D (D1-D5) for manual fixes"
         return 1
     fi
     echo "✅ All post-release checks passed."
@@ -1145,7 +1145,7 @@ EOF
 
     log "watch Release workflow run ${RUN_ID}（构建/测试/打包/签名/发布/tap，约 10-20 min）..."
     gh run watch "$RUN_ID" --exit-status --interval 30 \
-        || die "Release workflow 失败 — 排查: gh run view ${RUN_ID} --log-failed"
+        || die "Release workflow 失败 — 排查: gh run view ${RUN_ID} --log-failed。恢复流程: docs/RELEASE_PUSH_CHECKLIST.md §D-recovery（按 'Run tests' 失败原因分支 flake / 持续 flake / 回归）。"
     ok "Release workflow 成功"
 
     # ID-CI-0005 (2026-09-26): removed REL-25 (2026-08-05) compensating
@@ -1201,7 +1201,7 @@ EOF
     else
         echo "" >&2
         echo "❌ 发布后验证未过，但 release 已在 GitHub 上 — 不要重跑本脚本（版本号/tag 已占用）" >&2
-        echo "   手动排查: gh run view ${RUN_ID}；逐项对照 docs/RELEASE_PUSH_CHECKLIST.md §D3 修复后手动重验" >&2
+        echo "   手动排查: gh run view ${RUN_ID}；逐项对照 docs/RELEASE_PUSH_CHECKLIST.md §D (D1-D5) 修复后手动重验" >&2
         exit 1
     fi
 fi
