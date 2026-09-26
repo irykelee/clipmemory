@@ -16,18 +16,27 @@ permissions:
 
 jobs:
   tsan-pr-subset:
+    # ID-CI-0009 (2026-09-26): PR subset assertion drift guard.
     # PR 触发: 跑最可能暴露 race 的 subset. The "-ne" assertion below
     # calibrates the expected count to the live `-only-testing` filter
-    # list (currently 94 — see the "Subset executed assertion" step).
-    # Update that assertion when intentionally adding/removing a
-    # race-prone test class. NOTE: this is an advisory gate — the job
-    # has `continue-on-error: true` and the PR comment below prints
-    # "Races: 0 detected" regardless of the assertion result, so the
-    # guard surfaces only in the workflow log, not on the PR.
+    # list (currently 94 — see SUBSET_EXPECTED in the assertion step).
+    # Update that env var when intentionally adding/removing a
+    # race-prone test class. ID-CI-0009 added SUBSET_PASSED export so
+    # the PR comment can distinguish "subset broken" from "subset
+    # clean + 0 races" — previously the comment always printed "✅
+    # Races: 0 detected" regardless of the assertion result, masking
+    # real drift (e.g. the cdda2a6→a4f87e2 window where
+    # NetworkMonitor class rename silently disabled the filter).
     if: github.event_name == 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 15
     continue-on-error: true
+    env:
+      # ID-CI-0009 (2026-09-26): single source of truth for the subset
+      # expected count. Both the assertion step (bash) and the PR
+      # comment step (JS via process.env) read this. Update when the
+      # `-only-testing` class list changes — see comment above.
+      SUBSET_EXPECTED: '94'
     steps:
       - uses: actions/checkout@v5
 
@@ -83,14 +92,15 @@ jobs:
       - name: Subset executed assertion (PR job only, 防 -only-testing 静默跑 0)
         if: always() && github.event_name == 'pull_request'
         run: |
-          executed=$(grep -oE 'Executed [0-9]+ test' /tmp/tsan.log | tail -1 | grep -oE '[0-9]+')
-          if [[ -z "$executed" || "$executed" -ne 94 ]]; then
+          executed=$(grep -oE 'Executed [0-9]+ test' /tmp/tsan.log | tail -1 | grep -oE '[0-9]+' || true)
+          echo "SUBSET_EXECUTED=${executed:-未解析}" >> "$GITHUB_ENV"
+          if [[ -z "$executed" || "$executed" != "$SUBSET_EXPECTED" ]]; then
             echo "SUBSET_PASSED=false" >> "$GITHUB_ENV"
-            echo "❌ Subset assertion failed: expected 94, got $executed (可能 -only-testing 类名漂移)"
+            echo "❌ Subset assertion failed: expected ${SUBSET_EXPECTED}, got ${executed:-未解析} (可能 -only-testing 类名漂移)"
             exit 1
           fi
           echo "SUBSET_PASSED=true" >> "$GITHUB_ENV"
-          echo "✅ Subset assertion passed: 94/94 tests executed"
+          echo "✅ Subset assertion passed: ${SUBSET_EXPECTED}/${SUBSET_EXPECTED} tests executed"
 
       - name: Upload TSan log (always)
         if: always()
@@ -111,6 +121,7 @@ jobs:
             const raceCount = log ? (log.match(/WARNING: ThreadSanitizer: data race/g) || []).length : 0;
             const instrumented = process.env.INSTRUMENTED === 'YES';
             const subsetPassed = process.env.SUBSET_PASSED === 'true';
+            const subsetExecuted = process.env.SUBSET_EXECUTED ?? '未解析';
             let body;
             if (!logExists) {
               body = '⚠️ **TSan 日志缺失**: 前置步骤 (checkout / xcodegen / build) 失败, 本次无结果。检查 workflow logs。';
@@ -118,12 +129,18 @@ jobs:
               const instLine = instrumented
                 ? '🔧 **Instrumentation**: verified (`sanitize=thread` in build log)'
                 : '⚠️ **Instrumentation**: NOT verified — 本次结果无意义, 请检查 workflow';
+              // ID-CI-0009: subsetLine reads SUBSET_EXECUTED, NOT raceCount
+              // (which counts race warnings). The previous version used
+              // raceCount as a proxy for executed-test-count and produced
+              // nonsense like "expected 94, actual 3" when 0 races + 40
+              // tests. SUBSET_EXECUTED is the actual count from the
+              // assertion step's grep.
               const subsetLine = subsetPassed
-                ? `✅ **Subset count**: 94/94 tests executed (drift guard passed)`
-                : `❌ **Subset count**: 期望 94, 实际 ${raceCount === 0 ? '无法解析' : raceCount}。\`Executed N tests\` 与 -only-testing 类列表漂移（filter 引用了不存的 class,或新增/删除了 race-prone test class）。下面 race 数字不可信,请检查 workflow log + PR #commit history 是否改了测试类名`;
+                ? `✅ **Subset count**: ${subsetExecuted}/${subsetExecuted} executed (drift guard passed — filter + count aligned)`
+                : `❌ **Subset count**: expected ${process.env.SUBSET_EXPECTED ?? '?'}, actual ${subsetExecuted}. \`Executed N tests\` 与 -only-testing 类列表漂移（filter 引用了不存的 class, 或新增/删除了 race-prone test class）。下面 race 数字基于 stale 测试集, 请检查 workflow log + 该 PR 是否改了测试类名`;
               const raceLine = raceCount > 0
                 ? `🔬 **Races**: ${raceCount} detected. Download \`tsan-log-${context.runId}\` artifact for full trace.`
-                : `✅ **Races**: 0 detected.`;
+                : `✅ **Races**: 0 detected (over ${subsetExecuted} executed tests).`;
               body = [instLine, subsetLine, raceLine].join('\n');
             }
             await github.rest.issues.createComment({
