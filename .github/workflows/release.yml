@@ -166,8 +166,7 @@ jobs:
       #      invocation is a re-run, not a regression. Bypass paths
       #      exist (`--skip-tests` flag, direct `git push v*`
       #      skipping preflight — both opt-in escape hatches, not
-      #      default behavior). See RELEASE_PUSH_CHECKLIST §D-recovery
-      #      for the "tag pushed, CI failed" recovery path.
+      #      default behavior).
       #  (b) Defense-in-depth: ci.yml's `build-and-test` check is a
       #      required status check on main and runs the same
       #      xcodebuild test invocation fail-closed on every push.
@@ -184,7 +183,7 @@ jobs:
       #      mitigated at source — `waitForFirstLoadSync` has been at
       #      5.0s since a31753b and frequency data is not tracked
       #      in-repo. Bumping the timeout is a separate concern
-      #      (operator workflow documented in §D-recovery).
+      #      (tracked outside this commit).
       - name: Run tests
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then

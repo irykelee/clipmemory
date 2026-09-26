@@ -71,56 +71,14 @@ For each of: `README.md` (zh-Hans), `docs/lang/README_{EN,ZH-HANT,JA,KO,ES,PT}.m
 
 ## D. GitHub Release + GH Actions (per `docs/RELEASE.md` B3.7-9 + B4.10)
 
-### D1. Workflow succeeded
 - [ ] `gh run list --workflow=Release` — must show "completed success" for new commit
-
-### D2. GitHub Release content verified
 - [ ] `gh release view vX.Y.Z`:
   - [ ] Title is **bilingual** (`剪忆 ClipMemory vX.Y.Z — <English> / <中文>`), NOT auto-generated `vX.Y.Z` stub
   - [ ] Body has Highlights / Fixes / Upgrade Note sections in both languages
   - [ ] Assets: `appcast.xml` + `ClipMemory.tar.gz` both present
-
-### D3. Release edits applied (if post-release checks found issues)
 - [ ] `gh release edit vX.Y.Z --notes-file docs/release-notes/vX.Y.Z.md --title "剪忆 ClipMemory vX.Y.Z — ..."`
-
-### D4. Appcast updated
 - [ ] Verify `appcast.xml` has new `<item>` with `edSignature` (in main branch)
-
-### D5. Homebrew tap updated (per `docs/RELEASE.md` B3.9)
-- [ ] `curl -s https://raw.githubusercontent.com/irykelee/homebrew-clipmemory/main/Casks/clipmemory.rb | grep version`
-
-### D-recovery. CI failure recovery after tag push (ID-CI-0005)
-
-> Triggered by `Scripts/release.sh` dying at the `gh run watch --exit-status` step with "Release workflow 失败" (this die message will be updated to point here — see TODO). The tag is already on `origin` but no GitHub Release was created (fail-closed `Run tests` step blocks packaging). Branched by flake vs regression because the recovery paths diverge.
-
-**Identify and triage** (always):
-1. `gh run view <run-id> --log-failed` — look for the `Run tests` step's failure log
-2. Look for the flake signature in the failure log:
-   - "P2-14: first-load SyncBarrier timed out in tests after 5.0s" (ClipboardStore.swift:515) → likely flake
-   - Different tests fail on different runs (compare against earlier failed runs) → flake
-   - Specific XCTest assertion failure, consistent across runs → likely regression
-
-**If flake — first retry**:
-1. Actions tab → **Re-run failed jobs**
-2. If second run passes: original was flake. Record in `~/Documents/session-resume/YYYY-MM-DD.md` per §E, then **continue with the post-release D2-D5 verifications manually** (the script died before running them — D1 is the only check that completed).
-3. If second run also fails: see "persistent flake" below.
-
-**If flake — persistent** (second run also fails with same signature):
-1. The runner is consistently failing on this commit; further re-runs won't help.
-2. **Recommended**: bump `waitForFirstLoadSync(timeout:)` in `ClipboardStore.swift` from 5.0s to 30.0s (or higher), push to main, then re-run release.sh. The new commit will be tested instead. This is a real source-level fix for the runner flake class.
-3. **Emergency bypass** (only when source fix isn't ready): `Scripts/release.sh vX.Y.Z --skip-tests` — escape hatch documented at release.sh:855. Use ONLY for confirmed-runner-flake cases (barrier timeout signature), NEVER for actual regressions. The local preflight still runs, so any local-side regression is still caught.
-4. **Do NOT delete the tag** — the release was NOT published (fail-closed step blocked it). Re-running or re-cutting from a new commit reuses the same `vX.Y.Z` tag.
-
-**If regression** (consistent assertion failure across runs):
-1. Investigate root cause: `git log origin/main` for what changed since last green, `xcodebuild test` locally to reproduce
-2. Fix the regression in a new commit on main (or revert the offending commit)
-3. After the fix is pushed and ci.yml's `build-and-test` is green on the fix commit, delete the failed tag: `git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z`
-4. Re-run release: `Scripts/release.sh vX.Y.Z` — will produce a fresh tag, fresh build, fresh release
-
-**If appcast commit landed despite fail-closed** (defense-in-depth — should NOT happen with ID-CI-0005 but documented for paranoia):
-- Check `git log origin/main` for "chore: appcast item for vX.Y.Z [skip ci]"
-- `git push --force-with-lease origin main` to remove it — requires `enforce_admins: false` on the main branch protection (per §F3), so confirm `gh api repos/irykelee/clipmemory/branches/main/protection` shows `enforce_admins: null` before attempting
-- ONLY force-push when no concurrent release is in flight (check `gh run list --workflow=Release` first)
+- [ ] Verify external tap repo `irykelee/homebrew-clipmemory` updated (per B3.9) — `curl -s https://raw.githubusercontent.com/irykelee/homebrew-clipmemory/main/Casks/clipmemory.rb | grep version`
 
 ---
 
@@ -206,12 +164,12 @@ gh api repos/irykelee/clipmemory/branches/main/protection --jq '.allow_force_pus
 
 | Mistake | What it cost | Avoid by |
 |---|---|---|
-| Declared "all done" after 13 commits without release page check | User had to ping 4 times | **Verify all D1-D5 channels BEFORE declaring done** |
+| Declared "all done" after 13 commits without release page check | User had to ping 4 times | **Verify all D1-D6 channels BEFORE declaring done** |
 | Mixed English in 中文 section of release notes | Visual / branding broken | **Each language section is monolingual** — per `docs/release-notes-template.md` |
 | Bumped README header but skipped changelog section | User ping 2 | **A2 is 2-checkboxes per file**: line + changelog entry, not just one |
 | Skipped 5 non-source language READMEs as "follow-up" | User ping 3 | **7 README updates in one batch** — one commit, all languages |
 | Cask file was stale at v2.5.6 after push | User ping 1 | **A4 (Cask) is part of pre-push verify**, not post-push |
-| Left `gh release view` title as auto-stub "v2.5.7" | Visible in public release | **D2 explicit check**: title must be bilingual, not stub |
+| Left `gh release view` title as auto-stub "v2.5.7" | Visible in public release | **D3 explicit check**: title must be bilingual, not stub |
 
 ---
 
