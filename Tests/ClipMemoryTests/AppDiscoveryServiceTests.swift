@@ -103,4 +103,38 @@ final class AppDiscoveryServiceTests: XCTestCase {
         XCTAssertEqual(second.count, 1, "fresh scan after clearCache() picks up the removal")
         XCTAssertEqual(second.first?.bundleId, "com.test.TestApp2")
     }
+
+    /// ID-PERF-0011 (2026-09-26): the AppPickerItem.icon field was
+    /// always nil because AppDiscoveryService hardcoded `icon: nil`
+    /// when constructing items — no producer anywhere in the
+    /// codebase. The AppPickerRow rendered an empty space for every
+    /// app. Fix: load via NSWorkspace.shared.icon(forFile:). This
+    /// test runs against a real /Applications subdirectory to verify
+    /// the icon is actually populated (LaunchServices must have a
+    /// cached icon for a real .app).
+    func testIconFieldIsPopulatedForRealApps() throws {
+        // Walk /Applications until we find a real .app. Most CI/macOS
+        // hosts have at least 3-4 (Safari, Mail, etc.). If /Applications
+        // is genuinely empty, the test gracefully skips — the regression
+        // we're locking down is "always nil for all apps", which a
+        // skipped assertion can't catch, so we XCTFail instead.
+        let realDir = "/Applications"
+        let realApps = (try? FileManager.default.contentsOfDirectory(atPath: realDir))?
+            .filter { $0.hasSuffix(".app") } ?? []
+        guard let firstApp = realApps.sorted().first else {
+            XCTFail("no real apps in \(realDir) — cannot validate icon loading")
+            return
+        }
+        let svc = AppDiscoveryService(searchDirectories: [realDir], excludedBundleIds: [])
+        let exp = expectation(description: "scan")
+        var items: [AppPickerItem] = []
+        svc.discoverInstalledApps { result in
+            items = result
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 10.0)
+        let target = items.first { !$0.bundleId.isEmpty }
+        XCTAssertNotNil(target?.icon,
+                       "AppPickerItem.icon must be populated for real apps; nil = icon loading code path missing")
+    }
 }
