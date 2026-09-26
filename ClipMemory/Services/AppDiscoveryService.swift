@@ -1,5 +1,4 @@
 import Foundation
-import AppKit
 import os
 
 /// P1-AUDIT-2026-09-22 (P1-5 audit): app discovery moved from
@@ -56,20 +55,7 @@ final class AppDiscoveryService {
                     if self.excludedBundleIds.contains(lowercasedId) { continue }
                     if lowercasedId == selfBundleId { continue }
                     let name = (app as NSString).deletingPathExtension
-                    // ID-PERF-0011 (2026-09-26): load the app icon here so
-                    // the AppPickerRow renders a real image instead of an
-                    // empty space. Previously `icon: nil` was hardcoded —
-                    // AppPickerItem.icon had no producer anywhere in the
-                    // codebase, so the picker showed no icons at all.
-                    // NSWorkspace.icon(forFile:) is fast (LaunchServices
-                    // caches results) and safe to call off-main.
-                    let icon = NSWorkspace.shared.icon(forFile: appPath)
-                    results.append(AppPickerItem(
-                        name: name,
-                        bundleId: bundleId,
-                        icon: icon,
-                        isRunning: false
-                    ))
+                    results.append(AppPickerItem(name: name, bundleId: bundleId, icon: nil, isRunning: false))
                 }
             }
 
