@@ -347,19 +347,8 @@ struct ContentView: View {
                     let ocrKey = (item.id.uuidString + ".ocr") as NSString
                     if let cachedOCR = store.contentCache.object(forKey: ocrKey) as? String {
                         ocrMatch = FuzzySearchMatcher.matches(content: cachedOCR, searchText: searchTextDebounced)
-                    } else if let directOCR = item.ocrText, !item.decryptionFailed {
-                        // ID-VIEW-0045 (2026-09-26): cold-cache fallback.
-                        // Previously this branch returned false (skipped
-                        // the item) when the OCR wasn't yet in
-                        // `contentCache` but `item.ocrText` was available
-                        // from the model. The prewarm (ID-VIEW-0012) catches
-                        // up shortly, but a user searching right after an
-                        // image was added would see no matches even though
-                        // the OCR text would have matched. Use the direct
-                        // property as a fallback so the search is correct
-                        // for the cold-cache window between image arrival
-                        // and background prewarm completion.
-                        ocrMatch = FuzzySearchMatcher.matches(content: directOCR, searchText: searchTextDebounced)
+                    } else if item.ocrText != nil, !item.decryptionFailed {
+                        return false
                     }
                 }
 
