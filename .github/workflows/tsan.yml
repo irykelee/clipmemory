@@ -16,7 +16,11 @@ permissions:
 
 jobs:
   tsan-pr-subset:
-    # PR 触发: 跑最可能暴露 race 的 87 子集, 15min timeout 友好
+    # PR 触发: 跑最可能暴露 race 的 subset (count = 87 at workflow creation;
+    # asserted exactly below as a blind-spot guard — any drift in the
+    # -only-testing class list or test counts fails closed. Update the
+    # assertion number when intentionally adding/removing a race-prone
+    # test class. See Scripts/test-count.sh for current total.)
     if: github.event_name == 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 15
@@ -120,7 +124,8 @@ jobs:
             });
 
   tsan-full:
-    # nightly + workflow_dispatch: 跑全套 927 tests, 60min timeout
+    # nightly + workflow_dispatch: 跑全套 tests (count from
+    # Scripts/test-count.sh, ID-TEST-0002 forbids hard-coding), 60min timeout
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: macos-latest
     timeout-minutes: 60
