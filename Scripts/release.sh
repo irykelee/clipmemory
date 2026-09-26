@@ -1148,20 +1148,14 @@ EOF
         || die "Release workflow 失败 — 排查: gh run view ${RUN_ID} --log-failed"
     ok "Release workflow 成功"
 
-    # REL-25 (2026-08-05 review): `gh run watch --exit-status` proves the
-    # whole workflow exited 0, but if release.yml ever passes `--skip-tests`
-    # (or the test job is non-blocking), a red test suite could still ship.
-    # Explicitly check the release.yml run's test job conclusion.
-    TEST_JOB=$(gh run view "$RUN_ID" --json jobs --jq '.jobs[] | select(.name | test("test|Test")) | .conclusion' 2>/dev/null | head -1)
-    if [[ -n "$TEST_JOB" ]]; then
-        if [[ "$TEST_JOB" == "success" ]]; then
-            ok "release.yml test job: success"
-        else
-            die "release.yml test job conclusion = '${TEST_JOB:-unknown}' — 测试未全绿，但 release 已发布！不要重跑脚本；手动排查后决定是否回滚（见 RELEASE_PUSH_CHECKLIST §D3）"
-        fi
-    else
-        log "⚠️  release.yml 无 test job（或查询失败）— 无法确认测试状态，发布后请手动验证"
-    fi
+    # ID-CI-0005 (2026-09-26): removed REL-25 (2026-08-05) compensating
+    # check that queried `gh run view --json jobs` for a job named
+    # `test*` / `*Test*`. The job in release.yml is named
+    # `build-and-release`, so the jq filter never matched anything and
+    # the check silently passed. Now redundant: `gh run watch
+    # --exit-status` above fails the script when the workflow exits
+    # non-zero, and ID-CI-0005 restored fail-closed on the test step so
+    # a red test suite fails the workflow before release publishes.
 
     # REL-18 (2026-08-02 review): under set -e a bare failing call killed the
     # script here, so the "剩余手动步骤" below never printed on verify failure.
