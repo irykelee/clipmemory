@@ -1,7 +1,7 @@
 # ClipMemory 全面代码审查报告
 
 - 日期：2026-09-21
-- 范围：`ClipMemory/`（90 源文件，约 23.3k LOC）、`Tests/ClipMemoryTests/`（103 文件，约 22.6k LOC，静态估算 927 测试）、`.github/workflows/`、`Scripts/`、构建配置
+- 范围：`ClipMemory/`（90 源文件，约 23.3k LOC）、`Tests/ClipMemoryTests/`（103 文件，约 22.6k LOC，静态估算见 `Scripts/test-count.sh`）、`.github/workflows/`、`Scripts/`、构建配置
 - 方法：4 路并行审查（架构/规范、缺陷/边界、安全/性能、测试/CI），全部 P1 级发现经人工读码复核确认
 - 基线：已与 `CLAUDE.md`「有意保留决策」表及既有 ID-XXX 审计修复去重，本报告只列**新发现**
 

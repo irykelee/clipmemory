@@ -16,11 +16,14 @@ permissions:
 
 jobs:
   tsan-pr-subset:
-    # PR 触发: 跑最可能暴露 race 的 subset (count = 87 at workflow creation;
-    # asserted exactly below as a blind-spot guard — any drift in the
-    # -only-testing class list or test counts fails closed. Update the
-    # assertion number when intentionally adding/removing a race-prone
-    # test class. See Scripts/test-count.sh for current total.)
+    # PR 触发: 跑最可能暴露 race 的 subset. The "-ne" assertion below
+    # calibrates the expected count to the live `-only-testing` filter
+    # list (currently 94 — see the "Subset executed assertion" step).
+    # Update that assertion when intentionally adding/removing a
+    # race-prone test class. NOTE: this is an advisory gate — the job
+    # has `continue-on-error: true` and the PR comment below prints
+    # "Races: 0 detected" regardless of the assertion result, so the
+    # guard surfaces only in the workflow log, not on the PR.
     if: github.event_name == 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 15

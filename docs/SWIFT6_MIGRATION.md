@@ -23,7 +23,7 @@ Audit finding MEDIUM-14 (`ID-STORE-0008` in ledger) identified that ClipMemory h
 | `SWIFT_STRICT_CONCURRENCY` | minimal | `project.yml:20` |
 | Sendable conformance sites | 6 | ClipboardItem, Tag, DateFilter, AppVersion, UpdateStatus, BackupItem |
 | `@unchecked Sendable` sites | 3 | UpdateService.swift:94, FeedProbeEngine.swift:259, NetworkMonitor.swift:23 |
-| Test suite size | 927 tests | `Scripts/test-count.sh` (static estimate) |
+| Test suite size | `Scripts/test-count.sh` (static estimate) | see ID-TEST-0002 |
 
 The `minimal` mode disables Swift's strict concurrency checking entirely. This keeps the codebase compiling today but shifts all actor-isolation verification to manual review. Swift 6 introduces a new `complete` mode that enforces Sendable checks and actor isolation at compile time.
 
@@ -111,7 +111,7 @@ All gates must pass before advancing between phases.
 
 ### Gate 1 — TSan advisory CI green
 
-`.github/workflows/tsan.yml` runs on every PR (race-prone subset, ~87 tests, 15 min) and nightly (full suite, 927 tests, 60 min). Advisory means `continue-on-error: true` — failures do not block merge but must be addressed before the next release.
+`.github/workflows/tsan.yml` runs on every PR (race-prone subset, see assertion in workflow for current count, 15 min) and nightly (full suite, see `Scripts/test-count.sh`, 60 min). Advisory means `continue-on-error: true` — failures do not block merge but must be addressed before the next release.
 
 ### Gate 2 — Swift 6 strict concurrency build
 
@@ -123,7 +123,7 @@ This repo has no `Package.swift` — Sparkle is declared as an SPM dependency in
 
 ### Gate 3 — Full test suite in TSan mode
 
-All 927 tests must pass under TSan instrumentation. Run:
+All tests must pass under TSan instrumentation (current count: `Scripts/test-count.sh`). Run:
 
 ```bash
 xcodebuild -scheme ClipMemory -configuration Debug \

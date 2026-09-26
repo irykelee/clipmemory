@@ -156,11 +156,11 @@ jobs:
         # if it actually runs. If xcodebuild aborts mid-run (segfault,
         # OOM, infrastructure hang), the test process exits before ZZZ
         # fires and CI reports "TEST SUCCEEDED" with `Executed 0 tests`.
-        # Asserting a minimum test count catches this: a real run is
-        # ~1004 tests per Scripts/test-count.sh (ID-TEST-0002: no hard-coded
-        # counts). The threshold is intentionally tight (920 leaves
-        # ~80 tests of slack) — a 12-test cushion would let a
-        # partial-suite abort hide.
+        # Asserting a minimum test count catches this: a real run reports
+        # `Executed N tests` (N ≈ Scripts/test-count.sh static estimate;
+        # ID-TEST-0002 forbids hard-coding the value here). The 920
+        # threshold is a lower bound — a partial-suite abort that
+        # loses more than this many tests fails the gate.
         #
         # P2-17 (2026-09-22 audit): enable code coverage + emit
         # xcresult bundle so the downstream coverage-gate job can
