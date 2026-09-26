@@ -55,6 +55,7 @@ enum ImagePreviewPanel {
     }
 
     @MainActor private static var panel: NSPanel?
+    @MainActor private static var escapeMonitor: Any?
 
     @MainActor
     static func show(image: NSImage, screen: NSScreen? = NSScreen.main) {
@@ -113,17 +114,25 @@ enum ImagePreviewPanel {
         // global — global only sees events to OTHER apps, the
         // release here is to our own panel) while shown so the
         // release dismisses the preview from anywhere on screen.
-        // ID-VIEW-0047 follow-up: no addLocalMonitorForEvents.
-        // An earlier attempt installed a leftMouseUp local monitor to
-        // dismiss the panel on release. Trackpad two-finger-scroll and
-        // Tap-to-Click gestures synthesize .leftMouseUp alongside
-        // .scrollWheel, which made the preview disappear mid-scroll.
-        // NSPressGestureRecognizer tracks the press across views
-        // (started on the list's image NSView, stays in .changed
-        // state while the mouse is over the panel), so the natural
-        // .ended event dismisses via
-        // ClipboardItemRow.onChange(of: imageLongPressing). The
-        // monitor only double-dismissed in race with that path.
+        // ID-VIEW-0047 follow-up: no leftMouseUp monitor. Earlier attempt
+        // installed one but trackpad two-finger-scroll and Tap-to-Click
+        // gestures synthesize .leftMouseUp alongside .scrollWheel, which
+        // made the preview disappear mid-scroll. NSPressGestureRecognizer
+        // tracks the press across views — started on the list's image
+        // NSView, stays in .changed state while the mouse is over the
+        // panel — so the natural .ended event dismisses via
+        // ClipboardItemRow.onChange(of: imageLongPressing).
+        //
+        // Fallback: install a local keyDown monitor for Escape (keyCode
+        // 53). If the gesture recognizer fails to deliver .ended (focus
+        // loss, system gesture hijack, accessibility event), the user
+        // still has a way to dismiss. Stays installed for the lifetime
+        // of the panel, removed in hideUnlocked.
+        let keyMon = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == 53 { hide(); return nil }
+            return event
+        }
+        escapeMonitor = keyMon
         self.panel = panel
     }
 
@@ -136,6 +145,7 @@ enum ImagePreviewPanel {
 
     @MainActor
     private static func hideUnlocked() {
+        if let m = escapeMonitor { NSEvent.removeMonitor(m); escapeMonitor = nil }
         panel?.close()
         panel = nil
     }
