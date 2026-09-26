@@ -85,9 +85,11 @@ jobs:
         run: |
           executed=$(grep -oE 'Executed [0-9]+ test' /tmp/tsan.log | tail -1 | grep -oE '[0-9]+')
           if [[ -z "$executed" || "$executed" -ne 94 ]]; then
+            echo "SUBSET_PASSED=false" >> "$GITHUB_ENV"
             echo "❌ Subset assertion failed: expected 94, got $executed (可能 -only-testing 类名漂移)"
             exit 1
           fi
+          echo "SUBSET_PASSED=true" >> "$GITHUB_ENV"
           echo "✅ Subset assertion passed: 94/94 tests executed"
 
       - name: Upload TSan log (always)
@@ -108,6 +110,7 @@ jobs:
             const log = logExists ? fs.readFileSync(logPath, 'utf8') : '';
             const raceCount = log ? (log.match(/WARNING: ThreadSanitizer: data race/g) || []).length : 0;
             const instrumented = process.env.INSTRUMENTED === 'YES';
+            const subsetPassed = process.env.SUBSET_PASSED === 'true';
             let body;
             if (!logExists) {
               body = '⚠️ **TSan 日志缺失**: 前置步骤 (checkout / xcodegen / build) 失败, 本次无结果。检查 workflow logs。';
@@ -115,10 +118,13 @@ jobs:
               const instLine = instrumented
                 ? '🔧 **Instrumentation**: verified (`sanitize=thread` in build log)'
                 : '⚠️ **Instrumentation**: NOT verified — 本次结果无意义, 请检查 workflow';
+              const subsetLine = subsetPassed
+                ? `✅ **Subset count**: 94/94 tests executed (drift guard passed)`
+                : `❌ **Subset count**: 期望 94, 实际 ${raceCount === 0 ? '无法解析' : raceCount}。\`Executed N tests\` 与 -only-testing 类列表漂移（filter 引用了不存的 class,或新增/删除了 race-prone test class）。下面 race 数字不可信,请检查 workflow log + PR #commit history 是否改了测试类名`;
               const raceLine = raceCount > 0
                 ? `🔬 **Races**: ${raceCount} detected. Download \`tsan-log-${context.runId}\` artifact for full trace.`
                 : `✅ **Races**: 0 detected.`;
-              body = [instLine, raceLine].join('\n');
+              body = [instLine, subsetLine, raceLine].join('\n');
             }
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
