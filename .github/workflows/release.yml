@@ -158,20 +158,34 @@ jobs:
       # The trade-off was "fail-open: allow runner flake to ship" vs.
       # "fail-closed: real regressions + flakes both block". Picked
       # fail-closed because:
-      #  (a) ID-STORE-0022 (2026-09-26) bumped init auto-wait timeout from
-      #      5s → 60s, covering the observed >60s UserDefaults load latency.
-      #      Flakes above 60s are exceptional.
-      #  (b) `Scripts/release.sh run_preflight --tests` is the authoritative
-      #      local gate — if local preflight passes, the binary is known-good
-      #      before the tag is even pushed, so GH Actions runner flake on
-      #      the same xcodebuild test invocation is a re-run, not a regression.
-      #  (c) If GH Actions runner flakes post-fix, manually re-run the
-      #      workflow (Actions tab → Re-run jobs). Acceptable failure mode.
-      # See docs/reviews/auto-review-20260925-195226-93199.md for the P1
-      # finding; this commit is the resolution. Companion dead-code cleanup
-      # removed the now-unreachable `release.sh:1151-1164` compensating check
-      # that searched for "test|Test" in job names (the job is named
-      # `build-and-release`, so it never matched).
+      #  (a) Local `Scripts/release.sh run_preflight --tests` is the
+      #      authoritative gate — runs the same xcodebuild test invocation
+      #      BEFORE the tag is pushed. If local preflight passes, the
+      #      binary is known-good by the time this step runs; GH Actions
+      #      runner flake on the same xcodebuild invocation is a re-run,
+      #      not a regression. (Bypass paths exist: `--skip-tests` flag and
+      #      direct `git push v*` skipping preflight — both are opt-in
+      #      escape hatches, not default behavior. See RELEASE_PUSH_CHECKLIST
+      #      §D for the "tag pushed, CI failed" recovery path.)
+      #  (b) Frequency vs severity: one documented runner flake
+      #      (36025732215) in 30+ GH Actions release runs since 2026-07-23
+      #      — one manual re-run per ~30 releases is acceptable failure
+      #      cost; one shipped regression because tests were advisory is
+      #      not.
+      #  (c) Residual flake risk acknowledged: the UserDefaults load
+      #      latency flake is NOT mitigated at source. ID-STORE-0022
+      #      (48ac2fc) is about libdispatch recursion in the terminate
+      #      drain — unrelated to load latency. If the flake re-fires,
+      #      the operator workflow is documented in §D.
+      # See docs/reviews/auto-review-20260926-100253-17219.md (P1 finding on
+      # this commit, caught an inaccurate reason-claim about ID-STORE-0022
+      # bumping the init timeout) and docs/reviews/auto-review-20260925-
+      # 195226-93199.md (P1 finding on the original 1f646d5 advisory step).
+      # Companion cleanup removed the now-silently-passing
+      # `release.sh` "test|Test" job-name check (the job is named
+      # `build-and-release`, so the jq filter never matched anything and
+      # the check returned empty, printing a warning and letting the
+      # release proceed).
       - name: Run tests
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then

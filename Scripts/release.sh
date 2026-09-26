@@ -1152,10 +1152,13 @@ EOF
     # check that queried `gh run view --json jobs` for a job named
     # `test*` / `*Test*`. The job in release.yml is named
     # `build-and-release`, so the jq filter never matched anything and
-    # the check silently passed. Now redundant: `gh run watch
-    # --exit-status` above fails the script when the workflow exits
-    # non-zero, and ID-CI-0005 restored fail-closed on the test step so
-    # a red test suite fails the workflow before release publishes.
+    # the check returned empty — printing a warning and letting the
+    # release proceed. This was a false-guarantee check (the operator
+    # thought they were validating the test job, but the validation was
+    # silently always vacuous). With ID-CI-0005 restoring fail-closed on
+    # the test step, the upstream `gh run watch --exit-status` already
+    # fails the script on any workflow exit non-zero, so this defensive
+    # second-look was redundant *and* misleading. Removed.
 
     # REL-18 (2026-08-02 review): under set -e a bare failing call killed the
     # script here, so the "剩余手动步骤" below never printed on verify failure.

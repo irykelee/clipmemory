@@ -80,6 +80,18 @@ For each of: `README.md` (zh-Hans), `docs/lang/README_{EN,ZH-HANT,JA,KO,ES,PT}.m
 - [ ] Verify `appcast.xml` has new `<item>` with `edSignature` (in main branch)
 - [ ] Verify external tap repo `irykelee/homebrew-clipmemory` updated (per B3.9) — `curl -s https://raw.githubusercontent.com/irykelee/homebrew-clipmemory/main/Casks/clipmemory.rb | grep version`
 
+### D1. Recovery: tag pushed, CI `Run tests` step failed (ID-CI-0005)
+
+> Triggered by `Scripts/release.sh` dying at the `gh run watch --exit-status` step with "Release workflow 失败". The tag is already on `origin` but no GitHub Release was created (fail-closed test step blocks packaging).
+
+1. **Identify the failure** — `gh run view <run-id> --log-failed`. Look for `Run tests` step failure.
+2. **Decide flake vs regression**:
+   - **Likely flake** (`FileStorageBackend.load()` >60s, different tests failing each run, tests pass locally with `run_preflight --tests`): Actions tab → **Re-run failed jobs**. If second run passes, original was flake — note in STATUS.md and continue.
+   - **Likely regression** (consistent failure across runs, new test added without `--skip-tests` escape, code change to tested path): do NOT re-tag. Investigate, fix, cut new tag.
+3. **Delete the failed tag** — `git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z` (local + remote delete). The tag must be removed so a new commit + tag can be pushed without "tag already exists" reject.
+4. **Force-push a clean main if the appcast commit landed** — if the `Publish appcast update` step somehow ran despite test failure (shouldn't happen with fail-closed, but defense-in-depth): check `git log origin/main` for the "chore: appcast item for vX.Y.Z [skip ci]" commit and `git push --force-with-lease` to remove it.
+5. **Re-run release** — `Scripts/release.sh vX.Y.Z` after fixing the root cause (or after confirming flake).
+
 ---
 
 ## E. Local cleanup (per `docs/RELEASE.md` B4.12)
