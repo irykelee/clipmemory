@@ -148,6 +148,61 @@ final class ImagePreviewPanelTests: XCTestCase {
         }
     }
 
+    // MARK: - Monitor lifecycle (ID-VIEW-0047 follow-up coverage)
+
+    /// ID-VIEW-0047: verify show() installs the 3 dismissal monitors
+    /// (Escape, scrollWheel, leftMouseUp) via DI. The previous GREEN
+    /// signal had 0% coverage on this path because NSEvent can't be
+    /// exercised from a unit test. Without DI, the install branch was
+    /// trusted but unverified — exactly the failure mode that caused
+    /// the trackpad-scroll-synthesized dismiss bug. This test pins
+    /// the install pairing.
+    @MainActor
+    func testShowInstallsAllThreeMonitors() throws {
+        // Backup and restore all DI hooks.
+        let saved = (
+            ImagePreviewPanel.keyDownInstaller, ImagePreviewPanel.keyDownUninstaller,
+            ImagePreviewPanel.scrollWheelInstaller, ImagePreviewPanel.scrollWheelUninstaller,
+            ImagePreviewPanel.leftMouseUpInstaller, ImagePreviewPanel.leftMouseUpUninstaller
+        )
+        defer {
+            (ImagePreviewPanel.keyDownInstaller, ImagePreviewPanel.keyDownUninstaller,
+             ImagePreviewPanel.scrollWheelInstaller, ImagePreviewPanel.scrollWheelUninstaller,
+             ImagePreviewPanel.leftMouseUpInstaller, ImagePreviewPanel.leftMouseUpUninstaller) = saved
+        }
+
+        nonisolated(unsafe) var installs = 0
+        nonisolated(unsafe) var uninstalls = 0
+        let fakeToken = "fake" as NSString
+        let inc: () -> Any? = { installs += 1; return fakeToken }
+        let dec: (Any) -> Void = { _ in uninstalls += 1 }
+        ImagePreviewPanel.keyDownInstaller = inc
+        ImagePreviewPanel.keyDownUninstaller = dec
+        ImagePreviewPanel.scrollWheelInstaller = inc
+        ImagePreviewPanel.scrollWheelUninstaller = dec
+        ImagePreviewPanel.leftMouseUpInstaller = inc
+        ImagePreviewPanel.leftMouseUpUninstaller = dec
+
+        let tiny = makeImage(width: 16, height: 16, color: .red)
+        ImagePreviewPanel.show(image: tiny, screen: nil)
+        XCTAssertEqual(installs, 3, "show() must install all 3 monitors (Escape + scrollWheel + leftMouseUp)")
+        // Hide to clean up before assertion
+        ImagePreviewPanel.hide()
+        XCTAssertEqual(uninstalls, 3, "hide() must uninstall all 3 monitors")
+    }
+
+    /// ID-VIEW-0047: the trackpad scroll-synthesized dismiss bug
+    /// happened because the original `addLocalMonitorForEvents(.leftMouseUp)`
+    /// fired unconditionally. The fix is to suppress leftMouseUp
+    /// dismissal when it arrives within `scrollSynthesizedThreshold`
+    /// of a scrollWheel event. This test pins the threshold to the
+    /// pre-determined 200 ms value — changing it without re-evaluating
+    /// the bug would silently regress the fix.
+    func testScrollSynthesizedThresholdIs200ms() {
+        XCTAssertEqual(ImagePreviewPanel.scrollSynthesizedThreshold, 0.2, accuracy: 0.001,
+                       "scrollSynthesizedThreshold must stay 200ms; lowering makes real releases dismiss too easily, raising allows trackpad scroll-synthesized dismiss to slip through")
+    }
+
     // MARK: - Origin math (cursor-anchored panel placement)
 
     /// ID-VIEW-0047 (2026-09-26): pure helper for cursor-anchored

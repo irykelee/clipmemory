@@ -65,7 +65,21 @@ enum ImagePreviewPanel {
     // a tap within ~100ms of the last scroll; 200ms gives margin
     // while still accepting a slow deliberate release.
     @MainActor private static var lastScrollWheelAt: Date = .distantPast
-    private static let scrollSynthesizedThreshold: TimeInterval = 0.2
+    static let scrollSynthesizedThreshold: TimeInterval = 0.2
+    // ID-VIEW-0047 (2026-09-27): DI hooks for the 3 monitors so tests
+    // can verify install/remove pairing without a real NSEvent system.
+    // When `installer` is nil, install creates the real monitor via
+    // NSEvent.addLocalMonitorForEvents; when non-nil, the closure is
+    // called instead and its value is stored as the monitor token. The
+    // same applies to `uninstaller` for `removeMonitor`. This avoids
+    // creating real NSEvent monitors in unit tests (which the
+    // previous commit's GREEN signal had 0% coverage on).
+    @MainActor static var keyDownInstaller: (() -> Any?)?
+    @MainActor static var keyDownUninstaller: ((Any) -> Void)?
+    @MainActor static var scrollWheelInstaller: (() -> Any?)?
+    @MainActor static var scrollWheelUninstaller: ((Any) -> Void)?
+    @MainActor static var leftMouseUpInstaller: (() -> Any?)?
+    @MainActor static var leftMouseUpUninstaller: ((Any) -> Void)?
 
     @MainActor
     static func show(image: NSImage, screen: NSScreen? = NSScreen.main) {
@@ -138,11 +152,13 @@ enum ImagePreviewPanel {
         // loss, system gesture hijack, accessibility event), the user
         // still has a way to dismiss. Stays installed for the lifetime
         // of the panel, removed in hideUnlocked.
-        let keyMon = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        // ID-VIEW-0047: use injected installers when set (testing),
+        // otherwise create the real NSEvent local monitors.
+        let keyHandler: (NSEvent) -> NSEvent? = { event in
             if event.keyCode == 53 { hide(); return nil }
             return event
         }
-        escapeMonitor = keyMon
+        escapeMonitor = keyDownInstaller?() ?? NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: keyHandler)
 
         // USER-FEEDBACK-2026-09-26 (3rd round): install a scrollWheel
         // monitor alongside the leftMouseUp monitor, and use the
@@ -152,12 +168,12 @@ enum ImagePreviewPanel {
         // synthesized mouseUp that previously dismissed mid-scroll. A
         // real release happens hundreds of ms after the user stops
         // scrolling, so the threshold is well-separated.
-        let scrollMon = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+        let scrollHandler: (NSEvent) -> NSEvent? = { event in
             Self.lastScrollWheelAt = Date()
             return event
         }
-        scrollWheelMonitor = scrollMon
-        let mouseMon = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+        scrollWheelMonitor = scrollWheelInstaller?() ?? NSEvent.addLocalMonitorForEvents(matching: .scrollWheel, handler: scrollHandler)
+        let mouseHandler: (NSEvent) -> NSEvent? = { event in
             let sinceScroll = Date().timeIntervalSince(Self.lastScrollWheelAt)
             if sinceScroll < Self.scrollSynthesizedThreshold {
                 return event  // synthesized by trackpad scroll, don't dismiss
@@ -165,7 +181,7 @@ enum ImagePreviewPanel {
             hide()
             return event
         }
-        leftMouseUpMonitor = mouseMon
+        leftMouseUpMonitor = leftMouseUpInstaller?() ?? NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp, handler: mouseHandler)
         self.panel = panel
     }
 
@@ -178,9 +194,18 @@ enum ImagePreviewPanel {
 
     @MainActor
     private static func hideUnlocked() {
-        if let m = escapeMonitor { NSEvent.removeMonitor(m); escapeMonitor = nil }
-        if let m = scrollWheelMonitor { NSEvent.removeMonitor(m); scrollWheelMonitor = nil }
-        if let m = leftMouseUpMonitor { NSEvent.removeMonitor(m); leftMouseUpMonitor = nil }
+        if let m = escapeMonitor {
+            (keyDownUninstaller ?? NSEvent.removeMonitor)(m)
+            escapeMonitor = nil
+        }
+        if let m = scrollWheelMonitor {
+            (scrollWheelUninstaller ?? NSEvent.removeMonitor)(m)
+            scrollWheelMonitor = nil
+        }
+        if let m = leftMouseUpMonitor {
+            (leftMouseUpUninstaller ?? NSEvent.removeMonitor)(m)
+            leftMouseUpMonitor = nil
+        }
         panel?.close()
         panel = nil
     }
