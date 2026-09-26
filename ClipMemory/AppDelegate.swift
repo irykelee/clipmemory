@@ -218,21 +218,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // ID-LIFE-0007 ordering preserved (image writes before clipboard saves).
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             ImageStorage.shared.drainPendingWrites()
-            // P2-14 round-2 self-review fix [P1-2, follow-up]: the
-            // first-load barrier inside flushPendingSaves pumps
-            // RunLoop.main and reads `@MainActor`-isolated
-            // `firstLoadCompleted`. Both must run on the main thread;
-            // calling them from this bg drain would race the main
-            // thread's NSApp run loop and let `MainActor.run {
-            // applyLoadResult }` execute on the bg thread (mutating
-            // `@Published items` off-main — explicit CLAUDE.md
-            // violation). Hop to main synchronously for the flush.
-            // Safe: main is in NSApp's event loop waiting for the
-            // terminate reply, not blocked on bg work, so the sync
-            // hop completes inside the watchdog budget.
-            DispatchQueue.main.sync {
-                ClipboardStore.shared.flushPendingSaves()
-            }
+            // ID-STORE-0022 (P1-AUDIT-2026-09-22 follow-up 2026-09-25):
+            // flushPendingSaves is now called ONLY from main-thread sites
+            // (applicationWillTerminate, ContentView trim-confirm, BackupSettings
+            // import, RestoreWizard). The drain itself does NOT call it —
+            // `applicationWillTerminate` runs synchronously on main after
+            // AppKit accepts the .terminateLater reply and is guaranteed to
+            // execute before the process exits (CL-Gate / macOS lifecycle),
+            // so the durability guarantee moves there. Removes the recursion
+            // risk that came from draining flushPendingSaves via
+            // DispatchQueue.main.sync inside the bg queue (which nested
+            // RunLoop.main.run from bg and triggered libdispatch BUG in
+            // GH Actions release runs — see auto-review 20260924-194701 P1).
+            // The earlier `DispatchQueue.main.sync { flushPendingSaves }`
+            // block here was the source of those test crashes; removing it
+            // eliminates the cross-thread flush path entirely.
             DispatchQueue.main.async {
                 self?.replyToTermination(allow: true)
             }
