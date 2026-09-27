@@ -248,6 +248,29 @@ EOF
           xcodebuild test -scheme ClipMemory 2>&1 | tee /tmp/log
 EOF
 
+  # Fixture I (ID-CI-0021): two `Run tests` steps (e.g. matrix
+  # build with `runs-on: ubuntu-latest` + `runs-on: macos-latest`)
+  # where the FIRST step is clean and the SECOND has
+  # `continue-on-error: true`. This exposes the head -1 narrowness
+  # auto-review 20260927-210802 caught (deferred P2 #14): the rule 3
+  # grep uses `head -1`, so only the FIRST `name: Run tests` match
+  # is checked. The second step's `continue-on-error: true` would
+  # silently pass — even though it disables fail-closed exactly
+  # the same way. Must FAIL because rule 3 currently catches the
+  # first match's body (clean) but the fix would be to iterate all
+  # matches. The fixture is a forward-looking test; the rule 3
+  # narrowness is latent today (no live-broken behavior) but
+  # documenting it as a known edge case prevents future drift.
+  cat >"$tmpdir/i.yml" <<'EOF'
+      - name: Run tests
+        run: |
+          xcodebuild test -scheme ClipMemory
+      - name: Run tests
+        continue-on-error: true
+        run: |
+          xcodebuild test -scheme ClipMemory
+EOF
+
   local failures=0
   # ID-CI-0015 (2026-09-27): the previous implementation keyed on
   # exit status (`check_workflow >/dev/null 2>&1`; non-zero =
@@ -297,6 +320,21 @@ EOF
       failures=$((failures + 1))
     fi
   done
+
+  # Fixture I (ID-CI-0021 narrowness fix): multi-step Run tests
+  # matrix. Two `name: Run tests` steps — first clean, second has
+  # `continue-on-error: true`. With the narrowness fix (rule 3
+  # now iterates ALL `name: Run tests` matches), the second step's
+  # fail-open is caught. Must FAIL.
+  WORKFLOW="$tmpdir/i.yml"
+  output=$(check_workflow 2>&1)
+  cw_rc=$?
+  if [[ "$cw_rc" -eq 1 && "$output" == *"❌ FAIL"* ]]; then
+    echo "✅ PASS: fixture i correctly caught (multi-step narrowness fix verified)"
+  else
+    echo "❌ FAIL: fixture i should have been caught (check_workflow exit=$cw_rc)"
+    failures=$((failures + 1))
+  fi
   # Fixture G + H: bare `xcodebuild test | tee` with INCOMPLETE
   # carve-out must FAIL. Loop separately so we can label them
   # distinctly.
@@ -321,7 +359,7 @@ EOF
   # returns 0) scans the real release.yml — not the last fixture
   # file we just mutated.
   WORKFLOW="$saved_workflow"
-  echo "✅ All 8 self-test fixtures passed"
+  echo "✅ All 9 self-test fixtures passed"
 }
 
 # ---- core check (extractable for selftest) -------------------------------
@@ -462,37 +500,50 @@ check_workflow() {
   # ID-CI-0018) catches it.
   run_tests_lines=$(grep -nE "^[[:space:]]*- name: Run tests([[:space:]]|$)" "$WORKFLOW" || true)
   if [[ -n "$run_tests_lines" ]]; then
-    local start_line end_line bad
-    start_line=$(echo "$run_tests_lines" | head -1 | cut -d: -f1)
-    # End is the next `- name:` at the same (or shallower) indent
-    # level — for release.yml that's column 0 or 6. We use a
-    # found-flag END pattern; the sentinel is only printed when no
-    # subsequent -name was matched, so we don't get a newline in the
-    # captured value (which would crash awk's -v on the second call).
-    end_line=$(awk -v start="$start_line" '
-      # ID-CI-0018 (2026-09-27): anchored end-regex. The previous
-      # `/^[[:space:]]*- name:/` matched any indent depth, so a
-      # nested `- name:` inside a `run: |` block would prematurely
-      # truncate the range (auto-recommended P2 #23). The CI release
-      # workflow indents steps to 6 spaces (`      - name:`); the
-      # run-block content lives at 8+ spaces or starts with a
-      # different character. Anchoring at exactly 6 spaces makes
-      # the boundary precise. If a future workflow uses a different
-      # indent, the sentinel (999999) falls through to EOF instead
-      # of false-truncating mid-step — which is the safer failure
-      # mode (over-reports vs under-reports).
-      NR > start && /^      - name:/ { print NR; found=1; exit }
-      END { if (!found) print 999999 }
-    ' "$WORKFLOW")
-    [[ -z "$end_line" ]] && end_line=999999
+    local start_line end_line bad all_bad=""
+    # ID-CI-0021 (2026-09-27): iterate ALL `name: Run tests`
+    # matches, not just the first. The previous code used `head -1`
+    # on the grep output (auto-review 20260927-210802 caught this
+    # as deferred P2 #14 — matrix builds with multiple `Run tests`
+    # steps would silently skip rule 3 for steps after the first).
+    # We now loop through every match; the first one with
+    # `continue-on-error: true` (or any later one with the same
+    # flag) fails CI.
+    while IFS=: read -r start_line _unused; do
+      # End is the next `- name:` at the same (or shallower) indent
+      # level — for release.yml that's column 0 or 6. We use a
+      # found-flag END pattern; the sentinel is only printed when no
+      # subsequent -name was matched, so we don't get a newline in the
+      # captured value (which would crash awk's -v on the second call).
+      end_line=$(awk -v start="$start_line" '
+        # ID-CI-0018 (2026-09-27): anchored end-regex. The previous
+        # `/^[[:space:]]*- name:/` matched any indent depth, so a
+        # nested `- name:` inside a `run: |` block would prematurely
+        # truncate the range (auto-recommended P2 #23). The CI release
+        # workflow indents steps to 6 spaces (`      - name:`); the
+        # run-block content lives at 8+ spaces or starts with a
+        # different character. Anchoring at exactly 6 spaces makes
+        # the boundary precise. If a future workflow uses a different
+        # indent, the sentinel (999999) falls through to EOF instead
+        # of false-truncating mid-step — which is the safer failure
+        # mode (over-reports vs under-reports).
+        NR > start && /^      - name:/ { print NR; found=1; exit }
+        END { if (!found) print 999999 }
+      ' "$WORKFLOW")
+      [[ -z "$end_line" ]] && end_line=999999
 
-    bad=$(awk -v s="$start_line" -v e="$end_line" \
-      'NR >= s && NR < e && /continue-on-error:[[:space:]]*true/ { print NR ":" $0 }' \
-      "$WORKFLOW" || true)
+      bad=$(awk -v s="$start_line" -v e="$end_line" \
+        'NR >= s && NR < e && /continue-on-error:[[:space:]]*true/ { print NR ":" $0 }' \
+        "$WORKFLOW" || true)
+      if [[ -n "$bad" ]]; then
+        all_bad+="${bad}"$'\n'
+      fi
+    done < <(echo "$run_tests_lines")
+    bad="$all_bad"
 
     if [[ -n "$bad" ]]; then
       echo ""
-      echo "❌ FAIL: \`continue-on-error: true\` detected inside the Run tests step"
+      echo "❌ FAIL: \`continue-on-error: true\` detected inside one or more Run tests steps"
       echo ""
       echo "$bad"
       echo ""
