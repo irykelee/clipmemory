@@ -189,15 +189,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             xcodebuild test -scheme ClipMemory -destination 'platform=macOS' CODE_SIGN_IDENTITY="-"
           else
-            # ID-RELEASE-0003 (v2.9.4): `|| true` on the tag path's test
-            # invocation. The v2.9.3 GH Actions Test substep failed in
-            # CI env (specific failing test requires admin log access to
-            # debug — known anti-pattern per P2-18 to investigate via
-            # local reproduction, which shows 1010/1010 GREEN with this
-            # exact invocation). For the v2.9.4 ship, fall back to
-            # build-only with the test log preserved for diagnostics;
-            # local users run tests via `xcodebuild test` before install.
-            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' 2>&1 | tee /tmp/xcb-release-test.log || true
+            xcodebuild test -scheme ClipMemory -destination 'platform=macOS'
           fi
 
       - name: Package and update local Cask
