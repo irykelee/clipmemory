@@ -39,16 +39,71 @@
 #       the dead `|| true`. We now also check the bare
 #       `xcodebuild test … | tee …` pattern.
 #
-# Three failure modes (ID-CI-0012 v2):
+# ID-CI-0015 (2026-09-27): auto-review 20260927-210112 caught the
+# FAIL message's own backticks triggering bash command substitution
+# (the FAIL output was running `|| true` as part of error
+# formatting). Switched to single-quoted prose with double-quoted
+# variable fragments; added `trap '' PIPE` so SIGPIPE from grep -q
+# closing stdin early doesn't abort check_workflow with rc=141
+# under `set -e`.
+#
+# ID-CI-0016 (2026-09-27): auto-review 20260927-210112 caught that
+# the `--selftest` pipeline `check_workflow | grep -q "^❌ FAIL"`
+# aborted the script BEFORE `${PIPESTATUS[0]}` could capture the
+# exit code, under `set -euo pipefail`. Plus `declare -g` is bash
+# 4.2+; macOS /bin/bash 3.2.57 rejected it and the selftest died
+# with exit 2 on the first fixture. Fix: capture check_workflow
+# output via `output=$(check_workflow 2>&1); cw_rc=$?`; plain
+# WORKFLOW assignment (no `declare -g`); RETURN trap with handler
+# `trap 'trap - PIPE' RETURN` (handler does NOT call `return`,
+# avoids the infinite-recursion that a handler containing
+# `return $?` produced).
+#
+# ID-CI-0017 (2026-09-27): auto-review 20260927-210802 caught that
+# selftest mutated the script-level WORKFLOW to each fixture path
+# but never restored it before returning — so the post-selftest
+# real check (promised by ID-CI-0014) scanned the last fixture
+# file, not `.github/workflows/release.yml`. `--selftest` was a
+# fake lock. Fix: snapshot WORKFLOW into `saved_workflow` at the
+# top of selftest, restore before return (and in the EXIT trap
+# belt-and-suspenders).
+#
+# ID-CI-0018 (2026-09-27): rule 3's awk end-regex
+# `/^[[:space:]]*- name:/` matched any indent depth, so a nested
+# `- name:` inside a `run: |` block would prematurely truncate
+# the range and miss subsequent `continue-on-error: true`. Plus
+# the script silently skipped rule 3 if the workflow had no
+# step named exactly `Run tests` — renaming the step would
+# disarm rule 3 while CI reported green. Fix: anchor the
+# end-regex to 6 spaces (`/^      - name:/`, matching GH
+# release.yml step indent) and hard-FAIL with an explicit
+# "rename the step back" message when rule 3's anchor is
+# missing.
+#
+# ID-CI-0019 (2026-09-27): the rule 1 error message recommended
+# remediation (b) "add `shell: bash` + `set -o pipefail`" but
+# applying it left the `xcodebuild test | tee` literal in the
+# file, which rule 1 then flagged as a fail-open — the lint
+# blocked its own fix. Fix: detect BOTH `shell: bash` AND
+# `set -o pipefail` (or `set -euo pipefail`) in the enclosing
+# step body; if both are present, the `tee` no longer swallows
+# (pipefail propagates the upstream exit code). Partial
+# declarations (only one of the two) still trip the rule —
+# safe failure mode. Three new fixtures (f full carve-out,
+# g partial-shell, h partial-pipefail) lock the behavior.
+#
+# Three rules enforced (current):
 #   1. `xcodebuild test … | tee …` on any line in release.yml
 #      (fail-open via tee's exit 0 under GH macOS default shell
 #      with no pipefail). Includes the variant `… || true`.
+#      Carve-out (ID-CI-0019): step declares `shell: bash` AND
+#      run body has `set -o pipefail` (or `set -euo pipefail`).
 #   2. `xcodebuild test … || true` on any line (explicit swallow,
 #      dead under default shell but a future `shell: bash` would
 #      flip the behavior).
 #   3. `continue-on-error: true` inside the `Run tests` step body
-#      (awk-bounded via line-range, anchored regex relaxed to
-#      match indented form).
+#      (awk-bounded via 6-space-anchored line range). Hard-FAIL
+#      if no `Run tests` step exists.
 #
 # The fix in release.yml:148-186 (fail-closed justification) must
 # remain present and non-empty; this script does NOT enforce that
@@ -56,21 +111,29 @@
 # does enforce: the code below those comments cannot silently
 # disable fail-closed behavior.
 #
-# Self-test (ID-CI-0012): run `Scripts/lint-release-yml.sh --selftest`
-# to verify synthetic fixtures are caught. The script exits 0 on
-# PASS / 1 on FAIL of each fixture. A real release.yml check with
-# no arguments also runs after `--selftest` returns 0; pass both
-# before considering this linter trustworthy.
+# Self-test (ID-CI-0012, expanded ID-CI-0015 / 0018 / 0019): run
+# `Scripts/lint-release-yml.sh --selftest` to verify synthetic
+# fixtures are caught. The script exits 0 on PASS / 1 on FAIL of
+# each fixture. A real release.yml check with no arguments also
+# runs after `--selftest` returns 0; pass both before considering
+# this linter trustworthy. 8-fixture selftest (a/b/c fail-open
+# caught, d/e clean release.yml, f full carve-out, g/h partial
+# carve-out). See `feedback/release-yml-fail-open-prevention.md`
+# for the full drill narrative.
 #
 # Usage:
 #   Scripts/lint-release-yml.sh           # check release.yml
 #   Scripts/lint-release-yml.sh --selftest  # synthetic fixtures
 #
-# Wired into ci.yml lint-ids job (per ID-CI-0011).
+# Wired into ci.yml lint-ids job (per ID-CI-0011, selftest flag
+# added by ID-CI-0014).
 #
 # bash compat: stock macOS /bin/bash 3.2 lacks `declare -A`,
 # uses parallel arrays. CI (ubuntu bash 5) is more permissive but
-# the portable form is identical.
+# the portable form is identical. No `declare -g` (bash 4.2+) —
+# ID-CI-0016. No `set -e`-incompatible `check_workflow | grep -q`
+# pipelines — ID-CI-0015/0016. RETURN trap with no `return`
+# statement in the handler — ID-CI-0016.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"

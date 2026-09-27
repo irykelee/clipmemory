@@ -286,19 +286,30 @@ jobs:
       # guard, no expiry); (b) GH Actions macOS default shell has no
       # `pipefail`, so `xcodebuild test | tee log || true` is dead
       # code — tee's exit 0 does the swallowing, not `|| true`; (c)
-      # release.sh:1147 `gh run watch --exit-status` guard silently
-      # stops catching test regressions because the upstream test step
-      # stopped being fail-closed. ID-CI-0005 (e897f30) had
-      # deliberately restored fail-closed with a 33-line
-      # justification; 149906d undid it 19 hours later with a 3-line
-      # comment claiming "for this one release" scope. da3cc6a
-      # reverted 149906d. This script enforces that the next
-      # contributor cannot reintroduce the same swallow — lines in
-      # the Run tests step that contain `xcodebuild test` together
-      # with `| tee` or `|| true` (fail-open via tee's exit-0 swallow),
-      # or `continue-on-error: true` inside the Run tests step body,
-      # both fail CI before merge.
-      - name: release.yml fail-open policy check (ID-CI-0011)
+      # release.sh:997 `gh run watch` guard silently stops catching
+      # test regressions because the upstream test step stopped being
+      # fail-closed. ID-CI-0005 (e897f30) had deliberately restored
+      # fail-closed with a 33-line justification; 149906d undid it 19
+      # hours later with a 3-line comment claiming "for this one
+      # release" scope. da3cc6a reverted 149906d. This script
+      # enforces that the next contributor cannot reintroduce the same
+      # swallow — lines in the Run tests step that contain `xcodebuild
+      # test` together with `| tee` or `|| true` (fail-open via tee's
+      # exit-0 swallow), or `continue-on-error: true` inside the Run
+      # tests step body, both fail CI before merge.
+      #
+      # ID-CI-0018 (2026-09-27): rule 3's step-body window is
+      # anchored to 6-space indent (matching GH release.yml step
+      # indent) and hard-FAILs if no `Run tests` step exists
+      # (renaming the step would otherwise silently disarm rule 3).
+      #
+      # ID-CI-0019 (2026-09-27): rule 1 carve-out for the correct
+      # remediation — `shell: bash` + `set -o pipefail` (or
+      # `set -euo pipefail`) in the same step body. Partial
+      # declarations still trip the rule (safe failure mode).
+      # 8-fixture selftest (a/b/c fail-open caught, d/e clean,
+      # f full carve-out, g/h partial).
+      - name: release.yml fail-open policy check (ID-CI-0011 + ID-CI-0019)
         run: |
           set -euo pipefail
           chmod +x Scripts/lint-release-yml.sh
@@ -309,6 +320,14 @@ jobs:
           # awk / regex matchers leaves the job green. The selftest
           # runs first; if it fails the script exits before the real
           # release.yml check below.
+          #
+          # ID-CI-0019 (2026-09-27): the second invocation (real check
+          # against .github/workflows/release.yml) verifies the
+          # carve-out: a step declaring `shell: bash` AND containing
+          # `set -o pipefail` (or `set -euo pipefail`) in the run
+          # body is allowed to have `xcodebuild test | tee` (because
+          # pipefail propagates the upstream exit code). Without
+          # both declarations the swallow persists.
           ./Scripts/lint-release-yml.sh --selftest
           ./Scripts/lint-release-yml.sh
 
