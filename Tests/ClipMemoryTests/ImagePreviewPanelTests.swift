@@ -203,6 +203,38 @@ final class ImagePreviewPanelTests: XCTestCase {
                        "scrollSynthesizedThreshold must stay 200ms; lowering makes real releases dismiss too easily, raising allows trackpad scroll-synthesized dismiss to slip through")
     }
 
+    /// ID-VIEW-0048 (2026-09-27): USER-FEEDBACK on portrait display —
+    /// `NSMouseInRect` was called with `flipped: false`, which assumes
+    /// the rect is in y-up (Cocoa view) coordinates. NSScreen.visibleFrame
+    /// is in y-down (Quartz screen) coordinates; the y-axis mismatch
+    /// caused NSMouseInRect to return false for the portrait display
+    /// where the mouse sat, so the fallback path sized for the
+    /// 1440×900 default and positioned the preview at (0, 0) — the
+    /// bottom-left of the actual portrait display. The user saw the
+    /// preview far from the cursor.
+    ///
+    /// This test pins the helper's input vs output for a portrait
+    /// geometry so a regression is caught. The fix (flipped: true)
+    /// means the screen detection in `show()` accepts the mouse
+    /// position; the helper's own math is unchanged.
+    func testPortraitDisplayOriginStaysCenteredOnCursor() {
+        // Portrait display: 1080 wide × 1920 tall, origin top-left
+        // (Quartz/screen coordinates). User's mouse near the top of
+        // the display — e.g. mid-Touch Bar area.
+        let frame = NSRect(x: 0, y: 0, width: 1080, height: 1920)
+        let mouse = NSPoint(x: 540, y: 1700)
+        let panel = NSSize(width: 400, height: 300)
+        let result = ImagePreviewPanel.origin(panelSize: panel, mouse: mouse, frame: frame)
+        // Panel center on mouse (540, 1700). Center is at the top
+        // third of the display in y-down coords.
+        XCTAssertEqual(result.x, 340, accuracy: 1, "panel.x centers on mouse.x on portrait")
+        // In y-down coords, larger y = higher on screen. Center
+        // 1700 - 150 = 1550. The panel's top edge (1550 + 150) at
+        // y=1700 sits just below the menubar (y<1920); the bottom
+        // edge at y=1400 is well within the visible frame.
+        XCTAssertEqual(result.y, 1550, accuracy: 1, "panel.y centers on mouse.y on portrait (y-down coords)")
+    }
+
     // MARK: - Origin math (cursor-anchored panel placement)
 
     /// ID-VIEW-0047 (2026-09-26): pure helper for cursor-anchored

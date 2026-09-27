@@ -91,9 +91,25 @@ enum ImagePreviewPanel {
         // screen. Pick the screen the cursor is on (or the argument as
         // fallback) and size + position within the SAME screen's visible
         // frame so a multi-display setup doesn't overflow off-screen.
+        //
+        // ID-VIEW-0048 (2026-09-27, USER-FEEDBACK portrait): `flipped:
+        // true` matches `NSScreen.visibleFrame` semantics. Per AppKit,
+        // visibleFrame is in screen coordinates with origin at the
+        // TOP-LEFT and y-axis pointing DOWN. NSMouseInRect's `flipped`
+        // param tells the function which system the rect is in: `false`
+        // assumes y-up (Cocoa view default); `true` assumes y-down
+        // (Quartz screen default). The previous `false` was wrong for
+        // y-down visibleFrame — on a portrait display where the mouse
+        // sat near the top, NSMouseInRect returned false for every
+        // screen (because the y-axis was flipped), the `.first(where:)`
+        // returned nil, and the panel fell through to the
+        // `?? screen` branch with `screen = nil`, sizing for the
+        // 1440×900 default and positioning at (0, 0) — the bottom-
+        // left of the actual portrait display. The user saw the
+        // preview appear far from the cursor.
         let mouse = NSEvent.mouseLocation
         let targetScreen = NSScreen.screens.first(where: {
-            NSMouseInRect(mouse, $0.visibleFrame, false)
+            NSMouseInRect(mouse, $0.visibleFrame, true)
         }) ?? screen
         let frame = targetScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
