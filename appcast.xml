@@ -2,6 +2,16 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <item>
+      <title>Version 2.9.4</title>
+      <sparkle:shortVersionString>2.9.4</sparkle:shortVersionString>
+      <sparkle:version>2.9.4</sparkle:version>
+      <pubDate>Sun, 27 Sep 2026 08:21:48 +0000</pubDate>
+      <enclosure url="https://github.com/irykelee/clipmemory/releases/download/v2.9.4/ClipMemory.tar.gz"
+                 length="8429089"
+                 type="application/octet-stream"
+                 sparkle:edSignature="/TkByeIMX5/YbZTB4/CMfrZMBBgKPsYKIlhoUwXVX6ANxzAH/9JjIb8NdJc62ZIhmtnbydJi083cY2tAimBeAw==" />
+    </item>
+    <item>
       <title>Version 2.9.1</title>
       <sparkle:shortVersionString>2.9.1</sparkle:shortVersionString>
       <sparkle:version>2.9.1</sparkle:version>
