@@ -84,11 +84,19 @@ selftest() {
   # duration of the selftest. The marker-based PASS/FAIL check
   # calls `check_workflow`, which returns 1 on rule-firing — under
   # the outer `set -e` the script aborts before the marker can be
-  # inspected. Restore on return.
+  # inspected.
   set +e
   local tmpdir
+  # ID-CI-0017 (2026-09-27): save and restore WORKFLOW across the
+  # selftest. The fixtures below mutate it as global state (the
+  # script's WORKFLOW was declared at top level, outside any
+  # function); without save/restore the post-selftest real check
+  # would scan the last fixture file (not the real release.yml),
+  # silently green. This was the gap auto-review P1 caught in
+  # 20260927-210802.
+  local saved_workflow="$WORKFLOW"
   tmpdir="$(mktemp -d)"
-  trap "rm -rf '$tmpdir'; set -e" EXIT
+  trap "rm -rf '$tmpdir'; WORKFLOW='$saved_workflow'; set -e" EXIT
 
   # Fixture A: 149906d's exact line — must FAIL (rule #1: xcodebuild test | tee)
   cat >"$tmpdir/a.yml" <<'EOF'
@@ -196,6 +204,11 @@ EOF
     echo "❌ $failures self-test fixture(s) failed — lint is broken"
     return 1
   fi
+  # ID-CI-0017: restore the global WORKFLOW before returning, so
+  # the entry point's subsequent real check (after `--selftest`
+  # returns 0) scans the real release.yml — not the last fixture
+  # file we just mutated.
+  WORKFLOW="$saved_workflow"
   echo "✅ All 5 self-test fixtures passed"
 }
 
