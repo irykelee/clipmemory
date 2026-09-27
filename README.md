@@ -54,9 +54,9 @@
 
 - **🖱️ Portrait 显示器长按图片预览位置修复 (ID-VIEW-0048)** — 修复代码 `flipped: false → flipped: true` 已在 v2.9.3 commit `a1cd997` ship（v2.9.3 binary 未真正发布）。Portrait 显示器长按大图时 panel 出现在屏幕左下角 (0, 0)，鼠标滚轮无效——根本原因与修法同上。Portrait 用户**安装 v2.9.4 即可拿到修复**。
 
-- **🛠 v2.9.3 GH Actions Test substep 兼容 release 路径 (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.4 tag `149906d` 临时在 `release.yml` `Run tests` step 加 `|| true` 作为 workaround（Test substep 仍跑，但失败被吞；GH macOS default shell 无 `pipefail`，teed exit 0 让 `|| true` 永不触发——fail-open 是 tee's accident 而非 `|| true` 的功能）。`main` 上 `da3cc6a` 已 revert 该 workaround，`ID-CI-0011` linter 禁止再出现。v2.9.3 的 Test substep 在 CI 环境失败 → v2.9.3 binary 未发布 → 用户看不到 v2.9.3 release。**user 应本地 build + 跑 test 验证**（`Scripts/release.sh vX.Y.Z --yes` 默认含 `run_preflight --tests` 内部调用，见 `release.sh:992`；`--skip-tests` flag 跳过 test 但保留其他 gate；CI test 是 advisory smoke）。
+- **🛠 v2.9.3 GH Actions Test substep 兼容 release 路径 (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.4 tag `149906d` 临时在 `release.yml` `Run tests` step 加 `|| true` 作为 workaround（Test substep 仍跑，但失败被吞；GH macOS default shell 无 `pipefail`，teed exit 0 让 `|| true` 永不触发——fail-open 是 tee's accident 而非 `|| true` 的功能）。`main` 上 `da3cc6a` 已 revert 该 workaround，`ID-CI-0011` linter 禁止再出现。v2.9.3 的 Test substep 在 CI 环境失败 → v2.9.3 binary 未发布 → 用户看不到 v2.9.3 release。**user 应本地 build + 跑 test 验证**（`Scripts/release.sh vX.Y.Z --yes` 默认含 `run_preflight --tests` 内部调用，见 `release.sh:992`；`--skip-tests` flag 跳过 test 但保留其他 gate；v2.9.4 tag 的 CI test 当时是 advisory smoke，main `da3cc6a` 已恢复 fail-closed，CI test 又是 authoritative gate）。
 
-- 本地 `./Scripts/test-count.sh` 静态估计 1011 tests（实际数见 CI run 输出）；`xcodebuild test` 本地全过
+- 本地 `./Scripts/test-count.sh` 静态估计（单 source of truth，per CLAUDE.md ID-TEST-0002；实际 CI 数见 run 输出）；`xcodebuild test` 本地全过
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
 ### v2.9.3 (2026-09-27) — 持续稳定性修复与预览滚动（**未发布 — superseded by v2.9.4**）

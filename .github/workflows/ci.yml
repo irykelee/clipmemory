@@ -293,14 +293,23 @@ jobs:
       # justification; 149906d undid it 19 hours later with a 3-line
       # comment claiming "for this one release" scope. da3cc6a
       # reverted 149906d. This script enforces that the next
-      # contributor cannot reintroduce the same swallow — `|| true`
-      # co-occurring with `xcodebuild test` / `tee` / `2>&1` on the
-      # same line, or `continue-on-error: true` inside the Run tests
-      # step, both fail CI before merge.
+      # contributor cannot reintroduce the same swallow — lines in
+      # the Run tests step that contain `xcodebuild test` together
+      # with `| tee` or `|| true` (fail-open via tee's exit-0 swallow),
+      # or `continue-on-error: true` inside the Run tests step body,
+      # both fail CI before merge.
       - name: release.yml fail-open policy check (ID-CI-0011)
         run: |
           set -euo pipefail
           chmod +x Scripts/lint-release-yml.sh
+          # ID-CI-0014 (2026-09-27): auto-review caught that the selftest
+          # fixtures were unwired — the script's --selftest arg is what
+          # proves rules 1/2/3 actually fire, and was missing from CI.
+          # Without this, a future refactor that silently breaks the
+          # awk / regex matchers leaves the job green. The selftest
+          # runs first; if it fails the script exits before the real
+          # release.yml check below.
+          ./Scripts/lint-release-yml.sh --selftest
           ./Scripts/lint-release-yml.sh
 
   # P2-17 (2026-09-22 audit): minimum line coverage gate. Parses the

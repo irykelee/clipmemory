@@ -250,8 +250,15 @@ check_workflow() {
 
 # ---- entry point ---------------------------------------------------------
 if [[ "${1:-}" == "--selftest" ]]; then
-  selftest
-  exit $?
+  selftest || exit $?
+  # ID-CI-0014 (2026-09-27): auto-review caught that the previous
+  # `selftest; exit $?` short-circuited the real check, contradicting
+  # the header's claim that "a real release.yml check with no arguments
+  # also runs after `--selftest` returns 0." When invoked with
+  # --selftest we now run selftest first; if it passes, fall through to
+  # the real check. If selftest fails, exit with its code and skip the
+  # real check (so a broken selftest can't be masked by a clean
+  # release.yml).
 fi
 
 [[ -f "$WORKFLOW" ]] || { echo "❌ $WORKFLOW not found"; exit 1; }
