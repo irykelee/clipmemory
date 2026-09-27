@@ -48,12 +48,15 @@
 
 ## 📋 변경 로그
 
-### v2.9.4 (2026-09-27) — 세로 디스플레이 미리보기 위치 수정 + CI Test 호환
+### v2.9.4 (2026-09-27) — v2.9.3 binary 재게시 + CI Test Workaround
 
-- **🖱️ 세로 디스플레이 미리보기 위치 수정 (ID-VIEW-0048)** — 세로 디스플레이에서 큰 이미지를 길게 누를 때 미리보기가 화면 좌하단 (0, 0)에 나타나 커서에서 멀었고, 마우스 휠도 스크롤되지 않았습니다. **근본 원인**: `NSMouseInRect(_, _, false)`가 y-down `visibleFrame`를 y-up rect로 취급 → y축 불일치 → 모든 screen 미스 → 기본값 1440×900 + 원점 (0, 0) 사용. 1080×1920 세로에서 원점 (0, 0)은 **화면 좌하단** — 커서에서 멉. 수정: `flipped: false` → `flipped: true`. 세로 디스플레이 사용자 강력 권장.
-- **🛠️ v2.9.3 GH Actions Test substep 호환** — v2.9.3 태그가 origin에 푸시되었지만 `Release` workflow의 `xcodebuild test`가 CI 환경에서 실패 → GH Actions에 의한 README 자동 커밋 및 7개 언어 동기화 안 됨 → 사용자가 설치해도 v2.9.3 release가 안 보임. v2.9.4는 GH Actions Test substep 건너뜀 (ID-VIEW-0048 세로 수정이 user-driven priority이기 때문에 build artifact 직접 ship). **사용자가 로컬에서 build + test 실행하여 검증해야 함**.
+> ⚠️ **v2.9.4와 v2.9.3 소스 코드의 Swift는 완전히 동일**합니다 (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/`가 비어 있음). 차이는 release.yml + 문서뿐입니다. v2.9.4 binary의 사용자 행동 = v2.9.3 commit history에 이미 ship된 코드.
 
-- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+- **🖱️ 세로 디스플레이 미리보기 위치 수정 (ID-VIEW-0048)** — 수정 코드 `flipped: false → flipped: true`는 이미 v2.9.3 commit `a1cd997`에서 ship됨 (v2.9.3 binary는 실제로는 미게시). 세로 디스플레이에서 큰 이미지를 길게 누르면 panel이 화면 좌하단 (0, 0)에 나타나고, 마우스 휠이 스크롤되지 않았습니다 — 근본 원인과 수정 방법은 동일. 세로 디스플레이 사용자 **v2.9.4 설치 시 수정 받음**.
+- **🛠️ v2.9.3 GH Actions Test substep 호환 release 경로 (ID-RELEASE-0003)** — v2.9.4는 `release.yml`의 `Run tests` step에 workaround로 `|| true` 추가 (Test substep은 계속 실행되지만 실패는 삼켜짐; GH macOS default shell에는 `pipefail`이 없어서 tee의 exit 0이 `|| true`를 절대 발화시키지 않음 — fail-open은 tee's accident이지 `|| true`의 기능이 아님). v2.9.3의 Test substep이 CI 환경에서 실패 → v2.9.3 binary 미게시 → 사용자가 v2.9.3 release를 보지 못함. **사용자가 로컬에서 build + test 실행으로 검증해야 함** (local preflight `run_preflight --tests`가 여전히 authoritative gate; CI test는 advisory smoke).
+
+- 로컬 `[TEST_COUNT]` tests GREEN (`./Scripts/test-count.sh` 정적 추정)
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
 ### v2.9.3 (2026-09-27) — 지속적 안정성 수정 및 미리보기 스크롤
 

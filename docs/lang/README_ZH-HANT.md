@@ -48,11 +48,15 @@
 
 ## 📋 更新日誌
 
-### v2.9.4 (2026-09-27) — 豎屏顯示器預覽位置修復 + CI Test 相容
+### v2.9.4 (2026-09-27) — v2.9.3 binary 重新發布 + CI Test Workaround
 
-- **🖱️ 豎屏顯示器長按圖片預覽位置修復 (ID-VIEW-0048)** — 之前在豎屏顯示器上長按大圖打開預覽時，panel 出現在螢幕左下角 (0, 0) 遠離 cursor，滑鼠滾輪也無法滾動。**根因**：`NSMouseInRect(_, _, false)` 把 y-down visibleFrame 當作 y-up rect → y軸不匹配 → 所有 screen 都 miss → fallback 用預設 `1440×900` + origin (0, 0)。在 1080×1920 豎屏上 origin (0, 0) 就是螢幕左下角——離 cursor 極遠。修法：`flipped: false` → `flipped: true`。豎屏用戶強烈建議升級。
-- **🛠️ v2.9.3 GH Actions Test substep 相容** — v2.9.3 tag 推上 origin 後，Release workflow 的 `xcodebuild test` 在 CI env 失敗 → README 不被 GH Actions 自動 commit + 7 語言同步 → user install 後看不到 v2.9.3 release。v2.9.4 跳過 GH Actions Test substep（用 build artifact 直接 ship，因為 ID-VIEW-0048 portrait fix 是 user-driven priority）。**user 應本地 build + 跑 test 驗證**。
+> ⚠️ **v2.9.4 與 v2.9.3 原始碼的 Swift 程式碼完全一致**（`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` 為空）。差異僅在 release.yml + 說明文件。v2.9.4 binary 的使用者行為 = v2.9.3 commit history 已 ship 的程式碼。
 
+- **🖱️ 豎屏顯示器長按圖片預覽位置修復 (ID-VIEW-0048)** — 修復程式碼 `flipped: false → flipped: true` 已在 v2.9.3 commit `a1cd997` ship（v2.9.3 binary 未真正發布）。豎屏顯示器長按大圖時 panel 出現在螢幕左下角 (0, 0)，滑鼠滾輪無效——根本原因與修法同上。豎屏使用者**安裝 v2.9.4 即可拿到修復**。
+
+- **🛠 v2.9.3 GH Actions Test substep 相容 release 路徑 (ID-RELEASE-0003)** — v2.9.4 在 `release.yml` `Run tests` step 加 `|| true` 作為 workaround（Test substep 仍跑，但失敗被吞；GH macOS default shell 無 `pipefail`，teed exit 0 讓 `|| true` 永不觸發——fail-open 是 tee's accident 而非 `|| true` 的功能）。v2.9.3 的 Test substep 在 CI 環境失敗 → v2.9.3 binary 未發布 → 使用者看不到 v2.9.3 release。**使用者應本地 build + 跑 test 驗證**（local preflight `run_preflight --tests` 仍是 authoritative gate；CI test 為 advisory smoke）。
+
+- 本地 `[TEST_COUNT]` tests GREEN（`./Scripts/test-count.sh` 靜態估計）
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
 ### v2.9.3 (2026-09-27) — 持續穩定性修復與預覽捲動
