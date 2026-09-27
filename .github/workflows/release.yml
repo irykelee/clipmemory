@@ -194,36 +194,12 @@ jobs:
       #      timeout is a separate concern (tracked outside this
       #      commit).
       - name: Run tests
-        # ID-CI-0015 (2026-09-27): capture the xcodebuild test log
-        # into a step-output file and upload it as a GH Actions
-        # artifact on failure. The 149906d / ID-RELEASE-0003 commit
-        # claimed `/tmp/xcb-release-test.log` was "preserved for
-        # diagnostics" but GH Actions runners are ephemeral —
-        # `/tmp` is destroyed at job end and there was no
-        # `upload-artifact`. v2.9.3's failing test was therefore
-        # never identifiable from outside the runner (auto-review
-        # P1 #2 in 20260927-205133). Steps (1) capture, (2) upload
-        # on failure, (3) keep the step fail-closed.
-        id: xcodebuild-test
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-release-test.log
+            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' CODE_SIGN_IDENTITY="-"
           else
-            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' 2>&1 | tee /tmp/xcb-release-test.log
+            xcodebuild test -scheme ClipMemory -destination 'platform=macOS'
           fi
-
-      # ID-CI-0015 (2026-09-27): if Run tests fails, upload the
-      # captured log as a GH Actions artifact so the failure is
-      # diagnosticable from outside the runner. Named after the
-      # failing step id (`xcodebuild-test`) for cross-reference.
-      - name: Upload xcodebuild test log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcodebuild-test-log
-          path: /tmp/xcb-release-test.log
-          if-no-files-found: ignore
-          retention-days: 14
 
       - name: Package and update local Cask
         # Package is publish-adjacent (tarball + verify_package) and its

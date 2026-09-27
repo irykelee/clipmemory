@@ -80,9 +80,15 @@ WORKFLOW="$ROOT/.github/workflows/release.yml"
 
 # ---- self-test fixtures (ID-CI-0012) ------------------------------------
 selftest() {
+  # ID-CI-0015 (2026-09-27): temporarily disable `set -e` for the
+  # duration of the selftest. The marker-based PASS/FAIL check
+  # calls `check_workflow`, which returns 1 on rule-firing — under
+  # the outer `set -e` the script aborts before the marker can be
+  # inspected. Restore on return.
+  set +e
   local tmpdir
   tmpdir="$(mktemp -d)"
-  trap "rm -rf '$tmpdir'" EXIT
+  trap "rm -rf '$tmpdir'; set -e" EXIT
 
   # Fixture A: 149906d's exact line — must FAIL (rule #1: xcodebuild test | tee)
   cat >"$tmpdir/a.yml" <<'EOF'
@@ -151,31 +157,37 @@ EOF
   # reach the function in some bash versions. We export explicitly
   # to be portable across bash 3.2 (macOS) and bash 5 (ubuntu CI).
   for label in a b c; do
-    declare -g WORKFLOW="$tmpdir/${label}.yml"
-    export WORKFLOW
-    # Capture both check_workflow's exit code (PIPESTATUS[0]) and
-    # grep's exit code (PIPESTATUS[1]) — under set -o pipefail,
-    # $? would otherwise be the max, which conflates "rule fired"
-    # (check_workflow exit 1 after printing ❌) with "SIGPIPE" (rc
-    # 141) when grep -q exits early after the first match.
-    check_workflow 2>&1 | grep -q "^❌ FAIL"
-    cw_rc=${PIPESTATUS[0]}
-    if [[ "$cw_rc" -eq 1 ]]; then
+    WORKFLOW="$tmpdir/${label}.yml"
+    # ID-CI-0015 (2026-09-27): the earlier `declare -g WORKFLOW=...`
+    # used `declare -g` (bash 4.2+); on macOS bash 3.2.57 this
+    # raised `declare: -g: invalid option` and the selftest aborted
+    # with exit 2 on the first iteration. Plain assignment is
+    # sufficient because the script top-level WORKFLOW was set
+    # outside any function (global script scope); nested functions
+    # inherit by dynamic scope, and check_workflow is at the same
+    # nesting level as selftest.
+    # ID-CI-0015: capture check_workflow output via $(...) so the
+    # grep doesn't close stdin early and SIGPIPE check_workflow
+    # before it returns 1. Capture the exit code separately so
+    # PASS markers (`✅ PASS:`) and FAIL markers (`❌ FAIL:`) both
+    # count toward the fixture verdict.
+    output=$(check_workflow 2>&1)
+    cw_rc=$?
+    if [[ "$cw_rc" -eq 1 && "$output" == *"❌ FAIL"* ]]; then
       echo "✅ PASS: fixture ${label} correctly caught"
     else
-      echo "❌ FAIL: fixture ${label} (check_workflow exit=$cw_rc, expected 1)"
+      echo "❌ FAIL: fixture ${label} (check_workflow exit=$cw_rc, expected 1 with FAIL marker)"
       failures=$((failures + 1))
     fi
   done
   for label in d e; do
-    declare -g WORKFLOW="$tmpdir/${label}.yml"
-    export WORKFLOW
-    check_workflow 2>&1 | grep -q "^✅ PASS"
-    cw_rc=${PIPESTATUS[0]}
-    if [[ "$cw_rc" -eq 0 ]]; then
+    WORKFLOW="$tmpdir/${label}.yml"
+    output=$(check_workflow 2>&1)
+    cw_rc=$?
+    if [[ "$cw_rc" -eq 0 && "$output" == *"✅ PASS"* ]]; then
       echo "✅ PASS: fixture ${label} (clean release.yml) correctly allowed"
     else
-      echo "❌ FAIL: fixture ${label} should have passed (check_workflow exit=$cw_rc)"
+      echo "❌ FAIL: fixture ${label} should have passed (check_workflow exit=$cw_rc with PASS marker)"
       failures=$((failures + 1))
     fi
   done
@@ -189,14 +201,21 @@ EOF
 
 # ---- core check (extractable for selftest) -------------------------------
 check_workflow() {
-  # ID-CI-0015 (2026-09-27): ignore SIGPIPE so the function can
-  # complete all of its echo output before exiting, even when the
-  # caller pipes through `head` / `grep -q` and closes stdin early.
-  # Without this, `set -e` aborts check_workflow with rc=141 the
-  # moment any output after the first match triggers SIGPIPE, and
-  # the selftest marker-based check fails. The function still
-  # returns 1 explicitly on failure (or 0 on pass), so SIGPIPE
-  # suppression does not change the documented exit contract.
+  # ID-CI-0015 (2026-09-27): ignore SIGPIPE for the duration of
+  # the function so the function can complete all of its echo
+  # output before exiting, even when the caller pipes through
+  # `head` / `grep -q` and closes stdin early. Bash's dynamic
+  # trap model means the suppression persists until we explicitly
+  # reset it; we use a RETURN trap to reset on every return path
+  # (the handler does NOT call `return`, so it doesn't re-trigger
+  # the RETURN trap — the function exits with its own return code).
+  #
+  # The selftest caller invokes check_workflow via
+  # `output=$(check_workflow 2>&1)` which captures all output
+  # before the function returns — under that call pattern SIGPIPE
+  # is irrelevant; the suppression here is defense-in-depth for
+  # direct callers that pipe through `head` / `grep -q`.
+  trap 'trap - PIPE' RETURN
   trap '' PIPE
   local violations=0
   local violation_lines=()
