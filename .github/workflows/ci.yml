@@ -278,6 +278,30 @@ jobs:
           set -euo pipefail
           chmod +x Scripts/lint-tsan-filter.sh
           ./Scripts/lint-tsan-filter.sh
+      # ID-CI-0011 (2026-09-27): prevents the "release.yml Run tests
+      # fail-open" bug class. The 149906d commit (ID-RELEASE-0003)
+      # added `|| true` to the Run tests step as a one-release
+      # workaround for an unverified v2.9.3 CI failure. Three problems
+      # compounded: (a) the `|| true` was unconditional (no `if:`
+      # guard, no expiry); (b) GH Actions macOS default shell has no
+      # `pipefail`, so `xcodebuild test | tee log || true` is dead
+      # code — tee's exit 0 does the swallowing, not `|| true`; (c)
+      # release.sh:1147 `gh run watch --exit-status` guard silently
+      # stops catching test regressions because the upstream test step
+      # stopped being fail-closed. ID-CI-0005 (e897f30) had
+      # deliberately restored fail-closed with a 33-line
+      # justification; 149906d undid it 19 hours later with a 3-line
+      # comment claiming "for this one release" scope. da3cc6a
+      # reverted 149906d. This script enforces that the next
+      # contributor cannot reintroduce the same swallow — `|| true`
+      # co-occurring with `xcodebuild test` / `tee` / `2>&1` on the
+      # same line, or `continue-on-error: true` inside the Run tests
+      # step, both fail CI before merge.
+      - name: release.yml fail-open policy check (ID-CI-0011)
+        run: |
+          set -euo pipefail
+          chmod +x Scripts/lint-release-yml.sh
+          ./Scripts/lint-release-yml.sh
 
   # P2-17 (2026-09-22 audit): minimum line coverage gate. Parses the
   # xcresult bundle emitted by build-and-test and fails the job if
