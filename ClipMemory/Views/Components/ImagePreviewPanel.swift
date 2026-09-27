@@ -87,13 +87,8 @@ enum ImagePreviewPanel {
         defer { panelLock.unlock() }
         hideUnlocked()
 
-        // CLIP-5 (2026-07-24): NSPanel.center() always centers on MAIN
-        // screen. Pick the screen the cursor is on (or the argument as
-        // fallback) and size + position within the SAME screen's visible
-        // frame so a multi-display setup doesn't overflow off-screen.
-        //
-        // ID-VIEW-0048 (2026-09-27, USER-FEEDBACK portrait): `flipped:
-        // true` matches `NSScreen.visibleFrame` semantics. Per AppKit,
+        // ID-VIEW-0048 (2026-09-27, USER-FEEDBACK portrait): `flipped: true`
+        // matches `NSScreen.visibleFrame` semantics. Per AppKit,
         // visibleFrame is in screen coordinates with origin at the
         // TOP-LEFT and y-axis pointing DOWN. NSMouseInRect's `flipped`
         // param tells the function which system the rect is in: `false`
@@ -114,23 +109,39 @@ enum ImagePreviewPanel {
         let frame = targetScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
         let layout = layout(imageSize: image.size, screenSize: frame.size)
+        let content = makeContent(image: image, layout: layout)
+        let panel = makePanel(content: content, layout: layout)
+        panel.setFrameOrigin(origin(panelSize: layout.panelSize, mouse: mouse, frame: frame))
+        panel.orderFront(nil)
+        installDismissalMonitors()
+
+        self.panel = panel
+    }
+
+    /// Build the scrollable or non-scrollable view wrapping `imageView`.
+    /// Extracted from `show()` to keep the parent under the
+    /// swiftlint `function_body_length` warning limit (50).
+    @MainActor
+    private static func makeContent(image: NSImage, layout: Layout) -> NSView {
         let imageView = NSImageView(frame: NSRect(origin: .zero, size: layout.imageSize))
         imageView.image = image
         imageView.imageScaling = .scaleProportionallyUpOrDown
-
-        let content: NSView
-        if layout.scrollable {
-            let scroll = NSScrollView(frame: NSRect(origin: .zero, size: layout.panelSize))
-            scroll.documentView = imageView
-            scroll.hasVerticalScroller = true
-            scroll.hasHorizontalScroller = true
-            scroll.autohidesScrollers = true
-            content = scroll
-        } else {
+        if !layout.scrollable {
             imageView.frame = NSRect(origin: .zero, size: layout.panelSize)
-            content = imageView
+            return imageView
         }
+        let scroll = NSScrollView(frame: NSRect(origin: .zero, size: layout.panelSize))
+        scroll.documentView = imageView
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = true
+        scroll.autohidesScrollers = true
+        return scroll
+    }
 
+    /// Build the borderless floating NSPanel wrapping `content`.
+    /// Extracted from `show()` for the same reason as `makeContent`.
+    @MainActor
+    private static func makePanel(content: NSView, layout: Layout) -> NSPanel {
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: layout.panelSize),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -142,15 +153,14 @@ enum ImagePreviewPanel {
         panel.level = .floating
         panel.backgroundColor = .windowBackgroundColor
         panel.hasShadow = true
-        panel.setFrameOrigin(origin(panelSize: layout.panelSize, mouse: mouse, frame: frame))
-        panel.orderFront(nil)
+        return panel
+    }
 
-        // USER-FEEDBACK-2026-09-26 follow-up: anchoring to the cursor
-        // puts the panel directly over the cursor, so the mouseUp
-        // release goes to the panel (which is hit-testable, not
-        // .ignoresMouseEvents) — the NSPressGestureRecognizer on
-        // ClipboardItemRow never sees the release and the panel
-        // stays open. Install a LOCAL leftMouseUp monitor (not
+    /// Install the three dismissal monitors (Escape, scrollWheel,
+    /// leftMouseUp with timestamp gating). Extracted from `show()`
+    /// so the parent stays under the function_body_length warning.
+    @MainActor
+    private static func installDismissalMonitors() {
         // global — global only sees events to OTHER apps, the
         // release here is to our own panel) while shown so the
         // release dismisses the preview from anywhere on screen.
@@ -198,7 +208,7 @@ enum ImagePreviewPanel {
             return event
         }
         leftMouseUpMonitor = leftMouseUpInstaller?() ?? NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp, handler: mouseHandler)
-        self.panel = panel
+        Self.panel = panel
     }
 
     @MainActor

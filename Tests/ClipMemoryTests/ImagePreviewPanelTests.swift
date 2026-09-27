@@ -113,7 +113,8 @@ final class ImagePreviewPanelTests: XCTestCase {
             XCTFail("NSScrollView documentView must be NSImageView, got \(String(describing: type(of: scroll.documentView)))")
             return
         }
-        XCTAssertGreaterThan(imageView.frame.width, 0, "ImageView's frame must be non-zero (otherwise documentView collapses and background shows white)")
+        XCTAssertGreaterThan(imageView.frame.width, 0,
+                           "ImageView's frame must be non-zero (otherwise documentView collapses and background shows white)")
         XCTAssertGreaterThan(imageView.frame.height, 0)
         XCTAssertNotNil(imageView.image, "ImageView must have the source image set")
         XCTAssertEqual(imageView.image?.size, wide.size, "ImageView's image must be the wide source image, not a placeholder")
@@ -143,7 +144,8 @@ final class ImagePreviewPanelTests: XCTestCase {
             return nil
         }
         if let cv = panel.contentView, let iv = findImageView(cv) {
-            XCTAssertGreaterThan(iv.frame.width, 0, "even for a 0×0 source image, the imageView frame must be non-zero (otherwise the panel draws white)")
+            XCTAssertGreaterThan(iv.frame.width, 0,
+                           "even for a 0×0 source image, the imageView frame must be non-zero (otherwise the panel draws white)")
             XCTAssertGreaterThan(iv.frame.height, 0)
         }
     }
@@ -200,7 +202,9 @@ final class ImagePreviewPanelTests: XCTestCase {
     /// the bug would silently regress the fix.
     func testScrollSynthesizedThresholdIs200ms() {
         XCTAssertEqual(ImagePreviewPanel.scrollSynthesizedThreshold, 0.2, accuracy: 0.001,
-                       "scrollSynthesizedThreshold must stay 200ms; lowering makes real releases dismiss too easily, raising allows trackpad scroll-synthesized dismiss to slip through")
+                       "scrollSynthesizedThreshold must stay 200ms; " +
+                       "lowering makes real releases dismiss too easily, " +
+                       "raising allows trackpad scroll-synthesized dismiss to slip through")
     }
 
     /// ID-VIEW-0048 (2026-09-27): USER-FEEDBACK on portrait display —
