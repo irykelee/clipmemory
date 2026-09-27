@@ -36,7 +36,7 @@ jobs:
       # expected count. Both the assertion step (bash) and the PR
       # comment step (JS via process.env) read this. Update when the
       # `-only-testing` class list changes — see comment above.
-      SUBSET_EXPECTED: '94'
+      SUBSET_EXPECTED: '95'
     steps:
       - uses: actions/checkout@v5
 
