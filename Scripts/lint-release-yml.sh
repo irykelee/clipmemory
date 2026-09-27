@@ -13,7 +13,7 @@
 #      tee's exit 0. The `|| true` was dead code; the actual fail-open
 #      came from tee's accident. A future `shell: bash` declaration
 #      would silently flip the behavior without any test catching it.
-#   3. release.sh:1147 has a `gh run watch --exit-status` guard that
+#   3. release.sh:997 has a `gh run watch` guard that
 #      `die`s on non-zero — it relies on the test step being
 #      fail-closed. With the swallow, that guard silently stops
 #      catching test regressions; release.sh was not updated.
@@ -241,7 +241,7 @@ check_workflow() {
   # Skip comment lines (YAML lines starting with optional whitespace
   # + `#`) so documenting the pattern in a comment doesn't itself
   # trip the lint. The fixture lines ID-CI-0012 introduced for
-  # release.yml:191 (the ID-CI-0011 lint header) reference the
+  # release.yml:192 (the ID-CI-0011 lint header) reference the
   # bare pattern by name in prose, and we shouldn't punish the
   # documentation for naming the trap.
   while IFS=: read -r lineno content; do
@@ -276,7 +276,7 @@ check_workflow() {
     echo '  - A future `shell: bash` declaration on this step would'
     echo '    silently flip the behavior to honor pipefail — and'
     echo '    every swallowed failure would suddenly become fatal.'
-    echo '  - Scripts/release.sh:1147 `gh run watch --exit-status`'
+    echo '  - Scripts/release.sh:997 `gh run watch`'
     echo '    depends on test step being fail-closed to catch regressions.'
     echo ""
     echo "Historical lesson (ID-CI-0011 / ID-CI-0012):"
@@ -313,7 +313,18 @@ check_workflow() {
     # subsequent -name was matched, so we don't get a newline in the
     # captured value (which would crash awk's -v on the second call).
     end_line=$(awk -v start="$start_line" '
-      NR > start && /^[[:space:]]*- name:/ { print NR; found=1; exit }
+      # ID-CI-0018 (2026-09-27): anchored end-regex. The previous
+      # `/^[[:space:]]*- name:/` matched any indent depth, so a
+      # nested `- name:` inside a `run: |` block would prematurely
+      # truncate the range (auto-recommended P2 #23). The CI release
+      # workflow indents steps to 6 spaces (`      - name:`); the
+      # run-block content lives at 8+ spaces or starts with a
+      # different character. Anchoring at exactly 6 spaces makes
+      # the boundary precise. If a future workflow uses a different
+      # indent, the sentinel (999999) falls through to EOF instead
+      # of false-truncating mid-step — which is the safer failure
+      # mode (over-reports vs under-reports).
+      NR > start && /^      - name:/ { print NR; found=1; exit }
       END { if (!found) print 999999 }
     ' "$WORKFLOW")
     [[ -z "$end_line" ]] && end_line=999999
@@ -332,12 +343,30 @@ check_workflow() {
       echo "  - This is the v2.9.2-era pattern (1f646d5) that ID-CI-0005"
       echo "    removed on 2026-09-26 (e897f30). Reintroducing it"
       echo "    re-opens the same fail-open hole."
-      echo "  - Scripts/release.sh:1147 \`gh run watch --exit-status\`"
+      echo "  - Scripts/release.sh:997 \`gh run watch\`"
       echo "    guard silently stops catching test regressions."
       echo ""
       echo "Fix: remove \`continue-on-error: true\` from the Run tests step."
       return 1
     fi
+  else
+    # ID-CI-0018 (2026-09-27): rule 3 anchor missing. A workflow
+    # that doesn't have a step named exactly "Run tests" silently
+    # skips this half of the bug class — renaming the step to
+    # e.g. "Run unit tests" would defeat rule 3 entirely while
+    # rule 1/2 still scans the whole file. Surface this as a
+    # hard FAIL (not just a warning) so renaming doesn't
+    # accidentally disarm the guard.
+    echo ""
+    echo "❌ FAIL: rule 3 anchor missing — no step named 'Run tests' found"
+    echo ""
+    echo "Searched \`$WORKFLOW\` for \`name: Run tests\` and got 0 hits."
+    echo "Rule 3 (continue-on-error: true inside the Run tests step)"
+    echo "requires a step with the literal name 'Run tests'. If you"
+    echo "renamed the step, rule 3 silently skips this workflow — fix"
+    echo "the step name OR add an explicit '- name: Run tests' guard"
+    echo "step before continuing."
+    return 1
   fi
 
   echo "✅ PASS: $WORKFLOW has no fail-open patterns in Run tests step"
