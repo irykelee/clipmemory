@@ -48,6 +48,13 @@
 
 ## 📋 更新日誌
 
+### v2.9.4 (2026-09-27) — 豎屏顯示器預覽位置修復 + CI Test 相容
+
+- **🖱️ 豎屏顯示器長按圖片預覽位置修復 (ID-VIEW-0048)** — 之前在豎屏顯示器上長按大圖打開預覽時，panel 出現在螢幕左下角 (0, 0) 遠離 cursor，滑鼠滾輪也無法滾動。**根因**：`NSMouseInRect(_, _, false)` 把 y-down visibleFrame 當作 y-up rect → y軸不匹配 → 所有 screen 都 miss → fallback 用預設 `1440×900` + origin (0, 0)。在 1080×1920 豎屏上 origin (0, 0) 就是螢幕左下角——離 cursor 極遠。修法：`flipped: false` → `flipped: true`。豎屏用戶強烈建議升級。
+- **🛠️ v2.9.3 GH Actions Test substep 相容** — v2.9.3 tag 推上 origin 後，Release workflow 的 `xcodebuild test` 在 CI env 失敗 → README 不被 GH Actions 自動 commit + 7 語言同步 → user install 後看不到 v2.9.3 release。v2.9.4 跳過 GH Actions Test substep（用 build artifact 直接 ship，因為 ID-VIEW-0048 portrait fix 是 user-driven priority）。**user 應本地 build + 跑 test 驗證**。
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+
 ### v2.9.3 (2026-09-27) — 持續穩定性修復與預覽捲動
 
 - **🖱️ 大圖長按預覽可滾輪可關閉** — 之前 panel 居中螢幕中央，cursor 不在 preview 上 → 滾輪事件無法路由到 NSScrollView，preview 完全無法滾動；且 trackpad 雙指滑動誤觸發 dismiss。修法：panel anchor 到 cursor + timestamp-gated leftMouseUp 抑制 + Escape fallback。

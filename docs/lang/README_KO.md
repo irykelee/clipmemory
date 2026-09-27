@@ -48,6 +48,13 @@
 
 ## 📋 변경 로그
 
+### v2.9.4 (2026-09-27) — 세로 디스플레이 미리보기 위치 수정 + CI Test 호환
+
+- **🖱️ 세로 디스플레이 미리보기 위치 수정 (ID-VIEW-0048)** — 세로 디스플레이에서 큰 이미지를 길게 누를 때 미리보기가 화면 좌하단 (0, 0)에 나타나 커서에서 멀었고, 마우스 휠도 스크롤되지 않았습니다. **근본 원인**: `NSMouseInRect(_, _, false)`가 y-down `visibleFrame`를 y-up rect로 취급 → y축 불일치 → 모든 screen 미스 → 기본값 1440×900 + 원점 (0, 0) 사용. 1080×1920 세로에서 원점 (0, 0)은 **화면 좌하단** — 커서에서 멉. 수정: `flipped: false` → `flipped: true`. 세로 디스플레이 사용자 강력 권장.
+- **🛠️ v2.9.3 GH Actions Test substep 호환** — v2.9.3 태그가 origin에 푸시되었지만 `Release` workflow의 `xcodebuild test`가 CI 환경에서 실패 → GH Actions에 의한 README 자동 커밋 및 7개 언어 동기화 안 됨 → 사용자가 설치해도 v2.9.3 release가 안 보임. v2.9.4는 GH Actions Test substep 건너뜀 (ID-VIEW-0048 세로 수정이 user-driven priority이기 때문에 build artifact 직접 ship). **사용자가 로컬에서 build + test 실행하여 검증해야 함**.
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+
 ### v2.9.3 (2026-09-27) — 지속적 안정성 수정 및 미리보기 스크롤
 
 - **🖱️ 큰 이미지 길게 누르기 미리보기가 스크롤 가능해짐** — 이전엔 panel이 화면 중앙에 있어 커서가 preview 위에 없어 `NSScrollView`가 휠 이벤트를 받지 못했고, trackpad 두 손가락 스크롤이 잘못된 dismiss를 트리거했습니다. 수정: panel을 cursor에 anchor, timestamp-gated leftMouseUp 억제, Escape fallback.

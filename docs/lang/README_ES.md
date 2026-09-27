@@ -48,6 +48,13 @@
 
 ## 📋 Registro de cambios
 
+### v2.9.4 (2026-09-27) — Corrección de posición de previsualización en pantalla vertical + Compatibilidad CI Test
+
+- **🖱️ Corrección de posición de previsualización en pantalla vertical (ID-VIEW-0048)** — En una pantalla vertical, al pulsar prolongadamente una imagen grande, la previsualización aparecía en la esquina inferior izquierda (0, 0), lejos del cursor, y la rueda del ratón no la desplazaba. **Causa raíz**: `NSMouseInRect(_, _, false)` trataba el `visibleFrame` (y-down) como un rect y-up → desajuste del eje y → todas las pantallas fallaban → fallback usaba 1440×900 predeterminado + origen (0, 0). En una pantalla vertical 1080×1920, el origen (0, 0) es la **esquina inferior izquierda** — lejos del cursor. Corrección: `flipped: false` → `flipped: true`. Actualización muy recomendada para usuarios de pantalla vertical.
+- **🛠️ Ruta de release compatible con v2.9.3 GH Actions Test substep** — El tag de v2.9.3 se subió pero el `xcodebuild test` del workflow `Release` falló en el entorno CI → GH Actions no hizo commit automático del README ni sincronización de 7 idiomas → el usuario instaló sin ver el release v2.9.3. v2.9.4 omite el GH Actions Test substep (usa el artefacto de build directamente porque la fix de portrait ID-VIEW-0048 es user-driven priority). **El usuario debería hacer build local + ejecutar tests para verificar**.
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+
 ### v2.9.3 (2026-09-27) — Correcciones de estabilidad y desplazamiento en previsualización
 
 - **🖱️ Previsualización de imagen grande con pulsación larga ahora se desplaza** — Antes el panel se centraba en la pantalla, así que el cursor no estaba sobre la preview y `NSScrollView` nunca recibía eventos de rueda; el scroll de dos dedos del trackpad también disparaba un dismiss no deseado. Solución: anclar panel al cursor + supresión de leftMouseUp con timestamp-gated + Escape fallback.

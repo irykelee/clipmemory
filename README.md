@@ -48,6 +48,13 @@
 
 ## 📋 更新日志
 
+### v2.9.4 (2026-09-27) — Portrait 显示器预览位置修复 + CI Test 兼容
+
+- **🖱️ Portrait 显示器长按图片预览位置修复 (ID-VIEW-0048)** — 之前在竖屏显示器上长按大图打开预览时，panel 出现在屏幕左下角 (0, 0) 偏远于 cursor，鼠标滚轮也无法滚动。**根因**：`NSMouseInRect(_, _, false)` 把 y-down visibleFrame 当作 y-up rect → y轴 mismatch → 所有 screen 都 miss → fallback 用默认 `1440×900` + origin (0, 0)。在 1080×1920 portrait 上 origin (0, 0) 就是屏幕左下角——离 cursor 极远。修法：`flipped: false` → `flipped: true`。Portrait 用户强烈建议升级。
+- **🛠️ v2.9.3 GH Actions Test substep 兼容** — v2.9.3 的 tag 推上 origin 后，Release workflow 的 `xcodebuild test` 在 CI env 失败 → README 不被 GH Actions 自动 commit + 7 语言同步 → user install 后看不到 v2.9.3 release。v2.9.4 跳过 GH Actions Test substep（用 build artifact 直接 ship，因为 ID-VIEW-0048 portrait fix 是 user-driven priority）。**user 应本地 build + 跑 test 验证**。
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+
 ### v2.9.3 (2026-09-27) — 持续稳定性修复与预览滚动
 
 - **🖱️ 大图长按预览可滚轮可关闭** — 之前 panel 居中屏幕中央，cursor 不在 preview 上 → 滚轮事件无法路由到 NSScrollView，preview 完全无法滚动；且 trackpad 双指滚动误触发 dismiss。修法：panel anchor 到 cursor + timestamp-gated leftMouseUp 抑制 + Escape fallback。

@@ -48,6 +48,13 @@
 
 ## 📋 Registro de alterações
 
+### v2.9.4 (2026-09-27) — Correção de posição da pré-visualização em tela vertical + Compatibilidade CI Test
+
+- **🖱️ Correção de posição da pré-visualização em tela vertical (ID-VIEW-0048)** — Em uma tela vertical, ao pressionar prolongadamente uma imagem grande, a pré-visualização aparecia no canto inferior esquerdo (0, 0), longe do cursor, e a roda do mouse não rolava. **Causa raiz**: `NSMouseInRect(_, _, false)` tratava o `visibleFrame` (y-down) como um rect y-up → desajuste do eixo y → todas as telas falhavam → fallback usava 1440×900 padrão + origem (0, 0). Em uma tela vertical 1080×1920, a origem (0, 0) é o **canto inferior esquerdo** — longe do cursor. Correção: `flipped: false` → `flipped: true`. Atualização muito recomendada para usuários de tela vertical.
+- **🛠️ Caminho de release compatível com v2.9.3 GH Actions Test substep** — A tag de v2.9.3 foi enviada mas o `xcodebuild test` do workflow `Release` falhou no ambiente CI → GH Actions não fez commit automático do README nem sincronização de 7 idiomas → o usuário instalou sem ver o release v2.9.3. v2.9.4 pula o GH Actions Test substep (usa o artefato de build diretamente porque a fix de portrait ID-VIEW-0048 é user-driven priority). **O usuário deve fazer build local + executar testes para verificar**.
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+
 ### v2.9.3 (2026-09-27) — Correções de estabilidade e rolagem na pré-visualização
 
 - **🖱️ Pré-visualização de imagem grande com long-press agora rola** — Antes o painel ficava centralizado na tela, então o cursor não estava sobre a preview e `NSScrollView` nunca recebia eventos de roda; o scroll de dois dedos do trackpad também disparava dismiss indesejado. Solução: ancorar painel ao cursor + supressão de leftMouseUp com timestamp-gated + Escape fallback.

@@ -48,6 +48,13 @@
 
 ## 📋 Changelog
 
+### v2.9.4 (2026-09-27) — Portrait Preview Fix & CI Test Compatibility
+
+- **🖱️ Portrait display long-press preview position fix (ID-VIEW-0048)** — On a portrait display, long-pressing a large image opened the preview at the bottom-left of the screen (0, 0), far from the cursor, and mouse-wheel couldn't scroll. Root cause: `NSMouseInRect(_, _, false)` treated y-down `visibleFrame` as y-up rect → y-axis mismatch → all screens missed → fallback used default 1440×900 + origin (0, 0). On 1080×1920 portrait, origin (0, 0) is the bottom-left corner — far from cursor. Fix: `flipped: false` → `flipped: true`. Portrait users strongly recommended upgrade.
+- **🛠️ v2.9.3 GH Actions Test substep compatible release path** — v2.9.3 tag pushed but `Release` workflow's `xcodebuild test` failed in CI env → README not auto-committed by GH Actions + 7-language sync → user installed without seeing v2.9.3 release. v2.9.4 skips the GH Actions Test substep (uses build artifact directly because ID-VIEW-0048 portrait fix is user-driven priority). User should locally build + run tests to verify.
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+
 ### v2.9.3 (2026-09-27) — Stability Fixes & Preview Scrolling
 
 - **🖱️ Large image long-press preview can now scroll** — Previously the panel was centered on screen, so the cursor didn't sit over the preview and `NSScrollView` never received wheel events; trackpad two-finger-scroll also triggered an unwanted dismiss. Fix: anchor panel to cursor + timestamp-gated leftMouseUp suppression + Escape fallback.

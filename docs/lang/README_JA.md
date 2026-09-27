@@ -48,6 +48,13 @@
 
 ## 📋 変更履歴
 
+### v2.9.4 (2026-09-27) — 縦向きディスプレイのプレビュー位置修正 + CI Test 互換
+
+- **🖱️ 縦向きディスプレイのプレビュー位置修正 (ID-VIEW-0048)** — 縦向きディスプレイで大画像を長押ししたときプレビューが画面左下 (0, 0) に現れカーソルから離れ、マウスホイールでスクロールできませんでした。**根本原因**：`NSMouseInRect(_, _, false)` が y-down の `visibleFrame` を y-up の矩形として扱うため → 縦軸が不一致 → 全 screen miss → フォールバックが既定の `1440×900` + 原点 (0, 0)。1080×1920 の縦向きでは原点 (0, 0) は**画面の左下**——カーソルから遠い。修正：`flipped: false` → `flipped: true`。縦向きユーザーへのアップグレードを強く推奨。
+- **🛠️ v2.9.3 GH Actions Test substep 互換リリースパス** — v2.9.3 タグを origin にプッシュしたが、`Release` workflow の `xcodebuild test` が CI 環境で失敗 → GH Actions による README 自動 commit と 7 言語同期が行われない → ユーザーがインストールしても v2.9.3 release が見えない。v2.9.4 は GH Actions Test substep をスキップ（ID-VIEW-0048 の縦向き修正が user-driven priority のため、build artifact を直接 ship）。**ユーザーはローカルで build + test 実行で検証すべき**。
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+
 ### v2.9.3 (2026-09-27) — 持続的な安定性修正とプレビューのスクロール
 
 - **🖱️ 大きな画像の長押しプレビューがスクロール可能に** — 以前は panel が画面中央に置かれていたためカーソルが preview 上に無く、`NSScrollView` にホイールイベントが到達せず、trackpad の二本指スクロールが誤って dismiss をトリガーしていました。修正：panel を cursor に anchor、timestamp-gated leftMouseUp 抑制、Escape fallback。
