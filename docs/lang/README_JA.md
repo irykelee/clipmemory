@@ -48,6 +48,22 @@
 
 ## 📋 変更履歴
 
+### v2.9.3 (2026-09-27) — 持続的な安定性修正とプレビューのスクロール
+
+- **🖱️ 大きな画像の長押しプレビューがスクロール可能に** — 以前は panel が画面中央に置かれていたためカーソルが preview 上に無く、`NSScrollView` にホイールイベントが到達せず、trackpad の二本指スクロールが誤って dismiss をトリガーしていました。修正：panel を cursor に anchor、timestamp-gated leftMouseUp 抑制、Escape fallback。
+
+- **🛡️ Crash レポート更新エラーを可視化** — `Help → View Recent Crashes` は初回 load 成功後の refresh エラーを黙って捨てていました。修正：errorBanner + logger.error（3-piece gate 完全実装）。
+
+- **📋 parseIPS がフィールドを落とさなくなった** — 以前の multi-object body 経路は `signal` / `binaryImages` / `triggeredThreadFrames` を黙って上書き。修正：`if let s` / `append(contentsOf:)` preserve + merge。
+
+- **⚙️ release.yml fail-closed** — 以前の `continue-on-error: true` は runner-flake でも binary を ship していました。修正：`continue-on-error` 削除、test 失敗は publish をハードブロック。
+
+- **🔍 TSan subset が stale でなくなった** — cdda2a6 (PR #86) で `NetworkMonitorTests` を改名したのに workflow を更新せず、6 つの network race test が 4 日間黙って skip されていました。修正：filter rename + subset 88→95 + PR comment が subset drift を surface。
+
+- **🔗 ID 採番の正規化** — auto-review は以前は `[HIGH-N]/M-N/L-N` severity label のみで `ID-DOMAIN-NNNN` が無い。修正：going-forward rule + 3 つの historical collision documented。
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.3
+
 ### v2.9.2 (2026-09-24) — 起動パフォーマンス最適化と監査強化
 
 - 全変更履歴は [v2.9.2 release notes](../release-notes/v2.9.2.md) を参照。ハイライト: 起動高速化（バックグラウンドデコード + SyncBarrier）、キャプチャデバウンス、実フル解像度画像コピー、6 件のサイレント失敗修正、god object 分割。

@@ -48,6 +48,22 @@
 
 ## 📋 更新日志
 
+### v2.9.3 (2026-09-27) — 持续稳定性修复与预览滚动
+
+- **🖱️ 大图长按预览可滚轮可关闭** — 之前 panel 居中屏幕中央，cursor 不在 preview 上 → 滚轮事件无法路由到 NSScrollView，preview 完全无法滚动；且 trackpad 双指滚动误触发 dismiss。修法：panel anchor 到 cursor + timestamp-gated leftMouseUp 抑制 + Escape fallback。
+
+- **🛡️ Crash 报告刷新错误可见** — Help → View Recent Crashes 之前在 reports 非空时静默丢失错误，刷新失败用户看不见。修法：errorBanner + logger.error 完整三件关。
+
+- **📋 parseIPS 不再丢字段** — 之前 multi-object body silently overwrite `signal` / `binaryImages` / `triggeredThreadFrames`。修法：`if let s` / `append(contentsOf:)` preserve + merge。
+
+- **⚙️ release.yml fail-closed** — 之前 `continue-on-error: true` 让 runner-flake 时 binary 仍 ship。修法：删 `continue-on-error`，tests 失败硬阻断 publish。
+
+- **🔍 TSan subset 不再 stale** — cdda2a6 (PR #86) 重命名 `NetworkMonitorTests` 但 workflow 没更新，6 个 network race tests 静默 4 天。修法：filter rename + subset 88→95 + PR comment surface subset drift。
+
+- **🔗 ID 编号规范化** — auto-review 之前只有 `[HIGH-N]/M-N/L-N` severity label 没有 ID-DOMAIN-NNNN。修法：going-forward rule + 3 historical collision documented。
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.3
+
 ### v2.9.2 (2026-09-24) — 启动性能优化与审核加固
 
 - **⚡ 启动主线程不再卡顿 (P2-14)** — `ClipboardStore.init` 此前同步解码全部历史（10K 条目 = 100-300ms main thread stall），并引入 5 个旁路 bug。修法：detached 后台 Task + `SyncBarrier` + merge-instead-of-discard + conditional scheduleSave + terminate drain 加 `DispatchQueue.main.sync` + dispatchPrecondition 防退化。**强烈建议升级（启动体感 + 数据完整性双收）**。

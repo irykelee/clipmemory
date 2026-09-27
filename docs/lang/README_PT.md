@@ -48,6 +48,22 @@
 
 ## 📋 Registro de alterações
 
+### v2.9.3 (2026-09-27) — Correções de estabilidade e rolagem na pré-visualização
+
+- **🖱️ Pré-visualização de imagem grande com long-press agora rola** — Antes o painel ficava centralizado na tela, então o cursor não estava sobre a preview e `NSScrollView` nunca recebia eventos de roda; o scroll de dois dedos do trackpad também disparava dismiss indesejado. Solução: ancorar painel ao cursor + supressão de leftMouseUp com timestamp-gated + Escape fallback.
+
+- **🛡️ Erros de atualização de relatório de crash agora visíveis** — `Help → View Recent Crashes` antes descartava silenciosamente os erros após um load inicial bem-sucedido. Solução: errorBanner + logger.error (portão de três peças completo).
+
+- **📋 parseIPS não perde mais campos** — A rota previa de multi-object body sobrescrevia silenciosamente `signal` / `binaryImages` / `triggeredThreadFrames`. Solução: `if let s` / `append(contentsOf:)` preserve + merge.
+
+- **⚙️ release.yml fail-closed** — Antes `continue-on-error: true` permitia ship do binary durante runner-flake. Solução: removido `continue-on-error`; falhas de test agora bloqueiam o publish.
+
+- **🔍 Subset do TSan não fica mais stale** — cdda2a6 (PR #86) renomeou `NetworkMonitorTests` sem atualizar o workflow, então 6 network race tests ficaram silenciosamente skip por 4 dias. Solução: filter rename + subset 88→95 + comentário do PR surface do subset drift.
+
+- **🔗 Normalização de ID** — auto-review antes só emitia `[HIGH-N]/M-N/L-N` severity labels sem `ID-DOMAIN-NNNN`. Solução: regra going-forward + 3 colisões históricas documentadas.
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.3
+
 ### v2.9.2 (2026-09-24) — Otimização de desempenho na inicialização e reforço de auditoria
 
 - Registro completo de mudanças em [v2.9.2 release notes](../release-notes/v2.9.2.md). Destaques: inicialização mais rápida (decodificação em segundo plano + SyncBarrier), debounce de captura, cópia de imagem em resolução completa real, seis correções de falhas silenciosas, divisão do god object.

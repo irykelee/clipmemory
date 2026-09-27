@@ -48,6 +48,22 @@
 
 ## 📋 更新日誌
 
+### v2.9.3 (2026-09-27) — 持續穩定性修復與預覽捲動
+
+- **🖱️ 大圖長按預覽可滾輪可關閉** — 之前 panel 居中螢幕中央，cursor 不在 preview 上 → 滾輪事件無法路由到 NSScrollView，preview 完全無法滾動；且 trackpad 雙指滑動誤觸發 dismiss。修法：panel anchor 到 cursor + timestamp-gated leftMouseUp 抑制 + Escape fallback。
+
+- **🛡️ Crash 報告刷新錯誤可見** — Help → View Recent Crashes 之前在 reports 非空時靜默丟失錯誤，刷新失敗使用者看不見。修法：errorBanner + logger.error 完整三件關。
+
+- **📋 parseIPS 不再丟欄位** — 之前 multi-object body silently overwrite `signal` / `binaryImages` / `triggeredThreadFrames`。修法：`if let s` / `append(contentsOf:)` preserve + merge。
+
+- **⚙️ release.yml fail-closed** — 之前 `continue-on-error: true` 讓 runner-flake 時 binary 仍 ship。修法：刪 `continue-on-error`，tests 失敗硬阻斷 publish。
+
+- **🔍 TSan subset 不再 stale** — cdda2a6 (PR #86) 重命名 `NetworkMonitorTests` 但 workflow 沒更新，6 個 network race tests 靜默 4 天。修法：filter rename + subset 88→95 + PR comment surface subset drift。
+
+- **🔗 ID 編號正規化** — auto-review 之前只有 `[HIGH-N]/M-N/L-N` severity label 沒有 ID-DOMAIN-NNNN。修法：going-forward rule + 3 historical collision documented。
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.3
+
 ### v2.9.2 (2026-09-24) — 啟動效能優化與稽核加固
 
 - 完整變更紀錄見 [v2.9.2 release notes](../release-notes/v2.9.2.md)。重點：啟動加速（背景解碼 + SyncBarrier）、剪貼擷取防抖、真實全解析度圖片複製、六項靜默失敗修復、god object 拆分。

@@ -48,6 +48,22 @@
 
 ## 📋 Registro de cambios
 
+### v2.9.3 (2026-09-27) — Correcciones de estabilidad y desplazamiento en previsualización
+
+- **🖱️ Previsualización de imagen grande con pulsación larga ahora se desplaza** — Antes el panel se centraba en la pantalla, así que el cursor no estaba sobre la preview y `NSScrollView` nunca recibía eventos de rueda; el scroll de dos dedos del trackpad también disparaba un dismiss no deseado. Solución: anclar panel al cursor + supresión de leftMouseUp con timestamp-gated + Escape fallback.
+
+- **🛡️ Errores de actualización de informes de crash ahora visibles** — `Help → View Recent Crashes` antes descartaba silenciosamente los errores después de un load inicial exitoso. Solución: errorBanner + logger.error (puerta de tres piezas completa).
+
+- **📋 parseIPS ya no pierde campos** — La ruta previa de multi-object body sobrescribía silenciosamente `signal` / `binaryImages` / `triggeredThreadFrames`. Solución: `if let s` / `append(contentsOf:)` preserve + merge.
+
+- **⚙️ release.yml fail-closed** — Antes `continue-on-error: true` permitía ship del binary durante runner-flake. Solución: eliminado `continue-on-error`; fallos de test ahora bloquean el publish.
+
+- **🔍 TSan subset ya no queda stale** — cdda2a6 (PR #86) renombró `NetworkMonitorTests` sin actualizar el workflow, así que 6 network race tests quedaron silenciosamente skip durante 4 días. Solución: filter rename + subset 88→95 + comentario en PR surface del subset drift.
+
+- **🔗 Normalización del ID** — auto-review antes solo emitía severity labels `[HIGH-N]/M-N/L-N` sin `ID-DOMAIN-NNNN`. Solución: regla going-forward + 3 colisiones históricas documentadas.
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.3
+
 ### v2.9.2 (2026-09-24) — Optimización de rendimiento al arrancar y refuerzo de auditoría
 
 - Registro de cambios completo en [v2.9.2 release notes](../release-notes/v2.9.2.md). Destacados: arranque más rápido (decodificación en segundo plano + SyncBarrier), debounce de captura, copia de imagen a resolución completa real, seis correcciones de fallos silenciosos, división del god object.

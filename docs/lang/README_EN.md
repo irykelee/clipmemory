@@ -48,6 +48,22 @@
 
 ## 📋 Changelog
 
+### v2.9.3 (2026-09-27) — Stability Fixes & Preview Scrolling
+
+- **🖱️ Large image long-press preview can now scroll** — Previously the panel was centered on screen, so the cursor didn't sit over the preview and `NSScrollView` never received wheel events; trackpad two-finger-scroll also triggered an unwanted dismiss. Fix: anchor panel to cursor + timestamp-gated leftMouseUp suppression + Escape fallback.
+
+- **🛡️ Crash-report refresh errors now visible** — `Help → View Recent Crashes` previously silently swallowed errors after a successful initial load. Fix: errorBanner + logger.error (full three-piece gate).
+
+- **📋 parseIPS no longer drops fields** — Previously the multi-object body path overwrote `signal` / `binaryImages` / `triggeredThreadFrames`. Fix: `if let s` / `append(contentsOf:)` preserve + merge.
+
+- **⚙️ release.yml fail-closed** — Previously `continue-on-error: true` let runner-flake binary still ship. Fix: removed `continue-on-error`; test failures now hard-block publish.
+
+- **🔍 TSan subset no longer stale** — cdda2a6 (PR #86) renamed `NetworkMonitorTests` without updating the workflow, so 6 network race tests silently skipped for 4 days. Fix: filter rename + subset 88→95 + PR comment surfaces subset drift.
+
+- **🔗 ID numbering formalized** — auto-review previously only emitted `[HIGH-N]/M-N/L-N` severity labels without `ID-DOMAIN-NNNN`. Fix: going-forward rule + 3 historical collision documented.
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.3
+
 ### v2.9.2 (2026-09-24) — Startup Performance & Audit Hardening
 
 - See [v2.9.2 release notes](../release-notes/v2.9.2.md) for the full changelog. Highlights: faster startup (background decode + SyncBarrier), capture debounce, real full-resolution image copy, six silent-failure fixes, god-object split.

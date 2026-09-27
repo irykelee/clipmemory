@@ -48,6 +48,22 @@
 
 ## 📋 변경 로그
 
+### v2.9.3 (2026-09-27) — 지속적 안정성 수정 및 미리보기 스크롤
+
+- **🖱️ 큰 이미지 길게 누르기 미리보기가 스크롤 가능해짐** — 이전엔 panel이 화면 중앙에 있어 커서가 preview 위에 없어 `NSScrollView`가 휠 이벤트를 받지 못했고, trackpad 두 손가락 스크롤이 잘못된 dismiss를 트리거했습니다. 수정: panel을 cursor에 anchor, timestamp-gated leftMouseUp 억제, Escape fallback.
+
+- **🛡️ Crash 보고 갱신 오류 가시화** — `Help → View Recent Crashes`는 첫 로드 성공 후 갱신 오류를 조용히 삼켰습니다. 수정: errorBanner + logger.error (3-piece gate 완성).
+
+- **📋 parseIPS 필드 손실 방지** — 이전 multi-object body 경로가 `signal` / `binaryImages` / `triggeredThreadFrames`를 조용히 덮어썼습니다. 수정: `if let s` / `append(contentsOf:)` preserve + merge.
+
+- **⚙️ release.yml fail-closed** — 이전 `continue-on-error: true`는 runner-flake에서도 binary를 ship. 수정: `continue-on-error` 제거, test 실패는 publish를 하드 블록.
+
+- **🔍 TSan subset 더 이상 stale 아님** — cdda2a6 (PR #86)이 `NetworkMonitorTests`를 rename했지만 workflow를 업데이트하지 않아 6개의 network race test가 4일간 조용히 skip됨. 수정: filter rename + subset 88→95 + PR comment이 subset drift surface.
+
+- **🔗 ID 번호화 정규화** — auto-review는 이전에 `[HIGH-N]/M-N/L-N` severity label만 있었고 `ID-DOMAIN-NNNN` 없음. 수정: going-forward rule + 3개 historical collision documented.
+
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.3
+
 ### v2.9.2 (2026-09-24) — 시작 성능 최적화 및 감사 강화
 
 - 전체 변경 내역은 [v2.9.2 release notes](../release-notes/v2.9.2.md) 참조. 주요: 시작 가속(백그라운드 디코드 + SyncBarrier), 캡처 디바운스, 실제 전체 해상도 이미지 복사, 6건의 silent failure 수정, god object 분리.
