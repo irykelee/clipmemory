@@ -150,6 +150,41 @@ EOF
           xcodebuild test -scheme ClipMemory
 EOF
 
+  # Fixture F (ID-CI-0019): bare `xcodebuild test | tee` BUT with
+  # both `shell: bash` AND `set -o pipefail` in the same step
+  # body — must PASS. This is the correct remediation that the
+  # rule's own error message recommends; the carve-out allows it.
+  cat >"$tmpdir/f.yml" <<'EOF'
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild test -scheme ClipMemory 2>&1 | tee /tmp/log
+EOF
+
+  # Fixture G (ID-CI-0019): bare `xcodebuild test | tee` with
+  # only `shell: bash` (no pipefail) — must FAIL. The carve-out
+  # requires BOTH declarations; a partial declaration is still
+  # a fail-open trap because `tee` keeps swallowing without
+  # pipefail.
+  cat >"$tmpdir/g.yml" <<'EOF'
+      - name: Run tests
+        shell: bash
+        run: |
+          xcodebuild test -scheme ClipMemory 2>&1 | tee /tmp/log
+EOF
+
+  # Fixture H (ID-CI-0019): bare `xcodebuild test | tee` with
+  # only `set -o pipefail` (no `shell: bash`) — must FAIL. The
+  # default shell still doesn't honor pipefail, so the swallow
+  # persists.
+  cat >"$tmpdir/h.yml" <<'EOF'
+      - name: Run tests
+        run: |
+          set -o pipefail
+          xcodebuild test -scheme ClipMemory 2>&1 | tee /tmp/log
+EOF
+
   local failures=0
   # ID-CI-0015 (2026-09-27): the previous implementation keyed on
   # exit status (`check_workflow >/dev/null 2>&1`; non-zero =
@@ -188,14 +223,28 @@ EOF
       failures=$((failures + 1))
     fi
   done
-  for label in d e; do
+  for label in d e f; do
     WORKFLOW="$tmpdir/${label}.yml"
     output=$(check_workflow 2>&1)
     cw_rc=$?
     if [[ "$cw_rc" -eq 0 && "$output" == *"✅ PASS"* ]]; then
-      echo "✅ PASS: fixture ${label} (clean release.yml) correctly allowed"
+      echo "✅ PASS: fixture ${label} correctly allowed"
     else
       echo "❌ FAIL: fixture ${label} should have passed (check_workflow exit=$cw_rc with PASS marker)"
+      failures=$((failures + 1))
+    fi
+  done
+  # Fixture G + H: bare `xcodebuild test | tee` with INCOMPLETE
+  # carve-out must FAIL. Loop separately so we can label them
+  # distinctly.
+  for label in g h; do
+    WORKFLOW="$tmpdir/${label}.yml"
+    output=$(check_workflow 2>&1)
+    cw_rc=$?
+    if [[ "$cw_rc" -eq 1 && "$output" == *"❌ FAIL"* ]]; then
+      echo "✅ PASS: fixture ${label} correctly caught (partial carve-out)"
+    else
+      echo "❌ FAIL: fixture ${label} should have been caught (check_workflow exit=$cw_rc)"
       failures=$((failures + 1))
     fi
   done
@@ -209,7 +258,7 @@ EOF
   # returns 0) scans the real release.yml — not the last fixture
   # file we just mutated.
   WORKFLOW="$saved_workflow"
-  echo "✅ All 5 self-test fixtures passed"
+  echo "✅ All 8 self-test fixtures passed"
 }
 
 # ---- core check (extractable for selftest) -------------------------------
@@ -249,8 +298,40 @@ check_workflow() {
     [[ "$content" =~ ^[[:space:]]*# ]] && continue
     [[ "$content" == *"xcodebuild test"* ]] || continue
     [[ "$content" == *"| tee"* || "$content" == *"|| true"* ]] || continue
-    violations=$((violations + 1))
-    violation_lines+=("$lineno")
+    # ID-CI-0019 (2026-09-27): carve-out for the correct
+    # remediation. The bare `xcodebuild test | tee` pattern
+    # swallows test failures under GH Actions macOS default
+    # `bash -e` (no pipefail). But if the enclosing step declares
+    # `shell: bash` AND the run body has `set -o pipefail` (or
+    # `set -euo pipefail`), the pipe returns the upstream exit
+    # code — `tee` no longer swallows and the step is
+    # fail-closed. A contributor applying the correct fix
+    # would otherwise be blocked by CI for following the
+    # remediation that the rule's own error message
+    # recommends (option (b)). The carve-out requires BOTH
+    # declarations to be present in the same step body;
+    # partial declarations (`shell: bash` without pipefail, or
+    # pipefail without `shell: bash`) still trip the rule.
+    #
+    # Scan the enclosing step body (from the previous
+    # column-0 `- name:` to the next one or EOF) for both
+    # declarations. awk prints each line as `NR: content` so
+    # the violation line number doesn't get confused with the
+    # awk line counter.
+    carve_out_ok=0
+    step_body=$(awk -v ln="$lineno" '
+      NR <= ln && /^- name:/ { start = NR }
+      NR >  ln && /^- name:/ { exit }
+      NR >= start { print NR ": " $0 }
+    ' "$WORKFLOW")
+    if echo "$step_body" | grep -qE "^[0-9]+:[[:space:]]+shell:[[:space:]]*bash([[:space:]]|$)" \
+       && echo "$step_body" | grep -qE "set[[:space:]]+-[eu]*o[[:space:]]+pipefail"; then
+      carve_out_ok=1
+    fi
+    if [[ "$carve_out_ok" -ne 1 ]]; then
+      violations=$((violations + 1))
+      violation_lines+=("$lineno")
+    fi
   done < <(grep -n "xcodebuild test" "$WORKFLOW" || true)
 
   if [[ "$violations" -gt 0 ]]; then
@@ -293,8 +374,13 @@ check_workflow() {
     echo "to the step + \`set -o pipefail\` at the top of the run block"
     echo "so \`xcodebuild test | tee\` no longer swallows; (c) capture"
     echo "the exit code manually (e.g. \`xcodebuild test > log 2>&1;"
-    echo "rc=\$?; tee log; exit \$rc\`). Each has a real cost — pick one"
-    echo "and update the ID-CI-0011 header to match."
+    echo "rc=\$?; tee log; exit \$rc\`). Each has a real cost — pick one."
+    # ID-CI-0019 (2026-09-27): option (b) is now sanctioned by
+    # the lint's own carve-out — if the enclosing step declares
+    # \`shell: bash\` AND the run body contains \`set -o pipefail\`
+    # (or \`set -euo pipefail\`), the bare \`xcodebuild test | tee\`
+    # pattern passes the lint. See selftest fixtures f/g/h for the
+    # three carve-out shapes (full, partial-shell, partial-pipefail).
     return 1
   fi
 
@@ -303,7 +389,15 @@ check_workflow() {
   # column-0 anchor bug by reading the actual `- name:` line
   # positions into a variable first.
   local run_tests_lines
-  run_tests_lines=$(grep -n "name: Run tests" "$WORKFLOW" || true)
+  # ID-CI-0019 (2026-09-27): anchored to `- name: Run tests` at
+  # column 0, not the substring search. The previous unanchored
+  # `grep "name: Run tests"` matched any line containing the
+  # substring — including a comment line mentioning the pattern
+  # by name. With a column-0 anchored regex we only match the
+  # actual step header line. If a future workflow uses a different
+  # step name, the rule 3 anchor missing hard-FAIL (added in
+  # ID-CI-0018) catches it.
+  run_tests_lines=$(grep -nE "^[[:space:]]*- name: Run tests([[:space:]]|$)" "$WORKFLOW" || true)
   if [[ -n "$run_tests_lines" ]]; then
     local start_line end_line bad
     start_line=$(echo "$run_tests_lines" | head -1 | cut -d: -f1)
