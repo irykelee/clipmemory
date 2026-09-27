@@ -25,12 +25,30 @@
 # nothing in code enforced that. da3cc6a reverted 149906d; this
 # script prevents the next `|| true` re-introduction.
 #
-# Two failure modes:
-#   1. `|| true` anywhere on the same logical line as `xcodebuild test`,
-#      `tee`, or `2>&1` in release.yml — fail-open via pipefail bypass.
-#   2. `continue-on-error: true` inside a `Run tests` step — explicit
-#      fail-open that disables Scripts/release.sh:1147's downstream
-#      guard.
+# ID-CI-0012 (2026-09-27): auto-review 20260927-203941 caught two
+# flaws in the initial ID-CI-0011 implementation:
+#   (a) check #2 used awk regex anchored to column 0 (`/^- name: Run
+#       tests/`) but release.yml indents the step to column 6
+#       (`      - name: Run tests`); the awk pattern never matched,
+#       so the `continue-on-error: true` half of the bug class was
+#       unenforced while CI reported green.
+#   (b) the scan was seeded by `grep "|| true"` only — so the
+#       script's own header-named real mechanism (`xcodebuild test
+#       … | tee log` under GH's `bash -e` shell, no pipefail) would
+#       pass clean if a contributor re-added 149906d's line minus
+#       the dead `|| true`. We now also check the bare
+#       `xcodebuild test … | tee …` pattern.
+#
+# Three failure modes (ID-CI-0012 v2):
+#   1. `xcodebuild test … | tee …` on any line in release.yml
+#      (fail-open via tee's exit 0 under GH macOS default shell
+#      with no pipefail). Includes the variant `… || true`.
+#   2. `xcodebuild test … || true` on any line (explicit swallow,
+#      dead under default shell but a future `shell: bash` would
+#      flip the behavior).
+#   3. `continue-on-error: true` inside the `Run tests` step body
+#      (awk-bounded via line-range, anchored regex relaxed to
+#      match indented form).
 #
 # The fix in release.yml:148-186 (fail-closed justification) must
 # remain present and non-empty; this script does NOT enforce that
@@ -38,7 +56,16 @@
 # does enforce: the code below those comments cannot silently
 # disable fail-closed behavior.
 #
-# Usage: Scripts/lint-release-yml.sh
+# Self-test (ID-CI-0012): run `Scripts/lint-release-yml.sh --selftest`
+# to verify synthetic fixtures are caught. The script exits 0 on
+# PASS / 1 on FAIL of each fixture. A real release.yml check with
+# no arguments also runs after `--selftest` returns 0; pass both
+# before considering this linter trustworthy.
+#
+# Usage:
+#   Scripts/lint-release-yml.sh           # check release.yml
+#   Scripts/lint-release-yml.sh --selftest  # synthetic fixtures
+#
 # Wired into ci.yml lint-ids job (per ID-CI-0011).
 #
 # bash compat: stock macOS /bin/bash 3.2 lacks `declare -A`,
@@ -50,99 +77,175 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$ROOT"
 
 WORKFLOW="$ROOT/.github/workflows/release.yml"
+
+# ---- self-test fixtures (ID-CI-0012) ------------------------------------
+selftest() {
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  trap "rm -rf '$tmpdir'" EXIT
+
+  # Fixture A: 149906d's exact line — must FAIL (rule #1: xcodebuild test | tee)
+  cat >"$tmpdir/a.yml" <<'EOF'
+      - name: Run tests
+        run: |
+          xcodebuild test -scheme ClipMemory 2>&1 | tee /tmp/log || true
+EOF
+
+  # Fixture B: same minus `|| true` — must FAIL (rule #1: tee alone swallows
+  # under no-pipefail GH macOS default shell). This is the case the
+  # ID-CI-0011 v1 missed.
+  cat >"$tmpdir/b.yml" <<'EOF'
+      - name: Run tests
+        run: |
+          xcodebuild test -scheme ClipMemory 2>&1 | tee /tmp/log
+EOF
+
+  # Fixture C: indented `Run tests` step with `continue-on-error: true` —
+  # must FAIL (rule #3). This is the case ID-CI-0011 v1 missed because
+  # awk regex was column-0 anchored.
+  cat >"$tmpdir/c.yml" <<'EOF'
+      - name: Run tests
+        continue-on-error: true
+        run: |
+          xcodebuild test -scheme ClipMemory
+      - name: Other
+        run: echo ok
+EOF
+
+  # Fixture D: clean fail-closed — must PASS.
+  cat >"$tmpdir/d.yml" <<'EOF'
+      - name: Run tests
+        run: |
+          xcodebuild test -scheme ClipMemory
+EOF
+
+  local failures=0
+  for label in a b c; do
+    if WORKFLOW="$tmpdir/${label}.yml" check_workflow >/dev/null 2>&1; then
+      echo "❌ FAIL: fixture ${label} (should have been caught)"
+      failures=$((failures + 1))
+    else
+      echo "✅ PASS: fixture ${label} correctly caught"
+    fi
+  done
+  if WORKFLOW="$tmpdir/d.yml" check_workflow >/dev/null 2>&1; then
+    echo "✅ PASS: fixture d (clean release.yml) correctly allowed"
+  else
+    echo "❌ FAIL: fixture d should have passed"
+    failures=$((failures + 1))
+  fi
+
+  if [[ "$failures" -gt 0 ]]; then
+    echo "❌ $failures self-test fixture(s) failed — lint is broken"
+    return 1
+  fi
+  echo "✅ All 4 self-test fixtures passed"
+}
+
+# ---- core check (extractable for selftest) -------------------------------
+check_workflow() {
+  local violations=0
+  local violation_lines=()
+
+  # Rule 1 + 2: any line that contains `xcodebuild test` AND either
+  # `| tee` (rule 1, tee's exit-0 swallow) or `|| true` (rule 2,
+  # explicit dead code that flips on `shell: bash`). These two
+  # checks share a single pass to keep the script readable.
+  while IFS=: read -r lineno content; do
+    [[ "$content" == *"xcodebuild test"* ]] || continue
+    [[ "$content" == *"| tee"* || "$content" == *"|| true"* ]] || continue
+    violations=$((violations + 1))
+    violation_lines+=("$lineno")
+  done < <(grep -n "xcodebuild test" "$WORKFLOW" || true)
+
+  if [[ "$violations" -gt 0 ]]; then
+    echo ""
+    echo "❌ FAIL: fail-open patterns detected in $WORKFLOW"
+    echo ""
+    echo "Violations (line numbers): ${violation_lines[*]}"
+    echo ""
+    echo "Why this matters:"
+    echo "  - \`xcodebuild test … | tee …\` returns tee's exit 0 under"
+    echo "    GH Actions macOS default shell (bash -e, NO pipefail);"
+    echo "    the swallow is tee's accident, not the test step's."
+    echo "  - A future \`shell: bash\` declaration on this step would"
+    echo "    silently flip the behavior to honor pipefail — and"
+    echo "    every swallowed failure would suddenly become fatal."
+    echo "  - Scripts/release.sh:1147 \`gh run watch --exit-status\`"
+    echo "    depends on test step being fail-closed to catch regressions."
+    echo ""
+    echo "Historical lesson (ID-CI-0011 / ID-CI-0012):"
+    echo "  - 149906d added \`|| true\` as a v2.9.4-only workaround, but"
+    echo "    the comment claimed scope was unconditional and no \`if:\`"
+    echo "    guard, no expiry, no tracking issue were added."
+    echo "  - da3cc6a reverted 149906d. ID-CI-0012 closes the second"
+    echo "    hole: removing only the dead \`|| true\` token is no longer"
+    echo "    enough — the bare \`xcodebuild test | tee\` pattern is"
+    echo "    also caught."
+    echo ""
+    echo "Fix: either (a) drop \`| tee\` entirely and rely on the step's"
+    echo "own log capture (\`gh run view --log\`); (b) add \`shell: bash\`"
+    echo "to the step + \`set -o pipefail\` at the top of the run block"
+    echo "so \`xcodebuild test | tee\` no longer swallows; (c) capture"
+    echo "the exit code manually (e.g. \`xcodebuild test > log 2>&1;"
+    echo "rc=\$?; tee log; exit \$rc\`). Each has a real cost — pick one"
+    echo "and update the ID-CI-0011 header to match."
+    return 1
+  fi
+
+  # Rule 3: `continue-on-error: true` inside the `Run tests` step
+  # body (awk-bounded via line-range). ID-CI-0012 fixes the
+  # column-0 anchor bug by reading the actual `- name:` line
+  # positions into a variable first.
+  local run_tests_lines
+  run_tests_lines=$(grep -n "name: Run tests" "$WORKFLOW" || true)
+  if [[ -n "$run_tests_lines" ]]; then
+    local start_line end_line bad
+    start_line=$(echo "$run_tests_lines" | head -1 | cut -d: -f1)
+    # End is the next `- name:` at the same (or shallower) indent
+    # level — for release.yml that's column 0 or 6. We use a
+    # found-flag END pattern; the sentinel is only printed when no
+    # subsequent -name was matched, so we don't get a newline in the
+    # captured value (which would crash awk's -v on the second call).
+    end_line=$(awk -v start="$start_line" '
+      NR > start && /^[[:space:]]*- name:/ { print NR; found=1; exit }
+      END { if (!found) print 999999 }
+    ' "$WORKFLOW")
+    [[ -z "$end_line" ]] && end_line=999999
+
+    bad=$(awk -v s="$start_line" -v e="$end_line" \
+      'NR >= s && NR < e && /continue-on-error:[[:space:]]*true/ { print NR ":" $0 }' \
+      "$WORKFLOW" || true)
+
+    if [[ -n "$bad" ]]; then
+      echo ""
+      echo "❌ FAIL: \`continue-on-error: true\` detected inside the Run tests step"
+      echo ""
+      echo "$bad"
+      echo ""
+      echo "Why this matters:"
+      echo "  - This is the v2.9.2-era pattern (1f646d5) that ID-CI-0005"
+      echo "    removed on 2026-09-26 (e897f30). Reintroducing it"
+      echo "    re-opens the same fail-open hole."
+      echo "  - Scripts/release.sh:1147 \`gh run watch --exit-status\`"
+      echo "    guard silently stops catching test regressions."
+      echo ""
+      echo "Fix: remove \`continue-on-error: true\` from the Run tests step."
+      return 1
+    fi
+  fi
+
+  echo "✅ PASS: $WORKFLOW has no fail-open patterns in Run tests step"
+  return 0
+}
+
+# ---- entry point ---------------------------------------------------------
+if [[ "${1:-}" == "--selftest" ]]; then
+  selftest
+  exit $?
+fi
+
 [[ -f "$WORKFLOW" ]] || { echo "❌ $WORKFLOW not found"; exit 1; }
 
-violations=0
-line_numbers=()
-
-# 1. Detect `|| true` after `xcodebuild test` / `tee` / `2>&1`.
-#    Use grep -n to capture line numbers for actionable errors.
-#    Pattern: command-ending `|| true` (the typical fail-open swallow).
-#
-#    We grep for `|| true` on the same line as one of the risk
-#    triggers (xcodebuild / tee / 2>&1). Single-line `|| true`
-#    with no preceding risk trigger is out of scope (e.g. a
-#    `cleanup || true` after a successful step is fine).
 echo "Scanning $WORKFLOW for fail-open patterns..."
-
-# Map: line numbers where risk trigger AND `|| true` co-occur.
-# grep -n prints "N:content". Use awk to find lines that have
-# BOTH a trigger AND `|| true`.
-while IFS=: read -r lineno content; do
-  has_trigger=0
-  if [[ "$content" == *"xcodebuild test"* ]] \
-     || [[ "$content" == *"tee "* ]] \
-     || [[ "$content" == *"2>&1"* ]]; then
-    has_trigger=1
-  fi
-  has_swallow=0
-  if [[ "$content" == *"|| true"* ]]; then
-    has_swallow=1
-  fi
-  if [[ "$has_trigger" -eq 1 && "$has_swallow" -eq 1 ]]; then
-    violations=$((violations + 1))
-    line_numbers+=("$lineno")
-  fi
-done < <(grep -n "|| true" "$WORKFLOW" || true)
-
-if [[ "$violations" -gt 0 ]]; then
-  echo ""
-  echo "❌ FAIL: fail-open patterns detected in $WORKFLOW"
-  echo ""
-  echo "Violations (line numbers): ${line_numbers[*]}"
-  echo ""
-  echo "Why this matters:"
-  echo "  - `xcodebuild test ... || true` swallows test failures silently."
-  echo "  - `... | tee ... || true` only works because GH Actions macOS"
-  echo "    default shell has no \`pipefail\`; the swallow is tee's"
-  echo "    accident, not `|| true`'s function."
-  echo "  - Scripts/release.sh:1147 \`gh run watch --exit-status\`"
-  echo "    depends on test step being fail-closed to catch regressions."
-  echo ""
-  echo "Historical lesson (ID-CI-0011):"
-  echo "  - 149906d added `|| true` as a v2.9.4-only workaround, but"
-  echo "    the comment claimed scope was unconditional and no `if:`"
-  echo "    guard, no expiry, no tracking issue were added."
-  echo "  - da3cc6a reverted 149906d. This script prevents the next"
-  echo "    commit from reintroducing the same swallow."
-  echo ""
-  echo "Fix: remove the `|| true`. If a specific release needs a"
-  echo "fail-open step, add an explicit `if: github.ref_name == 'vX.Y.Z'`"
-  echo "guard + tracking issue + expiry, then revisit this lint."
-  exit 1
-fi
-
-# 2. Detect `continue-on-error: true` inside the Run tests step
-#    (release.yml:187-193). The grep window is bounded to the step
-#    body using awk — we look for `continue-on-error: true` between
-#    `- name: Run tests` and the next `- name:` or end of jobs:.
-#
-#    This catches the v2.9.2-era pattern (1f646d5) that ID-CI-0005
-#    deliberately removed. If you genuinely need a non-fatal step,
-#    use `if: failure()` on a *separate* step instead.
-run_tests_continue_error=$(awk '
-  /^- name: Run tests/ { in_step = 1; next }
-  in_step && /^- name:/ { in_step = 0 }
-  in_step && /continue-on-error:[[:space:]]*true/ { print FILENAME ":" NR ":" $0; found = 1 }
-  END { exit (found ? 0 : 1) }
-' "$WORKFLOW" || true)
-
-if [[ -n "$run_tests_continue_error" ]]; then
-  echo ""
-  echo "❌ FAIL: \`continue-on-error: true\` detected inside the Run tests step"
-  echo ""
-  echo "$run_tests_continue_error"
-  echo ""
-  echo "Why this matters:"
-  echo "  - This is the v2.9.2-era pattern (1f646d5) that ID-CI-0005"
-  echo "    removed on 2026-09-26 (e897f30). Reintroducing it"
-  echo "    re-opens the same fail-open hole."
-  echo "  - Scripts/release.sh:1147 \`gh run watch --exit-status\`"
-  echo "    guard silently stops catching test regressions."
-  echo ""
-  echo "Fix: remove \`continue-on-error: true\` from the Run tests step."
-  exit 1
-fi
-
-echo "✅ PASS: $WORKFLOW has no fail-open patterns in Run tests step"
-exit 0
+check_workflow
