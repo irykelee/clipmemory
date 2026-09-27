@@ -151,7 +151,16 @@ check_workflow() {
   # `| tee` (rule 1, tee's exit-0 swallow) or `|| true` (rule 2,
   # explicit dead code that flips on `shell: bash`). These two
   # checks share a single pass to keep the script readable.
+  #
+  # Skip comment lines (YAML lines starting with optional whitespace
+  # + `#`) so documenting the pattern in a comment doesn't itself
+  # trip the lint. The fixture lines ID-CI-0012 introduced for
+  # release.yml:191 (the ID-CI-0011 lint header) reference the
+  # bare pattern by name in prose, and we shouldn't punish the
+  # documentation for naming the trap.
   while IFS=: read -r lineno content; do
+    # Skip pure comment lines (whitespace then `#`)
+    [[ "$content" =~ ^[[:space:]]*# ]] && continue
     [[ "$content" == *"xcodebuild test"* ]] || continue
     [[ "$content" == *"| tee"* || "$content" == *"|| true"* ]] || continue
     violations=$((violations + 1))

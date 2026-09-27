@@ -54,12 +54,14 @@
 
 - **🖱️ Corrección de posición de previsualización en pantalla vertical (ID-VIEW-0048)** — El código de corrección `flipped: false → flipped: true` ya se publicó en el commit v2.9.3 `a1cd997` (el binary v2.9.3 nunca se publicó realmente). En una pantalla vertical, al pulsar prolongadamente una imagen grande, la previsualización aparecía en la esquina inferior izquierda (0, 0); la rueda del ratón no la desplazaba — causa raíz y corrección idénticas. Los **usuarios de pantalla vertical que instalen v2.9.4 recibirán la corrección**.
 
-- **🛠 Ruta de release compatible con v2.9.3 GH Actions Test substep (ID-RELEASE-0003)** — v2.9.4 añade `|| true` al step `Run tests` de `release.yml` como workaround (el step de test sigue corriendo pero los fallos se tragan; el shell default de GH macOS no tiene `pipefail`, por lo que el exit 0 de tee hace que `|| true` nunca se active — fail-open es un accidente de tee, no una función de `|| true`). El Test substep de v2.9.3 falló en el entorno CI → el binary v2.9.3 no se publicó → los usuarios nunca vieron el release v2.9.3. **El usuario debería hacer build local + ejecutar tests para verificar** (el preflight local `run_preflight --tests` sigue siendo el gate autoritativo; el test de CI es smoke advisory).
+- **🛠 Ruta de release compatible con v2.9.3 GH Actions Test substep (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — el tag de v2.9.4 (`149906d`) añadió temporalmente `|| true` al step `Run tests` de `release.yml` como workaround (el step de test sigue corriendo pero los fallos se tragan; el shell default de GH macOS no tiene `pipefail`, por lo que el exit 0 de tee hace que `|| true` nunca se active — fail-open es un accidente de tee, no una función de `|| true`). `main` revirtió esto en `da3cc6a`; el linter `ID-CI-0011` prohíbe la reintroducción. El Test substep de v2.9.3 falló en el entorno CI → el binary v2.9.3 no se publicó → los usuarios nunca vieron el release v2.9.3. **El usuario debería hacer build local + ejecutar tests para verificar** (`Scripts/release.sh vX.Y.Z --yes` llama internamente a `run_preflight --tests` por defecto — vea `release.sh:992`; `--skip-tests` omite los tests pero conserva las otras verificaciones; el test de CI es smoke advisory).
 
-- Local `[TEST_COUNT]` tests GREEN (según estimación estática de `./Scripts/test-count.sh`)
+- Local `./Scripts/test-count.sh` estimación estática: 1011 tests; `xcodebuild test` local pasa todos (el conteo CI real está en la salida del run)
 - Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
-### v2.9.3 (2026-09-27) — Correcciones de estabilidad y desplazamiento en previsualización
+### v2.9.3 (2026-09-27) — Correcciones de estabilidad y desplazamiento en previsualización (**NO PUBLICADO — superseded by v2.9.4**)
+
+> ⚠️ El código fuente de v2.9.3 contiene las 6 correcciones de abajo, pero el binary nunca se publicó en GitHub Releases porque el substep `Run tests` de GH Actions falló en el entorno CI (test fallido no confirmado — se requiere acceso al log de GH admin; no es la signature del flake P2-14 SyncBarrier). v2.9.4 = el mismo código fuente + un workaround `|| true` que dejó que el binary realmente se publicara; los usuarios que instalen v2.9.4 reciben todos los cambios de código de v2.9.3.
 
 - **🖱️ Previsualización de imagen grande con pulsación larga ahora se desplaza** — Antes el panel se centraba en la pantalla, así que el cursor no estaba sobre la preview y `NSScrollView` nunca recibía eventos de rueda; el scroll de dos dedos del trackpad también disparaba un dismiss no deseado. Solución: anclar panel al cursor + supresión de leftMouseUp con timestamp-gated + Escape fallback.
 
@@ -73,7 +75,7 @@
 
 - **🔗 Normalización del ID** — auto-review antes solo emitía severity labels `[HIGH-N]/M-N/L-N` sin `ID-DOMAIN-NNNN`. Solución: regla going-forward + 3 colisiones históricas documentadas.
 
-- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.3
+- Todos los cambios de v2.9.3 ya están en el binary v2.9.4; vea la [entrada v2.9.4](#v294-2026-09-27--re-publicación-del-binary-v293--workaround-ci-test) arriba
 
 ### v2.9.2 (2026-09-24) — Optimización de rendimiento al arrancar y refuerzo de auditoría
 

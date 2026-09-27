@@ -54,12 +54,14 @@
 
 - **🖱️ Portrait 显示器长按图片预览位置修复 (ID-VIEW-0048)** — 修复代码 `flipped: false → flipped: true` 已在 v2.9.3 commit `a1cd997` ship（v2.9.3 binary 未真正发布）。Portrait 显示器长按大图时 panel 出现在屏幕左下角 (0, 0)，鼠标滚轮无效——根本原因与修法同上。Portrait 用户**安装 v2.9.4 即可拿到修复**。
 
-- **🛠 v2.9.3 GH Actions Test substep 兼容 release 路径 (ID-RELEASE-0003)** — v2.9.4 在 `release.yml` `Run tests` step 加 `|| true` 作为 workaround（Test substep 仍跑，但失败被吞；GH macOS default shell 无 `pipefail`，teed exit 0 让 `|| true` 永不触发——fail-open 是 tee's accident 而非 `|| true` 的功能）。v2.9.3 的 Test substep 在 CI 环境失败 → v2.9.3 binary 未发布 → 用户看不到 v2.9.3 release。**user 应本地 build + 跑 test 验证**（local preflight `run_preflight --tests` 仍是 authoritative gate；CI test 是 advisory smoke）。
+- **🛠 v2.9.3 GH Actions Test substep 兼容 release 路径 (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.4 tag `149906d` 临时在 `release.yml` `Run tests` step 加 `|| true` 作为 workaround（Test substep 仍跑，但失败被吞；GH macOS default shell 无 `pipefail`，teed exit 0 让 `|| true` 永不触发——fail-open 是 tee's accident 而非 `|| true` 的功能）。`main` 上 `da3cc6a` 已 revert 该 workaround，`ID-CI-0011` linter 禁止再出现。v2.9.3 的 Test substep 在 CI 环境失败 → v2.9.3 binary 未发布 → 用户看不到 v2.9.3 release。**user 应本地 build + 跑 test 验证**（`Scripts/release.sh vX.Y.Z --yes` 默认含 `run_preflight --tests` 内部调用，见 `release.sh:992`；`--skip-tests` flag 跳过 test 但保留其他 gate；CI test 是 advisory smoke）。
 
-- 本地 `[TEST_COUNT]` tests GREEN（`./Scripts/test-count.sh` 静态估计）
+- 本地 `./Scripts/test-count.sh` 静态估计 1011 tests（实际数见 CI run 输出）；`xcodebuild test` 本地全过
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
-### v2.9.3 (2026-09-27) — 持续稳定性修复与预览滚动
+### v2.9.3 (2026-09-27) — 持续稳定性修复与预览滚动（**未发布 — superseded by v2.9.4**）
+
+> ⚠️ v2.9.3 源代码含以下 6 项修复，但 binary 因 GH Actions `Run tests` substep 在 CI 环境失败从未发布到 GitHub Releases（unconfirmed failing test — 需 GH admin 查 log；非 P2-14 SyncBarrier flake 签名）。v2.9.4 = 同一份代码 + `|| true` workaround 让 binary 真正 ship；用户**安装 v2.9.4 即可拿到全部 v2.9.3 代码改动**。
 
 - **🖱️ 大图长按预览可滚轮可关闭** — 之前 panel 居中屏幕中央，cursor 不在 preview 上 → 滚轮事件无法路由到 NSScrollView，preview 完全无法滚动；且 trackpad 双指滚动误触发 dismiss。修法：panel anchor 到 cursor + timestamp-gated leftMouseUp 抑制 + Escape fallback。
 
@@ -73,7 +75,7 @@
 
 - **🔗 ID 编号规范化** — auto-review 之前只有 `[HIGH-N]/M-N/L-N` severity label 没有 ID-DOMAIN-NNNN。修法：going-forward rule + 3 historical collision documented。
 
-- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.3
+- 全部改动已 ship 在 v2.9.4 binary；详见 [v2.9.4 entry](#v294-2026-09-27--v293-binary-重新发布--ci-test-workaround) 上一节
 
 ### v2.9.2 (2026-09-24) — 启动性能优化与审核加固
 
