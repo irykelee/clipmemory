@@ -119,31 +119,85 @@ EOF
           xcodebuild test -scheme ClipMemory
 EOF
 
+  # Fixture E (ID-CI-0015): clean release.yml that DOCUMENTS the
+  # fail-open pattern in a comment line — must PASS. The comment-
+  # skip guard added in 6847507 (rule #1's leading-`#` filter)
+  # should ignore the prose, not flag it. Without this fixture,
+  # a future refactor that over-broadens the skip regex to swallow
+  # real commands would not be caught.
+  cat >"$tmpdir/e.yml" <<'EOF'
+      # This release.yml step names the fail-open trap in prose so
+      # that the lint comment-skip guard can be tested. The fixture
+      # itself has no actual fail-open command.
+      - name: Run tests
+        # Documentation reference: a `xcodebuild test | tee` line
+        # would swallow under GH macOS default shell. Avoid it.
+        run: |
+          xcodebuild test -scheme ClipMemory
+EOF
+
   local failures=0
+  # ID-CI-0015 (2026-09-27): the previous implementation keyed on
+  # exit status (`check_workflow >/dev/null 2>&1`; non-zero =
+  # "caught"). That conflates "rule fired" with "script crashed"
+  # (e.g. set -u unbound variable, awk parse error, missing
+  # fixture file would all self-certify green for a/b/c). Use the
+  # ✅/❌ marker from check_workflow's own output instead: success
+  # exits 0 with "✅ PASS:" as the last line; failure exits 1 with
+  # "❌ FAIL:" in the output.
+  #
+  # Note: WORKFLOW is a top-level variable, NOT exported, so the
+  # env-var-prefix syntax (`WORKFLOW=... check_workflow`) does NOT
+  # reach the function in some bash versions. We export explicitly
+  # to be portable across bash 3.2 (macOS) and bash 5 (ubuntu CI).
   for label in a b c; do
-    if WORKFLOW="$tmpdir/${label}.yml" check_workflow >/dev/null 2>&1; then
-      echo "❌ FAIL: fixture ${label} (should have been caught)"
-      failures=$((failures + 1))
-    else
+    declare -g WORKFLOW="$tmpdir/${label}.yml"
+    export WORKFLOW
+    # Capture both check_workflow's exit code (PIPESTATUS[0]) and
+    # grep's exit code (PIPESTATUS[1]) — under set -o pipefail,
+    # $? would otherwise be the max, which conflates "rule fired"
+    # (check_workflow exit 1 after printing ❌) with "SIGPIPE" (rc
+    # 141) when grep -q exits early after the first match.
+    check_workflow 2>&1 | grep -q "^❌ FAIL"
+    cw_rc=${PIPESTATUS[0]}
+    if [[ "$cw_rc" -eq 1 ]]; then
       echo "✅ PASS: fixture ${label} correctly caught"
+    else
+      echo "❌ FAIL: fixture ${label} (check_workflow exit=$cw_rc, expected 1)"
+      failures=$((failures + 1))
     fi
   done
-  if WORKFLOW="$tmpdir/d.yml" check_workflow >/dev/null 2>&1; then
-    echo "✅ PASS: fixture d (clean release.yml) correctly allowed"
-  else
-    echo "❌ FAIL: fixture d should have passed"
-    failures=$((failures + 1))
-  fi
+  for label in d e; do
+    declare -g WORKFLOW="$tmpdir/${label}.yml"
+    export WORKFLOW
+    check_workflow 2>&1 | grep -q "^✅ PASS"
+    cw_rc=${PIPESTATUS[0]}
+    if [[ "$cw_rc" -eq 0 ]]; then
+      echo "✅ PASS: fixture ${label} (clean release.yml) correctly allowed"
+    else
+      echo "❌ FAIL: fixture ${label} should have passed (check_workflow exit=$cw_rc)"
+      failures=$((failures + 1))
+    fi
+  done
 
   if [[ "$failures" -gt 0 ]]; then
     echo "❌ $failures self-test fixture(s) failed — lint is broken"
     return 1
   fi
-  echo "✅ All 4 self-test fixtures passed"
+  echo "✅ All 5 self-test fixtures passed"
 }
 
 # ---- core check (extractable for selftest) -------------------------------
 check_workflow() {
+  # ID-CI-0015 (2026-09-27): ignore SIGPIPE so the function can
+  # complete all of its echo output before exiting, even when the
+  # caller pipes through `head` / `grep -q` and closes stdin early.
+  # Without this, `set -e` aborts check_workflow with rc=141 the
+  # moment any output after the first match triggers SIGPIPE, and
+  # the selftest marker-based check fails. The function still
+  # returns 1 explicitly on failure (or 0 on pass), so SIGPIPE
+  # suppression does not change the documented exit contract.
+  trap '' PIPE
   local violations=0
   local violation_lines=()
 
@@ -169,26 +223,36 @@ check_workflow() {
 
   if [[ "$violations" -gt 0 ]]; then
     echo ""
-    echo "❌ FAIL: fail-open patterns detected in $WORKFLOW"
+    echo '❌ FAIL: fail-open patterns detected in '"$WORKFLOW"
     echo ""
     echo "Violations (line numbers): ${violation_lines[*]}"
     echo ""
+    # ID-CI-0015 (2026-09-27): the WHY/FIX text was previously inside
+    # double-quoted echo strings, and the backticks (e.g. `|| true`)
+    # inside those strings triggered bash command substitution —
+    # `bash` actually ran `xcodebuild test` / `gh run view` / etc. as
+    # part of error formatting, which under set -e exited check_workflow
+    # before `return 1` ran, returning exit 0 (success) while still
+    # printing a half-FAIL message. The selftest under the new
+    # marker-based check caught this as rc=141 (SIGPIPE on the grep
+    # pipeline). Splitting single-quoted prose from the few
+    # double-quoted variable interpolations avoids the trap.
     echo "Why this matters:"
-    echo "  - \`xcodebuild test … | tee …\` returns tee's exit 0 under"
-    echo "    GH Actions macOS default shell (bash -e, NO pipefail);"
-    echo "    the swallow is tee's accident, not the test step's."
-    echo "  - A future \`shell: bash\` declaration on this step would"
-    echo "    silently flip the behavior to honor pipefail — and"
-    echo "    every swallowed failure would suddenly become fatal."
-    echo "  - Scripts/release.sh:1147 \`gh run watch --exit-status\`"
-    echo "    depends on test step being fail-closed to catch regressions."
+    echo '  - `xcodebuild test … | tee …` returns tee'"'"'s exit 0 under'
+    echo '    GH Actions macOS default shell (bash -e, NO pipefail);'
+    echo '    the swallow is tee'"'"'s accident, not the test step'"'"'s.'
+    echo '  - A future `shell: bash` declaration on this step would'
+    echo '    silently flip the behavior to honor pipefail — and'
+    echo '    every swallowed failure would suddenly become fatal.'
+    echo '  - Scripts/release.sh:1147 `gh run watch --exit-status`'
+    echo '    depends on test step being fail-closed to catch regressions.'
     echo ""
     echo "Historical lesson (ID-CI-0011 / ID-CI-0012):"
-    echo "  - 149906d added \`|| true\` as a v2.9.4-only workaround, but"
-    echo "    the comment claimed scope was unconditional and no \`if:\`"
-    echo "    guard, no expiry, no tracking issue were added."
-    echo "  - da3cc6a reverted 149906d. ID-CI-0012 closes the second"
-    echo "    hole: removing only the dead \`|| true\` token is no longer"
+    echo '  - 149906d added `|| true` as a v2.9.4-only workaround, but'
+    echo '    the comment claimed scope was unconditional and no `if:`'
+    echo '    guard, no expiry, no tracking issue were added.'
+    echo '  - da3cc6a reverted 149906d. ID-CI-0012 closes the second'
+    echo '    hole: removing only the dead `|| true` token is no longer'
     echo "    enough — the bare \`xcodebuild test | tee\` pattern is"
     echo "    also caught."
     echo ""

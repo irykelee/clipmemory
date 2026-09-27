@@ -158,15 +158,20 @@ jobs:
       # timed out under load. The trade-off was "fail-open: allow
       # runner flake to ship" vs. "fail-closed: real regressions +
       # flakes both block". Picked fail-closed because:
-      #  (a) Local `Scripts/release.sh run_preflight --tests` is the
-      #      authoritative gate — runs the same xcodebuild test
-      #      invocation BEFORE the tag is pushed. If local preflight
-      #      passes, the binary is known-good by the time this step
-      #      runs; GH Actions runner flake on the same xcodebuild
-      #      invocation is a re-run, not a regression. Bypass paths
-      #      exist (`--skip-tests` flag, direct `git push v*`
-      #      skipping preflight — both opt-in escape hatches, not
-      #      default behavior).
+      #  (a) Local `Scripts/release.sh vX.Y.Z --yes` is the
+      #      authoritative gate — it calls the internal `run_preflight`
+      #      function (release.sh:771) before the tag is pushed. Note:
+      #      `run_preflight` is NOT a CLI command (it's a bash function
+      #      inside release.sh), and `--tests` is NOT a recognized CLI
+      #      flag (release.sh:855-867 accepts only --yes | --skip-tests
+      #      | --dry-run | --skip-readme-sync | --verify-install).
+      #      `run_preflight --tests` runs the same xcodebuild test
+      #      invocation. If local preflight passes, the binary is
+      #      known-good by the time this step runs; GH Actions runner
+      #      flake on the same xcodebuild invocation is a re-run, not
+      #      a regression. Bypass paths exist (`--skip-tests` flag,
+      #      direct `git push v*` skipping preflight — both opt-in
+      #      escape hatches, not default behavior).
       #  (b) Defense-in-depth: ci.yml's `build-and-test` check is a
       #      required status check on main and runs the same
       #      xcodebuild test invocation fail-closed on every push.
@@ -189,12 +194,36 @@ jobs:
       #      timeout is a separate concern (tracked outside this
       #      commit).
       - name: Run tests
+        # ID-CI-0015 (2026-09-27): capture the xcodebuild test log
+        # into a step-output file and upload it as a GH Actions
+        # artifact on failure. The 149906d / ID-RELEASE-0003 commit
+        # claimed `/tmp/xcb-release-test.log` was "preserved for
+        # diagnostics" but GH Actions runners are ephemeral —
+        # `/tmp` is destroyed at job end and there was no
+        # `upload-artifact`. v2.9.3's failing test was therefore
+        # never identifiable from outside the runner (auto-review
+        # P1 #2 in 20260927-205133). Steps (1) capture, (2) upload
+        # on failure, (3) keep the step fail-closed.
+        id: xcodebuild-test
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' CODE_SIGN_IDENTITY="-"
+            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-release-test.log
           else
-            xcodebuild test -scheme ClipMemory -destination 'platform=macOS'
+            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' 2>&1 | tee /tmp/xcb-release-test.log
           fi
+
+      # ID-CI-0015 (2026-09-27): if Run tests fails, upload the
+      # captured log as a GH Actions artifact so the failure is
+      # diagnosticable from outside the runner. Named after the
+      # failing step id (`xcodebuild-test`) for cross-reference.
+      - name: Upload xcodebuild test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-test-log
+          path: /tmp/xcb-release-test.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Package and update local Cask
         # Package is publish-adjacent (tarball + verify_package) and its
