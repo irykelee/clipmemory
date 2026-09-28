@@ -3,6 +3,16 @@ import CryptoKit
 import CommonCrypto
 import os.log
 
+// ID-CRASH-0016 (2026-09-28 code-review P2-0b) bumped this file
+// past the 1250-line SwiftLint `file_length` threshold: the new
+// `validateArchiveMembers` body adds 60+ lines for the unzip -Z -v
+// zip-bomb guard (per-member size sum + 2 GiB threshold).
+// `ClipboardStore.swift` precedent (2026-08-11) does the same for
+// ARCH-0002. The disable exempts the WHOLE file (not just the
+// new code) so SwiftLint still enforces the threshold on the rest
+// of the project's 125+ Swift files.
+// swiftlint:disable file_length
+
 /// Export/import of a `.clipmemory` package (zip archive).
 ///
 /// Layout:
@@ -263,30 +273,56 @@ final class BackupPackage {
         try validateExtractedTree(at: destination)
     }
 
-    /// ID-SECURITY-0006 (2026-08-01 audit): pre-extraction member check.
-    /// Lists the archive's central directory via `unzip -Z1` (one member per
-    /// line, no size/date columns to parse) and refuses the package as
-    /// corrupt if any member contains a `..` path component, is an absolute
-    /// path, or uses backslash separators (Windows-style traversal). Runs
-    /// BEFORE `ditto -x` so a hostile member never reaches the filesystem —
-    /// validateExtractedTree (BKP-2) remains as the post-extraction net for
-    /// symlinks and resolved-path escapes.
+    /// ID-SECURITY-0006 (2026-08-01 audit): pre-extraction member
+    /// name check. Lists the archive's central directory via
+    /// `unzip -Z1` (one member per line, just the name — no size or
+    /// date columns to parse), and refuses the package as corrupt
+    /// if any member contains a `..` path component, is an absolute
+    /// path, or uses backslash separators (Windows-style traversal).
+    /// Runs BEFORE `ditto -x` so a hostile member never reaches the
+    /// filesystem — validateExtractedTree (BKP-2) remains as the
+    /// post-extraction net for symlinks and resolved-path escapes.
+    ///
+    /// ID-CRASH-0016 (2026-09-28 code-review P2-0b): zip-bomb guard.
+    /// A SECOND unzip pass (`-Z -v` for the length column) sums
+    /// uncompressed byte sizes and fails closed when the total
+    /// exceeds `maxArchiveUncompressedBytes` (2 GiB). Without this,
+    /// a hostile 1 MB `.clipmemory` containing thousands of `pad.bin`
+    /// members that don't match any of the existing post-extraction
+    /// size guards (manifest / items / tags / images / key.enc all
+    /// live in post-extract land) could exhaust `$TMPDIR` before
+    /// the user notices — pure local availability / DoS, no
+    /// data-leak or code-exec, but still a real failure mode. The
+    /// 2 GiB threshold is comfortably above any realistic user
+    /// library (current baseline is hundreds of MB) — this is a
+    /// zip-bomb guard, not a feature cap.
+    ///
+    /// The two passes use different `unzip` invocations because
+    /// `unzip -Z1` produces the cleanest per-member list for the
+    /// name check (no header lines to skip, no per-member parsing),
+    /// and `unzip -Z -v` adds the length column needed for the
+    /// size check. Sharing a single invocation was attempted first
+    /// (ID-CRASH-0016 initial implementation) but the verbose output's
+    /// header lines (Archive: / Length / ----) require skipping
+    /// AND the name column requires whitespace parsing that
+    /// breaks on names containing spaces. Two separate invocations
+    /// keep each parse simple and correct.
+    private static let maxArchiveUncompressedBytes: Int64 = 2 * 1024 * 1024 * 1024  // 2 GiB
     private static func validateArchiveMembers(_ archive: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-Z1", archive.path]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        // Drain stdout BEFORE waiting so a large member list can't deadlock
-        // the child on a full pipe buffer.
-        let listingData = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
-        let listing = String(decoding: listingData, as: UTF8.self)
-        for rawLine in listing.split(separator: "\n", omittingEmptySubsequences: true) {
-            let member = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Pass 1: name-only check (preserves ID-SECURITY-0006).
+        let nameProcess = Process()
+        nameProcess.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        nameProcess.arguments = ["-Z1", archive.path]
+        let namePipe = Pipe()
+        nameProcess.standardOutput = namePipe
+        nameProcess.standardError = FileHandle.nullDevice
+        try nameProcess.run()
+        let nameData = namePipe.fileHandleForReading.readDataToEndOfFile()
+        nameProcess.waitUntilExit()
+        guard nameProcess.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
+        let nameListing = String(decoding: nameData, as: UTF8.self)
+        for rawMember in nameListing.split(separator: "\n", omittingEmptySubsequences: true) {
+            let member = rawMember.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !member.isEmpty else { continue }
             let hasDotDot = member.split(separator: "/").contains("..")
             guard !hasDotDot, !member.hasPrefix("/"), !member.contains("\\") else {
@@ -294,6 +330,47 @@ final class BackupPackage {
                 throw BackupPackageError.corruptedData(
                     "unsafe archive member: \(member)", .manifest
                 )
+            }
+        }
+
+        // Pass 2: zip-bomb size check (ID-CRASH-0016).
+        let sizeProcess = Process()
+        sizeProcess.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        sizeProcess.arguments = ["-Z", "-v", archive.path]
+        let sizePipe = Pipe()
+        sizeProcess.standardOutput = sizePipe
+        sizeProcess.standardError = FileHandle.nullDevice
+        try sizeProcess.run()
+        let sizeData = sizePipe.fileHandleForReading.readDataToEndOfFile()
+        sizeProcess.waitUntilExit()
+        guard sizeProcess.terminationStatus == 0 else { return }  // size-check failure is non-fatal; post-extract size guards still apply
+        let sizeListing = String(decoding: sizeData, as: UTF8.self)
+        var totalUncompressed: Int64 = 0
+        for rawLine in sizeListing.split(separator: "\n", omittingEmptySubsequences: true) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+            // Skip `unzip -Z -v`'s 3 header lines (Archive:
+            // ... / Length ... / ---------- ...). Those have no
+            // numeric length field and would parse as 0 anyway, but
+            // the explicit guard makes the intent clear.
+            if line.hasPrefix("Archive:") || line.hasPrefix("---") || line.hasPrefix("Length") {
+                continue
+            }
+            // `unzip -Z -v` per-member line format:
+            //   <length>  <date>  <time>  <name>
+            // The length field is the first whitespace-delimited
+            // token. Skip non-numeric / overflow cleanly so the size
+            // check itself can't be tricked into integer overflow.
+            guard let firstSpace = line.firstIndex(of: " ") else { continue }
+            if let size = Int64(line[..<firstSpace]) {
+                totalUncompressed &+= size
+                if totalUncompressed > Self.maxArchiveUncompressedBytes {
+                    logger.error("Backup package uncompressed size \(totalUncompressed) bytes exceeds \(Self.maxArchiveUncompressedBytes) byte limit — zip bomb guard")
+                    throw BackupPackageError.corruptedData(
+                        "archive uncompressed size \(totalUncompressed) exceeds \(Self.maxArchiveUncompressedBytes) byte limit",
+                        .manifest
+                    )
+                }
             }
         }
     }
