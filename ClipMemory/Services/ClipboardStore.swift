@@ -53,6 +53,17 @@ extension Notification.Name {
     /// independently from `.clipboardSaveFailed` / `.encryptionFailed`.
     /// Carries no payload — consumers should debounce.
     static let tagSaveFailed = Notification.Name("ClipboardStore.tagSaveFailed")
+    /// ID-CRASH-0012 (2026-09-28 code-review P1-2): posted by
+    /// `ImageStorage.saveImage()` on disk-write failure (e.g. disk
+    /// full, permission denied). Mirror of `.clipboardSaveFailed` /
+    /// `.tagSaveFailed` for the image path. The previous `catch`
+    /// only logged + completed with `nil`, hiding the failure
+    /// from the user — items / tags were given three-piece
+    /// gates (ID-SILENT-0021 + ID-CRASH-0007), images were not.
+    /// `userInfo["source"]` = "imageSave" so the
+    /// `saveAlertThrottler` buckets this independently from items
+    /// / encryption / tag sources.
+    static let imageSaveFailed = Notification.Name("ClipboardStore.imageSaveFailed")
     /// H-2 (2026-08-08): posted by `TrashStore.loadTrashedItems()` when
     /// either (a) `backend.load()` throws a fresh error (corrupt blob
     /// just detected) or (b) the persistent sentinel from a prior

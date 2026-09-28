@@ -482,6 +482,25 @@ class ImageStorage {
             } catch {
                 self.removePending(filename)
                 self.logger.error("Failed to save encrypted image: \(error.localizedDescription)")
+                // ID-CRASH-0012 (2026-09-28 code-review P1-2): mirror the
+                // encryption-failure path above — log + post
+                // `.imageSaveFailed` on main thread so observers can
+                // bucket this in `saveAlertThrottler`. The previous
+                // path completed with `nil` and only logged, hiding
+                // disk-full / permission-revoked failures from the
+                // user. Three-piece gate (data path's three-piece:
+                // log + signal + retry, but image saves are
+                // fire-and-forget through the completion handler
+                // so no retry queue here — the user sees the
+                // notification and can free disk space, retry the
+                // copy, etc.).
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .imageSaveFailed,
+                        object: self,
+                        userInfo: ["source": "imageSave"]
+                    )
+                }
                 DispatchQueue.main.async { completion(nil) }
                 return
             }

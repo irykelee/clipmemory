@@ -30,6 +30,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // sourceKey bucket). Separate observer variable because
     // NotificationCenter has no multi-name API in Foundation.
     private var tagSaveFailedObserver: NSObjectProtocol?
+    // ID-CRASH-0012 (2026-09-28 code-review P1-2): mirror observer
+    // for `.imageSaveFailed` so image-write failures route through
+    // the same throttler + NSAlert UI as items-save + tag-save
+    // failures (independent sourceKey bucket "imageSave").
+    private var imageSaveFailedObserver: NSObjectProtocol?
     // H-2 (2026-08-08): observer for `.trashLoadFailed` so the user
     // sees a signal when the trash blob was corrupt. Without this
     // observer, the quarantine + sweep-skip happens silently and the
@@ -685,6 +690,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let strongSelf = self else { return }
             strongSelf.handleSaveFailureNotification(note)
         }
+
+        // ID-CRASH-0012 (2026-09-28 code-review P1-2): mirror observer
+        // for `.imageSaveFailed` — items + tags + images all funnel
+        // through `handleSaveFailureNotification`, which routes via
+        // `saveAlertThrottler` with sourceKey buckets. "imageSave"
+        // is its own bucket so an image disk-full doesn't suppress
+        // an items-save alert (or vice versa).
+        imageSaveFailedObserver = NotificationCenter.default.addObserver(
+            forName: .imageSaveFailed, object: nil, queue: .main
+        ) { [weak self] note in
+            // Same XCTest guard as tagSaveFailedObserver above.
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard let strongSelf = self else { return }
+            strongSelf.handleSaveFailureNotification(note)
+        }
     }
 
     @objc func showMainWindow() {
@@ -951,6 +971,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // cleanup for `.tagSaveFailed`. Same leak guard as
         // clipboardSaveFailedObserver above.
         if let o = tagSaveFailedObserver { NotificationCenter.default.removeObserver(o) }
+        // ID-CRASH-0012 (2026-09-28 code-review P1-2): mirror observer
+        // cleanup for `.imageSaveFailed`.
+        if let o = imageSaveFailedObserver { NotificationCenter.default.removeObserver(o) }
         // M-2 / round-15 Finding A (2026-08-08): trashLoadFailedObserver
         // was registered in H-2 but never removed in deinit — observer
         // leak across AppDelegate lifetimes. Mirrors the clipboardSaveFailed
