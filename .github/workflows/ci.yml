@@ -3,6 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+    # ID-CRASH-0019 (2026-09-28 code-review P2-16): tag trigger so
+    # `git push vX.Y.Z` also runs the 5 custom lint gates. The
+    # release path is the only moment those gates matter; today
+    # it's exactly when they're skipped. release.yml has zero
+    # lint steps, so without this trigger the lint-side defense
+    # is inert on release commits. `'v*'` matches the project's
+    # semver-style tag convention (verified: tags are vX.Y.Z where
+    # X is the major).
+    tags: ['v*']
   pull_request:
     branches: [main]
 

@@ -827,7 +827,16 @@ struct ClipboardItemRow: View, Equatable {
     /// localized placeholder for genuinely unparseable items.
     private var plainTextFallback: String {
         guard item.type == .richText else { return "" }
-        return store.getRTFPlaintext(item)
+        // ID-CRASH-0020 (2026-09-28 code-review P2-10): read cache only.
+        // `getRTFPlaintext` is `nonisolated` and on a cold cache does a
+        // full AES-GCM decrypt + NSAttributedString parse (20-100 ms)
+        // on the main thread, inside a SwiftUI view body. `cachedRtfPlaintext`
+        // reads the in-memory cache populated by `loadRichText`; cold items
+        // skip this pass and resurface after the background prewarm
+        // debounces (per ContentView.swift:321-332's contract). Mirrors
+        // ContentView.swift:333-334 which already uses the cache-first
+        // pattern.
+        return store.cachedRtfPlaintext(item) ?? ""
     }
 
     /// The item as it currently exists in the store (the captured row struct
