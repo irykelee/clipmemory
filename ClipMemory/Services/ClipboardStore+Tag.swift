@@ -184,7 +184,44 @@ extension ClipboardStore {
         // ID-LIFE-0023 (2026-07-31): no cancel() here — see flushSave().
         // A cancelled source silently ignores later schedule() calls,
         // which used to kill every debounced tag save after the first flush.
-        saveTags()
+        // ID-CRASH-0007 (2026-09-28 code-review P1-1): three legs of the
+        // data-persistence gate, mirroring `flushSave()`'s items path
+        // (ClipboardStore+Persistence.swift:143-167). The previous
+        // `catch`-only-log path left `tagNeedsSave = false` (line 183)
+        // and the next debounce timer fired the early `guard` and
+        // exited — silently losing the user's tags for the rest of
+        // the session. Now: re-arm the flag, schedule an
+        // exponential-backoff retry via the same `tagSaveTimer` (reuse,
+        // not a parallel retry queue), and post `.tagSaveFailed` so
+        // AppDelegate's `saveAlertThrottler` can bucket this
+        // independently from items / encryption sources.
+        do {
+            try saveTags()
+            // Mirror items: reset retry counter on success so a
+            // recovered-then-broken-again disk walks the backoff
+            // ladder from the base again.
+            tagSaveRetryState.recordSuccess()
+        } catch {
+            tagNeedsSave = true
+            tagSaveRetryState.recordFailure()
+            let backoff = tagSaveRetryState.nextBackoffSeconds
+            logger.error("ID-CRASH-0007: saveTags failed (attempt \(self.tagSaveRetryState.consecutiveFailures)): \(error) — auto-retry in \(backoff)s")
+            scheduleTagSaveRetry(after: backoff)
+            NotificationCenter.default.post(
+                name: .tagSaveFailed,
+                object: self,
+                userInfo: ["source": "tagSave"]
+            )
+        }
+    }
+
+    // ID-CRASH-0007 (2026-09-28 code-review P1-1): autonomous retry
+    // scheduler for the tag save path. Mirrors `scheduleSaveRetry`
+    // (items path) — reuses the existing `tagSaveTimer` source and
+    // `tagSaveTimerQueue` rather than creating a parallel retry queue.
+    private func scheduleTagSaveRetry(after seconds: TimeInterval) {
+        guard let timer = tagSaveTimer else { return }
+        timer.schedule(deadline: .now() + seconds)
     }
 
     /// Merges imported backup tags by id (existing ids win). Returns count added.

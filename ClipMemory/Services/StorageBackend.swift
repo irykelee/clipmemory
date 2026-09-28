@@ -149,6 +149,22 @@ final class FileStorageBackend: StorageBackend {
     func saveTags(_ tags: [Tag]) throws {
         let data = try Self.tagsEncoder.encode(tags)
         defaults.set(data, forKey: storageKey)
+        // ID-CRASH-0007 (2026-09-28 code-review P1-1): `defaults.set`
+        // is `Void`-returning, never throws on disk-full / cfprefsd
+        // rejection. Mirror `saveBlob()`'s read-back so the upstream
+        // `flushTagSave catch` is actually reachable on write failure.
+        // `synchronize()` is the only mechanism to nudge the daemon
+        // to write the in-memory cache before we read it back. The
+        // read-back catches in-memory set failures + most daemon
+        // failures; async daemon flush failures and post-set process
+        // crashes are still bounded by `StorageBackend.swift:96-119`'s
+        // documented honesty about what read-back can't catch.
+        defaults.synchronize()
+        guard let readBack = defaults.data(forKey: storageKey),
+              readBack == data else {
+            logger.error("ID-CRASH-0007: saveTags failed read-back for key '\(self.storageKey)' (silent write failure)")
+            throw CocoaError(.fileWriteUnknown)
+        }
     }
 }
 

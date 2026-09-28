@@ -24,6 +24,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var languageObserver: NSObjectProtocol?
     private var encryptionFailedObserver: NSObjectProtocol?
     private var clipboardSaveFailedObserver: NSObjectProtocol?
+    // ID-CRASH-0007 (2026-09-28 code-review P1-1): mirror observer for
+    // `.tagSaveFailed` so tag-save failures route through the same
+    // throttler + NSAlert UI as items-save failures (independent
+    // sourceKey bucket). Separate observer variable because
+    // NotificationCenter has no multi-name API in Foundation.
+    private var tagSaveFailedObserver: NSObjectProtocol?
     // H-2 (2026-08-08): observer for `.trashLoadFailed` so the user
     // sees a signal when the trash blob was corrupt. Without this
     // observer, the quarantine + sweep-skip happens silently and the
@@ -629,18 +635,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // .clipboardSaveFailed to verify flushSave's failure path;
             // runModal here would hang CI forever.
             guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
-            guard let self else { return }
-            let source = EncryptionFailedAlertThrottler.sourceKey(for: note)
-            let decision = self.saveAlertThrottler.recordFailure(source: source)
-            guard decision.shouldShowAlert else { return }
-            let a = NSAlert()
-            a.messageText = L10n.error
-            a.informativeText = decision.failureCount > 1
-                ? L10n.alertSaveFailedCount(decision.failureCount)
-                : L10n.alertSaveFailed
-            a.alertStyle = .warning
-            a.addButton(withTitle: L10n.buttonConfirm)
-            a.runModal()
+            guard let strongSelf = self else { return }
+            strongSelf.handleSaveFailureNotification(note)
+        }
+
+        // ID-CRASH-0007 (2026-09-28 code-review P1-1): mirror
+        // observer for `.tagSaveFailed` so a tag-save failure paths
+        // through the same throttler + NSAlert UI as items-save
+        // failures. Separate observer (rather than `forNames:`)
+        // because NotificationCenter has no multi-name API in
+        // Foundation; body delegates to a shared handler so both
+        // notification names funnel through one recordFailure call.
+        tagSaveFailedObserver = NotificationCenter.default.addObserver(
+            forName: .tagSaveFailed, object: nil, queue: .main
+        ) { [weak self] note in
+            // Same XCTest guard as clipboardSaveFailedObserver above.
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard let strongSelf = self else { return }
+            strongSelf.handleSaveFailureNotification(note)
         }
     }
 
@@ -904,6 +916,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let o = languageObserver { NotificationCenter.default.removeObserver(o) }
         if let o = encryptionFailedObserver { NotificationCenter.default.removeObserver(o) }
         if let o = clipboardSaveFailedObserver { NotificationCenter.default.removeObserver(o) }
+        // ID-CRASH-0007 (2026-09-28 code-review P1-1): mirror observer
+        // cleanup for `.tagSaveFailed`. Same leak guard as
+        // clipboardSaveFailedObserver above.
+        if let o = tagSaveFailedObserver { NotificationCenter.default.removeObserver(o) }
         // M-2 / round-15 Finding A (2026-08-08): trashLoadFailedObserver
         // was registered in H-2 but never removed in deinit — observer
         // leak across AppDelegate lifetimes. Mirrors the clipboardSaveFailed
@@ -968,5 +984,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let response = alert.runModal()
         if failure == .secureRandomUnavailable { return .quit }
         return response == .alertSecondButtonReturn ? .regenerate : .quit
+    }
+
+    // ID-CRASH-0007 (2026-09-28 code-review P1-1): shared handler
+    // for both `.clipboardSaveFailed` (items) and `.tagSaveFailed`
+    // (tags) observers. Routes through `saveAlertThrottler` with
+    // the source key from the notification's `userInfo`, so a tag
+    // disk-full doesn't suppress an items alert (and vice versa).
+    // Both observers route here to share the alert presentation
+    // and the XCTest guard logic. Extracted from the original
+    // inline closure (lines 625-651 pre-ID-CRASH-0007) so the
+    // `.tagSaveFailed` observer can call the exact same body.
+    fileprivate func handleSaveFailureNotification(_ note: Notification) {
+        // Same XCTest guard as the original observer: tests
+        // deliberately post `.clipboardSaveFailed` to verify
+        // `flushSave()`'s failure path; runModal here would hang
+        // CI forever.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        let source = EncryptionFailedAlertThrottler.sourceKey(for: note)
+        let decision = saveAlertThrottler.recordFailure(source: source)
+        guard decision.shouldShowAlert else { return }
+        let a = NSAlert()
+        a.messageText = L10n.error
+        a.informativeText = decision.failureCount > 1
+            ? L10n.alertSaveFailedCount(decision.failureCount)
+            : L10n.alertSaveFailed
+        a.alertStyle = .warning
+        a.addButton(withTitle: L10n.buttonConfirm)
+        a.runModal()
     }
 }

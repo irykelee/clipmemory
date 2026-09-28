@@ -44,6 +44,15 @@ extension Notification.Name {
     /// because a single transient backend hiccup can fire this repeatedly
     /// before the user takes action.
     static let clipboardSaveFailed = Notification.Name("ClipboardStore.clipboardSaveFailed")
+    /// ID-CRASH-0007 (2026-09-28 code-review P1-1): posted by
+    /// `ClipboardStore.flushTagSave()` on `FileStorageBackend.saveTags`
+    /// read-back failure (the tag-equivalent of `.clipboardSaveFailed`
+    /// for items). Mirror of the items three-piece gate: loud log
+    /// + retry schedule + user-visible notification. `userInfo["source"]`
+    /// = "tagSave" so the `saveAlertThrottler` can bucket this
+    /// independently from `.clipboardSaveFailed` / `.encryptionFailed`.
+    /// Carries no payload — consumers should debounce.
+    static let tagSaveFailed = Notification.Name("ClipboardStore.tagSaveFailed")
     /// H-2 (2026-08-08): posted by `TrashStore.loadTrashedItems()` when
     /// either (a) `backend.load()` throws a fresh error (corrupt blob
     /// just detected) or (b) the persistent sentinel from a prior
@@ -1521,6 +1530,16 @@ final class ClipboardStore: ObservableObject {
     /// `saveRetryState.recordSuccess()` / `recordFailure()` (mutating
     /// methods require write access). Logic unchanged.
     var saveRetryState = SaveRetryState()
+
+    // ID-CRASH-0007 (2026-09-28 code-review P1-1): mirror of
+    // `saveRetryState` for the tag save path. The flushTagSave
+    // three-piece gate (ClipboardStore+Tag.swift) reuses this
+    // pattern — consecutive failures bump the backoff ladder so a
+    // transient disk-full/permission-denied walks 0.5s → 1s → 2s …
+    // before re-trying. Visibility loosened from `private` to
+    // `internal` so `ClipboardStore+Tag.swift` can call the
+    // mutating methods.
+    var tagSaveRetryState = SaveRetryState()
 
     // P1-AUDIT-2026-09-22 (P2-8, Task 2 split): all tag operations
     // (`addTag` / `addTag(to:tagId:)` / `removeTag` /
