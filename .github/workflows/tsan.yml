@@ -187,6 +187,28 @@ jobs:
             ENABLE_THREAD_SANITIZER=YES \
             2>&1 | tee /tmp/tsan.log
 
+      # ID-CRASH-0009 (2026-09-28 code-review P1-4): fail-closed
+      # gate for TSan race detection. Before this step, TSan
+      # job-level `continue-on-error: true` (line 33) meant a job
+      # full of races rendered green — `raceCount` was only read by
+      # the github-script PR-comment step (line 121 per the
+      # report), never as a step-level exit code. Adding this
+      # grep-count-exit-1 step turns the suite into a real CI gate.
+      # Mirrors the existing "Build instrumentation canary" gate
+      # pattern below (also a grep + exit 1).
+      - name: TSan race count gate (fail-closed)
+        if: always()
+        run: |
+          races=$(grep -c "WARNING: ThreadSanitizer" /tmp/tsan.log || true)
+          if [ "${races:-0}" -eq 0 ]; then
+            echo "✅ TSan: 0 races detected"
+          else
+            echo "::error::$races data race(s) detected by TSan"
+            echo "--- race sites (first 20) ---"
+            grep -n "WARNING: ThreadSanitizer" /tmp/tsan.log | head -20
+            exit 1
+          fi
+
       - name: Build instrumentation canary (compiled evidence)
         if: always()
         run: |
