@@ -186,8 +186,15 @@ generate_release_notes() {
     date=$(date +%F)
     if [[ -n "$prev" ]]; then range="v${prev}..HEAD"; else range="HEAD"; fi
 
-    # REL-24: associative array theme_key → emitted line (final state wins).
-    declare -A emitted_lines=()
+    # ID-CRASH-0011 (2026-09-28 code-review P1-6): parallel arrays
+    # instead of bash 3.2-incompatible associative array. macOS stock
+    # bash 3.2.57 raises 'declare: -A: invalid option' (verified by
+    # code-review 2026-09-28), aborting `generate_release_notes` before
+    # any output. Semantics unchanged: emitted_keys[i] holds the churn
+    # theme, emitted_values[i] holds the last emitted line for that
+    # theme. Linear-scan over emitted_keys on hits (script's total
+    # churn themes are single-digit, so linear scan is fine).
+    local -a emitted_keys=() emitted_values=()
     local highlights="" fixes="" others="" subject bucket line theme
     while IFS= read -r subject; do
         [[ -z "$subject" ]] && continue
@@ -210,14 +217,29 @@ generate_release_notes() {
             # final state correct, we always update the emitted line to the
             # CURRENT subject's final description, but never emit twice.
             final_desc=$(churn_final "$theme")
-            old_line="${emitted_lines[$theme]:-}"
+            idx=-1
+            for ((i = 0; i < ${#emitted_keys[@]}; i++)); do
+                if [[ "${emitted_keys[$i]}" == "$theme" ]]; then
+                    idx=$i
+                    break
+                fi
+            done
+            old_line=""
+            if [[ $idx -ge 0 ]]; then
+                old_line="${emitted_values[$idx]}"
+            fi
             if [[ -n "$old_line" ]]; then
                 highlights="${highlights//$old_line/}"
                 fixes="${fixes//$old_line/}"
                 others="${others//$old_line/}"
             fi
             line="- **${final_desc}**"
-            emitted_lines[$theme]="$line"
+            if [[ $idx -ge 0 ]]; then
+                emitted_values[$idx]="$line"
+            else
+                emitted_keys+=("$theme")
+                emitted_values+=("$line")
+            fi
             case "$bucket" in
                 highlights) highlights+="$line"$'\n' ;;
                 fixes)      fixes+="$line"$'\n' ;;
