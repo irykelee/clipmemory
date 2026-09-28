@@ -68,6 +68,14 @@ final class ClipboardStoreTests: XCTestCase {
     }
 
     override func tearDown() {
+        // ID-CRASH-0018 (2026-09-28 code-review P2-1): clear
+        // NSPasteboard.general so the last test's image / RTF /
+        // plain-text payload doesn't linger in the user's clipboard
+        // after the suite ends. Sibling pasteboard-touching test
+        // files (ClipboardMonitorSkipWindowTests /
+        // ClipboardStoreRTFCacheTests / CopyOcrTextOwnWriteTests)
+        // already do this; this file was the gap.
+        NSPasteboard.general.clearContents()
         // Clean up any image files we staged via ImageStorage.shared
         for filename in stagedImageFilenames {
             ImageStorage.shared.deleteImage(filename: filename)
