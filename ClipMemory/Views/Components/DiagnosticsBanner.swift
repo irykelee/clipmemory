@@ -32,6 +32,12 @@ struct DiagnosticsBanner: View {
 
     private var displayText: String? {
         if diagnostics.keyUnavailable { return L10n.bannerKeyUnavailable }
+        // ID-CRASH-0008 (2026-09-28 code-review P1-3): the user's
+        // tag sidebar can empty silently when `loadTags()` fails.
+        // Surface it on the same banner UI as keyUnavailable /
+        // dataCorruptedCount so a failed tags-load gets the same
+        // visibility as other persistence failures.
+        if diagnostics.tagsLoadFailed { return L10n.bannerTagsLoadFailed }
         if diagnostics.totalCorruptedCount > 0 {
             return L10n.bannerDataCorruptedCount(diagnostics.totalCorruptedCount)
         }

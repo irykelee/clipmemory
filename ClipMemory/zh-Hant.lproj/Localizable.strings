@@ -344,6 +344,7 @@
 "banner.key.unavailable" = "解鎖後重試";
 "banner.data.corrupted.count" = "%d 條損壞";
 "banner.data.corrupted.count.one" = "%d 條損壞";
+"banner.tags.load.failed" = "標籤載入失敗 — 側邊欄已從備份還原或為空。";
 
 /* VoiceOver / 無障礙標籤（2026-07-30 稽核 L10N-0001..0007） */
 "search.clear" = "清除搜尋";

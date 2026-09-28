@@ -346,6 +346,7 @@
 "banner.key.unavailable" = "Tente novamente após desbloquear";
 "banner.data.corrupted.count" = "%d itens corrompidos";
 "banner.data.corrupted.count.one" = "%d item corrompido";
+"banner.tags.load.failed" = "Falha ao carregar tags — a barra lateral foi restaurada do backup ou está vazia.";
 
 /* VoiceOver / rótulos de acessibilidade (auditoria 2026-07-30 L10N-0001..0007) */
 "search.clear" = "Limpar pesquisa";

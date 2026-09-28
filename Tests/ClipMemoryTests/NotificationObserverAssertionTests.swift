@@ -117,10 +117,14 @@ final class NotificationObserverAssertionTests: XCTestCase {
         let reason: String
     }
     private let knownZeroObserverWhitelist: [WhitelistEntry] = [
-        WhitelistEntry(
-            shortName: "tagBackendCorrupted",
-            ledgerID: "(none — v2 audit H-1 dead channels list at v2 report :28/:34)",
-            reason: "Posted in `ClipboardStore.loadTags` only; consumer (Settings diagnostics banner) is reserved channel per audit CLIP-7, no observer yet."),
+        // ID-CRASH-0008 (2026-09-28 code-review P1-3): removed
+        // `tagBackendCorrupted` from the dead-channel whitelist.
+        // Previously whitelisted as "Posted in `ClipboardStore.loadTags`
+        // only; consumer (Settings diagnostics banner) is reserved
+        // channel per audit CLIP-7, no observer yet." Now:
+        // AppDelegate.tagBackendCorruptedObserver wires
+        // `DiagnosticsBanner.tagsLoadFailed` on .main, so there IS a
+        // consumer. The reverse-assertion now enforces it.
         // H-1 (2026-08-08): clipboardSaveFailed now has a real consumer
         // — AppDelegate.clipboardSaveFailedObserver wires NSAlert via the
         // existing 60s EncryptionFailedAlertThrottler. Removed from the

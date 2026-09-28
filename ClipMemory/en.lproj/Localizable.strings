@@ -346,6 +346,7 @@
 "banner.key.unavailable" = "Try again after unlock";
 "banner.data.corrupted.count" = "%d items corrupted";
 "banner.data.corrupted.count.one" = "%d item corrupted";
+"banner.tags.load.failed" = "Tags failed to load — sidebar restored from backup or empty.";
 
 /* VoiceOver / Accessibility labels (2026-07-30 audit L10N-0001..0007) */
 "search.clear" = "Clear search";

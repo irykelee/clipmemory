@@ -342,6 +342,7 @@
 "banner.key.unavailable" = "ロック解除後に再試行";
 "banner.data.corrupted.count" = "%d 件破損";
 "banner.data.corrupted.count.one" = "%d 件破損";
+"banner.tags.load.failed" = "タグの読み込みに失敗しました — サイドバーはバックアップから復元されるか空になります。";
 
 /* VoiceOver / アクセシビリティラベル（2026-07-30 監査 L10N-0001..0007） */
 "search.clear" = "検索をクリア";

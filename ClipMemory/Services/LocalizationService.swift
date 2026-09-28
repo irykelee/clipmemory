@@ -597,6 +597,12 @@ struct L10n {
     // P0-2: diagnostics banner (see DecryptionDiagnostics)
     static var bannerKeyUnavailable: String { string("banner.key.unavailable") }
     static func bannerDataCorruptedCount(_ n: Int) -> String { plural("banner.data.corrupted.count", n) }
+    // ID-CRASH-0008 (2026-09-28 code-review P1-3): banner copy for
+    // tags-load failure (the user's tag sidebar emptied with zero
+    // signal before this fix). No plural variant — the failure
+    // is binary (tags either loaded or they didn't), unlike
+    // `dataCorruptedCount` which has a count.
+    static var bannerTagsLoadFailed: String { string("banner.tags.load.failed") }
 
     // MARK: - VoiceOver / Accessibility labels (Round-2 2026-07-30 audit, L10N-0001..0007)
     /// ID-L10N-0002: Clear search button label (ContentView toolbar × icon).

@@ -346,6 +346,7 @@
 "banner.key.unavailable" = "Inténtalo de nuevo tras desbloquear";
 "banner.data.corrupted.count" = "%d elementos dañados";
 "banner.data.corrupted.count.one" = "%d elemento dañado";
+"banner.tags.load.failed" = "Error al cargar etiquetas — la barra lateral se restauró de la copia de seguridad o quedó vacía.";
 
 /* VoiceOver / etiquetas de accesibilidad (auditoría 2026-07-30 L10N-0001..0007) */
 "search.clear" = "Borrar búsqueda";

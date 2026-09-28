@@ -340,6 +340,7 @@
 "banner.key.unavailable" = "解锁后重试";
 "banner.data.corrupted.count" = "%d 条损坏";
 "banner.data.corrupted.count.one" = "%d 条损坏";
+"banner.tags.load.failed" = "标签加载失败 — 侧边栏已从备份恢复或为空。";
 
 /* VoiceOver / 无障碍标签（2026-07-30 审计 L10N-0001..0007） */
 "search.clear" = "清除搜索";

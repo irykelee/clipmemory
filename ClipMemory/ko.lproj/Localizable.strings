@@ -342,6 +342,7 @@
 "banner.key.unavailable" = "잠금 해제 후 다시 시도";
 "banner.data.corrupted.count" = "%d개 항목 손상";
 "banner.data.corrupted.count.one" = "%d개 항목 손상";
+"banner.tags.load.failed" = "태그 로드 실패 — 사이드바가 백업에서 복원되었거나 비어 있습니다.";
 
 /* VoiceOver / 접근성 레이블 (2026-07-30 감사 L10N-0001..0007) */
 "search.clear" = "검색 지우기";

@@ -37,6 +37,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // `encryptionFailedObserver` lifecycle (registered in
     // setupObservers, released in deinit).
     private var trashLoadFailedObserver: NSObjectProtocol?
+    // ID-CRASH-0008 (2026-09-28 code-review P1-3): observer for
+    // `.tagBackendCorrupted` so the user's tag sidebar emptiness is
+    // surfaced via `DiagnosticsBanner.tagsLoadFailed` instead of
+    // going silently empty. Was a dead notification per the report's
+    // finding (no observer consumed it). Now routes through the
+    // same banner that handles `keyUnavailable` and
+    // `dataCorruptedCount` — UI side zero new components.
+    private var tagBackendCorruptedObserver: NSObjectProtocol?
     // P0-1 (2026-07-28 audit): retry CryptoService.prepareKey after
     // unlock-revealing events (system wake, session-become-active,
     // screen unlock). The original code stranded the clipboard for the
@@ -619,6 +627,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             a.runModal()
         }
 
+        // ID-CRASH-0008 (2026-09-28 code-review P1-3): observer for
+        // `.tagBackendCorrupted` (posted by `ClipboardStore.loadTags()`
+        // catch) so the user's tag sidebar emptiness is surfaced via
+        // `DiagnosticsBanner.tagsLoadFailed`. Before this observer,
+        // the notification was a dead channel (per the report's
+        // finding — no consumer). Sets `store.diagnostics.tagsLoadFailed
+        // = true` on main thread (required since `diagnostics` is
+        // `@Published` on the main actor). The banner itself
+        // (`DiagnosticsBanner.swift`) was extended to show the
+        // new message; UI side zero new components.
+        tagBackendCorruptedObserver = NotificationCenter.default.addObserver(
+            forName: .tagBackendCorrupted, object: nil, queue: .main
+        ) { [weak self] _ in
+            // Same XCTest guard pattern as the trash / clipboard
+            // observers above — tests deliberately post this
+            // notification to verify the banner path; banner
+            // mutations are main-actor only.
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            // Same strongSelf unwrap pattern as ID-CRASH-0007.
+            guard let strongSelf = self else { return }
+            ClipboardStore.shared.diagnostics.tagsLoadFailed = true
+        }
+
         // H-1 (2026-08-08 audit): v2.8.1's ID-SILENT-0021 fix posted
         // .clipboardSaveFailed but no production observer consumed it —
         // clipboard captures could silently fail and the user had no
@@ -925,6 +956,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // leak across AppDelegate lifetimes. Mirrors the clipboardSaveFailed
         // cleanup pattern above.
         if let o = trashLoadFailedObserver { NotificationCenter.default.removeObserver(o) }
+        // ID-CRASH-0008 (2026-09-28 code-review P1-3): mirror observer
+        // cleanup for `.tagBackendCorrupted`. Same leak guard as
+        // trashLoadFailedObserver above.
+        if let o = tagBackendCorruptedObserver { NotificationCenter.default.removeObserver(o) }
         if let o = keychainUnlockObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = sessionBecomeActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = didBecomeActiveObserver { NotificationCenter.default.removeObserver(o) }
