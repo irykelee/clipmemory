@@ -392,12 +392,14 @@ jobs:
           path: ./test-results
       - name: Run coverage gate (P2-17)
         env:
-          # Empirical baseline (2026-09-22): 2.578% line coverage via
-          # `xcrun xccov view --report --json` on local xcresult bundle.
-          # Threshold set to 2% (just below baseline) so the gate ships
-          # non-blocking. Future audit batch to bump after intentional
-          # coverage work — likely 10% / 25% / 50% milestones.
-          COVERAGE_THRESHOLD: '2'
+          # ID-CRASH-0015 (2026-09-28 code-review P2-13): raised
+          # the coverage gate from the artificial 2% (just below the
+          # 2026-09-22 baseline of 2.578%) to 50%. Measured at HEAD on
+          # 2026-09-28 was 58.10% per the report, so 50% allows ~16%
+          # relative regression before the gate fires. The
+          # coverage-gate.sh script's default 30% is the aspirational
+          # fallback for branches where this override is omitted.
+          COVERAGE_THRESHOLD: '50'
         run: |
           set -uo pipefail
           chmod +x .github/scripts/coverage-gate.sh
