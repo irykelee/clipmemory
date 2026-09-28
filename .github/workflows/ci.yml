@@ -188,8 +188,20 @@ jobs:
             test CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-test.log
           executed=$(grep -oE 'Executed [0-9]+ test' /tmp/xcb-test.log | tail -1 | grep -oE '[0-9]+')
           echo "Test execution count: $executed"
-          if [[ -z "$executed" || "$executed" -lt 920 ]]; then
-            echo "❌ Blind spot 6: test count $executed is below the 920 lower bound — ZZZ canary may not have run. Investigate the log for early-terminated suites."
+          # ID-CRASH-0014 (2026-09-28 code-review P2-3): replace hard-coded
+          # 920 lower bound with the static estimate from
+          # Scripts/test-count.sh minus a small slack. CLAUDE.md
+          # ID-TEST-0002 forbids hard-coding the value here — the
+          # previous 920 drifted whenever new tests were added (the
+          # actual count today is 1011). The 10-test slack is the
+          # difference between the static `grep -c func test*`
+          # estimate and the dynamic `Executed N test` runtime count,
+          # which differ by parameterized / Objective-C selector
+          # tests that the static count misses.
+          expected=$(Scripts/test-count.sh)
+          echo "Expected test count (from Scripts/test-count.sh): $expected"
+          if [[ -z "$executed" || "$executed" -lt $((expected - 10)) ]]; then
+            echo "❌ Blind spot 6: test count $executed is below the $((expected - 10)) lower bound — ZZZ canary may not have run. Investigate the log for early-terminated suites."
             exit 1
           fi
 
@@ -220,8 +232,13 @@ jobs:
           xcodebuild -scheme ClipMemory -configuration Debug test -testLanguage zh-Hans CODE_SIGN_IDENTITY="-" 2>&1 | tee /tmp/xcb-test-zh.log
           executed=$(grep -oE 'Executed [0-9]+ test' /tmp/xcb-test-zh.log | tail -1 | grep -oE '[0-9]+')
           echo "zh-Hans test execution count: $executed"
-          if [[ -z "$executed" || "$executed" -lt 920 ]]; then
-            echo "❌ Blind spot 6 (zh-Hans): test count $executed is below the 920 lower bound"
+          # ID-CRASH-0014 (2026-09-28 code-review P2-3): same lower-bound
+          # pattern as the primary run — sourced from
+          # Scripts/test-count.sh minus a 10-test slack. CLAUDE.md
+          # ID-TEST-0002 forbids hard-coding the value here.
+          expected=$(Scripts/test-count.sh)
+          if [[ -z "$executed" || "$executed" -lt $((expected - 10)) ]]; then
+            echo "❌ Blind spot 6 (zh-Hans): test count $executed is below the $((expected - 10)) lower bound"
             exit 1
           fi
 
