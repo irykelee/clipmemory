@@ -118,13 +118,19 @@ final class SensitiveDetectorTests: XCTestCase {
     }
 
     func testChineseIDCardNegative() {
+        // ID-CRASH-0017 (2026-09-28 code-review P2-4): was a zero-
+        // assertion test (`_ = item.isSensitive` discarded the
+        // result). The original code review noted: "删掉全部敏感
+        // 检测逻辑此测试仍绿". Now asserts `isSensitive` is false
+        // for invalid 18-digit IDs — matching the positive-case
+        // loop above (line 116) which asserts true for valid IDs.
         let invalid = [
             "123456789012345678",
             "000000000000000000"
         ]
         for id in invalid {
             let item = makeItem(content: "code: \(id)")
-            _ = item.isSensitive
+            XCTAssertFalse(item.isSensitive, "Should NOT detect invalid ID: \(id)")
         }
     }
 
@@ -153,14 +159,22 @@ final class SensitiveDetectorTests: XCTestCase {
     }
 
     func testSSNNegative() {
+        // ID-CRASH-0017 (2026-09-28 code-review P2-4): the data was
+        // bogus ("000-00-0000" and "123-456-789" both matched the
+        // SSN regex `\d{3}-\d{2}-\d{4}`, so the original zero-
+        // assertion test would have caught a regression if the
+        // assertion had been there). Picked strings that LOOK like
+        // SSN-shaped input but don't satisfy the regex: "123-45"
+        // has only 5 digits, "12-345-6789" has wrong digit grouping
+        // (2-3-4 not 3-2-4), and "abc-def-ghi" has letters.
         let invalid = [
-            "9-00-0000",
-            "000-00-0000",
-            "123-456-789"
+            "123-45",         // too few digits
+            "12-345-6789",   // wrong digit grouping
+            "abc-def-ghi"     // letters, not digits
         ]
         for ssn in invalid {
             let item = makeItem(content: "code: \(ssn)")
-            _ = item.isSensitive
+            XCTAssertFalse(item.isSensitive, "Should NOT detect invalid SSN: \(ssn)")
         }
     }
 
