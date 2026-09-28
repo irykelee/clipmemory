@@ -19,11 +19,24 @@ enum FuzzySearchMatcher {
     // was multi-second per filter pass. Cache the pinyin output per
     // `content` string in an NSCache keyed by the content hash — same
     // pattern as the date-formatter cache in DateHelpers.swift.
+    // ID-CRASH-0021 (2026-09-28 code-review P2-8): `totalCostLimit`
+    // is the byte ceiling that backs `countLimit`. Without it, an
+    // attacker (or a buggy producer) can fill the cache with many
+    // small entries that pass `countLimit` but still exhaust the
+    // search process's memory ceiling. 10 MB comfortably above any
+    // realistic search cache footprint (each entry is a few KB of
+    // latin-normalized or pinyin string; 10 MB ~ 1000-5000 entries,
+    // well above the 16_384 countLimit). Same pattern as the
+    // itemsCache in ClipboardStore.swift:651 (ID-PERF-0017) — that
+    // commit fixed the same `cost=0` bug on items; this commit
+    // extends the fix to the search cache.
+    private static let searchCacheTotalCostBytes: Int = 10 * 1024 * 1024  // 10 MB
     private static let pinyinCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
         // Bound by item count (per-launch history). 16 is a defensive
         // headroom for safety vs OS eviction under memory pressure.
         cache.countLimit = 16_384
+        cache.totalCostLimit = searchCacheTotalCostBytes
         return cache
     }()
 
@@ -38,6 +51,7 @@ enum FuzzySearchMatcher {
     private static let normalizedCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
         cache.countLimit = 16_384
+        cache.totalCostLimit = searchCacheTotalCostBytes
         return cache
     }()
 
@@ -116,7 +130,7 @@ enum FuzzySearchMatcher {
         let result = content
             .lowercased(with: Locale(identifier: "en_US_POSIX"))
             .folding(options: .diacriticInsensitive, locale: nil)
-        normalizedCache.setObject(result as NSString, forKey: key)
+        normalizedCache.setObject(result as NSString, forKey: key, cost: result.utf8.count)
         return result
     }
 
@@ -131,7 +145,7 @@ enum FuzzySearchMatcher {
             return cached as String
         }
         let result = toPinyin(content)
-        pinyinCache.setObject(result as NSString, forKey: key)
+        pinyinCache.setObject(result as NSString, forKey: key, cost: result.utf8.count)
         return result
     }
 
