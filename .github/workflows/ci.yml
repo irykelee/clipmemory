@@ -331,6 +331,23 @@ jobs:
           ./Scripts/lint-release-yml.sh --selftest
           ./Scripts/lint-release-yml.sh
 
+      # ID-CRASH-0013 (2026-09-28 code-review P2-14): appcast/tag
+      # coverage drift gate. v2.9.3 shipped appcast.xml WITHOUT
+      # pushing the tag because the Release workflow's
+      # appcast-push substep was swallowed (auto-review 20260926 /
+      # STATUS.md L77). Without this assertion the next release
+      # could push appcast skipping some tag, and the drift would
+      # accumulate silently (matches/cancels in naive diffs).
+      # Two-way check: every git tag >= v2.5.0 (whitelisted)
+      # appears as an <item> in appcast.xml; every appcast item
+      # has a matching git tag. Mirrors the convention of
+      # lint-translations / lint-release-yml / lint-tsan-filter.
+      - name: appcast/tag coverage lint (ID-CRASH-0013)
+        run: |
+          set -euo pipefail
+          chmod +x Scripts/lint-appcast-coverage.sh
+          ./Scripts/lint-appcast-coverage.sh
+
   # P2-17 (2026-09-22 audit): minimum line coverage gate. Parses the
   # xcresult bundle emitted by build-and-test and fails the job if
   # coverage falls below COVERAGE_THRESHOLD (default 30% in script,
