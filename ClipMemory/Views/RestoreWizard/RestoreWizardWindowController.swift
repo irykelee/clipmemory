@@ -28,14 +28,25 @@ final class RestoreWizardWindowController: NSWindowController {
     func present(
         backupService: BackupService,
         imagesDirectory: URL,
-        defaults: UserDefaults
+        defaults: UserDefaults,
+        // ID-CRASH-0032 (2026-09-28 code-review P2-25): optional view
+        // factory routed via `WindowManager.restoreWizardViewFactory`.
+        // The factory matches the inline construction shape
+        // (`vm` + onClose closure) so a no-op nil-fallback keeps the
+        // previous behaviour for non-WindowManager-managed paths.
+        viewFactory: ((RestoreWizardViewModel, @escaping () -> Void) -> RestoreWizardView)? = nil
     ) {
         let vm = RestoreWizardViewModel(
             backupService: backupService,
             imagesDirectory: imagesDirectory,
             defaults: defaults
         )
-        let view = RestoreWizardView(vm: vm) { [weak self] in
+        let view = (viewFactory ?? { vmInstance, onCloseInstance in
+            RestoreWizardView(vm: vmInstance) { [weak self] in
+                self?.close()
+                onCloseInstance()
+            }
+        })(vm) { [weak self] in
             self?.close()
         }
         window?.contentView = NSHostingView(rootView: view)

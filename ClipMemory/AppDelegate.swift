@@ -384,10 +384,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Fall back to a fresh-but-unregistered instance so the welcome can
         // still describe the default Cmd+Shift+V bound at app start.
         let hotKey = hotKeyManager ?? HotKeyManager()
-        let welcome = WelcomeView(hotKeyManager: hotKey) { [weak self] in
+        let welcome = windowManager?.welcomeViewFactory(hotKey) { [weak self] in
             self?.welcomeWindow?.close()
             onComplete?()
-        }
+        } ?? WelcomeView(hotKeyManager: hotKey, onComplete: { [weak self] in
+            self?.welcomeWindow?.close()
+            onComplete?()
+        })
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 740), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = L10n.appName; win.isReleasedWhenClosed = false; win.center()
         win.contentView = NSHostingView(rootView: welcome); win.makeKeyAndOrderFront(nil)
@@ -550,7 +553,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.title = L10n.crashWindowTitle
         window.contentViewController = NSHostingController(
-            rootView: RecentCrashesView()
+            rootView: windowManager?.recentCrashesViewFactory() ?? RecentCrashesView()
         )
         window.setFrameAutosaveName("com.clipmemory.app.RecentCrashesWindow")
         window.center()
@@ -811,7 +814,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settingsWindow = nil
 
-        let rootView = SettingsRootView(
+        // ID-CRASH-0032 (2026-09-28 code-review P2-25): route through
+        // `windowManager?.settingsRootViewFactory` so this construction
+        // site stops bypassing the factory indirection (WINDOW-P1-4
+        // exemption's premise失效 — see WindowManager.swift factories).
+        let rootView = windowManager?.settingsRootViewFactory(
+            hotKeyManager,
+            ClipboardStore.shared,
+            BackupService.shared
+        ) ?? SettingsRootView(
             hotKeyManager: hotKeyManager,
             store: ClipboardStore.shared,
             backupService: BackupService.shared
@@ -893,7 +904,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         RestoreWizardWindowController.shared.present(
             backupService: .shared,
             imagesDirectory: AppDirectories.applicationSupport.appendingPathComponent("ClipMemory/Images", isDirectory: true),
-            defaults: .standard
+            defaults: .standard,
+            // ID-CRASH-0032 (2026-09-28 code-review P2-25): route
+            // through `windowManager?.restoreWizardViewFactory` so this
+            // construction site stops bypassing the factory indirection
+            // (WINDOW-P1-4 exemption's premise失效 — see
+            // WindowManager.swift factories).
+            viewFactory: windowManager?.restoreWizardViewFactory
         )
     }
 

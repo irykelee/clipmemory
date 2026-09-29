@@ -74,6 +74,30 @@ class WindowManager: NSObject, NSWindowDelegate {
         QuickBarView(onDismiss: onDismiss)
     }
 
+    /// ID-CRASH-0032 (2026-09-28 code-review P2-25): factory closures for
+    /// the four window types whose AppDelegate construction paths were
+    /// previously `NSHostingView(rootView: SomeView())` in place. The audit
+    /// flagged 4 direct `NSHostingView` / `NSHostingController`
+    /// construction sites that bypassed this factory indirection:
+    /// - WelcomeView (AppDelegate.swift:393)
+    /// - RecentCrashesView (AppDelegate.swift:552)
+    /// - SettingsRootView (AppDelegate.swift:833)
+    /// - RestoreWizardView (RestoreWizardWindowController.swift:41)
+    /// Per `CLAUDE.md:189` WINDOW-P1-4 entry: the exemption's premise
+    /// ("zero planned new windows")失效 — 4 new windows have been added
+    /// since the exemption. The factories below restore the indirection
+    /// that the exemption's design assumed.
+    var welcomeViewFactory: (HotKeyManager, @escaping () -> Void) -> WelcomeView = { hotKey, onComplete in
+        WelcomeView(hotKeyManager: hotKey, onComplete: onComplete)
+    }
+    var settingsRootViewFactory: (HotKeyManager?, ClipboardStore, BackupService) -> SettingsRootView = { hotKey, store, backup in
+        SettingsRootView(hotKeyManager: hotKey, store: store, backupService: backup)
+    }
+    var recentCrashesViewFactory: () -> RecentCrashesView = { RecentCrashesView() }
+    var restoreWizardViewFactory: (RestoreWizardViewModel, @escaping () -> Void) -> RestoreWizardView = { vm, onClose in
+        RestoreWizardView(vm: vm, onClose: onClose)
+    }
+
     /// M13 (2026-08-03): test seam — static injectable UserDefaults suite.
     /// WINDOW-0001 (2026-08-10): no longer used by WindowManager itself
     /// (frame persistence moved to AppKit's `setFrameAutosaveName`).
