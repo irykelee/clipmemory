@@ -149,8 +149,25 @@ class LongPressView: NSView {
                 guard let self else { return event }
                 switch event.type {
                 case .scrollWheel:
+                    // ID-CRASH-0054 (USER-FEEDBACK-2026-09-26 round 5):
+                    // SWALLOW the scrollWheel while the press is active.
+                    // Returning the event unchanged (the 0052 default)
+                    // delivered it to `NSPressGestureRecognizer` while
+                    // the gesture was in `.began` state, and AppKit
+                    // fired `.cancelled` (not `.ended` — different
+                    // dismissal path than the synthesized mouseUp that
+                    // 0052 swallows). Returning `nil` here cuts the
+                    // scrollWheel off at the dispatch boundary, so the
+                    // gesture recognizer never sees it and never
+                    // transitions to `.cancelled`. The list view's
+                    // own scroll handling (its `LazyVStack` /
+                    // `List` parent) receives the scroll via the
+                    // standard responder chain and continues to
+                    // scroll the list as the user expects; we only
+                    // stop the gesture-recognizer cancellation path,
+                    // not the user's scroll intent.
                     self.lastScrollWheelAt = Date()
-                    return event
+                    return nil
                 case .leftMouseUp:
                     let sinceScroll = Date().timeIntervalSince(self.lastScrollWheelAt)
                     if sinceScroll < Self.synthesizedMouseUpWindow {
