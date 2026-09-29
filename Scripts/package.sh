@@ -18,6 +18,20 @@ get_marketing_version() {
 }
 
 # Write back the actual tarball SHA256 and version into Casks/clipmemory.rb.
+#
+# ID-CRASH-0039 (2026-09-28 code-review P3): **TEST-ONLY**. The local
+# `Casks/clipmemory.rb` is reference-only per `Scripts/package.sh:166-170`
+# and the v2.5.11 ship-review note ("intentionally NOT auto-updated by
+# Scripts/package.sh"). The live Cask is updated by the Release
+# workflow (`release.yml:509`) which writes to the
+# `homebrew-clipmemory` tap repo. This function is exercised only by
+# `Scripts/test/test_package_cask_update.sh` (TDD fixture for the
+# sed in-place substitution). Future readers: do NOT call this from
+# production — the Cask semantics make it impossible to satisfy (the
+# tarball's gzip header embeds mtime, so each `package.sh` run
+# produces a different sha; you cannot embed a sha for a tarball that
+# does not yet exist).
+#
 # Args:
 #   $1 — absolute path to the Cask .rb file
 #   $2 — absolute path to the tarball whose SHA we want to embed
