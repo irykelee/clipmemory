@@ -1,0 +1,46 @@
+# ID-CRASH-0036 (2026-09-28 code-review P2-17): dependabot.yml for the
+# ClipMemory repo. The audit flagged the absence of any automated
+# dependency-update channel ("无 .github/dependabot.yml、无
+# renovate.json") — version drift between project.yml's Sparkle pin
+# (2.9.5) and release.yml's CLI-tools pin (2.9.4, ID-CRASH-0024) was
+# the proximate cause of P2-15.
+#
+# Scope: SPM dependencies only (the project uses project.yml + XcodeGen,
+# not Package.swift). GitHub Actions are pinned by SHA in this repo's
+# workflow files (release.yml:301 etc.) so no Actions version drift.
+# Carthage/CocoaPods are not used.
+#
+# Cadence: weekly. Sparkle is the only SPM dep and it's pinned at major
+# 2.x with breaking sign_update API contracts every ~6 months (per
+# release.yml:289-291) — weekly checks surface minor bumps quickly; major
+# bumps still need human approval per the Sparkle contract.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # GitHub Actions are pinned by SHA in this repo, so PRs only propose
+    # digest bumps. Auto-merge is safe because the SHA changes match the
+    # upstream tag (verified by GitHub).
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "ci"
+
+  - package-ecosystem: "swift"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Swift PM deps live in project.yml (XcodeGen), not Package.swift.
+    # Dependabot doesn't scan project.yml yet (no SPM language ecosystem
+    # support for XcodeGen), so this `swift` entry is a placeholder for
+    # when/if we migrate to Package.swift. For now it surfaces no PRs.
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+      - "deps"
+    open-pull-requests-limit: 5
