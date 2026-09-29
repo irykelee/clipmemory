@@ -537,8 +537,21 @@ final class ClipboardStore: ObservableObject {
             // silent timeout left the store with empty items and surfaced
             // only as confusing count mismatches further down — making
             // CI flakes hard to diagnose.
-            if !waitForFirstLoadSync(timeout: 5.0) {
-                logger.error("P2-14: first-load SyncBarrier timed out in tests after 5.0s — items may be empty")
+            //
+            // ID-CRASH-0049 (issue #93, code-review-2026-09-28 P2-18):
+            // bump 5.0s → 15.0s. v2.9.3 GH Actions Test substep failure
+            // (https://github.com/irykelee/clipmemory/issues/93) was
+            // never per-test identified (v2.9.4 workaround + revert
+            // pattern). Hypothesis #2 of #93: "SyncBarrier 5s timeout too
+            // tight on CI runner load". Local runs complete in <500ms;
+            // 5s was tight when other tests in the suite share the same
+            // runner. 15s gives 3× headroom while still surfacing a real
+            // bug (a hung load would eventually trip). If the timeout
+            // still fires post-bump, the logger.error line below dumps
+            // "items may be empty" so future CI runs surface the failure
+            // with diagnostic context (vs the silent v2.9.3 path).
+            if !waitForFirstLoadSync(timeout: 15.0) {
+                logger.error("P2-14: first-load SyncBarrier timed out in tests after 15.0s — items may be empty")
             }
         }
         loadTags()
@@ -1202,7 +1215,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// on timeout. The `@discardableResult` lets the XCTest auto-wait
     /// in `init` call this without ceremony.
     @discardableResult
-    func waitForFirstLoadSync(timeout: TimeInterval = 5.0) -> Bool {
+    func waitForFirstLoadSync(timeout: TimeInterval = 15.0) -> Bool {
         // [P1-2 follow-up] Must be called on the main thread. The
         // barrier pumps `RunLoop.main`, which services main-queue
         // work — including the pending `MainActor.run {

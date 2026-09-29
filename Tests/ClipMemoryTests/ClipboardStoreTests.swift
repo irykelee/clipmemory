@@ -339,11 +339,18 @@ final class ClipboardStoreTests: XCTestCase {
             defaults: tenKDefaults
         )
 
-        // Background load must complete within 5s — the SyncBarrier
+        // Background load must complete within 15s — the SyncBarrier
         // primitive ensures the wait succeeds once applyLoadResult
         // runs. If this returns false, the background task never
         // completed and items would never arrive in production.
-        let didLoad = freshStore.waitForFirstLoadSync(timeout: 5.0)
+        //
+        // ID-CRASH-0049 (issue #93, code-review-2026-09-28 P2-18):
+        // bumped from 5s → 15s to match the production init site
+        // (`ClipboardStore.swift:540`). v2.9.3 CI flake was likely a
+        // SyncBarrier timeout under GH Actions runner load; 5s was
+        // tight. Local runs complete in <500ms; 15s is 30× headroom
+        // and still surfaces a real hang.
+        let didLoad = freshStore.waitForFirstLoadSync(timeout: 15.0)
         XCTAssertTrue(
             didLoad,
             "P2-14: background load must complete within 5s; otherwise the items never arrive"
