@@ -1546,7 +1546,14 @@ final class ClipboardStore: ObservableObject {
             for item in imageItems {
                 let status = ImageStorage.shared.imageStatus(for: item.content)
                 switch status {
-                case .available: break
+                case .available(let data):
+                    // ID-CRASH-0033 (2026-09-28 code-review P2-7): pre-populate
+                    // the thumbnail cache from the decrypted bytes so row render
+                    // (which consults `imageCache` first) doesn't re-decrypt.
+                    ImageStorage.shared.prepopulateThumbnailCache(
+                        filename: item.content,
+                        data: data
+                    )
                 case .fileMissing: missing.insert(item.id)
                 case .decryptionFailed: corrupted.insert(item.id)
                 }

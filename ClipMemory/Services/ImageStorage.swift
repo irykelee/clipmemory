@@ -890,6 +890,43 @@ class ImageStorage {
     /// `kCGImageSourceCreateThumbnailWithTransform: true` so a portrait
     /// JPEG shot on a phone displays correctly in the row preview (the
     /// bitmap is rotated before the thumbnail decode).
+    /// ID-CRASH-0033 (2026-09-28 code-review P2-7): pre-populate the
+    /// thumbnail cache from the decrypted payload so `row render` (which
+    /// consults `imageCache` first via `loadImageObject` →
+    /// `cachedImageObject`) hits the cache instead of re-decrypting.
+    /// Caller (ClipboardStore.runImageIntegrityScan) calls this on the
+    /// `.available(data)` branch; previously the scan decrypted every
+    /// image and discarded the bytes, leaving row render to re-decrypt
+    /// on first display. For 200 4K screenshots, the second decrypt pass
+    /// was the dominant startup cost (the audit's "几百 MB 读盘 + 两轮
+    /// AES" finding).
+    func prepopulateThumbnailCache(filename: String, data: Data) {
+        guard Self.isValidFilename(filename) else { return }
+        let cacheKey = filename as NSString
+        // Skip if a warmer thumbnail is already cached.
+        if imageCache.object(forKey: cacheKey) != nil { return }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(
+                  source, 0, [
+                      kCGImageSourceCreateThumbnailFromImageAlways: true,
+                      kCGImageSourceThumbnailMaxPixelSize: Self.thumbnailMaxPixelSize,
+                      kCGImageSourceCreateThumbnailWithTransform: true,
+                      kCGImageSourceShouldCacheImmediately: false
+                  ] as CFDictionary
+              ) else {
+            return
+        }
+        let nsImage = NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: cgImage.width, height: cgImage.height)
+        )
+        imageCache.setObject(
+            nsImage,
+            forKey: cacheKey,
+            cost: cgImage.width * cgImage.height * 4
+        )
+    }
+
     func loadImageObject(filename: String) -> NSImage? {
         let cacheKey = filename as NSString
         // Check memory cache first
