@@ -1,4 +1,4 @@
-# ClipMemory v2.9.2
+# ClipMemory v2.9.4
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
