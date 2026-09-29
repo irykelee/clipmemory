@@ -56,30 +56,17 @@ enum ImagePreviewPanel {
 
     @MainActor private static var panel: NSPanel?
     @MainActor private static var escapeMonitor: Any?
-    @MainActor private static var scrollWheelMonitor: Any?
-    @MainActor private static var leftMouseUpMonitor: Any?
-    // Timestamp of the most recent scrollWheel event received by the
-    // app, used to filter trackpad two-finger-scroll synthesized
-    // leftMouseUp events (USER-FEEDBACK-2026-09-26 follow-up).
-    // 200ms is generous — trackpad scroll-then-fling can synthesize
-    // a tap within ~100ms of the last scroll; 200ms gives margin
-    // while still accepting a slow deliberate release.
-    @MainActor private static var lastScrollWheelAt: Date = .distantPast
-    static let scrollSynthesizedThreshold: TimeInterval = 0.2
-    // ID-VIEW-0047 (2026-09-27): DI hooks for the 3 monitors so tests
+    // ID-VIEW-0047 (2026-09-27): DI hook for the Escape monitor so tests
     // can verify install/remove pairing without a real NSEvent system.
     // When `installer` is nil, install creates the real monitor via
     // NSEvent.addLocalMonitorForEvents; when non-nil, the closure is
     // called instead and its value is stored as the monitor token. The
-    // same applies to `uninstaller` for `removeMonitor`. This avoids
-    // creating real NSEvent monitors in unit tests (which the
-    // previous commit's GREEN signal had 0% coverage on).
+    // same applies to `uninstaller` for `removeMonitor`. ID-CRASH-0050
+    // removed the scrollWheel / leftMouseUp monitor install paths
+    // (USER-FEEDBACK 2026-09-26 race); this DI seam now only serves
+    // the single Escape key.
     @MainActor static var keyDownInstaller: (() -> Any?)?
     @MainActor static var keyDownUninstaller: ((Any) -> Void)?
-    @MainActor static var scrollWheelInstaller: (() -> Any?)?
-    @MainActor static var scrollWheelUninstaller: ((Any) -> Void)?
-    @MainActor static var leftMouseUpInstaller: (() -> Any?)?
-    @MainActor static var leftMouseUpUninstaller: ((Any) -> Void)?
 
     @MainActor
     static func show(image: NSImage, screen: NSScreen? = NSScreen.main) {
@@ -156,58 +143,36 @@ enum ImagePreviewPanel {
         return panel
     }
 
-    /// Install the three dismissal monitors (Escape, scrollWheel,
-    /// leftMouseUp with timestamp gating). Extracted from `show()`
-    /// so the parent stays under the function_body_length warning.
+    /// Install the single dismissal monitor (Escape). Extracted from
+    /// `show()` so the parent stays under the function_body_length warning.
+    ///
+    /// ID-CRASH-0050 (USER-FEEDBACK 2026-09-26, ID-VIEW-0047 follow-up
+    /// — the doc said "no leftMouseUp monitor" but the install path
+    /// was never removed; USER-FEEDBACK-2026-09-26 then layered a
+    /// scrollWheel timestamp suppression on top, which was racy).
+    /// Final fix: **only Escape is installed**. The natural dismissal
+    /// path is `NSPressGestureRecognizer.ended` →
+    /// `ClipboardItemRow.onChange(of: imageLongPressing)` →
+    /// `ImagePreviewPanel.hide()` (ClipboardItemRow.swift:570). The
+    /// `mouseUp` monitor was the buggy fallback — trackpad two-finger-scroll
+    /// + Tap-to-Click synthesised `leftMouseUp` alongside `scrollWheel`;
+    /// the suppression relied on `lastScrollWheelAt` being updated
+    /// BEFORE mouseUp arrives (not guaranteed; the 200ms threshold
+    /// raced the scroll velocity). Without the mouseUp monitor the
+    /// race goes away, and the scrollWheel timestamp infrastructure
+    /// becomes dead code. Escape is the only "system gesture hijack /
+    /// focus loss" escape hatch (mirrors ID-VIEW-0047 §"Fallback" intent
+    /// — the doc got the design right; the code now matches it).
     @MainActor
     private static func installDismissalMonitors() {
-        // global — global only sees events to OTHER apps, the
-        // release here is to our own panel) while shown so the
-        // release dismisses the preview from anywhere on screen.
-        // ID-VIEW-0047 follow-up: no leftMouseUp monitor. Earlier attempt
-        // installed one but trackpad two-finger-scroll and Tap-to-Click
-        // gestures synthesize .leftMouseUp alongside .scrollWheel, which
-        // made the preview disappear mid-scroll. NSPressGestureRecognizer
-        // tracks the press across views — started on the list's image
-        // NSView, stays in .changed state while the mouse is over the
-        // panel — so the natural .ended event dismisses via
-        // ClipboardItemRow.onChange(of: imageLongPressing).
-        //
-        // Fallback: install a local keyDown monitor for Escape (keyCode
-        // 53). If the gesture recognizer fails to deliver .ended (focus
-        // loss, system gesture hijack, accessibility event), the user
-        // still has a way to dismiss. Stays installed for the lifetime
-        // of the panel, removed in hideUnlocked.
-        // ID-VIEW-0047: use injected installers when set (testing),
-        // otherwise create the real NSEvent local monitors.
+        // Escape (keyCode 53) — fallback for the cases where the
+        // gesture recognizer fails to deliver .ended (focus loss,
+        // accessibility event, system gesture hijack).
         let keyHandler: (NSEvent) -> NSEvent? = { event in
             if event.keyCode == 53 { hide(); return nil }
             return event
         }
         escapeMonitor = keyDownInstaller?() ?? NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: keyHandler)
-
-        // USER-FEEDBACK-2026-09-26 (3rd round): install a scrollWheel
-        // monitor alongside the leftMouseUp monitor, and use the
-        // timestamp delta to suppress dismissal when a synthesized
-        // leftMouseUp arrives within ~200ms of a scrollWheel — that's
-        // how trackpad two-finger-scroll triggers Tap-to-Click-style
-        // synthesized mouseUp that previously dismissed mid-scroll. A
-        // real release happens hundreds of ms after the user stops
-        // scrolling, so the threshold is well-separated.
-        let scrollHandler: (NSEvent) -> NSEvent? = { event in
-            Self.lastScrollWheelAt = Date()
-            return event
-        }
-        scrollWheelMonitor = scrollWheelInstaller?() ?? NSEvent.addLocalMonitorForEvents(matching: .scrollWheel, handler: scrollHandler)
-        let mouseHandler: (NSEvent) -> NSEvent? = { event in
-            let sinceScroll = Date().timeIntervalSince(Self.lastScrollWheelAt)
-            if sinceScroll < Self.scrollSynthesizedThreshold {
-                return event  // synthesized by trackpad scroll, don't dismiss
-            }
-            hide()
-            return event
-        }
-        leftMouseUpMonitor = leftMouseUpInstaller?() ?? NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp, handler: mouseHandler)
         Self.panel = panel
     }
 
@@ -223,14 +188,6 @@ enum ImagePreviewPanel {
         if let m = escapeMonitor {
             (keyDownUninstaller ?? NSEvent.removeMonitor)(m)
             escapeMonitor = nil
-        }
-        if let m = scrollWheelMonitor {
-            (scrollWheelUninstaller ?? NSEvent.removeMonitor)(m)
-            scrollWheelMonitor = nil
-        }
-        if let m = leftMouseUpMonitor {
-            (leftMouseUpUninstaller ?? NSEvent.removeMonitor)(m)
-            leftMouseUpMonitor = nil
         }
         panel?.close()
         panel = nil
