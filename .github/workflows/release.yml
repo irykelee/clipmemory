@@ -282,15 +282,24 @@ jobs:
 
           # Fetch the Sparkle signing tools via gh (authenticated — anonymous
           # api.github.com calls are rate-limited on CI runners).
-          # C3 (2026-07-23 ship-review): pin to tag 2.9.4 (positional arg —
-          # `gh release download` has no --tag flag; the 2026-07-23 version
-          # used --tag and failed every tag release at this step with
-          # "unknown flag: --tag", first seen on v2.5.12) instead of latest.
-          # Sparkle occasionally ships breaking API changes (the previous
-          # `sign_update` flag set was stable for ~6 months before changing),
-          # and pulling latest silently breaks CI mid-release. Pin matches
-          # `packages.Sparkle.from: "2.9.4"` in project.yml. Bump both
-          # together when Sparkle 2.x API breaks.
+          # C3 (2026-07-23 ship-review): pin CLI tools to tag 2.9.4
+          # (positional arg — `gh release download` has no --tag flag; the
+          # 2026-07-23 version used --tag and failed every tag release at
+          # this step with "unknown flag: --tag", first seen on v2.5.12)
+          # instead of latest. Sparkle occasionally ships breaking API
+          # changes (the previous `sign_update` flag set was stable for ~6
+          # months before changing), and pulling latest silently breaks CI
+          # mid-release.
+          # ID-CRASH-0024 (2026-09-28 code-review P2-15): the embedded
+          # Sparkle **framework** is pinned separately at project.yml:12
+          # (`from: "2.9.5"`). These two pins intentionally diverge:
+          # the CLI tools are versioned for the `sign_update` API they
+          # expose, the framework is versioned for its shipping behaviour
+          # (EdDSA wire format + embedded Sparkle.framework for the
+          # running app). Bump the CLI pin (this line) only when the
+          # sign_update API changes; bump the framework pin in
+          # project.yml:12 when the framework's EdDSA or appcast
+          # behaviour changes. The two pins do NOT move together.
           # REL-11 (2026-07-24 review): skip the download when the actions/cache
           # above already restored the tarball (/tmp/sparkle-dl is cached) —
           # `--clobber` used to re-download Sparkle on every release run.
