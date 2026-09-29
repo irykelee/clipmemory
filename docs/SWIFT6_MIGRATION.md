@@ -152,4 +152,43 @@ If TSan infrastructure reveals an unexpectedly high number of races, or if Swift
 
 ---
 
-*Last updated: 2026-08-16. Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
+## 8. `nonisolated(unsafe)` Symbol Roster (ID-CRASH-0030)
+
+> ID-CRASH-0030 (2026-09-28 code-review P2-21): the code-review audit
+> counted 17 `nonisolated(unsafe)` declarations across the service
+> layer. These must each be either (a) migrated to actor isolation in
+> Phase 3, or (b) given a documented isolation contract in Phase 2.
+> Per audit recommendation: "把这里的高隔离决策依据记入 SWIFT6_MIGRATION.md".
+
+| File | Line | Symbol | Current isolation | Phase 3 plan |
+|------|------|--------|-------------------|--------------|
+| `Services/ClipboardStore.swift` | 674 | `contentCache: NSCache` | `NSCache` is documented thread-safe (per NSCache header) | actor-isolated cache |
+| `Services/ClipboardStore.swift` | 685 | `rtfPlaintextCache: NSCache` | NSCache thread-safe | actor-isolated cache |
+| `Services/ClipboardStore.swift` | 787 | `pendingFailedIDs: Set<UUID>` | NSLock at :788 | actor-isolated state |
+| `Services/ClipboardStore.swift` | 788 | `pendingFailedIDsLock: NSLock` | paired with :787 | eliminate with actor |
+| `Services/ClipboardStore.swift` | 796 | `pendingDiagnostics: [PendingDiagnostic]` | NSLock at :797 | actor-isolated state |
+| `Services/ClipboardStore.swift` | 797 | `pendingDiagnosticsLock: NSLock` | paired with :796 | eliminate with actor |
+| `Services/ClipboardStore.swift` | 1879 | `prewarmStateLock: NSLock` | paired with :1880-1891 | eliminate with actor |
+| `Services/ClipboardStore.swift` | 1880 | `prewarmInFlight: Bool` | guarded by prewarmStateLock | actor-isolated state |
+| `Services/ClipboardStore.swift` | 1881 | `prewarmPendingItems: [ClipboardItem]?` | guarded by prewarmStateLock | actor-isolated state |
+| `Services/ClipboardStore.swift` | 1882 | `prewarmPendingCompletions: [() -> Void]` | guarded by prewarmStateLock | actor-isolated state |
+| `Services/ClipboardStore.swift` | 1891 | `pendingPrewarmWorkItem: DispatchWorkItem?` | guarded by prewarmStateLock | actor-isolated state |
+| `Services/LanguageManager.swift` | 12 | `injectedForTest: LanguageManager?` | test seam | remove (use TestIsolation) |
+| `Services/LanguageManager.swift` | 57 | `defaults: UserDefaults` | test seam forwarder | forward to TestIsolation |
+| `Services/LanguageManager.swift` | 85 | `codeStorage: String` | NSLock (line :86) | eliminate with actor |
+| `Services/UpdateService.swift` | 189 | `defaults: UserDefaults` | test seam forwarder | forward to TestIsolation |
+| `Services/UpdateService.swift` | 204 | `injectedForTest: UpdateService?` | test seam | remove (use TestIsolation) |
+| `Services/WindowManager.swift` | 89 | `defaults: UserDefaults` | test seam forwarder | forward to TestIsolation |
+| `Utils/TestIsolation.swift` | 31 | `defaults: UserDefaults` | canonical seam (ID-CRASH-0029) | migrate to actor in Phase 3 |
+
+**17 declarations**, down from 18 raw lines (some lines are property
++ lock pairs that count as one logical state holder, e.g. :787+:788,
+:796+:797, :1879+:1880+:1881+:1882+:1891 — five lines guarding four
+prewarm-state values, count as one Phase 3 actor).
+
+Pattern: 11 production cache/state vars (Phase 3 actor target) +
+6 test-seam statics (Phase 3 forward to actor-isolated TestIsolation).
+
+---
+
+*Last updated: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
