@@ -61,7 +61,11 @@ extension ClipboardStore {
             }
             // ID-OCR-0004: prefer the direct id lookup; fall back to
             // contentHash when the original UUID was deduped away.
-            let directIndex = self.items.firstIndex(where: { $0.id == itemId })
+            // ID-CRASH-0023 (2026-09-28 code-review P2-12): use the O(1)
+            // cached `resolvedIndex(for:)` for the id branch (PR54-H
+            // chokepoint). The contentHash fallback keeps `firstIndex`
+            // since there's no equivalent cached helper.
+            let directIndex = self.resolvedIndex(for: itemId)
             let index: Int?
             if let directIndex = directIndex {
                 index = directIndex
@@ -116,8 +120,10 @@ extension ClipboardStore {
     /// launch (or the restored file) can still be backfilled.
     func markOCRAttempted(itemId: UUID) {
         let apply = { [weak self] in
+            // ID-CRASH-0023 (2026-09-28 code-review P2-12): O(1) via
+            // `resolvedIndex(for:)` instead of O(n) `firstIndex(where:)`.
             guard let self = self,
-                  let index = self.items.firstIndex(where: { $0.id == itemId }) else { return }
+                  let index = self.resolvedIndex(for: itemId) else { return }
             guard !self.items[index].ocrAttempted else { return }
             self.items[index].ocrAttempted = true
             self.scheduleSave()

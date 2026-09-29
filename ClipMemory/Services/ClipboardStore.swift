@@ -912,7 +912,12 @@ final class ClipboardStore: ObservableObject {
     private func mergeBackfilledHashes(_ hashes: [UUID: String]) {
         var applied = false
         for (id, hash) in hashes {
-            guard let index = items.firstIndex(where: { $0.id == id }),
+            // ID-CRASH-0023 (2026-09-28 code-review P2-12): O(1) via
+            // cached `itemIndex` (PR54-H chokepoint) instead of O(n)
+            // `firstIndex(where:)`. `mergeBackfilledHashes` runs once at
+            // startup; for 10K items the O(n²) cost is non-trivial even
+            // when amortised.
+            guard let index = resolvedIndex(for: id),
                   items[index].contentHash == nil else { continue }
             items[index].contentHash = hash
             applied = true
@@ -1122,13 +1127,17 @@ final class ClipboardStore: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 var changed = false
+                // ID-CRASH-0023 (2026-09-28 code-review P2-12): O(1) via
+                // `resolvedIndex(for:)` (PR54-H chokepoint) instead of
+                // O(n) `firstIndex(where:)`. Per-item hot path during
+                // legacy→v2 migration, runs once at startup.
                 for (id, newContent) in migratedContents {
-                    guard let index = self.items.firstIndex(where: { $0.id == id }) else { continue }
+                    guard let index = self.resolvedIndex(for: id) else { continue }
                     self.items[index] = self.items[index].with(content: newContent, isEncrypted: true)
                     changed = true
                 }
                 for (id, hash) in hashes {
-                    guard let index = self.items.firstIndex(where: { $0.id == id }),
+                    guard let index = self.resolvedIndex(for: id),
                           self.items[index].contentHash == nil else { continue }
                     self.items[index].contentHash = hash
                     changed = true
@@ -1483,13 +1492,17 @@ final class ClipboardStore: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 var changed = false
+                // ID-CRASH-0023 (2026-09-28 code-review P2-12): O(1) via
+                // `resolvedIndex(for:)` (PR54-H chokepoint) instead of
+                // O(n) `firstIndex(where:)`. Second migration path,
+                // identical structure to :1124 above.
                 for (id, newContent) in migratedContents {
-                    guard let index = self.items.firstIndex(where: { $0.id == id }) else { continue }
+                    guard let index = self.resolvedIndex(for: id) else { continue }
                     self.items[index] = self.items[index].with(content: newContent, isEncrypted: true)
                     changed = true
                 }
                 for (id, hash) in hashes {
-                    guard let index = self.items.firstIndex(where: { $0.id == id }),
+                    guard let index = self.resolvedIndex(for: id),
                           self.items[index].contentHash == nil else { continue }
                     self.items[index].contentHash = hash
                     changed = true
