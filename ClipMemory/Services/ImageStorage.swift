@@ -778,7 +778,20 @@ class ImageStorage {
         // back to key file" resolution (added in C1). Without this fallback,
         // every legacy-encrypted image left behind after upgrade surfaces as
         // `.decryptionFailed` in the UI and is effectively unrecoverable.
-        guard let key = CryptoService.loadKeyData(), key.count == 32 else {
+        // ID-CRASH-0022 (2026-09-28 code-review P2-0a): wipe the transient
+        // raw-key `Data` copy on every exit path via the shared
+        // `CryptoService.wipeKeyMaterial` helper (matches the defer pattern
+        // at CryptoService.swift:343, :638, BackupPackage.swift:768).
+        //
+        // v2 fix (post auto-review P2 #3): split the guard so the binding
+        // is established before the count check. `guard var key, count == 32`
+        // failed before binding `key`, so a non-32-byte returned Data
+        // would be GC'd without being zeroed.
+        guard var key = CryptoService.loadKeyData() else {
+            return nil
+        }
+        defer { CryptoService.wipeKeyMaterial(&key) }
+        guard key.count == 32 else {
             return nil
         }
 

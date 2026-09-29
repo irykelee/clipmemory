@@ -145,13 +145,34 @@ struct BackupSettingsView: View {
         // H-3 (2026-07-23): a missing root encryption key gets a dedicated
         // message (reset encryption from Settings) rather than the generic
         // "operation failed".
-        guard let keyData = CryptoService.loadKeyData() else {
+        // ID-CRASH-0022 (2026-09-28 code-review P2-0a): wipe the transient
+        // raw-key `Data` copy on every exit path via the shared
+        // `CryptoService.wipeKeyMaterial` helper (matches the defer
+        // pattern at CryptoService.swift:343, :638, BackupPackage.swift:768).
+        guard CryptoService.loadKeyData() != nil else {
             showBackupInfo(L10n.settingsBackupErrorMissingEncryptionKey)
             return
         }
         // Flush the 500ms debounce so the package includes the very latest items.
         ClipboardStore.shared.flushPendingSaves()
         DispatchQueue.global(qos: .userInitiated).async {
+            // ID-CRASH-0022 v3: bind `var keyData = loadKeyData()` *inside*
+            // the @Sendable closure so there is exactly one live reference
+            // at wipe time. This sidesteps both:
+            //   (a) the CoW trap — a captured-from-outer-scope `var` would
+            //       keep refcount ≥ 2 at defer and the wipe would `memset`
+            //       a CoW duplicate, leaving the original buffer intact
+            //       (the v1 P1);
+            //   (b) the Swift 6 strict-concurrency diagnostic (Gate 2 in
+            //       docs/SWIFT6_MIGRATION.md:116) forbidding mutation of a
+            //       captured `var` from a concurrently-executing closure.
+            guard var keyData = CryptoService.loadKeyData() else {
+                DispatchQueue.main.async {
+                    showBackupInfo(L10n.settingsBackupErrorMissingEncryptionKey)
+                }
+                return
+            }
+            defer { CryptoService.wipeKeyMaterial(&keyData) }
             do {
                 try BackupPackage.exportPackage(
                     to: url,

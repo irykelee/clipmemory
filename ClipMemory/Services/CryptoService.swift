@@ -5,6 +5,19 @@ import CommonCrypto
 import Security
 import os.log
 
+// swiftlint:disable file_length
+// ID-CRASH-0022 (2026-09-28 code-review P2-0a): adding `defer { wipeKeyMaterial }`
+// at the migration path and `decryptLegacy` pushed the file from 1249 to
+// 1297 lines (post-v3-fixes, +48), breaching .swiftlint.yml:60-62
+// `file_length: error 1250`. Disable mirrors the ID-CRASH-0016 approach
+// used on BackupPackage.swift (which currently sits at 1301 lines for BKP
+// safety co-location reasons, explicitly retained by CLAUDE.md BACKUP-0001).
+// The proper refactor — splitting CryptoService into smaller units +
+// decoupling the AppKit-dependent presentKeyFailureAlert
+// (CryptoService.swift:699-725, the NSAlert/NSAccessibility code that
+// pulls in AppKit at `import AppKit` :5) into a separate file — is its
+// own larger effort (deferred). Tracked in CRYPTO-LINT-0001.
+
 extension Notification.Name {
     /// H-2 (2026-07-25 audit): posted once `CryptoService.prepareKey()` has
     /// finished, regardless of success or failure. Observers (e.g.
@@ -137,7 +150,9 @@ class CryptoService: CryptoServiceProtocol {
     /// best-effort. The transient raw `Data` copies that fed it CAN be
     /// zeroed, and every such path now routes through the shared
     /// `wipeKeyMaterial` helper (generate/migration paths here, package-key
-    /// path in BackupPackage) so the zeroing behavior is consistent.
+    /// path in BackupPackage, legacy decrypt here, legacy image decrypt in
+    /// ImageStorage, manual backup export in BackupSettingsView) so the
+    /// zeroing behavior is consistent. Added by ID-CRASH-0022.
     func clearInMemoryKey() {
         withCachedLoadedKey {
             cachedLoadedKey = nil
@@ -486,36 +501,76 @@ class CryptoService: CryptoServiceProtocol {
             // "read succeeded but wrong format" (corrupt — alert user).
             // P2-3 (OpenCode 2026-09-23): store() throws KeyStoreError;
             // see CryptoService+KeychainMigration.swift for classification.
-            let keyData = readKeyFile(at: keyURL, caller: "prepareKey")
-            if let keyData, keyData.count == 32 {
-                do {
-                    try keyStore.store(keyData)
-                    if keyStore.load() == keyData {
-                        secureRemoveKeyFile(at: keyURL)
-                    } else {
-                        Self.handleKeychainMigrationFailure(error: .permanent(errSecVerifyFailed), keyURL: keyURL, logger: Self.logger)
-                    }
-                } catch let error as KeyStoreError {
-                    Self.handleKeychainMigrationFailure(error: error, keyURL: keyURL, logger: Self.logger)
-                } catch {
-                    Self.handleKeychainMigrationFailure(error: nil, keyURL: keyURL, logger: Self.logger, reason: "\(error)")
-                }
-                return publishToSharedCache(SymmetricKey(data: keyData))
-            }
-            // E1: nil from readKeyFile after fileExists confirmed → transient
-            // read error (already logged by readKeyFile). Keep the file and
-            // treat as "key preparation deferred" rather than "corrupt".
-            if keyData == nil {
+            // ID-CRASH-0022 (2026-09-28 code-review P2-0a): wipe the
+            // transient raw-key `Data` copy on every exit path via the
+            // shared `wipeKeyMaterial` helper (matches the defer pattern
+            // at CryptoService.swift:343, :638, BackupPackage.swift:768).
+            //
+            // v2 fix (post auto-review P1): the first version aliased the
+            // buffer via `let keyDataOpt` + `if let keyData = keyDataOpt`
+            // + `var keyDataCopy = keyData`. With three live bindings,
+            // `wipeKeyMaterial(&keyDataCopy)` triggers CoW (refcount ≥ 2)
+            // and `memset`s a *duplicate* — the original key buffer
+            // survives. The correct pattern is single-binding + nil-out
+            // alias before defer. See CryptoKeyPreparationTests
+            // `testWipeKeyMaterial_doesNotZeroAliasedBuffer` for the
+            // language-semantics regression test.
+            var keyDataRaw = readKeyFile(at: keyURL, caller: "prepareKey")
+            if keyDataRaw == nil {
+                // E1: nil from readKeyFile after fileExists confirmed →
+                // transient read error (already logged by readKeyFile).
+                // Keep the file and treat as "key preparation deferred"
+                // rather than "corrupt".
                 logger.warning("Key file exists but could not be read; deferring key prep until next launch")
                 return nil
             }
-            // keyData is non-nil but count != 32 → genuinely corrupt.
-            // Corrupt or tampered key file — ask before destroying it.
-            guard failureHandler(.corruptExistingKey) == .regenerate else {
-                notifyKeyPreparationFailed()
-                return nil
+            // Non-nil but count != 32 → genuinely corrupt. Ask before
+            // destroying the file (preserves the original three-branch
+            // behaviour: nil / corrupt / migrate). Drop the optional
+            // binding via the `return generateAndStoreKey(...)` path — no
+            // wipe of the corrupt bytes is performed because:
+            //   (a) production entry to this site is gated by
+            //       `loadKeyData()` (CryptoService.swift:309-326) which
+            //       already filters to `count == 32`, so a >32-byte file
+            //       never reaches here via the production path;
+            //   (b) the bytes cannot decrypt the current store (the
+            //       `count == 32` filter exists precisely because
+            //       `SymmetricKey(data:)` would silently truncate to the
+            //       first 32 bytes — a 64-byte file's first 32 bytes
+            //       could match an unrelated root, so production never
+            //       trusts them);
+            //   (c) mirroring the pre-ID-CRASH-0022 behaviour: this path
+            //       was never wiped before either, and adding a wipe
+            //       would be P2-19's defensive-hygiene territory, not
+            //       P2-0a's strict-scope.
+            guard var keyData = keyDataRaw, keyData.count == 32 else {
+                guard failureHandler(.corruptExistingKey) == .regenerate else {
+                    notifyKeyPreparationFailed()
+                    return nil
+                }
+                secureRemoveKeyFile(at: keyURL)
+                return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
             }
-            secureRemoveKeyFile(at: keyURL)
+            // MIGRATE path. Drop the optional read-key binding so the
+            // single live reference (`keyData`) keeps refcount = 1, which
+            // is required for `wipeKeyMaterial(&keyData)` to zero the
+            // actual buffer in place. With refcount ≥ 2, Swift's CoW would
+            // duplicate the buffer and memset the copy (auto-review P1).
+            keyDataRaw = nil
+            defer { wipeKeyMaterial(&keyData) }
+            do {
+                try keyStore.store(keyData)
+                if keyStore.load() == keyData {
+                    secureRemoveKeyFile(at: keyURL)
+                } else {
+                    Self.handleKeychainMigrationFailure(error: .permanent(errSecVerifyFailed), keyURL: keyURL, logger: Self.logger)
+                }
+            } catch let error as KeyStoreError {
+                Self.handleKeychainMigrationFailure(error: error, keyURL: keyURL, logger: Self.logger)
+            } catch {
+                Self.handleKeychainMigrationFailure(error: nil, keyURL: keyURL, logger: Self.logger, reason: "\(error)")
+            }
+            return publishToSharedCache(SymmetricKey(data: keyData))
         }
         // 3. Fresh generation into the Keychain.
         return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
@@ -1099,7 +1154,12 @@ class CryptoService: CryptoServiceProtocol {
 
             let iv = combined.prefix(16)
             let ciphertext = combined.dropFirst(16).dropLast(hmacSize)
-            let keyData = key.withUnsafeBytes { Data($0) }
+            // ID-CRASH-0022 (2026-09-28 code-review P2-0a): wipe the
+            // transient raw-key `Data` copy on every exit path via the
+            // shared `wipeKeyMaterial` helper (matches the defer pattern
+            // at CryptoService.swift:343, :638, BackupPackage.swift:768).
+            var keyData = key.withUnsafeBytes { Data($0) }
+            defer { Self.wipeKeyMaterial(&keyData) }
             return Self.legacyAESDecryptCBC(data: Data(ciphertext), key: keyData, iv: Data(iv)).map { [UInt8]($0) }
         }
 
