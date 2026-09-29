@@ -40,6 +40,20 @@ extension ClipboardStore {
         // The capture path's durability now relies on the terminate-path
         // flush rather than per-capture write-through.
         //
+        // ID-CRASH-0035 (2026-09-28 code-review P2-0c): dispatch the
+        // backend `saveBlob` off `@MainActor`. The previous inline call
+        // ran `defaults.synchronize()` + full-Data `readBack == data`
+        // memcmp on the main thread — for a 10K-item library the data
+        // blob is 10–50 MB, so the memcmp alone is a few ms to tens of
+        // ms per call. The encode hop (above) was already off-main via
+        // `itemEncodingQueue`; the backend hop now also leaves main via
+        // `DispatchQueue.global(qos: .utility).sync`. Caller still
+        // blocks for completion (preserving the throwing contract +
+        // the ID-SILENT-0022 three-leg gate), but the bulk of the
+        // synchronous cost is no longer on @MainActor. Sync from main
+        // to a utility queue is deadlock-free (main is not the
+        // utility queue's target).
+        //
         // ID-SILENT-0021 (2026-08-08 audit): rethrows on backend failure so
         // `flushSave` can restore `needsSave = true` and post
         // `.clipboardSaveFailed` for UI surfacing. Previously the inner
@@ -49,7 +63,9 @@ extension ClipboardStore {
         let data = try itemEncodingQueue.sync {
             try itemsSaveEncoder.encode(snapshot)
         }
-        try backend.saveBlob(data)
+        try DispatchQueue.global(qos: .utility).sync {
+            try backend.saveBlob(data)
+        }
     }
 
     /// Schedules a debounced save — coalesces multiple rapid mutations into a single disk write.
