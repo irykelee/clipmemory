@@ -121,6 +121,26 @@
 | 9 | P2-11 ID lint 正则修补 | 小 | 补 `\b[HML]-[0-9]+\b`，映射表入 docs/ |
 | 10 | P2-1 IV 碰撞兜底 | 小 | v2 解析失败时补一次 legacy 尝试 |
 
+---
+
+## 六之补、Closure Status (2026-09-29 — ID-CRASH-0007..0045)
+
+本表为后续审计 (`docs/review/code-review-2026-09-28.md:193-201`) 引用过的 7 P1 的实际闭合状态。逐项核对均基于 git log + commit body：
+
+| 项 | 状态 | 闭合 commit | 备注 |
+|---|---|---|---|
+| P1-1 TrashStore 损坏哨兵 | ✅ 已修复 | `9de0e81` (ID-CRASH-0007) | `TrashStore.swift:206` 成功路径 `removeObject(forKey: loadFailedSentinelKey)` |
+| P1-2 validateExternalPackage zip-slip 旁路 | ✅ 已修复 | `a95f92e2` (ID-CRASH-0008) | `BackupPackage.swift:1185` 改走 `unzipArchive(url, to: staging)` |
+| P1-3 TrashStore 重试死代码 | ✅ 已修复 | `08be384` (ID-CRASH-0011, H-1 retry) | `TrashStore.swift:297` 先置 `needsSave=true` |
+| P1-4 Services 依赖具体 View 类型 | ✅ 已修复 | `289d941` (ID-CRASH-0032) | WindowManager factory 4 closures + 4 bypass sites 走单点 |
+| P1-5 View 层直访 UserDefaults / 文件系统 | ✅ 已修复 | `7ffad30` (ID-CRASH-0026) | 第 4 处 (`RestoreWizardViewModel.swift`) 改走 `BackupService.previewCounts(for:)` |
+| P1-6 快照 golden 入库 | ✅ 已修复 | `08be384` (ID-CRASH-0011, snapshot golden) | `SnapshotTestHelpers.swift:125-134` 缺失改 XCTFail；8 个 golden PNG 入库 |
+| P1-7 NetworkMonitor 状态机无行为测试 | ⚠️ 部分修复 (out-of-scope) | — | 协议抽出 + Mock 实现，生产 `handlePathUpdate` 仍无测试调用 — 见 `code-review-2026-09-28.md:201` + `51d892c` §九 跟踪 |
+
+闭合数：6 / 7 P1s (P1-7 留待 NetworkMonitor 单独 audit batch)。
+
+---
+
 ## 六、总体评价
 
 这是一个经过多轮自我审计、纪律罕见的健康代码库——大部分传统风险（force unwrap、空 catch、明文泄漏、SQL/命令注入面）已被系统性清剿。残余风险高度集中在两个模式上：**（a）跨启动状态机缺少"成功即清算"的对称清理**（哨兵永不清除、IV 碰撞与 decryptionFailed 交互、Trash 重试死代码——三者同根），**（b）新增旁路路径未复用主路径防线**（validate 绕过 zip 校验、View 直访存储、CI 绕过 SwiftLint）。建议按第五节顺序先做四个小成本 P1 修复，再将分层与主线程 I/O 纳入 Swift 6 迁移路线图（`docs/SWIFT6_MIGRATION.md`）一并推进。
