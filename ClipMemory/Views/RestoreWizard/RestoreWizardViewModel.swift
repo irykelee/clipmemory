@@ -65,33 +65,34 @@ final class RestoreWizardViewModel: ObservableObject {
     }
 
     private func validateLocal(_ backup: LocalBackup) {
-        // Build preview from already-counted fields; re-decode items.json for size.
-        do {
-            let itemsData = try Data(contentsOf: backup.id.appendingPathComponent("items.json"))
-            let items = try JSONDecoder().decode([ClipboardItem].self, from: itemsData)
-            let tagsData = try Data(contentsOf: backup.id.appendingPathComponent("tags.json"))
-            let tags = try JSONDecoder().decode([Tag].self, from: tagsData)
-            let imagesDir = backup.id.appendingPathComponent("Images", isDirectory: true)
-            let imagesCount = FileManager.default.fileExists(atPath: imagesDir.path)
-                ? (try? FileManager.default.contentsOfDirectory(atPath: imagesDir.path).filter { $0.hasSuffix(".png") }.count) ?? 0
-                : 0
-
+        // ID-CRASH-0026 (2026-09-28 code-review P2-24): delegate the
+        // items.json / tags.json / Images/ enumeration to
+        // `BackupService.previewCounts(for:)` so the backup directory
+        // layout is owned in exactly one place (P1-AUDIT-2026-09-22
+        // P1-5 had this as a residual — the rest of the four call sites
+        // were already moved in earlier batches; this was the last).
+        //
+        // Sync FS call on @MainActor — pre-existing behaviour (the
+        // previous inline implementation was also sync). ID-CRASH-0026
+        // preserves the dispatch contract; moving the call off-main
+        // is a separate concern (tracked under P2 perf backlog).
+        switch backupService.previewCounts(for: backup) {
+        case .success(let counts):
             var warnings: [RestoreWarning] = []
             if backup.isIncomplete { warnings.append(.incompleteMarker) }
-            if items.isEmpty && tags.isEmpty { warnings.append(.emptyContent) }
-
+            if counts.items == 0 && counts.tags == 0 { warnings.append(.emptyContent) }
             let preview = RestorePreview(
                 source: .localBackup(backup),
-                itemsCount: items.count,
-                tagsCount: tags.count,
-                imagesCount: imagesCount,
+                itemsCount: counts.items,
+                tagsCount: counts.tags,
+                imagesCount: counts.images,
                 createdAt: backup.date,
                 appVersion: nil,
                 warnings: warnings
             )
             validation = .valid(preview: preview)
             step = .preview
-        } catch {
+        case .failure(let error):
             validation = .corrupted(reason: error.localizedDescription)
         }
     }

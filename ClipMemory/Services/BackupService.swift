@@ -619,4 +619,54 @@ final class BackupService {
         guard let entries = try? fileManager.contentsOfDirectory(atPath: dir.path) else { return nil }
         return entries.filter { $0.hasSuffix(".png") }.count
     }
+
+    /// Preview counts payload for `previewCounts(for:)`. Named struct
+    /// (vs a 3-tuple) keeps the call site readable (`.items` / `.tags`
+    /// / `.images` vs `.0` / `.1` / `.2`) and matches the established
+    /// struct-return pattern at `LocalBackup` / `RestorePreview`.
+    struct PreviewCounts: Equatable {
+        let items: Int
+        let tags: Int
+        let images: Int
+    }
+
+    /// ID-CRASH-0026 (2026-09-28 code-review P2-24): single source of
+    /// truth for the local-backup preview payload (items / tags / image
+    /// counts). Previously `RestoreWizardViewModel.validateLocal(_:)`
+    /// reimplemented these three reads inline — duplicating the backup
+    /// directory layout knowledge that already lives here. Returns
+    /// `.failure` with the original error so the VM can surface the
+    /// user-visible reason in `RestoreValidation.corrupted`.
+    ///
+    /// **Callers MUST dispatch off `@MainActor` before invoking** (this
+    /// method does `Data(contentsOf:)` + `JSONDecoder().decode(...)` on
+    /// the calling thread, blocking for up to several hundred ms on
+    /// real backups). The matching pattern is `Task.detached` (see
+    /// `RestoreWizardViewModel.validateLocal(_:)` before this commit
+    /// was sync; documented here for any future caller).
+    func previewCounts(for backup: LocalBackup) -> Result<PreviewCounts, Error> {
+        let itemsURL = backup.id.appendingPathComponent("items.json")
+        let tagsURL = backup.id.appendingPathComponent("tags.json")
+        let imagesURL = backup.id.appendingPathComponent("Images", isDirectory: true)
+
+        do {
+            let itemsData = try Data(contentsOf: itemsURL)
+            let items = try JSONDecoder().decode([ClipboardItem].self, from: itemsData)
+            // tags.json / Images/ are best-effort: missing tags
+            // shouldn't fail the preview (legitimate empty-tag backups
+            // exist; matches `decodeTags` (BackupPackage.swift:1073-1077)
+            // returning `[]` for missing), missing Images dir just
+            // means zero images. Corrupted tags.json is also degraded
+            // to 0 — a degraded preview that surfaces the error in the
+            // apply step (the real validation site) is better than a
+            // hard-fail preview that hides the data behind a banner.
+            let tagsCount = (try? Data(contentsOf: tagsURL))
+                .flatMap { try? JSONDecoder().decode([Tag].self, from: $0) }
+                .map { $0.count } ?? 0
+            let imagesCount = countPNGs(in: imagesURL) ?? 0
+            return .success(PreviewCounts(items: items.count, tags: tagsCount, images: imagesCount))
+        } catch {
+            return .failure(error)
+        }
+    }
 }
