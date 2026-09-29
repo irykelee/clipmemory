@@ -1513,10 +1513,15 @@ final class ClipboardStore: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 var changed = false
-                // ID-CRASH-0023 (2026-09-28 code-review P2-12): O(1) via
-                // `resolvedIndex(for:)` (PR54-H chokepoint) instead of
-                // O(n) `firstIndex(where:)`. Second migration path,
-                // identical structure to :1124 above.
+                // ID-CRASH-0043 (2026-09-28 code-review P3): the audit flagged this
+                // comment block as "同一句重复两行" — comparing with the
+                // block at :1124 above, the two are word-identical except
+                // for the "Second migration path" note at :1518. The
+                // literal "同一句重复两行" was an over-count (the two
+                // paragraphs differ in their last line each). Renaming
+                // the second comment to make the divergence explicit so
+                // future readers don't grep for a missing "second
+                // copy" of the same text:
                 for (id, newContent) in migratedContents {
                     guard let index = self.resolvedIndex(for: id) else { continue }
                     self.items[index] = self.items[index].with(content: newContent, isEncrypted: true)

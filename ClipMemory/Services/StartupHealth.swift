@@ -10,11 +10,16 @@ import os.log
 ///
 /// Caller must be on the main thread — `ClipboardStore.shared` exposes
 /// `@Published` properties which SwiftUI requires be mutated on the main
-/// thread. The 2026-07-27 Apple conformance audit (`docs/superpowers/audits
-/// /2026-07-27-apple-conformance-review.md`, F-1) flagged that the store is
-/// NOT yet annotated `@MainActor`; for now we rely on the same main-thread-
-/// only convention `applicationDidFinishLaunching` already honors
-/// (AppDelegate is the natural call site).
+/// thread. ID-CRASH-0042 (2026-09-28 code-review P3): the 2026-07-27
+/// Apple conformance audit's F-1 flag (`store NOT yet annotated
+/// @MainActor`) has since been resolved — `ClipboardStore` is now
+/// `@MainActor` at the class scope (`ClipboardStore.swift:122`), so
+/// every property read/write and method call is already main-thread by
+/// the compiler. The "we rely on the convention" hedge below is
+/// kept only for Swift 5 mode (`SWIFT_STRICT_CONCURRENCY: minimal` —
+/// `@MainActor` is enforced, but only for non-`Sendable` cross-thread
+/// hops; intra-thread reads remain valid). AppDelegate remains the
+/// natural call site.
 ///
 /// Tests inject every dependency via parameters so live history stays
 /// untouched (per C1 test-never-touch-prod-data rule): `counts` decouples the
