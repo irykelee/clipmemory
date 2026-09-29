@@ -1,22 +1,13 @@
 import Foundation
-import AppKit
+// ID-CRASH-0034: removed `import AppKit` (moved to EncryptionFailureAlert.swift).
 import CryptoKit
 import CommonCrypto
 import Security
 import os.log
 
 // swiftlint:disable file_length
-// ID-CRASH-0022 (2026-09-28 code-review P2-0a): adding `defer { wipeKeyMaterial }`
-// at the migration path and `decryptLegacy` pushed the file from 1249 to
-// 1297 lines (post-v3-fixes, +48), breaching .swiftlint.yml:60-62
-// `file_length: error 1250`. Disable mirrors the ID-CRASH-0016 approach
-// used on BackupPackage.swift (which currently sits at 1301 lines for BKP
-// safety co-location reasons, explicitly retained by CLAUDE.md BACKUP-0001).
-// The proper refactor — splitting CryptoService into smaller units +
-// decoupling the AppKit-dependent presentKeyFailureAlert
-// (CryptoService.swift:699-725, the NSAlert/NSAccessibility code that
-// pulls in AppKit at `import AppKit` :5) into a separate file — is its
-// own larger effort (deferred). Tracked in CRYPTO-LINT-0001.
+// ID-CRASH-0034: extracted AppKit UI (~30 lines). File still ~1292 (was 1297);
+// proper split into Keychain/Cipher/Legacy/Migration units is deferred (CRYPTO-LINT-0001).
 
 extension Notification.Name {
     /// H-2 (2026-07-25 audit): posted once `CryptoService.prepareKey()` has
@@ -361,11 +352,12 @@ class CryptoService: CryptoServiceProtocol {
 
     /// Called instead of crashing when the app key cannot be prepared (H6).
     /// HIGH-3 (2026-07-26 review): pluggable key-failure alert presenter.
-    /// The default calls `presentKeyFailureAlert` on the CryptoService (legacy
-    /// behavior). Set from AppDelegate in `applicationDidFinishLaunching` to
-    /// relocate the AppKit dependency (NSAlert, NSApp.terminate) out of the
-    /// service layer. Tests can replace the broader `keyFailureHandler` instead
-    /// (see below).
+    /// ID-CRASH-0034 (2026-09-28 code-review P2-19): the default now
+    /// delegates to the module-level `presentKeyFailureAlert(_:)` in
+    /// `Services/EncryptionFailureAlert.swift` (the AppKit-dependent
+    /// implementation moved out so this file no longer needs
+    /// `import AppKit`). AppDelegate's `applicationDidFinishLaunching`
+    /// override + tests still substitute this seam.
     static var keyFailureAlertPresenter: (CryptoKeyFailure) -> KeyFailureAction = {
         presentKeyFailureAlert($0)
     }
@@ -701,40 +693,21 @@ class CryptoService: CryptoServiceProtocol {
             action = captured ?? .quit
         }
         if action == .quit {
-            // Graceful, informed exit instead of fatalError.
-            DispatchQueue.main.async { NSApp.terminate(nil) }
+            // ID-CRASH-0034: extracted from inline `NSApp.terminate(nil)`
+            // to a notification post + AppDelegate listener, so this file
+            // no longer needs `import AppKit`. Default `appTerminator`
+            // posts `.cryptoServiceRequestTerminateApp`; AppDelegate's
+            // observer calls `NSApp.terminate(nil)` from the main thread.
+            appTerminator()
         }
         return action
     }
 
-    /// Must run on the main thread — callers dispatch.
-    private static func presentKeyFailureAlert(_ failure: CryptoKeyFailure) -> KeyFailureAction {
-        NSApp.setActivationPolicy(.regular) // LSUIElement app: alert must be visible
-        defer { NSApp.setActivationPolicy(.accessory) }
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        switch failure {
-        case .corruptExistingKey:
-            alert.messageText = L10n.alertKeyCorruptTitle
-            alert.informativeText = L10n.alertKeyCorruptMessage
-            // Quit is the default button — a Return-key accident must never
-            // destroy the user's history.
-            alert.addButton(withTitle: L10n.quitApp)
-            alert.addButton(withTitle: L10n.alertKeyButtonReset)
-        case .secureRandomUnavailable:
-            alert.messageText = L10n.alertKeyRandomTitle
-            alert.informativeText = L10n.alertKeyRandomMessage
-            alert.addButton(withTitle: L10n.quitApp)
-        case .keyStorageFailed:
-            alert.messageText = L10n.alertKeyStorageTitle
-            alert.informativeText = L10n.alertKeyStorageMessage
-            alert.addButton(withTitle: L10n.quitApp)
-            alert.addButton(withTitle: L10n.alertKeyButtonRetry)
-        }
-        let response = alert.runModal()
-        if failure == .secureRandomUnavailable { return .quit }
-        return response == .alertSecondButtonReturn ? .regenerate : .quit
-    }
+    /// ID-CRASH-0034: appTerminator seam for the quit-app path. Default
+    /// posts the `cryptoServiceRequestTerminateApp` notification (defined
+    /// in `Services/EncryptionFailureAlert.swift`) so AppDelegate can call
+    /// `NSApp.terminate(nil)`. Tests can replace with a no-op spy.
+    static var appTerminator: () -> Void = postRequestTerminateAppNotification
 
     private func getKey() -> SymmetricKey? {
         if let customKey { return customKey }

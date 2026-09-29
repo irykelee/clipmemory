@@ -114,6 +114,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         CryptoService.keyFailureAlertPresenter = { [weak self] failure in
             self?.presentKeyFailureAlert(failure) ?? .quit
         }
+        // ID-CRASH-0034 (2026-09-28 code-review P2-19): CryptoService
+        // also posts `.cryptoServiceRequestTerminateApp` (defined in
+        // `Services/EncryptionFailureAlert.swift`) instead of calling
+        // `NSApp.terminate(nil)` directly. AppDelegate owns the actual
+        // NSApp.terminate so the service layer stays AppKit-free.
+        NotificationCenter.default.addObserver(
+            forName: .cryptoServiceRequestTerminateApp,
+            object: nil,
+            queue: .main
+        ) { _ in
+            NSApp.terminate(nil)
+        }
 
         setupWindowManager()
         setupStatusItem()

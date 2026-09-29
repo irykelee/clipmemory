@@ -211,6 +211,7 @@
 		E7AFC250931E989220FF9785 /* UserDefaultsKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1CA4DA5A80D34640D39AEB7 /* UserDefaultsKeyTests.swift */; };
 		E7CD84128DBD088B338E63B5 /* CryptoService+KeychainMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD395DCC8D9B2A129D37170A /* CryptoService+KeychainMigration.swift */; };
 		E89EAD0E96F0484E360879B3 /* AAASuiteBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 598ED0FD98E424D7BF2897D2 /* AAASuiteBootstrapTests.swift */; };
+		EB7FE5BC339505334E453459 /* EncryptionFailureAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86B656811820158814CB1CDD /* EncryptionFailureAlert.swift */; };
 		EC9B8E180D5B18F679F1E86D /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F250C19E7199E18D95521A3 /* CryptoService.swift */; };
 		EDD4772BEACF49926B32ECA9 /* ConcurrencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */; };
 		F0564A730DDCDEC5CFF13272 /* DiagnosticsBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67D7342759CC58EA571EF89D /* DiagnosticsBanner.swift */; };
@@ -366,6 +367,7 @@
 		84072C9393127BAA49827196 /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
 		852369BB995F52E3B949D2A4 /* CrashReportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportService.swift; sourceTree = "<group>"; };
 		85A0464EB282FBD2107A662D /* BackupServiceExceptionPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupServiceExceptionPathTests.swift; sourceTree = "<group>"; };
+		86B656811820158814CB1CDD /* EncryptionFailureAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptionFailureAlert.swift; sourceTree = "<group>"; };
 		8736B83768848E6CBB1834EA /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		8AAB21C7B713F9428F157AE5 /* ContentViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentViewTests.swift; sourceTree = "<group>"; };
 		8C023CD1C3CEBD75D29150DA /* ClipboardStoreMainActorPhase3Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStoreMainActorPhase3Tests.swift; sourceTree = "<group>"; };
@@ -757,6 +759,7 @@
 				FD395DCC8D9B2A129D37170A /* CryptoService+KeychainMigration.swift */,
 				AB8F5D4712793FC8930C7DB9 /* CryptoService+TestSeams.swift */,
 				28996AE01C5C1C22507EFA6D /* EncryptionFailedAlertThrottler.swift */,
+				86B656811820158814CB1CDD /* EncryptionFailureAlert.swift */,
 				D52B7E6165B766117D1BC7F2 /* FeedProbeEngine.swift */,
 				1AA0796C44CC23B624C9E5CF /* FirstLaunchService.swift */,
 				CB46D62ED9B13AFDE0196EFF /* HangDetector.swift */,
@@ -1090,6 +1093,7 @@
 				BB9FF1079BD872DBDAC1B04E /* DateHelpers.swift in Sources */,
 				F0564A730DDCDEC5CFF13272 /* DiagnosticsBanner.swift in Sources */,
 				80CA63DE26FA32AD4DD8DB0B /* EncryptionFailedAlertThrottler.swift in Sources */,
+				EB7FE5BC339505334E453459 /* EncryptionFailureAlert.swift in Sources */,
 				95DADC4C748A5249890001B4 /* ExcludedAppRow.swift in Sources */,
 				9A73423E412F9A346C0D59BE /* FeedProbeEngine.swift in Sources */,
 				4F63BFC02C3FF32BDD4486E5 /* FirstLaunchService.swift in Sources */,
