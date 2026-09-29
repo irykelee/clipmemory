@@ -28,14 +28,27 @@ class ImageStorage {
     /// P1-AUDIT-2026-09-22 (P2-16): separate cache for the full-size bitmap
     /// used by `copyToClipboard` (warm path) and `loadFullSizeImageAsync`
     /// (cold path). Sized smaller than `imageCache` because full-size bitmaps
-    /// are 5-15× the thumbnail — 8 items / 100 MB is the sweet spot for
-    /// "user clicks a recent image, gets it instantly without re-decode".
+    /// are 5-15× the thumbnail — 8 items is the sweet spot for "user
+    /// clicks a recent image, gets it instantly without re-decode".
     /// Decoupled from `imageCache` so a thumbnail-prefetch burst can't evict
     /// the full-size of a row the user is about to copy.
+    ///
+    /// ID-CRASH-0028 (2026-09-28 code-review P2-11): removed the
+    /// `totalCostLimit = 100 MB` previously set here. NSCache evicts when
+    /// EITHER `countLimit` OR `totalCostLimit` is hit, and a single
+    /// 6144×3456 screenshot (≈ 85 MB raw `w*h*4`) already exceeds the
+    /// 100 MB budget on its own — the previous code evicted every other
+    /// entry the moment the first oversize image landed, defeating the
+    /// "8 recent images" guarantee. Rely on `countLimit = 8` alone for
+    /// the recency contract; the absolute memory ceiling is bounded by
+    /// `8 × max-image-size-from-disk`, which is bounded by the on-disk
+    /// payload (user clipboard screenshots, no third-party adversarial
+    /// channel). For comparison: `imageCache` (thumbnails, 512 px cap)
+    /// keeps its `totalCostLimit` because each entry is bounded at
+    /// 512×512×4 = 1 MB, so 100 entries fit the 100 MB budget cleanly.
     private let fullSizeCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 8
-        cache.totalCostLimit = 100 * 1024 * 1024 // 100 MB
         return cache
     }()
     /// P1-AUDIT-2026-09-22 (P2-16): row-preview thumbnail cap. Mirrors
