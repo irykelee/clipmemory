@@ -82,10 +82,12 @@ enum ImagePreviewPanel {
               let documentView = scrollView.documentView else { return }
         let currentOffset = scrollView.documentVisibleRect.origin
         let maxScrollY = max(0, documentView.bounds.maxY - scrollView.documentVisibleRect.height)
-        // NSEvent.scrollingDeltaY is positive for "scroll up" (content
-        // moves down in macOS top-left origin coords); subtract to
-        // translate the gesture direction into a top-left offset.
-        let proposed = currentOffset.y - event.scrollingDeltaY
+        // NSEvent.scrollingDeltaY > 0 means the user scrolled UP —
+        // content moves DOWN in macOS top-left origin coords, i.e. we
+        // look at lower parts of the document. Add the delta to the
+        // current origin.y so the visible window shifts downward. Clamp
+        // to [0, maxScrollY] to prevent over-scroll.
+        let proposed = currentOffset.y + event.scrollingDeltaY
         let clampedY = min(max(0, proposed), maxScrollY)
         scrollView.scroll(NSPoint(x: currentOffset.x, y: clampedY))
     }
