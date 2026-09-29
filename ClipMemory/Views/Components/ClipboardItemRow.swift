@@ -662,9 +662,22 @@ struct ClipboardItemRow: View, Equatable {
                         .onDisappear {
                             // Invalidate any in-flight long-press load so it
                             // can't pop the preview panel after the row has
-                            // been recycled.
+                            // been recycled (e.g., user permanently deletes
+                            // the item from trash / list).
+                            //
+                            // ID-CRASH-0053 (USER-FEEDBACK-2026-09-26 round 4):
+                            // do NOT call `ImagePreviewPanel.hide()` here. The
+                            // previous behaviour dismissed the preview when
+                            // SwiftUI recycled the row during list scroll
+                            // (mouse wheel scrolls the list — the row goes
+                            // off-screen — `.onDisappear` fires — panel hides
+                            // — identical symptom to the mouseUp race). The
+                            // preview panel anchors at the mouse position
+                            // captured at `show()` time and is unrelated to
+                            // the row's lifecycle. Real dismiss signals are
+                            // `onChange(of: imageLongPressing)` (real mouseUp)
+                            // and the Escape-key fallback in `ImagePreviewPanel`.
                             self.previewPressToken = nil
-                            ImagePreviewPanel.hide()
                         }
                         .task(id: item.content) {
                             // P0-3 T2: if the startup integrity scan already knows
