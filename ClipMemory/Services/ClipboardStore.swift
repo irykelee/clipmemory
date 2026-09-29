@@ -18,8 +18,14 @@ let itemsSaveEncoder = JSONEncoder()
 // regressions — the god-object breakup is a deliberate defer. Tracking the
 // 1250-line ceiling explicitly via disable so the discipline is visible in
 // code review.
-// (2) As of the 2026-07-24 low-audit batch the file is ~1480 lines, well past
-// the 1250 threshold. Move logic into separate files in a future refactor pass.
+// (2) ID-CRASH-0025 (2026-09-28 code-review P2-20): the previous note
+// "As of the 2026-07-24 low-audit batch the file is ~1480 lines" was
+// stale (current count = ~2348 — see `wc -l`). The 1250-line ceiling
+// is enforced via `// swiftlint:disable file_length` so the disable is
+// not a comment-bearing footgun (mirror of ID-CRASH-0016 BackupPackage
+// 1301 lines for BACKUP-0001). Move logic into separate files in a
+// future refactor pass (god-object breakup per P1-AUDIT-2026-09-22
+// P2-14).
 
 extension Notification.Name {
     static let encryptionFailed = Notification.Name("ClipboardStore.encryptionFailed")
