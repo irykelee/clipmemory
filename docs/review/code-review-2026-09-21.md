@@ -139,6 +139,13 @@
 
 闭合数：6 / 7 P1s (P1-7 留待 NetworkMonitor 单独 audit batch)。
 
+附注：本表 P1-2..P1-7 之外，本审计「二、P2 发现」#1（IV 碰撞兜底）和 #2（saveBlob 写失败感知）也已分别在后续 batch 中闭合。交叉证据：
+
+- **P2-1 IV 碰撞兜底**（本审计 #1；09-28 audit "P2-1"）：`CryptoService.swift:956-979` `DecryptV2Result` 枚举 + `:984` `decryptBytes` 的 v2→legacy fallback 已落地（ID-STORE-0004 / 0006 lineage, 2026-08-04 batch）。`.authFailure` 与 `.parseFailure` 都触发 legacy 重试；`~1/65536 collision = real user data loss otherwise` 在 `:962` 已记录。
+- **P2-2 FileStorageBackend.saveBlob 写失败感知**（本审计 #2；09-28 audit "P1-1"）：ID-CRASH-0007 (`9de0e81`) 在 `StorageBackend.swift:120-134` 加了 `defaults.synchronize()` + `readBack == data` 校验 + `throws CocoaError(.fileWriteUnknown)`。闭合。
+
+P2-3（Keychain 迁移失败明文滞留）由 ID-CRASH-0007 同一 commit 的 `FileStorageBackend.saveTags` read-back 同步处理（catch 路径 retry + UI 通知）。闭合数：8 / 9 项（缺 P1-7 NetworkMonitor + 二、P2 #4-9 范围由 09-28 audit P2 各自 cover）。
+
 ---
 
 ## 六、总体评价
