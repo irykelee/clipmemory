@@ -441,7 +441,7 @@ struct HistoryCaptureSettingsView: View {
                         searchDebounce?.cancel()
                         let item = DispatchWorkItem { appPickerSearchDebounced = newValue }
                         searchDebounce = item
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
+                        SearchDebounce.schedule(workItem: item)
                     }
                 }
             Color.clear.frame(height: 1)

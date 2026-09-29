@@ -23,6 +23,7 @@
 		0BDB72719C41069E657DB44F /* BackupServiceExceptionPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85A0464EB282FBD2107A662D /* BackupServiceExceptionPathTests.swift */; };
 		0E128B64BAAE6325C6341781 /* ItemListViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 339849815227F36776F365DE /* ItemListViewTests.swift */; };
 		101A0E4D804823A84450BE64 /* ContentViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AAB21C7B713F9428F157AE5 /* ContentViewTests.swift */; };
+		115D50E182712410F9EF2779 /* SearchDebounce.swift in Sources */ = {isa = PBXBuildFile; fileRef = 950C8F766BF8F6F390BFA8EE /* SearchDebounce.swift */; };
 		138C340D07ADB674B5C48BE0 /* TagPickerLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AD63BCFD147D053894F30A /* TagPickerLogicTests.swift */; };
 		160EBC11C049021E7BC5E03D /* ClipboardItemRowSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 131D2ADB89E2354B546298A2 /* ClipboardItemRowSnapshotTests.swift */; };
 		17DD4FBBF0E756DA8D26C43C /* CryptoServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F81D7D47A2B792F43987DE /* CryptoServiceTests.swift */; };
@@ -375,6 +376,7 @@
 		901900D40CAF1527A6AEE527 /* KeyCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyCaptureView.swift; sourceTree = "<group>"; };
 		9168850C81327649C0142FD4 /* StorageBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageBackend.swift; sourceTree = "<group>"; };
 		91D0097CC42906B56F2E5109 /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsView.swift; sourceTree = "<group>"; };
+		950C8F766BF8F6F390BFA8EE /* SearchDebounce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchDebounce.swift; sourceTree = "<group>"; };
 		96F722DF3757FF81CD7A40CC /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
 		9718B14C2966E47F4D80E31C /* AccessibilityHintTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityHintTests.swift; sourceTree = "<group>"; };
 		97B0167C63BE64D5C84A942B /* RestoreWizardWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreWizardWindowController.swift; sourceTree = "<group>"; };
@@ -721,6 +723,7 @@
 				7027A04305067DB8A8656FC9 /* FontScaling.swift */,
 				397ABF823A0998D9030774AC /* FuzzySearchMatcher.swift */,
 				7B1E4EEEB18148D99A25B6FD /* RichTextParser.swift */,
+				950C8F766BF8F6F390BFA8EE /* SearchDebounce.swift */,
 				B21ED46E8BB3820FBE9E273E /* TestIsolation.swift */,
 			);
 			path = Utils;
@@ -1131,6 +1134,7 @@
 				BE227B1B6992D34C37515950 /* SafeModeBanner.swift in Sources */,
 				AEEE27EC31C4AA70E55DDCB9 /* SafeModeService.swift in Sources */,
 				3CECE47C3C9D938FFAD546DE /* SaveRetryState.swift in Sources */,
+				115D50E182712410F9EF2779 /* SearchDebounce.swift in Sources */,
 				52059DDAB707C9190DC2C455 /* SelectCheckbox.swift in Sources */,
 				05B522BBFEF4D65D6406CD6B /* ServiceProtocols.swift in Sources */,
 				6918B08B90FB33A00F652210 /* SettingsRootView.swift in Sources */,

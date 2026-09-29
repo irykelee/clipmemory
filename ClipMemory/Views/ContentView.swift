@@ -273,7 +273,9 @@ struct ContentView: View {
         // second-guess the [self] capture semantics.
         let work = DispatchWorkItem { searchTextDebounced = text }
         searchTextDebounce = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        // ID-CRASH-0040 (2026-09-28 code-review P3): single source of truth
+        // for the 250 ms search debounce delay (Utils/SearchDebounce.swift).
+        SearchDebounce.schedule(workItem: work)
     }
 
     // MARK: - Theme

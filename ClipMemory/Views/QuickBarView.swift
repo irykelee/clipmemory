@@ -162,7 +162,7 @@ struct QuickBarView: View {
                             // different results windows, which the audit
                             // (docs/superpowers/audits/2026-08-10-apple-api-reuse-audit.md
                             // C3) flagged as a consistency defect).
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
+                            SearchDebounce.schedule(workItem: item)
                         }
                     }
                 if !searchText.isEmpty {
