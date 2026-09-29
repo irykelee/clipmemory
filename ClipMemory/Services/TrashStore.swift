@@ -36,6 +36,10 @@ final class TrashStore: ObservableObject {
     private let saveTimerQueue = DispatchQueue(label: "com.clipmemory.trashsave", qos: .utility)
     private var saveTimer: DispatchSourceTimer?
     private var needsSave = false
+    // ID-CRASH-0044 (2026-09-28 code-review P3): single source of truth
+    // for the 500 ms save-debounce. Matches `ClipboardStore.saveDebounceInterval`
+    // at `ClipboardStore.swift:760` so a single tuning knob (the H-1
+    // retry contract's flush timing) propagates to both stores.
     private let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
     /// Shared storage key, retained for migration compatibility.

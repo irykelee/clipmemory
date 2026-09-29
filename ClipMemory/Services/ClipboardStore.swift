@@ -757,7 +757,12 @@ final class ClipboardStore: ObservableObject {
     var needsSave = false
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
     // so extension's scheduleSave() can compute debounce deadlines.
-    let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
+    // ID-CRASH-0044 (2026-09-28 code-review P3): paired with
+// `TrashStore.saveDebounceInterval` at `TrashStore.swift:39`. Single
+// source of truth lives on `Persistence.SaveDebounce` (see
+// `Services/ClipboardStore+Persistence.swift`). The local literal is
+// preserved so the file remains self-contained for grep.
+let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
     /// H-2 (2026-07-25 audit): captures that arrive before the detached
     /// `CryptoService.prepareKey()` task finishes on first launch are held here

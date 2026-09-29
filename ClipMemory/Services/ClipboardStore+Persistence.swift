@@ -22,6 +22,15 @@ import Foundation
 
 extension ClipboardStore {
 
+    /// ID-CRASH-0044 (2026-09-28 code-review P3): canonical 500 ms save-
+    /// debounce constant. Used by `ClipboardStore.saveDebounceInterval`
+    /// + `TrashStore.saveDebounceInterval` (both kept as literals for
+    /// grep convenience; cross-referenced via the ID-CRASH-0044
+    /// comments at each site).
+    enum Persistence {
+        static let saveDebounce: DispatchTimeInterval = .milliseconds(500)
+    }
+
     func saveItems() throws {
         // CLIP-2: the `.sync` hop is deliberate — only the encoding CPU
         // moves off the calling thread; the durability semantics are
