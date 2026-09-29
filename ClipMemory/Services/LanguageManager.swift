@@ -46,7 +46,18 @@ class LanguageManager: ObservableObject {
     /// `nonisolated(unsafe)` follows the same justification as the
     /// `defaults` field in `UpdateService` (read from main, written
     /// only from test `setUp`).
-    nonisolated(unsafe) static var defaults: UserDefaults = .standard
+    ///
+    /// ID-CRASH-0029 (2026-09-28 code-review P2-23): now a forwarder
+    /// over `TestIsolation.defaults`. The three service-level
+    /// `nonisolated(unsafe) static var defaults` declarations
+    /// (LanguageManager / UpdateService / WindowManager) are kept as
+    /// forwarders so existing test sites compile unchanged; the
+    /// canonical seam is `TestIsolation.defaults` (Utils/test-shared
+    /// .swift).
+    nonisolated(unsafe) static var defaults: UserDefaults {
+        get { TestIsolation.defaults }
+        set { TestIsolation.defaults = newValue }
+    }
 
     /// NEW-2 follow-up: the cached singleton and the `defaults` it
     /// was bound to. `_sharedDefaultDefaults` is the key that

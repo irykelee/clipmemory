@@ -82,7 +82,14 @@ class WindowManager: NSObject, NSWindowDelegate {
     /// have to re-introduce the static. `nonisolated(unsafe)` to match
     /// the Swift 6 concurrency posture of the original (this property
     /// is read from main-thread WindowManager methods only).
-    nonisolated(unsafe) static var defaults: UserDefaults = .standard
+    ///
+    /// ID-CRASH-0029 (2026-09-28 code-review P2-23): forwarder over
+    /// `TestIsolation.defaults`. See Utils/TestIsolation.swift for the
+    /// canonical seam.
+    nonisolated(unsafe) static var defaults: UserDefaults {
+        get { TestIsolation.defaults }
+        set { TestIsolation.defaults = newValue }
+    }
 
     override init() { super.init() }
 

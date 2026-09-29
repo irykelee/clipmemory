@@ -183,7 +183,13 @@ final class UpdateService {
     /// nonisolated; the same justification as `ClipboardStore.contentCache`.
     /// Swift 6: first candidate for removal once all nonisolated(unsafe)
     /// statics are eliminated from the service layer.
-    nonisolated(unsafe) static var defaults: UserDefaults = .standard
+    ///
+    /// ID-CRASH-0029 (2026-09-28 code-review P2-23): forwarder over
+    /// `TestIsolation.defaults`. See Utils/TestIsolation.swift.
+    nonisolated(unsafe) static var defaults: UserDefaults {
+        get { TestIsolation.defaults }
+        set { TestIsolation.defaults = newValue }
+    }
 
     /// NEW-2 (2026-08-06 review): test seam for swapped singleton. When the
     /// injected service is non-nil, `shared` returns that instance instead of
