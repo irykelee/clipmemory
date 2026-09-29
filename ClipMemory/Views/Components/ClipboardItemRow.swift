@@ -72,6 +72,28 @@ class LongPressView: NSView {
     var onPressChanged: (Bool) -> Void
     private var pressGesture: NSPressGestureRecognizer!
 
+    // ID-CRASH-0051 (USER-FEEDBACK-2026-09-26 + ID-CRASH-0050 follow-up):
+    // trackpad two-finger-scroll + Tap-to-Click synthesizes a mouseUp
+    // immediately after the scrollWheel event, causing the gesture
+    // recognizer to fire `.ended` even while the user is still
+    // physically holding the button. The 0050 patch removed the
+    // redundant `leftMouseUp` local monitor but the gesture
+    // recognizer itself dismisses on `.ended`, so the bug persisted.
+    //
+    // Real fix: gate the `.ended` callback on a recent scrollWheel
+    // event. Install a global scrollWheel monitor while pressed
+    // (timestamps `lastScrollWheelAt`); uninstall on .ended. If
+    // `.ended` arrives within `synthesizedMouseUpWindow` (200ms — same
+    // window as the prior fix, well-separated from a deliberate
+    // release that happens hundreds of ms after scroll stops), keep
+    // `isPressed = true` so the panel stays shown. A real release
+    // (the user actually lifts their finger) sees `lastScrollWheelAt`
+    // unchanged at `.distantPast`, so `sinceScroll > 0.2s` always —
+    // dismissal works as normal.
+    private static let synthesizedMouseUpWindow: TimeInterval = 0.2
+    private var lastScrollWheelAt: Date = .distantPast
+    private var scrollWheelMonitor: Any?
+
     init(onPressChanged: @escaping (Bool) -> Void) {
         self.onPressChanged = onPressChanged
         super.init(frame: .zero)
@@ -86,11 +108,54 @@ class LongPressView: NSView {
     }
 
     @objc private func handlePress(_ sender: NSPressGestureRecognizer) {
-        let isPressed = sender.state == .began || sender.state == .changed
-        DispatchQueue.main.async { self.onPressChanged(isPressed) }
+        switch sender.state {
+        case .began:
+            installScrollWheelMonitor()
+            DispatchQueue.main.async { self.onPressChanged(true) }
+        case .changed:
+            // Mouse moved while pressed — no scrollWindow gating needed,
+            // the press is genuinely ongoing.
+            DispatchQueue.main.async { self.onPressChanged(true) }
+        case .ended, .cancelled:
+            uninstallScrollWheelMonitor()
+            // Gate dismissal on scroll timestamp — see class-level
+            // comment for the rationale.
+            let sinceScroll = Date().timeIntervalSince(self.lastScrollWheelAt)
+            if sinceScroll < Self.synthesizedMouseUpWindow {
+                // Synthesized mouseUp from a trackpad two-finger-scroll
+                // gesture — keep the long-press active. The user's
+                // physical release (which lands hundreds of ms after
+                // the scroll stops) will arrive later as another
+                // `.ended` event with `sinceScroll >> 0.2s`.
+                return
+            }
+            DispatchQueue.main.async { self.onPressChanged(false) }
+        default:
+            break
+        }
+    }
+
+    private func installScrollWheelMonitor() {
+        // Reset the timestamp; install only once per press cycle.
+        lastScrollWheelAt = .distantPast
+        if scrollWheelMonitor == nil {
+            scrollWheelMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                self?.lastScrollWheelAt = Date()
+                return event
+            }
+        }
+    }
+
+    private func uninstallScrollWheelMonitor() {
+        if let m = scrollWheelMonitor {
+            NSEvent.removeMonitor(m)
+            scrollWheelMonitor = nil
+        }
+        lastScrollWheelAt = .distantPast
     }
 
     deinit {
+        uninstallScrollWheelMonitor()
         if let gesture = pressGesture {
             removeGestureRecognizer(gesture)
         }
