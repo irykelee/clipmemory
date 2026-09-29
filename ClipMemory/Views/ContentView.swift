@@ -5,11 +5,14 @@ import ServiceManagement
 import os.log
 
 // swiftlint:disable file_length
-// Justification: ContentView is the single SwiftUI root for sidebar + content +
-// settings Form. Splitting ContentView was deferred per 2026-07-20 audit
-// (ContentView split is the remaining deferred item). File was already at the
-// 1250-line ceiling before Task 7; adding the UpdateSource Section pushes it
-// over. Track the 1250 ceiling explicitly so any further growth is visible.
+// ID-CRASH-0041 (2026-09-28 code-review P3): updated — settings is no
+// longer "a Form in ContentView"; it became its own separate window
+// at 2026-07-25 (Views/Settings/SettingsRootView, per CLAUDE.md:63).
+// ContentView is now the SwiftUI root for sidebar + content only. The
+// original "settings Form" claim was stale from before the split.
+// Justification unchanged: ContentView split is still the remaining
+// deferred item per the 2026-07-20 audit; track the 1250 ceiling
+// explicitly so any further growth is visible.
 
 enum SidebarTab: String, CaseIterable {
     case all, text, image, link, richText, pinned, trash, settings
