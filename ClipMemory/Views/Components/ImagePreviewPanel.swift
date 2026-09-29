@@ -55,6 +55,28 @@ enum ImagePreviewPanel {
     }
 
     @MainActor private static var panel: NSPanel?
+
+    /// ID-CRASH-0055 (USER-FEEDBACK-2026-09-26 round 6): forward a
+    /// scrollWheel event into the panel's content view so the user
+    /// sees the image scroll while holding the long-press. The local
+    /// monitor at `LongPressView` swallows the event (returns nil) to
+    /// prevent `NSPressGestureRecognizer` from firing `.cancelled` —
+    /// without this swallow the panel dismisses (the original bug).
+    /// With the swallow alone (0054) the dismissal was fixed but
+    /// the image stopped scrolling too. This re-dispatch restores
+    /// the visible-scroll behavior while keeping the swallow.
+    ///
+    /// `contentView` is either `NSImageView` (non-scrollable, ignores)
+    /// or `NSScrollView` (scrollable, scrolls). Both accept
+    /// `scrollWheel(with:)`; dispatch on main since the panel is
+    /// main-actor only.
+    @MainActor
+    static func dispatchScroll(_ event: NSEvent) {
+        guard let panel else { return }
+        DispatchQueue.main.async {
+            panel.contentView?.scrollWheel(with: event)
+        }
+    }
     @MainActor private static var escapeMonitor: Any?
     // ID-VIEW-0047 (2026-09-27): DI hook for the Escape monitor so tests
     // can verify install/remove pairing without a real NSEvent system.

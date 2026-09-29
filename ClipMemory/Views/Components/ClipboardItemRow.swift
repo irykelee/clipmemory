@@ -159,14 +159,16 @@ class LongPressView: NSView {
                     // 0052 swallows). Returning `nil` here cuts the
                     // scrollWheel off at the dispatch boundary, so the
                     // gesture recognizer never sees it and never
-                    // transitions to `.cancelled`. The list view's
-                    // own scroll handling (its `LazyVStack` /
-                    // `List` parent) receives the scroll via the
-                    // standard responder chain and continues to
-                    // scroll the list as the user expects; we only
-                    // stop the gesture-recognizer cancellation path,
-                    // not the user's scroll intent.
+                    // transitions to `.cancelled`. The user's actual
+                    // scroll intent is preserved by ID-CRASH-0055:
+                    // forward the event to the preview panel's
+                    // content view before returning nil, so the
+                    // visible image still scrolls. (The list view
+                    // itself scrolls via its own `LazyVStack` /
+                    // `List` parent — separate code path that doesn't
+                    // depend on this monitor.)
                     self.lastScrollWheelAt = Date()
+                    ImagePreviewPanel.dispatchScroll(event)
                     return nil
                 case .leftMouseUp:
                     let sinceScroll = Date().timeIntervalSince(self.lastScrollWheelAt)
