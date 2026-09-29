@@ -56,26 +56,38 @@ enum ImagePreviewPanel {
 
     @MainActor private static var panel: NSPanel?
 
-    /// ID-CRASH-0055 (USER-FEEDBACK-2026-09-26 round 6): forward a
-    /// scrollWheel event into the panel's content view so the user
-    /// sees the image scroll while holding the long-press. The local
-    /// monitor at `LongPressView` swallows the event (returns nil) to
-    /// prevent `NSPressGestureRecognizer` from firing `.cancelled` —
-    /// without this swallow the panel dismisses (the original bug).
-    /// With the swallow alone (0054) the dismissal was fixed but
-    /// the image stopped scrolling too. This re-dispatch restores
-    /// the visible-scroll behavior while keeping the swallow.
+    /// ID-CRASH-0056 (USER-FEEDBACK-2026-09-26 round 7): directly
+    /// translate a `scrollWheel` event into `NSScrollView.scroll(_:)`
+    /// instead of re-dispatching via `contentView.scrollWheel(with:)`.
+    /// 0055's re-dispatch path propagated the event through AppKit's
+    /// normal responder chain — which included the
+    /// `NSPressGestureRecognizer` attached to `LongPressView` (via the
+    /// row's NSView tree). That propagation re-introduced the
+    /// `.cancelled` dismissal that 0054 had eliminated. Bypassing
+    /// the event system entirely (calling `scroll(_:)` directly on the
+    /// NSScrollView) skips the responder chain — the gesture
+    /// recognizer never sees the event, the image actually scrolls.
     ///
-    /// `contentView` is either `NSImageView` (non-scrollable, ignores)
-    /// or `NSScrollView` (scrollable, scrolls). Both accept
-    /// `scrollWheel(with:)`; dispatch on main since the panel is
-    /// main-actor only.
+    /// `scroll(_:)` accepts a `CGPoint` top-left offset into the
+    /// document view (NOT a delta); we compute the new offset from
+    /// the current `documentVisibleRect.origin` plus the scroll
+    /// delta (deltaY in NSEvent is positive for "scroll up" = content
+    /// moves down in macOS coords; we subtract to follow the user's
+    /// scroll direction). Clamped to `[0, maxScrollY]` to prevent
+    /// over-scroll.
     @MainActor
     static func dispatchScroll(_ event: NSEvent) {
         guard let panel else { return }
-        DispatchQueue.main.async {
-            panel.contentView?.scrollWheel(with: event)
-        }
+        guard let scrollView = panel.contentView as? NSScrollView,
+              let documentView = scrollView.documentView else { return }
+        let currentOffset = scrollView.documentVisibleRect.origin
+        let maxScrollY = max(0, documentView.bounds.maxY - scrollView.documentVisibleRect.height)
+        // NSEvent.scrollingDeltaY is positive for "scroll up" (content
+        // moves down in macOS top-left origin coords); subtract to
+        // translate the gesture direction into a top-left offset.
+        let proposed = currentOffset.y - event.scrollingDeltaY
+        let clampedY = min(max(0, proposed), maxScrollY)
+        scrollView.scroll(NSPoint(x: currentOffset.x, y: clampedY))
     }
     @MainActor private static var escapeMonitor: Any?
     // ID-VIEW-0047 (2026-09-27): DI hook for the Escape monitor so tests
