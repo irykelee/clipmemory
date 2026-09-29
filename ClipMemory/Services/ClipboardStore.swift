@@ -1364,8 +1364,23 @@ final class ClipboardStore: ObservableObject {
         // where BOTH items and trashedItems are empty. Skip the
         // sweep while the trash load is in a failed state so
         // possibly-referenced images survive a corrupt trash blob.
+        //
+        // ID-CRASH-0031 (2026-09-28 code-review P2-6): dispatch the
+        // orphan sweep off `@MainActor`. The previous sync call did
+        // `fileManager.contentsOfDirectory(atPath:)` + a per-orphan
+        // `removeItem` loop (`ImageStorage.swift:1005-1018`) on the
+        // main thread. For a library with hundreds of screenshots,
+        // that's ~N+1 blocking syscalls during the first @MainActor
+        // frame after startup. The sweep itself is safe off-main:
+        // `imageCache` / `fullSizeCache` evictions are thread-safe
+        // (NSCache), the `pendingFilenames` snapshot pattern
+        // (`ImageStorage.swift:1015`) already handles writer races
+        // for the duration of the cleanup.
         if !trashStore.lastLoadFailed {
-            ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
+            let keptItems = items + trashedItems
+            Task.detached(priority: .utility) {
+                ImageStorage.shared.cleanupOrphanedImages(keptItems: keptItems)
+            }
         } else {
             // ID-STORE-0016: skip orphan sweep so possibly-referenced images survive
             // a corrupt trash blob; next successful loadTrashedItems() resumes.
