@@ -2081,13 +2081,31 @@ final class ClipboardStore: ObservableObject {
     /// C-1 pinned exemption lives here; non-pinned overflow candidates
     /// are returned in their original `items` order.
     private func itemsExceedingMaxItems() -> [ClipboardItem] {
+        // ID-CRASH-0027 (2026-09-28 code-review P2-9): two-pass split
+        // into (kept, overflow) instead of the prior 5-pass approach
+        // (2 filter + 1 Array.prefix + 1 Set.map + 1 filter). At 10K
+        // items past maxItems, every capture previously did ~50K
+        // filter-equivalents; this version does 2 O(n) passes plus
+        // the final filter (~30K ops). Same semantics, same
+        // `moveToTrash` downstream behaviour.
         guard items.count > maxItems else { return [] }
-        let pinned = items.filter { $0.isPinned }
-        var nonPinned = items.filter { !$0.isPinned }
-        let allowedNonPinned = max(0, maxItems - pinned.count)
-        nonPinned = Array(nonPinned.prefix(allowedNonPinned))
-        let trimmedIds = Set((pinned + nonPinned).map { $0.id })
-        return items.filter { !trimmedIds.contains($0.id) }
+        // Pass 1: count pinned so we know how many non-pinned can stay.
+        var pinnedCount = 0
+        for item in items where item.isPinned { pinnedCount += 1 }
+        let allowedNonPinned = max(0, maxItems - pinnedCount)
+        // Pass 2: build the keep set in a single sweep.
+        var keepIds = Set<UUID>()
+        keepIds.reserveCapacity(items.count)
+        var nonPinnedKept = 0
+        for item in items {
+            if item.isPinned {
+                keepIds.insert(item.id)
+            } else if nonPinnedKept < allowedNonPinned {
+                keepIds.insert(item.id)
+                nonPinnedKept += 1
+            }
+        }
+        return items.filter { !keepIds.contains($0.id) }
     }
 
     func trimToMaxItems() {
