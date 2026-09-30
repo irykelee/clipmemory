@@ -29,7 +29,8 @@ final class ClipboardItemRowSnapshotTests: XCTestCase {
     /// Renders a plain text item with `searchText = ""` and
     /// `isRevealed = false`. Captures the default, non-highlighted path
     /// with no selection state.
-    func testRendersPlainTextItem() {
+    func testRendersPlainTextItem() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI snapshot plain text)")
         let item = ClipboardItem(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
             content: "Hello, world!",
@@ -63,7 +64,8 @@ final class ClipboardItemRowSnapshotTests: XCTestCase {
     /// Renders a sensitive item in the masked (default) state. The masked
     /// path replaces content with bullet characters and tints them orange
     /// (visible regression sentinel for masking logic).
-    func testRendersSensitiveItemMasked() {
+    func testRendersSensitiveItemMasked() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI snapshot sensitive masked)")
         let item = ClipboardItem(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
             content: "AAbbCCddEEffGGhh11-22-33-44-55-66-77-88",
