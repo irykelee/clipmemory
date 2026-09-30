@@ -586,7 +586,9 @@ import XCTest
         // Local: 1019/1019 GREEN; CI: 1 ≠ 3 here. Skip the assertion
         // in CI to keep the release pipeline green; investigate + fix
         // root cause in a separate batch.
-        try XCTSkipIf(ProcessInfo.processInfo.environment["CI"] != nil)
+        if ProcessInfo.processInfo.environment["CI"] != nil {
+            throw XCTSkip("GH Actions runner: items.count=1 vs expected 3 (see ID-CRASH-0038)")
+        }
         // G.10.1: clearSensitiveItems must:
         //   - Remove non-pinned sensitive items
         //   - Preserve pinned sensitive items
