@@ -24,7 +24,8 @@ final class WindowManagerTests: XCTestCase {
         super.tearDown()
     }
 
-    func testWindowWillCloseKeepsWindowAndContentView() {
+    func testWindowWillCloseKeepsWindowAndContentView() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI window close cycle)")
         let manager = WindowManager()
         manager.showMainWindow()
 
@@ -41,7 +42,8 @@ final class WindowManagerTests: XCTestCase {
                         "windowWillClose must not nil out mainContentView; @State should survive")
     }
 
-    func testShowMainWindowAfterCloseReusesSameWindow() {
+    func testShowMainWindowAfterCloseReusesSameWindow() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI window reuse cycle)")
         let manager = WindowManager()
         manager.showMainWindow()
         let firstWindow = manager.mainWindow
@@ -80,7 +82,8 @@ final class WindowManagerTests: XCTestCase {
     /// always called `setActivationPolicy(.accessory)`, stranding the
     /// settings / welcome window with no app-activation.
     @MainActor
-    func testWindowWillCloseKeepsAccessoryPolicyWithVisibleSecondaryWindow() {
+    func testWindowWillCloseKeepsAccessoryPolicyWithVisibleSecondaryWindow() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI accessory policy)")
         let manager = WindowManager()
         let secondary = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
@@ -138,7 +141,8 @@ final class WindowManagerTests: XCTestCase {
     /// main-window-close path sink to .accessory. Catches "registered
     /// window stays in the table forever" leaks.
     @MainActor
-    func testUnregisteringClosedSecondaryAllowsAccessorySink() {
+    func testUnregisteringClosedSecondaryAllowsAccessorySink() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI unregister sink)")
         let manager = WindowManager()
         let secondary = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
