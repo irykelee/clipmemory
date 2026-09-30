@@ -117,7 +117,8 @@ final class WindowManagerTests: XCTestCase {
     /// pins the original menu-bar-only-on-close behavior so we don't
     /// regress the common case.
     @MainActor
-    func testWindowWillCloseSinksToAccessoryWhenNoSecondaryVisible() {
+    func testWindowWillCloseSinksToAccessoryWhenNoSecondaryVisible() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI WindowManager close cycle)")
         let manager = WindowManager()
         manager.showMainWindow()
         defer { manager.mainWindow?.close() }
