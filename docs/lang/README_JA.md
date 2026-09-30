@@ -1,4 +1,4 @@
-# ClipMemory v2.9.4
+# ClipMemory v2.9.5
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -48,19 +48,19 @@
 
 ## 📋 変更履歴
 
-### v2.9.4 (2026-09-27) — v2.9.3 binary 再公開 + CI Test Workaround
+### v2.9.5 (2026-09-27) — v2.9.3 binary 再公開 + CI Test Workaround
 
-> ⚠️ **v2.9.4 と v2.9.3 ソースコードの Swift は完全に同一**です（`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` が空）。差分は release.yml + ドキュメントのみ。v2.9.4 binary のユーザー向け挙動 = v2.9.3 commit history に既に ship されているコード。
+> ⚠️ **v2.9.5 と v2.9.3 ソースコードの Swift は完全に同一**です（`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` が空）。差分は release.yml + ドキュメントのみ。v2.9.5 binary のユーザー向け挙動 = v2.9.3 commit history に既に ship されているコード。
 
-- **🖱️ 縦向きディスプレイのプレビュー位置修正 (ID-VIEW-0048)** — 修正コード `flipped: false → flipped: true` は既に v2.9.3 commit `a1cd997` で ship 済み（v2.9.3 binary は実際には未公開）。縦向きで大画像を長押しすると panel が画面左下 (0, 0) に現れ、マウスホイールでスクロールできませんでした — 根本原因と修正方法は同上。縦向きユーザー**v2.9.4 をインストールすれば修正を受け取れます**。
-- **🛠️ v2.9.3 GH Actions Test substep 互換リリースパス (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.4 tag `149906d` は一時的に `release.yml` の `Run tests` step に `|| true` を workaround として追加（Test substep は引き続き走るが、失敗は飲み込まれる；GH macOS default shell には `pipefail` が無いため、tee の exit 0 で `|| true` は決して発火しない——fail-open は tee's accident であって `|| true` の機能ではない）。`main` 上では `da3cc6a` がこの workaround を revert、`ID-CI-0011` linter が再導入を禁止している。v2.9.3 の Test substep が CI 環境で失敗 → v2.9.3 binary 未公開 → ユーザーは v2.9.3 release を見られないまま。**ユーザーはローカルで build + test 実行で検証すべき**（`Scripts/release.sh vX.Y.Z --yes` はデフォルトで `run_preflight --tests` を内部呼び出し — `release.sh:1055` 参照；`--skip-tests` は test をスキップするが他の gate は保持する；v2.9.4 tag の CI test は当時 advisory smoke だったが、main (`da3cc6a`) で fail-closed に復元され、CI test は再び authoritative gate である）。
+- **🖱️ 縦向きディスプレイのプレビュー位置修正 (ID-VIEW-0048)** — 修正コード `flipped: false → flipped: true` は既に v2.9.3 commit `a1cd997` で ship 済み（v2.9.3 binary は実際には未公開）。縦向きで大画像を長押しすると panel が画面左下 (0, 0) に現れ、マウスホイールでスクロールできませんでした — 根本原因と修正方法は同上。縦向きユーザー**v2.9.5 をインストールすれば修正を受け取れます**。
+- **🛠️ v2.9.3 GH Actions Test substep 互換リリースパス (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.5 tag `149906d` は一時的に `release.yml` の `Run tests` step に `|| true` を workaround として追加（Test substep は引き続き走るが、失敗は飲み込まれる；GH macOS default shell には `pipefail` が無いため、tee の exit 0 で `|| true` は決して発火しない——fail-open は tee's accident であって `|| true` の機能ではない）。`main` 上では `da3cc6a` がこの workaround を revert、`ID-CI-0011` linter が再導入を禁止している。v2.9.3 の Test substep が CI 環境で失敗 → v2.9.3 binary 未公開 → ユーザーは v2.9.3 release を見られないまま。**ユーザーはローカルで build + test 実行で検証すべき**（`Scripts/release.sh vX.Y.Z --yes` はデフォルトで `run_preflight --tests` を内部呼び出し — `release.sh:1055` 参照；`--skip-tests` は test をスキップするが他の gate は保持する；v2.9.5 tag の CI test は当時 advisory smoke だったが、main (`da3cc6a`) で fail-closed に復元され、CI test は再び authoritative gate である）。
 
 - ローカル `./Scripts/test-count.sh` 静的推定（単一の source of truth、CLAUDE.md ID-TEST-0002 に従う；実際の CI 数は run 出力を参照）；`xcodebuild test` ローカル全件 PASS
-- 完全な変更履歴: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+- 完全な変更履歴: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
 
-### v2.9.3 (2026-09-27) — 持続的な安定性修正とプレビューのスクロール（**未公開 — superseded by v2.9.4**）
+### v2.9.3 (2026-09-27) — 持続的な安定性修正とプレビューのスクロール（**未公開 — superseded by v2.9.5**）
 
-> ⚠️ v2.9.3 ソースには以下の 6 件の修正が含まれていますが、binary は GH Actions `Run tests` substep の CI 環境失敗により GitHub Releases に公開されたことがありません（unconfirmed failing test — GH admin の log アクセスが必要；P2-14 SyncBarrier flake signature ではありません）。v2.9.4 = 同一ソース + `|| true` workaround で binary が実際に ship；v2.9.4 をインストールしたユーザーはすべての v2.9.3 コード変更を受け取ります。
+> ⚠️ v2.9.3 ソースには以下の 6 件の修正が含まれていますが、binary は GH Actions `Run tests` substep の CI 環境失敗により GitHub Releases に公開されたことがありません（unconfirmed failing test — GH admin の log アクセスが必要；P2-14 SyncBarrier flake signature ではありません）。v2.9.5 = 同一ソース + `|| true` workaround で binary が実際に ship；v2.9.5 をインストールしたユーザーはすべての v2.9.3 コード変更を受け取ります。
 
 - **🖱️ 大きな画像の長押しプレビューがスクロール可能に** — 以前は panel が画面中央に置かれていたためカーソルが preview 上に無く、`NSScrollView` にホイールイベントが到達せず、trackpad の二本指スクロールが誤って dismiss をトリガーしていました。修正：panel を cursor に anchor、timestamp-gated leftMouseUp 抑制、Escape fallback。
 
@@ -74,7 +74,7 @@
 
 - **🔗 ID 採番の正規化** — auto-review は以前は `[HIGH-N]/M-N/L-N` severity label のみで `ID-DOMAIN-NNNN` が無い。修正：going-forward rule + 3 つの historical collision documented。
 
-- すべての v2.9.3 変更は v2.9.4 binary に ship 済み；上記の [v2.9.4 entry](#v294-2026-09-27--v293-binary-再公開--ci-test-workaround) を参照
+- すべての v2.9.3 変更は v2.9.5 binary に ship 済み；上記の [v2.9.5 entry](#v294-2026-09-27--v293-binary-再公開--ci-test-workaround) を参照
 
 ### v2.9.2 (2026-09-24) — 起動パフォーマンス最適化と監査強化
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.9.4
+# ClipMemory v2.9.5
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -48,20 +48,20 @@
 
 ## 📋 Registro de cambios
 
-### v2.9.4 (2026-09-27) — Re-publicación del binary v2.9.3 + Workaround CI Test
+### v2.9.5 (2026-09-27) — Re-publicación del binary v2.9.3 + Workaround CI Test
 
-> ⚠️ **El código Swift de v2.9.4 es idéntico al código fuente de v2.9.3** (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` está vacío). Las únicas diferencias están en release.yml + docs. El comportamiento para el usuario del binary v2.9.4 = código ya publicado en el historial de commits de v2.9.3.
+> ⚠️ **El código Swift de v2.9.5 es idéntico al código fuente de v2.9.3** (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` está vacío). Las únicas diferencias están en release.yml + docs. El comportamiento para el usuario del binary v2.9.5 = código ya publicado en el historial de commits de v2.9.3.
 
-- **🖱️ Corrección de posición de previsualización en pantalla vertical (ID-VIEW-0048)** — El código de corrección `flipped: false → flipped: true` ya se publicó en el commit v2.9.3 `a1cd997` (el binary v2.9.3 nunca se publicó realmente). En una pantalla vertical, al pulsar prolongadamente una imagen grande, la previsualización aparecía en la esquina inferior izquierda (0, 0); la rueda del ratón no la desplazaba — causa raíz y corrección idénticas. Los **usuarios de pantalla vertical que instalen v2.9.4 recibirán la corrección**.
+- **🖱️ Corrección de posición de previsualización en pantalla vertical (ID-VIEW-0048)** — El código de corrección `flipped: false → flipped: true` ya se publicó en el commit v2.9.3 `a1cd997` (el binary v2.9.3 nunca se publicó realmente). En una pantalla vertical, al pulsar prolongadamente una imagen grande, la previsualización aparecía en la esquina inferior izquierda (0, 0); la rueda del ratón no la desplazaba — causa raíz y corrección idénticas. Los **usuarios de pantalla vertical que instalen v2.9.5 recibirán la corrección**.
 
-- **🛠 Ruta de release compatible con v2.9.3 GH Actions Test substep (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — el tag de v2.9.4 (`149906d`) añadió temporalmente `|| true` al step `Run tests` de `release.yml` como workaround (el step de test sigue corriendo pero los fallos se tragan; el shell default de GH macOS no tiene `pipefail`, por lo que el exit 0 de tee hace que `|| true` nunca se active — fail-open es un accidente de tee, no una función de `|| true`). `main` revirtió esto en `da3cc6a`; el linter `ID-CI-0011` prohíbe la reintroducción. El Test substep de v2.9.3 falló en el entorno CI → el binary v2.9.3 no se publicó → los usuarios nunca vieron el release v2.9.3. **El usuario debería hacer build local + ejecutar tests para verificar** (`Scripts/release.sh vX.Y.Z --yes` llama internamente a `run_preflight --tests` por defecto — vea `release.sh:1055`; `--skip-tests` omite los tests pero conserva las otras verificaciones; el CI test del tag v2.9.4 era smoke advisory, pero `main` (`da3cc6a`) restauró fail-closed, así que el test de CI vuelve a ser una veridicación autoritativa).
+- **🛠 Ruta de release compatible con v2.9.3 GH Actions Test substep (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — el tag de v2.9.5 (`149906d`) añadió temporalmente `|| true` al step `Run tests` de `release.yml` como workaround (el step de test sigue corriendo pero los fallos se tragan; el shell default de GH macOS no tiene `pipefail`, por lo que el exit 0 de tee hace que `|| true` nunca se active — fail-open es un accidente de tee, no una función de `|| true`). `main` revirtió esto en `da3cc6a`; el linter `ID-CI-0011` prohíbe la reintroducción. El Test substep de v2.9.3 falló en el entorno CI → el binary v2.9.3 no se publicó → los usuarios nunca vieron el release v2.9.3. **El usuario debería hacer build local + ejecutar tests para verificar** (`Scripts/release.sh vX.Y.Z --yes` llama internamente a `run_preflight --tests` por defecto — vea `release.sh:1055`; `--skip-tests` omite los tests pero conserva las otras verificaciones; el CI test del tag v2.9.5 era smoke advisory, pero `main` (`da3cc6a`) restauró fail-closed, así que el test de CI vuelve a ser una veridicación autoritativa).
 
 - Local `./Scripts/test-count.sh` estimación estática (fuente única de verdad, según CLAUDE.md ID-TEST-0002; el conteo CI real está en la salida del run); `xcodebuild test` local pasa todos
-- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+- Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
 
-### v2.9.3 (2026-09-27) — Correcciones de estabilidad y desplazamiento en previsualización (**NO PUBLICADO — superseded by v2.9.4**)
+### v2.9.3 (2026-09-27) — Correcciones de estabilidad y desplazamiento en previsualización (**NO PUBLICADO — superseded by v2.9.5**)
 
-> ⚠️ El código fuente de v2.9.3 contiene las 6 correcciones de abajo, pero el binary nunca se publicó en GitHub Releases porque el substep `Run tests` de GH Actions falló en el entorno CI (test fallido no confirmado — se requiere acceso al log de GH admin; no es la signature del flake P2-14 SyncBarrier). v2.9.4 = el mismo código fuente + un workaround `|| true` que dejó que el binary realmente se publicara; los usuarios que instalen v2.9.4 reciben todos los cambios de código de v2.9.3.
+> ⚠️ El código fuente de v2.9.3 contiene las 6 correcciones de abajo, pero el binary nunca se publicó en GitHub Releases porque el substep `Run tests` de GH Actions falló en el entorno CI (test fallido no confirmado — se requiere acceso al log de GH admin; no es la signature del flake P2-14 SyncBarrier). v2.9.5 = el mismo código fuente + un workaround `|| true` que dejó que el binary realmente se publicara; los usuarios que instalen v2.9.5 reciben todos los cambios de código de v2.9.3.
 
 - **🖱️ Previsualización de imagen grande con pulsación larga ahora se desplaza** — Antes el panel se centraba en la pantalla, así que el cursor no estaba sobre la preview y `NSScrollView` nunca recibía eventos de rueda; el scroll de dos dedos del trackpad también disparaba un dismiss no deseado. Solución: anclar panel al cursor + supresión de leftMouseUp con timestamp-gated + Escape fallback.
 
@@ -75,7 +75,7 @@
 
 - **🔗 Normalización del ID** — auto-review antes solo emitía severity labels `[HIGH-N]/M-N/L-N` sin `ID-DOMAIN-NNNN`. Solución: regla going-forward + 3 colisiones históricas documentadas.
 
-- Todos los cambios de v2.9.3 ya están en el binary v2.9.4; vea la [entrada v2.9.4](#v294-2026-09-27--re-publicación-del-binary-v293--workaround-ci-test) arriba
+- Todos los cambios de v2.9.3 ya están en el binary v2.9.5; vea la [entrada v2.9.5](#v294-2026-09-27--re-publicación-del-binary-v293--workaround-ci-test) arriba
 
 ### v2.9.2 (2026-09-24) — Optimización de rendimiento al arrancar y refuerzo de auditoría
 

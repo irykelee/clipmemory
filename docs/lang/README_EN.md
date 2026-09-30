@@ -1,4 +1,4 @@
-# ClipMemory v2.9.4
+# ClipMemory v2.9.5
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
@@ -48,20 +48,20 @@
 
 ## 📋 Changelog
 
-### v2.9.4 (2026-09-27) — v2.9.3 binary re-publish + CI Test Workaround
+### v2.9.5 (2026-09-27) — v2.9.3 binary re-publish + CI Test Workaround
 
-> ⚠️ **v2.9.4 Swift code is identical to v2.9.3 source** (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` is empty). The only differences are in release.yml + docs. v2.9.4 binary's user-facing behavior = code already shipped in v2.9.3 commit history.
+> ⚠️ **v2.9.5 Swift code is identical to v2.9.3 source** (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` is empty). The only differences are in release.yml + docs. v2.9.5 binary's user-facing behavior = code already shipped in v2.9.3 commit history.
 
-- **🖱️ Portrait display long-press preview position fix (ID-VIEW-0048)** — The fix code `flipped: false → flipped: true` was already shipped in v2.9.3 commit `a1cd997` (v2.9.3 binary was never actually published). On a portrait display, long-pressing a large image opened the preview at the bottom-left of the screen (0, 0); mouse-wheel couldn't scroll. Portrait users who install **v2.9.4 will receive the fix**.
+- **🖱️ Portrait display long-press preview position fix (ID-VIEW-0048)** — The fix code `flipped: false → flipped: true` was already shipped in v2.9.3 commit `a1cd997` (v2.9.3 binary was never actually published). On a portrait display, long-pressing a large image opened the preview at the bottom-left of the screen (0, 0); mouse-wheel couldn't scroll. Portrait users who install **v2.9.5 will receive the fix**.
 
-- **🛠 v2.9.3 GH Actions Test substep compatible release path (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — the v2.9.4 tag (`149906d`) temporarily added `|| true` to `release.yml` `Run tests` step as a workaround (the test step still runs, but failures are swallowed; GH macOS default shell has no `pipefail`, so tee's exit 0 means `|| true` never fires — fail-open is tee's accident, not `|| true`'s function). `main` reverted this in `da3cc6a`; `ID-CI-0011` linter forbids re-introduction. v2.9.3's Test substep failed in the CI environment → v2.9.3 binary was not published → users never saw the v2.9.3 release. **User should locally build + run tests to verify** (`Scripts/release.sh vX.Y.Z --yes` calls `run_preflight --tests` internally by default — see `release.sh:1055`; `--skip-tests` skips tests but keeps the other gates; the v2.9.4 tag's CI test was advisory smoke, but `main` (`da3cc6a`) restored fail-closed, so CI test is once again an authoritative gate).
+- **🛠 v2.9.3 GH Actions Test substep compatible release path (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — the v2.9.5 tag (`149906d`) temporarily added `|| true` to `release.yml` `Run tests` step as a workaround (the test step still runs, but failures are swallowed; GH macOS default shell has no `pipefail`, so tee's exit 0 means `|| true` never fires — fail-open is tee's accident, not `|| true`'s function). `main` reverted this in `da3cc6a`; `ID-CI-0011` linter forbids re-introduction. v2.9.3's Test substep failed in the CI environment → v2.9.3 binary was not published → users never saw the v2.9.3 release. **User should locally build + run tests to verify** (`Scripts/release.sh vX.Y.Z --yes` calls `run_preflight --tests` internally by default — see `release.sh:1055`; `--skip-tests` skips tests but keeps the other gates; the v2.9.5 tag's CI test was advisory smoke, but `main` (`da3cc6a`) restored fail-closed, so CI test is once again an authoritative gate).
 
 - Local `./Scripts/test-count.sh` static estimate (single source of truth, per CLAUDE.md ID-TEST-0002; actual CI count in the run output); `xcodebuild test` locally all-pass
-- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
 
-### v2.9.3 (2026-09-27) — Stability Fixes & Preview Scrolling (**NOT PUBLISHED — superseded by v2.9.4**)
+### v2.9.3 (2026-09-27) — Stability Fixes & Preview Scrolling (**NOT PUBLISHED — superseded by v2.9.5**)
 
-> ⚠️ The v2.9.3 source contains the 6 fixes below, but the binary was never published to GitHub Releases because the GH Actions `Run tests` substep failed in the CI environment (unconfirmed failing test — GH admin log access required; not the P2-14 SyncBarrier flake signature). v2.9.4 = the same source code + a `|| true` workaround that let the binary actually ship; users who install v2.9.4 receive every v2.9.3 code change.
+> ⚠️ The v2.9.3 source contains the 6 fixes below, but the binary was never published to GitHub Releases because the GH Actions `Run tests` substep failed in the CI environment (unconfirmed failing test — GH admin log access required; not the P2-14 SyncBarrier flake signature). v2.9.5 = the same source code + a `|| true` workaround that let the binary actually ship; users who install v2.9.5 receive every v2.9.3 code change.
 
 - **🖱️ Large image long-press preview can now scroll** — Previously the panel was centered on screen, so the cursor didn't sit over the preview and `NSScrollView` never received wheel events; trackpad two-finger-scroll also triggered an unwanted dismiss. Fix: anchor panel to cursor + timestamp-gated leftMouseUp suppression + Escape fallback.
 
@@ -75,7 +75,7 @@
 
 - **🔗 ID numbering formalized** — auto-review previously only emitted `[HIGH-N]/M-N/L-N` severity labels without `ID-DOMAIN-NNNN`. Fix: going-forward rule + 3 historical collision documented.
 
-- All v2.9.3 changes shipped in the v2.9.4 binary; see the [v2.9.4 entry](#v294-2026-09-27--v293-binary-re-publish--ci-test-workaround) above
+- All v2.9.3 changes shipped in the v2.9.5 binary; see the [v2.9.5 entry](#v294-2026-09-27--v293-binary-re-publish--ci-test-workaround) above
 
 ### v2.9.2 (2026-09-24) — Startup Performance & Audit Hardening
 

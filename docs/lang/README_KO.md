@@ -1,4 +1,4 @@
-# ClipMemory v2.9.4
+# ClipMemory v2.9.5
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
@@ -48,19 +48,19 @@
 
 ## 📋 변경 로그
 
-### v2.9.4 (2026-09-27) — v2.9.3 binary 재게시 + CI Test Workaround
+### v2.9.5 (2026-09-27) — v2.9.3 binary 재게시 + CI Test Workaround
 
-> ⚠️ **v2.9.4와 v2.9.3 소스 코드의 Swift는 완전히 동일**합니다 (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/`가 비어 있음). 차이는 release.yml + 문서뿐입니다. v2.9.4 binary의 사용자 행동 = v2.9.3 commit history에 이미 ship된 코드.
+> ⚠️ **v2.9.5와 v2.9.3 소스 코드의 Swift는 완전히 동일**합니다 (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/`가 비어 있음). 차이는 release.yml + 문서뿐입니다. v2.9.5 binary의 사용자 행동 = v2.9.3 commit history에 이미 ship된 코드.
 
-- **🖱️ 세로 디스플레이 미리보기 위치 수정 (ID-VIEW-0048)** — 수정 코드 `flipped: false → flipped: true`는 이미 v2.9.3 commit `a1cd997`에서 ship됨 (v2.9.3 binary는 실제로는 미게시). 세로 디스플레이에서 큰 이미지를 길게 누르면 panel이 화면 좌하단 (0, 0)에 나타나고, 마우스 휠이 스크롤되지 않았습니다 — 근본 원인과 수정 방법은 동일. 세로 디스플레이 사용자 **v2.9.4 설치 시 수정 받음**.
-- **🛠️ v2.9.3 GH Actions Test substep 호환 release 경로 (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.4 tag `149906d`는 임시로 `release.yml`의 `Run tests` step에 workaround로 `|| true` 추가 (Test substep은 계속 실행되지만 실패는 삼켜짐; GH macOS default shell에는 `pipefail`이 없어서 tee의 exit 0이 `|| true`를 절대 발화시키지 않음 — fail-open은 tee's accident이지 `|| true`의 기능이 아님). `main`에서는 `da3cc6a`가 이 workaround를 revert, `ID-CI-0011` linter가 재도입을 금지. v2.9.3의 Test substep이 CI 환경에서 실패 → v2.9.3 binary 미게시 → 사용자가 v2.9.3 release를 보지 못함. **사용자가 로컬에서 build + test 실행으로 검증해야 함** (`Scripts/release.sh vX.Y.Z --yes`는 기본적으로 `run_preflight --tests`를 내부 호출 — `release.sh:1055` 참조; `--skip-tests`는 test를 건너뛰지만 다른 gate는 유지; v2.9.4 tag의 CI test는 당시 advisory smoke이었지만, main (`da3cc6a`)에서 fail-closed로 복원되어 CI test는 다시 authoritative gate임).
+- **🖱️ 세로 디스플레이 미리보기 위치 수정 (ID-VIEW-0048)** — 수정 코드 `flipped: false → flipped: true`는 이미 v2.9.3 commit `a1cd997`에서 ship됨 (v2.9.3 binary는 실제로는 미게시). 세로 디스플레이에서 큰 이미지를 길게 누르면 panel이 화면 좌하단 (0, 0)에 나타나고, 마우스 휠이 스크롤되지 않았습니다 — 근본 원인과 수정 방법은 동일. 세로 디스플레이 사용자 **v2.9.5 설치 시 수정 받음**.
+- **🛠️ v2.9.3 GH Actions Test substep 호환 release 경로 (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.5 tag `149906d`는 임시로 `release.yml`의 `Run tests` step에 workaround로 `|| true` 추가 (Test substep은 계속 실행되지만 실패는 삼켜짐; GH macOS default shell에는 `pipefail`이 없어서 tee의 exit 0이 `|| true`를 절대 발화시키지 않음 — fail-open은 tee's accident이지 `|| true`의 기능이 아님). `main`에서는 `da3cc6a`가 이 workaround를 revert, `ID-CI-0011` linter가 재도입을 금지. v2.9.3의 Test substep이 CI 환경에서 실패 → v2.9.3 binary 미게시 → 사용자가 v2.9.3 release를 보지 못함. **사용자가 로컬에서 build + test 실행으로 검증해야 함** (`Scripts/release.sh vX.Y.Z --yes`는 기본적으로 `run_preflight --tests`를 내부 호출 — `release.sh:1055` 참조; `--skip-tests`는 test를 건너뛰지만 다른 gate는 유지; v2.9.5 tag의 CI test는 당시 advisory smoke이었지만, main (`da3cc6a`)에서 fail-closed로 복원되어 CI test는 다시 authoritative gate임).
 
 - 로컬 `./Scripts/test-count.sh` 정적 추정 (단일 source of truth, CLAUDE.md ID-TEST-0002에 따름; 실제 CI 수는 run 출력 참조); `xcodebuild test` 로컬 전부 PASS
-- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
 
-### v2.9.3 (2026-09-27) — 지속적 안정성 수정 및 미리보기 스크롤 (**미게시 — superseded by v2.9.4**)
+### v2.9.3 (2026-09-27) — 지속적 안정성 수정 및 미리보기 스크롤 (**미게시 — superseded by v2.9.5**)
 
-> ⚠️ v2.9.3 소스에는 아래 6개의 수정이 포함되어 있지만, binary는 GH Actions `Run tests` substep이 CI 환경에서 실패하여 GitHub Releases에 게시된 적이 없습니다 (unconfirmed failing test — GH admin log 접근 필요; P2-14 SyncBarrier flake signature 아님). v2.9.4 = 동일 소스 + `|| true` workaround로 binary가 실제로 ship; v2.9.4를 설치한 사용자는 모든 v2.9.3 코드 변경을 받습니다.
+> ⚠️ v2.9.3 소스에는 아래 6개의 수정이 포함되어 있지만, binary는 GH Actions `Run tests` substep이 CI 환경에서 실패하여 GitHub Releases에 게시된 적이 없습니다 (unconfirmed failing test — GH admin log 접근 필요; P2-14 SyncBarrier flake signature 아님). v2.9.5 = 동일 소스 + `|| true` workaround로 binary가 실제로 ship; v2.9.5를 설치한 사용자는 모든 v2.9.3 코드 변경을 받습니다.
 
 - **🖱️ 큰 이미지 길게 누르기 미리보기가 스크롤 가능해짐** — 이전엔 panel이 화면 중앙에 있어 커서가 preview 위에 없어 `NSScrollView`가 휠 이벤트를 받지 못했고, trackpad 두 손가락 스크롤이 잘못된 dismiss를 트리거했습니다. 수정: panel을 cursor에 anchor, timestamp-gated leftMouseUp 억제, Escape fallback.
 
@@ -74,7 +74,7 @@
 
 - **🔗 ID 번호화 정규화** — auto-review는 이전에 `[HIGH-N]/M-N/L-N` severity label만 있었고 `ID-DOMAIN-NNNN` 없음. 수정: going-forward rule + 3개 historical collision documented.
 
-- 모든 v2.9.3 변경 사항은 v2.9.4 binary에 ship됨; 위의 [v2.9.4 entry](#v294-2026-09-27--v293-binary-재게시--ci-test-workaround) 참조
+- 모든 v2.9.3 변경 사항은 v2.9.5 binary에 ship됨; 위의 [v2.9.5 entry](#v294-2026-09-27--v293-binary-재게시--ci-test-workaround) 참조
 
 ### v2.9.2 (2026-09-24) — 시작 성능 최적화 및 감사 강화
 
