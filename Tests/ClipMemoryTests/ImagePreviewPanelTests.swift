@@ -268,6 +268,74 @@ final class ImagePreviewPanelTests: XCTestCase {
         XCTAssertLessThanOrEqual(result.y, primary.maxY - 300)
     }
 
+    // MARK: - dispatchScroll (ID-CRASH-0056 follow-up)
+
+    /// ID-CRASH-0056 (USER-FEEDBACK-2026-09-26 round 7): verify that
+    /// `dispatchScroll` actually scrolls the document inside the
+    /// NSScrollView when called with a scrollWheel event. Previously
+    /// the scrollView frame was `.zero` (created with `frame: .zero`
+    /// then only the panel was repositioned via `setFrameOrigin`), so
+    /// `NSScrollView.scroll(_:)` was a no-op internally. The fix:
+    /// set content.frame = panelSize in makePanel AND use direct
+    /// `clipView.bounds.origin.y = clampedY` in dispatchScroll
+    /// (scroll(_:) and scrollToVisible were both no-ops in NSPanel).
+    @MainActor
+    func testDispatchScrollActuallyMovesDocument() {
+        defer { ImagePreviewPanel.hide() }
+        // Image is 800×4000 — definitely taller than any reasonable screen
+        // cap, so this will always be in the scrollable branch.
+        let tall = makeImage(width: 800, height: 4000, color: .blue)
+        ImagePreviewPanel.show(image: tall, screen: nil)
+        let panel = ImagePreviewPanel.testPanel
+        XCTAssertNotNil(panel)
+        guard let panel = panel else { return }
+        guard let scrollView = panel.contentView as? NSScrollView else {
+            XCTFail("Expected NSScrollView for tall image, got \(String(describing: panel.contentView))")
+            return
+        }
+        guard let documentView = scrollView.documentView else {
+            XCTFail("scrollView.documentView is nil")
+            return
+        }
+
+        // Document view should be full image size (native resolution)
+        XCTAssertEqual(documentView.bounds.width, 800, accuracy: 1)
+        XCTAssertEqual(documentView.bounds.height, 4000, accuracy: 1)
+
+        // Initial offset should be 0 (top of document)
+        let initialOffset = scrollView.documentVisibleRect.origin
+        XCTAssertEqual(initialOffset.y, 0, accuracy: 0.5)
+
+        // Send scrollWheel: wheelDeltaY=100 means scroll up → content down
+        let scrollEvent = makeScrollWheelEvent(wheelDeltaY: 100)
+        ImagePreviewPanel.dispatchScroll(scrollEvent)
+        let afterOffset = scrollView.documentVisibleRect.origin
+        XCTAssertGreaterThan(afterOffset.y, initialOffset.y,
+                             "visible rect origin.y must increase after scrolling down")
+        XCTAssertTrue(scrollView.hasVerticalScroller, "scrollView must have a vertical scroller")
+    }
+
+    /// Non-scrollable small image — contentView is plain NSImageView,
+    /// dispatchScroll guard fails silently (no crash, no effect).
+    @MainActor
+    func testDispatchScrollOnNonScrollablePanelIsNoOp() {
+        defer { ImagePreviewPanel.hide() }
+        let small = makeImage(width: 100, height: 100, color: .green)
+        ImagePreviewPanel.show(image: small, screen: nil)
+        let panel = ImagePreviewPanel.testPanel
+        XCTAssertNotNil(panel)
+        guard let panel = panel else { return }
+        XCTAssertFalse(panel.contentView is NSScrollView,
+                       "small image should use plain NSImageView, not NSScrollView")
+        let scrollEvent = makeScrollWheelEvent(wheelDeltaY: 100)
+        ImagePreviewPanel.dispatchScroll(scrollEvent)  // must not throw
+    }
+
+    private func makeScrollWheelEvent(wheelDeltaY: Int32) -> NSEvent {
+        let event = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: Int32(wheelDeltaY), wheel2: 0, wheel3: 0)!
+        return NSEvent(cgEvent: event)!
+    }
+
     // MARK: - Test helpers
 
     private func makeImage(width: Int, height: Int, color: NSColor) -> NSImage {

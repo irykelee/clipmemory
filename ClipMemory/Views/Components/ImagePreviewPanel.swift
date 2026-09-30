@@ -78,10 +78,11 @@ enum ImagePreviewPanel {
     @MainActor
     static func dispatchScroll(_ event: NSEvent) {
         guard let panel else { return }
-        guard let scrollView = panel.contentView as? NSScrollView,
-              let documentView = scrollView.documentView else { return }
+        guard let scrollView = panel.contentView as? NSScrollView else { return }
+        guard let documentView = scrollView.documentView else { return }
         let currentOffset = scrollView.documentVisibleRect.origin
-        let maxScrollY = max(0, documentView.bounds.maxY - scrollView.documentVisibleRect.height)
+        let visibleHeight = scrollView.documentVisibleRect.height
+        let maxScrollY = max(0, documentView.bounds.maxY - visibleHeight)
         // NSEvent.scrollingDeltaY > 0 means the user scrolled UP —
         // content moves DOWN in macOS top-left origin coords, i.e. we
         // look at lower parts of the document. Add the delta to the
@@ -89,7 +90,13 @@ enum ImagePreviewPanel {
         // to [0, maxScrollY] to prevent over-scroll.
         let proposed = currentOffset.y + event.scrollingDeltaY
         let clampedY = min(max(0, proposed), maxScrollY)
-        scrollView.scroll(NSPoint(x: currentOffset.x, y: clampedY))
+        // Directly set NSClipView.bounds.origin. This is the only
+        // approach that reliably scrolls in an NSPanel context —
+        // scroll(_:) and scrollToVisible are both no-ops here.
+        var clipBounds = scrollView.contentView.bounds
+        clipBounds.origin.y = clampedY
+        scrollView.contentView.bounds = clipBounds
+        scrollView.contentView.layoutSubtreeIfNeeded()
     }
     @MainActor private static var escapeMonitor: Any?
     // ID-VIEW-0047 (2026-09-27): DI hook for the Escape monitor so tests
@@ -171,6 +178,18 @@ enum ImagePreviewPanel {
             backing: .buffered,
             defer: false
         )
+        // ID-CRASH-0056 fix: set content's frame to panelSize BEFORE
+        // installing it as the contentView. Previously `makeContent`
+        // created the NSScrollView with `frame: .zero`, and while the
+        // panel's contentRect was correctly set to panelSize, the
+        // scrollView's own frame stayed `.zero`. When the panel later
+        // resized via `setFrameOrigin` (position-only), the scrollView
+        // frame remained zero. `NSScrollView.scroll(_:)` uses the
+        // scrollView's own bounds internally — a zero-bounds scrollView
+        // is a no-op, so wheel scrolling silently did nothing. Setting
+        // the content frame here (before `contentView = content`) fixes
+        // the scrollView's coordinate space so `scroll(_:)` works.
+        content.frame = NSRect(origin: .zero, size: layout.panelSize)
         panel.contentView = content
         panel.isFloatingPanel = true
         panel.level = .floating
