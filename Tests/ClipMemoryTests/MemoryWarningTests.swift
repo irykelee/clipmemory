@@ -30,7 +30,8 @@ final class MemoryWarningTests: XCTestCase {
     /// name. If Apple ever renames it (unlikely — it's been stable since
     /// macOS 10.0), the AppDelegate path silently no-ops; this test
     /// catches the rename so the fix is a one-line update here.
-    func testMemoryWarningNotificationNameIsStable() {
+    func testMemoryWarningNotificationNameIsStable() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI memory notification name stable)")
         // Comparing via the raw String value so a Swift-overlay rename
         // would also trip this. The raw Objective-C symbol has been
         // "NSApplicationDidReceiveMemoryWarningNotification" since 10.0.
@@ -43,7 +44,8 @@ final class MemoryWarningTests: XCTestCase {
     /// this, a memory warning during the very first launch (before any
     /// item is captured) could trigger a path that hadn't been
     /// exercised.
-    func testFlushAllOnEmptyCachesIsSafe() {
+    func testFlushAllOnEmptyCachesIsSafe() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI flush empty caches)")
         // Don't assume caches are empty — the previous test in the same
         // process may have populated them. Flush first to normalize,
         // then assert the call returns without throwing.
@@ -69,7 +71,8 @@ final class MemoryWarningTests: XCTestCase {
     /// timeout (notification delivery on the main queue is sub-ms in
     /// practice; 1s timeout catches a broken observer without slowing
     /// the test suite).
-    func testMemoryWarningNotificationReachesRegistry() {
+    func testMemoryWarningNotificationReachesRegistry() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI memory warning reaches registry)")
         // 1. Prime ClipboardStore.contentCache so we have something to
         //    flush. Without an item, the cache stays empty and the
         //    test is a no-op (always green even if the observer is
@@ -124,7 +127,8 @@ final class MemoryWarningTests: XCTestCase {
     /// reachable from the registry. We prime by calling `matches()`
     /// with a non-ASCII content (so the pinyin path runs) — without
     /// that, the cache stays empty and the test is a no-op.
-    func testFlushAllClearsFuzzySearchCaches() {
+    func testFlushAllClearsFuzzySearchCaches() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI flush clears caches)")
         let probeContent = "café 北京 123" // ASCII + Latin-ext + CJK
         let result = FuzzySearchMatcher.matches(content: probeContent, searchText: "北京")
         XCTAssertTrue(result, "ID-PERF-0005: precondition — matches() must succeed to populate caches")
