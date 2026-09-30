@@ -81,20 +81,28 @@ enum ImagePreviewPanel {
         guard let scrollView = panel.contentView as? NSScrollView else { return }
         guard let documentView = scrollView.documentView else { return }
         let currentOffset = scrollView.documentVisibleRect.origin
+        // vertical (Y): NSEvent.scrollingDeltaY > 0 = scroll UP = content
+        // moves DOWN (macOS top-left origin). We add the delta to the
+        // current origin.y to look at lower parts of the document.
         let visibleHeight = scrollView.documentVisibleRect.height
-        let maxScrollY = max(0, documentView.bounds.maxY - visibleHeight)
-        // NSEvent.scrollingDeltaY > 0 means the user scrolled UP —
-        // content moves DOWN in macOS top-left origin coords, i.e. we
-        // look at lower parts of the document. Add the delta to the
-        // current origin.y so the visible window shifts downward. Clamp
-        // to [0, maxScrollY] to prevent over-scroll.
-        let proposed = currentOffset.y + event.scrollingDeltaY
-        let clampedY = min(max(0, proposed), maxScrollY)
+        let maxY = max(0, documentView.bounds.maxY - visibleHeight)
+        let proposedY = currentOffset.y + event.scrollingDeltaY
+        let clampedY = min(max(0, proposedY), maxY)
+        // horizontal (X): NSEvent.scrollingDeltaX > 0 = scroll RIGHT =
+        // content moves LEFT. We subtract the delta from the current
+        // origin.x to look at earlier (leftward) parts of the document.
+        // Trackpad horizontal-scroll uses scrollingDeltaX (older deltaX
+        // is deprecated). Magic Mouse / mouse wheels without horizontal
+        // support send scrollingDeltaX = 0 — that's a no-op (correct).
+        let visibleWidth = scrollView.documentVisibleRect.width
+        let maxX = max(0, documentView.bounds.maxX - visibleWidth)
+        let proposedX = currentOffset.x - event.scrollingDeltaX
+        let clampedX = min(max(0, proposedX), maxX)
         // Directly set NSClipView.bounds.origin. This is the only
         // approach that reliably scrolls in an NSPanel context —
         // scroll(_:) and scrollToVisible are both no-ops here.
         var clipBounds = scrollView.contentView.bounds
-        clipBounds.origin.y = clampedY
+        clipBounds.origin = NSPoint(x: clampedX, y: clampedY)
         scrollView.contentView.bounds = clipBounds
         scrollView.contentView.layoutSubtreeIfNeeded()
     }
