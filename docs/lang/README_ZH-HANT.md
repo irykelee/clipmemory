@@ -48,20 +48,20 @@
 
 ## 📋 更新日誌
 
-### v2.9.5 (2026-09-27) — v2.9.3 binary 重新發布 + CI Test Workaround
+### v2.9.4 (2026-09-27) — v2.9.3 binary 重新發布 + CI Test Workaround
 
-> ⚠️ **v2.9.5 與 v2.9.3 原始碼的 Swift 程式碼完全一致**（`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` 為空）。差異僅在 release.yml + 說明文件。v2.9.5 binary 的使用者行為 = v2.9.3 commit history 已 ship 的程式碼。
+> ⚠️ **v2.9.4 與 v2.9.3 原始碼的 Swift 程式碼完全一致**（`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` 為空）。差異僅在 release.yml + 說明文件。v2.9.4 binary 的使用者行為 = v2.9.3 commit history 已 ship 的程式碼。
 
-- **🖱️ 豎屏顯示器長按圖片預覽位置修復 (ID-VIEW-0048)** — 修復程式碼 `flipped: false → flipped: true` 已在 v2.9.3 commit `a1cd997` ship（v2.9.3 binary 未真正發布）。豎屏顯示器長按大圖時 panel 出現在螢幕左下角 (0, 0)，滑鼠滾輪無效——根本原因與修法同上。豎屏使用者**安裝 v2.9.5 即可拿到修復**。
+- **🖱️ 豎屏顯示器長按圖片預覽位置修復 (ID-VIEW-0048)** — 修復程式碼 `flipped: false → flipped: true` 已在 v2.9.3 commit `a1cd997` ship（v2.9.3 binary 未真正發布）。豎屏顯示器長按大圖時 panel 出現在螢幕左下角 (0, 0)，滑鼠滾輪無效——根本原因與修法同上。豎屏使用者**安裝 v2.9.4 即可拿到修復**。
 
-- **🛠 v2.9.3 GH Actions Test substep 相容 release 路徑 (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.5 tag `149906d` 臨時在 `release.yml` `Run tests` step 加 `|| true` 作為 workaround（Test substep 仍跑，但失敗被吞；GH macOS default shell 無 `pipefail`，teed exit 0 讓 `|| true` 永不觸發——fail-open 是 tee's accident 而非 `|| true` 的功能）。`main` 上 `da3cc6a` 已 revert 該 workaround，`ID-CI-0011` linter 禁止再出現。v2.9.3 的 Test substep 在 CI 環境失敗 → v2.9.3 binary 未發布 → 使用者看不到 v2.9.3 release。**使用者應本地 build + 跑 test 驗證**（`Scripts/release.sh vX.Y.Z --yes` 預設含 `run_preflight --tests` 內部呼叫，見 `release.sh:1055`；`--skip-tests` flag 跳過 test 但保留其他 gate；v2.9.5 tag 的 CI test 當時是 advisory smoke，main `da3cc6a` 已恢復 fail-closed，CI test 又是 authoritative gate）。
+- **🛠 v2.9.3 GH Actions Test substep 相容 release 路徑 (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.4 tag `149906d` 臨時在 `release.yml` `Run tests` step 加 `|| true` 作為 workaround（Test substep 仍跑，但失敗被吞；GH macOS default shell 無 `pipefail`，teed exit 0 讓 `|| true` 永不觸發——fail-open 是 tee's accident 而非 `|| true` 的功能）。`main` 上 `da3cc6a` 已 revert 該 workaround，`ID-CI-0011` linter 禁止再出現。v2.9.3 的 Test substep 在 CI 環境失敗 → v2.9.3 binary 未發布 → 使用者看不到 v2.9.3 release。**使用者應本地 build + 跑 test 驗證**（`Scripts/release.sh vX.Y.Z --yes` 預設含 `run_preflight --tests` 內部呼叫，見 `release.sh:1055`；`--skip-tests` flag 跳過 test 但保留其他 gate；v2.9.4 tag 的 CI test 當時是 advisory smoke，main `da3cc6a` 已恢復 fail-closed，CI test 又是 authoritative gate）。
 
 - 本地 `./Scripts/test-count.sh` 靜態估計（單 source of truth，per CLAUDE.md ID-TEST-0002；實際 CI 數見 run 輸出）；`xcodebuild test` 本地全過
-- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
-### v2.9.3 (2026-09-27) — 持續穩定性修復與預覽捲動（**未發布 — superseded by v2.9.5**）
+### v2.9.3 (2026-09-27) — 持續穩定性修復與預覽捲動（**未發布 — superseded by v2.9.4**）
 
-> ⚠️ v2.9.3 原始碼含以下 6 項修復，但 binary 因 GH Actions `Run tests` substep 在 CI 環境失敗從未發布到 GitHub Releases（unconfirmed failing test — 需 GH admin 查 log；非 P2-14 SyncBarrier flake 簽名）。v2.9.5 = 同一份程式碼 + `|| true` workaround 讓 binary 真正 ship；使用者**安裝 v2.9.5 即可拿到全部 v2.9.3 程式碼改動**。
+> ⚠️ v2.9.3 原始碼含以下 6 項修復，但 binary 因 GH Actions `Run tests` substep 在 CI 環境失敗從未發布到 GitHub Releases（unconfirmed failing test — 需 GH admin 查 log；非 P2-14 SyncBarrier flake 簽名）。v2.9.4 = 同一份程式碼 + `|| true` workaround 讓 binary 真正 ship；使用者**安裝 v2.9.4 即可拿到全部 v2.9.3 程式碼改動**。
 
 - **🖱️ 大圖長按預覽可滾輪可關閉** — 之前 panel 居中螢幕中央，cursor 不在 preview 上 → 滾輪事件無法路由到 NSScrollView，preview 完全無法滾動；且 trackpad 雙指滑動誤觸發 dismiss。修法：panel anchor 到 cursor + timestamp-gated leftMouseUp 抑制 + Escape fallback。
 
@@ -75,7 +75,7 @@
 
 - **🔗 ID 編號正規化** — auto-review 之前只有 `[HIGH-N]/M-N/L-N` severity label 沒有 ID-DOMAIN-NNNN。修法：going-forward rule + 3 historical collision documented。
 
-- 全部改動已 ship 在 v2.9.5 binary；詳見上一節 [v2.9.5 entry](#v294-2026-09-27--v293-binary-重新發布--ci-test-workaround)
+- 全部改動已 ship 在 v2.9.4 binary；詳見上一節 [v2.9.4 entry](#v294-2026-09-27--v293-binary-重新發布--ci-test-workaround)
 
 ### v2.9.2 (2026-09-24) — 啟動效能優化與稽核加固
 

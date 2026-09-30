@@ -48,20 +48,20 @@
 
 ## 📋 Registro de alterações
 
-### v2.9.5 (2026-09-27) — Re-publicação do binary v2.9.3 + Workaround CI Test
+### v2.9.4 (2026-09-27) — Re-publicação do binary v2.9.3 + Workaround CI Test
 
-> ⚠️ **O código Swift de v2.9.5 é idêntico ao código-fonte de v2.9.3** (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` está vazio). As únicas diferenças estão em release.yml + docs. O comportamento para o usuário do binary v2.9.5 = código já publicado no histórico de commits de v2.9.3.
+> ⚠️ **O código Swift de v2.9.4 é idêntico ao código-fonte de v2.9.3** (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` está vazio). As únicas diferenças estão em release.yml + docs. O comportamento para o usuário do binary v2.9.4 = código já publicado no histórico de commits de v2.9.3.
 
-- **🖱️ Correção de posição da pré-visualização em tela vertical (ID-VIEW-0048)** — O código de correção `flipped: false → flipped: true` já foi publicado no commit v2.9.3 `a1cd997` (o binary v2.9.3 nunca foi realmente publicado). Em uma tela vertical, ao pressionar prolongadamente uma imagem grande, a pré-visualização aparecia no canto inferior esquerdo (0, 0); a roda do mouse não rolava — causa raiz e correção idênticas. Os **usuários de tela vertical que instalarem v2.9.5 receberão a correção**.
+- **🖱️ Correção de posição da pré-visualização em tela vertical (ID-VIEW-0048)** — O código de correção `flipped: false → flipped: true` já foi publicado no commit v2.9.3 `a1cd997` (o binary v2.9.3 nunca foi realmente publicado). Em uma tela vertical, ao pressionar prolongadamente uma imagem grande, a pré-visualização aparecia no canto inferior esquerdo (0, 0); a roda do mouse não rolava — causa raiz e correção idênticas. Os **usuários de tela vertical que instalarem v2.9.4 receberão a correção**.
 
-- **🛠 Caminho de release compatível com v2.9.3 GH Actions Test substep (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — a tag v2.9.5 (`149906d`) adicionou temporariamente `|| true` ao step `Run tests` de `release.yml` como workaround (o step de test continua rodando, mas as falhas são engolidas; o shell default do GH macOS não tem `pipefail`, então o exit 0 do tee faz com que `|| true` nunca seja acionado — fail-open é um acidente do tee, não uma função do `|| true`). `main` reverteu isso em `da3cc6a`; o linter `ID-CI-0011` proíbe a reintrodução. O Test substep de v2.9.3 falhou no ambiente CI → o binary v2.9.3 não foi publicado → os usuários nunca viram o release v2.9.3. **O usuário deve fazer build local + executar testes para verificar** (`Scripts/release.sh vX.Y.Z --yes` chama internamente `run_preflight --tests` por padrão — veja `release.sh:1055`; `--skip-tests` pula os testes mas mantém as outras verificações; o teste de CI do tag v2.9.5 era smoke advisory, mas `main` (`da3cc6a`) restaurou fail-closed, então o teste de CI voltou a ser uma verificação autoritativa).
+- **🛠 Caminho de release compatível com v2.9.3 GH Actions Test substep (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — a tag v2.9.4 (`149906d`) adicionou temporariamente `|| true` ao step `Run tests` de `release.yml` como workaround (o step de test continua rodando, mas as falhas são engolidas; o shell default do GH macOS não tem `pipefail`, então o exit 0 do tee faz com que `|| true` nunca seja acionado — fail-open é um acidente do tee, não uma função do `|| true`). `main` reverteu isso em `da3cc6a`; o linter `ID-CI-0011` proíbe a reintrodução. O Test substep de v2.9.3 falhou no ambiente CI → o binary v2.9.3 não foi publicado → os usuários nunca viram o release v2.9.3. **O usuário deve fazer build local + executar testes para verificar** (`Scripts/release.sh vX.Y.Z --yes` chama internamente `run_preflight --tests` por padrão — veja `release.sh:1055`; `--skip-tests` pula os testes mas mantém as outras verificações; o teste de CI do tag v2.9.4 era smoke advisory, mas `main` (`da3cc6a`) restaurou fail-closed, então o teste de CI voltou a ser uma verificação autoritativa).
 
 - Local `./Scripts/test-count.sh` estimativa estática (fonte única de verdade, segundo CLAUDE.md ID-TEST-0002; a contagem real de CI está na saída do run); `xcodebuild test` local passa todos
-- Registro completo de alterações: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
+- Registro completo de alterações: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
-### v2.9.3 (2026-09-27) — Correções de estabilidade e rolagem na pré-visualização (**NÃO PUBLICADO — superseded by v2.9.5**)
+### v2.9.3 (2026-09-27) — Correções de estabilidade e rolagem na pré-visualização (**NÃO PUBLICADO — superseded by v2.9.4**)
 
-> ⚠️ O código-fonte de v2.9.3 contém as 6 correções abaixo, mas o binary nunca foi publicado no GitHub Releases porque o substep `Run tests` do GH Actions falhou no ambiente CI (teste falho não confirmado — necessário acesso ao log do GH admin; não é a assinatura do flake P2-14 SyncBarrier). v2.9.5 = o mesmo código-fonte + um workaround `|| true` que deixou o binary realmente ser publicado; usuários que instalarem v2.9.5 recebem todas as alterações de código de v2.9.3.
+> ⚠️ O código-fonte de v2.9.3 contém as 6 correções abaixo, mas o binary nunca foi publicado no GitHub Releases porque o substep `Run tests` do GH Actions falhou no ambiente CI (teste falho não confirmado — necessário acesso ao log do GH admin; não é a assinatura do flake P2-14 SyncBarrier). v2.9.4 = o mesmo código-fonte + um workaround `|| true` que deixou o binary realmente ser publicado; usuários que instalarem v2.9.4 recebem todas as alterações de código de v2.9.3.
 
 - **🖱️ Pré-visualização de imagem grande com long-press agora rola** — Antes o painel ficava centralizado na tela, então o cursor não estava sobre a preview e `NSScrollView` nunca recebia eventos de roda; o scroll de dois dedos do trackpad também disparava dismiss indesejado. Solução: ancorar painel ao cursor + supressão de leftMouseUp com timestamp-gated + Escape fallback.
 
@@ -75,7 +75,7 @@
 
 - **🔗 Normalização de ID** — auto-review antes só emitia `[HIGH-N]/M-N/L-N` severity labels sem `ID-DOMAIN-NNNN`. Solução: regra going-forward + 3 colisões históricas documentadas.
 
-- Todas as alterações de v2.9.3 já estão no binary v2.9.5; veja a [entrada v2.9.5](#v294-2026-09-27--re-publicação-do-binary-v293--workaround-ci-test) acima
+- Todas as alterações de v2.9.3 já estão no binary v2.9.4; veja a [entrada v2.9.4](#v294-2026-09-27--re-publicação-do-binary-v293--workaround-ci-test) acima
 
 ### v2.9.2 (2026-09-24) — Otimização de desempenho na inicialização e reforço de auditoria
 
