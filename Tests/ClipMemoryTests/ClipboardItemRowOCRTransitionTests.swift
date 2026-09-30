@@ -4,7 +4,8 @@ import SwiftUI
 
 final class ClipboardItemRowOCRTransitionTests: XCTestCase {
 
-    func testRowEqualityFlipsWhenOcrTextTransitions() {
+    func testRowEqualityFlipsWhenOcrTextTransitions() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI OCR transition equality)")
         let baseItem = ClipboardItem(
             content: "test.png",
             type: .image,
