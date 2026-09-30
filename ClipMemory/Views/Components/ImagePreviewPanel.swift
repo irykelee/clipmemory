@@ -76,27 +76,33 @@ enum ImagePreviewPanel {
     /// scroll direction). Clamped to `[0, maxScrollY]` to prevent
     /// over-scroll.
     @MainActor
-    static func dispatchScroll(_ event: NSEvent) {
+    static func dispatchScroll(_ event: NSEvent, shiftHeld: Bool = false) {
         guard let panel else { return }
         guard let scrollView = panel.contentView as? NSScrollView else { return }
         guard let documentView = scrollView.documentView else { return }
         let currentOffset = scrollView.documentVisibleRect.origin
-        // vertical (Y): NSEvent.scrollingDeltaY > 0 = scroll UP = content
-        // moves DOWN (macOS top-left origin). We add the delta to the
-        // current origin.y to look at lower parts of the document.
+        // USER-FEEDBACK-2026-09-26 (regular-mouse horizontal scroll):
+        // macOS convention — Shift+wheel = horizontal scroll (Safari,
+        // Preview, Finder all honor this). Route the vertical delta
+        // into the X axis when Shift is held; ignore Y so the user
+        // doesn't accidentally scroll both axes at once. With Shift
+        // held the event still goes through the same swallow-at-monitor
+        // + direct-bounds-mutation path; we're just translating which
+        // axis the delta lands on.
+        let (dx, dy) = shiftHeld
+            ? (-event.scrollingDeltaY, 0)   // shift+wheel up → content moves left
+            : (-event.scrollingDeltaX, event.scrollingDeltaY)  // default
+        // vertical (Y): default dy moves the content DOWN in macOS
+        // top-left origin (we look at lower parts of the document).
         let visibleHeight = scrollView.documentVisibleRect.height
         let maxY = max(0, documentView.bounds.maxY - visibleHeight)
-        let proposedY = currentOffset.y + event.scrollingDeltaY
+        let proposedY = currentOffset.y + dy
         let clampedY = min(max(0, proposedY), maxY)
-        // horizontal (X): NSEvent.scrollingDeltaX > 0 = scroll RIGHT =
-        // content moves LEFT. We subtract the delta from the current
-        // origin.x to look at earlier (leftward) parts of the document.
-        // Trackpad horizontal-scroll uses scrollingDeltaX (older deltaX
-        // is deprecated). Magic Mouse / mouse wheels without horizontal
-        // support send scrollingDeltaX = 0 — that's a no-op (correct).
+        // horizontal (X): default dx moves content LEFT (we look at
+        // earlier parts of the document).
         let visibleWidth = scrollView.documentVisibleRect.width
         let maxX = max(0, documentView.bounds.maxX - visibleWidth)
-        let proposedX = currentOffset.x - event.scrollingDeltaX
+        let proposedX = currentOffset.x + dx
         let clampedX = min(max(0, proposedX), maxX)
         // Directly set NSClipView.bounds.origin. This is the only
         // approach that reliably scrolls in an NSPanel context —

@@ -168,7 +168,8 @@ class LongPressView: NSView {
                     // `List` parent — separate code path that doesn't
                     // depend on this monitor.)
                     self.lastScrollWheelAt = Date()
-                    ImagePreviewPanel.dispatchScroll(event)
+                    let shift = event.modifierFlags.contains(.shift)
+                    ImagePreviewPanel.dispatchScroll(event, shiftHeld: shift)
                     return nil
                 case .leftMouseUp:
                     let sinceScroll = Date().timeIntervalSince(self.lastScrollWheelAt)
