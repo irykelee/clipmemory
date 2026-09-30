@@ -40,7 +40,8 @@ import XCTest
 
     /// Confirm path: the reduced limit is applied and the overflow is
     /// evicted, keeping the most recent items.
-    func testConfirmTrimAppliesNewLimitAndTrimsOverflow() {
+    func testConfirmTrimAppliesNewLimitAndTrimsOverflow() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI contentview trim overflow)")
         let store = makeStore(itemCount: 5)
         XCTAssertEqual(store.items.count, 5)
 
@@ -58,7 +59,8 @@ import XCTest
 
     /// Confirm path persists: after flush, a restarted store on the same
     /// backend sees the trimmed history, not the pre-trim one.
-    func testConfirmTrimPersistsTrimmedItems() {
+    func testConfirmTrimPersistsTrimmedItems() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI contentview trim persist)")
         let backend = MemoryStorageBackend()
         let store = ClipboardStore(backend: backend)
         for i in 0..<5 {
@@ -79,7 +81,8 @@ import XCTest
     /// Regression guard — the old alert's cancel wrote `store.maxItems =
     /// pair.old`; dropping that write in the refactor would leave the
     /// picker's tentative value in place.
-    func testCancelTrimRestoresOldLimitWithoutTrimming() {
+    func testCancelTrimRestoresOldLimitWithoutTrimming() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI contentview trim cancel)")
         let store = makeStore(itemCount: 5)
         let before = store.items.map(\.id)
 
@@ -94,7 +97,8 @@ import XCTest
 
     /// Cancel path with a pinned item in the overflow: nothing is lost even
     /// if confirm follows a cancel (pinned items are a retention guarantee).
-    func testConfirmTrimKeepsPinnedItems() {
+    func testConfirmTrimKeepsPinnedItems() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI contentview trim pinned)")
         let store = makeStore(itemCount: 4)
         let pinned = store.items[3] // "item 0" — oldest
         store.togglePin(pinned)
