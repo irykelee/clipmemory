@@ -186,8 +186,11 @@ final class ReleaseReadinessTests: XCTestCase {
     /// 2026-10-01 pre-push review). This test fails on every future
     /// dependabot bump until project.yml's floor is aligned.
     ///
-    /// Assumes Sparkle is the only SPM package (true today); a second
-    /// package will need this test scoped per-repositoryURL.
+    /// Assumes Sparkle is the only SPM package (true today): the test
+    /// asserts there is exactly ONE `minimumVersion` literal in the whole
+    /// pbxproj and compares it to the floor. If a second package is ever
+    /// added, the count assertion fails loud — scope the comparison per
+    /// `repositoryURL` at that point rather than weakening the count.
     func testSparkleFloor_projectYmlMatchesPbxproj() throws {
         let projectYml = try String(
             contentsOf: ReleaseReadinessTests.repoRoot.appendingPathComponent("project.yml"),

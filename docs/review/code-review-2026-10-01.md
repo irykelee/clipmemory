@@ -95,7 +95,7 @@
 1. **【P0】release.yml 的 appcast 推送兜底可回滚远端分支、丢并发提交**：`--force-with-lease` 失败的最典型原因恰恰是远端已前进，此时 `gh api PATCH force=true` 兜底会把窗口期内合入的 commit 全部摘掉——且用 admin PAT、分支保护 `enforce_admins: false`，这个 force 真能落地（ID-CRASH-0010 修好了无条件 PATCH，但保留了"失败才 PATCH"的路径——失败分支正是最危险的分支）。
    `.github/workflows/release.yml:555-560`。修复：删兜底改 fail-fast（appcast 补推本就是可重放操作）。
 2. **【P1】发布链签名/公证缺位**：`Apple Development` 个人证书（2027-07 过期，全靠 `--timestamp` 锚定）+ 全链路无 notarization → 用户首次打开必遇 Gatekeeper 拦截；Development 证书政策上不能走 notarytool；`DEVELOPMENT_TEAM` 个人 Team ID 硬编码入库。`project.yml:25-27`、`release.yml:130-136`。需 Apple Developer Program（$99/年）决策；Team ID 移入本地 .xcconfig 或 CI secret。
-3. **【P1】47 个 XCTSkip（约 4.6%）mass-skip，防污染 canary 与快照体系实质停摆**：`ZZZSuiteTeardownTests.testNoProductionPollution` 首行即 skip（`:235-236`）；`environmentInvariantCheck()` 不是 test 前缀方法 XCTest 永不调用；快照测试近乎全灭（含一个 `xtest` 前缀改名的测试）；xcodebuild 把 skipped 计入总数 → CI 测试数量下限门对 mass-skip 完全免疫；skip 只存在于注释里无台账跟踪。（**2026-10-01 部分闭环**：`docs/skips-ledger.md` 台账已建立——48 处/14 文件（CI 实测 46 个测试被 skip）+ 逐条机制 + v2.9.6 恢复清单；canary 恢复仍待 v2.9.6，另发现类级 `setUpWithError` skip 在 @MainActor 类上必杀 runner 宿主，见第七节。）
+3. **【P1】47 个 XCTSkip（约 4.6%）mass-skip，防污染 canary 与快照体系实质停摆**：`ZZZSuiteTeardownTests.testNoProductionPollution` 首行即 skip（`:235-236`）；`environmentInvariantCheck()` 不是 test 前缀方法 XCTest 永不调用；快照测试近乎全灭（含一个 `xtest` 前缀改名的测试）；xcodebuild 把 skipped 计入总数 → CI 测试数量下限门对 mass-skip 完全免疫；skip 只存在于注释里无台账跟踪。（**2026-10-01 部分闭环**：`docs/skips-ledger.md` 台账已建立——46 处/14 文件（锚定语句计数与 CI 实测一致）+ 逐条机制 + v2.9.6 恢复清单；canary 恢复仍待 v2.9.6，另发现类级 `setUpWithError` skip 在 @MainActor 类上必杀 runner 宿主，见第七节。）
    修复：建 skips 台账（docs/ 或 issue）；优先恢复 ZZZ canary（纯 UserDefaults diff，不影响 CI 稳定性）；UI 快照改环境变量门控。
 4. **【P1】tag push 发布路径完全不跑测试**（`release.yml:205-206` `if: github.event_name == 'pull_request'`，ID-CRASH-0038 自述临时妥协），发布门实际只是作者本机一次可被 `--skip-tests` 绕过的 xcodebuild。修复：tag 上恢复 smoke 子集（复用 tsan.yml 的 `-only-testing` 过滤 + `Executed N` 断言模式）。
 5. **【P1】15 处 Actions 全用可变 major tag 引用、0 个 SHA pin**，而 `.github/dependabot.yml:11-13` 自称 "pinned by SHA"——已失效。release.yml 持有 contents:write + admin PAT，checkout/gh-release 被上游劫持等于发布链被劫持。修复：发布链优先 SHA pin（dependabot github-actions 生态可帮跟 digest）。
@@ -200,13 +200,13 @@
 | 报告条目 | 处置 | 落点 |
 |---|---|---|
 | 五-7 SwiftLint 无版本 pin | **已修复**（风险已实际发生：新 runner 镜像删除预装 SwiftLint，全分支 CI 红；现固定安装 0.65.1 + 下载 sha256 校验 + 版本漂移断言 + 绝对路径调用，Homebrew 遮蔽与下载篡改均不可绕过） | `ce288c5` + 本批次 |
-| 五-3 skip 无台账 | **部分闭环**：`docs/skips-ledger.md`（48 处/14 文件、CI 实测 46 测试、逐条机制、v2.9.6 恢复清单）；canary 恢复仍待 v2.9.6 | `e61a049` / `27eb1dd` |
+| 五-3 skip 无台账 | **部分闭环**：`docs/skips-ledger.md`（46 处/14 文件、逐条机制、v2.9.6 恢复清单）；canary 恢复仍待 v2.9.6 | `e61a049` / `27eb1dd` |
 | 五-4 tag 路径不跑测试（发布门缺失） | 未修（同报告建议），但主套件已在 main push 上恢复可绿 | — |
 | —（#93 next step 2） | build-and-test 失败时上传 xcresult + 两份测试日志 artifact（`if: always()`） | `ce288c5` |
 | —（lint-ids tag 时序误报） | appcast/tag 覆盖 lint 在 `ref_type == tag` 时跳过（tag 自身条目由 release 流程事后写入 main，tag checkout 上构造性不可通过）；v2.9.3 类"有 appcast 无 tag"仍在 main/PR 上把守 | `ce288c5` |
 | 五-9 appcast 缺 releaseNotesLink | 未修；**新增**缺 `sparkle:minimumSystemVersion`（Sparkle 2.10 起官方建议），两者一并补 | — |
 | 依赖 | Sparkle 2.9.5 → 2.10.0（含 2.9.6 安装器 symlink 加固与 root 进程提权修复、macOS 27 delta 更新修复；最低部署 12.0 不影响本项目 target 13.0） | PR #99 / `c911bba` |
-| 文档 | 7 语言 README + `docs/release-notes/v2.9.5.md` 事实修正："14 项 env 敏感型测试" → 实为 14 文件/48 处 XCTSkip/CI 实测 46 测试；"ZZZ canary 3/3" 与 "1021 测试全绿" → 如实标注 canary 本身处于 skip、本地绿包含 skip | `e61a049` / `ce5f75d` |
+| 文档 | 7 语言 README + `docs/release-notes/v2.9.5.md` 事实修正："14 项 env 敏感型测试" → 实为 14 文件/46 处 XCTSkip/46 测试（CI 实测一致）；"ZZZ canary 3/3" 与 "1021 测试全绿" → 如实标注 canary 本身处于 skip、本地绿包含 skip | `e61a049` / `ce5f75d` |
 | 测试 | `AppDelegateShouldTerminateTests` 宿主崩溃修复（机制见 B-2）；`UserDefaultsKeyTests.testRoundTripAcrossSuite` locale 依赖断言修复 | `51fbedb` / `27eb1dd` / `7fc409f` |
 | **【新 P1·已修】Sparkle floor 漂移** | PR #99（dependabot）只改 pbxproj + Package.resolved，`project.yml` 的 `from: "2.9.5"` 滞后 → 下次 `xcodegen generate`（ci.yml 与发版预检 `check_xcodegen_sync` 都会跑）会把 pbxproj 写回 2.9.5、预检必 FAIL，且每次 dependabot bump 都复现。已对齐 floor 至 2.10.0（`xcodegen generate` 后 pbxproj 零 diff 验证），并加防回归测试 `ReleaseReadinessTests.testSparkleFloor_projectYmlMatchesPbxproj`（每次 bump 后 CI 会红直到 project.yml 对齐）；dependabot.yml 两条过时注释（"swift entry 占位符"、"Actions pinned by SHA"）一并改写 | 见本批次提交 |
 | **Sparkle 2.10.0 API 兼容性** | 由 `c911bba` 的 build-and-test 绿间接证实（CI 在 Sparkle 2.10.0 下编译了引用 `SPUUpdaterDelegate`/`SPUStandardUserDriverDelegate` 的 UpdateService）——`c911bba` 时 floor 仍为 2.9.5，Package.resolved 已 pin 2.10.0，故构建解析的是 2.10.0 | run 36838993065 |

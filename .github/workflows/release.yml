@@ -297,8 +297,11 @@ jobs:
           # months before changing), and pulling latest silently breaks CI
           # mid-release.
           # ID-CRASH-0024 (2026-09-28 code-review P2-15): the embedded
-          # Sparkle **framework** is pinned separately at project.yml:12
-          # (`from: "2.9.5"`). These two pins intentionally diverge:
+          # Sparkle **framework** floor lives in project.yml (packages
+          # Sparkle `from:`, currently "2.10.0") and is guarded against
+          # dependabot-only drift by
+          # ReleaseReadinessTests.testSparkleFloor_projectYmlMatchesPbxproj.
+          # These two pins intentionally diverge:
           # the CLI tools are versioned for the `sign_update` API they
           # expose, the framework is versioned for its shipping behaviour
           # (EdDSA wire format + embedded Sparkle.framework for the

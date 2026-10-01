@@ -3,7 +3,7 @@
 - **建立**：2026-09-30（`803393b`，v2.9.5）；2026-10-01 修订（`51fbedb`/`27eb1dd`：AppDelegateShouldTerminateTests 由类级 skip 改回 body 级 3 处）
 - **根因追踪**：issue #93（ID-CRASH-0037，GH Actions runner 环境调查）+ ID-CRASH-0038
 - **恢复目标**：**v2.9.6**（与各 skip 站点注释一致）
-- **计数口径**：站点 48 处（下方 grep 命令计数）；CI 实测被 skip 的测试 46 个（run 36838993065：`Executed 1020 tests, with 46 tests skipped`）——差值 2 来自非 1:1 站点，两个数字都不要硬编码进门禁
+- **计数口径**：46 处语句 / 46 个测试（锚定语句计数与 CI 实测一致；run 36838993065 `Executed 1020 tests, with 46 tests skipped`）。注意朴素 grep 会把注释里的文字 "throw XCTSkip" 也数进去（虚增 2），必须锚定行首
 
 ## 背景
 
@@ -15,12 +15,12 @@ GH Actions macOS runner 环境（macOS 27 / 新 Xcode 镜像）下，下列测�
 
 | # | 测试文件 | XCTSkip 处 | 备注 |
 |---|---|---|---|
-| 1 | IntegrationTests.swift | 10 | restart-recovery / backend 等核心集成路径 |
+| 1 | IntegrationTests.swift | 9 | restart-recovery / backend 等核心集成路径 |
 | 2 | ClipboardItemRowTests.swift | 7 | 行视图交互 |
 | 3 | WindowManagerTests.swift | 5 | 窗口生命周期 |
 | 4 | SettingsWindowTests.swift | 4 | 设置窗口生命周期 |
 | 5 | MemoryWarningTests.swift | 4 | 内存告警 |
-| 6 | HotKeyRetainFailurePathTests.swift | 4 | 热键保留环 |
+| 6 | HotKeyRetainFailurePathTests.swift | 3 | 热键保留环 |
 | 7 | ContentViewTrimAlertTests.swift | 4 | 修剪告警 |
 | 8 | ClipboardItemRowSnapshotTests.swift | 2 | 快照（golden 在库） |
 | 9 | AppDelegateShouldTerminateTests.swift | 3 | terminate 路径。**CI 崩溃机制已确认**（runs 36833079602/36835842657 xcresult）：① 类级 `setUpWithError` XCTSkip 在 @MainActor 类上必杀 runner 宿主（`libdispatch: trying to lock recursively`，每测试一次重启）；② tearDown 里 `ClipboardStore.shared` 首触同样致命（tag run）。**skip 必须留在测试体首行**（与快照/窗口类的已验证安全模式一致），tearDown 不得触碰单例 |
@@ -29,13 +29,16 @@ GH Actions macOS runner 环境（macOS 27 / 新 Xcode 镜像）下，下列测�
 | 12 | SettingsTabSnapshotTests.swift | 1 | 快照 |
 | 13 | QuickBarViewTests.swift | 1 | QuickBar |
 | 14 | ClipboardItemRowOCRTransitionTests.swift | 1 | OCR 过渡 |
-| | **合计** | **48** | 站点数 ≠ 实际 skip 的测试数（CI 实测 46）：部分站点非一一对应（helper 内共享等） |
+| | **合计** | **46** | 与 CI 实测 skip 测试数一致（口径：行首锚定的 `throw XCTSkip` 语句，不含注释提及） |
 
-重新生成站点统计：
+重新生成站点统计（必须锚定行首：朴素 grep 会把注释里提到的 "throw XCTSkip" 一并计入，虚增 2）：
 
 ```bash
-grep -rn "throw XCTSkip" Tests/ClipMemoryTests/ \
-  | sed 's|Tests/ClipMemoryTests/||' | cut -d: -f1 | sort | uniq -c | sort -rn
+# 总站点数（应与 CI "N tests skipped" 一致）
+grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ | wc -l
+# 分文件分布
+grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
+  | cut -d: -f1 | sort | uniq -c | sort -rn
 ```
 
 ## v2.9.6 恢复清单

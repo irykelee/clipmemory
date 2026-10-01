@@ -154,6 +154,21 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Assert committed pbxproj is xcodegen-in-sync
+        # 2026-10-01 (pre-push review round 3, finding: dependabot bump
+        # PR #99 edited only the pbxproj/Package.resolved, leaving
+        # project.yml's Sparkle floor stale — and this job's own
+        # `xcodegen generate` silently regenerated over the bump, so a
+        # green run proved nothing about the committed pbxproj). A diff
+        # here fails the job whenever the committed pbxproj does not
+        # match project.yml — closing the same class release.sh's
+        # check_xcodegen_sync guards locally. The Sparkle-specific pair
+        # is additionally asserted by
+        # ReleaseReadinessTests.testSparkleFloor_projectYmlMatchesPbxproj.
+        run: |
+          git diff --exit-code ClipMemory.xcodeproj/project.pbxproj \
+            || { echo "::error::project.pbxproj is stale — run 'xcodegen generate' after editing project.yml and commit the result."; exit 1; }
+
       - name: Build
         # CI builds stay ad-hoc (CODE_SIGN_IDENTITY="-"): the self-signed
         # release identity lives in repo secrets, which fork PRs cannot
