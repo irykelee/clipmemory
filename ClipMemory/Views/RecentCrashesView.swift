@@ -22,6 +22,15 @@ struct RecentCrashesView: View {
     @State private var isLoading = false
     @State private var loadError: String?
     @State private var hasLoadedOnce = false
+    // ID-REVIEW-1006 (code-review-2026-10-01 P1 0-6): observe
+    // LanguageManager so the window's labels update when the user
+    // switches language. Without this the L10n.* calls captured at
+    // body evaluation time stay in the previously-rendered language
+    // for the lifetime of the window (which is constructed once when
+    // the user opens Help → View Recent Crashes). The `.id(language)`
+    // rekey at the bottom of `body` forces a fresh body evaluation
+    // when the language flips, mirroring SettingsRootView's pattern.
+    @ObservedObject private var languageManager = LanguageManager.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,6 +74,9 @@ struct RecentCrashesView: View {
             // parse on a directory with at most a few dozen files).
             hasLoadedOnce.toggle()
         }
+        // ID-REVIEW-1006: rekey on language change so L10n.* captures
+        // re-evaluate. Same pattern as SettingsRootView:72.
+        .id(languageManager.selectedLanguage)
     }
 
     /// Compact error banner shown above the table when a refresh fails

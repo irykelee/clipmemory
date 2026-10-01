@@ -3,6 +3,15 @@ import SwiftUI
 struct RestoreWizardView: View {
     @ObservedObject var vm: RestoreWizardViewModel
     let onClose: () -> Void
+    // ID-REVIEW-1006 (code-review-2026-10-01 P1 0-6): observe
+    // LanguageManager so the wizard's labels update when the user
+    // switches language mid-wizard. The wizard window is constructed
+    // once when the user starts a backup restore, so any L10n.*
+    // captures from that initial render would otherwise stay stale
+    // for the wizard's lifetime. The `.id(language)` rekey at the
+    // bottom of `body` forces a fresh body evaluation when language
+    // flips, mirroring SettingsRootView:72.
+    @ObservedObject private var languageManager = LanguageManager.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,6 +24,9 @@ struct RestoreWizardView: View {
             footer
         }
         .frame(width: 480, height: 600)
+        // ID-REVIEW-1006: rekey on language change so L10n.* captures
+        // re-evaluate. Same pattern as SettingsRootView:72.
+        .id(languageManager.selectedLanguage)
     }
 
     private var header: some View {

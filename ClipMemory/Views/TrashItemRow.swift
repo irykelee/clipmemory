@@ -54,17 +54,23 @@ struct TrashItemRow: View, Equatable {
         isHovered ? Color.accentColor.opacity(0.06) : Color.clear
     }
 
-    // BUG-042 (2026-07-21): cache the formatter. Without this, every
-    // scroll-frame during list scrolling allocates a new formatter per
-    // visible row — visible perf hit on long trash lists.
-    private static let deletedAtFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        return f
-    }()
-
+    // ID-REVIEW-1006 (code-review-2026-10-01 P1 0-6): use the shared
+    // `DateHelpers.cachedRelativeDateString` instead of a view-local
+    // `RelativeDateTimeFormatter`. The local formatter had no locale
+    // binding and didn't observe language switching — switching to
+    // 日/韩 mid-session left the trash list showing English "2 days ago"
+    // strings. The shared helper is per-language-cached via NSCache and
+    // keyed by `LanguageManager.shared.selectedLanguage`, which makes
+    // the view reactive on language change (the property is recomputed
+    // when the @StateObject invalidates).
+    // The per-view formatter cache (BUG-042) was originally added for
+    // perf, but the shared NSCache already serves the same role with
+    // keyed-by-languageCode entries — net effect is unchanged perf, plus
+    // correct locale observation. Drop the view-local cache.
     private var formattedDeletedAt: String {
         guard let deletedAt = item.deletedAt else { return "" }
-        return Self.deletedAtFormatter.localizedString(for: deletedAt, relativeTo: Date())
+        return cachedRelativeDateString(from: deletedAt, relativeTo: Date(),
+                                        languageCode: LanguageManager.shared.selectedLanguage)
     }
 
     var body: some View {

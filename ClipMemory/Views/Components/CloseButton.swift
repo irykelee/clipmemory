@@ -14,7 +14,14 @@ struct CloseButton: View {
     /// Standard tooltip shown on hover (matches the existing inline buttons'
     /// `.help(...)` pattern; callers that need different copy can override
     /// via `.help(...)` modifier).
-    var accessibilityLabel: String = "Close"
+    /// ID-REVIEW-1006 (code-review-2026-10-01 P1 0-6): default to the
+    /// localized `L10n.buttonClose` instead of the English literal `"Close"`.
+    /// The 4 callers (ContentView / SidebarView / QuickBarView /
+    /// DiagnosticsBanner) all omit an explicit label and rely on the
+    /// default — non-English locales (日/韩 VoiceOver users in particular)
+    /// were hearing English "Close" on every close button. Callers that
+    /// need a different a11y label can still override via the parameter.
+    var accessibilityLabel: String = L10n.buttonClose
 
     var body: some View {
         Button(action: action) {
