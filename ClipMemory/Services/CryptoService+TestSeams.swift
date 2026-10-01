@@ -48,4 +48,24 @@ final class InMemoryKeychainStore: KeyStoring {
     }
     func delete() { stored = nil }
 }
+
+// ID-REVIEW-1008 (code-review-2026-10-01 P1 1-5): MockKeyStore that
+// simulates a "store succeeded but load returns different bytes"
+// scenario — exercises the verify-mismatch branch in prepareKey's
+// migration path. The store() call accepts the bytes (no throw),
+// but load() returns a different buffer, mimicking a flaky Keychain
+// that wrote a corrupted entry. The verify-mismatch branch was
+// previously classified as `.permanent` (deleted the disk file →
+// data loss); now it should be `.transient` (keep the disk file
+// for next-launch retry).
+final class VerifyMismatchKeychainStore: KeyStoring {
+    func load() -> Data? { Data(repeating: 0xFF, count: 32) }
+    func loadStatus() -> KeychainLoadStatus { .notFound }
+    @discardableResult
+    func store(_ keyData: Data) throws {
+        // Succeed silently so prepareKey reaches the verify branch.
+        _ = keyData
+    }
+    func delete() {}
+}
 #endif

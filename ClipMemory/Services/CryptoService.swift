@@ -555,7 +555,27 @@ class CryptoService: CryptoServiceProtocol {
                 if keyStore.load() == keyData {
                     secureRemoveKeyFile(at: keyURL)
                 } else {
-                    Self.handleKeychainMigrationFailure(error: .permanent(errSecVerifyFailed), keyURL: keyURL, logger: Self.logger)
+                    // ID-REVIEW-1008 (code-review-2026-10-01 P1 1-5): the
+                    // verify-mismatch branch (Keychain write succeeded
+                    // but a follow-up read returned different bytes) was
+                    // previously classified as `.permanent`, which made
+                    // `handleKeychainMigrationFailure` `secureRemoveKeyFile`
+                    // — deleting the only known-good copy of the root
+                    // key on disk. On next launch, `prepareKey` would
+                    // load the unverified Keychain bytes as canonical,
+                    // and every ciphertext ever written becomes
+                    // permanently undecryptable. This is the classic
+                    // "Keychain is unreliable" scenario the file should
+                    // keep the fallback for — exactly opposite of what
+                    // the original code did. Demote to `.transient`
+                    // so the helper keeps the disk file and the next
+                    // launch retries the migration. The transient path
+                    // also surfaces a notice log + (via
+                    // EncryptionFailedAlertThrottler) an NSAlert so the
+                    // user still sees something — the alert is just
+                    // "keychain write flaky, will retry" instead of
+                    // "permanent corruption".
+                    Self.handleKeychainMigrationFailure(error: .transient(errSecVerifyFailed), keyURL: keyURL, logger: Self.logger)
                 }
             } catch let error as KeyStoreError {
                 Self.handleKeychainMigrationFailure(error: error, keyURL: keyURL, logger: Self.logger)

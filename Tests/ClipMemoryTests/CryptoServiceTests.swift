@@ -803,4 +803,96 @@ final class CryptoServiceTests: XCTestCase {
             "P2-3 regression: Keychain migration success must NOT post .encryptionFailed"
         )
     }
+
+    // MARK: - ID-REVIEW-1008 (1-5) verify-mismatch regression
+
+    /// ID-REVIEW-1008 (code-review-2026-10-01 P1 1-5): the verify-mismatch
+    /// branch in `prepareKey`'s migration path (Keychain write succeeded
+    /// but a follow-up `load()` returned different bytes) was previously
+    /// classified as `.permanent`, which made
+    /// `handleKeychainMigrationFailure` delete the on-disk `.encryption_key`
+    /// — destroying the only known-good copy of the root key. On next
+    /// launch, `prepareKey` would load the (unverified) Keychain bytes as
+    /// canonical and every ciphertext ever written would become
+    /// permanently undecryptable.
+    ///
+    /// The fix demotes the classification to `.transient`: keep the disk
+    /// file, post a `.encryptionFailed` notification tagged
+    /// `keychainMigration.transient` so the user is alerted, and let the
+    /// next launch retry the migration. This test asserts:
+    ///   1. The on-disk fallback file is preserved.
+    ///   2. The notification fires with the transient bucket.
+    ///   3. `recoverable == true` so the alert wording is "will retry".
+    ///   4. The status code (`errSecVerifyFailed`) is passed through so
+    ///      the diagnostic alert can show the underlying Keychain error.
+    func testKeychainMigrationVerifyMismatchKeepsFallbackFile() throws {
+        // Arrange: temp dir + 32-byte .encryption_key file
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("r1008-verify-mismatch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let keyURL = tempDir.appendingPathComponent(".encryption_key")
+        let keyData = Data(repeating: 0xDD, count: 32)
+        try keyData.write(to: keyURL, options: .atomic)
+
+        // VerifyMismatchKeychainStore: loadStatus returns .notFound
+        // (forces migration branch), store() succeeds silently, but
+        // load() always returns DIFFERENT bytes (0xFF, not 0xDD).
+        let mismatchedKeychain = VerifyMismatchKeychainStore()
+
+        // Capture .encryptionFailed notifications posted during prepareKey.
+        var posted: [Notification] = []
+        let observer = NotificationCenter.default.addObserver(
+            forName: .encryptionFailed, object: nil, queue: nil
+        ) { note in posted.append(note) }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        // Act: prepareKey should detect the verify mismatch, classify
+        // it as .transient, keep the file, and post .encryptionFailed.
+        _ = CryptoService.prepareKey(
+            keyURL: keyURL,
+            keyStore: mismatchedKeychain,
+            failureHandler: { _ in .regenerate }
+        )
+
+        // Assert 1: on-disk fallback file MUST be preserved.
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: keyURL.path),
+            "ID-REVIEW-1008: verify-mismatch must NOT delete .encryption_key (file is the only known-good copy; deleting it = total history loss)"
+        )
+        XCTAssertEqual(
+            try? Data(contentsOf: keyURL), keyData,
+            "ID-REVIEW-1008: verify-mismatch must preserve .encryption_key content byte-for-byte"
+        )
+
+        // Assert 2: notification fires.
+        XCTAssertFalse(
+            posted.isEmpty,
+            "ID-REVIEW-1008: verify-mismatch must post .encryptionFailed so the alert path surfaces 'Keychain flaky, will retry'"
+        )
+
+        // Assert 3: source bucket is 'transient', NOT 'permanent'.
+        let source = posted.first?.userInfo?["source"] as? String
+        XCTAssertEqual(
+            source, "keychainMigration.transient",
+            "ID-REVIEW-1008: verify-mismatch must use 'keychainMigration.transient' bucket (was 'keychainMigration.permanent' — data-loss bug)"
+        )
+
+        // Assert 4: recoverable = true.
+        let recoverable = posted.first?.userInfo?["recoverable"] as? Bool
+        XCTAssertEqual(
+            recoverable, true,
+            "ID-REVIEW-1008: verify-mismatch MUST be marked recoverable (next launch retries the migration; user is told 'will retry', not 'corrupted')"
+        )
+
+        // Assert 5: status code passed through.
+        let status = posted.first?.userInfo?["status"] as? Int
+        XCTAssertEqual(
+            status, Int(errSecVerifyFailed),
+            "ID-REVIEW-1008: errSecVerifyFailed must be in userInfo so the alert can show the underlying Keychain error"
+        )
+    }
 }
