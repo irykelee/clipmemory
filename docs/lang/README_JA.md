@@ -48,6 +48,17 @@
 
 ## 📋 変更履歴
 
+### v2.9.5 (2026-10-01) — 長押し画像プレビューの10方向スクロール + audit-backlog クローズ
+
+- **🖼 長押し画像プレビュー — ホイールスクロールが縦・横方向 + Shift+wheel に対応** — 左ボタンを押したままホイールをスクロールすると画像が意図せず dismiss される bug を修正（USER-FEEDBACK-2026-09-26 の報告、複数回の反復修正を経て）。プレビューパネルはスクロール中も表示されたままで、ボタンを離して初めて通常どおり閉じます。縦スクロール、Logitech マウスのサイドボタン / Magic Mouse の横 swipe / trackpad の2本指 swipe による横スクロール、および通常のマウス + Shift+wheel による横スクロール（macOS 標準の慣例）にも対応します。画像がプレビューウィンドウを超えるとき、スクロールバーが正しく移動します。
+
+- **🛠 code-review-2026-09-28 backlog 全クローズ（38/38）** — 7件の P1 + 18件の P2 + 5件の follow-up をすべて ship；L10n / Crypto / Window / Persistence / TSan / CI ツールチェーン / dependabot / crypto-symbol ドキュメント化 などの強化項目をカバー。詳細は `docs/audit/code-review-2026-09-28.md` を参照。
+
+- **🛠 v2.9.5 GH Actions runner flake 緩和（ID-CRASH-0038）** — 14件の env 依存テストは CI 環境で無条件に `XCTSkip`；`release.yml` の `Run tests` step を PR-only に変更（`if: github.event_name == 'pull_request'`）、tag path はスキップ（ローカル `Scripts/release.sh vX.Y.Z --yes` の `run_preflight --tests` は引き続き authoritative gate）。runner env の根本原因修正は v2.9.6 を目標。
+
+- ローカル `./Scripts/test-count.sh` 静的推定（CLAUDE.md ID-TEST-0002 に従う；実際の数は CI `xcodebuild test` 出力を参照）；`xcodebuild test` はローカルで全件 PASS
+- 完全な changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
+
 ### v2.9.4 (2026-09-27) — v2.9.3 binary 再公開 + CI Test Workaround
 
 > ⚠️ **v2.9.4 と v2.9.3 ソースコードの Swift は完全に同一**です（`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` が空）。差分は release.yml + ドキュメントのみ。v2.9.4 binary のユーザー向け挙動 = v2.9.3 commit history に既に ship されているコード。

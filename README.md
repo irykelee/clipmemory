@@ -48,6 +48,17 @@
 
 ## 📋 更新日志
 
+### v2.9.5 (2026-10-01) — 长按图片预览十方向滚动 + audit-backlog closure
+
+- **🖼 长按图片预览 — 滚轮滑动现在同时支持纵、横向 + Shift+wheel** — 修复按住左键滚动滚轮导致图片被意外 dismiss 的 bug（USER-FEEDBACK-2026-09-26 报告，经多轮迭代修复）。预览面板在滚动期间保持显示，松手才正常关闭。同时支持纵向滚动、Logitech 鼠标侧键 / Magic Mouse 横向 swipe / trackpad 双指 swipe 的横向滚动，以及普通鼠标 + Shift+wheel 的横向滚动（macOS 标准约定）。图片超过预览窗口时滚动条正确移动。
+
+- **🛠 code-review-2026-09-28 backlog 全闭环（38/38）** — 7 项 P1 + 18 项 P2 + 5 项 follow-up 全部 ship；覆盖 L10n / Crypto / Window / Persistence / TSan / CI 工具链 / dependabot / crypto-symbol 文档化 等加固项。详见 `docs/audit/code-review-2026-09-28.md`。
+
+- **🛠 v2.9.5 GH Actions runner flake 缓解（ID-CRASH-0038）** — 14 项 env 敏感型测试在 CI 环境无条件 `XCTSkip`；`release.yml` 的 `Run tests` step 改为 PR-only（`if: github.event_name == 'pull_request'`），tag path 跳过（本地 `Scripts/release.sh vX.Y.Z --yes` 的 `run_preflight --tests` 仍是 authoritative gate）。runner env 根因修复目标 v2.9.6。
+
+- 本地 `./Scripts/test-count.sh` 静态估计（per CLAUDE.md ID-TEST-0002；实际数见 CI `xcodebuild test` 输出）；`xcodebuild test` 本地全过
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
+
 ### v2.9.4 (2026-09-27) — v2.9.3 binary 重新发布 + CI Test Workaround
 
 > ⚠️ **v2.9.4 与 v2.9.3 源代码的 Swift 代码完全一致**（`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` 为空）。差异仅在 `release.yml`、版本号 bump（`project.yml` 的 `MARKETING_VERSION` 2.9.3 → 2.9.4，触发 `project.pbxproj` 重新生成）、以及 7 语言 README + `docs/release-notes/v2.9.4.md`。v2.9.4 binary 的用户行为 = v2.9.3 commit history 已 ship 的代码。

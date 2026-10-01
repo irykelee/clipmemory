@@ -48,6 +48,17 @@
 
 ## 📋 변경 로그
 
+### v2.9.5 (2026-10-01) — 이미지 미리보기 길게 누르기 10방향 스크롤 + audit-backlog closure
+
+- **🖼 이미지 미리보기 길게 누르기 — 휠 스크롤이 이제 세로·가로 + Shift+wheel을 함께 지원** — 왼쪽 버튼을 누른 채 휠을 굴리면 이미지가 예기치 않게 dismiss되는 버그 수정(USER-FEEDBACK-2026-09-26 보고, 여러 차례 반복 수정). 미리보기 패널은 스크롤 중 계속 표시되며, 손을 떼야 정상적으로 닫힙니다. 세로 스크롤, Logitech 마우스 측면 버튼 / Magic Mouse 가로 swipe / trackpad 두 손가락 swipe의 가로 스크롤, 그리고 일반 마우스 + Shift+wheel의 가로 스크롤(macOS 표준 관례)을 지원합니다. 이미지가 미리보기 창을 초과하면 스크롤바가 올바르게 이동합니다.
+
+- **🛠 code-review-2026-09-28 backlog 전체 클로즈(38/38)** — P1 7건 + P2 18건 + follow-up 5건 모두 ship; L10n / Crypto / Window / Persistence / TSan / CI 툴체인 / dependabot / crypto-symbol 문서화 등 하드닝 항목을 커버합니다. 자세한 내용은 `docs/audit/code-review-2026-09-28.md` 참조.
+
+- **🛠 v2.9.5 GH Actions runner flake 완화(ID-CRASH-0038)** — 14건의 env 민감형 테스트가 CI 환경에서 무조건 `XCTSkip`; `release.yml`의 `Run tests` step은 PR-only로 변경(`if: github.event_name == 'pull_request'`), tag path는 스킵(로컬 `Scripts/release.sh vX.Y.Z --yes`의 `run_preflight --tests`는 여전히 authoritative gate). runner env 근본 원인 수정 목표 v2.9.6.
+
+- 로컬 `./Scripts/test-count.sh` 정적 추정 (per CLAUDE.md ID-TEST-0002; 실제 수는 CI `xcodebuild test` 출력 참조); `xcodebuild test` 로컬 전부 PASS
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
+
 ### v2.9.4 (2026-09-27) — v2.9.3 binary 재게시 + CI Test Workaround
 
 > ⚠️ **v2.9.4와 v2.9.3 소스 코드의 Swift는 완전히 동일**합니다 (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/`가 비어 있음). 차이는 release.yml + 문서뿐입니다. v2.9.4 binary의 사용자 행동 = v2.9.3 commit history에 이미 ship된 코드.

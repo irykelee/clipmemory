@@ -48,6 +48,17 @@
 
 ## 📋 Registro de alterações
 
+### v2.9.5 (2026-10-01) — Rolagem em dez direções na pré-visualização de imagem com pressionamento prolongado + fechamento do audit-backlog
+
+- **🖼 Pré-visualização de imagem com pressionamento prolongado — a rolagem com a roda agora oferece suporte a rolagem vertical e horizontal + Shift+wheel** — Corrige o bug em que pressionar o botão esquerdo e rolar a roda fazia a imagem ser fechada acidentalmente (reportado em USER-FEEDBACK-2026-09-26, corrigido após várias iterações). O painel de pré-visualização permanece visível durante a rolagem; ele só fecha normalmente ao soltar o botão. Também oferece suporte a rolagem vertical, rolagem horizontal via botões laterais do mouse Logitech / swipe horizontal do Magic Mouse / swipe de dois dedos no trackpad, além de rolagem horizontal com mouse comum + Shift+wheel (convenção padrão do macOS). A barra de rolagem se move corretamente quando a imagem excede a janela de pré-visualização.
+
+- **🛠 Fechamento completo do backlog do code-review-2026-09-28 (38/38)** — 7 itens P1 + 18 itens P2 + 5 itens de follow-up, todos entregues; cobrindo itens de reforço como L10n / Crypto / Window / Persistence / TSan / cadeia de ferramentas de CI / dependabot / documentação de crypto-symbol. Veja `docs/audit/code-review-2026-09-28.md` para detalhes.
+
+- **🛠 Mitigação de flake do runner do GH Actions na v2.9.5 (ID-CRASH-0038)** — 14 testes sensíveis a env recebem `XCTSkip` incondicionalmente no ambiente de CI; o step `Run tests` do `release.yml` foi alterado para PR-only (`if: github.event_name == 'pull_request'`), e o caminho de tag é ignorado (o `run_preflight --tests` do `Scripts/release.sh vX.Y.Z --yes` local continua sendo o gate autoritativo). A correção da causa raiz do env do runner tem como alvo a v2.9.6.
+
+- Estimativa estática local de `./Scripts/test-count.sh` (conforme CLAUDE.md ID-TEST-0002; a contagem real está na saída do `xcodebuild test` do CI); `xcodebuild test` local passa todos
+- Registro completo de alterações: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
+
 ### v2.9.4 (2026-09-27) — Re-publicação do binary v2.9.3 + Workaround CI Test
 
 > ⚠️ **O código Swift de v2.9.4 é idêntico ao código-fonte de v2.9.3** (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` está vazio). As únicas diferenças estão em release.yml + docs. O comportamento para o usuário do binary v2.9.4 = código já publicado no histórico de commits de v2.9.3.

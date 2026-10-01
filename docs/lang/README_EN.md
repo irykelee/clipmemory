@@ -48,6 +48,17 @@
 
 ## 📋 Changelog
 
+### v2.9.5 (2026-10-01) — Long-press image preview 10-direction scrolling + audit-backlog closure
+
+- **🖼 Long-press image preview — wheel scrolling now supports both vertical and horizontal + Shift+wheel** — Fixes a bug where holding the left button and scrolling the wheel caused the image to be accidentally dismissed (reported in USER-FEEDBACK-2026-09-26, fixed over multiple iterations). The preview panel remains visible during scrolling and only closes normally when the button is released. Also supports vertical scrolling, horizontal scrolling via Logitech mouse side buttons / Magic Mouse horizontal swipe / trackpad two-finger swipe, and horizontal scrolling via regular mouse + Shift+wheel (macOS standard convention). The scrollbar moves correctly when the image exceeds the preview window.
+
+- **🛠 code-review-2026-09-28 backlog fully closed (38/38)** — All 7 P1 + 18 P2 + 5 follow-up items shipped; covering hardening items such as L10n / Crypto / Window / Persistence / TSan / CI toolchain / dependabot / crypto-symbol documentation. See `docs/audit/code-review-2026-09-28.md` for details.
+
+- **🛠 v2.9.5 GH Actions runner flake mitigation (ID-CRASH-0038)** — 14 env-sensitive tests unconditionally `XCTSkip` in the CI environment; the `Run tests` step in `release.yml` is changed to PR-only (`if: github.event_name == 'pull_request'`), skipped on the tag path (the `run_preflight --tests` in local `Scripts/release.sh vX.Y.Z --yes` remains the authoritative gate). Root-cause fix for runner env is targeted for v2.9.6.
+
+- Local `./Scripts/test-count.sh` static estimate (per CLAUDE.md ID-TEST-0002; actual count in CI `xcodebuild test` output); `xcodebuild test` locally all-pass
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
+
 ### v2.9.4 (2026-09-27) — v2.9.3 binary re-publish + CI Test Workaround
 
 > ⚠️ **v2.9.4 Swift code is identical to v2.9.3 source** (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` is empty). The only differences are in release.yml + docs. v2.9.4 binary's user-facing behavior = code already shipped in v2.9.3 commit history.

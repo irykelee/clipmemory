@@ -48,6 +48,17 @@
 
 ## 📋 Registro de cambios
 
+### v2.9.5 (2026-10-01) — Desplazamiento en diez direcciones en la previsualización de imagen con pulsación prolongada + cierre del backlog de auditoría
+
+- **🖼 Previsualización de imagen con pulsación prolongada — el desplazamiento con la rueda ahora admite vertical y horizontal + Shift+wheel** — Corrige el bug por el que desplazar la rueda con el botón izquierdo pulsado hacía que la imagen se descartara accidentalmente (reportado en USER-FEEDBACK-2026-09-26, corregido tras varias iteraciones). El panel de previsualización permanece visible durante el desplazamiento; solo se cierra con normalidad al soltar. También admite desplazamiento vertical, desplazamiento horizontal con los botones laterales del ratón Logitech / swipe horizontal de Magic Mouse / swipe con dos dedos del trackpad, y desplazamiento horizontal con ratón normal + Shift+wheel (convención estándar de macOS). La barra de desplazamiento se mueve correctamente cuando la imagen excede la ventana de previsualización.
+
+- **🛠 Backlog de code-review-2026-09-28 cerrado por completo (38/38)** — Los 7 elementos P1 + 18 elementos P2 + 5 follow-ups se publicaron todos; cubre elementos de endurecimiento como L10n / Crypto / Window / Persistence / TSan / cadena de herramientas de CI / dependabot / documentación de crypto-symbol. Consulte `docs/audit/code-review-2026-09-28.md` para más detalles.
+
+- **🛠 Mitigación de fallos intermitentes del runner de GH Actions en v2.9.5 (ID-CRASH-0038)** — 14 pruebas sensibles al entorno usan `XCTSkip` de forma incondicional en el entorno de CI; el step `Run tests` de `release.yml` pasa a ser PR-only (`if: github.event_name == 'pull_request'`), y se omite la ruta de tag (el `run_preflight --tests` de `Scripts/release.sh vX.Y.Z --yes` local sigue siendo la puerta autoritativa). La corrección de la causa raíz del entorno del runner está prevista para v2.9.6.
+
+- Estimación estática local de `./Scripts/test-count.sh` (según CLAUDE.md ID-TEST-0002; el número real se ve en la salida de `xcodebuild test` de CI); `xcodebuild test` local pasa por completo
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
+
 ### v2.9.4 (2026-09-27) — Re-publicación del binary v2.9.3 + Workaround CI Test
 
 > ⚠️ **El código Swift de v2.9.4 es idéntico al código fuente de v2.9.3** (`git diff v2.9.3..HEAD -- Tests/ ClipMemory/` está vacío). Las únicas diferencias están en release.yml + docs. El comportamiento para el usuario del binary v2.9.4 = código ya publicado en el historial de commits de v2.9.3.
