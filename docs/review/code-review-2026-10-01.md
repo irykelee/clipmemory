@@ -189,6 +189,8 @@
 | **P1（近期，1-2 个迭代）** | ~15 | 存储迁移（纲）；Keychain 迁移删副本；导出包根密钥；OCR 敏感检测；RTF 丢弃；copy token；主线程保存/分享阻塞；store/AppDelegate 拆类；skip 台账+canary 恢复；tag 路径跑测试；Actions SHA pin；Developer ID 决策；测试密钥写生产路径；行视图三份重复逻辑收敛；本地化三处漏网 |
 | **P2（随批次清理）** | ~20 | fullSizeCache 字节上限、pendingKeyItems 封顶、terminate RunLoop 泵、敏感检测归一化、zip fail-open、备份权限、share temp 清理、备份硬链接去重、启动图片扫描增量、VM 抽取、高亮统一、Sparkle/dependabot 策略、SwiftLint pin、Scripts/test 入 CI、appcast releaseNotesLink 等 |
 
+> 逐项改法与实施顺序见第八节（批次 0 速赢 / 批次 1 发布链与安全 / 批次 2+3 存储迁移与结构重构）。
+
 ---
 
 ## 七、追记：2026-10-01 修复批次（CI 恢复绿 + PR #99 合并）
@@ -226,3 +228,121 @@
 - **P0**：release.yml appcast 推送的 `gh api PATCH force=true` 兜底（回滚远端分支、丢并发提交，一行删除待做）；`quarantineCorruptBlob` 硬编码 `UserDefaults.standard` 破坏测试隔离。
 - **P1（多数未动）**：存储层迁移（纲）、Keychain 迁移 verify-mismatch 删回退副本、导出包内嵌根密钥、OCR 文本接入敏感检测、RTF 超限静默丢弃、冷图异步拷贝竞争、主线程保存/分享阻塞、store/AppDelegate 拆类、tag 路径测试门恢复、Actions SHA pin、Developer ID + 公证决策、测试密钥写生产路径、行视图三份重复逻辑收敛、本地化三处漏网（CloseButton / TrashItemRow formatter / 双窗口语言切换）。
 - **注意**：`AppDelegateShouldTerminateTests` 的三条 skip 仍是 ID-CRASH-0038 台账条目（v2.9.6 恢复 = 删除三个 body 首行 XCTSkip；类注释已写明两种已确认的宿主崩溃机制，恢复时勿再改回类级 skip）。
+
+---
+
+## 八、建议修改方案（分阶段实施计划）
+
+> 承接第七节 C 段的开放项，给出可落地的具体改法。批次 0 各项互相独立、可直接开工；批次 1 的 1-1 与 1-4 需项目所有者先做决策；批次 2 与批次 3 应同批实施。新修复建议沿用仓库惯例：从 `ID-REVIEW-1000` 起段分配审计 ID，测试先行，fail-closed。
+
+### 批次 0：速赢（合计约 1-2 天，互相独立）
+
+**0-1【P0】删除 release.yml 的 appcast PATCH 兜底**
+- 现状：`release.yml:555-560` 的 `push --force-with-lease || gh api PATCH force=true` —— 兜底触发的最典型场景恰是远端已前进，会把窗口期并入的 commit 从分支上摘掉（admin PAT + `enforce_admins: false` 使其真能落地）。
+- 改法：删除 `|| gh api ...` 整段，改为失败即 `exit 1` 并输出人工指引（"appcast 补推可重放：重跑 release workflow 的 appcast-push 步骤，或手动执行 `Scripts/update_appcast.sh`"）；同时清理不再需要的 admin bypass 相关注释。
+- 验收：`Scripts/lint-release-yml.sh --selftest` 通过；演练一次 force-with-lease 失败确认走 fail-fast。
+
+**0-2【P0】quarantineCorruptBlob 改用注入的 defaults**
+- 现状：`ClipboardStore+Utilities.swift:47-54` 硬编码 `UserDefaults.standard`，测试中触发加载失败路径会写生产域。
+- 改法（一行）：
+  ```swift
+  let defaults = self.defaults   // 替换 UserDefaults.standard，走注入 suite
+  ```
+- 验收：构造后端加载失败用例，断言 quarantine key 落在注入 suite 而非生产域；恢复 ZZZ canary 后此断言由 canary 兜底。
+
+**0-3【P1】冷图异步拷贝竞争（一行）**
+- 现状：`pendingCopyToken` 只防"图-图"竞争；`ClipboardStore.swift:2244-2327` 的文本/RTF/暖图同步写路径不作废在途异步写，粘贴得到旧图。
+- 改法：同步写路径在 `onRecordOwnWrite?()` 之前统一 `pendingCopyToken = nil`。
+- 验收：回归测试——冷图 copy 后立即同步写文本，断言剪贴板终态为文本。
+
+**0-4【P1】RTF 超限回退 plaintext**
+- 现状：`ClipboardMonitor.swift:398-409` else-if 链导致超限 RTF 两条分支都不走（静默丢条目，日志却称回退）。
+- 改法：改平铺 gate——
+  ```swift
+  if captureRichText, let rtf = pasteboard.data(forType: .rtf),
+     !rtf.isEmpty, rtf.count <= Self.maxTextCaptureBytes {
+      processRichText(rtf)
+  } else if let raw = pasteboard.string(forType: .string),
+            Self.shouldCaptureText(raw) { ... }   // 超限/解析失败自然落到这里
+  ```
+- 验收：单测构造 >10MB RTF pasteboard，断言产出 plaintext 条目。
+
+**0-5【P1】OCR 文本接入敏感检测**
+- 现状：`ClipboardStore+OCR.swift:47-89` 的 `attachOCRText` 不调 `detectSensitive`、不设 `expiresAt`——"敏感 24h 清除"对截图密码失效。
+- 改法：写入 `ocrText` 前对明文跑一次 `ClipboardMonitor.detectSensitive`，命中则 `isSensitive = true` 并按文本路径同规则补 `expiresAt`（清除管线自动接管）。
+- 验收：单测——密码样式的 OCR 项到期进入清除流程（复用文本路径的清除测试基建）。
+
+**0-6【P1】本地化三处漏网**
+- `Views/Components/CloseButton.swift:17`：默认参数 `"Close"` → `L10n.buttonClose`；
+- `Views/TrashItemRow.swift:60-67`：删除本地 `RelativeDateTimeFormatter`，改走 `DateHelpers.cachedRelativeDateString(from:relativeTo:languageCode:)`；
+- `RecentCrashesView` / `RestoreWizardView`：加 `@ObservedObject languageManager = LanguageManager.shared` 并在 body 顶层 `.id(languageManager.selectedLanguage)`（照抄 `SettingsRootView.swift:72` 的 rekey 方案）。
+- 验收：`lint-translations` 通过；运行时切语言三处即时生效。
+
+**0-7【P2 速赢包】**
+- `ImageStorage.swift:49-53`：`fullSizeCache` 补 `totalCostLimit = 256MB`（cost 已在算，只差一行）；
+- `ClipboardStore.swift:1693-1698`：`pendingKeyItems` 封顶（50 条 / 50MB），溢出丢弃并写诊断计数；
+- `ImageStorage.swift:446-450`：>50MB 图片静默丢弃 → post 轻量诊断通知（复用现有诊断面板通道）；
+- `BackupPackage.swift:346`：`unzip -Z` 列表失败由 fail-open 改为抛 `archiveFailed`；
+- `BackupService.swift:281-285, 338`：`Backups/` 父目录补 0700；blob 写入后 `setAttributes([.posixPermissions: 0o600])`。
+
+### 批次 1：发布链与安全（约 3-5 天；1-1 需要所有者决策）
+
+**1-1【P1】Developer ID + 公证（$99/年，需拍板）**
+- 注册 Apple Developer Program → 签发 Developer ID Application 证书，`.p12` 入 CI secret；
+- release.yml 打包后追加：`codesign --deep --force --options runtime` → `xcrun notarytool submit --wait`（凭据走 keychain profile secret）→ `xcrun stapler staple` → `spctl -a -vv` 校验，任一步失败即 FAIL；
+- `project.yml` 的 `CODE_SIGN_IDENTITY` / `DEVELOPMENT_TEAM` 移出仓库（本地 `.xcconfig` + gitignore，CI 用 secret 注入）；
+- 验收：干净机器双击打开无 Gatekeeper 拦截；`spctl -a -vv` 报 "Notarized Developer ID"。
+
+**1-2【P1】tag 路径恢复测试门**
+- 现状：`release.yml:205-206` `if: github.event_name == 'pull_request'` 使发布二进制在 CI 零测试。
+- 改法：删除该 guard，改为确定性 smoke 子集（复用 tsan.yml 的 `-only-testing` 过滤 + `Executed N` 断言模式）：IntegrationTests + ZZZ canary + UserDefaultsKeyTests；全量测试仍以本地 `run_preflight --tests` 为权威门。
+- 验收：注入必败用例演练一次，确认 tag push 的 release workflow 会 FAIL。
+
+**1-3【P1】Actions SHA pin**
+- 15 处 `uses:` 全部换 `<action>@<full-commit-sha>`；dependabot github-actions 生态自动提 digest 更新 PR（release.yml 持 contents:write + admin PAT，最优先）。
+- 验收：`grep -rE "uses:.*@[0-9a-f]{40}" .github/workflows | wc -l` == 15。
+
+**1-4【P1】导出包不再内嵌机器根密钥（需所有者确认格式变更）**
+- 现状：`BackupPackage.swift:530-533` 的 `key.enc` 是口令包裹的**根密钥本体**，弱口令失守 = 全历史失守。
+- 改法：导出时生成一次性 `packageKey`（`SymmetricKey(size: .bits256)`），payload 全部用 packageKey 重新加密，`key.enc` 改为口令包裹 packageKey；`formatVersion` 2→3，导入侧双读 v2/v3；
+- 验收：单测断言 `key.enc` 解出的 key ≠ 根密钥；v2 旧包导入回归测试。
+
+**1-5【P1】Keychain 迁移 verify-mismatch 保留回退**
+- 现状：`CryptoService.swift:554-559` verify 失败即删磁盘上唯一正确的明文 key 文件 → 不可逆全损。
+- 改法：该分支改为 keep 文件 + 走 `.transient`（下次启动重试）；仅连续 3 次失败且用户在 UI 明确确认后才允许删除；
+- 验收：单测模拟 `load() != keyData`，断言文件保留、返回 transient。
+
+**1-6【P1】测试密钥重定向**
+- 现状：`CryptoService.swift:328-351` 测试夹具把明文 key 写进生产路径（实机已复现），换机丢 Keychain 时会把测试 key 迁进生产。
+- 改法：XCTest 下 `keyFileURL` 重定向专用测试目录（照抄 `ImageStorage.swift:75-77` 的 seam 模式）；
+- 验收：跑全量测试后 `~/Library/Application Support/ClipMemory/.encryption_key` mtime 不变。
+
+### 批次 2：存储层迁移（约 2-3 周，与批次 3 同批做）
+
+**2-1 新持久层**
+- `~/Library/Application Support/ClipMemory/store.sqlite`（GRDB 或原生 SQLite；不想引依赖可先做分片 JSON + meta 索引）；
+- schema：`items(id PK, created_at, content_hash, is_pinned, is_sensitive, expires_at, encrypted_text, ocr_*, tags)`，trash/tags 分表；图片维持现有文件布局；
+- 启动只加载头部 N 条（= maxItems），过滤/分组/搜索下推 SQL（FTS5 顺带解决搜索 O(n) 重算）。
+
+**2-2 迁移路径**
+- 首启检测 UserDefaults blob → 原子导出 SQLite → 旧 blob 改名 `legacy-items.json` 保留一个版本周期（沿用 quarantine 语义），下下版删除；
+- 现有"报错 + 重试 + 用户可见"三环门与 quarantine 语义平移到新 backend（`StorageBackend` 协议及 7 个测试 conformer 现成，接口面不变）。
+
+**2-3 顺带消解（同一 PR 内做，成本远低于单做）**
+- `flushSave` 的 `.sync` 等待改异步写 + 失败恢复 `needsSave`（terminate 路径保留同步契约）；
+- `applyLoadResult` 的 120 行 merge 防御、terminate 三重 flush 收敛为单一路径；
+- `waitForFirstLoadSync` 的 RunLoop 泵删除（即并发审查 F6）；
+- 备份从整份复制 Images 改增量（SQLite 文件级 snapshot/hardlink）。
+
+**2-4 验收**：全量测试在新 backend 跑绿（协议测试复用）；10K 条目 pin 点击不再全表重算；terminate 无 RunLoop 泵；迁移用例（blob→sqlite→重启）幂等。
+
+### 批次 3：结构重构（随批次 2）
+
+**3-1 ClipboardStore 拆类**：`HistoryStore`（items/pin/trim）+ `TagStore` + `DecryptionCache` + `PrewarmEngine` + `SettingsStore`（三种配置持久化范式收敛为 `@Published + didSet`），薄门面组合；统一 `mutateItems { }` 突变出口（自动 invalidate index / rebuild pinned / dedup set）——`pinnedItems` 的 14 处与 `invalidateItemIndex` 的 8 处手工调用随之消失。
+**3-2 DI 收口**：27 处 `isRunningTests` 探针移到组合根，业务类全部构造注入（prewarm 在测试中被静默跳过的盲区随之消除）。
+**3-3 UI**：抽 `MainListViewModel`（过滤/6 个缓存/键盘索引）；行视图解密重试/长按预览/图片加载三份拷贝收敛为一个 `RowContentLoader` ViewModifier；高亮统一为 `highlightedSnippet(text:highlight:window:style:)`。
+**3-4 验收**：行视图重复块 grep 为 0；ContentView 手写缓存并入 VM；业务方法内 `isRunningTests` 出现次数为 0。
+
+### 实施顺序建议
+
+批次 0 →（1-1 决策并行）→ 批次 2+3（同一批 PR）→ 批次 1 剩余项穿插。每项落地时在 `docs/skips-ledger.md` / 本报告对应条目回写状态，沿用第七节的追记格式。
