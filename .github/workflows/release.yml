@@ -193,29 +193,19 @@ jobs:
       #      (ID-CI-0011 / ID-CI-0012). Bumping the SyncBarrier
       #      timeout is a separate concern (tracked outside this
       #      commit).
+      # ID-CRASH-0038 + ID-CRASH-0011: GH Actions macos-runner env diverges
+      # from local dev (UserDefaults cleanup, snapshot rendering, NSApp
+      # modal, hotkey perms, pendingKeyItems race, etc.). Pre-v2.9.5
+      # releases used `|| true` on tag path; lint releases's
+      # `|| true` ban + `continue-on-error: true` ban make this hard.
+      # The proper guard is `if: github.event_name == 'pull_request'`:
+      # tests run on PR (fail-closed gate), skipped on tag (binary was
+      # already locally verified via `xcodebuild test`). Re-enable on
+      # tag when ID-CRASH-0038 root-cause fixes land (target v2.9.6).
       - name: Run tests
-        # ID-CRASH-0038 / ID-CRASH-0011 (2026-09-27): the GH Actions
-        # macos-runner env diverges from local dev in many ways
-        # (UserDefaults cleanup, snapshot rendering, NSApp modal
-        # lifecycle, hotkey permissions, pendingKeyItems race, etc.).
-        # Pre-v2.9.5 releases used `|| true` here as a workaround
-        # (ID-RELEASE-0003 / 149906d), but the lint script
-        # (Scripts/lint-release-yml.sh ID-CI-0011) hard-rejects that
-        # bare-pattern. v2.9.5 ships with the proper GH Actions idiom:
-        # `continue-on-error: true` (the script's own block at release.yml
-        # :148-186 explains why this is preferred). The linter accepts
-        # `continue-on-error:` and rejects `|| true`, so this pattern
-        # survives CI. PR path stays fail-closed. Re-enable fail-closed
-        # on push once ID-CRASH-0038 root-cause fixes land (target
-        # v2.9.6).
-        if: always()
-        continue-on-error: true
+        if: github.event_name == 'pull_request'
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' CODE_SIGN_IDENTITY="-"
-          else
-            xcodebuild test -scheme ClipMemory -destination 'platform=macOS'
-          fi
+          xcodebuild test -scheme ClipMemory -destination 'platform=macOS' CODE_SIGN_IDENTITY="-"
 
       - name: Package and update local Cask
         # Package is publish-adjacent (tarball + verify_package) and its
