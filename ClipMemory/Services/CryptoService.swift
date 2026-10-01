@@ -165,9 +165,28 @@ class CryptoService: CryptoServiceProtocol {
     /// Legacy key file location (pre-C1). Still consulted as a read-only
     /// fallback and migrated into the Keychain by `prepareKey`; new keys
     /// are never written here. Exposed for ImageStorage migration.
+    /// ID-REVIEW-1009 (code-review-2026-10-01 P1 1-6): under XCTest,
+    /// redirect to a parallel `Keys-Tests` directory so test fixtures
+    /// don't touch the production `~/.encryption_key` file. Previously
+    /// `prepareLegacyFileKeyForTests` and `prepareKey` both wrote to
+    /// the same path; on a real Mac where the user's Keychain entry
+    /// was lost (or never migrated), the next launch would see
+    /// "test fixture bytes in production .encryption_key" and either
+    /// (a) re-encrypt history against the test key (data loss) or
+    /// (b) `prepareKey` would migrate the test fixture bytes into the
+    /// Keychain and brick history. Real reproduction: `mtime` of
+    /// `~/Library/Application Support/ClipMemory/.encryption_key`
+    /// matched test-run timestamps. Mirrors ImageStorage's
+    /// `Images-Tests` redirect pattern (ImageStorage.swift:75-89).
     static var keyFileURL: URL {
         let appSupport = AppDirectories.applicationSupport
-        let dir = appSupport.appendingPathComponent("ClipMemory", isDirectory: true)
+        // `isRunningTests` is declared as `private static let` on the
+        // same class; read it directly here (no `Self.` prefix — this
+        // computed property runs in a static context so `Self` would
+        // be the class type, and SwiftLint's `redundant_self` rule
+        // already warns on the prefix in some positions).
+        let dirname = isRunningTests ? "ClipMemory/Keys-Tests" : "ClipMemory"
+        let dir = appSupport.appendingPathComponent(dirname, isDirectory: true)
         // ID-SILENT-0012 + ID-SECURITY-0005 (2026-07-30 audit):
         // surface both directory-creation failures AND enforce 0o700
         // on the parent (defense-in-depth; image-dir fix in commit 4df9fd7

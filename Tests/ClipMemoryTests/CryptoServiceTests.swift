@@ -895,4 +895,53 @@ final class CryptoServiceTests: XCTestCase {
             "ID-REVIEW-1008: errSecVerifyFailed must be in userInfo so the alert can show the underlying Keychain error"
         )
     }
+
+    // MARK: - ID-REVIEW-1009 (1-6) test path redirect
+
+    /// ID-REVIEW-1009 (code-review-2026-10-01 P1 1-6): under XCTest,
+    /// `CryptoService.keyFileURL` must point at `ClipMemory/Keys-Tests`
+    /// (sandboxed parallel to `ImageStorage`'s `Images-Tests`), NOT the
+    /// production `ClipMemory/.encryption_key`. Tests that exercised
+    /// `prepareLegacyFileKeyForTests` previously wrote random bytes
+    /// into the production file — `mtime` matched test-run timestamps
+    /// on a real machine. If a user then lost their Keychain entry
+    /// (or never migrated), the next launch would `prepareKey` →
+    /// migrate those test bytes into Keychain → all ciphertext becomes
+    /// permanently undecryptable.
+    ///
+    /// Real XCTest run sets `XCTestConfigurationFilePath`, so the
+    /// existing `isRunningTests` probe inside `CryptoService` should
+    /// already be true here. Assert the redirected path component.
+    func testKeyFileURLRedirectsToKeysTestsUnderXCTest() {
+        let url = CryptoService.keyFileURL
+        let pathComponents = url.pathComponents
+        XCTAssertTrue(
+            pathComponents.contains("Keys-Tests"),
+            "ID-REVIEW-1009: under XCTest, keyFileURL must contain 'Keys-Tests' component; got \(url.path). If this test fails on a non-XCTest invocation, the isRunningTests probe regressed."
+        )
+        XCTAssertFalse(
+            pathComponents.contains(".encryption_key") && !pathComponents.contains("Keys-Tests"),
+            "ID-REVIEW-1009: keyFileURL must NOT point at the production .encryption_key under XCTest (would re-introduce the data-loss bug). Got: \(url.path)"
+        )
+    }
+
+    /// ID-REVIEW-1009 follow-up: the production-path contract is the
+    /// default and we don't have a clean way to assert it from inside
+    /// XCTest (XCTestConfigurationFilePath is set). This test documents
+    /// the expected behavior by reading the source-level invariant:
+    /// the redirect is gated on `isRunningTests`, so when XCTest is
+    /// not active, the path is the production one. Inline comment
+    /// suffices — no runtime assertion possible without manual
+    /// invocation outside XCTest.
+    func testKeyFileURLProductionPathComment() {
+        // Documented expectation: outside XCTest, keyFileURL resolves to
+        // `~/Library/Application Support/ClipMemory/.encryption_key`
+        // (the original pre-C1 legacy file location). The redirect to
+        // `Keys-Tests` is the XCTest-only branch verified above.
+        let url = CryptoService.keyFileURL
+        XCTAssertTrue(
+            url.lastPathComponent == ".encryption_key",
+            "ID-REVIEW-1009: keyFileURL lastPathComponent must remain '.encryption_key' (the legacy filename); the redirect only changes the parent directory."
+        )
+    }
 }
