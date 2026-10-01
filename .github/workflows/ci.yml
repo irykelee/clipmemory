@@ -229,6 +229,11 @@ jobs:
           else
             echo "Test step did not run or log missing" > results/xcb-test.log.missing
           fi
+          # zh-Hans locale run logs in too — it's a separate full-suite
+          # xcodebuild invocation with its own failure surface.
+          if [[ -f /tmp/xcb-test-zh.log ]]; then
+            cp /tmp/xcb-test-zh.log results/xcb-test-zh.log
+          fi
 
       - name: Upload xcresult bundle (P2-17)
         # Coverage-gate job consumes this artifact. Upload on ANY outcome:
@@ -485,11 +490,17 @@ jobs:
           mkdir -p /tmp/swiftlint-bin
           unzip -oq /tmp/portable_swiftlint.zip -d /tmp/swiftlint-bin
           sudo install -m 0755 /tmp/swiftlint-bin/swiftlint /usr/local/bin/swiftlint
-          installed="$(swiftlint version)"
+          installed="$(/usr/local/bin/swiftlint version)"
           echo "SwiftLint ${installed} (pinned ${SWIFTLINT_VERSION})"
           if [[ "$installed" != "$SWIFTLINT_VERSION" ]]; then
             echo "::error::SwiftLint version drift: got ${installed}, pinned ${SWIFTLINT_VERSION}"
             exit 1
           fi
       - name: SwiftLint (P2-18)
-        run: swiftlint lint --config .swiftlint.yml --reporter github-actions-logging
+        # Absolute path on purpose: a Homebrew /opt/homebrew/bin/swiftlint
+        # earlier in PATH would otherwise shadow the pinned binary and the
+        # lint would run an uncontrolled version. (Known tradeoff, per the
+        # 2026-10-01 pre-push review: dependabot's github-actions ecosystem
+        # does not track env-var pins — bump SWIFTLINT_VERSION manually or
+        # via a scheduled workflow when 0.65.x moves.)
+        run: /usr/local/bin/swiftlint lint --config .swiftlint.yml --reporter github-actions-logging

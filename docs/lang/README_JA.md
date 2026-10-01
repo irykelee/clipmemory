@@ -54,7 +54,7 @@
 
 - **🛠 code-review-2026-09-28 backlog 全クローズ（38/38）** — 7件の P1 + 18件の P2 + 5件の follow-up をすべて ship；L10n / Crypto / Window / Persistence / TSan / CI ツールチェーン / dependabot / crypto-symbol ドキュメント化 などの強化項目をカバー。詳細は `docs/audit/code-review-2026-09-28.md` を参照。
 
-- **🛠 v2.9.5 GH Actions runner flake 緩和（ID-CRASH-0038）** — 14件の env 依存テストは CI 環境で無条件に `XCTSkip`；`release.yml` の `Run tests` step を PR-only に変更（`if: github.event_name == 'pull_request'`）、tag path はスキップ（ローカル `Scripts/release.sh vX.Y.Z --yes` の `run_preflight --tests` は引き続き authoritative gate）。runner env の根本原因修正は v2.9.6 を目標。
+- **🛠 v2.9.5 GH Actions runner flake 緩和（ID-CRASH-0038）** — 14 ファイル計 46 箇所の env 依存 `XCTSkip`（約 48 テスト、台帳は `docs/skips-ledger.md`）が CI 環境で；`release.yml` の `Run tests` step を PR-only に変更（`if: github.event_name == 'pull_request'`）、tag path はスキップ（ローカル `Scripts/release.sh vX.Y.Z --yes` の `run_preflight --tests` は引き続き authoritative gate）。runner env の根本原因修正は v2.9.6 を目標。
 
 - ローカル `./Scripts/test-count.sh` 静的推定（CLAUDE.md ID-TEST-0002 に従う；実際の数は CI `xcodebuild test` 出力を参照）；`xcodebuild test` はローカルで全件 PASS
 - 完全な changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
