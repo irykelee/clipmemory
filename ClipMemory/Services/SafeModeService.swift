@@ -70,8 +70,24 @@ final class SafeModeService {
     private let fileManager: FileManager
     private let directoryOverride: URL?
 
+    /// ID-REVIEW-1011 (code-review-2026-10-01 v2.9.6 safe-mode seam):
+    /// XCTest isolation helper. Mirrors `ClipboardStore.xcTestDefaults`
+    /// and `HotKeyManager.xcTestDefaults`: returns `.standard` when not
+    /// under XCTest (production), an isolated suite keyed
+    /// `SafeModeService-XCTest-isolation` otherwise. `init(defaults:)`
+    /// defaults to this so under XCTest the 3 sentinel keys
+    /// (`safeMode.active` / `safeMode.crashCount` /
+    /// `safeMode.sentinelHealthy`) don't pollute the production
+    /// `com.clipmemory.app` suite.
+    nonisolated static var xcTestDefaults: UserDefaults {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            return .standard
+        }
+        return UserDefaults(suiteName: "SafeModeService-XCTest-isolation") ?? .standard
+    }
+
     init(
-        defaults: UserDefaults = .standard,
+        defaults: UserDefaults = SafeModeService.xcTestDefaults,
         fileManager: FileManager = .default,
         directory: URL? = nil
     ) {
