@@ -49,11 +49,24 @@ final class UserDefaultsKeyTests: XCTestCase {
             // Round-trip it as an array instead — same wire contract, same
             // round-trip proof.
             if key == .appleLanguages {
+                // `AppleLanguages` is a GLOBAL system key: CFPreferences
+                // resolves suite-level reads against the most-significant
+                // domain, so under `xcodebuild -testLanguage zh-Hans` the
+                // runner's global injection (["zh-Hans"]) shadows the
+                // suite write and a strict `stringArray` assert is
+                // locale-dependent (first exposed 2026-10-01, run
+                // 36837583062, once the host-crash fix unblocked the
+                // zh-Hans step). The system-managed set() with a plain
+                // String is rejected (LanguageManager writes a [String]),
+                // so assert the round-trip against the suite's OWN
+                // persistent domain — that is the actual wire contract
+                // being proven, independent of locale.
                 suite.set(["en"], forKey: key.rawValue)
+                let persisted = suite.persistentDomain(forName: suiteName)?[key.rawValue] as? [String]
                 XCTAssertEqual(
-                    suite.stringArray(forKey: key.rawValue),
+                    persisted,
                     ["en"],
-                    "P1-AUDIT-2026-09-22 P2-9: round-trip for \(key) (\(key.rawValue)) [system array key]"
+                    "P1-AUDIT-2026-09-22 P2-9: round-trip for \(key) (\(key.rawValue)) [system array key, suite domain]"
                 )
                 continue
             }
