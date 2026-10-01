@@ -95,14 +95,14 @@
 1. **【P0】release.yml 的 appcast 推送兜底可回滚远端分支、丢并发提交**：`--force-with-lease` 失败的最典型原因恰恰是远端已前进，此时 `gh api PATCH force=true` 兜底会把窗口期内合入的 commit 全部摘掉——且用 admin PAT、分支保护 `enforce_admins: false`，这个 force 真能落地（ID-CRASH-0010 修好了无条件 PATCH，但保留了"失败才 PATCH"的路径——失败分支正是最危险的分支）。
    `.github/workflows/release.yml:555-560`。修复：删兜底改 fail-fast（appcast 补推本就是可重放操作）。
 2. **【P1】发布链签名/公证缺位**：`Apple Development` 个人证书（2027-07 过期，全靠 `--timestamp` 锚定）+ 全链路无 notarization → 用户首次打开必遇 Gatekeeper 拦截；Development 证书政策上不能走 notarytool；`DEVELOPMENT_TEAM` 个人 Team ID 硬编码入库。`project.yml:25-27`、`release.yml:130-136`。需 Apple Developer Program（$99/年）决策；Team ID 移入本地 .xcconfig 或 CI secret。
-3. **【P1】47 个 XCTSkip（约 4.6%）mass-skip，防污染 canary 与快照体系实质停摆**：`ZZZSuiteTeardownTests.testNoProductionPollution` 首行即 skip（`:235-236`）；`environmentInvariantCheck()` 不是 test 前缀方法 XCTest 永不调用；快照测试近乎全灭（含一个 `xtest` 前缀改名的测试）；xcodebuild 把 skipped 计入总数 → CI 测试数量下限门对 mass-skip 完全免疫；skip 只存在于注释里无台账跟踪。
+3. **【P1】47 个 XCTSkip（约 4.6%）mass-skip，防污染 canary 与快照体系实质停摆**：`ZZZSuiteTeardownTests.testNoProductionPollution` 首行即 skip（`:235-236`）；`environmentInvariantCheck()` 不是 test 前缀方法 XCTest 永不调用；快照测试近乎全灭（含一个 `xtest` 前缀改名的测试）；xcodebuild 把 skipped 计入总数 → CI 测试数量下限门对 mass-skip 完全免疫；skip 只存在于注释里无台账跟踪。（**2026-10-01 部分闭环**：`docs/skips-ledger.md` 台账已建立——46 处/14 文件 + 逐条机制 + v2.9.6 恢复清单；canary 恢复仍待 v2.9.6，另发现类级 `setUpWithError` skip 在 @MainActor 类上必杀 runner 宿主，见第七节。）
    修复：建 skips 台账（docs/ 或 issue）；优先恢复 ZZZ canary（纯 UserDefaults diff，不影响 CI 稳定性）；UI 快照改环境变量门控。
 4. **【P1】tag push 发布路径完全不跑测试**（`release.yml:205-206` `if: github.event_name == 'pull_request'`，ID-CRASH-0038 自述临时妥协），发布门实际只是作者本机一次可被 `--skip-tests` 绕过的 xcodebuild。修复：tag 上恢复 smoke 子集（复用 tsan.yml 的 `-only-testing` 过滤 + `Executed N` 断言模式）。
 5. **【P1】15 处 Actions 全用可变 major tag 引用、0 个 SHA pin**，而 `.github/dependabot.yml:11-13` 自称 "pinned by SHA"——已失效。release.yml 持有 contents:write + admin PAT，checkout/gh-release 被上游劫持等于发布链被劫持。修复：发布链优先 SHA pin（dependabot github-actions 生态可帮跟 digest）。
-6. **【P2】并发与依赖策略**：`SWIFT_STRICT_CONCURRENCY: minimal`（`project.yml:20`）+ TSan PR 门 `continue-on-error: true`（夜间全量有 fail-closed race gate，这是对的）；Sparkle `from: "2.9.5"` 浮动 + dependabot swift 生态自认占位符（无产出，建议删或换定期 bump 脚本）；`release.yml:65` 缓存 key 引用不存在的 `ClipMemory/Package.resolved` 路径（实际在 `ClipMemory.xcodeproj/.../xcshareddata/swiftpm/`）。
-7. **【P2】SwiftLint/SwiftFormat 无版本 pin**（裸调 `which swiftlint`）；baseline 豁免 68 条全为 warning（line_length 47 条属"改 2 个字符"级别，建议一次性清掉并注销 baseline）；error 阈值（1250/400/700/45）自 2026-07 封顶后无下降计划。
+6. **【P2】并发与依赖策略**：`SWIFT_STRICT_CONCURRENCY: minimal`（`project.yml:20`）+ TSan PR 门 `continue-on-error: true`（夜间全量有 fail-closed race gate，这是对的）；Sparkle `from: "2.9.5"` 浮动 + dependabot swift 生态自认占位符（无产出，建议删或换定期 bump 脚本）；`release.yml:65` 缓存 key 引用不存在的 `ClipMemory/Package.resolved` 路径（实际在 `ClipMemory.xcodeproj/.../xcshareddata/swiftpm/`）。（**2026-10-01 更正**：PR #99 证明 dependabot swift 生态实际在产出 PR，`dependabot.yml` 的"占位符"注释已过时应改写；Sparkle 已随 #99 升至 2.10.0，见第七节追记。）
+7. **【P2】SwiftLint/SwiftFormat 无版本 pin**（裸调 `which swiftlint`）；baseline 豁免 68 条全为 warning（line_length 47 条属"改 2 个字符"级别，建议一次性清掉并注销 baseline）；error 阈值（1250/400/700/45）自 2026-07 封顶后无下降计划。（**2026-10-01 SwiftLint 部分已修复**：风险已成真——新 runner 镜像删除了预装 SwiftLint 导致全分支 CI 红；ci.yml 现从 release URL 固定安装 0.65.1 + 版本漂移断言 + 绝对路径调用。SwiftFormat pin 与 baseline 清理仍开放。）
 8. **【P2】`Scripts/test/` 的 8 个脚本测试未接入任何 CI**（release.sh 1229 行的纯函数只被人肉测试）——加一个 ubuntu-latest job 即可，是性价比最高的补洞。
-9. **【P2】杂项**：`project.yml:6` `xcodeVersion: "15.0"` 已与现实脱节（纯误导性元数据）；githooks 对开源贡献者不友好（pre-push 强制跑作者私人环境的 AI 审核 hook、pre-commit 全量 xcodebuild，建议 AI hook 拆为可选安装）；appcast 无 `sparkle:releaseNotesLink`（更新弹窗只有版本号）；`CURRENT_PROJECT_VERSION` 复用 marketing 版本导致同版本 build number 不变（回滚语义受限）；`IntegrationTests.swift:88-91` 弱断言 `XCTAssertTrue(d1 == "Second" || d1 == "First")`。
+9. **【P2】杂项**：`project.yml:6` `xcodeVersion: "15.0"` 已与现实脱节（纯误导性元数据）；githooks 对开源贡献者不友好（pre-push 强制跑作者私人环境的 AI 审核 hook、pre-commit 全量 xcodebuild，建议 AI hook 拆为可选安装）；appcast 无 `sparkle:releaseNotesLink`（更新弹窗只有版本号）；`CURRENT_PROJECT_VERSION` 复用 marketing 版本导致同版本 build number 不变（回滚语义受限）；`IntegrationTests.swift:88-91` 弱断言 `XCTAssertTrue(d1 == "Second" || d1 == "First")`。（**2026-10-01 追加**：appcast item 同时缺 `sparkle:minimumSystemVersion`——Sparkle 2.10.0 起为官方建议项，与 releaseNotesLink 一并补，见第七节。）
 
 ---
 
@@ -188,3 +188,39 @@
 | **P0（立即）** | 2 | release.yml PATCH 兜底；quarantine 硬编码 `.standard` 破坏测试隔离 |
 | **P1（近期，1-2 个迭代）** | ~15 | 存储迁移（纲）；Keychain 迁移删副本；导出包根密钥；OCR 敏感检测；RTF 丢弃；copy token；主线程保存/分享阻塞；store/AppDelegate 拆类；skip 台账+canary 恢复；tag 路径跑测试；Actions SHA pin；Developer ID 决策；测试密钥写生产路径；行视图三份重复逻辑收敛；本地化三处漏网 |
 | **P2（随批次清理）** | ~20 | fullSizeCache 字节上限、pendingKeyItems 封顶、terminate RunLoop 泵、敏感检测归一化、zip fail-open、备份权限、share temp 清理、备份硬链接去重、启动图片扫描增量、VM 抽取、高亮统一、Sparkle/dependabot 策略、SwiftLint pin、Scripts/test 入 CI、appcast releaseNotesLink 等 |
+
+---
+
+## 七、追记：2026-10-01 修复批次（CI 恢复绿 + PR #99 合并）
+
+本节记录报告发布同日的修复批次结果与新增注意事项。起因：处理 PR #99（Sparkle 2.10.0）与 issue #93 时发现 v2.9.5-rc2 / v2.9.5 tag 及 main 的 CI 全红，顺藤排查并修复。完整过程见 issue #93 评论（2026-10-01）与 `docs/skips-ledger.md`。
+
+### A. 已落地（对应本报告条目）
+
+| 报告条目 | 处置 | 落点 |
+|---|---|---|
+| 五-7 SwiftLint 无版本 pin | **已修复**（风险已实际发生：新 runner 镜像删除预装 SwiftLint，全分支 CI 红；现固定安装 0.65.1 + 版本漂移断言 + 绝对路径调用，Homebrew 遮蔽不可绕过） | `ce288c5` |
+| 五-3 skip 无台账 | **部分闭环**：`docs/skips-ledger.md`（46 处/14 文件、逐条机制、v2.9.6 恢复清单）；canary 恢复仍待 v2.9.6 | `e61a049` |
+| 五-4 tag 路径不跑测试（发布门缺失） | 未修（同报告建议），但主套件已在 main push 上恢复可绿 | — |
+| —（#93 next step 2） | build-and-test 失败时上传 xcresult + 两份测试日志 artifact（`if: always()`） | `ce288c5` |
+| —（lint-ids tag 时序误报） | appcast/tag 覆盖 lint 在 `ref_type == tag` 时跳过（tag 自身条目由 release 流程事后写入 main，tag checkout 上构造性不可通过）；v2.9.3 类"有 appcast 无 tag"仍在 main/PR 上把守 | `ce288c5` |
+| 五-9 appcast 缺 releaseNotesLink | 未修；**新增**缺 `sparkle:minimumSystemVersion`（Sparkle 2.10 起官方建议），两者一并补 | — |
+| 依赖 | Sparkle 2.9.5 → 2.10.0（含 2.9.6 安装器 symlink 加固与 root 进程提权修复、macOS 27 delta 更新修复；最低部署 12.0 不影响本项目 target 13.0） | PR #99 / `c911bba` |
+| 文档 | 7 语言 README + `docs/release-notes/v2.9.5.md` 事实修正："14 项 env 敏感型测试" → 实为 14 文件/46 处/约 48 测试；"ZZZ canary 3/3" 与 "1021 测试全绿" → 如实标注 canary 本身处于 skip、本地绿包含 skip | `e61a049` / `ce5f75d` |
+| 测试 | `AppDelegateShouldTerminateTests` 宿主崩溃修复（机制见 B-2）；`UserDefaultsKeyTests.testRoundTripAcrossSuite` locale 依赖断言修复 | `51fbedb` / `27eb1dd` / `7fc409f` |
+
+**结果**：main @ `7fc409f` 起 build-and-test / coverage-gate / swiftlint / lint-ids 首次全绿（含 zh-Hans 全量步骤）；`c911bba`（Sparkle 合并）同样全绿。
+
+### B. 新增关注项（本批次新发现）
+
+1. **【P2·新】`BackupServiceExceptionPathTests` 仅在 TSan 插桩 + 新 runner 下失败**：`testPruneContinuesAfterMidLoopRemoveFailure` 与 `testPruneListFailureNowRecordsLastPruneErrorForUI` 在 tsan-full job 挂（同批 3 次宿主重试归属），**race 门确认 0 真实 data race**，常规 Debug 套件通过。属 runner 镜像漂移同族环境问题（tsan-full 为 advisory 不阻断）。处置建议：triage 后入 `docs/skips-ledger.md`（若仅 TSan 可复现，参考 tsan.yml 的 `-only-testing` 子集模式摘出）；未 skip 前不算台账内条目。
+2. **【P2·新】Sparkle 2.10.0 两条后续**：appcast 全部 item 需补 `<sparkle:minimumSystemVersion>`（2.10 官方建议，当前缺失）；下次发版签名时注意 `release.yml` 的 sparkle-cli 仍 pin 2.9.4 与 framework 2.10.0 的双轨（`adaf180` 有既有说明，升级 CLI 前先复核 EdDSA 兼容）。
+3. **【更正·五-6】dependabot.yml 自述"swift entry 是占位符、无产出"已过时**：PR #99 即 swift 生态产出。建议改写该注释，避免后续维护者误判；`from: "2.9.5"` 区间不变（已解析至 2.10.0），但 release.yml:65 的 Package.resolved 缓存路径错误仍未修。
+4. **【工程化观察】pre-push AI 审核 hook 的 verdict 校准**：三连审核中一轮以纯 P2 结论给出 `VERDICT=FAIL`（与其自述"存在 P0/P1 才 FAIL"的规则不一致），但其余轮次以 P1（EN README 漏同步违反 7 语言纪律）拦下的批评全部成立并已采纳。建议：verdict 规则按其自述严格执行；P2 类发现改为评论不阻断。
+5. **【环境事实·#93】runner 镜像漂移已实锤**：macOS 26.6.2 VM / Xcode 26.6 / swiftlint 被移除，且"类级 setUpWithError skip 在 @MainActor 类杀宿主"、"teardown 上下文单例首触崩溃"、"TSan 下 BackupServiceExceptionPathTests 失败"三项均为镜像变更后出现。issue #93 假设 #1 由"随机 flake"细化为"镜像漂移"；假设 #2（SyncBarrier）此前已由 ID-CRASH-0049 关闭；假设 #3（测试顺序）未介入。
+
+### C. 仍开放（未受本批次影响，优先级不变）
+
+- **P0**：release.yml appcast 推送的 `gh api PATCH force=true` 兜底（回滚远端分支、丢并发提交，一行删除待做）；`quarantineCorruptBlob` 硬编码 `UserDefaults.standard` 破坏测试隔离。
+- **P1（多数未动）**：存储层迁移（纲）、Keychain 迁移 verify-mismatch 删回退副本、导出包内嵌根密钥、OCR 文本接入敏感检测、RTF 超限静默丢弃、冷图异步拷贝竞争、主线程保存/分享阻塞、store/AppDelegate 拆类、tag 路径测试门恢复、Actions SHA pin、Developer ID + 公证决策、测试密钥写生产路径、行视图三份重复逻辑收敛、本地化三处漏网（CloseButton / TrashItemRow formatter / 双窗口语言切换）。
+- **注意**：`AppDelegateShouldTerminateTests` 的三条 skip 仍是 ID-CRASH-0038 台账条目（v2.9.6 恢复 = 删除三个 body 首行 XCTSkip；类注释已写明两种已确认的宿主崩溃机制，恢复时勿再改回类级 skip）。
