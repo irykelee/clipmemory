@@ -20,30 +20,32 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
 
     private var tempRoot: URL!
     private var defaults: UserDefaults!
-    /// False on the ID-CRASH-0038 skip path (setUpWithError throws before
-    /// setUp runs). Guards tearDown so the skip path touches nothing.
-    private var testBodyRan = false
 
     // ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate
-    // hangs/later). Moved here 2026-10-01 from per-test body-level skips.
+    // hangs/later). Skips live in the test BODIES — do NOT move them to a
+    // setUpWithError() override:
     //
-    // CONFIRMED CI crash mechanism (2026-10-01, run 36833079602 xcresult
-    // diagnostics): Xcode 26 XCTest invokes tearDown() even when
-    // setUpWithError threw XCTSkip. tearDown's
-    // `ClipboardStore.shared.needsSave = false` then performs the
-    // singleton's FIRST touch inside the teardown dispatch context and
-    // the host dies with
-    // "libdispatch.dylib: BUG IN CLIENT OF LIBDISPATCH: trying to lock
-    // recursively" — xcodebuild restarts the host and attributes the
-    // crash to this class's tests ("Failing tests:"). Local runs stay
-    // green because another test class initializes the singleton first.
+    // CONFIRMED CI crash mechanisms (2026-10-01, xcresult diagnostics of
+    // runs 36833079602 + 36835842657, and the v2.9.5 tag run):
+    //   1. Class-level setUpWithError() XCTSkip on this @MainActor class
+    //      kills the runner's test host — "libdispatch.dylib: BUG IN
+    //      CLIENT OF LIBDISPATCH: trying to lock recursively", crash
+    //      attributed to tearDown(), one host exit per test, 3 restarts
+    //      per run, reproducibly (2 runs). Body-level XCTSkip on
+    //      @MainActor classes (ClipboardItemRow/WelcomeView/WindowManager
+    //      snapshot & window tests) is proven runner-safe across the same
+    //      runs.
+    //   2. tearDown's ClipboardStore.shared access is a separate crash
+    //      vector: the singleton's FIRST touch inside the teardown
+    //      dispatch context crashes the host the same way (v2.9.5 tag
+    //      run). Every test body here restores needsSave itself (defer /
+    //      explicit reset), so tearDown must not touch the singleton.
     //
-    // v2.9.6 re-enable: delete the setUpWithError override below. setUp,
-    // tearDown, and all three test bodies are the original
-    // implementations.
-    override func setUpWithError() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate hangs/later)")
-    }
+    // Local runs are green either way — another test class initializes
+    // the singleton first and the physical host tolerates the layout pass
+    // the runner VM does not.
+    //
+    // v2.9.6 re-enable: delete the three XCTSkip statements below.
 
     override func setUp() {
         super.setUp()
@@ -51,29 +53,23 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
             .appendingPathComponent("AppDelegateShouldTerminateTests-\(UUID().uuidString)",
                                     isDirectory: true)
         defaults = UserDefaults(suiteName: "AppDelegateShouldTerminateTests-\(UUID().uuidString)")
-        testBodyRan = true
     }
 
     override func tearDown() {
-        // Skip path: setUp never ran and no test body executed — touch
-        // nothing (see the crash mechanism note above). This guard is
-        // load-bearing on the CI runner, not defensive decoration.
-        guard testBodyRan else {
-            super.tearDown()
-            return
-        }
+        // No ClipboardStore.shared access here. See the mechanism note
+        // above: bodies restore needsSave themselves, and a first-touch
+        // of the singleton in the teardown dispatch context crashes the
+        // CI runner host (issue #93).
         try? FileManager.default.removeItem(at: tempRoot)
         tempRoot = nil
         defaults = nil
-        // Defensive: reset ClipboardStore.needsSave in case a test left it true
-        // (ClipboardStore is a singleton; we can't recreate it per test).
-        ClipboardStore.shared.needsSave = false
         super.tearDown()
     }
 
     /// No pending writes → quit immediately. This is the fast-path the OS
     /// exercises 99% of the time (user Cmd+Q during normal idle state).
     func testReturnsTerminateNowWhenNoPendingWrites() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate hangs)")
         // Arrange: both stores show no pending work.
         ClipboardStore.shared.needsSave = false
 
@@ -90,6 +86,7 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
     /// queued from the last addItem) → defer quit until the flush completes.
     /// Verifies the gate triggers on the EAGER half of the predicate.
     func testReturnsTerminateLaterWhenClipboardStoreNeedsSave() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate later)")
         // Arrange: schedule a save. The debounce timer doesn't fire during
         // a synchronous test, so needsSave stays true.
         ClipboardStore.shared.needsSave = true
@@ -120,6 +117,7 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
     /// closes, this test will need a real addPending seam — for now
     /// the documentation captures the limitation.
     func testReturnsTerminateLaterWhenImageStorageHasPendingWrite() throws {
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate later)")
         // Arrange: drive saveImage through the public path with a small
         // image; the pending mark is added synchronously in saveImage's
         // first line and removed only when the file write completes.

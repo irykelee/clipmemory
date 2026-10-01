@@ -22,7 +22,7 @@ GH Actions macOS runner 环境（macOS 27 / 新 Xcode 镜像）下，下列测�
 | 6 | HotKeyRetainFailurePathTests.swift | 4 | 热键保留环 |
 | 7 | ContentViewTrimAlertTests.swift | 4 | 修剪告警 |
 | 8 | ClipboardItemRowSnapshotTests.swift | 2 | 快照（golden 在库） |
-| 9 | AppDelegateShouldTerminateTests.swift | 1 | 类级 `setUpWithError` skip，覆盖 3 个测试。**CI 崩溃机制已确认**（run 36833079602 xcresult）：Xcode 26 在 `setUpWithError` 抛 XCTSkip 后仍调用 tearDown，其 `ClipboardStore.shared` 首触在 teardown dispatch 上下文触发 `libdispatch: trying to lock recursively` 宿主崩溃；tearDown 已加 `testBodyRan` 守卫 |
+| 9 | AppDelegateShouldTerminateTests.swift | 3 | terminate 路径。**CI 崩溃机制已确认**（runs 36833079602/36835842657 xcresult）：① 类级 `setUpWithError` XCTSkip 在 @MainActor 类上必杀 runner 宿主（`libdispatch: trying to lock recursively`，每测试一次重启）；② tearDown 里 `ClipboardStore.shared` 首触同样致命（tag run）。**skip 必须留在测试体首行**（与快照/窗口类的已验证安全模式一致），tearDown 不得触碰单例 |
 | 10 | ZZZSuiteTeardownTests.swift | 1 | **防污染 canary**（生产 UserDefaults 域纯 diff，恢复优先级最高） |
 | 11 | WelcomeViewSnapshotTests.swift | 1 | 快照 |
 | 12 | SettingsTabSnapshotTests.swift | 1 | 快照 |
