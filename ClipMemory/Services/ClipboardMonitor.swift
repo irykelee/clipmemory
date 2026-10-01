@@ -395,18 +395,43 @@ class ClipboardMonitor {
         guard currentChangeCount != lastChangeCount else { return }
         lastChangeCount = currentChangeCount
 
-        if let rtfData = pasteboard.data(forType: .rtf), !rtfData.isEmpty, self.captureRichText {
-            // M-1 (2026-07-25 audit): plain-text capture already caps at
-            // `maxTextCaptureBytes`, but RTF data had no guard. Parsing a
-            // multi-GB RTF into an NSAttributedString blocks the poll queue
-            // and can exhaust memory. Drop oversized RTF and fall through to
-            // the plaintext path, which truncates safely.
+        // ID-REVIEW-1004 (code-review-2026-10-01 P1 0-4): flatten the
+        // RTF/plaintxt gate. The previous `if ... { if size_ok {...} else
+        // { warn } } else-if plaintext` chain meant an oversized RTF
+        // would log "falling back to plaintext" but skip the plaintext
+        // capture entirely — the else-if's outer condition was
+        // `rtf is nil OR empty`, which is FALSE when RTF is present but
+        // oversized, so the else-if branch never executed. From Word /
+        // Pages copying >10MB rich content silently dropped the entry
+        // despite the warn log. Now: log the over-limit warning
+        // alongside the size check, then fall through to the existing
+        // plaintext branch (which is now reached unconditionally when
+        // RTF is absent OR oversized).
+        //
+        // Known limitation (deferred to v2.9.6): if RTF is in-size but
+        // its `NSAttributedString(data: .rtf)` parse fails
+        // (corrupt / unsupported variant), processRichText still
+        // silently returns without trying the plaintext path — the
+        // `try?` swallows the error and `shouldCaptureText("")` is
+        // false. Full fix needs to extract a `processPlaintextIfPresent`
+        // helper so both the outer else-if and the parse-fail path can
+        // call it.
+        if self.captureRichText,
+           let rtfData = pasteboard.data(forType: .rtf),
+           !rtfData.isEmpty {
             if rtfData.count <= Self.maxTextCaptureBytes {
                 processRichText(rtfData)
+                return
             } else {
+                // Plain-text capture already caps at `maxTextCaptureBytes`,
+                // but RTF data has no natural cap. Parsing a multi-GB RTF
+                // into an NSAttributedString blocks the poll queue and can
+                // exhaust memory. Fall through to the plaintext path,
+                // which truncates safely.
                 logger.warning("CLIP-2: clipboard RTF data exceeded \(Self.maxTextCaptureBytes) bytes; falling back to plaintext")
             }
-        } else if let rawContent = pasteboard.string(forType: .string), Self.shouldCaptureText(rawContent) {
+        }
+        if let rawContent = pasteboard.string(forType: .string), Self.shouldCaptureText(rawContent) {
             // CLIP-2 (2026-07-24): cap capture size BEFORE detectType /
             // detectSensitive / ClipboardItem construction — an unbounded
             // paste (multi-GB log dump) used to flow whole into memory,
