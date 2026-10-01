@@ -121,7 +121,53 @@ extension ClipboardStore: ClipboardMonitorDelegate {
 
 @MainActor
 final class ClipboardStore: ObservableObject {
-    static let shared = ClipboardStore()
+    // ID-REVIEW-1012 (code-review-2026-10-01 v2.9.6 canary root cause):
+    // changed `static let shared = ClipboardStore()` (eager at
+    // module-load time, BEFORE `XCTestConfigurationFilePath` env var
+    // is set by xctest) → `nonisolated(unsafe)` static backing var +
+    // MainActor.assumeIsolated getter that lazy-inits on first access.
+    //
+    // Why this matters: `ClipboardStore()` (no-args convenience init)
+    // calls `Self.xcTestDefaults` for the injected defaults suite.
+    // Under the old `static let shared = ClipboardStore()` form, that
+    // accessor ran at module load — BEFORE the test process environment
+    // had `XCTestConfigurationFilePath` set, so the env check returned
+    // true and `.standard` was cached permanently. Every subsequent
+    // `ClipboardStore.shared` write went to production
+    // `com.clipmemory.app`. That was the root cause of the ZZZ canary
+    // pollution persisting after HotKeyManager + SafeModeService +
+    // CryptoService all migrated to injected defaults.
+    //
+    // Lazy `shared` defers the first `ClipboardStore()` init until
+    // the call site, by which time xctest has set the env var and
+    // `xcTestDefaults` correctly returns the isolated suite.
+    //
+    // `nonisolated(unsafe)` is required because the class is
+    // `@MainActor`-isolated but the backing storage is accessed
+    // through `MainActor.assumeIsolated` from any context (callers
+    // then receive the @MainActor-isolated instance back). NSLock
+    // guarantees thread-safe lazy init; the init runs on the
+    // caller's thread which is the main thread under all production
+    // call sites (AppDelegate init runs on main; tests run on main
+    // via @MainActor test methods).
+    nonisolated(unsafe) private static var _sharedStorage: ClipboardStore?
+    private static let _sharedLock = NSLock()
+    nonisolated(unsafe) static var shared: ClipboardStore {
+        get {
+            return MainActor.assumeIsolated {
+                if let cached = _sharedStorage { return cached }
+                _sharedLock.lock()
+                defer { _sharedLock.unlock() }
+                if let cached = _sharedStorage { return cached }
+                let instance = ClipboardStore()
+                _sharedStorage = instance
+                return instance
+            }
+        }
+        set {
+            _sharedStorage = newValue
+        }
+    }
 
     @Published var items: [ClipboardItem] = []
     @Published var pinnedItems: [ClipboardItem] = []
