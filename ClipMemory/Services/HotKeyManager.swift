@@ -159,7 +159,6 @@ class HotKeyManager {
         self.defaults = defaults
         self.config = HotKeyConfig.load(from: defaults)
     }
-
     func register() {
         // Idempotent: callers (e.g. WelcomeView's conflict check in the past)
         // may invoke register() repeatedly. Each call used to unregister +
