@@ -227,8 +227,12 @@ final class SensitiveDetectorTests: XCTestCase {
     // MARK: - Helper
 
     private func makeItem(content: String) -> ClipboardItem {
-        let monitor = ClipboardMonitor()
-        let isSensitive = monitor.detectSensitive(content)
+        // ID-REVIEW-1005 follow-up: `detectSensitive` was promoted to
+        // static in ClipboardMonitor (it has no instance dependencies —
+        // only the static `sensitivePatterns` table). Call it as a type
+        // method now; the local `let monitor = ClipboardMonitor()` was
+        // a leftover from when the call needed an instance.
+        let isSensitive = ClipboardMonitor.detectSensitive(content)
         return ClipboardItem(
             content: content,
             type: .text,

@@ -41,7 +41,7 @@ final class ClipboardMonitorTests: XCTestCase {
         // If any pattern is invalid, the lazy initializer would log + skip it,
         // so a non-empty result is the success signal.
         let monitor = ClipboardMonitor()
-        let regexes = monitor.sensitiveValueRegexes
+        let regexes = ClipboardMonitor.sensitiveValueRegexes
         XCTAssertFalse(regexes.isEmpty, "sensitiveValueRegexes should compile on first access")
     }
 
@@ -51,8 +51,8 @@ final class ClipboardMonitorTests: XCTestCase {
         // were "simplified" to a computed property, every access would re-compile and
         // produce different NSRegularExpression instances.
         let monitor = ClipboardMonitor()
-        let first = monitor.sensitiveValueRegexes
-        let second = monitor.sensitiveValueRegexes
+        let first = ClipboardMonitor.sensitiveValueRegexes
+        let second = ClipboardMonitor.sensitiveValueRegexes
         XCTAssertEqual(first.count, second.count)
         for (a, b) in zip(first, second) {
             XCTAssertTrue(a === b, "NSRegularExpression should be the same cached instance (regression: lazy→computed)")
@@ -62,7 +62,7 @@ final class ClipboardMonitorTests: XCTestCase {
     func testCompiledSensitivePatternsLazyInit() {
         // M.2.3: First access compiles the regex portion of sensitivePatterns.
         let monitor = ClipboardMonitor()
-        let compiled = monitor.compiledSensitivePatterns
+        let compiled = ClipboardMonitor.compiledSensitivePatterns
         XCTAssertFalse(compiled.isEmpty, "compiledSensitivePatterns should compile on first access")
         // Every compiled entry should have a non-empty source keyword (regression: index misalignment)
         for entry in compiled {
@@ -74,8 +74,8 @@ final class ClipboardMonitorTests: XCTestCase {
         // M.2.4: Same caching guarantee as sensitiveValueRegexes. Verify the inner
         // NSRegularExpression objects keep their identity across accesses.
         let monitor = ClipboardMonitor()
-        let first = monitor.compiledSensitivePatterns
-        let second = monitor.compiledSensitivePatterns
+        let first = ClipboardMonitor.compiledSensitivePatterns
+        let second = ClipboardMonitor.compiledSensitivePatterns
         XCTAssertEqual(first.count, second.count)
         for (a, b) in zip(first, second) {
             XCTAssertTrue(a.regex === b.regex, "NSRegularExpression should be the same cached instance")
@@ -234,7 +234,7 @@ final class ClipboardMonitorTests: XCTestCase {
         XCTAssertGreaterThan(largeText.utf8.count, 50_000,
                             "Test fixture must exceed the 50KB threshold")
         let monitor = ClipboardMonitor()
-        let result = monitor.detectSensitive(largeText)
+        let result = ClipboardMonitor.detectSensitive(largeText)
         XCTAssertTrue(result,
                      "P1-AUDIT-2026-09-22 P2-6: >50KB must not silently return false; " +
                      "conservative 'likely sensitive' flag expected, got \(result)")
