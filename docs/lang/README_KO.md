@@ -54,7 +54,7 @@
 
 - **🛠 code-review-2026-09-28 backlog 전체 클로즈(38/38)** — P1 7건 + P2 18건 + follow-up 5건 모두 ship; L10n / Crypto / Window / Persistence / TSan / CI 툴체인 / dependabot / crypto-symbol 문서화 등 하드닝 항목을 커버합니다. 자세한 내용은 `docs/audit/code-review-2026-09-28.md` 참조.
 
-- **🛠 v2.9.5 GH Actions runner flake 완화(ID-CRASH-0038)** — 14개 테스트 파일 총 46곳의 env 민감형 `XCTSkip`(약 48개 테스트,台账는 `docs/skips-ledger.md`)이 CI 환경에서; `release.yml`의 `Run tests` step은 PR-only로 변경(`if: github.event_name == 'pull_request'`), tag path는 스킵(로컬 `Scripts/release.sh vX.Y.Z --yes`의 `run_preflight --tests`는 여전히 authoritative gate). runner env 근본 원인 수정 목표 v2.9.6.
+- **🛠 v2.9.5 GH Actions runner flake 완화(ID-CRASH-0038)** — 14개 테스트 파일 총 48곳의 env 민감형 `XCTSkip`(CI 측정 46개 테스트 skip,台账는 `docs/skips-ledger.md`)이 CI 환경에서; `release.yml`의 `Run tests` step은 PR-only로 변경(`if: github.event_name == 'pull_request'`), tag path는 스킵(로컬 `Scripts/release.sh vX.Y.Z --yes`의 `run_preflight --tests`는 여전히 authoritative gate). runner env 근본 원인 수정 목표 v2.9.6.
 
 - 로컬 `./Scripts/test-count.sh` 정적 추정 (per CLAUDE.md ID-TEST-0002; 실제 수는 CI `xcodebuild test` 출력 참조); `xcodebuild test` 로컬 전부 PASS
 - 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5

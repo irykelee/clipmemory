@@ -173,4 +173,65 @@ final class ReleaseReadinessTests: XCTestCase {
                       "Could not find the quickbarOpenFull menu item line in QuickBarView.swift",
                       file: #filePath, line: #line)
     }
+
+    // MARK: - Sparkle floor: project.yml must match the committed pbxproj
+
+    /// Dependabot bump PRs edit `project.pbxproj` + `Package.resolved`
+    /// directly and never touch `project.yml` (XcodeGen input). If the
+    /// `from:` floor in project.yml lags the pbxproj's `minimumVersion`,
+    /// the next `xcodegen generate` (run by ci.yml and by the release
+    /// preflight `check_xcodegen_sync`) writes the stale floor back over
+    /// the bumped pbxproj — silently un-shipping security fixes
+    /// (first observed with the 2.10.0 bump, PR #99, caught by the
+    /// 2026-10-01 pre-push review). This test fails on every future
+    /// dependabot bump until project.yml's floor is aligned.
+    ///
+    /// Assumes Sparkle is the only SPM package (true today); a second
+    /// package will need this test scoped per-repositoryURL.
+    func testSparkleFloor_projectYmlMatchesPbxproj() throws {
+        let projectYml = try String(
+            contentsOf: ReleaseReadinessTests.repoRoot.appendingPathComponent("project.yml"),
+            encoding: .utf8
+        )
+        let floorRegex = try NSRegularExpression(
+            pattern: #"^[ \t]*from:[ \t]*\"([0-9][^\"]*)\""#,
+            options: [.anchorsMatchLines]
+        )
+        let ymlRange = NSRange(projectYml.startIndex..<projectYml.endIndex, in: projectYml)
+        guard let floorMatch = floorRegex.firstMatch(in: projectYml, range: ymlRange),
+              let floorCapture = Range(floorMatch.range(at: 1), in: projectYml) else {
+            XCTFail("Sparkle `from:` floor not found in project.yml")
+            return
+        }
+        let floor = String(projectYml[floorCapture])
+
+        let pbxproj = try String(
+            contentsOf: ReleaseReadinessTests.repoRoot
+                .appendingPathComponent("ClipMemory.xcodeproj/project.pbxproj"),
+            encoding: .utf8
+        )
+        let minVersionRegex = try NSRegularExpression(pattern: #"minimumVersion\s*=\s*([0-9][^;\n]*);"#)
+        let pbxRange = NSRange(pbxproj.startIndex..<pbxproj.endIndex, in: pbxproj)
+        let matches = minVersionRegex.matches(in: pbxproj, range: pbxRange)
+
+        XCTAssertEqual(matches.count, 1,
+                       "Expected exactly 1 SPM minimumVersion literal (Sparkle). A second package requires scoping this test per repositoryURL.",
+                       file: #filePath, line: #line)
+        guard let versionMatch = matches.first,
+              let versionCapture = Range(versionMatch.range(at: 1), in: pbxproj) else {
+            return
+        }
+        let pbxMinVersion = String(pbxproj[versionCapture])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        XCTAssertEqual(
+            floor, pbxMinVersion,
+            """
+            Sparkle floor drift: project.yml `from: "\(floor)"` vs committed pbxproj `minimumVersion = \(pbxMinVersion)`. \
+            A dependabot bump edited the pbxproj only; align project.yml's `from:` with the pbxproj \
+            or the next `xcodegen generate` reverts the bump.
+            """,
+            file: #filePath, line: #line
+        )
+    }
 }

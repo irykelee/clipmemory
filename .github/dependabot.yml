@@ -6,9 +6,10 @@
 # the proximate cause of P2-15.
 #
 # Scope: SPM dependencies only (the project uses project.yml + XcodeGen,
-# not Package.swift). GitHub Actions are pinned by SHA in this repo's
-# workflow files (release.yml:301 etc.) so no Actions version drift.
-# Carthage/CocoaPods are not used.
+# not Package.swift). GitHub Actions are referenced by mutable major tags
+# (0 SHA pins as of code-review-2026-10-01 五-5 — the earlier "pinned by
+# SHA" claim here was stale); dependabot's github-actions ecosystem still
+# proposes tag-level bumps. Carthage/CocoaPods are not used.
 #
 # Cadence: weekly. Sparkle is the only SPM dep and it's pinned at major
 # 2.x with breaking sign_update API contracts every ~6 months (per
@@ -21,9 +22,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    # GitHub Actions are pinned by SHA in this repo, so PRs only propose
-    # digest bumps. Auto-merge is safe because the SHA changes match the
-    # upstream tag (verified by GitHub).
+    # Actions are NOT SHA-pinned (see header note): dependabot proposes
+    # tag-level bumps. Keep the release.yml workflow (contents:write +
+    # admin PAT) as the priority for the SHA-pinning tracked in
+    # code-review-2026-10-01 五-5.
     commit-message:
       prefix: "ci"
     labels:
@@ -34,10 +36,13 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    # Swift PM deps live in project.yml (XcodeGen), not Package.swift.
-    # Dependabot doesn't scan project.yml yet (no SPM language ecosystem
-    # support for XcodeGen), so this `swift` entry is a placeholder for
-    # when/if we migrate to Package.swift. For now it surfaces no PRs.
+    # Dependabot reads the committed project.pbxproj (XcodeGen artifact)
+    # and bumps pbxproj + Package.resolved — it does NOT touch project.yml.
+    # Every bump PR therefore re-creates a floor drift until project.yml's
+    # `from:` is aligned by hand; ReleaseReadinessTests.
+    # testSparkleFloor_projectYmlMatchesPbxproj fails CI until it is.
+    # (PR #99 disproved the earlier "this entry is a placeholder that
+    # surfaces no PRs" claim.)
     commit-message:
       prefix: "deps"
     labels:

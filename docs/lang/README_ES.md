@@ -54,7 +54,7 @@
 
 - **🛠 Backlog de code-review-2026-09-28 cerrado por completo (38/38)** — Los 7 elementos P1 + 18 elementos P2 + 5 follow-ups se publicaron todos; cubre elementos de endurecimiento como L10n / Crypto / Window / Persistence / TSan / cadena de herramientas de CI / dependabot / documentación de crypto-symbol. Consulte `docs/audit/code-review-2026-09-28.md` para más detalles.
 
-- **🛠 Mitigación de fallos intermitentes del runner de GH Actions en v2.9.5 (ID-CRASH-0038)** — `XCTSkip` de forma incondicional en CI sobre 46 puntos de 14 archivos de prueba (~48 pruebas; registro en `docs/skips-ledger.md`); el step `Run tests` de `release.yml` pasa a ser PR-only (`if: github.event_name == 'pull_request'`), y se omite la ruta de tag (el `run_preflight --tests` de `Scripts/release.sh vX.Y.Z --yes` local sigue siendo la puerta autoritativa). La corrección de la causa raíz del entorno del runner está prevista para v2.9.6.
+- **🛠 Mitigación de fallos intermitentes del runner de GH Actions en v2.9.5 (ID-CRASH-0038)** — `XCTSkip` de forma incondicional en CI sobre 48 puntos de 14 archivos de prueba (46 pruebas omitidas según CI; registro en `docs/skips-ledger.md`); el step `Run tests` de `release.yml` pasa a ser PR-only (`if: github.event_name == 'pull_request'`), y se omite la ruta de tag (el `run_preflight --tests` de `Scripts/release.sh vX.Y.Z --yes` local sigue siendo la puerta autoritativa). La corrección de la causa raíz del entorno del runner está prevista para v2.9.6.
 
 - Estimación estática local de `./Scripts/test-count.sh` (según CLAUDE.md ID-TEST-0002; el número real se ve en la salida de `xcodebuild test` de CI); `xcodebuild test` local pasa por completo
 - Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5

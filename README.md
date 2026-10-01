@@ -54,7 +54,7 @@
 
 - **🛠 code-review-2026-09-28 backlog 全闭环（38/38）** — 7 项 P1 + 18 项 P2 + 5 项 follow-up 全部 ship；覆盖 L10n / Crypto / Window / Persistence / TSan / CI 工具链 / dependabot / crypto-symbol 文档化 等加固项。详见 `docs/audit/code-review-2026-09-28.md`。
 
-- **🛠 v2.9.5 GH Actions runner flake 缓解（ID-CRASH-0038）** — 14 个测试文件共 46 处 env 敏感型 `XCTSkip`（约 48 个测试，台账见 `docs/skips-ledger.md`）在 CI 环境；`release.yml` 的 `Run tests` step 改为 PR-only（`if: github.event_name == 'pull_request'`），tag path 跳过（本地 `Scripts/release.sh vX.Y.Z --yes` 的 `run_preflight --tests` 仍是 authoritative gate）。runner env 根因修复目标 v2.9.6。
+- **🛠 v2.9.5 GH Actions runner flake 缓解（ID-CRASH-0038）** — 14 个测试文件共 48 处 env 敏感型 `XCTSkip`（CI 实测 46 个测试被 skip，台账见 `docs/skips-ledger.md`）在 CI 环境；`release.yml` 的 `Run tests` step 改为 PR-only（`if: github.event_name == 'pull_request'`），tag path 跳过（本地 `Scripts/release.sh vX.Y.Z --yes` 的 `run_preflight --tests` 仍是 authoritative gate）。runner env 根因修复目标 v2.9.6。
 
 - 本地 `./Scripts/test-count.sh` 静态估计（per CLAUDE.md ID-TEST-0002；实际数见 CI `xcodebuild test` 输出）；`xcodebuild test` 本地全过
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5

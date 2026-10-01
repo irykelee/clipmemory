@@ -9,7 +9,13 @@ options:
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    from: "2.9.5"
+    # Keep in lockstep with the committed project.pbxproj minimumVersion:
+    # dependabot bump PRs edit the pbxproj/Package.resolved directly and
+    # do NOT touch this floor, and `xcodegen generate` (ci.yml + release
+    # preflight check_xcodegen_sync) would otherwise write the stale
+    # floor back over the bumped pbxproj. Guarded by
+    # ReleaseReadinessTests.testSparkleFloor_projectYmlMatchesPbxproj.
+    from: "2.10.0"
 
 settings:
   base:

@@ -1,8 +1,9 @@
 # Skipped Test 台账（ID-CRASH-0038）
 
-- **建立**：2026-09-30（`803393b`，v2.9.5）；2026-10-01 扩展（`51fbedb` 增加类级 skip）
+- **建立**：2026-09-30（`803393b`，v2.9.5）；2026-10-01 修订（`51fbedb`/`27eb1dd`：AppDelegateShouldTerminateTests 由类级 skip 改回 body 级 3 处）
 - **根因追踪**：issue #93（ID-CRASH-0037，GH Actions runner 环境调查）+ ID-CRASH-0038
 - **恢复目标**：**v2.9.6**（与各 skip 站点注释一致）
+- **计数口径**：站点 48 处（下方 grep 命令计数）；CI 实测被 skip 的测试 46 个（run 36838993065：`Executed 1020 tests, with 46 tests skipped`）——差值 2 来自非 1:1 站点，两个数字都不要硬编码进门禁
 
 ## 背景
 
@@ -28,7 +29,7 @@ GH Actions macOS runner 环境（macOS 27 / 新 Xcode 镜像）下，下列测�
 | 12 | SettingsTabSnapshotTests.swift | 1 | 快照 |
 | 13 | QuickBarViewTests.swift | 1 | QuickBar |
 | 14 | ClipboardItemRowOCRTransitionTests.swift | 1 | OCR 过渡 |
-| | **合计** | **46** | 站点数 ≠ 测试数（一处站点可守护多个测试，如 #9 一处覆盖 3 个） |
+| | **合计** | **48** | 站点数 ≠ 实际 skip 的测试数（CI 实测 46）：部分站点非一一对应（helper 内共享等） |
 
 重新生成站点统计：
 
