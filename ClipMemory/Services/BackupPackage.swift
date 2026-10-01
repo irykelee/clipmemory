@@ -343,7 +343,17 @@ final class BackupPackage {
         try sizeProcess.run()
         let sizeData = sizePipe.fileHandleForReading.readDataToEndOfFile()
         sizeProcess.waitUntilExit()
-        guard sizeProcess.terminationStatus == 0 else { return }  // size-check failure is non-fatal; post-extract size guards still apply
+        // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): make the zip-bomb
+        // size check fail-closed. Previously a non-zero exit on the
+        // `unzip -Z -v` size listing was silently treated as
+        // non-fatal (just `return`), letting the import proceed without
+        // a total-uncompressed-size bound — a malicious archive could
+        // craft a valid `-Z1` member list (passes the name allow-list at
+        // line 322) but a malformed `-Z -v` payload to defeat the
+        // 2 GiB bomb cap. The same function's name-check at line 322
+        // throws on failure (fail-closed); the size-check should match
+        // that discipline.
+        guard sizeProcess.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
         let sizeListing = String(decoding: sizeData, as: UTF8.self)
         var totalUncompressed: Int64 = 0
         for rawLine in sizeListing.split(separator: "\n", omittingEmptySubsequences: true) {

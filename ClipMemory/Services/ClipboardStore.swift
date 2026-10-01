@@ -1692,6 +1692,25 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
                 // retry once `.cryptoKeyPrepared` signals success.
                 if CryptoService.isKeyLoadAttemptedAndMissing() {
                     pendingKeyItemsLock.lock()
+                    // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): cap
+                    // `pendingKeyItems` at 50 entries. Without the cap, a
+                    // long Keychain-locked window + high-frequency copy
+                    // (e.g., batch copy of a folder of screenshots during
+                    // a screen-share presentation) would queue every
+                    // incoming item unbounded — each entry holds the full
+                    // plaintext `content` string plus `ocrText`, so 50
+                    // entries × ~1 MB worst case = 50 MB held in memory
+                    // until the Keychain unlocks (potentially hours if
+                    // the user walks away). On overflow, drop the oldest
+                    // (FIFO) — losing the earliest pre-lock captures is
+                    // better than an unbounded memory ceiling, and the
+                    // user can recopy anything that matters once the
+                    // Keychain is back.
+                    let kPendingKeyItemsCap = 50
+                    if pendingKeyItems.count >= kPendingKeyItemsCap {
+                        pendingKeyItems.removeFirst()
+                        self.logger.notice("pendingKeyItems overflow: dropped oldest entry (cap=\(kPendingKeyItemsCap)); consider recopying pre-Keychain-lock items")
+                    }
                     pendingKeyItems.append(item)
                     pendingKeyItemsLock.unlock()
                     return

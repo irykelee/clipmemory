@@ -46,9 +46,20 @@ class ImageStorage {
     /// channel). For comparison: `imageCache` (thumbnails, 512 px cap)
     /// keeps its `totalCostLimit` because each entry is bounded at
     /// 512×512×4 = 1 MB, so 100 entries fit the 100 MB budget cleanly.
+    /// ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): add a byte-cap
+    /// `totalCostLimit = 256 MB` so the cache self-evicts under sustained
+    /// pressure even if `countLimit = 8` is generous (8 × 100 MB max
+    /// per entry = 800 MB worst case, well over the 256 MB budget).
+    /// ID-CRASH-0028 explains why the original 100 MB limit was
+    /// dropped; the 256 MB cap here is a conservative double-safety
+    /// net — entries are cost-estimated at decode time (see
+    /// `cachedFullSizeImageObject`), so NSCache can enforce the
+    /// byte budget even if a single image evades the per-entry size
+    /// check elsewhere.
     private let fullSizeCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 8
+        cache.totalCostLimit = 256 * 1024 * 1024   // 256 MB
         return cache
     }()
     /// P1-AUDIT-2026-09-22 (P2-16): row-preview thumbnail cap. Mirrors
@@ -443,8 +454,21 @@ class ImageStorage {
     /// Saves image data asynchronously on a background queue to avoid blocking the main thread.
     /// Encryption and disk I/O happen off the main thread.
     func saveImage(_ data: Data, id: UUID, completion: @escaping (String?) -> Void) {
+        // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): post a user-visible
+        // diagnostic when an image exceeds `maxImageSize` so the silent-drop
+        // path is no longer silent. Previously only `logger.warning` fired,
+        // which is developer-visible only — the user copied a screenshot,
+        // saw nothing appear, and had no signal that the 50 MB cap was the
+        // reason. The `imageSaveFailed` notification name is reused so a
+        // future UI banner hook can subscribe to one source for all image
+        // save failures (path / encryption / size).
         guard data.count <= Self.maxImageSize else {
-            logger.warning("Image too large (\(data.count) bytes), skipping save")
+            logger.warning("Image too large (\(data.count) bytes > \(Self.maxImageSize) max); skipping save")
+            NotificationCenter.default.post(
+                name: Notification.Name("ClipboardStore.imageSaveFailed"),
+                object: nil,
+                userInfo: ["reason": "size", "bytes": data.count, "maxBytes": Self.maxImageSize]
+            )
             DispatchQueue.main.async { completion(nil) }
             return
         }

@@ -278,6 +278,25 @@ final class BackupService {
             // count via items.json size, image count) to other local users on
             // shared hosts. Align with ImageStorage's ID-SECURITY-0002 fix —
             // 0o700. The blobs themselves are encrypted at rest either way.
+            // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): also chmod
+            // the parent `Backups/` directory to 0o700. `createDirectory(
+            // withIntermediateDirectories: true, ...)` only sets the
+            // perm on the leaf; the parent inherits whatever umask
+            // produced (typically 0o755). The same shared-host argument
+            // applies — directory listing leaks the existence and
+            // count of backups, which is also metadata worth closing.
+            // `setAttributes` on a non-existent path returns false; only
+            // chmod when the directory exists.
+            try fileManager.createDirectory(
+                at: backupsDirectory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            // Already exists from a prior run — make sure the perm is
+            // current. setAttributes is a no-op if the path is missing
+            // (handled below by createDirectory on the leaf), and
+            // silent on perm-already-correct.
+            _ = try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: backupsDirectory.path)
             try fileManager.createDirectory(
                 at: destination,
                 withIntermediateDirectories: true,
@@ -335,7 +354,18 @@ final class BackupService {
             let key = blob.userDefaultsKey
             guard let data = defaults.data(forKey: key) else { continue }
             do {
-                try data.write(to: destination.appendingPathComponent(filename), options: .atomic)
+                let blobURL = destination.appendingPathComponent(filename)
+                try data.write(to: blobURL, options: .atomic)
+                // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): chmod
+                // the per-backup blob to 0o600 (owner read+write only).
+                // The blob contains AES-GCM ciphertext so a 0o644 leak
+                // wouldn't decrypt without the key, but the file's
+                // existence + size + timestamp leaks per-backup metadata
+                // (entry count via items.json, image count, retention
+                // pattern). On a USB stick or cloud-synced folder, that's
+                // already a signal worth closing. Same per-blob chmod as
+                // ImageStorage uses for its 0o600 image files.
+                try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: blobURL.path)
             } catch {
                 logger.error("Backup failed (write \(filename)): \(error.localizedDescription)")
                 throw BackupError.writeFailed(filename: filename, underlying: error)
