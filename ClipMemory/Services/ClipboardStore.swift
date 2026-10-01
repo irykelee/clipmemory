@@ -2286,6 +2286,19 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
         guard (preparedImage != nil) || (preparedText != nil) || (preparedRtfData != nil) else { return }
 
+        // ID-REVIEW-1003 (code-review-2026-10-01 P1 0-3): invalidate any
+        // in-flight cold-path image copy before issuing this sync write.
+        // `pendingCopyToken` only protects "image-vs-image" races; the
+        // text/RTF/warm-image paths never touched it, so copying a cold
+        // (unloaded) image and then immediately copying text would let
+        // the image's async load callback land *after* the text write
+        // (token still matches because nothing invalidated it) and
+        // overwrite the pasteboard with the stale image. Setting the
+        // token to nil here is a one-line fix: any in-flight async load
+        // will see `pendingCopyToken != myToken` on completion and drop
+        // its write.
+        pendingCopyToken = nil
+
         // M-4 (2026-07-21 audit): recordOwnWrite() MUST run BEFORE clearContents().
         // clearContents() increments pasteboard.changeCount immediately, but the
         // old order set skipNextCapture=true only afterwards. A timer tick in the
