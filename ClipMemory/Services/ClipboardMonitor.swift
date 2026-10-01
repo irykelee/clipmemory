@@ -99,7 +99,17 @@ class ClipboardMonitor {
         return frontApp.bundleIdentifier
     }
 
-    let sensitivePatterns: [(pattern: String, isRegex: Bool)] = [
+    // ID-REVIEW-1005 (code-review-2026-10-01 P1 0-5): promote
+    // sensitive-detection tables to static so ClipboardStore's
+    // `attachOCRText` can call `ClipboardMonitor.detectSensitive`
+    // without needing a back-reference to the monitor instance.
+    // `sensitivePatterns` was an immutable literal with no instance
+    // state, so each instance carrying its own copy was just memory
+    // waste; promoting to static lets OCR-path sensitive propagation
+    // (item.isSensitive / expiresAt) live in the store without
+    // inventing a new delegate method or coupling the store to the
+    // monitor instance.
+    static let sensitivePatterns: [(pattern: String, isRegex: Bool)] = [
         // Credentials — non-regex keywords (may have minor false positives on rare normal text)
         ("pwd", false),
         ("passcode", false),
@@ -155,7 +165,7 @@ class ClipboardMonitor {
     ]
 
     // Pre-compiled regex patterns for sensitive value detection (R10: compile once)
-    lazy var sensitiveValueRegexes: [NSRegularExpression] = {
+    static let sensitiveValueRegexes: [NSRegularExpression] = {
         let patterns = [
             "(?i)(password|passwd|pwd)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
             "(?i)(api_key|apikey|api-key)\\s*[=:]\\s*['\"]?[^'\"\\s]+",
@@ -170,20 +180,22 @@ class ClipboardMonitor {
                 let regex = try NSRegularExpression(pattern: pattern, options: [])
                 compiled.append(regex)
             } catch {
-                logger.error("Failed to compile sensitive value regex: \(pattern) — \(error.localizedDescription)")
+                let log = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
+                log.error("Failed to compile sensitive value regex: \(pattern) — \(error.localizedDescription)")
             }
         }
         return compiled
     }()
 
     // Pre-compiled regex patterns paired with their source patterns — avoids index misalignment
-    lazy var compiledSensitivePatterns: [(regex: NSRegularExpression, keyword: String)] = {
+    static let compiledSensitivePatterns: [(regex: NSRegularExpression, keyword: String)] = {
         sensitivePatterns.filter { $0.isRegex }.compactMap { entry in
             do {
                 let regex = try NSRegularExpression(pattern: entry.pattern, options: .caseInsensitive)
                 return (regex, entry.pattern)
             } catch {
-                logger.error("Failed to compile sensitive pattern: \(entry.pattern) — \(error.localizedDescription)")
+                let log = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
+                log.error("Failed to compile sensitive pattern: \(entry.pattern) — \(error.localizedDescription)")
                 return nil
             }
         }
@@ -226,10 +238,11 @@ class ClipboardMonitor {
         // timer queue (`com.clipmemory.clipboardmonitor`) racing with a
         // background `processRichText` call on
         // `DispatchQueue.global(qos: .userInitiated)` could trigger
-        // undefined behavior (crash / double-init) on first capture that
-        // happens to be rich-text.
-        _ = sensitiveValueRegexes
-        _ = compiledSensitivePatterns
+        // ID-REVIEW-1005: the two warmup calls were force-touching
+        // `lazy var` properties to ensure their NSRegularExpression
+        // init ran before any concurrent capture tick. Both are now
+        // `static let` (initialized once at class-load), so the
+        // warmup is redundant — drop them.
         timer?.resume()
     }
 
@@ -441,7 +454,7 @@ class ClipboardMonitor {
                 logger.warning("CLIP-2: clipboard text exceeded \(Self.maxTextCaptureBytes) bytes; truncated to capture limit")
             }
             let itemType = detectType(content)
-            let isSensitive = detectSensitive(content)
+            let isSensitive = Self.detectSensitive(content)
             var expiresAt: Date?
             if isSensitive {
                 let hours = delegate?.sensitiveClearHoursForMonitor() ?? 0
@@ -633,7 +646,7 @@ class ClipboardMonitor {
             // BEFORE base64 encoding. Whitespace-only RTF pastes (rare;
             // from TextEdit / Word) are silently rejected at capture time.
             guard Self.shouldCaptureText(plaintext) else { return }
-            let isSensitive = self.detectSensitive(plaintext)
+            let isSensitive = Self.detectSensitive(plaintext)
             var expiresAt: Date?
             if isSensitive {
                 let hours = self.delegate?.sensitiveClearHoursForMonitor() ?? 0
@@ -655,7 +668,7 @@ class ClipboardMonitor {
         }
     }
 
-    func detectSensitive(_ content: String) -> Bool {
+    static func detectSensitive(_ content: String) -> Bool {
         // Reject pathological inputs that could cause quadratic regex backtracking.
         // Very long strings (> 50 KB) skip keyword/regex scanning.
         // P1-AUDIT-2026-09-22 (P2-6): conservatively flag as likely-sensitive
@@ -664,7 +677,8 @@ class ClipboardMonitor {
         // Loud notice log on threshold crossing so the conservative flag
         // is visible in Diagnostics for later tuning.
         guard content.utf8.count <= 50_000 else {
-            logger.notice("P2-6: detectSensitive skipped full scan for \(content.utf8.count) bytes; conservative flag")
+            let log = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
+            log.notice("P2-6: detectSensitive skipped full scan for \(content.utf8.count) bytes; conservative flag")
             return true
         }
 
@@ -682,12 +696,12 @@ class ClipboardMonitor {
         }
 
         // Pre-compiled regex check — paired with their source patterns to avoid index misalignment
-        for (regex, _) in compiledSensitivePatterns where regex.firstMatch(in: content, options: [], range: range) != nil {
+        for (regex, _) in Self.compiledSensitivePatterns where regex.firstMatch(in: content, options: [], range: range) != nil {
             return true
         }
 
         // R10: use pre-compiled sensitive value regexes
-        for regex in sensitiveValueRegexes where regex.firstMatch(in: content, options: [], range: range) != nil {
+        for regex in Self.sensitiveValueRegexes where regex.firstMatch(in: content, options: [], range: range) != nil {
             return true
         }
 

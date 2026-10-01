@@ -80,6 +80,28 @@ extension ClipboardStore {
             guard let index = index else { return }
             self.items[index].ocrText = encrypted
             self.items[index].ocrAttempted = true
+            // ID-REVIEW-1005 (code-review-2026-10-01 P1 0-5): propagate
+            // OCR-text sensitive detection to the parent item. Without
+            // this, a screenshot containing a password / API key / private
+            // key would OCR-encrypt the text (so it's at-rest safe) but the
+            // item itself stayed non-sensitive — meaning the
+            // "敏感 24h 自动清除" policy never fired on the highest-frequency
+            // leak vector for passwords (screenshots are a top source for
+            // password capture). Run `ClipboardMonitor.detectSensitive` on
+            // the plaintext pre-encrypt; if it hits, mark the item
+            // sensitive and set `expiresAt` per the same rule the plaintext
+            // capture path uses (line 419-426 of ClipboardMonitor.swift).
+            // Don't downgrade an item that was already flagged sensitive
+            // for some other reason.
+            let ocrSensitive = ClipboardMonitor.detectSensitive(text)
+            if ocrSensitive && !self.items[index].isSensitive {
+                self.items[index].isSensitive = true
+                let hours = self.sensitiveClearHoursForMonitor()
+                if hours > 0 {
+                    self.items[index].expiresAt = Date().addingTimeInterval(TimeInterval(hours * 3600))
+                }
+                Self.logger.notice("OCR text flagged sensitive on item \(self.items[index].id, privacy: .public); expiresAt set per policy")
+            }
             // H-1 (2026-07-25 audit): OCR text is derived metadata. Using
             // saveImmediately() here caused every backfilled image to trigger a
             // full JSON encode of all items on the main thread; with hundreds
