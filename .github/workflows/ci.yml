@@ -214,17 +214,34 @@ jobs:
             exit 1
           fi
 
+      - name: Collect test log for triage
+        # ID-CRASH-0037 / issue #93 next step 2 ("Capture the failing
+        # test's full xctest.log via GH artifact upload"): the v2.9.5 tag
+        # run failed with no artifact to inspect, forcing manual log
+        # archaeology through the Actions UI. Copy the test log into the
+        # artifact directory on ANY outcome (the Test step only creates
+        # results/ on the success path; recreate it here for failures).
+        if: always()
+        run: |
+          mkdir -p results
+          if [[ -f /tmp/xcb-test.log ]]; then
+            cp /tmp/xcb-test.log results/xcb-test.log
+          else
+            echo "Test step did not run or log missing" > results/xcb-test.log.missing
+          fi
+
       - name: Upload xcresult bundle (P2-17)
-        # Coverage-gate job consumes this artifact. Upload only on
-        # success — if the Test step failed there's nothing meaningful
-        # to gate against and the coverage-gate job is skipped via
-        # its `needs: build-and-test` dependency.
+        # Coverage-gate job consumes this artifact. Upload on ANY outcome:
+        # on failure the xcresult still carries the per-test failure
+        # detail (issue #93 triage), while coverage-gate itself only runs
+        # when build-and-test succeeds (needs: dependency), so a failed
+        # run's artifact is purely for post-mortem.
         #
         # P2-17 fix (2026-09-22 OpenCode review): `path: results` (parent
         # directory) so upload-artifact@v4's rootDirectory-strip leaves
         # clipmemory-test.xcresult/ as a sub-directory in the archive.
         # See Test step comment for the underlying mechanism.
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: clipmemory-test-coverage
@@ -369,6 +386,15 @@ jobs:
       # has a matching git tag. Mirrors the convention of
       # lint-translations / lint-release-yml / lint-tsan-filter.
       - name: appcast/tag coverage lint (ID-CRASH-0013)
+        # 2026-10-01 (v2.9.5 tag run): skip on tag pushes. By construction
+        # the tag's own appcast item cannot exist in the tag's tree:
+        # release.yml commits the item to main AFTER the tag push (the
+        # appcast-push substep), so this two-way check always fails for the
+        # freshly pushed tag — both v2.9.5-rc2 and v2.9.5 tripped it as a
+        # false positive. The v2.9.3 failure class ("appcast item without
+        # tag") is still caught on main pushes and PRs, where the tag side
+        # of the check sees the full tag list.
+        if: github.ref_type != 'tag'
         run: |
           set -euo pipefail
           chmod +x Scripts/lint-appcast-coverage.sh
@@ -441,7 +467,29 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
-      - name: SwiftLint (P2-18)
+      # 2026-10-01 (v2.9.5 tag run): the macos-latest runner image dropped
+      # its pre-installed SwiftLint and the presence canary fired exactly
+      # as designed ("swiftlint not installed on runner" — P2-18's
+      # fail-closed path). Every macos-latest job went red across all
+      # branches. Pin the release explicitly instead of trusting the
+      # runner image: also closes code-review-2026-10-01 P2-2
+      # ("SwiftLint/SwiftFormat 无版本 pin") — the runner image was an
+      # unpinned floating version all along. Version assertion keeps the
+      # fail-closed tradition: a wrong/missing binary still fails loud.
+      - name: Install SwiftLint (pinned)
+        env:
+          SWIFTLINT_VERSION: "0.65.1"
         run: |
-          command -v swiftlint >/dev/null 2>&1 || { echo "::error::swiftlint not installed on runner"; exit 1; }
-          swiftlint lint --config .swiftlint.yml --reporter github-actions-logging
+          set -euo pipefail
+          curl -sSfL "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/portable_swiftlint.zip" -o /tmp/portable_swiftlint.zip
+          mkdir -p /tmp/swiftlint-bin
+          unzip -oq /tmp/portable_swiftlint.zip -d /tmp/swiftlint-bin
+          sudo install -m 0755 /tmp/swiftlint-bin/swiftlint /usr/local/bin/swiftlint
+          installed="$(swiftlint version)"
+          echo "SwiftLint ${installed} (pinned ${SWIFTLINT_VERSION})"
+          if [[ "$installed" != "$SWIFTLINT_VERSION" ]]; then
+            echo "::error::SwiftLint version drift: got ${installed}, pinned ${SWIFTLINT_VERSION}"
+            exit 1
+          fi
+      - name: SwiftLint (P2-18)
+        run: swiftlint lint --config .swiftlint.yml --reporter github-actions-logging

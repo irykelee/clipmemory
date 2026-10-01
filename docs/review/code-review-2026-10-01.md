@@ -1,0 +1,190 @@
+# ClipMemory 全面代码审查报告
+
+- **日期**：2026-10-01
+- **基线**：`main` @ `c3ce6c3`（v2.9.5），仅基于最新代码，不考虑既有文档与路线图
+- **范围**：26,385 行 Swift / 103 个源文件 / 115 个测试文件（1,021 个测试函数）
+- **方法**：5 个维度并行深度审查（架构与核心链路、存储/加密/备份安全、UI 层与代码质量、并发与性能缺陷、构建配置与工程化），关键结论经实机验证与抽查复核（本机 plist 解码、目录权限实测、4 处 P0/P1 论断逐条比对源码）
+- **关联**：前次审查见 `code-review-2026-09-21.md`、`code-review-2026-09-28.md`
+
+---
+
+## 总体结论
+
+这是一个工程纪律远超同类个人项目的代码库——AES-GCM 全线认证加密、审计 ID 可追溯、fail-closed 文化贯穿、本地化与无障碍几乎零漏网。但项目呈现明显的"补丁驱动演进"形态：**最底层的"全量历史塞进单个 UserDefaults blob"这一决策从未被推翻**，大量复杂度（加载竞态防御、terminate 三重 flush、保存失败重试梯子）本质上都是在为这个地基打补丁；加上 ClipboardStore 与 AppDelegate 两个 god object、发布链签名/公证缺位，构成了当前的三块结构性债务。
+
+- 未发现 P0 级安全漏洞
+- 发现 2 个 P0 级工程风险、约 15 个 P1 级问题（清单见文末总表）
+
+---
+
+## 一、项目结构与模块职责
+
+**做得好的**：分层意图清晰（Models / Services 49 个文件 / Utils / Views）；`UserDefaultsKey` 集中注册表；`ServiceProtocols` 的多数协议是真抽象（`StorageBackend` 有 7 个测试 conformer、`CryptoServiceProtocol` 有 35 处注入、`OCRServiceProtocol` 有 5 个 mock）；注释中的审计 ID + 日期 + 复盘让每次修复可追溯。
+
+| 优先级 | 问题 | 证据 |
+|---|---|---|
+| P1 | **ClipboardStore 是事实上的 god object**：主文件 2417 行 + 8 个扩展 ≈ 4000 行，同时承担条目存储、去重、加解密缓存、预热、OCR 编排、标签、垃圾桶转发、设置项存储。Swift 扩展不能有存储属性，导致 **14+ 处 `private → internal` 松绑**，8 个扩展文件可跨文件读写全部状态（saveTimer/tagSaveTimer/prewarmState/pendingFailedIDs/两把 NSCache/itemIndex 三件套/encryptedTagNamesBackup）。修改 prewarm 的人必须理解 pendingFailedIDs 的锁纪律；6 个 `nonisolated(unsafe)` 状态靠注释锁约束 | `ClipboardStore.swift:15-28`（自注 "god-object breakup is a deliberate defer"）、`611-614`、`786-790`、`805-815` |
+| P1 | **AppDelegate 是第二个 god object**（1103 行）：直接手写构建 welcome/settings/recentCrashes 三个窗口（WindowManager 名存实亡，只被动接收 `registerSecondaryWindow`）、Keychain 重试策略（含 3s 魔法数延迟）、prewarm 5s 节流、3 个告警节流器，注册 ~15 个通知 observer，是事实上的通知总线。ID-LIFE-0020/0021 两轮窗口生命周期修复证明这套手写逻辑反复出 bug | `AppDelegate.swift:406-409`、`842-856`、`560-573`、`743-760` |
+| P1 | **测试隔离靠环境探针而非依赖注入**：27 处 `XCTestConfigurationFilePath` 分支深埋生产路径（AppDelegate 9 处，另见 CryptoService/ImageStorage/UpdateService/ServiceProtocols）。例如 `addItem` 尾部 prewarm 在测试中被静默跳过——该逻辑从未被测试覆盖。`ServiceContainer` 用 `preconditionFailure` 挡生产 swap，注释自认 "完整修复是 DI via init injection (deferred)" | `ClipboardStore.swift:393-396`、`1801`；`AppDelegate.swift:155, 194, 594...`；`ServiceProtocols.swift:51-59` |
+| P1 | **`pinnedItems` 是手工维护的第二份真相**：14 处 `updatePinnedItems()` 调用点靠纪律保持同步（mergePendingDecryptionFailures 原地改 items 就不调它，靠"不影响 pinned 判定"的隐式推理维持正确）；`invalidateItemIndex()` 同样靠 8 处手工调用 | `ClipboardStore.swift:127`、`2397-2399`、`636-638` |
+| P2 | 四种跨模块通信机制混用（NotificationCenter / Combine / delegate / 闭包注入），一条"保存失败"要经 notification → AppDelegate observer → throttler → NSAlert 四跳；含用字符串字面量绕过类型检查的通知名 `Notification.Name("NetworkMonitor.didBecomeReachable")`。三种配置持久化范式并存（`@Published+didSet`、手写 NSLock+手动 send、直接读 UserDefaults——后者不触发 UI 刷新，设置项散落三处） | `ClipboardStore.swift:30-96`；`AppDelegate.swift:350`；`ClipboardStore+OCR.swift:17-31`（`ocrEnabled` 翻转后设置页不刷新） |
+| P2 | 协议抽象局部伪抽象：`ClipboardStore` 自身无协议（`ContentView.swift:98` 默认值直连单例无法替身）；WindowManager 的 view factory 存在但 AppDelegate 兜底分支仍硬编码 `WelcomeView(...)` 等直连；monitor 号称经 delegate 解耦，却直接调 `ServiceContainer.crypto.hmacHex` 全局服务定位器 | `AppDelegate.swift:402, 837, 568`；`ClipboardMonitor.swift:305-313` |
+
+**核心数据链路实测**：0.5s `DispatchSourceTimer` 轮询（utility QoS 专属队列）→ 读 `pasteboard.changeCount` → own-write 三重防护（skipNextCapture + changeCount + HMAC 指纹）→ Concealed/Transient 类型与排除 app 过滤 → RTF/文本/图片三分支捕获（文本截断 10MB 上限）→ 主线程 `addItem` → HMAC 去重 → `trimToMaxItems`（溢出进回收站）→ 500ms debounce 保存 → 全量 JSON encode → UserDefaults blob + `synchronize()` + 全量 memcmp 回读 → UI 300ms debounce 后全量重算过滤。轮询方案本身合理（NSPasteboard 无变更推送 API）。
+
+---
+
+## 二、核心功能实现
+
+1. **【P1·用户可感】超大富文本被静默丢弃，日志却声称"回退 plaintext"**。else-if 链导致 RTF 超过 10MB 上限时既不走富文本分支也不走纯文本分支——什么都不捕获。从 Word/Pages 复制 >10MB 内容即复现；RTF 解析失败（`try? NSAttributedString` → ""）时即使剪贴板同时带 plain string 也不会被捕获。
+   `ClipboardMonitor.swift:398-409`。修复：把 plaintext 分支放进 RTF 超限/解析失败的 fall-through 路径。
+2. **【P1·用户可感】冷路径图片异步拷贝可覆盖后续任何剪贴板写入**。`pendingCopyToken` 只防"图-图"竞争，文本/RTF/暖图同步写路径从不触碰它——复制大图后紧接着复制文本，文本先落剪贴板，图片加载完成回调到达时 token 仍匹配 → 图片覆盖文本，用户粘贴得到几分钟前的图。
+   `ClipboardStore.swift:2342-2351`。修复：同步写路径（`onRecordOwnWrite?()` 之前）统一 `pendingCopyToken = nil`，一行级修复，建议配回归测试。
+3. **【P1·用户可感】多选图片时 Share 标签/拖拽范围 stale**。`ClipboardItemRow` 手写 `Equatable` 漏比较多选派生字段 `shareLabel/onShare/onDragProviders`（由父级按 `selectedItems` 派生），追加选图后 `==` 返回 true，SwiftUI 跳过重渲染 → 右键菜单停留旧数量、拖拽范围错误。`ClipboardItemRow.swift:283-289` 的行内注释记录了同类漏比较曾出过一次线上回归。
+   `ClipboardItemRow.swift:271-290`、`ItemListView.swift:613-615`。修复：把派生值加入 `==`，或改用不含闭包的显式快照 struct。
+4. **【P2】monitor 每 tick 在 `changeCount` guard 之前**固定执行 `pasteboard.types` 检查 + 排除表查找——每 0.5s 至少 2 次 Mach IPC 而非 1 次；排除归因有 0.5s gap，前置 app 切换后 0.5s 内的复制可能被错误归因给已排除的密码管理器而静默丢弃（注释自认）。
+   `ClipboardMonitor.swift:384-395`。修复：`guard currentChangeCount != lastChangeCount` 提到最前。
+5. **【P2】UI 刷新为全量重算**：任何 items 突变（含 OCR attach、tag 增删、pin 翻转）都替换整个 `@Published` 数组，10K 条目下一次 pin 点击 = 全表重过滤 + 全表分组 + 三份缓存重建 + 全量 prewarm。`ContentView.swift:424-466, 795-801`。千级条目可接受；随存储迁移把过滤/分组下推 SQL。
+6. **【P2】terminate 路径三重冗余 + RunLoop 泵重入风险**：三条路径都调 `flushPendingSaves`（靠 `needsSave` 幂等兜底）；未完成首载时在主线程泵 RunLoop 最多 5s（`while !firstLoadCompleted { RunLoop.main.run(...) }`），`applicationWillTerminate` 期间重入窗口真实存在（AppDelegate 注释记录过该路径曾触发 libdispatch bug）。`ClipboardStore.swift:1238-1241`。修复：首载未完成时直接按当前内存快照写入（磁盘旧 blob 本就是完整历史，最坏丢 debounce 窗口内新条目）。
+
+---
+
+## 三、代码质量与可读性
+
+**做得好的**：本地化几乎零漏网（UI 层无硬编码界面串，全走 `L10n` 单点，a11y 文案有专属 key 批次）；纯函数抽取文化（`SidebarTagFilter`、`computeTabCounts`、`RestoreWizardViewModel` 纯状态机等全部可脱离 SwiftUI 单测）；性能工程系统化（Task.detached 移出主线程、锁保护缓存、量化性能注释）；无障碍覆盖罕见完整（icon-only 按钮全补 label + hint）；AppKit 桥接边界注释扎实。
+
+1. **【P1】三大块 UI 逻辑存在三份几乎逐行相同的拷贝且已实际漂移**：解密重试（200ms 重试 + `.cryptoKeyPrepared` bump token）在 `ClipboardItemRow.swift:876-942`、`QuickBarView.swift:557-617`、`TrashItemRow.swift:277-316` 三处重复；长按预览 `onChange(of: imageLongPressing)` 整块（约 45 行）与图片加载 `.task(id:)` 双份。`TrashItemRow.swift:131-133` 自证曾因漏改一处而出 bug（"was a batch-6 round-1 miss"）。
+   修复：抽 `ViewModifier` 或 `RowContentLoader`（ObservableObject）收敛为单一实现。
+2. **【P1】prop drilling 严重，ViewModel 缺位（代码自认的技术债）**：`ItemListView` 接收 15 个 `@Binding`（`ItemListView.swift:32-50`）；`ClipboardItemRow` init 18 个参数（`:301-317`）；ContentView 持有 6 个手写缓存、由 9 个 onChange/onReceive 触发器维护一致性（`ContentView.swift:106-132, 600-811`）；`ItemListView.swift:10-12` 自认 "Phase 5+ work to collapse into an `@StateObject` ViewModel is out of scope"。视图 6 处反向直连 `(NSApp.delegate as? AppDelegate)`（`QuickBarView.swift:270` 等）。
+   修复：抽 `MainListViewModel`；路由改闭包注入或 `WindowRouter` 环境。
+3. **【P1】本地化三处漏网**：
+   - `CloseButton` 默认 a11y 标签硬编码英文 "Close"，4 个调用点全用默认值（日/韩 VoiceOver 用户听到英文）——`CloseButton.swift:17`；`.help()` 不进 VoiceOver 是项目自己总结过的教训（F-20）。
+   - `TrashItemRow` 日期格式化绕过统一的 `DateHelpers` per-language 缓存设施，formatter 无 locale 绑定且不观察语言切换——`TrashItemRow.swift:60-67`（对照 ID-L10N-0017 修过同类问题）。
+   - RecentCrashesView / RestoreWizardView 不订阅语言变化且窗口一次性构建，开着时切语言整窗文案滞留旧语言（对照 `SettingsRootView.swift:72` 的 `.id(languageManager.selectedLanguage)` rekey 方案）。
+4. **【P2】巨型 body 与超长函数**：`ClipboardItemRow.body` ≈349 行（`:595`）、`TrashItemRow` ≈273（`:70`）、`QuickBarView` ≈263（`:119`）；>80 行函数 3 个（`attachLifecycle` ≈96 行、`filterItemsImpl` ≈89 行、`buildItemRow` ≈85 行）。
+5. **【P2】搜索高亮 4 套实现各自为政**：主列表（截断 200）、OCR 宽窗（±40/+80）、OCR 窄窗（±20/+40，除两个常量外逐行相同）、QuickBar（只高亮第一个匹配）；颜色不一致（`.cyan.opacity(0.3)` vs `Color.yellow.opacity(0.7)` + `.black` 前景，后者深色模式观感差）。
+   `ClipboardItemRow.swift:421-553`、`QuickBarView.swift:429-452`。修复：统一为 `highlightedSnippet(text:highlight:window:style:)`。
+6. **【P2】样板与散落**：`let _ = fontScale` 在 12+ 个视图重复；`applyAppearance()` 两处逐行相同（`ContentView.swift:285-291` 与 `GeneralSettingsView.swift:143-149`）；模块级自由类型堆在视图文件（`SidebarTab`/`TimeGroup` 在 ContentView，`ClearMode` 在 ItemListView）；`FirstLaunchManager` shim 住在 `WelcomeView.swift:180-195`；`RestoreWizardWindowController.swift:15` 窗口标题硬编码英文而 `L10n.restoreWizardTitle` key 存在。
+7. **【P2】审计史注释污染源码**：大量"修改历史"类注释写在实现中间（如 `ContentView.swift:350-378` 一段 27 行 OCR 回归史注释在过滤函数内），建议迁出源码进 docs/CHANGELOG。
+8. 【P2】`FuzzySearchMatcher` 质量高（token AND、`en_US_POSIX` 钉死、pinyin 双 NSCache、内存告警 flush），微瑕：`matches()` 中同一 token 对 normalized 最多扫两遍可合并；`SearchDebounce` 34 行小而正确。
+
+---
+
+## 四、潜在缺陷与边界情况
+
+1. **【P0】quarantineCorruptBlob 硬编码 `UserDefaults.standard`，绕过注入的 defaults**——`FileStorageBackend` 特意支持注入 suite，测试用 `xcTestDefaults` 保证不碰生产 plist（ID-STORE-0014 的全部努力），但这条错误路径在测试中触发加载失败（IntegrationTests 就在做）会直接读写生产 `com.clipmemory.app` 域，正是项目自己用 ZZZ canary 防的事。也是后端抽象泄漏的证据（quarantine 属存储层职责却散在 store 扩展里）。
+   `ClipboardStore+Utilities.swift:47-54`。修复：改用注入的 `self.defaults`（一行）；长期随存储迁移入 backend 协议。
+2. **【P1·数据丢失】Keychain 迁移"写后读不一致"分支会删除唯一回退副本**：verify mismatch 意味着 Keychain 内容已不可信，此时删除磁盘上的明文 key 文件（`.permanent` → `shouldDelete = true`）→ 下次启动把 Keychain 里的错误 32 字节当 canonical → **全部历史永久不可解密**。与同文件 unknown 错误 "err on caution, keep fallback"（`:50-52`）的原则自相矛盾——恰恰是 Keychain 已证明不可靠的场景最该保留回退。
+   `CryptoService.swift:554-559`、`CryptoService+KeychainMigration.swift:57-62`。修复：verify-mismatch 分支 keep 文件 + 走 transient 处理。
+3. **【P1】`fullSizeCache` 只有 countLimit=8 无字节上限**：单图允许 50MB（解码位图约 100MB），8 张大图契约上界 ≈800MB，cost 已计算却无处生效（ID-CRASH-0028 解释了为何去掉 100MB totalCostLimit，但应设宽裕双保险如 256MB）。`ImageStorage.swift:49-53, 1014-1017`。
+4. **【P2】`pendingKeyItems` 无上限**：Keychain 长期未解锁 + 高频复制 → 每条最高 10MB 整文堆在内存数组。`ClipboardStore.swift:1693-1698`。修复：封顶（如 50 条/50MB），溢出丢弃并计数上报。
+5. **【P2】超过 50MB 的图片被静默丢弃**，仅 log 无用户可见信号，与项目"加密/保存失败都有通知"的三环门纪律不符。`ImageStorage.swift:446-450`、`ClipboardMonitor.swift:560-562`。
+6. **【P2】`NWPathMonitor` cancel 后 `start()` 静默失效**（Apple 文档：canceled 后不可复用；`NetworkMonitorProtocol` 声称 stop/start 可配对）。生产只 start 一次无碍，未来 teardown 路径会得到永不回调的监控。`NetworkMonitor.swift:74-91`。需验证 + 修复：stop 后重建实例。
+7. **【P2】OCR backfill 对 Vision 永久失败的图片无限重试**（每 launch 重跑 15s watchdog 流程），无失败计数上限。`ClipboardStore+OCR.swift:286-296`。修复：`ocrRetryCount >= 3` 后标 `ocrAttempted`。
+8. **【P2】`contentCache.totalCostLimit = 10MB` 而单条明文上限 10MB**——单条大文本反复自我驱逐，缓存对该条目形同直通。`ClipboardStore.swift:687-692`。
+9. **【P2】AppDiscoveryService 进程内缓存永不过期**：装新 app 需重启才出现在排除列表 picker（有 `clearCache()` 但生产无触发点）。`AppDiscoveryService.swift:33-70`。
+10. **【P3】小项**：`dispatchPrecondition(.onQueue(.main))` 后的 `guard Thread.isMainThread` 是死代码（`ClipboardStore.swift:1232-1236`）；`NetworkMonitor` 通知从 utility 队列 post（`NetworkMonitor.swift:148-151`）；AppDiscovery/HotKeyManager 无锁状态与同文件锁纪律不一致（需验证）。
+11. **并发排查总体干净**：无生产路径强制解包（9 处 `try!`/`fatalError` 均为编译期常量或测试路径）；Timer/observer 生命周期纪律严格且有源码 grep 断言测试兜底（`NotificationObserverAssertionTests`）；17 处 `nonisolated(unsafe)` 均附锁契约注释，是 `SWIFT_STRICT_CONCURRENCY: minimal` 下的已知技术债，Swift 6 迁移候选已列档。
+
+---
+
+## 五、依赖与配置合理性
+
+**做得好的**：唯一第三方依赖 Sparkle（面积极小）；仓库卫生干净（Releases/、Homebrew/、backups/、build/、default.profraw、.DS_Store 均未入库且 .gitignore 带理由注释）；XcodeGen 管理工程；`rollback-release.sh` 完整闭环（删 release/tag、恢复版本、摘 appcast、purge jsDelivr、反推 Cask SHA、非交互安全中止）；CI 反沉默 canary 体系（测试计数、TSan instrumentation、SwiftLint presence、coverage gate fail-closed）每条都有对应历史事故 ID。
+
+1. **【P0】release.yml 的 appcast 推送兜底可回滚远端分支、丢并发提交**：`--force-with-lease` 失败的最典型原因恰恰是远端已前进，此时 `gh api PATCH force=true` 兜底会把窗口期内合入的 commit 全部摘掉——且用 admin PAT、分支保护 `enforce_admins: false`，这个 force 真能落地（ID-CRASH-0010 修好了无条件 PATCH，但保留了"失败才 PATCH"的路径——失败分支正是最危险的分支）。
+   `.github/workflows/release.yml:555-560`。修复：删兜底改 fail-fast（appcast 补推本就是可重放操作）。
+2. **【P1】发布链签名/公证缺位**：`Apple Development` 个人证书（2027-07 过期，全靠 `--timestamp` 锚定）+ 全链路无 notarization → 用户首次打开必遇 Gatekeeper 拦截；Development 证书政策上不能走 notarytool；`DEVELOPMENT_TEAM` 个人 Team ID 硬编码入库。`project.yml:25-27`、`release.yml:130-136`。需 Apple Developer Program（$99/年）决策；Team ID 移入本地 .xcconfig 或 CI secret。
+3. **【P1】47 个 XCTSkip（约 4.6%）mass-skip，防污染 canary 与快照体系实质停摆**：`ZZZSuiteTeardownTests.testNoProductionPollution` 首行即 skip（`:235-236`）；`environmentInvariantCheck()` 不是 test 前缀方法 XCTest 永不调用；快照测试近乎全灭（含一个 `xtest` 前缀改名的测试）；xcodebuild 把 skipped 计入总数 → CI 测试数量下限门对 mass-skip 完全免疫；skip 只存在于注释里无台账跟踪。
+   修复：建 skips 台账（docs/ 或 issue）；优先恢复 ZZZ canary（纯 UserDefaults diff，不影响 CI 稳定性）；UI 快照改环境变量门控。
+4. **【P1】tag push 发布路径完全不跑测试**（`release.yml:205-206` `if: github.event_name == 'pull_request'`，ID-CRASH-0038 自述临时妥协），发布门实际只是作者本机一次可被 `--skip-tests` 绕过的 xcodebuild。修复：tag 上恢复 smoke 子集（复用 tsan.yml 的 `-only-testing` 过滤 + `Executed N` 断言模式）。
+5. **【P1】15 处 Actions 全用可变 major tag 引用、0 个 SHA pin**，而 `.github/dependabot.yml:11-13` 自称 "pinned by SHA"——已失效。release.yml 持有 contents:write + admin PAT，checkout/gh-release 被上游劫持等于发布链被劫持。修复：发布链优先 SHA pin（dependabot github-actions 生态可帮跟 digest）。
+6. **【P2】并发与依赖策略**：`SWIFT_STRICT_CONCURRENCY: minimal`（`project.yml:20`）+ TSan PR 门 `continue-on-error: true`（夜间全量有 fail-closed race gate，这是对的）；Sparkle `from: "2.9.5"` 浮动 + dependabot swift 生态自认占位符（无产出，建议删或换定期 bump 脚本）；`release.yml:65` 缓存 key 引用不存在的 `ClipMemory/Package.resolved` 路径（实际在 `ClipMemory.xcodeproj/.../xcshareddata/swiftpm/`）。
+7. **【P2】SwiftLint/SwiftFormat 无版本 pin**（裸调 `which swiftlint`）；baseline 豁免 68 条全为 warning（line_length 47 条属"改 2 个字符"级别，建议一次性清掉并注销 baseline）；error 阈值（1250/400/700/45）自 2026-07 封顶后无下降计划。
+8. **【P2】`Scripts/test/` 的 8 个脚本测试未接入任何 CI**（release.sh 1229 行的纯函数只被人肉测试）——加一个 ubuntu-latest job 即可，是性价比最高的补洞。
+9. **【P2】杂项**：`project.yml:6` `xcodeVersion: "15.0"` 已与现实脱节（纯误导性元数据）；githooks 对开源贡献者不友好（pre-push 强制跑作者私人环境的 AI 审核 hook、pre-commit 全量 xcodebuild，建议 AI hook 拆为可选安装）；appcast 无 `sparkle:releaseNotesLink`（更新弹窗只有版本号）；`CURRENT_PROJECT_VERSION` 复用 marketing 版本导致同版本 build number 不变（回滚语义受限）；`IntegrationTests.swift:88-91` 弱断言 `XCTAssertTrue(d1 == "Second" || d1 == "First")`。
+
+---
+
+## 六、安全性与性能
+
+### 安全（总体：成熟度显著高于同类个人项目，无 P0 漏洞）
+
+**实测验证做得好的**：本机 plist 解码确认**无任何明文剪贴板内容落盘**（items blob 100 条中 85 条 v2 AES-GCM 密文，其余为 image 项 UUID 文件名；12 条 ocrText 全部密文）；Keychain 锁定绝不会被误判为"无密钥"而触发再生成覆盖真实根密钥（P0-1/C-2/ID-CRYPTO-0001 三层修复）；`store` 先 `SecItemUpdate` 后 `SecItemAdd` 消除删除窗口；加密失败绝不回退明文（注释自注 "do NOT store as plaintext (security violation)"）；导入路径三层防御（`unzip -Z1` 成员名检查拒绝 `..`/绝对路径、2GiB 炸弹上限、符号链接与路径逃逸校验、包内图片名 UUID 白名单）；损坏 blob 先 quarantine 再清空；目录 0700/文件 0600 纪律。
+
+1. **【P1】导出加密包内嵌机器根密钥**：`key.enc` 是被口令包裹的**根密钥本体**（`AES.GCM.seal(keyData, using: derivedKey)`，keyData 即 `CryptoService.loadKeyData()`），包内 items/tags/trash 全是根密钥下的密文——破解任一弱口令包 = 破解本机全部数据（活动 store blob、所有同根密钥的本地备份、偷到的磁盘/Time Machine）。
+   `BackupPackage.swift:530-533`。修复：导出生成一次性随机包密钥，口令包裹包密钥，payload 用包密钥重加密，根密钥永不出机；格式 bump `formatVersion`。
+2. **【P1】OCR 文本不参与敏感检测**：截图里的密码/密钥 OCR 后密文存储但**可搜索、可预览**，`isSensitive`/`expiresAt` 均不设置——"敏感内容 24h 自动清除"对最高频泄密载体之一完全失效（对照文本路径 `ClipboardMonitor.swift:611-617` 有完整处理）。
+   `ClipboardStore+OCR.swift:47-89`。修复：`attachOCRText` 内对 OCR 文本跑 `detectSensitive`，命中按同一规则补写 `expiresAt`。
+3. **【P1】测试夹具把明文 key 文件写进生产密钥路径**（实机已复现：`~/Library/Application Support/ClipMemory/.encryption_key` mtime 与测试运行吻合）：换机 Keychain 丢失时，`prepareKey` 会把测试遗留 key 迁进生产 Keychain，既有历史静默变砖。与 Images 的 `Images-Tests/` 重定向模式不一致。
+   `CryptoService.swift:328-351`。修复：XCTest 下 key 文件重定向到专用测试目录（照抄 `ImageStorage.swift:75-77` 模式）。
+4. **【P2】敏感检测绕过面**（漏报方向）：`4111 1111 1111 1111` 空格分组卡号漏检（正则要求 16-19 位连续数字）、无 Luhn 校验；`"password is xxx"`/`"登录密码 123456"`/`Authorization: Basic` 漏检；无 Unicode 归一化（零宽字符绕过 keyword 与正则）。`ClipboardMonitor.swift:102-166`。>50KB 文本保守标记为敏感是 fail-safe 方向，产品定位是"尽力而为的提示"——建议：卡号去空白分组后跑正则 + Luhn；补中英文密码模式；NFKC + 去 zero-width 归一化。
+5. **【P2】zip 炸弹守卫在列表命令失败时 fail-open**：`unzip -Z -v` 非零退出时静默跳过未压缩总量检查（成员名检查是 fail-closed，同函数内纪律不一致）。`BackupPackage.swift:346`。修复：非零退出抛 `archiveFailed`。
+6. **【P2】备份权限纪律不完整**（实机证据）：`Backups/` 父目录 0755、备份内 `items.json`/`trash.json` 0644（其他路径都是 0600）——备份拷到 U 盘/网盘后暴露条目数、时间线、密文体积等元数据。`BackupService.swift:281-285, 338`。修复：init 补设 0700；blob 写入后 set 0600。
+7. **【P2】ShareService 明文图片写临时目录 0644 且 60s 后 Task 清理不保证执行**（app 提前退出则残留，无重启补偿）。`ShareService.swift:27-40, 236-241`。修复：写 0600 + app 专属 temp 子目录 + 启动清扫。
+8. **【P2】"敏感自动清除"≠ 销毁且被备份链路放大**：过期敏感项走回收站再留 7 天，同时每日全量进本地备份与导出包（keepCount 3-30 份滚动）——密文在磁盘可存续数周，与用户预期有落差。`ClipboardStore.swift:2410-2424`、`BackupService.swift:123-127`。建议 UI/文档说明，或提供备份剔除选项。
+9. **【P2】每日备份整份复制 Images/**：最多 30 份完整图像副本，无总量上限与告警。`BackupService.swift:345-353`。修复：同卷硬链接去重（图像内容不可变）或增量；设置页显示备份总占用。
+10. **【P2】entitlements 客观评估**：非沙箱是全局热键/剪贴板轮询/ditto 子进程的现实选择；`disable-library-validation` 的增量是放宽对注入库的签名约束（对已获用户级代码执行的攻击者是便利而非新能力）。建议确认无 dlopen 第三方未签名库后移除 DLV（收缩面零成本）；README:128 的 MAS 合规叙事与沙箱关闭矛盾，措辞需调整。
+
+### 性能（主要问题与 UserDefaults blob 同根）
+
+1. **【P1】保存路径阻塞主线程**：`flushSave` 在 MainActor 上两次 `.sync` **原地等待**全量 encode + cfprefsd 重写 + `synchronize()` + 全量 memcmp 回读——注释称开销已移出主线程，但主线程延迟只是换了计数位置；blob 到几 MB 时每 500ms debounce 触发都是一次可感知卡顿；terminate 时同理。`ClipboardStore+Persistence.swift:34-78`、`StorageBackend.swift:120-135`。
+   修复：(a) items 落盘改独立文件（Application Support + 原子写 + fsync）；(b) flushSave 去 `.sync` 改异步写 + 失败恢复 `needsSave`，terminate 路径保留同步契约。
+2. **【P1】ShareService 主线程同步解密 + 读盘 + 拷贝**：`makeShareableFileURLs` → `loadImage` → 全量读文件 + AES 解密全在调用线程（`@MainActor`），批量分享 10 张 6K 截图 = 秒级 UI 冻结；`copyImagesToFolder` 文件拷贝循环同样在 main。与 ImageStorage 精心维护的"UI 路径必须 async"纪律（见 ImageStorage.swift 内对应修复注释）直接冲突。`ShareService.swift:27-39, 59-62, 103-201`。
+3. **【P2】每次启动对全部图片做完整性扫描**（全量读盘 + AES，无 mtime/hash 增量标记），200 张 4K 图 = 每次启动数百 MB 读盘；与 OCR backfill / prewarm 共享 utility 池互相排队。`ClipboardStore.swift:1562-1589`。修复：记录"已扫描且 mtime 未变"集合，只扫新增/变更。
+4. **【P2】CrashReportService 主线程同步枚举 + 解析最多 50 个 .ips 文件**（每个 `String(contentsOf:)` + 2×JSONSerialization，可达数百 ms）——诊断窗口自身就是"卡顿现场"。`CrashReportService.swift:116-139`、`RecentCrashesView.swift:195`。
+5. **【P2】SafeModeService 启动主线程 `Thread.sleep` 重试最多 ~1.05s**（50+200+800ms，磁盘满/沙盒异常时白屏）；日志 off-by-one（`attempt + 1`）。`SafeModeService.swift:212, 225`。
+6. **【P2】网络恢复瞬间 `drainPendingWrites` 在 main 同步等待串行写队列排空**——恰有 50MB 图在加密时主线程冻白数百 ms。`AppDelegate.swift:350-353`。
+7. **自监控体系专项**：HangDetector 3 定时器 + 双 NSLock，固定开销可忽略，snapshot→re-entry 双段锁正确处理恢复与检测并发；已知缺陷自知（抓恢复时刻栈无 post-mortem 价值，accept-as-is 有记录）；误报面仅剩"主线程被合法阻塞 >60s"（如实报为 hang，算 feature）。CrashReportService 解析健壮；SafeModeService sentinel + degraded 设计优于裸 crash 计数。
+8. **搜索/缓存/OCR 管道本身设计成熟**：pinyin 双 NSCache（16k 条/10MB）、Task.detached 解密移出主线程、OCR 4-slot semaphore 背压 + 30s watchdog + 2048px 降采样（6K HEIC 峰值从 ~100MB 压到 ~16MB）。
+
+---
+
+## 综合评估
+
+### 1. 下一步最合理的实际开发方向
+
+**以存储层迁移为纲**：把 items/trash/tags 从单 UserDefaults blob 迁到 `~/Library/Application Support` 下的 SQLite（GRDB 或原生）或分片 JSON + meta 索引，启动只加载头部 N 条。
+
+理由：这一项迁移同时消解当前报告里约 1/3 的问题——
+
+- 主线程保存阻塞（六-1）与 cfprefsd 静默丢失窗口（代码自注该场景 read-back 校验覆盖不了）
+- blob 损坏 = 全部历史的全损面（quarantine 只是把 blob 复制一份存回 UserDefaults，污染面加倍）
+- 后台加载 merge 的 120 行竞态防御代码（P2-14）、terminate 三重 flush、保存失败重试梯子
+- 启动全量 decode（100-300ms）与 10K 条全表重算过滤（迁移后过滤/分组下推 SQL，FTS 索引 + LIMIT 分页）
+- 备份整份复制 Images 的放大（可顺带做增量）
+
+它是决定后续所有功能上限的地基。应与 **ClipboardStore 拆类**（`HistoryStore`/`TagStore`/`DecryptionCache`/`PrewarmEngine`/`SettingsStore` + 薄门面）、**构造注入替换 27 处 `isRunningTests` 探针**在同一批做——分开做成本远高于合并做（拆类时 items 突变出口可统一封装 `mutateItems { }`，顺带消掉 `pinnedItems`/`invalidateItemIndex` 的手工同步）。
+
+在此之前，先做一批"速赢"（合计约 1-2 天）：release.yml 删 PATCH 兜底、quarantine 改用注入 defaults、RTF 超限回退修复、copy token 一行修复、CloseButton/TrashItemRow/窗口标题本地化、OCR 文本接入敏感检测、测试 key 路径重定向。
+
+### 2. 当前亟待解决的核心问题（按序）
+
+1. **release.yml force PATCH 兜底**（一行删除，消除仓库历史丢失风险）
+2. **Keychain 迁移 verify-mismatch 删回退副本**（低概率、不可逆全损）
+3. **导出包内嵌根密钥**（安全承诺与实际不符）
+4. **RTF 超限静默丢弃 + 冷图异步拷贝竞争**（用户可感的功能缺陷）
+5. **47 个 XCTSkip 台账 + 恢复 ZZZ canary**（防污染体系名存实亡）
+6. **Developer ID + 公证的决策**（决定分发体验，涉及付费，需要项目所有者拍板）
+
+### 3. 全栈架构是否仍有优化空间
+
+**有，且方向明确，但要克制**。
+
+- 存储层（上述）是最大单项
+- 把扩展拆分升级为真正拆类（扩展拆分只拆了文件没拆对象，14 处 private→internal 使封装形同虚设）
+- UI 层抽 `MainListViewModel` 收敛 6 个手写缓存与 9 个触发器（代码自认的 Phase 5+ 方向），三大块行视图重复逻辑收敛为单一 ViewModifier
+- 通信机制从四类收敛：错误统一 `ErrorReporter`、store 间状态统一 Combine、通知只留系统事件；配置持久化统一为 `@Published + didSet`（或独立 SettingsStore）
+- Swift 6 / strict concurrency 迁移按已有锁契约注释路线图推进（17 处 `nonisolated(unsafe)` 已列档）
+
+同时要指出：**这个代码库的问题不是写得差，而是复杂度分配失当**——防御性工程的密度已经很高，继续在现有地基上叠补丁（更多审计 ID、更多重试梯子）的边际收益正在递减；上面每一条重构都会让一批现有补丁直接失效删除，这才是重构的真实回报。
+
+---
+
+## 修复优先级总表
+
+| 级别 | 数量 | 代表项 |
+|---|---|---|
+| **P0（立即）** | 2 | release.yml PATCH 兜底；quarantine 硬编码 `.standard` 破坏测试隔离 |
+| **P1（近期，1-2 个迭代）** | ~15 | 存储迁移（纲）；Keychain 迁移删副本；导出包根密钥；OCR 敏感检测；RTF 丢弃；copy token；主线程保存/分享阻塞；store/AppDelegate 拆类；skip 台账+canary 恢复；tag 路径跑测试；Actions SHA pin；Developer ID 决策；测试密钥写生产路径；行视图三份重复逻辑收敛；本地化三处漏网 |
+| **P2（随批次清理）** | ~20 | fullSizeCache 字节上限、pendingKeyItems 封顶、terminate RunLoop 泵、敏感检测归一化、zip fail-open、备份权限、share temp 清理、备份硬链接去重、启动图片扫描增量、VM 抽取、高亮统一、Sparkle/dependabot 策略、SwiftLint pin、Scripts/test 入 CI、appcast releaseNotesLink 等 |
