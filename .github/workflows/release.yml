@@ -194,18 +194,11 @@ jobs:
       #      timeout is a separate concern (tracked outside this
       #      commit).
       - name: Run tests
-        # ID-CRASH-0038 follow-up: the GH Actions macos-runner env diverges
-        # from local dev in many ways (UserDefaults cleanup, screenshot
-        # diffing, NSApp modal lifecycle, hotkey permissions). v2.9.5 was
-        # tagged + shipped with this workflow step set to
-        # `continue-on-error: true` and a clear marker; failures here are
-        # not authoritative (local v2.x `xcodebuild test` is).
-        # Re-enable fail-closed for v2.9.6 once ID-CRASH-0038 root-cause fixes land.
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             xcodebuild test -scheme ClipMemory -destination 'platform=macOS' CODE_SIGN_IDENTITY="-"
           else
-            xcodebuild test -scheme ClipMemory -destination 'platform=macOS' || echo "::warning::Run tests failed on macos-runner (ID-CRASH-0038). Source verified locally via xcodebuild test; v2.9.5 ships with this caveat. Re-enable fail-closed after ID-CRASH-0038 fixes."
+            xcodebuild test -scheme ClipMemory -destination 'platform=macOS'
           fi
 
       - name: Package and update local Cask
