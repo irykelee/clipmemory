@@ -11,7 +11,6 @@ final class ClipboardItemRowTests: XCTestCase {
     /// causing two rows that differed only in those fields to compare equal
     /// and skip updates.
     func testEquatableIncludesCreatedAtAndDecryptionFailed() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI equatable decryption)")
         let id = UUID()
         let base = ClipboardItem(
             id: id,
@@ -73,7 +72,6 @@ final class ClipboardItemRowTests: XCTestCase {
     // item has been marked sensitive.
 
     func testEquatableIncludesIsSensitive() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI equatable sensitive)")
         let id = UUID()
         let base = ClipboardItem(
             id: id, content: "secret", type: .text,
@@ -91,7 +89,6 @@ final class ClipboardItemRowTests: XCTestCase {
     }
 
     func testEquatableIncludesOcrText() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI equatable OCR text)")
         let id = UUID()
         let base = ClipboardItem(
             id: id, content: "img.png", type: .image,
@@ -122,7 +119,6 @@ final class ClipboardItemRowTests: XCTestCase {
     /// the 20–100ms parse doesn't block the main thread. This test asserts
     /// the helper returns AttributedString + plain text for a valid RTF.
     func testParseRichText_validRTF_returnsAttributedAndPlain() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI parse rich text valid)")
         let result = ClipboardItemRow.parseRichText(base64: validRTFBase64)
         XCTAssertNotNil(result, "Valid RTF must parse to non-nil result")
         XCTAssertTrue(result?.plain.contains("Hello") ?? false,
@@ -134,21 +130,18 @@ final class ClipboardItemRowTests: XCTestCase {
     /// H-7/H-8: bad base64 input → nil (no throw, no crash). loadRichText's
     /// caller treats nil as "skip", so a malformed item shows the placeholder.
     func testParseRichText_invalidBase64_returnsNil() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI parse rich text invalid b64)")
         XCTAssertNil(ClipboardItemRow.parseRichText(base64: "this is not valid base64!!!"))
     }
 
     /// H-7/H-8: empty input → nil. Defensive — pasteboard with empty base64
     /// shouldn't trap.
     func testParseRichText_emptyString_returnsNil() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI parse rich text empty)")
         XCTAssertNil(ClipboardItemRow.parseRichText(base64: ""))
     }
 
     /// H-7/H-8: valid base64 but garbage RTF body → nil. NSAttributedString
     /// rejects with try? and the helper propagates nil.
     func testParseRichText_validBase64InvalidRTF_returnsNil() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI parse rich text invalid rtf)")
         let garbage = Data("this is not RTF at all".utf8).base64EncodedString()
         XCTAssertNil(ClipboardItemRow.parseRichText(base64: garbage))
     }

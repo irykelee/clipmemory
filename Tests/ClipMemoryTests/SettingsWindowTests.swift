@@ -30,7 +30,6 @@ final class SettingsWindowTests: XCTestCase {
 
     @MainActor
     func testShowSettingsWindowCreatesWindow() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI settings window create)")
         guard let delegate = NSApp.delegate as? AppDelegate else {
             XCTFail("AppDelegate not available in test host")
             return
@@ -46,7 +45,6 @@ final class SettingsWindowTests: XCTestCase {
 
     @MainActor
     func testShowSettingsWindowTwiceDoesNotStack() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI settings window dedup)")
         guard let delegate = NSApp.delegate as? AppDelegate else {
             XCTFail("AppDelegate not available in test host")
             return
@@ -71,7 +69,6 @@ final class SettingsWindowTests: XCTestCase {
     /// permanent observer (plus its captured window graph) per reopen.
     @MainActor
     func testSettingsCloseObserverTokenRemovedOnWindowClose() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI settings close observer)")
         guard let delegate = NSApp.delegate as? AppDelegate else {
             XCTFail("AppDelegate not available in test host")
             return
@@ -98,7 +95,6 @@ final class SettingsWindowTests: XCTestCase {
     /// ID-LIFE-0020: same lifecycle for the welcome window observer token.
     @MainActor
     func testWelcomeCloseObserverTokenRemovedOnWindowClose() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI welcome close observer)")
         guard let delegate = NSApp.delegate as? AppDelegate else {
             XCTFail("AppDelegate not available in test host")
             return

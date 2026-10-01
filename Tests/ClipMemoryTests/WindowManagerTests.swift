@@ -25,7 +25,6 @@ final class WindowManagerTests: XCTestCase {
     }
 
     func testWindowWillCloseKeepsWindowAndContentView() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI window close cycle)")
         let manager = WindowManager()
         manager.showMainWindow()
 
@@ -43,7 +42,6 @@ final class WindowManagerTests: XCTestCase {
     }
 
     func testShowMainWindowAfterCloseReusesSameWindow() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI window reuse cycle)")
         let manager = WindowManager()
         manager.showMainWindow()
         let firstWindow = manager.mainWindow
@@ -83,7 +81,6 @@ final class WindowManagerTests: XCTestCase {
     /// settings / welcome window with no app-activation.
     @MainActor
     func testWindowWillCloseKeepsAccessoryPolicyWithVisibleSecondaryWindow() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI accessory policy)")
         let manager = WindowManager()
         let secondary = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
@@ -121,7 +118,6 @@ final class WindowManagerTests: XCTestCase {
     /// regress the common case.
     @MainActor
     func testWindowWillCloseSinksToAccessoryWhenNoSecondaryVisible() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI WindowManager close cycle)")
         let manager = WindowManager()
         manager.showMainWindow()
         defer { manager.mainWindow?.close() }

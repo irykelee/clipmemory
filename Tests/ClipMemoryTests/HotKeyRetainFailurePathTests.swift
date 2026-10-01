@@ -36,12 +36,6 @@ final class HotKeyRetainFailurePathTests: XCTestCase {
     /// A single failed registration must not strand a retain: the manager
     /// deinits once the caller drops it.
     func testFailedRegistration_managerStillDeinits() throws {
-        // ID-CRASH-0038 (follow-up): same `throw XCTSkip` and
-        // `XCTSkipIf` silently no-op'd on GH Actions as in
-        // `testClearSensitiveItemsRemovesOnlyNonPinnedSensitive`. Skip
-        // unconditionally in v2.9.5; re-enable in v2.9.6 with the
-        // root-cause fix. Local: registration fails as expected; CI:
-        // registration succeeds (clean macOS, shortcut free).
         throw XCTSkip("GH Actions CI environment: hotkey registration succeeds (ID-CRASH-0038; re-enable in v2.9.6)")
 
         weak var weakManager: HotKeyManager?

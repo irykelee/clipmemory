@@ -24,7 +24,7 @@ GH Actions macOS runner 环境（macOS 27 / 新 Xcode 镜像）下，下列测�
 | 7 | ContentViewTrimAlertTests.swift | 4 | 修剪告警 |
 | 8 | ClipboardItemRowSnapshotTests.swift | 2 | 快照（golden 在库） |
 | 9 | AppDelegateShouldTerminateTests.swift | 3 | terminate 路径。**CI 崩溃机制已确认**（runs 36833079602/36835842657 xcresult）：① 类级 `setUpWithError` XCTSkip 在 @MainActor 类上必杀 runner 宿主（`libdispatch: trying to lock recursively`，每测试一次重启）；② tearDown 里 `ClipboardStore.shared` 首触同样致命（tag run）。**skip 必须留在测试体首行**（与快照/窗口类的已验证安全模式一致），tearDown 不得触碰单例 |
-| 10 | ZZZSuiteTeardownTests.swift | 1 | **防污染 canary**（生产 UserDefaults 域纯 diff，恢复优先级最高） |
+| 10 | ZZZSuiteTeardownTests.swift | 1 | **防污染 canary**（生产 UserDefaults 域纯 diff，恢复优先级最高）。**ID-REVIEW-1009 后的实测**（2026-10-01）：1-6 修了 crypto key 路径，但仍检出新污染：`HotKeyKeyCode` / `HotKeyModifiers` 来自 `HotKeyManager.swift:17-18` 直接 `UserDefaults.standard.set(...)`（没走注入 defaults）、`WindowFrame` 来自 NSWindow autosave、`safeMode.active` / `safeMode.crashCount` 来自 SafeModeService 启动、`maxClipboardItems` / `excludedBundleIds` 走 `self.defaults` 但显然有路径绕过注入。**根因**：5+ 个生产代码路径写 `.standard`，不是 1-6 能解决的。**v2.9.6 恢复清单**：① HotKeyManager + WindowManager + SafeModeService + ClipboardStore 都迁注入 defaults（ID-STORE-0014 范式）；② 重新校准 `appLifecycleKeys` allowlist；③ 重跑 canary |
 | 11 | WelcomeViewSnapshotTests.swift | 1 | 快照 |
 | 12 | SettingsTabSnapshotTests.swift | 1 | 快照 |
 | 13 | QuickBarViewTests.swift | 1 | QuickBar |

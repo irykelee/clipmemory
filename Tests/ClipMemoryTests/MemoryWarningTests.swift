@@ -31,7 +31,6 @@ final class MemoryWarningTests: XCTestCase {
     /// macOS 10.0), the AppDelegate path silently no-ops; this test
     /// catches the rename so the fix is a one-line update here.
     func testMemoryWarningNotificationNameIsStable() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI memory notification name stable)")
         // Comparing via the raw String value so a Swift-overlay rename
         // would also trip this. The raw Objective-C symbol has been
         // "NSApplicationDidReceiveMemoryWarningNotification" since 10.0.
@@ -45,7 +44,6 @@ final class MemoryWarningTests: XCTestCase {
     /// item is captured) could trigger a path that hadn't been
     /// exercised.
     func testFlushAllOnEmptyCachesIsSafe() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI flush empty caches)")
         // Don't assume caches are empty — the previous test in the same
         // process may have populated them. Flush first to normalize,
         // then assert the call returns without throwing.
@@ -72,7 +70,6 @@ final class MemoryWarningTests: XCTestCase {
     /// practice; 1s timeout catches a broken observer without slowing
     /// the test suite).
     func testMemoryWarningNotificationReachesRegistry() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI memory warning reaches registry)")
         // 1. Prime ClipboardStore.contentCache so we have something to
         //    flush. Without an item, the cache stays empty and the
         //    test is a no-op (always green even if the observer is
@@ -128,7 +125,7 @@ final class MemoryWarningTests: XCTestCase {
     /// with a non-ASCII content (so the pinyin path runs) — without
     /// that, the cache stays empty and the test is a no-op.
     func testFlushAllClearsFuzzySearchCaches() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI flush clears caches)")
+        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI flush clears caches) — kept, needs runtime verification")
         let probeContent = "café 北京 123" // ASCII + Latin-ext + CJK
         let result = FuzzySearchMatcher.matches(content: probeContent, searchText: "北京")
         XCTAssertTrue(result, "ID-PERF-0005: precondition — matches() must succeed to populate caches")

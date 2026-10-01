@@ -30,7 +30,6 @@ final class WelcomeViewSnapshotTests: XCTestCase {
     }
 
     func testRendersWelcome() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI welcome view snapshot)")
         let view = WelcomeView(
             hotKeyManager: HotKeyManager(),
             onComplete: {}

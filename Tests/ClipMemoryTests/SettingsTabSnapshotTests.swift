@@ -96,7 +96,6 @@ final class SettingsTabSnapshotTests: XCTestCase {
     // MARK: - SettingsRootView
 
     func testSettingsRootViewGeneralTab() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI settings tab snapshot)")
         let view = SettingsRootView(hotKeyManager: nil, store: store,
                                     backupService: .shared)
         let image = renderToImage(view, size: CGSize(width: 680, height: 560))

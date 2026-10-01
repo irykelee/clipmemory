@@ -39,7 +39,6 @@ import XCTest
     /// No search → the first `maxItems` entries, in store order (newest
     /// first). This is the dominant popover-open path.
     func testComputeDisplayedItemsEmptySearchReturnsPrefix() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI QuickBar prefix results)")
         addItems((1...10).map { "item \($0)" })
         let result = QuickBarView.computeDisplayedItems(
             items: store.items,
