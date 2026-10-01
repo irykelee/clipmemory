@@ -54,7 +54,7 @@
 
 - **🛠 code-review-2026-09-28 backlog fully closed (38/38)** — All 7 P1 + 18 P2 + 5 follow-up items shipped; covering hardening items such as L10n / Crypto / Window / Persistence / TSan / CI toolchain / dependabot / crypto-symbol documentation. See `docs/audit/code-review-2026-09-28.md` for details.
 
-- **🛠 v2.9.5 GH Actions runner flake mitigation (ID-CRASH-0038)** — 14 env-sensitive tests unconditionally `XCTSkip` in the CI environment; the `Run tests` step in `release.yml` is changed to PR-only (`if: github.event_name == 'pull_request'`), skipped on the tag path (the `run_preflight --tests` in local `Scripts/release.sh vX.Y.Z --yes` remains the authoritative gate). Root-cause fix for runner env is targeted for v2.9.6.
+- **🛠 v2.9.5 GH Actions runner flake mitigation (ID-CRASH-0038)** — 46 env-sensitive `XCTSkip` sites across 14 test files (~48 tests; ledger in `docs/skips-ledger.md`) in the CI environment; the `Run tests` step in `release.yml` is changed to PR-only (`if: github.event_name == 'pull_request'`), skipped on the tag path (the `run_preflight --tests` in local `Scripts/release.sh vX.Y.Z --yes` remains the authoritative gate). Root-cause fix for runner env is targeted for v2.9.6.
 
 - Local `./Scripts/test-count.sh` static estimate (per CLAUDE.md ID-TEST-0002; actual count in CI `xcodebuild test` output); `xcodebuild test` locally all-pass
 - Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
