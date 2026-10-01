@@ -20,21 +20,27 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
 
     private var tempRoot: URL!
     private var defaults: UserDefaults!
+    /// False on the ID-CRASH-0038 skip path (setUpWithError throws before
+    /// setUp runs). Guards tearDown so the skip path touches nothing.
+    private var testBodyRan = false
 
     // ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate
-    // hangs/later). Moved here 2026-10-01 from per-test body-level skips:
-    // on the v2.9.5 tag run the body-level skips did NOT stop the
-    // failures — the test host still exited ("Restarting after unexpected
-    // exit, crash, or test timeout") after every skipped body, because
-    // tearDown's ClipboardStore.shared access still ran, and
-    // testReturnsTerminateLaterWhenImageStorageHasPendingWrite had no
-    // body-level skip at all and drove the real saveImage +
-    // applicationShouldTerminate path. Throwing XCTSkip from
-    // setUpWithError skips the whole class with zero side effects: setUp,
-    // test bodies, and tearDown are never reached.
+    // hangs/later). Moved here 2026-10-01 from per-test body-level skips.
     //
-    // v2.9.6 re-enable: delete this override. setUp/tearDown and all
-    // three test bodies below are the original implementations.
+    // CONFIRMED CI crash mechanism (2026-10-01, run 36833079602 xcresult
+    // diagnostics): Xcode 26 XCTest invokes tearDown() even when
+    // setUpWithError threw XCTSkip. tearDown's
+    // `ClipboardStore.shared.needsSave = false` then performs the
+    // singleton's FIRST touch inside the teardown dispatch context and
+    // the host dies with
+    // "libdispatch.dylib: BUG IN CLIENT OF LIBDISPATCH: trying to lock
+    // recursively" — xcodebuild restarts the host and attributes the
+    // crash to this class's tests ("Failing tests:"). Local runs stay
+    // green because another test class initializes the singleton first.
+    //
+    // v2.9.6 re-enable: delete the setUpWithError override below. setUp,
+    // tearDown, and all three test bodies are the original
+    // implementations.
     override func setUpWithError() throws {
         throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate hangs/later)")
     }
@@ -45,9 +51,17 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
             .appendingPathComponent("AppDelegateShouldTerminateTests-\(UUID().uuidString)",
                                     isDirectory: true)
         defaults = UserDefaults(suiteName: "AppDelegateShouldTerminateTests-\(UUID().uuidString)")
+        testBodyRan = true
     }
 
     override func tearDown() {
+        // Skip path: setUp never ran and no test body executed — touch
+        // nothing (see the crash mechanism note above). This guard is
+        // load-bearing on the CI runner, not defensive decoration.
+        guard testBodyRan else {
+            super.tearDown()
+            return
+        }
         try? FileManager.default.removeItem(at: tempRoot)
         tempRoot = nil
         defaults = nil
