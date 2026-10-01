@@ -44,8 +44,17 @@ extension ClipboardStore {
     /// / `loadTags()` silently swallowed the error and continued with an
     /// empty in-memory collection — the very next save wiped the persist
     /// layer permanently.
+    /// ID-REVIEW-1002 (code-review-2026-10-01 P0 0-2): use the injected
+    /// `self.defaults` instead of `UserDefaults.standard`. The hard-coded
+    /// standard suite bypasses the test injection that
+    /// `xcTestDefaults` provides, so any test that exercises a corrupt-blob
+    /// load path (e.g. IntegrationTests) writes to the production
+    /// `com.clipmemory.app` domain — exactly the failure mode ZZZ canary
+    /// exists to prevent. `FileStorageBackend` deliberately supports
+    /// injected defaults for this reason; the quarantine extension was the
+    /// only path still leaking through.
     func quarantineCorruptBlob(key: String, error: Error) {
-        let defaults = UserDefaults.standard
+        let defaults = self.defaults
         guard let blob = defaults.data(forKey: key) else { return }
         let timestamp = Self.iso8601Formatter.string(from: Date())
         let quarantineKey = "\(key).corrupt-\(timestamp)"
