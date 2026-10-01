@@ -101,7 +101,7 @@ final class TestHostIsolationTests: XCTestCase {
         }
         let hotKeyCodeBefore = UserDefaults.standard.object(forKey: "HotKeyKeyCode")
         let hotKeyModifiersBefore = UserDefaults.standard.object(forKey: "HotKeyModifiers")
-        HotKeyConfig(keyCode: 0, modifiers: 256).save()
+        HotKeyConfig(keyCode: 0, modifiers: 256).save(to: .standard)
         if let hotKeyCodeBefore {
             UserDefaults.standard.set(hotKeyCodeBefore, forKey: "HotKeyKeyCode")
         } else {

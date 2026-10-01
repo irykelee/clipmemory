@@ -115,7 +115,7 @@ final class HotKeyManagerTests: XCTestCase {
 
     func testLoadReturnsDefaultWhenNotSet() {
         // H.2.1: First launch (no saved config) → default config
-        let loaded = HotKeyConfig.load()
+        let loaded = HotKeyConfig.load(from: .standard)
         XCTAssertEqual(loaded, .defaultConfig)
     }
 
@@ -125,8 +125,8 @@ final class HotKeyManagerTests: XCTestCase {
             keyCode: UInt32(kVK_ANSI_B),
             modifiers: UInt32(cmdKey | shiftKey)
         )
-        original.save()
-        let loaded = HotKeyConfig.load()
+        original.save(to: .standard)
+        let loaded = HotKeyConfig.load(from: .standard)
         XCTAssertEqual(loaded, original)
         XCTAssertEqual(loaded.keyCode, UInt32(kVK_ANSI_B))
         XCTAssertEqual(loaded.modifiers, UInt32(cmdKey | shiftKey))
@@ -155,7 +155,7 @@ final class HotKeyManagerTests: XCTestCase {
         XCTAssertEqual(manager.config.displayString, "⌘⌥C")
 
         // Persistence: a fresh load() returns the same config
-        let reloaded = HotKeyConfig.load()
+        let reloaded = HotKeyConfig.load(from: .standard)
         XCTAssertEqual(reloaded.keyCode, newKeyCode)
         XCTAssertEqual(reloaded.modifiers, newModifiers)
     }
@@ -243,7 +243,7 @@ final class HotKeyManagerTests: XCTestCase {
 
         // Now attempt the bad call — config and UserDefaults must stay put
         manager.updateHotKey(keyCode: UInt32(kVK_ANSI_A), modifiers: 0)
-        let persisted = HotKeyConfig.load()
+        let persisted = HotKeyConfig.load(from: .standard)
         XCTAssertEqual(persisted.modifiers, UInt32(cmdKey | shiftKey),
                        "Rejected update must not write zero to UserDefaults")
     }
@@ -258,7 +258,7 @@ final class HotKeyManagerTests: XCTestCase {
         // read path so legacy/corrupted UserDefaults can't bypass it.
         UserDefaults.standard.set(Int(kVK_ANSI_V), forKey: keyCodeKey)
         UserDefaults.standard.set(0, forKey: modifiersKey)
-        let loaded = HotKeyConfig.load()
+        let loaded = HotKeyConfig.load(from: .standard)
         XCTAssertEqual(loaded, .defaultConfig,
                        "load() must reject modifiers=0 and return defaultConfig")
     }
@@ -269,7 +269,7 @@ final class HotKeyManagerTests: XCTestCase {
         // is also invalid. Falls back to defaultConfig.
         UserDefaults.standard.set(Int(kVK_ANSI_X), forKey: keyCodeKey)
         // modifiersKey intentionally not set
-        let loaded = HotKeyConfig.load()
+        let loaded = HotKeyConfig.load(from: .standard)
         XCTAssertEqual(loaded, .defaultConfig,
                        "Partial save with missing modifiers must fall back to defaultConfig")
     }
@@ -279,7 +279,7 @@ final class HotKeyManagerTests: XCTestCase {
     func testLoadReturnsDefaultWhenPersistedValuesAreNegative() {
         UserDefaults.standard.set(-1, forKey: keyCodeKey)
         UserDefaults.standard.set(-1, forKey: modifiersKey)
-        let loaded = HotKeyConfig.load()
+        let loaded = HotKeyConfig.load(from: .standard)
         XCTAssertEqual(loaded, .defaultConfig,
                        "Negative persisted values must fall back to defaultConfig")
     }
@@ -288,7 +288,7 @@ final class HotKeyManagerTests: XCTestCase {
     func testLoadReturnsDefaultWhenKeyCodeIsOutOfRange() {
         UserDefaults.standard.set(999, forKey: keyCodeKey)
         UserDefaults.standard.set(Int(cmdKey | controlKey), forKey: modifiersKey)
-        let loaded = HotKeyConfig.load()
+        let loaded = HotKeyConfig.load(from: .standard)
         XCTAssertEqual(loaded, .defaultConfig,
                        "Out-of-range keyCode must fall back to defaultConfig")
     }

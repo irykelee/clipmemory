@@ -13,13 +13,20 @@ struct HotKeyConfig: Codable, Equatable {
     private static var keyCodeKey: String { UserDefaultsKey.hotKeyKeyCode.rawValue }
     private static var modifiersKey: String { UserDefaultsKey.hotKeyModifiers.rawValue }
 
-    func save() {
-        UserDefaults.standard.set(Int(keyCode), forKey: Self.keyCodeKey)
-        UserDefaults.standard.set(Int(modifiers), forKey: Self.modifiersKey)
+    // ID-REVIEW-1010 (code-review-2026-10-01 v2.9.6 hotkey seam): accept
+    // an injected `defaults` instead of reaching `UserDefaults.standard`
+    // directly. Production callers pass `.standard`; test fixtures (and
+    // XCTest paths via `xcTestDefaults` style helper) pass an isolated
+    // suite. The hotkey write path is one of the 4 production code
+    // paths the ZZZ canary catches polluting `com.clipmemory.app` under
+    // XCTest — the others are WindowManager (NSWindow autosave),
+    // SafeModeService, and ClipboardStore (maxItems/excludedBundleIds).
+    func save(to defaults: UserDefaults) {
+        defaults.set(Int(keyCode), forKey: Self.keyCodeKey)
+        defaults.set(Int(modifiers), forKey: Self.modifiersKey)
     }
 
-    static func load() -> HotKeyConfig {
-        let defaults = UserDefaults.standard
+    static func load(from defaults: UserDefaults) -> HotKeyConfig {
         if defaults.object(forKey: keyCodeKey) != nil {
             let modifiersInt = defaults.integer(forKey: modifiersKey)
             let keyCodeInt = defaults.integer(forKey: keyCodeKey)
@@ -131,12 +138,27 @@ class HotKeyManager {
     // retain is balanced entirely on the register/unregister pair.
     private var retainedSelfPtr: UnsafeMutableRawPointer?
 
-    private(set) var config: HotKeyConfig = .load()
+    private(set) var config: HotKeyConfig
     /// Whether a registration attempt was made this launch (lets UI read the
     /// outcome without triggering a re-register).
     private(set) var registerAttempted = false
+    /// ID-REVIEW-1010: injected UserDefaults so XCTest can redirect hotkey
+    /// persistence to an isolated suite. Production path passes
+    /// `UserDefaults.standard`; the XCTest helper below returns an isolated
+    /// suite keyed off `XCTestConfigurationFilePath`, matching the
+    /// `ClipboardStore.xcTestDefaults` pattern.
+    nonisolated static var xcTestDefaults: UserDefaults {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            return .standard
+        }
+        return UserDefaults(suiteName: "HotKeyManager-XCTest-isolation") ?? .standard
+    }
+    let defaults: UserDefaults
 
-    init() {}
+    init(defaults: UserDefaults = HotKeyManager.xcTestDefaults) {
+        self.defaults = defaults
+        self.config = HotKeyConfig.load(from: defaults)
+    }
 
     func register() {
         // Idempotent: callers (e.g. WelcomeView's conflict check in the past)
@@ -221,7 +243,7 @@ class HotKeyManager {
             return
         }
         config = HotKeyConfig(keyCode: keyCode, modifiers: modifiers)
-        config.save()
+        config.save(to: defaults)
         unregister()
         register()
     }
