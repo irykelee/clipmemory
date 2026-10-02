@@ -100,13 +100,14 @@ final class SettingsTabSnapshotTests: XCTestCase {
         // on CI (run 36978148927). Local experiments (skips-ledger.md) show the
         // render is invariant to `settings.selectedTab` — byte-compare passes
         // with the key isolated — so the key cannot explain the CI mismatch.
-        // Standing explanation: runner-side rendering difference of the
-        // golden's brand band (rows 0-44; a recording-time transient is
-        // refuted by the band's structured output — centered solid brand
-        // block + hairline). Primary lead: renderToImage captures before
-        // SwiftUI layout settles (the 4 sibling goldens are 100% blank).
-        // See skips-ledger.md.
-        throw XCTSkip("ID-CRASH-0038 skip: root-view snapshot CI mismatch (brand band, runner-side render diff); see skips-ledger.md")
+        // Evidence-backed diagnosis: ImageRenderer does not rasterize
+        // AppKit-backed `Form` content — this golden's blank region is
+        // exactly the tab-content (Form) subtree (picker band + Divider
+        // render at exact offsets; 12+24+8+1 pins the Divider at row 44),
+        // and the 4 sibling goldens (single-Form views) are 100% blank. The
+        // CI mismatch location is unverified (no actual.png artifacts
+        // inspected). See skips-ledger.md.
+        throw XCTSkip("ID-CRASH-0038 skip: root-view snapshot CI mismatch (ImageRenderer skips AppKit-backed Form); see skips-ledger.md")
         let view = SettingsRootView(hotKeyManager: nil, store: store,
                                     backupService: .shared)
         let image = renderToImage(view, size: CGSize(width: 680, height: 560))

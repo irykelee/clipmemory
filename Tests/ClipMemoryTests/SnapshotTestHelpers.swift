@@ -183,14 +183,15 @@ func assertImageSnapshot(
     // `settings.selectedTab = update` mis-recorded the root-view golden was
     // falsified locally — byte-compare passes with the key isolated, so the
     // render is invariant to the key and the key cannot explain the CI
-    // mismatch (see skips-ledger.md). Standing explanation: runner-side
-    // rendering difference of the golden's brand band (rows 0-44; a
-    // recording-time transient is refuted by the band's structured output —
-    // centered solid brand block + hairline). Primary lead: renderToImage
-    // captures before SwiftUI layout settles — the 4 sibling goldens are
-    // 100% blank. We still remove both keys for the render window so future
-    // goldens can never depend on host defaults; tearDown restores the
-    // prior value or absence.
+    // mismatch (see skips-ledger.md). Evidence-backed diagnosis for the
+    // blank-golden family: ImageRenderer does not rasterize AppKit-backed
+    // `Form` content — this golden's blank region is exactly the
+    // tab-content (Form) subtree while the picker band and Divider render
+    // at exact expected offsets, and the 4 sibling goldens (single-Form
+    // views) are 100% blank. The CI mismatch location itself is unverified
+    // (no actual.png artifacts inspected). We still remove both keys for
+    // the render window so future goldens can never depend on host
+    // defaults; tearDown restores the prior value or absence.
     snapshotTestSavedSelectedTab = defaults.object(forKey: "settings.selectedTab") as? String
     snapshotTestSavedThemeAppearance = defaults.object(forKey: "themeAppearance") as? String
     defaults.removeObject(forKey: "settings.selectedTab")
