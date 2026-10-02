@@ -37,6 +37,12 @@ final class ClipboardStoreSaveFailureTests: XCTestCase {
             trashBackend: trashBackend,
             defaults: testDefaults
         )
+        // ID-CRASH-0057 rework 3 (auto-review-20261002-124153 P2): tests assert
+        // in-memory state (items / saveRetryState) — await the first (empty)
+        // load so the async firstLoadTask cannot read a post-mutation backend
+        // snapshot and replace the in-memory copies afterwards.
+        XCTAssertTrue(store.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before assertions")
     }
 
     override func tearDown() {

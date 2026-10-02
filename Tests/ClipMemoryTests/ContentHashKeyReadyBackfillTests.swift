@@ -19,6 +19,7 @@ import XCTest
     private var originalCrypto: CryptoServiceProtocol?
     private var testCrypto: CryptoService!
     private var testUUIDs: [UUID] = []
+    private var testDefaults: UserDefaults!
 
     private let migrationKey = "ImageStorageMigrationComplete"
     private let startupCleanupKey = "ImageStorageStartupCleanupRan"
@@ -40,7 +41,19 @@ import XCTest
         UserDefaults.standard.set(true, forKey: startupCleanupKey)
 
         backend = MemoryStorageBackend()
-        store = ClipboardStore(backend: backend)
+        // ID-CRASH-0057 rework 3 follow-up (2026-10-02): inject per-test
+        // defaults instead of relying on the shared
+        // "ClipboardStore-XCTest-isolation" suite. The store's init reads
+        // `maxClipboardItems` from the injected defaults at init (clamp
+        // logic), and `mergeBackfilledHashes` ends with
+        // `trimToMaxItems()`. A stale dirty value in the shared suite (e.g.
+        // `maxClipboardItems = 1` persisted by a pre-fix TrimAlert run) made
+        // the merge trim 2 items down to 1 — deterministically, in any
+        // -only-testing subset that excludes AAASuiteBootstrapTests (whose
+        // observer is the only per-test cleaner of the shared suite).
+        // Per-test defaults make the test immune regardless of disk state.
+        testDefaults = makeTestDefaults()
+        store = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: init no longer auto-waits for the background load.
         // These tests directly assign `store.items` and assert merge/hash
         // state; a late firstLoadTask whose backend read lands after the
@@ -64,6 +77,8 @@ import XCTest
         testCrypto = nil
         store = nil
         backend = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 

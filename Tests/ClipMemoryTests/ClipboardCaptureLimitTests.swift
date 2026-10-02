@@ -11,16 +11,26 @@ import XCTest
 @MainActor final class ClipboardCaptureLimitTests: XCTestCase {
 
     private var originalCrypto: CryptoServiceProtocol?
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
         originalCrypto = ServiceContainer.crypto
         ServiceContainer.setCryptoForTesting(CryptoService(customKeyData: Data((0..<32).map { UInt8($0) })))
+        // ID-CRASH-0057 rework 3 follow-up (2026-10-02): per-test defaults
+        // instead of the shared "ClipboardStore-XCTest-isolation" suite —
+        // the store init reads `maxClipboardItems` from the injected suite,
+        // and a dirty value persisted there by an earlier -only-testing
+        // subset (no AAASuiteBootstrapTests observer to clean it) would
+        // silently reshape these tests' trim behavior.
+        testDefaults = makeTestDefaults()
     }
 
     override func tearDown() {
         if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 
@@ -86,7 +96,11 @@ import XCTest
 
     func testAddItemPersistsViaSaveBlobWithValidEncodedData() throws {
         let backend = BlobRecordingBackend()
-        let store = ClipboardStore(backend: backend)
+        let store = ClipboardStore(backend: backend, defaults: testDefaults)
+        // ID-CRASH-0057 rework 3 (124153 P2): await first load before
+        // touching in-memory state (store.items[0] below).
+        XCTAssertTrue(store.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before assertions")
         store.addItem(ClipboardItem(content: "clip2 blob test", type: .text))
         // P1-AUDIT-2026-09-22 (P2-13): addItem uses 500ms debounce instead of
         // write-through. Flush to make this test pin the encode+write contract
@@ -108,7 +122,11 @@ import XCTest
         // semantics for in-memory backends — this is what the test suite's
         // MemoryStorageBackend relies on.
         let backend = MemoryStorageBackend()
-        let store = ClipboardStore(backend: backend)
+        let store = ClipboardStore(backend: backend, defaults: testDefaults)
+        // ID-CRASH-0057 rework 3 (124153 P2): await first load before
+        // touching in-memory state (store.items[0] below).
+        XCTAssertTrue(store.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before assertions")
         store.addItem(ClipboardItem(content: "clip2 memory round trip", type: .text))
         // P1-AUDIT-2026-09-22 (P2-13): addItem uses 500ms debounce. Flush to
         // exercise the encode → saveBlob → default decode → save round-trip.
@@ -126,7 +144,11 @@ import XCTest
         defer { UserDefaults.standard.removeObject(forKey: key) }
 
         let backend = FileStorageBackend(storageKey: key)
-        let store = ClipboardStore(backend: backend)
+        let store = ClipboardStore(backend: backend, defaults: testDefaults)
+        // ID-CRASH-0057 rework 3 (124153 P2): await first load before
+        // touching in-memory state (store.items[0] below).
+        XCTAssertTrue(store.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before assertions")
         store.addItem(ClipboardItem(content: "clip2 file round trip", type: .text))
         // P1-AUDIT-2026-09-22 (P2-13): addItem uses 500ms debounce. Flush to
         // verify the encoded Data lands in UserDefaults synchronously.

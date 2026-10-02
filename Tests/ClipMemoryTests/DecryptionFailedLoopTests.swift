@@ -12,6 +12,12 @@ import XCTest
 
     override func setUp() {
         super.setUp()
+        // Crypto is injected before construction (matching
+        // ContentHashKeyReadyBackfillTests, auto-review-20261002-124153 P2) so
+        // a future pre-populated backend loads under the test key, not the
+        // production one.
+        originalCrypto = ServiceContainer.crypto
+        ServiceContainer.setCryptoForTesting(CryptoService(customKeyData: Data((0..<32).map { UInt8($0) })))
         backend = MemoryStorageBackend()
         store = ClipboardStore(backend: backend)
         // ID-CRASH-0057: init no longer auto-waits for the background load.
@@ -22,8 +28,6 @@ import XCTest
         // one, failing the flag/hash assertions (auto-review-20261002-120112 P1).
         XCTAssertTrue(store.waitForFirstLoadSync(timeout: 15.0),
                       "first load must complete before tests mutate backend state")
-        originalCrypto = ServiceContainer.crypto
-        ServiceContainer.setCryptoForTesting(CryptoService(customKeyData: Data((0..<32).map { UInt8($0) })))
     }
 
     override func tearDown() {

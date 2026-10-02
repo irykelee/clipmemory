@@ -10,28 +10,31 @@ import XCTest
 /// logic is testable without rendering the view hierarchy.
 @MainActor final class ContentViewTrimAlertTests: XCTestCase {
 
-    private let maxItemsKey = "maxClipboardItems"
-    private var savedMaxItems: Any?
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        // store.maxItems writes through to UserDefaults in didSet — save and
-        // restore so the test doesn't leak a trimmed limit into other tests
-        // (or the developer's real defaults).
-        savedMaxItems = UserDefaults.standard.object(forKey: maxItemsKey)
+        // ID-CRASH-0057 rework 3 (auto-review-20261002-124153 P1): store.maxItems
+        // writes through to the store's defaults in didSet. Under XCTest the
+        // store defaults to the shared "ClipboardStore-XCTest-isolation" suite,
+        // so a limit set by one test leaked into the next test of this suite:
+        // testConfirmTrimApplies... persisted maxItems=2, the next makeStore
+        // then capped its items at 2 and items[3] trapped (deterministic host
+        // crash). Per-test suites isolate the write. The previous
+        // UserDefaults.standard save/restore was a no-op — the store never
+        // writes .standard under XCTest (same dead-code finding as
+        // Audit20260720RegressionTests C-1).
+        testDefaults = makeTestDefaults()
     }
 
     override func tearDown() {
-        if let savedMaxItems {
-            UserDefaults.standard.set(savedMaxItems, forKey: maxItemsKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: maxItemsKey)
-        }
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 
     private func makeStore(itemCount: Int) -> ClipboardStore {
-        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let store = ClipboardStore(backend: MemoryStorageBackend(), defaults: testDefaults)
         for i in 0..<itemCount {
             store.addItem(ClipboardItem(content: "item \(i)", type: .text))
         }
@@ -60,7 +63,7 @@ import XCTest
     /// backend sees the trimmed history, not the pre-trim one.
     func testConfirmTrimPersistsTrimmedItems() throws {
         let backend = MemoryStorageBackend()
-        let store = ClipboardStore(backend: backend)
+        let store = ClipboardStore(backend: backend, defaults: testDefaults)
         for i in 0..<5 {
             store.addItem(ClipboardItem(content: "item \(i)", type: .text))
         }
@@ -70,7 +73,7 @@ import XCTest
             store: store
         )
 
-        let restarted = ClipboardStore(backend: backend)
+        let restarted = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: init no longer auto-waits for the background load;
         // restart-simulation tests must await it explicitly.
         XCTAssertTrue(restarted.waitForFirstLoadSync(timeout: 15.0),

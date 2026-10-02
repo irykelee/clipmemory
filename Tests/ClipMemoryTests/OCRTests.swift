@@ -26,6 +26,13 @@ import Vision
         testCrypto = CryptoService(customKeyData: Data((0..<32).map { UInt8($0) }))
         originalCrypto = ServiceContainer.crypto
         ServiceContainer.setCryptoForTesting(testCrypto)
+        // ID-CRASH-0057 rework 3 (auto-review-20261002-124153 P2): tests in
+        // this class save to `backend` post-construction and assert in-memory
+        // state — await the first (empty) load first, or the async
+        // firstLoadTask can read the post-save snapshot and applyLoadResult
+        // would replace the mutated copies.
+        XCTAssertTrue(store.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before tests mutate backend state")
     }
 
     override func tearDown() {
