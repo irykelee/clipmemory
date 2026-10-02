@@ -174,16 +174,20 @@ func assertImageSnapshot(
     // write back as a real 0, polluting production defaults (fontScale=0
     // matches no picker tag and renders the settings row blank).
     snapshotTestSavedFontScale = defaults.object(forKey: "fontScale") as? Double
-    // ID-CRASH-0038 (2026-10-02, auto-review-164609 P1): same missing-aware
-    // pattern for the two remaining production-`.standard` `@AppStorage`
-    // reads. `SettingsRootView` reads `@AppStorage("settings.selectedTab")`
+    // ID-CRASH-0038 (2026-10-02): same missing-aware pattern for the two
+    // remaining production-`.standard` `@AppStorage` reads:
+    // `SettingsRootView` reads `@AppStorage("settings.selectedTab")`
     // (SettingsRootView.swift:31) and `GeneralSettingsView` reads
-    // `@AppStorage("themeAppearance")` (GeneralSettingsView.swift:13);
-    // neither was isolated here, so a host whose real defaults carried
-    // `settings.selectedTab = update` recorded the Update tab into
-    // testSettingsRootViewGeneralTab.png (7c7d442) while CI's clean runner
-    // (key absent → `.general`) mismatched. Remove both for the render
-    // window; tearDown restores the prior value or absence.
+    // `@AppStorage("themeAppearance")` (GeneralSettingsView.swift:13).
+    // Hygiene only — auto-review-164609's theory that a polluted
+    // `settings.selectedTab = update` mis-recorded the root-view golden was
+    // FALSIFIED (pixel decode: testSettingsRootViewGeneralTab.png content ==
+    // testGeneralSettingsTabDefault.png, 0/921600 bytes mismatch, and local
+    // byte-compare passes with the key isolated; see skips-ledger.md). The
+    // CI mismatch is runner rendering drift on the root view's unique
+    // chrome. We still remove both keys for the render window so future
+    // goldens can never depend on host defaults; tearDown restores the
+    // prior value or absence.
     snapshotTestSavedSelectedTab = defaults.object(forKey: "settings.selectedTab") as? String
     snapshotTestSavedThemeAppearance = defaults.object(forKey: "themeAppearance") as? String
     defaults.removeObject(forKey: "settings.selectedTab")
