@@ -183,15 +183,19 @@ func assertImageSnapshot(
     // `settings.selectedTab = update` mis-recorded the root-view golden was
     // falsified locally — byte-compare passes with the key isolated, so the
     // render is invariant to the key and the key cannot explain the CI
-    // mismatch (see skips-ledger.md). Evidence-backed diagnosis for the
-    // blank-golden family: ImageRenderer does not rasterize AppKit-backed
-    // `Form` content — this golden's blank region is exactly the
-    // tab-content (Form) subtree while the picker band and Divider render
-    // at exact expected offsets, and the 4 sibling goldens (single-Form
-    // views) are 100% blank. The CI mismatch location itself is unverified
-    // (no actual.png artifacts inspected). We still remove both keys for
-    // the render window so future goldens can never depend on host
-    // defaults; tearDown restores the prior value or absence.
+    // mismatch (see skips-ledger.md). For the blank-golden family TWO
+    // candidate hypotheses remain open (AppKit-backed `Form` rasterization
+    // gap vs capture-too-early/settle): the blank region matches the Form
+    // subtree and the 4 sibling goldens (single-Form views) are 100% blank,
+    // but the picker band is a degenerate render (uniform fill + one glyph
+    // cluster, not 4 labels) — that does NOT exclude a settle race. The
+    // golden is byte-stable and byte-matches locally, so no
+    // environment-independent rendering property explains the CI-only
+    // mismatch yet. `themeAppearance` isolation is reasoned-inert, not
+    // measured: the only golden it could affect
+    // (testSettingsRootViewGeneralTab) is currently skipped. We still remove
+    // both keys for the render window so future goldens can never depend on
+    // host defaults; tearDown restores the prior value or absence.
     snapshotTestSavedSelectedTab = defaults.object(forKey: "settings.selectedTab") as? String
     snapshotTestSavedThemeAppearance = defaults.object(forKey: "themeAppearance") as? String
     defaults.removeObject(forKey: "settings.selectedTab")

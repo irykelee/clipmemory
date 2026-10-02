@@ -194,7 +194,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // pollute production `com.clipmemory.app`. Re-adding this entry would
         // re-blind the canary — do it only if maxItems didSet regresses to
         // UserDefaults.standard AND a real fix is on the way.
-        "settings.selectedTab",      // SettingsRootView.swift:31 — @AppStorage, didSet on tab click
+        "settings.selectedTab",      // SettingsRootView.swift:31 — @AppStorage, written by the selectedTabBinding setter (:37) on tab click
         // ImageStorage startup migration + cleanup:
         "ImageStorageMigrationComplete", // ImageStorage.swift:78, 159, 290 — init-time migration latch
         "ImageStorageStartupCleanupRan", // ImageStorage.swift:889, 891 — init-time orphan cleanup latch

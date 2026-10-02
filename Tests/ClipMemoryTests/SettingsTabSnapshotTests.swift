@@ -100,14 +100,18 @@ final class SettingsTabSnapshotTests: XCTestCase {
         // on CI (run 36978148927). Local experiments (skips-ledger.md) show the
         // render is invariant to `settings.selectedTab` — byte-compare passes
         // with the key isolated — so the key cannot explain the CI mismatch.
-        // Evidence-backed diagnosis: ImageRenderer does not rasterize
-        // AppKit-backed `Form` content — this golden's blank region is
-        // exactly the tab-content (Form) subtree (picker band + Divider
-        // render at exact offsets; 12+24+8+1 pins the Divider at row 44),
-        // and the 4 sibling goldens (single-Form views) are 100% blank. The
-        // CI mismatch location is unverified (no actual.png artifacts
-        // inspected). See skips-ledger.md.
-        throw XCTSkip("ID-CRASH-0038 skip: root-view snapshot CI mismatch (ImageRenderer skips AppKit-backed Form); see skips-ledger.md")
+        // Pixel facts: the golden's blank region is exactly the tab-content
+        // (Form) subtree, the 4 sibling goldens (single-Form views) are 100%
+        // blank, and the picker band is a DEGENERATE render (uniform 530x24
+        // fill + one glyph cluster, not the 4 labels + separators a 4-segment
+        // Picker must draw) — so the settle/capture-too-early hypothesis is
+        // NOT excluded, the Form-rasterization-gap hypothesis is NOT
+        // confirmed, and because the golden is byte-stable and byte-matches
+        // locally, no environment-independent rendering property explains
+        // the CI-only mismatch yet. Keep skipped until the CI mismatch
+        // mechanism is identified (actual.png artifacts / probe re-record).
+        // See skips-ledger.md.
+        throw XCTSkip("ID-CRASH-0038 skip: root-view snapshot CI mismatch (mechanism unidentified; see skips-ledger.md)")
         let view = SettingsRootView(hotKeyManager: nil, store: store,
                                     backupService: .shared)
         let image = renderToImage(view, size: CGSize(width: 680, height: 560))
