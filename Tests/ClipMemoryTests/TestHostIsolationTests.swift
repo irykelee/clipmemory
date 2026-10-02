@@ -38,6 +38,24 @@ final class TestHostIsolationTests: XCTestCase {
                        "ID-STORE-0005: trash backend must not persist under XCTest")
     }
 
+    /// ID-REVIEW-1012 rework (2026-10-02): pins the `ClipboardStore.shared`
+    /// singleton contract — a stable instance whose defaults route to the
+    /// isolated suite (never `.standard`) in the test process. The 2009a5e
+    /// lazy-init rework briefly replaced `static let` with an
+    /// `assumeIsolated` getter that trapped off-main; this test fails if
+    /// either the singleton identity or the env-based routing regresses.
+    /// Note: if a CI runner ever launches the host WITHOUT
+    /// `XCTestConfigurationFilePath` set, this test fails loudly there —
+    /// that is the empirical probe for the env-detection debate.
+    @MainActor
+    func testSharedSingletonRoutesToIsolatedDefaultsUnderXCTest() {
+        let shared = ClipboardStore.shared
+        XCTAssertTrue(shared === ClipboardStore.shared,
+                      "ClipboardStore.shared must return the same instance on every access")
+        XCTAssertFalse(shared.defaults === UserDefaults.standard,
+                       "Under XCTest, ClipboardStore.shared must use the isolated suite, not .standard")
+    }
+
     /// M13 (2026-08-03): with injectable defaults in place (TrashStore,
     /// ClipboardStore+OCR, UpdateService, ImageStorage, WindowManager), the
     /// per-class save/restore样板 has been removed — production defaults are

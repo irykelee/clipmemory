@@ -135,20 +135,30 @@ final class HotKeyManagerTests: XCTestCase {
     // MARK: - H.3 HotKeyManager config flow
 
     func testManagerInitialConfigMatchesDefaults() {
-        // H.3.1: Manager's config is loaded from `HotKeyManager.xcTestDefaults`
-        // (which resolves to `.standard` in both production AND test — see
-        // ID-REVIEW-1010 design note). Empty store OR store with values
-        // that fail validation falls back to `.defaultConfig`. Other tests
-        // in this file may leave values in `.standard` that are valid (e.g.,
-        // `kVK_ANSI_X = 8` from `testLoadReturnsDefaultWhenOnlyKeyCodeSaved`),
-        // so we can't assert `.defaultConfig` directly. Instead, read the
-        // current `.standard` snapshot and verify the manager matches what
-        // the store would have returned — the load() function's contract is
-        // that manager.config == HotKeyConfig.load(from: .standard).
-        let manager = HotKeyManager()
-        let expected = HotKeyConfig.load(from: .standard)
-        XCTAssertEqual(manager.config, expected,
-                       "H.3.1: manager.config must match what load() reads from the same defaults")
+        // H.3.1: Manager's config is loaded from the INJECTED defaults at
+        // init (ID-REVIEW-1010 seam). Asserting against a local UUID suite
+        // (not `.standard`, not the shared isolation suite) keeps this
+        // hermetic: other tests may leave valid values in `.standard`, and
+        // no-arg `HotKeyManager()` under XCTest reads the shared
+        // `HotKeyManager-XCTest-isolation` suite. The seeded case below is
+        // the real coverage — it can only pass if init actually calls
+        // `HotKeyConfig.load(from: defaults)` on the injected store.
+        let suiteName = "HotKeyManagerTests-H31-\(UUID().uuidString)"
+        guard let suite = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("failed to create isolation suite")
+        }
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        let cleanManager = HotKeyManager(defaults: suite)
+        XCTAssertEqual(cleanManager.config, .defaultConfig,
+                       "H.3.1: empty injected store must fall back to .defaultConfig")
+
+        let seeded = HotKeyConfig(keyCode: UInt32(kVK_ANSI_B),
+                                  modifiers: UInt32(cmdKey | shiftKey))
+        seeded.save(to: suite)
+        let seededManager = HotKeyManager(defaults: suite)
+        XCTAssertEqual(seededManager.config, seeded,
+                       "H.3.1: manager.config must load from the injected defaults at init")
     }
 
     func testUpdateHotKeyUpdatesConfigAndPersists() {
@@ -168,11 +178,8 @@ final class HotKeyManagerTests: XCTestCase {
         // Persistence: a fresh load() from the SAME defaults the manager
         // wrote to returns the same config. (ID-REVIEW-1010: `save(to:)`
         // writes to `manager.defaults` — the injected suite under XCTest,
-        // `.standard` in production. The test reads from `.standard` for
-        // the historical \"this hits production defaults\" assertion, but
-        // that's only valid when the manager was constructed with
-        // `defaults: .standard`. Skip that cross-check under XCTest by
-        // routing through the same manager.defaults the write went to.)
+        // `.standard` in production — so the reload must use the same
+        // injected defaults, never a hardcoded `.standard`.)
         let reloaded = HotKeyConfig.load(from: manager.defaults)
         XCTAssertEqual(reloaded.keyCode, newKeyCode)
         XCTAssertEqual(reloaded.modifiers, newModifiers)
@@ -253,7 +260,6 @@ final class HotKeyManagerTests: XCTestCase {
 
     func testUpdateHotKeyRejectsZeroModifiersDoesNotPersist() {
         // RS-3.4 follow-up: rejection must not corrupt UserDefaults either.
-        UserDefaults.standard.removeObject(forKey: modifiersKey)
         let manager = HotKeyManager()
         // Re-seed UserDefaults with a known good value first
         manager.updateHotKey(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(cmdKey | shiftKey))
@@ -261,7 +267,10 @@ final class HotKeyManagerTests: XCTestCase {
 
         // Now attempt the bad call — config and UserDefaults must stay put
         manager.updateHotKey(keyCode: UInt32(kVK_ANSI_A), modifiers: 0)
-        let persisted = HotKeyConfig.load(from: .standard)
+        // Reload from the SAME defaults the manager writes to (the injected
+        // suite under XCTest): reading `.standard` here would silently pass
+        // off the production default's modifiers instead of the manager's.
+        let persisted = HotKeyConfig.load(from: manager.defaults)
         XCTAssertEqual(persisted.modifiers, UInt32(cmdKey | shiftKey),
                        "Rejected update must not write zero to UserDefaults")
     }

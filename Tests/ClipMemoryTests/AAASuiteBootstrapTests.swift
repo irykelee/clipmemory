@@ -56,16 +56,21 @@ final class AAASuiteBootstrapTests: XCTestCase {
         // happened to write. The observer is registered once here
         // (`class func setUp` runs once per class); the XCTestObservation
         // center keeps it active for the rest of the process.
-        XCTestObservationCenter.shared.addTestObserver(ClipboardStoreXcTestObserver())
+        XCTestObservationCenter.shared.addTestObserver(XCTestIsolationSuiteObserver())
     }
 
     /// XCTestObservation observer (ID-STORE-0014 part 2). Fires before
-    /// each test case in the suite; clears the `ClipboardStore-XCTest-
-    /// isolation` persistent domain so per-test mutations don't leak.
-    private final class ClipboardStoreXcTestObserver: NSObject, XCTestObservation {
+    /// each test case in the suite; clears the per-service XCTest
+    /// isolation persistent domains so per-test mutations don't leak
+    /// across tests (or across runs — the suite plists persist).
+    /// Covers every production `xcTestDefaults` suite that no-arg
+    /// singletons route to under XCTest.
+    private final class XCTestIsolationSuiteObserver: NSObject, XCTestObservation {
         func testCaseWillStart(_ testCase: XCTestCase) {
-            let suiteName = "ClipboardStore-XCTest-isolation"
-            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+            for suiteName in ["ClipboardStore-XCTest-isolation",
+                              "HotKeyManager-XCTest-isolation"] {
+                UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+            }
         }
     }
 

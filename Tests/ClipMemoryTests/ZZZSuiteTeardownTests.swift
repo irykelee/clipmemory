@@ -88,25 +88,22 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// injection work dropped the count to 4 framework/OS-level
     /// keys. See report §NEW-2 addendum and `feedback/4to2-language-manager-shared-seam.md`.
     ///
-    /// ID-REVIEW-1013 (code-review-2026-10-01 v2.9.6 canary re-enable):
-    /// bumped count to 11 to absorb test-side pollution that the
-    /// ID-REVIEW-1009/1010/1011/1012 production-code migration left
-    /// in `.standard`. The 7 new entries are written by test files
-    /// that exercise production paths explicitly via
-    /// `UserDefaults.standard.set(...)` without tearDown cleanup
-    /// (HotKeyManagerTests.swift:259-260, IntegrationTests.swift:195,
-    /// FileStorageBackendDefaultsSeamTests.swift:68, plus
-    /// `TestHostIsolationTests.testProductionDefaultsKeysAreNotMutated`
-    /// deliberately writes 4 keys to verify round-trip cleanup).
-    /// Production code is verified clean via
-    /// `grep -rn 'UserDefaults.standard\.set' ClipMemory/` → 0 hits.
-    /// Adding these to `toleratedPollution` is the honest
-    /// acknowledgment: the canary's purpose is to catch UNEXPECTED
-    /// production pollution, not to police test-side pollution
-    /// (which `testProductionDefaultsKeysAreNotMutated` already
-    /// covers as a separate assertion). v2.9.6 follow-up: add
-    /// proper `setUp`/`tearDown` save+restore to the listed tests
-    /// so these can be removed from the allowlist.
+    /// ID-REVIEW-1013 (2026-10-01) temporarily bumped this set to 11 to
+    /// absorb suspected test-side pollution. Pruned back to the 4
+    /// framework keys (2026-10-02, auto-review-20261002-083606 FAIL
+    /// rework): with ID-REVIEW-1009/1010/1011/1012 shipped and the
+    /// 2026-10-02 reworks in place (ClipboardStore `static let shared`
+    /// restored; `HotKeyManager.xcTestDefaults` back to the isolated
+    /// suite; HotKey tests' absence-aware setUp/tearDown verified), the
+    /// full suite passes with ZERO test-side entries. The 7 temporary
+    /// entries were removed because 4 of them had no writer anywhere in
+    /// the repo (safeMode.* / excludedBundleIds / WindowFrame — the
+    /// latter disarmed the regression tripwire documented in the
+    /// `appLifecycleKeys` comment below), and the other 3 were cited
+    /// against tests that provably clean up after themselves
+    /// (HotKeyManagerTests class-wide setUp/tearDown backup-and-restore;
+    /// TestHostIsolationTests in-line absence-aware restore). Keeping
+    /// unverifiable entries would mask future real regressions.
     private static let toleratedPollution: Set<String> = [
         // 2026-08-06 (cold-disk calibration, after 4→2 LM seam):
         // real single-run pollution now leaks 4 keys to the production
@@ -137,20 +134,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         "AppleLanguages",       // OS-level locale default (always present)
         "SUHasLaunchedBefore",  // Sparkle SPUStandardUpdaterController
         "SULastCheckTime",      // Sparkle SPUStandardUpdaterController
-        "SUUpdateGroupIdentifier", // Sparkle SPUStandardUpdaterController (race-conditioned)
-
-        // ID-REVIEW-1013 (2026-10-01): 7 test-side pollution keys below.
-        // Each one is written by a test fixture (not production code)
-        // for legitimate test purposes — see commit message for the
-        // grep audit. Production code reads/writes these via the
-        // injected `self.defaults` (post ID-REVIEW-1009/1010/1011/1012).
-        "HotKeyKeyCode",         // HotKeyManagerTests.swift:259,270,280,289
-        "HotKeyModifiers",       // HotKeyManagerTests.swift:260,281
-        "maxClipboardItems",     // IntegrationTests.swift:195, FileStorageBackendDefaultsSeamTests.swift:68
-        "safeMode.active",       // TestHostIsolationTests.swift round-trip
-        "safeMode.crashCount",   // TestHostIsolationTests.swift round-trip
-        "WindowFrame",           // AppKit NSWindow.setFrameAutosaveName (WINDOW-0001)
-        "excludedBundleIds",     // TestHostIsolationTests.swift round-trip + KnownExcludedApps fallback default
+        "SUUpdateGroupIdentifier" // Sparkle SPUStandardUpdaterController (race-conditioned)
     ]
 
     /// NEW-9 (2026-08-07): app lifecycle keys that the host process
