@@ -81,6 +81,12 @@ import XCTest
 
         // Simulate restart: new store with same backend
         let store2 = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load.
+        // Required before the items[0]/items[1] indexing below — without it,
+        // re-enabling this XCTSkip'd test would restore the empty-array
+        // SIGTRAP host-crash class (auto-review 20261002-114457 P2).
+        XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
 
         // Items should be recovered
         XCTAssertEqual(store2.items.count, 2)
@@ -668,6 +674,13 @@ import XCTest
         )
         let backendWithCorrupt = MemoryStorageBackend(items: [corrupt])
         let storeWithCorrupt = ClipboardStore(backend: backendWithCorrupt)
+        // ID-CRASH-0057: init no longer auto-waits for the background load.
+        // Over a PRE-POPULATED backend a late firstLoadTask applyLoadResult
+        // would rebuild items from the backend's pristine copy and clobber
+        // the in-memory decryptionFailed flag set below (auto-review
+        // 20261002-114457 P1). Await the load before mutating state.
+        XCTAssertTrue(storeWithCorrupt.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before in-memory state is mutated")
         storeWithCorrupt.loadItems()
 
         // Sanity: corrupt item loaded
@@ -735,6 +748,10 @@ import XCTest
         )
         let backend = MemoryStorageBackend(items: [corrupt])
         let dedupStore = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: await the background load — pre-populated backend;
+        // a late applyLoadResult would clobber in-memory flag state below.
+        XCTAssertTrue(dedupStore.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before flag assertions")
         dedupStore.loadItems()
 
         // Sanity: corrupt item loaded, flag is initially false
@@ -843,6 +860,11 @@ import XCTest
         )
         let backend = MemoryStorageBackend(items: [imageItem])
         let imageStore = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: await the background load so a late applyLoadResult
+        // cannot clobber the in-memory flag repair asserted below (pre-populated
+        // backend — same id replaces the mutated in-memory copy).
+        XCTAssertTrue(imageStore.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before flag assertions")
         imageStore.loadItems()
 
         // loadItems repair should have normalized the flags
@@ -901,6 +923,11 @@ import XCTest
         )
         let backend = MemoryStorageBackend(items: [legacy])
         let legacyStore = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: await the background load so a late applyLoadResult
+        // cannot reset contentHash to the backend's nil after the backfill
+        // poll below observes the backfilled value (pre-populated backend).
+        XCTAssertTrue(legacyStore.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before backfill polling")
         legacyStore.loadItems()
 
         XCTAssertEqual(legacyStore.items.count, 1)

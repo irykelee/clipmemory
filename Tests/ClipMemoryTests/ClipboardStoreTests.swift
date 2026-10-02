@@ -306,16 +306,17 @@ final class ClipboardStoreTests: XCTestCase {
     /// arrive via a MainActor hop, and the SyncBarrier primitives
     /// (`waitForFirstLoadSync`) let callers await completion.
     ///
-    /// **Why no wall-clock assertion on init itself**: under XCTest the
-    /// `init` auto-wait (preserved to keep the existing 1000-test sync
-    /// `items` contract intact) blocks until the slow load completes,
-    /// so init's measured time = slow-load time. The production
-    /// startup-perf benefit (init returns in <1ms with empty items,
-    /// async hop populates over the next 100-300ms) is structurally
-    /// verified by the path: `loadItemsInBackgroundAsync()` fires a
-    /// `Task.detached`, awaits the result on the utility queue, and
-    /// applies via `MainActor.run`. Production callers (the AppDelegate
-    /// wiring) get the <1ms init; tests get the auto-waited equivalent.
+    /// **Why no wall-clock assertion on init itself**: ID-CRASH-0057
+    /// (2026-10-02) removed the XCTest-only init auto-wait — pumping
+    /// `RunLoop.main` inside `ClipboardStore.shared`'s dispatch_once
+    /// critical section re-entered XCTest's run loop and SIGTRAP'd the
+    /// host (issue #93). Init now returns in <1ms with empty items for
+    /// production AND tests alike; callers who need loaded items await
+    /// the SyncBarrier explicitly (`waitForFirstLoadSync` /
+    /// `waitForFirstLoad`), which is exactly what this test verifies.
+    /// The async hop is structurally unchanged: `loadItemsInBackgroundAsync()`
+    /// fires a `Task.detached`, awaits the result on the utility queue,
+    /// and applies via `MainActor.run`.
     func testBackgroundLoadArrivesViaSyncBarrier() {
         // 10K fixture — the audit measured 100-300ms for this size.
         let tenKItems = (0..<10_000).map { i in
