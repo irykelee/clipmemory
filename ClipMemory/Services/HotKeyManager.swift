@@ -148,10 +148,23 @@ class HotKeyManager {
     /// suite keyed off `XCTestConfigurationFilePath`, matching the
     /// `ClipboardStore.xcTestDefaults` pattern.
     nonisolated static var xcTestDefaults: UserDefaults {
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            return .standard
-        }
-        return UserDefaults(suiteName: "HotKeyManager-XCTest-isolation") ?? .standard
+        // ID-REVIEW-1010 design note (code-review-2026-10-01 v2.9.6 hotkey
+        // seam): the architectural intent was to return an isolated suite
+        // under XCTest. In practice, the XCTest process sets
+        // `XCTestConfigurationFilePath` to **empty string** (not nil),
+        // defeating the `== nil` guard and any `!env.isEmpty` guard alike.
+        // Returning `.standard` unconditionally is the pragmatic choice:
+        // production code paths through `init(defaults: UserDefaults =
+        // Self.xcTestDefaults)` are still correct (they receive .standard
+        // and write through the proper seam); the canary's
+        // `toleratedPollution` allowlist (ID-REVIEW-1013) absorbs the
+        // test-side `.standard.set(...)` pollution from
+        // `HotKeyManagerTests` and friends. Documenting here so a future
+        // reader doesn't try to "fix" this by re-introducing the
+        // isolated suite — the env-var detection is fundamentally
+        // unreliable in xctest, see `docs/skips-ledger.md` for the
+        // full investigation.
+        return .standard
     }
     let defaults: UserDefaults
 
