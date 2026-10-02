@@ -183,12 +183,14 @@ func assertImageSnapshot(
     // `settings.selectedTab = update` mis-recorded the root-view golden was
     // falsified locally — byte-compare passes with the key isolated, so the
     // render is invariant to the key and the key cannot explain the CI
-    // mismatch (see skips-ledger.md). The mismatch's actual source (runner
-    // rendering drift vs recording-time transient in the golden's only
-    // non-blank region, rows 0-44) remains an open hypothesis. We still
-    // remove both keys for the render window so future goldens can never
-    // depend on host defaults; tearDown restores the prior value or
-    // absence.
+    // mismatch (see skips-ledger.md). Standing explanation: runner-side
+    // rendering difference of the golden's brand band (rows 0-44; a
+    // recording-time transient is refuted by the band's structured output —
+    // centered solid brand block + hairline). Primary lead: renderToImage
+    // captures before SwiftUI layout settles — the 4 sibling goldens are
+    // 100% blank. We still remove both keys for the render window so future
+    // goldens can never depend on host defaults; tearDown restores the
+    // prior value or absence.
     snapshotTestSavedSelectedTab = defaults.object(forKey: "settings.selectedTab") as? String
     snapshotTestSavedThemeAppearance = defaults.object(forKey: "themeAppearance") as? String
     defaults.removeObject(forKey: "settings.selectedTab")

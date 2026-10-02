@@ -100,12 +100,13 @@ final class SettingsTabSnapshotTests: XCTestCase {
         // on CI (run 36978148927). Local experiments (skips-ledger.md) show the
         // render is invariant to `settings.selectedTab` — byte-compare passes
         // with the key isolated — so the key cannot explain the CI mismatch.
-        // All 5 SettingsTab goldens are content-free (sibling goldens decode
-        // to a single color; this golden's only non-blank region is rows
-        // 0-44): whether the CI mismatch is runner rendering drift or a
-        // recording-time transient in that block remains an open hypothesis.
+        // Standing explanation: runner-side rendering difference of the
+        // golden's brand band (rows 0-44; a recording-time transient is
+        // refuted by the band's structured output — centered solid brand
+        // block + hairline). Primary lead: renderToImage captures before
+        // SwiftUI layout settles (the 4 sibling goldens are 100% blank).
         // See skips-ledger.md.
-        throw XCTSkip("ID-CRASH-0038 skip: root-view snapshot CI mismatch, source open (rows 0-44); see skips-ledger.md")
+        throw XCTSkip("ID-CRASH-0038 skip: root-view snapshot CI mismatch (brand band, runner-side render diff); see skips-ledger.md")
         let view = SettingsRootView(hotKeyManager: nil, store: store,
                                     backupService: .shared)
         let image = renderToImage(view, size: CGSize(width: 680, height: 560))
