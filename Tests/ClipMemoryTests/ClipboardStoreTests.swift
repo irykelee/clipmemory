@@ -355,7 +355,7 @@ final class ClipboardStoreTests: XCTestCase {
         let didLoad = freshStore.waitForFirstLoadSync(timeout: 15.0)
         XCTAssertTrue(
             didLoad,
-            "P2-14: background load must complete within 5s; otherwise the items never arrive"
+            "P2-14: background load must complete within 15s; otherwise the items never arrive"
         )
         XCTAssertEqual(
             freshStore.items.count, 10_000,

@@ -14,6 +14,14 @@ import XCTest
         super.setUp()
         backend = MemoryStorageBackend()
         store = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load.
+        // Each test saves to `backend` AFTER construction and asserts in-memory
+        // state — without awaiting the first (empty) load, the async
+        // firstLoadTask can read the post-save snapshot and applyLoadResult
+        // would replace the mutated in-memory copy with the backend's pristine
+        // one, failing the flag/hash assertions (auto-review-20261002-120112 P1).
+        XCTAssertTrue(store.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before tests mutate backend state")
         originalCrypto = ServiceContainer.crypto
         ServiceContainer.setCryptoForTesting(CryptoService(customKeyData: Data((0..<32).map { UInt8($0) })))
     }
