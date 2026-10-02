@@ -30,11 +30,11 @@ final class WelcomeViewSnapshotTests: XCTestCase {
     }
 
     func testRendersWelcome() throws {
-        // Snapshot CI re-skip (2026-10-02, ID-CRASH-0057 follow-up): golden-record
-        // mismatch on the macOS 27 GH Actions runner (font/material rendering
-        // drift) — selective failure pattern proves env variance, not a code
-        // regression. See skips-ledger.md.
-        throw XCTSkip("snapshot golden-record mismatch on macOS 27 runner (CI run 36978148927); restore after runner-stable baselines")
+        // Snapshot CI re-skip (2026-10-02): CI golden mismatch (run 36978148927).
+        // Root cause under investigation; the fresh HotKeyManager() render input
+        // is one non-hermetic candidate (auto-review-161942 P1-2). See
+        // skips-ledger.md.
+        throw XCTSkip("ID-CRASH-0038 skip: snapshot golden mismatch, hermeticity fix pending; see skips-ledger.md")
         let view = WelcomeView(
             hotKeyManager: HotKeyManager(),
             onComplete: {}

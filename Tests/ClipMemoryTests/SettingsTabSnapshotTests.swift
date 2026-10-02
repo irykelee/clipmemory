@@ -96,11 +96,12 @@ final class SettingsTabSnapshotTests: XCTestCase {
     // MARK: - SettingsRootView
 
     func testSettingsRootViewGeneralTab() throws {
-        // Snapshot CI re-skip (2026-10-02, ID-CRASH-0057 follow-up): only this
-        // test of the suite failed on the macOS 27 runner (4/5 passed) — runner
-        // rendering drift on the root-view composite, not a code regression.
-        // See skips-ledger.md.
-        throw XCTSkip("snapshot golden-record mismatch on macOS 27 runner (CI run 36978148927); restore after runner-stable baselines")
+        // Snapshot CI re-skip (2026-10-02): only this test of the suite failed
+        // on CI (run 36978148927) while its 4 siblings stayed byte-identical —
+        // points at non-hermetic input in the root-view composite
+        // (`backupService: .shared`), not blanket runner drift. See
+        // skips-ledger.md.
+        throw XCTSkip("ID-CRASH-0038 skip: snapshot golden mismatch, hermeticity fix pending; see skips-ledger.md")
         let view = SettingsRootView(hotKeyManager: nil, store: store,
                                     backupService: .shared)
         let image = renderToImage(view, size: CGSize(width: 680, height: 560))
