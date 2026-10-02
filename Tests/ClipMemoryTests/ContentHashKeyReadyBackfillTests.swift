@@ -41,6 +41,13 @@ import XCTest
 
         backend = MemoryStorageBackend()
         store = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load.
+        // These tests directly assign `store.items` and assert merge/hash
+        // state; a late firstLoadTask whose backend read lands after the
+        // debounced save would applyLoadResult-overwrite the merged state
+        // (observed 2026-10-02: count 3 != 2 with a 5s poll timeout).
+        XCTAssertTrue(store.waitForFirstLoadSync(timeout: 15.0),
+                      "first load must complete before items are assigned")
     }
 
     override func tearDown() {

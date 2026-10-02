@@ -133,8 +133,11 @@ extension ClipboardStore {
         //
         // Wait synchronously up to 5s (matches `applicationShouldTerminate`
         // drain's existing watchdog budget — falls through to write truncated
-        // state if decode doesn't complete). In XCTest, init's auto-wait
-        // already flipped `firstLoadCompleted` so this is a no-op for tests.
+        // state if decode doesn't complete). ID-CRASH-0057: the XCTest init
+        // auto-wait was removed (once-reentrancy crash), so this barrier now
+        // also services tests that flush before the background load lands —
+        // the pump runs OUTSIDE any dispatch_once critical section, which is
+        // what made the init variant fatal.
         if !firstLoadCompleted {
             if !waitForFirstLoadSync(timeout: 5.0) {
                 logger.error("P2-14: flushPendingSaves called before firstLoadCompleted (5s timeout) — encoding current items snapshot; on-disk history may be incomplete if load was racing")

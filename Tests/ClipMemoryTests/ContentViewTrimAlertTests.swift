@@ -71,6 +71,10 @@ import XCTest
         )
 
         let restarted = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load;
+        // restart-simulation tests must await it explicitly.
+        XCTAssertTrue(restarted.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
         XCTAssertEqual(restarted.items.count, 1)
         XCTAssertEqual(restarted.getDecryptedContent(restarted.items[0]), "item 4")
     }

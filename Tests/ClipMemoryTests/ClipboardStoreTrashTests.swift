@@ -562,6 +562,10 @@ import XCTest
 
         // Simulate restart which triggers the loadItems expiry path.
         let store2 = ClipboardStore(backend: backend, trashBackend: trashBackend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load;
+        // the expired→trash move happens inside applyLoadResult, so await it.
+        XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
 
         XCTAssertEqual(store2.items.count, 0)
         XCTAssertEqual(store2.trashedItems.count, 1,
@@ -587,6 +591,8 @@ import XCTest
 
         // Restart path (loadItems filter).
         let store2 = ClipboardStore(backend: backend, trashBackend: trashBackend)
+        XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
         XCTAssertEqual(store2.items.count, 1,
                        "ID-STORE-0002: pinned expired item must survive load")
         XCTAssertTrue(store2.items[0].isPinned)

@@ -362,6 +362,10 @@ final class TagTests: XCTestCase {
         store.flushPendingSaves()
 
         let restarted = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load;
+        // restart-simulation tests must await it explicitly.
+        XCTAssertTrue(restarted.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
         XCTAssertTrue(restarted.items.first?.tagIds.contains(tag.id) == true,
                       "Tag attachment must survive restart")
     }
@@ -381,6 +385,8 @@ final class TagTests: XCTestCase {
         store.flushPendingSaves()
 
         let restarted = ClipboardStore(backend: backend)
+        XCTAssertTrue(restarted.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
         XCTAssertFalse(restarted.items.first?.tagIds.contains(tag.id) == true,
                        "Tag detachment must survive restart")
     }
@@ -400,6 +406,8 @@ final class TagTests: XCTestCase {
         store.flushPendingSaves()
 
         let restarted = ClipboardStore(backend: backend)
+        XCTAssertTrue(restarted.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
         XCTAssertNil(restarted.tags[tag.id], "Tag definition should be gone")
         XCTAssertTrue(restarted.items.first?.tagIds.isEmpty == true,
                       "Dangling tag id should be removed from item")

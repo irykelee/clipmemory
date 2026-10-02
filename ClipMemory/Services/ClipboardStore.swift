@@ -532,41 +532,29 @@ final class ClipboardStore: ObservableObject {
 
         // P1-AUDIT-2026-09-22 (P2-14): heavy JSON decode (10K items →
         // 100-300ms main-thread stall) moved off the startup path. Init now
-        // fires `loadItemsInBackgroundAsync()` and returns immediately —
-        // production startup gets the perf benefit. The SyncBarrier
-        // primitives (`waitForFirstLoadSync`) let callers (notably XCTest
-        // setUp / restart-simulation paths) await the background load
-        // when they need a populated `items` array synchronously.
+        // fires `loadItemsInBackgroundAsync()` and returns immediately.
+        // The SyncBarrier primitives (`waitForFirstLoad` /
+        // `waitForFirstLoadSync`) let callers that need a populated
+        // `items` array await the background load explicitly:
+        // AppDelegate awaits `waitForFirstLoad()` on the boot path,
+        // `flushPendingSaves` gates the terminate-path flush, and tests
+        // call `waitForFirstLoadSync` after construction.
         //
-        // Test seam (auto-wait): under XCTest, init blocks until the
-        // background load completes so the existing 1000-test suite
-        // keeps its sync `items` contract. Production runs (no
-        // XCTestConfigurationFilePath env) skip the wait and return
-        // immediately — that's the perf fix.
+        // ID-CRASH-0057 (issue #93, 2026-10-02): the former XCTest-only
+        // auto-wait here (`waitForFirstLoadSync(timeout: 15)`, added by
+        // ID-CRASH-0049) pumped RunLoop.main from INSIDE
+        // `ClipboardStore.shared`'s `dispatch_once` critical section. The
+        // pump re-entered XCTest's `RunTestsFromRunLoop`, so the first
+        // test touching `.shared` (ClipboardItemRowOCRTransitionTests,
+        // via ClipboardItemRow's `store: ClipboardStore = .shared`
+        // default) re-locked the same once on the same thread →
+        // libdispatch "trying to lock recursively" → SIGTRAP. That killed
+        // the CI test host ~1s after every launch in a restart loop
+        // (16 .ips files, CI run 36954420379) while local runs stayed
+        // green because the background load usually finished before the
+        // pump could dispatch a test. Tests that need loaded data now
+        // await it explicitly.
         loadItemsInBackgroundAsync()
-        if isRunningTests {
-            // P2-14 round-2 self-review fix [P2]: log warning if barrier
-            // times out instead of silently discarding the result. A
-            // silent timeout left the store with empty items and surfaced
-            // only as confusing count mismatches further down — making
-            // CI flakes hard to diagnose.
-            //
-            // ID-CRASH-0049 (issue #93, code-review-2026-09-28 P2-18):
-            // bump 5.0s → 15.0s. v2.9.3 GH Actions Test substep failure
-            // (https://github.com/irykelee/clipmemory/issues/93) was
-            // never per-test identified (v2.9.4 workaround + revert
-            // pattern). Hypothesis #2 of #93: "SyncBarrier 5s timeout too
-            // tight on CI runner load". Local runs complete in <500ms;
-            // 5s was tight when other tests in the suite share the same
-            // runner. 15s gives 3× headroom while still surfacing a real
-            // bug (a hung load would eventually trip). If the timeout
-            // still fires post-bump, the logger.error line below dumps
-            // "items may be empty" so future CI runs surface the failure
-            // with diagnostic context (vs the silent v2.9.3 path).
-            if !waitForFirstLoadSync(timeout: 15.0) {
-                logger.error("P2-14: first-load SyncBarrier timed out in tests after 15.0s — items may be empty")
-            }
-        }
         loadTags()
         // loadTrashedItems + purgeExpiredTrash moved to TrashStore.init (HIGH-1)
         // excluded apps sync moved to AppDelegate (MED-5)
@@ -1188,8 +1176,8 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
     /// Background task performing the first-time items load. Set by
     /// `loadItemsInBackgroundAsync()`; consumers (production callers,
-    /// the XCTest auto-wait in `init`, and any explicit
-    /// `waitForFirstLoad*` caller) can `await firstLoadTask?.value`
+    /// `flushPendingSaves`'s terminate-path gate, and explicit
+    /// `waitForFirstLoad*` callers) can `await firstLoadTask?.value`
     /// to be notified of completion.
     private var firstLoadTask: Task<Void, Never>?
 
@@ -1225,8 +1213,11 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// MainActor.run) while the test waits.
     ///
     /// Returns true if the load completed within the timeout, false
-    /// on timeout. The `@discardableResult` lets the XCTest auto-wait
-    /// in `init` call this without ceremony.
+    /// on timeout. The `@discardableResult` lets callers that only
+    /// need the wait (not the verdict) skip ceremony — though tests
+    /// should assert the result so a hung load fails loudly
+    /// (ID-CRASH-0057: the init auto-wait that used to call this was
+    /// removed; see the init comment for the once-reentrancy crash).
     @discardableResult
     func waitForFirstLoadSync(timeout: TimeInterval = 15.0) -> Bool {
         // [P1-2 follow-up] Must be called on the main thread. The

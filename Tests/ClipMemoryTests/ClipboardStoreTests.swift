@@ -345,10 +345,11 @@ final class ClipboardStoreTests: XCTestCase {
         // completed and items would never arrive in production.
         //
         // ID-CRASH-0049 (issue #93, code-review-2026-09-28 P2-18):
-        // bumped from 5s → 15s to match the production init site
-        // (`ClipboardStore.swift:540`). v2.9.3 CI flake was likely a
-        // SyncBarrier timeout under GH Actions runner load; 5s was
-        // tight. Local runs complete in <500ms; 15s is 30× headroom
+        // bumped from 5s → 15s (now the SyncBarrier default). v2.9.3 GH
+        // Actions Test substep failure
+        // (https://github.com/irykelee/clipmemory/issues/93) was
+        // never per-test identified (v2.9.4 workaround + revert
+        // pattern). Local runs complete in <500ms; 15s is 30× headroom
         // and still surfaces a real hang.
         let didLoad = freshStore.waitForFirstLoadSync(timeout: 15.0)
         XCTAssertTrue(
@@ -393,10 +394,11 @@ final class ClipboardStoreTests: XCTestCase {
     /// return }` which silently destroyed the entire on-disk history
     /// if any addItem landed during the 100-300ms decode window.
     ///
-    /// Note: under XCTest the `init` auto-wait blocks until the load
-    /// applies, so `items` is empty when `applyLoadResult` runs — the
-    /// merge branch (with non-empty pre-existing items) is production-
-    /// only. The structural contract is verified by:
+    /// Note (ID-CRASH-0057): the XCTest init auto-wait was removed
+    /// (once-reentrancy crash), so `applyLoadResult` may now run with
+    /// pre-existing in-memory items — the merge branch is reachable in
+    /// tests too, not only in production. The structural contract is
+    /// verified by:
     /// - The same-store id-dedup logic in `addItem` (which already
     ///   passes 100s of tests with pre-populated backends).
     /// - The success-path assertions in `testRestartRecoversItems`

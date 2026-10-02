@@ -104,6 +104,10 @@ import XCTest
 
         // Simulate restart
         let store2 = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load;
+        // restart-simulation tests must await it explicitly.
+        XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
 
         XCTAssertEqual(store2.items.count, 1)
         XCTAssertEqual(store2.items[0].isPinned, true)
@@ -136,6 +140,11 @@ import XCTest
         store.flushPendingSaves()
 
         let store2 = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load;
+        // restart-simulation tests must await it explicitly. Without the wait
+        // this assertion passes vacuously (items is always [] pre-load).
+        XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
         XCTAssertEqual(store2.items.count, 0)
     }
 
@@ -157,6 +166,12 @@ import XCTest
 
         // Restart and verify
         let store2 = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load.
+        // Accessing store2.items[0] pre-load is an out-of-bounds trap (SIGTRAP,
+        // host relaunch, ZZZ/QuickBar cascade) — CI runs 2026-10-02 11:02 +
+        // 11:17 crashed here twice before this wait was added.
+        XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
         XCTAssertTrue(store2.items[0].isPinned)
         XCTAssertEqual(store2.pinnedItems.count, 1)
     }
@@ -220,6 +235,11 @@ import XCTest
         XCTAssertTrue(store.items[0].isExpired)
 
         let store2 = ClipboardStore(backend: backend)
+        // ID-CRASH-0057: init no longer auto-waits for the background load;
+        // without the wait this assertion passes vacuously (items is always
+        // [] pre-load, so the expiry filter is never actually exercised).
+        XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
         XCTAssertEqual(store2.items.count, 0, "Expired items should be filtered on load")
     }
 
@@ -334,6 +354,8 @@ import XCTest
 
         // Restart
         let store2 = ClipboardStore(backend: backend)
+        XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
+                      "restart load must complete before assertions")
         XCTAssertEqual(store2.items.count, 1)
 
         // Add same content again — should still deduplicate
