@@ -1,9 +1,9 @@
 # Skipped Test 台账（ID-CRASH-0038）
 
-- **建立**：2026-09-30（`803393b`，v2.9.5）；2026-10-01 多次修订；**2026-10-02 状态**（commit 序列 `d659a0b` → `730af74` → `c43844c` → `bdaadd9` → `3199485` → `2009a5e` → `75caf41`（已 push）→ `fc15122`（auto-review 083606 FAIL rework，A/B/C/D 组）→ `5e98830` → `c664b73` → `fc83212`（ID-CRASH-0057 rework 1/2）→ rework 3（本提交，auto-review 124153 rework））：**46 → 17 skip、ZZZ canary 通过（allowlist 收紧回 4 条 framework keys 严格模式）、1025/17/0 GREEN**
+- **建立**：2026-09-30（`803393b`，v2.9.5）；2026-10-01 多次修订；**2026-10-02 状态**（commit 序列 `d659a0b` → `730af74` → `c43844c` → `bdaadd9` → `3199485` → `2009a5e` → `75caf41` → `fc15122`（auto-review 083606 FAIL rework，A/B/C/D 组）→ `5e98830`（ID-CRASH-0057 主修复）→ `c664b73`（rework 1）→ `fc83212`（rework 2）→ `f0487ea`（rework 3，auto-review 124153 rework + pre-push 审核 151102 PASS）→ 本提交（snapshot CI re-skip ×4）：**46 → 21 skip、ZZZ canary 通过（allowlist 收紧回 4 条 framework keys 严格模式）、本地 1025/21/0 GREEN**；CI run 36978148927 实证宿主 **0 重启**（ID-CRASH-0057 修复生效，issue #93 主因关闭）、1025/17/4——4 个失败全为 snapshot 渲染漂移（见下方新段），本提交将其重新 skip
 - **根因追踪**：issue #93（ID-CRASH-0037，GH Actions runner 环境调查）+ ID-CRASH-0038
 - **恢复目标**：v2.9.6
-- **计数口径**：17 处语句 / 17 个测试（2026-10-02 实测，本地 1025 / 17 skipped / 0 failures；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002）
+- **计数口径**：21 处语句 / 21 个测试（2026-10-02 实测，本地 1025 / 21 skipped / 0 failures；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002）
 
 ## 背景
 
@@ -13,7 +13,7 @@ GH Actions macOS runner 环境（macOS 27 / 新 Xcode 镜像）下，下列测�
 
 ⚠️ xcodebuild 的 `Executed N tests` 把 skipped 计入总数，因此 ci.yml 的最小计数门（ID-CRASH-0014 blind-spot-6）对 mass-skip 不敏感——**本台账是 skip 的唯一强制记录**。恢复任何条目时，必须同时删除对应 `XCTSkip` 语句并删除本表行；全部恢复后删除本文件并在 release notes 记录。
 
-## 台账（2026-10-02 修订后，17 处 / 17 个测试）
+## 台账（2026-10-02 snapshot re-skip 后，21 处 / 21 个测试）
 
 | # | 测试文件 | XCTSkip 处 | 备注 |
 |---|---|---|---|
@@ -22,7 +22,10 @@ GH Actions macOS runner 环境（macOS 27 / 新 Xcode 镜像）下，下列测�
 | 3 | MemoryWarningTests.swift | 1 | 仅保留 `testFlushAllClearsCaches`（其他 3 已恢复） |
 | 4 | HotKeyRetainFailurePathTests.swift | 3 | 热键保留环：测试前提（"registration MUST fail"）在 CI 干净 macOS 上不成立，需要重构测试本身 |
 | 5 | AppDelegateShouldTerminateTests.swift | 3 | terminate 路径。**CI 崩溃机制已确认并已修复（ID-CRASH-0057，见下方勘误）**：真因是 `ClipboardStore.shared` 的 dispatch_once 临界区内 pump RunLoop 重入 XCTest（tearDown 首触 `.shared` 同样致命；"类级 setUpWithError XCTSkip 必杀"是误归因——它只是共现现象）。skip 暂留至 CI 实测确认修复生效后再评估恢复；恢复时仍遵守 skip 置于测试体首行、tearDown 避免首触单例的保守模式 |
-| | **合计** | **17** | **本地 1025 / 17 skipped / 0 failures**（2026-10-02） |
+| 6 | ClipboardItemRowSnapshotTests.swift | 2 | snapshot 渲染漂移（macOS 27 runner），2026-10-02 CI run 36978148927 实证后重新 skip，见下方新段 |
+| 7 | WelcomeViewSnapshotTests.swift | 1 | 同上 |
+| 8 | SettingsTabSnapshotTests.swift | 1 | 同上（仅 `testSettingsRootViewGeneralTab`，套件 5 选 1） |
+| | **合计** | **21** | **本地 1025 / 21 skipped / 0 failures**（2026-10-02） |
 
 ## ✅ ZZZ canary re-enabled（ID-REVIEW-1013 → 2026-10-02 收紧）
 
@@ -38,11 +41,11 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 
 **误归因勘误**：此前 ledger 记录的 "类级 `setUpWithError` XCTSkip 在 @MainActor 类上必杀宿主" 与 " AppDelegateShouldTerminateTests 特有机制" 均为共现现象，不是因果——任何在主线程首触 `.shared` 的路径（tearDown、任意测试体）都触发同一 once 重入。
 
-**修复**：SyncBarrier 移出 init（`loadItemsInBackgroundAsync()` 后 init 直接返回，生产/测试行为一致化）；`waitForFirstLoadSync`/`waitForFirstLoad` 保留为显式原语（AppDelegate boot 路径 `await waitForFirstLoad()`、`flushPendingSaves` terminate 门、测试显式等待——本修复累计 **23 处**（rework 1/2 新增 18 处：TagTests ×3 + IntegrationTests ×10（含 2 处 XCTSkip'd 站点防 re-enable 复崩）+ ClipboardStoreTrashTests ×2 + ContentViewTrimAlertTests ×1 + ContentHashKeyReadyBackfillTests setUp ×1 + DecryptionFailedLoopTests setUp ×1；rework 3 补 5 处（auto-review-20261002-124153 P2，把不变量落到全仓）：OCRTests setUp ×1 + ClipboardStoreSaveFailureTests setUp ×1 + ClipboardCaptureLimitTests ×3；ClipboardStoreTests 另有 3 处 P2-14 原有调用不计入）。首轮排查漏了 `testTogglePinUpdatesAndPersists`（`store2.items[0]` 空数组下标 → SIGTRAP 宿主崩 → 重启进程不重跑 AAA → isolation observer 失效 → QuickBar 读到脏 suite 的 maxItems=3 + ZZZ 7 keys 连锁假阳性；本地全量 2026-10-02 11:02/11:17 两次复现后补齐）。**规则**（两次审核迭代后收敛的正确不变量）：只要测试会**构造后**触碰 store 内存态（读 items、断言 flag/hash、直接赋值 `store.items`），就必须先 `waitForFirstLoadSync`——backend 构造时是否为空**无关紧要**，因为 background load 是**后读** backend：构造后 `backend.save(...)` 的快照会被异步 load 读到，`applyLoadResult` 按 id 用 backend 原始副本替换内存态（auto-review-20261002-114457 P1：预置 backend + 显式 `loadItems()`；auto-review-20261002-120112 P1：空 backend + 构造后 save，`DecryptionFailedLoopTests` 同类；auto-review-20261002-124153 P1：同机制在 `ContentViewTrimAlertTests` 以 defaults-suite 形态复现——`maxItems` didSet 写进共享 isolation suite，setUp/tearDown 只 save/restore `.standard`（no-op），suite 内前测 `maxItems=2` 泄漏 → 下测 `makeStore(4)` 截到 2 条 → `items[3]` 越界宿主崩（本地隔离确定性复现；CI run #3 全绿因 view 渲染类 skip 未暴露）。修法：per-test `makeTestDefaults()` 隔离（与 Audit20260720RegressionTests C-1 同模式），废弃 `.standard` save/restore）。barrier 与 crypto 注入顺序已归一为 crypto → construct → barrier（DecryptionFailedLoopTests 调整，124153 P2）。已记录的开放向量（P2 参考性）：① post-load sweep（`cleanupOrphanedImages` / `runImageIntegrityScan` / `startMigrationIfNeeded`）随异步 load 可落到后续测试期间，对共享 `Images-Tests` 目录是新的跨测试干扰面；② `flushPendingSaves` 入口的 `dispatchPrecondition(.onQueue(.main))` 在 release 是无条件 trap（pre-existing，本修复扩大了到达面）；③ IntegrationTests.swift 行数增长本身**不会** re-surface file_length 基线告警（baseline 不编码违规计数、`file_length` 报告在行 1——swiftlint 实测 exit 0）；真正的 re-surface 触发是 `.swiftlint-baseline` 存的绝对 `file:///Users/...` 路径在 CI checkout root 下全量失配（124153 P2 勘误；warning-only，接受）；④ barrier 等待用 `XCTAssertTrue`（非 guard/XCTUnwrap）——超时不中止 setUp，表现为后续断言失败而非 setUp 清晰报错；与全部既有站点一致（124153 P2 确认 "not a style deviation"），保留；⑤ 共享 `ClipboardStore-XCTest-isolation` suite 的**磁盘脏值**在 `-only-testing` 子集（不含 AAA → `XCTestIsolationSuiteObserver` 未注册）无人清理：裸用 `ClipboardStore(backend:)`（defaults 缺省路由共享 suite）的测试，init 会读到早前运行持久化的 `maxClipboardItems`（实证：13:06 修复前 TrimAlert 运行写入 `= 1`，`defaults read` 确认；`ContentHashKeyReadyBackfillTests` 的 merge 尾部 `trimToMaxItems()` 裁 2→1 → :148 断言失败 + :156 越界宿主崩，任何不含 AAA 的子集确定性复现，CI 全量因 AAA 在场不受影响）。修法：`ContentHashKeyReadyBackfillTests` + `ClipboardCaptureLimitTests` 改 per-test `makeTestDefaults()`（与 TrimAlert/SaveFailure/Audit 同模式），对共享 suite 磁盘状态免疫。附带坑：宿主崩后 xcodebuild 崩溃恢复的重跑列表可能为空（`Executed 0 tests` 且 suite 报 passed）——"重跑变绿"是 0-test 假绿，勿据此排除确定性失败。
+**修复**：SyncBarrier 移出 init（`loadItemsInBackgroundAsync()` 后 init 直接返回，生产/测试行为一致化）；`waitForFirstLoadSync`/`waitForFirstLoad` 保留为显式原语（AppDelegate boot 路径 `await waitForFirstLoad()`、`flushPendingSaves` terminate 门、测试显式等待——本修复累计 **23 处**（rework 1/2 新增 18 处：TagTests ×3 + IntegrationTests ×10（含 2 处 XCTSkip'd 站点防 re-enable 复崩）+ ClipboardStoreTrashTests ×2 + ContentViewTrimAlertTests ×1 + ContentHashKeyReadyBackfillTests setUp ×1 + DecryptionFailedLoopTests setUp ×1；rework 3 补 5 处（auto-review-20261002-124153 P2，把不变量落到全仓）：OCRTests setUp ×1 + ClipboardStoreSaveFailureTests setUp ×1 + ClipboardCaptureLimitTests ×3；ClipboardStoreTests 另有 3 处 P2-14 原有调用不计入）。首轮排查漏了 `testTogglePinUpdatesAndPersists`（`store2.items[0]` 空数组下标 → SIGTRAP 宿主崩 → 重启进程不重跑 AAA → isolation observer 失效 → QuickBar 读到脏 suite 的 maxItems=3 + ZZZ 7 keys 连锁假阳性；本地全量 2026-10-02 11:02/11:17 两次复现后补齐）。**规则**（两次审核迭代后收敛的正确不变量）：只要测试会**构造后**触碰 store 内存态（读 items、断言 flag/hash、直接赋值 `store.items`），就必须先 `waitForFirstLoadSync`——backend 构造时是否为空**无关紧要**，因为 background load 是**后读** backend：构造后 `backend.save(...)` 的快照会被异步 load 读到，`applyLoadResult` 按 id 用 backend 原始副本替换内存态（auto-review-20261002-114457 P1：预置 backend + 显式 `loadItems()`；auto-review-20261002-120112 P1：空 backend + 构造后 save，`DecryptionFailedLoopTests` 同类；auto-review-20261002-124153 P1：同机制在 `ContentViewTrimAlertTests` 以 defaults-suite 形态复现——`maxItems` didSet 写进共享 isolation suite，setUp/tearDown 只 save/restore `.standard`（no-op），suite 内前测 `maxItems=2` 泄漏 → 下测 `makeStore(4)` 截到 2 条 → `items[3]` 越界宿主崩（本地隔离确定性复现；CI run #3 全绿因 view 渲染类 skip 未暴露）。修法：per-test `makeTestDefaults()` 隔离（与 Audit20260720RegressionTests C-1 同模式），废弃 `.standard` save/restore）。barrier 与 crypto 注入顺序已归一为 crypto → construct → barrier（DecryptionFailedLoopTests 调整，124153 P2）。已记录的开放向量（P2 参考性）：① post-load sweep（`cleanupOrphanedImages` / `runImageIntegrityScan` / `startMigrationIfNeeded`）随异步 load 可落到后续测试期间，对共享 `Images-Tests` 目录是新的跨测试干扰面；② `flushPendingSaves` 入口的 `dispatchPrecondition(.onQueue(.main))` 在 release 是无条件 trap（pre-existing，本修复扩大了到达面）；③ IntegrationTests.swift 行数增长本身**不会** re-surface file_length 基线告警（baseline 不编码违规计数、`file_length` 报告在行 1——swiftlint 实测 exit 0）；真正的 re-surface 触发是 `.swiftlint-baseline` 存的绝对 `file:///Users/...` 路径在 CI checkout root 下全量失配（124153 P2 勘误；warning-only，接受）；④ barrier 等待用 `XCTAssertTrue`（非 guard/XCTUnwrap）——超时不中止 setUp，表现为后续断言失败而非 setUp 清晰报错；与全部既有站点一致（124153 P2 确认 "not a style deviation"），保留；⑤ 共享 `ClipboardStore-XCTest-isolation` suite 的**磁盘脏值**在 `-only-testing` 子集（不含 AAA → `XCTestIsolationSuiteObserver` 未注册）无人清理：裸用 `ClipboardStore(backend:)`（defaults 缺省路由共享 suite）的测试，init 会读到早前运行持久化的 `maxClipboardItems`（实证：13:06 修复前 TrimAlert 运行写入 `= 1`，`defaults read` 确认；`ContentHashKeyReadyBackfillTests` 的 merge 尾部 `trimToMaxItems()` 裁 2→1 → :163 断言失败 + :171/:172 越界宿主崩，任何不含 AAA 的子集确定性复现，CI 全量因 AAA 在场不受影响）。修法：`ContentHashKeyReadyBackfillTests` + `ClipboardCaptureLimitTests` 改 per-test `makeTestDefaults()`（与 TrimAlert/SaveFailure/Audit 同模式），对共享 suite 磁盘状态免疫。附带坑：宿主崩后 xcodebuild 崩溃恢复的重跑列表可能为空（`Executed 0 tests` 且 suite 报 passed）——"重跑变绿"是 0-test 假绿，勿据此排除确定性失败。
 
-**遗留**：17 处 skip 不随本修复自动恢复；待 push + CI 全量实测确认宿主不再崩后，按台账流程逐文件评估恢复（AppDelegateShouldTerminateTests 3 处优先验证）。
+**遗留**：skip 不随本修复自动恢复；CI 全量实测已于 2026-10-02（run 36978148927）确认宿主 0 重启，AppDelegateShouldTerminateTests 3 处可进入恢复评估（下轮），snapshot 4 处因渲染漂移回到台账。
 
-## 已恢复（29 个测试，截至 2026-10-02）
+## 已恢复（25 个测试，截至 2026-10-02 snapshot re-skip 后）
 
 | 文件 | 恢复数 | 备注 |
 |---|---|---|
@@ -50,28 +53,34 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 | SettingsWindowTests | 4 | 4 个窗口 lifecycle 测试 |
 | ClipboardItemRowTests | 7 | 3 equatable + 4 parseRTF |
 | ClipboardItemRowOCRTransitionTests | 1 | OCR 过渡 |
-| ClipboardItemRowSnapshotTests | 2 | 2 个 snapshot 测试 |
-| WelcomeViewSnapshotTests | 1 | snapshot |
-| SettingsTabSnapshotTests | 1 | snapshot |
 | QuickBarViewTests | 1 | QuickBar 前缀 |
 | MemoryWarningTests | 3 | 3 个 memory 通知测试（保留 1 个） |
 | ContentViewTrimAlertTests | 4 | 4 个 trim 测试 |
 | ZZZSuiteTeardownTests | 1 | **防污染 canary 通过**（allowlist 已收紧回 4 条 framework keys） |
-| **合计** | **29** | ID-REVIEW-1009..1013 共同 unblock ZZZ canary |
+| **合计** | **25** | ID-REVIEW-1009..1013 共同 unblock ZZZ canary |
 
-## v2.9.6 仍开放（17 处 skip 的根因不在本批次）
+（勘误：上表原含 ClipboardItemRowSnapshotTests ×2 / WelcomeViewSnapshotTests ×1 / SettingsTabSnapshotTests ×1 共 4 行——本地恢复后 CI run 36978148927 实证 runner 渲染漂移仍失败，2026-10-02 重新 skip 并移回台账 #6-#8，见下方新段。）
 
-1. issue #93 根因**已定位并修复**（ID-CRASH-0057，见上方勘误段）——待 CI 实测关闭
-2. 3 处 HotKeyRetainFailure 测试前提在 CI 不成立，需重构测试
-3. 9 处 IntegrationTests 后端集成 CI flake（与 #93 重叠；#93 修复后需重测是否仍 flake）
-4. 1 处 MemoryWarning 缓存状态依赖 + 1 处 WindowManager unregister 测试前提
-5. AppDelegate terminate 3 处 runner 崩溃（机制已确认 = ID-CRASH-0057 once 重入，修复后待 CI 验证再评估恢复）
+## ID-CRASH-0057 CI 实测（2026-10-02，run 36978148927）+ snapshot 渲染漂移 re-skip
+
+**宿主崩溃修复实证**：f0487ea push 后 CI 全量 `Executed 1025 tests, with 17 tests skipped and 4 failures` 单宿主 66.5s 跑完，`Restarting after unexpected exit` **0 次**（修复前 run 36954420379 每次 ~1s 连环崩）——issue #93 主因（ID-CRASH-0057 once 重入）正式确认关闭。AAA / AppDelegateShouldTerminate / ClipboardCaptureLimit / TrimAlert 等本批次修复相关套件全绿。
+
+**新开放问题（本段）**：4 个失败全部是 snapshot golden-record 不匹配，且为**选择性失败**——`TrashItemRowSnapshotTests` 通过、`SettingsTabSnapshotTests` 5 选 1 挂、`ClipboardItemRowSnapshotTests` 2/2 挂、`WelcomeViewSnapshotTests` 1/1 挂。同机制同 helper（`renderToImage`）下选择性失败 = runner 镜像（macOS 27）字体/材质渲染漂移，非代码回归。这 4 个测试均在 2026-10-02 本地恢复的 29 个之列，恢复时本段预警「CI 端仍可能因 runner 镜像漂移失败」应验。处置（user 2026-10-02 确认）：重新 skip（台账 #6-#8），本地基线（macOS 本机录制）与新 runner 渲染不一致前保持 skip；恢复条件 = 在 runner 同版本镜像上重录 golden record，或改为 CI 环境条件 skip。
+
+## v2.9.6 仍开放（21 处 skip 的根因）
+
+1. issue #93 根因**已修复并经 CI 实测确认**（ID-CRASH-0057，run 36978148927 宿主 0 重启）——**可关闭**
+2. 4 处 snapshot 渲染漂移（macOS 27 runner，见上方 CI 实测段）——恢复需重录 golden record 或 CI 条件 skip
+3. 3 处 HotKeyRetainFailure 测试前提在 CI 不成立，需重构测试
+4. 9 处 IntegrationTests 后端集成 CI flake（与 #93 重叠；宿主崩已修，恢复后重测是否仍 flake）
+5. 1 处 MemoryWarning 缓存状态依赖 + 1 处 WindowManager unregister 测试前提
+6. AppDelegate terminate 3 处——崩溃机制已修复且 CI 实证，**下轮优先恢复验证**
 
 ## v2.9.6 可选 cleanup（不阻塞 ship）
 
 - ~~给所有 `UserDefaults.standard.set(...)` 的测试加 `tearDown` save/restore~~ **已完成（2026-10-02 rework）**：7 条 test-side 条目全部从 `toleratedPollution` 移除，canary 零 test-side 条目通过
 - 验证 ID-REVIEW-1009/1010/1011/1012 的 production 修复在 CI 端实测（v2.9.6 ship 后跑 CI 验证 ID-CRASH-0038 全部修复）
-- 评估 `release.yml` 删 `if: github.event_name == 'pull_request'` guard 恢复 fail-closed 路径（需先确认 17 处 skip 的根因都已关闭）
+- 评估 `release.yml` 删 `if: github.event_name == 'pull_request'` guard 恢复 fail-closed 路径（需先确认 21 处 skip 的根因都已关闭）
 
 重新生成站点统计（必须锚定行首：朴素 grep 会把注释里提到的 "throw XCTSkip" 一并计入，虚增 2）：
 
@@ -83,9 +92,11 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
   | cut -d: -f1 | sort | uniq -c | sort -rn
 ```
 
-## v2.9.6 恢复清单（2026-10-02 状态：canary 已 ship）
+## v2.9.6 恢复清单（2026-10-02 状态：宿主崩修复 CI 实证）
 
-1. issue #93 根因**已修复**（ID-CRASH-0057：SyncBarrier 移出 init dispatch_once 临界区，见上方勘误段）——CI 实测通过即关闭
+1. ✅ **已完成** issue #93 主因修复 + CI 实测确认（ID-CRASH-0057，run 36978148927 宿主 0 重启）——CI 绿后即可关闭 issue
 2. ✅ **已完成** 优先恢复 #6（ZZZ canary——ID-REVIEW-1013 临时 allowlist 已于 2026-10-02 收紧回 4 条 framework keys）
-3. 逐文件删除 XCTSkip → 本地全量 → CI 全量验证（每个 release 都跑一遍台账 vs CI 计数对账）
-4. 每恢复一个文件即删除本表对应行；全部恢复后删除本文件
+3. 下轮优先：AppDelegateShouldTerminateTests 3 处恢复验证（崩溃机制已修复且 CI 实证）
+4. snapshot 4 处：需在 runner 同版本镜像重录 golden record（或 CI 条件 skip）后再恢复
+5. 逐文件删除 XCTSkip → 本地全量 → CI 全量验证（每个 release 都跑一遍台账 vs CI 计数对账）
+6. 每恢复一个文件即删除本表对应行；全部恢复后删除本文件
