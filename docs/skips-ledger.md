@@ -68,15 +68,17 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 **snapshot golden 不匹配（4 失败，根因调查中）**：`ClipboardItemRowSnapshotTests` 2/2、`WelcomeViewSnapshotTests` 1/1、`SettingsTabSnapshotTests.testSettingsRootViewGeneralTab`（套件 5 选 1）。处置（user 2026-10-02 确认）：重新 skip（台账 #6-#8）。
 
 - **根因假设演进（auto-review-161942 P1-1 勘误）**：cbc400a 曾记「runner 渲染漂移」并以 "`TrashItemRowSnapshotTests` 通过" 作选择性失败对照——**该对照错误**：TrashItemRowSnapshotTests **0 个活跃测试**（唯一方法 `xtestRendersImageInitialState_DISABLED_FOR_CHECKBOX_LAYOUT_CHANGE` 2026-08-10 停用、golden 从未入库），推断失去对照。cbc400a 的 commit message 与测试注释同错，本提交更正。
-- **「runner 渲染漂移」假设被削弱（161942 P1-2）**：同套件 `SettingsTabSnapshotTests` 其余 4 个 golden 在 runner 上 byte-for-byte 通过（5 个 golden 同录于 `7c7d442`、同一 `renderToImage` byte-compare helper）→ runner 对同类输入的文本/材质渲染是稳定的，漂移解释不了同套件内 4/5。
-- **领先假设（未证实，需 CI 迭代验证）**：非 hermetic 渲染输入。`ClipboardItemRowSnapshotTests` 渲染的 `ClipboardItemRow` 默认 `store: .shared`（ClipboardItemRow.swift:302），渲染期读 store 状态（:383 `ocrPreviewEnabled`、:707/:712 `imageMissingIds`/`imageCorruptedIds`、:880 `getDecryptedOcrText`、:901/:913 `getDecryptedContent`、:973 `item(forID:)`）——CI 上路由 isolation suite，冷启动 key 窗口（ID-STORE-0010）可改变渲染输出；`WelcomeViewSnapshotTests` 构造 fresh `HotKeyManager()`；`testSettingsRootViewGeneralTab` 传 `backupService: .shared`（root 复合视图可读共享态）。
-- **恢复条件（161942 P1-3，取代 cbc400a 的「在 runner 镜像上重录 golden」——那会把 CI 环境依赖输出固化为 golden 并永久 retire masking 哨兵）**：① 修 hermeticity（snapshot 测试注入 per-test 隔离 store；审计 SettingsRootView/WelcomeView 的共享读）；② CI 重开验证不匹配是否消失；③ 仍有差异才从 hermetic 渲染重录 golden。`testRendersSensitiveItemMasked`（masking 回归哨兵，ClipboardItemRowSnapshotTests.swift:67-69 自述）**必须恢复，不得退场**。
-- **P2 决议（161942）**：skip 文案统一回 `ID-CRASH-0038 skip:` 前缀（与 17 处既有站点 grep 联动一致）；`testSettingsRootViewGeneralTab` 保持测试体首行 skip（台账既有约定，不采纳类级门——会连坐同套件 4 个健康测试；setUp 死开销 <1ms 接受）；grep 统计注释「虚增 2」更正为「虚增 1」（naive 22 vs anchored 21）。
+- **漂移假设保持开放（163026 P2 收敛措辞）**：同套件其余 4 个 golden 在 runner 上 byte-for-byte 通过（同录于 `7c7d442`、同一 helper）说明 runner 对**同类输入**渲染稳定，但 4 个健康 sibling 不覆盖失败渲染独有的 chrome（`.pickerStyle(.segmented)` 分段控件、`Divider`、`.id(languageManager.selectedLanguage)` rekey）——分段控件字体/度量是 macOS 版本敏感面，byte-identical sibling 不能为这些特性排除漂移。
+- **领先假设（未证实，需 CI 迭代验证）——非 hermetic 渲染输入，两个具体候选**：
+  - **`@AppStorage("settings.selectedTab")` 读生产 `.standard`（SettingsRootView.swift:30，163026 P1-2）**：`snapshotTestSetUp` 只隔离 fontScale/appLanguage/AppleLanguages（SnapshotTestHelpers.swift:170-215），不隔离 `settings.selectedTab` 与 `themeAppearance`（GeneralSettingsView.swift:13）；ZZZSuiteTeardownTests.swift:197 已把 `settings.selectedTab` 列为已知泄漏通道（tab 点击 didSet 写 `.standard`）。**唯一能解释「套件 5 选 1」的机制**——只有 root 视图读该 key，4 个健康 sibling 是直连 tab 视图不经过它。（勘误：c809277 曾把 `backupService: .shared` 列为该测试嫌疑——163026 P1-1 证其为死代码：SettingsRootView.body 只在 `.backup` case 实例化 `BackupSettingsView(backupService:)`（:63），`.general` case（本测试渲染路径，selectedTab 默认 general）构建 `GeneralSettingsView(hotKeyManager:)`，从不触碰 backupService。）
+  - **`ClipboardItemRow` 默认 `store: .shared`（ClipboardItemRow.swift:302）**：渲染期读 store 状态（:383 `ocrPreviewEnabled`、:707/:712 `imageMissingIds`/`imageCorruptedIds`、:880 `getDecryptedOcrText`、:901/:913 `getDecryptedContent`、:973 `item(forID:)`）——CI 上路由 isolation suite，冷启动 key 窗口（ID-STORE-0010）可改变渲染输出（解释 ClipboardItemRow 2/2）；`WelcomeViewSnapshotTests` 构造 fresh `HotKeyManager()` 为同类候选。
+- **恢复条件（161942 P1-3，取代 cbc400a 的「在 runner 镜像上重录 golden」——那会把 CI 环境依赖输出固化为 golden 并永久 retire masking 哨兵）**：① 修 hermeticity（`snapshotTestSetUp` 隔离 `settings.selectedTab`/`themeAppearance`；ClipboardItemRow 快照注入 per-test 隔离 store）；② CI 重开验证不匹配是否消失；③ 仍有差异才从 hermetic 渲染重录 golden。`testRendersSensitiveItemMasked`（masking 回归哨兵，ClipboardItemRowSnapshotTests.swift:69-71 文档注释、方法 :72）**必须恢复，不得退场**。
+- **P2 决议（161942/163026）**：skip 文案统一回 `ID-CRASH-0038 skip:` 前缀（实测全仓 20 处匹配 = 4 新 + 16/17 既有；个别历史站点前缀有偏差——IntegrationTests.swift:629 用 `v2.9.5 skip:`、HotKeyRetainFailurePathTests.swift:39 用环境描述，163026 P2 记录不追改）；`testSettingsRootViewGeneralTab` 保持测试体首行 skip（台账既有约定，不采纳类级门——会连坐同套件 4 个健康测试；setUp 死开销 <1ms 接受）；grep 统计注释「虚增 2」更正为「虚增 1」（naive 22 vs anchored 21）。
 
 ## v2.9.6 仍开放（21 处 skip 的根因）
 
 1. issue #93 根因**已修复并经 CI 实测确认**（ID-CRASH-0057，run 36978148927 宿主 0 重启）——**可关闭**
-2. 4 处 snapshot golden 不匹配（根因调查中：hermeticity 假设领先、渲染漂移被削弱，见上方 CI 实测段）——恢复需先修 hermeticity + CI 验证，仍有差异才重录 golden；masking 哨兵必须恢复
+2. 4 处 snapshot golden 不匹配（根因调查中：非 hermetic 输入领先——`@AppStorage("settings.selectedTab")` 读生产 `.standard`、`ClipboardItemRow` 默认 `.shared`；渲染漂移对 root 独有 chrome 仍开放，见上方 CI 实测段）——恢复需先修 hermeticity + CI 验证，仍有差异才重录 golden；masking 哨兵必须恢复
 3. 3 处 HotKeyRetainFailure 测试前提在 CI 不成立，需重构测试
 4. 9 处 IntegrationTests 后端集成 CI flake（与 #93 重叠；宿主崩已修，恢复后重测是否仍 flake）
 5. 1 处 MemoryWarning 缓存状态依赖 + 1 处 WindowManager unregister 测试前提
@@ -103,6 +105,6 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
 1. ✅ **已完成** issue #93 主因修复 + CI 实测确认（ID-CRASH-0057，run 36978148927 宿主 0 重启）——CI 绿后即可关闭 issue
 2. ✅ **已完成** 优先恢复 #6（ZZZ canary——ID-REVIEW-1013 临时 allowlist 已于 2026-10-02 收紧回 4 条 framework keys）
 3. 下轮优先：AppDelegateShouldTerminateTests 3 处恢复验证（崩溃机制已修复且 CI 实证）
-4. snapshot 4 处：先修 hermeticity（注入 per-test 隔离 store / 审计共享读）→ CI 验证 → 仍有差异才从 hermetic 渲染重录 golden；masking 哨兵 `testRendersSensitiveItemMasked` 必须恢复
+4. snapshot 4 处：先修 hermeticity（`snapshotTestSetUp` 隔离 `settings.selectedTab`/`themeAppearance`；ClipboardItemRow 快照注入 per-test 隔离 store）→ CI 验证 → 仍有差异才从 hermetic 渲染重录 golden；masking 哨兵 `testRendersSensitiveItemMasked` 必须恢复
 5. 逐文件删除 XCTSkip → 本地全量 → CI 全量验证（每个 release 都跑一遍台账 vs CI 计数对账）
 6. 每恢复一个文件即删除本表对应行；全部恢复后删除本文件

@@ -97,10 +97,11 @@ final class SettingsTabSnapshotTests: XCTestCase {
 
     func testSettingsRootViewGeneralTab() throws {
         // Snapshot CI re-skip (2026-10-02): only this test of the suite failed
-        // on CI (run 36978148927) while its 4 siblings stayed byte-identical —
-        // points at non-hermetic input in the root-view composite
-        // (`backupService: .shared`), not blanket runner drift. See
-        // skips-ledger.md.
+        // on CI (run 36978148927) while its 4 siblings stayed byte-identical.
+        // Lead (auto-review-163026 P1-2): @AppStorage("settings.selectedTab")
+        // reads production UserDefaults.standard — not isolated by
+        // snapshotTestSetUp, listed as a known leak channel by the ZZZ canary.
+        // See skips-ledger.md.
         throw XCTSkip("ID-CRASH-0038 skip: snapshot golden mismatch, hermeticity fix pending; see skips-ledger.md")
         let view = SettingsRootView(hotKeyManager: nil, store: store,
                                     backupService: .shared)
