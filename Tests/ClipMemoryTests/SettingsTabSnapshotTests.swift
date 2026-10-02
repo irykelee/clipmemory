@@ -98,11 +98,13 @@ final class SettingsTabSnapshotTests: XCTestCase {
     func testSettingsRootViewGeneralTab() throws {
         // Snapshot CI re-skip (2026-10-02): only this test of the suite failed
         // on CI (run 36978148927) while its 4 siblings stayed byte-identical.
-        // Lead (auto-review-163026 P1-2): @AppStorage("settings.selectedTab")
-        // reads production UserDefaults.standard — not isolated by
-        // snapshotTestSetUp, listed as a known leak channel by the ZZZ canary.
-        // See skips-ledger.md.
-        throw XCTSkip("ID-CRASH-0038 skip: snapshot golden mismatch, hermeticity fix pending; see skips-ledger.md")
+        // Local experiment (auto-review-164609 follow-up) proved golden ==
+        // render(key-absent), so the mis-recorded-tab story is falsified and
+        // the standing explanation is runner rendering drift on this view's
+        // unique chrome (segmented picker / Divider / .id rekey) —
+        // byte-compare cannot pass until a drift-proof strategy exists. See
+        // skips-ledger.md.
+        throw XCTSkip("ID-CRASH-0038 skip: root-view snapshot byte-drift on runner (golden verified == hermetic render); see skips-ledger.md")
         let view = SettingsRootView(hotKeyManager: nil, store: store,
                                     backupService: .shared)
         let image = renderToImage(view, size: CGSize(width: 680, height: 560))

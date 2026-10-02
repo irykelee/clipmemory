@@ -174,6 +174,20 @@ func assertImageSnapshot(
     // write back as a real 0, polluting production defaults (fontScale=0
     // matches no picker tag and renders the settings row blank).
     snapshotTestSavedFontScale = defaults.object(forKey: "fontScale") as? Double
+    // ID-CRASH-0038 (2026-10-02, auto-review-164609 P1): same missing-aware
+    // pattern for the two remaining production-`.standard` `@AppStorage`
+    // reads. `SettingsRootView` reads `@AppStorage("settings.selectedTab")`
+    // (SettingsRootView.swift:31) and `GeneralSettingsView` reads
+    // `@AppStorage("themeAppearance")` (GeneralSettingsView.swift:13);
+    // neither was isolated here, so a host whose real defaults carried
+    // `settings.selectedTab = update` recorded the Update tab into
+    // testSettingsRootViewGeneralTab.png (7c7d442) while CI's clean runner
+    // (key absent → `.general`) mismatched. Remove both for the render
+    // window; tearDown restores the prior value or absence.
+    snapshotTestSavedSelectedTab = defaults.object(forKey: "settings.selectedTab") as? String
+    snapshotTestSavedThemeAppearance = defaults.object(forKey: "themeAppearance") as? String
+    defaults.removeObject(forKey: "settings.selectedTab")
+    defaults.removeObject(forKey: "themeAppearance")
     // NEW-4 (2026-08-06 review): missing-aware save for language, mirroring
     // the fontScale pattern. The previous code read
     // `LanguageManager.shared.selectedLanguage` which returned "en" for an
@@ -219,6 +233,19 @@ func assertImageSnapshot(
     } else {
         defaults.removeObject(forKey: "fontScale")
     }
+    // ID-CRASH-0038 (2026-10-02): missing-aware restore mirrors the setUp
+    // save — never pin a key the host never had (same rationale as the
+    // fontScale/ID-STORE-0007 note above).
+    if snapshotTestSavedSelectedTab != nil {
+        defaults.set(snapshotTestSavedSelectedTab, forKey: "settings.selectedTab")
+    } else {
+        defaults.removeObject(forKey: "settings.selectedTab")
+    }
+    if snapshotTestSavedThemeAppearance != nil {
+        defaults.set(snapshotTestSavedThemeAppearance, forKey: "themeAppearance")
+    } else {
+        defaults.removeObject(forKey: "themeAppearance")
+    }
     // NEW-2 follow-up (2026-08-06): no `appLanguage`/`AppleLanguages`
     // restore here. See the matching note in setUp — language baseline
     // is set, not restored, and the stub instance is the only
@@ -231,6 +258,8 @@ func assertImageSnapshot(
 }
 
 private var snapshotTestSavedFontScale: Double?
+private var snapshotTestSavedSelectedTab: String?
+private var snapshotTestSavedThemeAppearance: String?
 
 // MARK: - M13 Test Infrastructure
 
