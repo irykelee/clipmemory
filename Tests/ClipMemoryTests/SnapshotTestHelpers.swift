@@ -179,15 +179,16 @@ func assertImageSnapshot(
     // `SettingsRootView` reads `@AppStorage("settings.selectedTab")`
     // (SettingsRootView.swift:31) and `GeneralSettingsView` reads
     // `@AppStorage("themeAppearance")` (GeneralSettingsView.swift:13).
-    // Hygiene only — auto-review-164609's theory that a polluted
+    // Hygiene only: auto-review-164609's theory that a polluted
     // `settings.selectedTab = update` mis-recorded the root-view golden was
-    // FALSIFIED (pixel decode: testSettingsRootViewGeneralTab.png content ==
-    // testGeneralSettingsTabDefault.png, 0/921600 bytes mismatch, and local
-    // byte-compare passes with the key isolated; see skips-ledger.md). The
-    // CI mismatch is runner rendering drift on the root view's unique
-    // chrome. We still remove both keys for the render window so future
-    // goldens can never depend on host defaults; tearDown restores the
-    // prior value or absence.
+    // falsified locally — byte-compare passes with the key isolated, so the
+    // render is invariant to the key and the key cannot explain the CI
+    // mismatch (see skips-ledger.md). The mismatch's actual source (runner
+    // rendering drift vs recording-time transient in the golden's only
+    // non-blank region, rows 0-44) remains an open hypothesis. We still
+    // remove both keys for the render window so future goldens can never
+    // depend on host defaults; tearDown restores the prior value or
+    // absence.
     snapshotTestSavedSelectedTab = defaults.object(forKey: "settings.selectedTab") as? String
     snapshotTestSavedThemeAppearance = defaults.object(forKey: "themeAppearance") as? String
     defaults.removeObject(forKey: "settings.selectedTab")
