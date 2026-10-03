@@ -124,8 +124,14 @@ final class MemoryWarningTests: XCTestCase {
     /// reachable from the registry. We prime by calling `matches()`
     /// with a non-ASCII content (so the pinyin path runs) — without
     /// that, the cache stays empty and the test is a no-op.
+    ///
+    /// ID-CRASH-0061 (code-review-2026-10-01 v2.9.6 follow-up): the
+    /// ID-CRASH-0038 skip was unconditional; this test already sets
+    /// up its own probe content (line 129) so the "depends on prior
+    /// test cache state" rationale doesn't apply. With #93 root cause
+    /// closed, the unconditional skip is unnecessary. The pinyin
+    /// path primes the cache locally before flushAll().
     func testFlushAllClearsFuzzySearchCaches() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI flush clears caches) — kept, needs runtime verification")
         let probeContent = "café 北京 123" // ASCII + Latin-ext + CJK
         let result = FuzzySearchMatcher.matches(content: probeContent, searchText: "北京")
         XCTAssertTrue(result, "ID-PERF-0005: precondition — matches() must succeed to populate caches")
