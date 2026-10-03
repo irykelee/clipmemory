@@ -30,39 +30,6 @@ import AppKit
 ///   (2×/3×) snapshots differ across developer machines because the pixel
 ///   count varies with display configuration.
 ///
-/// Snapshot test infrastructure for ClipMemory (NEW-7 Phase 1).
-///
-/// Renders SwiftUI views off-screen to PNG and compares byte-for-byte
-/// against a golden file on disk.
-///
-/// Recording mode: implicit on first run. If the golden PNG does not exist
-/// at the expected path, it is written and the test passes. Subsequent runs
-/// compare the rendered image byte-for-byte against the existing golden. To
-/// regenerate a golden after an intentional visual change, delete the PNG
-/// from `__Snapshots__/<TestClassName>/` and re-run the test.
-///
-/// Why not swift-snapshot-testing (pointfreeco)?
-/// - v1.19.x requires Swift 6.0 tools-version, producing a swiftmodule with
-///   Swift 6 ABI mangling. Our project compiles tests with Swift 5 language
-///   mode (`SWIFT_VERSION: "5.9"`), and Swift 5 client cannot import a Swift 6
-///   ABI module — `assertSnapshot` is not found at link time.
-/// - v1.17.0 (Swift 5.9 tools-version) compiles with our toolchain but its
-///   source uses an `Issue.record` signature that the newer Testing module
-///   shipped with Xcode 26.6 rejects, breaking the package itself.
-/// - Bumping our project to `SWIFT_VERSION: "6.0"` is a project-wide change
-///   that risks subtle concurrency errors across the 35 existing test files.
-/// - A minimal in-house helper is ~50 lines, has no external coupling, and
-///   serves the same visual-regression purpose.
-///
-/// Why ImageRenderer (not UIGraphicsImageRenderer / CALayer.render):
-/// - ImageRenderer is the Apple-blessed macOS 13+ path for offscreen SwiftUI
-///   rendering. It correctly handles `@Environment`, `@EnvironmentObject`,
-///   and SwiftUI Material backgrounds that hand-rolled Core Graphics paths
-///   miss.
-/// - 1× scale is required for cross-machine snapshot stability. Retina
-///   (2×/3×) snapshots differ across developer machines because the pixel
-///   count varies with display configuration.
-///
 /// Golden files live at
 /// `<test-file-dir>/__Snapshots__/<TestClassName>/<testName>.png` and are
 /// checked in (P1-AUDIT-2026-09-22 P1-6).

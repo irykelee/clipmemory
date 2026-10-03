@@ -13,6 +13,10 @@ build/
 
 # swift-snapshot-testing golden PNGs — intentionally checked in (P1-AUDIT-2026-09-22 P1-6)
 # __Snapshots__/
+# Mismatch artifacts written by SnapshotTestHelpers on golden mismatch
+# (auto-review-20260922-090545:8 / -111346:10 / 20261003-083314 P2) —
+# regenerable diagnostics, never commit next to the tracked goldens.
+*.actual.png
 
 # Binary releases — generated locally, not stored in git
 Releases/
