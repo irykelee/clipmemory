@@ -138,7 +138,6 @@ final class WindowManagerTests: XCTestCase {
     /// window stays in the table forever" leaks.
     @MainActor
     func testUnregisteringClosedSecondaryAllowsAccessorySink() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI unregister sink) — kept, requires investigation")
         let manager = WindowManager()
         let secondary = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
