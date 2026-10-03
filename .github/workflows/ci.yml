@@ -288,6 +288,38 @@ jobs:
             exit 1
           fi
 
+      - name: Upload snapshot mismatch artifacts (085151 P2)
+        # SnapshotTestHelpers writes <test>.actual.png next to the golden
+        # on byte mismatch — into the source tree (gitignored), never into
+        # the xcresult, so the clipmemory-test-coverage artifact above does
+        # not carry it. docs/skips-ledger.md's primary CI-diagnosis
+        # prescription ("CI actual.png 产物核查") needs a producing
+        # mechanism: upload the *.actual.png artifacts when a test step in
+        # THIS job fails, so a CI-only mismatch's actual render is
+        # inspectable post-mortem.
+        #
+        # auto-review-20261003-101344 P1: this step must live in THIS job —
+        # its first landing (65c16e1) put it in lint-ids, which runs no
+        # tests, cannot see this job's workspace, and passes when a
+        # snapshot mismatch fails here (its if: failure() keyed off lint
+        # failures), so the upload could never fire.
+        #
+        # Path is scoped to *.actual.png, not the whole __Snapshots__/
+        # directory (101344 P2): after an unrelated failure a directory
+        # glob would upload the 8 committed baselines under a name that
+        # claims "mismatch" — the glob keeps "nothing to upload" honest
+        # (if-no-files-found: ignore). upload-artifact@v4 strips its
+        # rootDirectory (the least common ancestor of the matched files —
+        # same mechanism as the Test step comment above), so the archive
+        # holds flattened <test>.actual.png files.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-mismatch-artifacts
+          path: Tests/ClipMemoryTests/__Snapshots__/**/*.actual.png
+          retention-days: 7
+          if-no-files-found: ignore
+
   # L18 enforcement: audit finding references must use ID-DOMAIN-NNNN format.
   # Shipped alongside ID-PRIVACY-0001 / ID-STORE-0015 renumbering (2026-08-12 audit
   # retro correction, see feedback/audit-2026-08-12-id-renumbering.md). Catches
@@ -419,23 +451,6 @@ jobs:
           set -euo pipefail
           chmod +x Scripts/lint-appcast-coverage.sh
           ./Scripts/lint-appcast-coverage.sh
-
-      - name: Upload snapshot mismatch artifacts (083314 rework P2)
-        # SnapshotTestHelpers writes <test>.actual.png next to the golden
-        # on byte mismatch — into the source tree (gitignored), never into
-        # the xcresult, so the clipmemory-test-coverage artifact above does
-        # not carry it. docs/skips-ledger.md's primary CI-diagnosis
-        # prescription ("CI actual.png 产物核查") needs a producing
-        # mechanism: upload __Snapshots__/ on test-job failure so a CI-only
-        # mismatch's actual render is inspectable post-mortem. On success
-        # there is nothing to upload (if-no-files-found: ignore).
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: snapshot-mismatch-artifacts
-          path: Tests/ClipMemoryTests/__Snapshots__/
-          retention-days: 7
-          if-no-files-found: ignore
 
   # P2-17 (2026-09-22 audit): minimum line coverage gate. Parses the
   # xcresult bundle emitted by build-and-test and fails the job if

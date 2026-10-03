@@ -18,10 +18,18 @@
 #   list (auto-review-20261003-083314 P1);
 # - per-file restore is guarded (a checkout failure cannot abort the loop
 #   under set -e and strand the remaining goldens deleted);
+# - the one irreversible step — the delete — is verified by POST-STATE
+#   (auto-review-20261003-101344 P2: BSD find's -delete always exits 0,
+#   verified empirically even on unlink permission-denied, so the delete
+#   cannot be made fail-closed by exit status; any surviving *.png aborts
+#   the run before the suites execute);
 # - after the run it reports accurately: restored > 0 → "restored from git,
 #   nothing re-recorded" exit 1; restored == 0 (every golden reappeared
 #   WITHOUT a git restore — impossible without a record path) → requires
 #   CLIPMEMORY_SNAPSHOT_RECORD_PATH_LANDED=1.
+# Branch coverage: Scripts/test/test_regenerate_snapshots.sh exercises
+# every exit path against a throwaway git repo via the
+# CLIPMEMORY_SNAPSHOT_SCRIPT_ROOT seam (101344 P2).
 # The regenerate flow becomes reachable only after an env-gated record path
 # is implemented: set CLIPMEMORY_SNAPSHOT_RECORD_PATH_LANDED=1 AND upgrade
 # the guard from existence-check to content-check (docs/skips-ledger.md,
@@ -31,7 +39,11 @@
 # test — never this script.
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Test seam (101344 P2): the self-test
+# (Scripts/test/test_regenerate_snapshots.sh) points this at a throwaway
+# git repo so the destructive flow is exercised without touching this
+# checkout. Unset in production use.
+PROJECT_ROOT="${CLIPMEMORY_SNAPSHOT_SCRIPT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$PROJECT_ROOT"
 
 SNAPSHOT_DIR="Tests/ClipMemoryTests/__Snapshots__"
@@ -58,8 +70,12 @@ fi
 echo "== Inventorying TRACKED goldens (git ls-files; untracked actual.png artifacts excluded) =="
 # Fail closed (085151 P1): a git failure or an EMPTY inventory must abort
 # BEFORE the deletion step — an empty inventory would make the restore loop
-# a no-op and the deletion unrecoverable.
-if ! existing_goldens="$(git ls-files -- "$SNAPSHOT_DIR" | grep '\.png$' | sort)"; then
+# a no-op and the deletion unrecoverable. The inner `grep … || true`
+# tolerates grep's no-match exit 1 under pipefail so the EMPTY case falls
+# through to the guard below (101344 P2: previously a no-match grep was
+# misreported as "golden inventory failed" and the empty-inventory guard
+# was unreachable); a genuine git ls-files failure still trips this `if !`.
+if ! existing_goldens="$(git ls-files -- "$SNAPSHOT_DIR" | { grep '\.png$' || true; } | sort)"; then
   echo "ERROR: golden inventory failed (git ls-files / grep). Refusing to"
   echo "delete goldens without a verified inventory."
   exit 1
@@ -72,7 +88,20 @@ if [ -z "$existing_goldens" ]; then
 fi
 
 echo "== Removing existing PNGs (tracked goldens + stale actual.png artifacts) =="
-find "$SNAPSHOT_DIR" -name '*.png' -delete 2>/dev/null || true
+# 101344 P2: the previous `2>/dev/null || true` made this — the script's
+# ONE irreversible step — fail-open and silent. BSD find's -delete always
+# exits 0 (empirically verified: a permission-denied unlink still exits 0),
+# so the delete cannot be made fail-closed by exit status; verify the
+# intended post-state instead: NO *.png may survive it. (On GNU find a
+# delete failure exits non-zero and set -e aborts here — also fail-closed.)
+find "$SNAPSHOT_DIR" -name '*.png' -delete
+if [ -n "$(find "$SNAPSHOT_DIR" -name '*.png' -print -quit 2>/dev/null)" ]; then
+  echo "ERROR: *.png files survived the delete step (find reported success"
+  echo "but files remain — permissions?). Refusing to run the suites"
+  echo "against an unclear tree. Investigate, then restore with"
+  echo "'git checkout -- $SNAPSHOT_DIR/'."
+  exit 1
+fi
 
 echo "== Running snapshot suites (NO record path exists — goldens will NOT be re-recorded) =="
 xcodebuild -project ClipMemory.xcodeproj -scheme ClipMemory \

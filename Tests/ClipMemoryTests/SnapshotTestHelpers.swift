@@ -118,9 +118,9 @@ func assertImageSnapshot(
         // Diff hint: write actual next to golden so developers can
         // eyeball via Quick Look. The artifact lives in the source tree
         // (untracked, gitignored as *.actual.png) — it is NOT attached to
-        // the xcresult. ci.yml uploads __Snapshots__/ as a run artifact on
-        // test-job failure, which is how a CI-only mismatch's actual
-        // render becomes inspectable post-mortem.
+        // the xcresult. ci.yml (build-and-test job) uploads *.actual.png
+        // when a test step in that job fails, which is how a CI-only
+        // mismatch's actual render becomes inspectable post-mortem.
         let actualURL = goldenURL.deletingLastPathComponent()
             .appendingPathComponent("\(testName).actual.png")
         try? actualData.write(to: actualURL)
