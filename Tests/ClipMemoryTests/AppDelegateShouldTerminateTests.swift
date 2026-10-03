@@ -69,7 +69,6 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
     /// No pending writes → quit immediately. This is the fast-path the OS
     /// exercises 99% of the time (user Cmd+Q during normal idle state).
     func testReturnsTerminateNowWhenNoPendingWrites() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate hangs)")
         // Arrange: both stores show no pending work.
         ClipboardStore.shared.needsSave = false
 
@@ -86,7 +85,6 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
     /// queued from the last addItem) → defer quit until the flush completes.
     /// Verifies the gate triggers on the EAGER half of the predicate.
     func testReturnsTerminateLaterWhenClipboardStoreNeedsSave() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate later)")
         // Arrange: schedule a save. The debounce timer doesn't fire during
         // a synchronous test, so needsSave stays true.
         ClipboardStore.shared.needsSave = true
@@ -117,7 +115,6 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
     /// closes, this test will need a real addPending seam — for now
     /// the documentation captures the limitation.
     func testReturnsTerminateLaterWhenImageStorageHasPendingWrite() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI appdelegate terminate later)")
         // Arrange: drive saveImage through the public path with a small
         // image; the pending mark is added synchronously in saveImage's
         // first line and removed only when the file write completes.

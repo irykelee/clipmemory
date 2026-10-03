@@ -1,12 +1,12 @@
 # Skipped Test 台账（ID-CRASH-0038）
 
 - **建立**：2026-09-30（`803393b`，v2.9.5，ID-CRASH-0038 mass-skip 共 46 处 / 46 个测试）
-- **2026-10-01 → 2026-10-02 多次修订**：逐步恢复测试（详见各 commit log），2026-10-02 实测 **46 → 21 skip、1025/21/0 GREEN（en + zh-Hans 双 locale）**
-- **2026-10-03 状态**：CI run 37095054102 4 jobs 全 ✅（swiftlint / lint-ids / build-and-test / coverage-gate）；CI run 36978148927 实证宿主 0 重启（ID-CRASH-0057 修复生效，issue #93 主因关闭）；**本地 1025/21/0 GREEN**；commit `75caf41` 后 ZZZ canary 通过（allowlist 收紧回 4 条 framework keys 严格模式）
-- **详细 commit 序列**：见 `git log --oneline 803393b..HEAD -- docs/skips-ledger.md`（17 次修订）
-- **根因追踪**：issue #93（ID-CRASH-0037，GH Actions runner 环境调查）+ ID-CRASH-0038
-- **恢复目标**：v2.9.6
-- **计数口径**：21 处语句 / 21 个测试（2026-10-02 实测，本地 1025 / 21 skipped / 0 failures；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002）
+- **2026-10-01 → 2026-10-02 多次修订**：逐步恢复测试，**46 → 21 skip、1025/21/0 GREEN**
+- **2026-10-03 (post-#93-closed)**：**21 → 9 skip、1025/9/0 GREEN（en + zh-Hans 双 locale）**；CI run 37095054102 4 jobs 全 ✅；commit `75caf41` 后 ZZZ canary 通过；**commit 当前 commit (`batch-restore-12`)** 撤 `AppDelegateShouldTerminateTests` 3 处 + `IntegrationTests` 9 处（均依赖 #93 root cause 已关闭）
+- **详细 commit 序列**：见 `git log --oneline 803393b..HEAD -- docs/skips-ledger.md`（18 次修订）
+- **根因追踪**：issue #93（ID-CRASH-0037，GH Actions runner 环境调查）+ ID-CRASH-0038（**主因已修复**）
+- **恢复目标**：v2.9.6（接近完成）
+- **计数口径**：9 处语句 / 9 个测试（2026-10-03 实测，本地 1025 / 9 skipped / 0 failures；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002）
 
 ## 背景
 

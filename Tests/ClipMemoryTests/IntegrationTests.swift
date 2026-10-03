@@ -69,7 +69,6 @@ import XCTest
     // MARK: - G.1.2 Restart and Recover
 
     func testRestartRecoversItemsFromBackend() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI restart recovery index out of range)")
         // Add two items and flush to backend
         let item1 = ClipboardItem(content: "First", type: .text)
         let item2 = ClipboardItem(content: "Second", type: .link)
@@ -123,7 +122,6 @@ import XCTest
     // MARK: - G.1.3 Delete
 
     func testDeleteItemRemovesFromBackend() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI delete from backend)")
         let item1 = ClipboardItem(content: "To keep", type: .text)
         let item2 = ClipboardItem(content: "To delete", type: .text)
         store.addItem(item1)
@@ -252,7 +250,6 @@ import XCTest
     // MARK: - G.3.1 Deduplication by contentHash
 
     func testDeduplicateSameContentMovesToTop() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI dedup move-to-top)")
         let itemA = ClipboardItem(content: "Hello", type: .text)
         let itemB = ClipboardItem(content: "World", type: .text)
 
@@ -309,7 +306,6 @@ import XCTest
     // MARK: - G.3.3 Different content does not deduplicate
 
     func testDifferentContentDoesNotDeduplicate() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI different content dedup)")
         let item1 = ClipboardItem(content: "Hello", type: .text)
         let item2 = ClipboardItem(content: "Hello!", type: .text)  // Note: extra !
         let item3 = ClipboardItem(content: "Hello", type: .link)   // Same text, different type
@@ -325,7 +321,6 @@ import XCTest
     // MARK: - G.3.4 Link vs Text deduplication
 
     func testLinkAndTextSameContentDoNotDeduplicate() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI different-types dedup env misordering)")
         let item1 = ClipboardItem(content: "https://example.com", type: .link)
         let item2 = ClipboardItem(content: "https://example.com", type: .text)
 
@@ -462,7 +457,6 @@ import XCTest
     }
 
     func testClearYesterdayRemovesNonPinnedYesterdayItems() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI date-clear race)")
         let cal = Calendar.current
         let now = Date()
         let yesterday = try XCTUnwrap(cal.date(byAdding: .day, value: -1, to: now))
@@ -577,7 +571,6 @@ import XCTest
     // MARK: - G.9 Group counts (todayCount / yesterdayCount / olderCount)
 
     func testGroupCountsClassifyItemsByCreatedAt() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI group counts)")
         // G.9.1: All three buckets populated; pinned items excluded from counts.
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: Date())
@@ -626,7 +619,6 @@ import XCTest
         // env-gating the throw didn't work. Always throw XCTSkip
         // here; re-enable in v2.9.6 with the root-cause fix.
         // Local: 1019/1019 GREEN; CI: 1 ≠ 3 here.
-        throw XCTSkip("v2.9.5 skip: re-enable v2.9.6 (ID-CRASH-0038)")
         // G.10.1: clearSensitiveItems must:
         //   - Remove non-pinned sensitive items
         //   - Preserve pinned sensitive items
@@ -733,7 +725,6 @@ import XCTest
     // MARK: - G.12 dedup must not reset decryptionFailed flag (HIGH-1 regression)
 
     func testDedupDoesNotResetDecryptionFailedFlag() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI decryption-failed state)")
         // G.12.1: When addItem triggers a dedup hit on an item that already has
         // decryptionFailed = true (corrupt blob), the rebuild at ClipboardStore.swift
         // line 315-325 must preserve the flag. Otherwise the a00da7c perf fix is
