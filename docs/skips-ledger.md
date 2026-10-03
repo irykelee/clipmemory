@@ -2,11 +2,11 @@
 
 - **建立**：2026-09-30（`803393b`，v2.9.5，ID-CRASH-0038 mass-skip 共 46 处 / 46 个测试）
 - **2026-10-01 → 2026-10-02 多次修订**：逐步恢复测试，**46 → 21 skip、1025/21/0 GREEN**
-- **2026-10-03 (post-#93-closed)**：**21 → 6 skip、1025/6/0 GREEN（en + zh-Hans 双 locale）**——本批 3 处 ID-CRASH-0060 HotKeyRetainFailurePathTests 用条件 guard 替换无条件 skip；CI 端若 register() 真成功则自动 XCTSkip，否则正常 assert
-- **详细 commit 序列**：见 `git log --oneline 803393b..HEAD -- docs/skips-ledger.md`（19 次修订）
+- **2026-10-03 (post-#93-closed)**：**21 → 5 skip、1025/5/0 GREEN（en + zh-Hans 双 locale）**——本批 ID-CRASH-0060/0061 撤 4 处（HotKey 3 处条件 guard、MemoryWarning 1 处），WindowManager 1 处保留 skip（需进一步诊断）
+- **详细 commit 序列**：见 `git log --oneline 803393b..HEAD -- docs/skips-ledger.md`（20 次修订）
 - **根因追踪**：issue #93（ID-CRASH-0037，GH Actions runner 环境调查）+ ID-CRASH-0038（**主因已修复**）
 - **恢复目标**：v2.9.6（接近完成）
-- **计数口径**：6 处语句 / 6 个测试（2026-10-03 实测，本地 1025 / 6 skipped / 0 failures；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002）
+- **计数口径**：5 处语句 / 5 个测试（2026-10-03 实测，本地 1025 / 5 skipped / 0 failures；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002）
 
 ## 背景
 
