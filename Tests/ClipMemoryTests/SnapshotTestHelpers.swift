@@ -86,17 +86,18 @@ func pngData(from cgImage: CGImage) -> Data {
 /// Asserts that `image` matches the golden PNG at the conventional path.
 ///
 /// Behavior (P1-AUDIT-2026-09-22 P1-6, strict):
-/// - If the golden PNG does not exist, the test FAILS with an actionable
-///   regenerator hint — silent first-run recording was the previous
-///   green-on-CI facade and has been removed.
+/// - If the golden PNG does not exist, the test FAILS — there is NO record
+///   path (silent first-run recording was the previous green-on-CI facade
+///   and has been removed, with no replacement).
 /// - If the golden exists, the rendered image is compared byte-for-byte
 ///   against it. Mismatch fails the test and writes `<test>.actual.png`
 ///   next to the golden for Quick Look diffing.
 ///
-/// To regenerate a golden after an intentional visual change: delete the
-/// PNG from `__Snapshots__/<className>/` (or run
-/// `Scripts/regenerate-snapshots.sh`) and re-run the test, then commit
-/// the new PNG.
+/// Baseline regeneration is NOT currently possible from this helper: no
+/// code path here (or anywhere in Tests/) writes goldens — the only
+/// `__Snapshots__` write is the `<test>.actual.png` mismatch artifact.
+/// Recording is gated on an env-gated record path; see the
+/// docs/skips-ledger.md restore checklist.
 ///
 /// `className` is the XCTestCase subclass name (passed by the caller since
 /// `assertImageSnapshot` is a free function, not a method).
@@ -117,17 +118,21 @@ func assertImageSnapshot(
     // as a render smoke test only — auto-record + pass — which meant
     // CI never actually compared against the goldens. Strict byte compare
     // every time, in any environment; a missing golden fails fast instead
-    // of silently passing. To regenerate after an intentional visual
-    // change, delete the golden from the repo and re-run the test
-    // locally; the script `Scripts/regenerate-snapshots.sh` writes back
-    // the new baseline as a follow-up commit.
+    // of silently passing.
+    // auto-review-20260922-090545:4 / -111346:7 / 20261003-073406 P1: the
+    // auto-record branch was removed with no replacement — NO code path in
+    // this helper (or anywhere in Tests/) writes goldens, so "delete +
+    // re-run to regenerate" is not executable. Recording is gated on an
+    // env-gated record path (docs/skips-ledger.md restore checklist);
+    // Scripts/regenerate-snapshots.sh is retained only as a
+    // destructive-flow tripwire until then.
 
     guard FileManager.default.fileExists(atPath: goldenURL.path) else {
         XCTFail("""
             Snapshot golden missing at \(goldenURL.path).
-            Regenerate baselines by deleting the goldens directory and \
-            running tests locally, then commit the new PNGs.
-            See Scripts/regenerate-snapshots.sh.
+            There is no record path: re-running tests cannot re-record the \
+            golden. Baseline recording is gated on an env-gated record \
+            path — see docs/skips-ledger.md restore checklist.
             """,
             file: file, line: line)
         return
@@ -152,7 +157,8 @@ func assertImageSnapshot(
             Snapshot \(testName) mismatch.
               golden: \(goldenURL.path)
               actual: \(actualURL.path)
-            If change is intentional, regenerate golden and commit.
+            If the change is intentional, baseline recording is gated on an \
+            env-gated record path (docs/skips-ledger.md restore checklist).
             """,
             file: file, line: line)
         return
