@@ -188,4 +188,3 @@ struct BackupSettingsView: View {
     }
 
 }
-
