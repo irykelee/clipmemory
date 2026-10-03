@@ -34,7 +34,6 @@ final class WelcomeViewSnapshotTests: XCTestCase {
         // Root cause under investigation; the fresh HotKeyManager() render input
         // is one non-hermetic candidate (auto-review-161942 P1-2). See
         // skips-ledger.md.
-        throw XCTSkip("ID-CRASH-0038 skip: snapshot golden mismatch, hermeticity fix pending; see skips-ledger.md")
         let view = WelcomeView(
             hotKeyManager: HotKeyManager(),
             onComplete: {}

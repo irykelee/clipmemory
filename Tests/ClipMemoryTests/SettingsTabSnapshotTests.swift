@@ -113,7 +113,6 @@ final class SettingsTabSnapshotTests: XCTestCase {
         // re-record gated on an env-gated record path, see the tool-guard
         // entry in skips-ledger.md).
         // See skips-ledger.md.
-        throw XCTSkip("ID-CRASH-0038 skip: root-view snapshot CI mismatch (mechanism unidentified; see skips-ledger.md)")
         let view = SettingsRootView(hotKeyManager: nil, store: store,
                                     backupService: .shared)
         let image = renderToImage(view, size: CGSize(width: 680, height: 560))
