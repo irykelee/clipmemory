@@ -55,7 +55,7 @@ jobs:
       # hits so a single file change still benefits from prior brew + sparkle
       # downloads (which change less often than DerivedData).
       - name: Cache Homebrew + Sparkle + DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Caches/Homebrew
