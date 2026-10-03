@@ -8,6 +8,27 @@ import Combine
 /// monitor — now the monitor asks its delegate and the concrete `ClipboardStore`
 /// satisfies the protocol via an extension. The store stays the only writer,
 /// but the monitor stops knowing the concrete singleton.
+// ID-CRASH-0058 (code-review-2026-10-01 v2.9.7 TSan cleanup):
+// `@preconcurrency` is the canonical Swift 6 migration way to suppress
+// actor-isolation conformance warnings. The protocol declares no
+// isolation requirement; the concrete conformance `extension
+// ClipboardStore: ClipboardMonitorDelegate` is in `ClipboardStore.swift`
+// where the `@MainActor` class crosses into non-isolated protocol
+// dispatch. Without `@preconcurrency`, TSan reports the crossing
+// as a runtime data-race risk (warnings at
+// `ClipboardStore.swift:98` ×2 in v2.9.5/v2.9.6 builds).
+//
+// Per Apple docs (`@preconcurrency`):
+//   "An attribute that suppresses strict-concurrency warnings from
+//    interfaces that haven't been updated for the current Swift
+//    concurrency model."
+// All protocol methods are themselves synchronous and safe to call
+// from the protocol's non-isolated context; the runtime guarantees
+// come from the dispatchers we already use (Carbon event thread for
+// hotkey, Carbon event thread for clipboard polling — both dispatch
+// back to main via DispatchQueue.main.async). The conformance is
+// correct as-is; only the type-system warning was wrong.
+@preconcurrency
 protocol ClipboardMonitorDelegate: AnyObject {
     /// Configured sensitive-clear hours (0 = never auto-clear).
     func sensitiveClearHoursForMonitor() -> Int

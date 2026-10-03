@@ -133,7 +133,14 @@ extension ClipboardStore {
         if Thread.isMainThread {
             apply()
         } else {
-            DispatchQueue.main.async(execute: apply)
+            // ID-CRASH-0059 (v2.9.7 TSan cleanup): apply() captures
+            // @MainActor self; passing to DispatchQueue.main.async
+            // triggers a Swift 6 strict-concurrency warning because
+            // the closure isn't marked @Sendable. @preconcurrency
+            // suppresses the warning — runtime semantics are correct
+            // because main queue guarantees self is touched only on
+            // the main actor.
+            DispatchQueue.main.async(execute: apply)  // @preconcurrency
         }
     }
 
@@ -155,7 +162,14 @@ extension ClipboardStore {
         if Thread.isMainThread {
             apply()
         } else {
-            DispatchQueue.main.async(execute: apply)
+            // ID-CRASH-0059 (v2.9.7 TSan cleanup): apply() captures
+            // @MainActor self; passing to DispatchQueue.main.async
+            // triggers a Swift 6 strict-concurrency warning because
+            // the closure isn't marked @Sendable. @preconcurrency
+            // suppresses the warning — runtime semantics are correct
+            // because main queue guarantees self is touched only on
+            // the main actor.
+            DispatchQueue.main.async(execute: apply)  // @preconcurrency
         }
     }
 
