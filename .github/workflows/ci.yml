@@ -473,7 +473,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Download xcresult bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: clipmemory-test-coverage
           path: ./test-results
