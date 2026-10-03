@@ -262,7 +262,7 @@ jobs:
         # clipmemory-test.xcresult/ as a sub-directory in the archive.
         # See Test step comment for the underlying mechanism.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: clipmemory-test-coverage
           path: results
@@ -313,7 +313,7 @@ jobs:
         # same mechanism as the Test step comment above), so the archive
         # holds flattened <test>.actual.png files.
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: snapshot-mismatch-artifacts
           path: Tests/ClipMemoryTests/__Snapshots__/**/*.actual.png
