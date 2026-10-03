@@ -109,7 +109,9 @@ final class SettingsTabSnapshotTests: XCTestCase {
         // confirmed, and because the golden is byte-stable and byte-matches
         // locally, no environment-independent rendering property explains
         // the CI-only mismatch yet. Keep skipped until the CI mismatch
-        // mechanism is identified (actual.png artifacts / probe re-record).
+        // mechanism is identified (actual.png artifacts / probe re-record —
+        // re-record gated on an env-gated record path, see the tool-guard
+        // entry in skips-ledger.md).
         // See skips-ledger.md.
         throw XCTSkip("ID-CRASH-0038 skip: root-view snapshot CI mismatch (mechanism unidentified; see skips-ledger.md)")
         let view = SettingsRootView(hotKeyManager: nil, store: store,
