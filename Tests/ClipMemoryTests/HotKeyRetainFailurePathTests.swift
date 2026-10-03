@@ -35,9 +35,16 @@ final class HotKeyRetainFailurePathTests: XCTestCase {
 
     /// A single failed registration must not strand a retain: the manager
     /// deinits once the caller drops it.
+    ///
+    /// ID-CRASH-0060 (code-review-2026-10-01 v2.9.6 follow-up): the
+    /// unconditional `throw XCTSkip` at the top was the ID-CRASH-0038
+    /// mass-skip — it short-circuited the test before the
+    /// environment-conditional guard could ever run. With #93 root
+    /// cause closed, the conditional guard below (lines 63-67) is
+    /// sufficient: skip the failure-mode contract ONLY when the
+    /// environment actually permitted registration, otherwise
+    /// exercise the contract normally.
     func testFailedRegistration_managerStillDeinits() throws {
-        throw XCTSkip("GH Actions CI environment: hotkey registration succeeds (ID-CRASH-0038; re-enable in v2.9.6)")
-
         weak var weakManager: HotKeyManager?
 
         // ID-CRASH-0038 fix-up: the original premise ("registration MUST
@@ -60,9 +67,11 @@ final class HotKeyRetainFailurePathTests: XCTestCase {
         }
 
         guard registrationFailed else {
-            // Environment permitted the registration; the failure-mode
-            // contract under test doesn't apply. Skip the rest.
-            return
+            // ID-CRASH-0060: environment permitted the registration;
+            // the failure-mode contract under test doesn't apply.
+            // Skip the rest of the test (XCTest semantics: XCTSkip
+            // from mid-test = skipped, not failed).
+            throw XCTSkip("hotkey registration succeeded in this environment — failure-mode contract doesn't apply")
         }
 
         XCTAssertNil(weakManager,
@@ -72,9 +81,26 @@ final class HotKeyRetainFailurePathTests: XCTestCase {
     /// The retry leak: each failed attempt used to overwrite `retainedSelfPtr`
     /// with a fresh `passRetained`, leaking the previous pointer forever.
     /// After N failed attempts the manager must still deinit cleanly.
+    ///
+    /// ID-CRASH-0060: drop the unconditional skip; rely on the
+    /// conditional guard below to skip only when the environment
+    /// actually permits registration (see testFailedRegistration_
+    /// managerStillDeinits for the full rationale).
     func testFailedRegistrationRetries_managerStillDeinits() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI hotkey registration retries)")
         weak var weakManager: HotKeyManager?
+
+        // Probe: does registration reliably fail in this environment?
+        let probe = autoreleasepool { () -> Bool in
+            let manager = HotKeyManager()
+            manager.register()
+            return manager.hotKeyRef == nil
+        }
+        guard probe else {
+            // ID-CRASH-0060: environment permitted registration on the
+            // first try — the retry-leak contract under test doesn't
+            // apply. Skip the rest.
+            throw XCTSkip("hotkey registration succeeded in this environment — retry-leak contract doesn't apply")
+        }
 
         autoreleasepool {
             let manager = HotKeyManager()
@@ -94,7 +120,17 @@ final class HotKeyRetainFailurePathTests: XCTestCase {
     /// either: the manager stays alive while referenced and deinits
     /// exactly when the last strong reference goes away.
     func testFailedRegistration_thenUnregister_balancesExactly() throws {
-        throw XCTSkip("ID-CRASH-0038 skip: v2.9.6 re-enable (CI hotkey register+unregister)")
+        // ID-CRASH-0060: drop the unconditional skip; probe registration
+        // and skip only when the environment actually permits it.
+        let probe = autoreleasepool { () -> Bool in
+            let manager = HotKeyManager()
+            manager.register()
+            return manager.hotKeyRef == nil
+        }
+        guard probe else {
+            throw XCTSkip("hotkey registration succeeded in this environment — unregister-after-fail contract doesn't apply")
+        }
+
         weak var weakManager: HotKeyManager?
 
         autoreleasepool {
