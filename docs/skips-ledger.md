@@ -1,6 +1,9 @@
 # Skipped Test 台账（ID-CRASH-0038）
 
-- **建立**：2026-09-30（`803393b`，v2.9.5）；2026-10-01 多次修订；**2026-10-02 状态**（commit 序列 `d659a0b` → `730af74` → `c43844c` → `bdaadd9` → `3199485` → `2009a5e` → `75caf41` → `fc15122`（auto-review 083606 FAIL rework，A/B/C/D 组）→ `5e98830`（ID-CRASH-0057 主修复）→ `c664b73`（rework 1）→ `fc83212`（rework 2）→ `f0487ea`（rework 3，auto-review 124153 rework + pre-push 审核 151102 PASS）→ `cbc400a`（snapshot CI re-skip ×4，加入台账 #6-#8）→ `c809277` → `b62ef5c`（161942/163026 rework）→ `d64ea3e`（164609 rework：隔离修复 + tab 归因证伪）→ `720fb84`（170628 rework：注释清理 + scope 收敛）→ `2245b1a`（173240 rework：证据链降级）→ `a9ce07d`（184342 rework：像素事实修正）→ `53910b7`（190433 rework：品牌归因撤回 + ImageRenderer 诊断 + 跨尺寸数撤回）→ `8ac1bf5`（202924 rework：regenerate-snapshots skip-guard + 诊断降级为双假设并存 + 像素措辞精确化）→ `1e58692`（073406 rework：无 record path 既存 P1 入账 + 脚本/helper 假声明清除 + 守卫升级为自恢复绊线）→ `2e618ba`（083314 rework：helper 重复 doc 块第 5 处假声明清除 + 脚本恢复循环加固（tracked-only 盘点 / guarded checkout / 失败路径 sweep / 成功分支 env 门）+ 探针重录 6 处 gate 对齐 + .gitignore actual.png）→ 65c16e1（085151 rework：脚本 git 步骤 fail-closed（085151 P1）+ restored 计数分流报告 + sweep env 门 + ci.yml actual.png 上传机制 + helper/测试注释假声明清除 + 第 7 号探针站点 gate + 台账计数口径勘误）→ 本提交（101344 rework：ci.yml 上传步骤落位修正——初版误落 lint-ids job（101344 P1），移入 build-and-test 两 Test 步骤后 + path 收窄 `**/*.actual.png` + 脚本空库存分支可达化（grep 空匹配路由）/删除步骤后验门（BSD find -delete 恒 exit 0）/PROJECT_ROOT 测试 seam + 六分支 self-test（Scripts/test/test_regenerate_snapshots.sh）+ ledger/helper citation 勘误）：**46 → 21 skip、ZZZ canary 通过（allowlist 收紧回 4 条 framework keys 严格模式）、本地 1025/21/0 GREEN（2026-10-02 实测时点值；测试总数随提交漂移，以 `Scripts/test-count.sh` 为准，085151 P2 勘误）**；CI run 36978148927 实证宿主 **0 重启**（ID-CRASH-0057 修复生效，issue #93 主因关闭）、1025/17/4——4 个失败全为 snapshot golden 不匹配（现况见下方新段），`cbc400a` 将其重新 skip
+- **建立**：2026-09-30（`803393b`，v2.9.5，ID-CRASH-0038 mass-skip 共 46 处 / 46 个测试）
+- **2026-10-01 → 2026-10-02 多次修订**：逐步恢复测试（详见各 commit log），2026-10-02 实测 **46 → 21 skip、1025/21/0 GREEN（en + zh-Hans 双 locale）**
+- **2026-10-03 状态**：CI run 37095054102 4 jobs 全 ✅（swiftlint / lint-ids / build-and-test / coverage-gate）；CI run 36978148927 实证宿主 0 重启（ID-CRASH-0057 修复生效，issue #93 主因关闭）；**本地 1025/21/0 GREEN**；commit `75caf41` 后 ZZZ canary 通过（allowlist 收紧回 4 条 framework keys 严格模式）
+- **详细 commit 序列**：见 `git log --oneline 803393b..HEAD -- docs/skips-ledger.md`（17 次修订）
 - **根因追踪**：issue #93（ID-CRASH-0037，GH Actions runner 环境调查）+ ID-CRASH-0038
 - **恢复目标**：v2.9.6
 - **计数口径**：21 处语句 / 21 个测试（2026-10-02 实测，本地 1025 / 21 skipped / 0 failures；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002）
@@ -113,3 +116,26 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
 4. snapshot 4 处：先**定位 CI 失配机制**（CI actual.png 产物 / 探针重录——重录 gated on record path，见工具守卫条；双假设并存勿预设——机制定位前重录 golden 无意义且属信号销毁）→ **实现 env-gated record path**（当前无 record path：缺失 golden 只 XCTFail、唯一写入是 actual.png，见工具守卫条）+ 守卫升级内容校验 → 重录 → CI 重验；恢复 root golden 时先探针实测 `themeAppearance` 不变性（当前为 reasoned-inert，见隔离修复条）；ClipboardItemRow/WelcomeView 需 store 注入；masking 哨兵 `testRendersSensitiveItemMasked` 必须恢复（随 ClipboardItemRow store 注入一并验证）；`Scripts/regenerate-snapshots.sh` 现为破坏性流程绊线（dirty 拒跑 + 缺失自恢复 + exit 1），record path 落地前重录流程不可达
 5. 逐文件删除 XCTSkip → 本地全量 → CI 全量验证（每个 release 都跑一遍台账 vs CI 计数对账）
 6. 每恢复一个文件即删除本表对应行；全部恢复后删除本文件
+
+## 已 ship 的 hygiene 项（2026-10-03 commit `hygiene`）
+
+1. **`Scripts/test/test_remove_appcast_item.sh`** `644 → 755`（executable bit 加回，git 历史显示 `chmod -x` 在某次重命名时丢了）
+2. **`Scripts/test/test_regenerate_snapshots.sh`** `644 → 755`（同上）
+3. **Ledger "建立" line** 1737-char commit blob → 4 行紧凑 metadata（git log 引用指向完整 commit 序列，不再把整条 log 内联进单行）
+4. **`.gitattributes`** 新增 —— 强制 Swift / Shell / YAML / Markdown LF 行尾；`.png` / `.app` / `.dSYM` / `.tar.gz` 等 binary 显式标注
+
+## 未 ship 的 hygiene 项（需要非代码修改或用户决策）
+
+5. **GPG sign 配置** —— `commit.gpgsign` 未启用，最近 5 个 commit 全部 `N`（无签名）。这是 **user-local git config**，不进仓库：
+   ```bash
+   git config --global user.signingkey <KEY_ID>  # 须先 gpg --gen-key
+   git config --global commit.gpgsign true
+   ```
+   本批不修；记入 P3 user setup todo。
+
+6. **TSan advisory run 37095054114 结论** —— 6 个 warning，全为 Swift 6 strict-concurrency compile-time warning（非 TSan runtime race）：
+   - `ClipboardStore.swift:98` × 2：`ClipboardMonitorDelegate` conformance 跨 main actor 边界（Swift 6 mode 会变 error）
+   - `ClipboardStore+OCR.swift:136, 158` × 4：non-Sendable closure → `@MainActor @Sendable` cast
+   **真 race：0 个**。修复路径：加 `@preconcurrency` 注解或 explicit MainActor isolation。记入 v2.9.7 backlog，不阻塞 v2.9.6 ship。
+
+7. **README 注册（`sync_readme.py` 在 `release.sh` 中实际未调用）** —— 这是**故意的人类编辑门**（`Scripts/release.sh:40-45` 注释明确："user takes over the README state is correct responsibility"，因为 sync_readme.py 需要 LLM API key），**不是 bug**。本批不修。

@@ -1,0 +1,34 @@
+# .gitattributes — line ending normalization for cross-platform contributors.
+# Without this, mixed CRLF/LF can sneak in from Windows checkouts and
+# trip the lint-tsan-filter regex (which is line-anchored). Per CLAUDE.md
+# the project is macOS-only but contributors may clone from any OS.
+
+# Source code: force LF
+*.swift          text eol=lf
+*.m              text eol=lf
+*.mm             text eol=lf
+*.h              text eol=lf
+*.c              text eol=lf
+*.cpp            text eol=lf
+*.py             text eol=lf
+
+# Scripts (lint-anchored regex sensitive to line endings)
+*.sh             text eol=lf
+*.yml            text eol=lf
+*.yaml           text eol=lf
+*.toml           text eol=lf
+
+# Documentation / localization
+*.md             text eol=lf
+*.strings        text eol=lf
+*.stringsdict    text eol=lf
+
+# Binary assets (no normalization)
+*.png            binary
+*.jpg            binary
+*.jpeg           binary
+*.icns           binary
+*.dSYM/          binary
+*.framework/     binary
+*.app/           binary
+*.tar.gz         binary
