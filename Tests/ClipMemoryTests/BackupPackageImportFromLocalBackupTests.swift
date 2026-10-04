@@ -40,7 +40,9 @@ import XCTest
 
     func testItemsMergedIntoStore() throws {
         let itemJSON = Data("""
-        [{"id":"00000000-0000-0000-0000-000000000001","type":"text","content":"hello","contentHash":"abc","isEncrypted":false,"isPinned":false,"isSensitive":false,"appBundleID":null,"createdAt":0}]
+        [{"id":"00000000-0000-0000-0000-000000000001","type":"text","content":"hello",\
+        "contentHash":"abc","isEncrypted":false,"isPinned":false,"isSensitive":false,\
+        "appBundleID":null,"createdAt":0}]
         """.utf8)
         try writeBlob("items.json", itemJSON)
         let r = try BackupPackage.importFromLocalBackup(backupDir, store: store, imagesDirectory: imagesDir, defaults: defaults)
@@ -50,7 +52,9 @@ import XCTest
 
     func testTrashMergedIntoStore() throws {
         let trashJSON = Data("""
-        [{"id":"00000000-0000-0000-0000-000000000002","type":"text","content":"deleted","contentHash":"def","isEncrypted":false,"isPinned":false,"isSensitive":false,"appBundleID":null,"createdAt":0,"trashedAt":100}]
+        [{"id":"00000000-0000-0000-0000-000000000002","type":"text","content":"deleted",\
+        "contentHash":"def","isEncrypted":false,"isPinned":false,"isSensitive":false,\
+        "appBundleID":null,"createdAt":0,"trashedAt":100}]
         """.utf8)
         try writeBlob("trash.json", trashJSON)
         let r = try BackupPackage.importFromLocalBackup(backupDir, store: store, imagesDirectory: imagesDir, defaults: defaults)
@@ -93,11 +97,13 @@ import XCTest
         let r = try BackupPackage.importFromLocalBackup(backupDir, store: store, imagesDirectory: imagesDir, defaults: defaults)
         XCTAssertEqual(r.imagesImported, 0)
         let bytes = try Data(contentsOf: imagesDir.appendingPathComponent(name))
+        // swiftlint:disable:next line_length
         XCTAssertEqual(bytes, existing, "Existing image must be preserved")
     }
 
     func testCorruptedItemsThrows() throws {
         try writeBlob("items.json", Data("not-json".utf8))
+        // swiftlint:disable:next line_length
         XCTAssertThrowsError(try BackupPackage.importFromLocalBackup(backupDir, store: store, imagesDirectory: imagesDir, defaults: defaults)) { err in
             guard case BackupPackageError.corruptedData(_, .items) = err else {
                 XCTFail("expected corruptedData(_, .items), got \(err)"); return

@@ -17,8 +17,10 @@ final class UserDefaultsKeyTests: XCTestCase {
     /// overwrites the other — the exact failure mode the audit was hunting.
     func testAllRawValuesAreUnique() {
         let rawValues = UserDefaultsKey.allCases.map { $0.rawValue }
+        let duplicates = Dictionary(grouping: rawValues, by: { $0 })
+            .filter { $0.value.count > 1 }.keys
         XCTAssertEqual(Set(rawValues).count, rawValues.count,
-                      "P1-AUDIT-2026-09-22 P2-9: UserDefaultsKey rawValues must be unique; duplicates: \(Dictionary(grouping: rawValues, by: { $0 }).filter { $0.value.count > 1 }.keys)")
+                      "P1-AUDIT-2026-09-22 P2-9: UserDefaultsKey rawValues must be unique; duplicates: \(duplicates)")
     }
 
     /// P1-AUDIT-2026-09-22 (P2-9): every rawValue must round-trip through

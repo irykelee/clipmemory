@@ -219,7 +219,9 @@ final class HangDetectorTests: XCTestCase {
         HangDetector._seedLastHeartbeatForTesting(Date().addingTimeInterval(-70))
         HangDetector.recordStackCaptureAndMaybeRecover()
         let s = HangDetector._snapshotStateForTesting()
-        XCTAssertGreaterThan(s.lastMainStack.count, 0, "recordStackCaptureAndMaybeRecover must populate lastMainStack from Thread.callStackSymbols when a hang is suspected")
+        XCTAssertGreaterThan(s.lastMainStack.count, 0,
+                              "recordStackCaptureAndMaybeRecover must populate lastMainStack "
+                              + "from Thread.callStackSymbols when a hang is suspected")
         // Sanity: no detection triggered, so the recovery path doesn't run either.
         XCTAssertNil(s.lastDetectedAt, "no detection → recovery path must not clear nonexistent state")
         XCTAssertEqual(s.detectionCount, 0)

@@ -181,7 +181,8 @@ final class ClipboardStoreTests: XCTestCase {
         XCTAssertNotNil(copied, "P2-16: pasteboard must have TIFF data after copyToClipboard")
         XCTAssertGreaterThan(
             copied?.count ?? 0, 100_000,
-            "P2-16: copyToClipboard must write full-size to pasteboard (TIFF > 100 KB); got \(copied?.count ?? 0) bytes. A 512x288 thumbnail would be <100 KB."
+            "P2-16: copyToClipboard must write full-size to pasteboard (TIFF > 100 KB); "
+            + "got \(copied?.count ?? 0) bytes. A 512x288 thumbnail would be <100 KB."
         )
     }
 

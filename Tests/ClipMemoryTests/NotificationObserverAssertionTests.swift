@@ -132,7 +132,9 @@ final class NotificationObserverAssertionTests: XCTestCase {
         AllowlistEntry(
             shortName: "ocrLanguageFallback",
             ledgerID: "ID-SYNC-0004 (post itself FIXED; consumer leg deferred to H-1)",
-            reason: "Posted in OCRService when language list unsupported; consumer (Settings banner 'OCR using English') is reserved channel per code-review-2026-09-28 P0-4 (dead channels list), no observer yet.")
+            reason: "Posted in OCRService when language list unsupported; "
+                + "consumer (Settings banner 'OCR using English') is reserved channel per "
+                + "code-review-2026-09-28 P0-4 (dead channels list), no observer yet.")
     ]
 
     // MARK: - Source scan

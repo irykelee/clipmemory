@@ -129,7 +129,9 @@ final class BackupServiceTests: XCTestCase {
         for name in remaining {
             XCTAssertEqual(
                 name.count, 21,
-                "remaining dir name should be 21 chars (BUG-021 live format). If this fails, the filter's length check drifted away from backupNow()'s dateFormat — cross-check both sites together."
+                "remaining dir name should be 21 chars (BUG-021 live format). "
+                + "If this fails, the filter's length check drifted away from "
+                + "backupNow()'s dateFormat — cross-check both sites together."
             )
         }
     }

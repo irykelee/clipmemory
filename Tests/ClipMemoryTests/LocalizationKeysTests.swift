@@ -54,7 +54,9 @@ final class LocalizationKeysTests: XCTestCase {
         // `testNewBackupKeysExistInAllSevenLanguageFiles`.
         XCTAssertTrue(
             L10n.settingsBackupErrorMissingEncryptionKey.contains("com.clipmemory.app"),
-            "B-8: missing-encryption-key message must reference the Keychain item 'com.clipmemory.app' so the user can find and delete it, got: \(L10n.settingsBackupErrorMissingEncryptionKey)"
+            "B-8: missing-encryption-key message must reference the Keychain item "
+            + "'com.clipmemory.app' so the user can find and delete it, "
+            + "got: \(L10n.settingsBackupErrorMissingEncryptionKey)"
         )
     }
 
@@ -448,7 +450,8 @@ final class LocalizationKeysTests: XCTestCase {
             for key in oneKeys {
                 XCTAssertTrue(
                     content.contains("\"\(key)\""),
-                    "\(lang).lproj/Localizable.strings is missing key '\(key)' — ID-L10N-0020: this gap makes count==1 in \(lang) silently render English"
+                    "\(lang).lproj/Localizable.strings is missing key '\(key)' "
+                    + "— ID-L10N-0020: this gap makes count==1 in \(lang) silently render English"
                 )
             }
         }

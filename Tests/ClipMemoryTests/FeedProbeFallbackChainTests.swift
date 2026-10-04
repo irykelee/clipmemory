@@ -193,7 +193,9 @@ final class FallbackChainURLProtocol: URLProtocol {
     override static func canInit(with request: URLRequest) -> Bool {
         guard let url = request.url else { return false }
         if FallbackChainURLProtocol.debugLogging {
-            print("[FCStub.canInit] \(url) -> stubs=\(FallbackChainURLProtocol.stubs.keys.contains(url)) errors=\(FallbackChainURLProtocol.errors.keys.contains(url))")
+            let hasStubs = FallbackChainURLProtocol.stubs.keys.contains(url)
+            let hasErrors = FallbackChainURLProtocol.errors.keys.contains(url)
+            print("[FCStub.canInit] \(url) -> stubs=\(hasStubs) errors=\(hasErrors)")
         }
         return FallbackChainURLProtocol.stubs.keys.contains(url) || FallbackChainURLProtocol.errors.keys.contains(url)
     }
@@ -206,7 +208,9 @@ final class FallbackChainURLProtocol: URLProtocol {
             return
         }
         if FallbackChainURLProtocol.debugLogging {
-            print("[FCStub.start] \(url) status=\(String(describing: FallbackChainURLProtocol.stubs[url]?.status)) errCode=\(String(describing: FallbackChainURLProtocol.errors[url]?.code.rawValue))")
+            let stubStatus = String(describing: FallbackChainURLProtocol.stubs[url]?.status)
+            let errCode = String(describing: FallbackChainURLProtocol.errors[url]?.code.rawValue)
+            print("[FCStub.start] \(url) status=\(stubStatus) errCode=\(errCode)")
         }
         if let error = FallbackChainURLProtocol.errors[url] {
             client?.urlProtocol(self, didFailWithError: error)

@@ -320,7 +320,9 @@ import Vision
         let rawDecrypted = store.getDecryptedOcrText(stored) ?? ""
         let sanitized = store.getSanitizedDecryptedOcrText(stored) ?? ""
         XCTAssertNotEqual(rawDecrypted, sanitized,
-                          "raw vs sanitized must differ when input contains a control char (raw=\(rawDecrypted.debugDescription), sanitized=\(sanitized.debugDescription))")
+                          "raw vs sanitized must differ when input contains a control char "
+                          + "(raw=\(rawDecrypted.debugDescription), "
+                          + "sanitized=\(sanitized.debugDescription))")
         XCTAssertEqual(sanitized, "beforeafter",
                        "sanitize must strip the control char (got \(sanitized.debugDescription))")
     }
@@ -527,9 +529,11 @@ import Vision
         // discourage production consumers from coupling to it.
         let cap = 4
         XCTAssertLessThanOrEqual(peak, cap,
-            "ID-OCR-0012: in-flight OCR calls must not exceed the cap (\(cap)); peak=\(peak) means the cap is broken")
+            "ID-OCR-0012: in-flight OCR calls must not exceed the cap (\(cap)); "
+            + "peak=\(peak) means the cap is broken")
         XCTAssertGreaterThan(peak, 1,
-            "ID-OCR-0012: cap is meaningful only if at least 2 items run concurrently; peak=\(peak) suggests the cap is loose or items are too small to backpressure")
+            "ID-OCR-0012: cap is meaningful only if at least 2 items run concurrently; "
+            + "peak=\(peak) suggests the cap is loose or items are too small to backpressure")
     }
 
     /// ID-OCR-0012 test helper: track in-flight count + peak.

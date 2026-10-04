@@ -184,7 +184,8 @@ final class CryptoKeyPreparationTests: XCTestCase {
         XCTAssertNotNil(key, "migration failure must not break the current session — cache populates from the file's key before deletion")
         XCTAssertEqual(recorder.failures, [], "P2-3 alert path goes through .encryptionFailed + Throttler, not the keyFailureHandler")
         XCTAssertFalse(FileManager.default.fileExists(atPath: keyURL.path),
-                       "P1-AUDIT-2026-09-22 P2-3: cleartext .encryption_key must be deleted on PERMANENT Keychain migration failure (audit-accepted trade-off)")
+                       "P1-AUDIT-2026-09-22 P2-3: cleartext .encryption_key must be deleted "
+                       + "on PERMANENT Keychain migration failure (audit-accepted trade-off)")
         XCTAssertFalse(posted.isEmpty,
                        "P1-AUDIT-2026-09-22 P2-3: .encryptionFailed notification must fire for Throttler to surface NSAlert")
         let source = posted.first?.userInfo?["source"] as? String
@@ -225,7 +226,9 @@ final class CryptoKeyPreparationTests: XCTestCase {
         XCTAssertNotNil(key, "transient migration failure must not break the current session — cache populates from the file's key")
         XCTAssertEqual(recorder.failures, [], "P2-3: transient errors alert via .encryptionFailed + Throttler, not the keyFailureHandler")
         XCTAssertTrue(FileManager.default.fileExists(atPath: keyURL.path),
-                      "P2-3 (OpenCode 2026-09-23): .encryption_key MUST be preserved on transient Keychain errors so next-launch retry can succeed — destroying it loses the only copy of the root key")
+                      "P2-3 (OpenCode 2026-09-23): .encryption_key MUST be preserved on transient "
+                      + "Keychain errors so next-launch retry can succeed — destroying it loses "
+                      + "the only copy of the root key")
         XCTAssertEqual(try? Data(contentsOf: keyURL), legacy,
                        "P2-3: the legacy file content must be intact, not partially overwritten or truncated")
         XCTAssertFalse(posted.isEmpty,

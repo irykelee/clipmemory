@@ -111,7 +111,10 @@ final class ClipboardItemRowTests: XCTestCase {
     /// Minimum-valid RTF containing plaintext "Hello" after parsing. Mirrors
     /// ClipboardStoreRTFCacheTests.validRTF so the same fixture passes both
     /// layers. Keep in sync if the parser changes.
-    private let validRTF = "{\\rtf1\\ansi\\ansicpg1252\\cocoartf2512\n{\\colortbl;\\red255\\green255\\blue255;}\n\\pard\\tx560\\tx1120\\tx1680\\tx2240\\tx2800\\tx3360\\tx3920\\tx4480\\tx5040\\tx5600\\tx6160\\tx6720\\li0\\ri0\\sa200\\sl240\\slmult1\\f0\\fs24 \\cf0 Hello\\cf0  }"
+    private let validRTF = "{\\rtf1\\ansi\\ansicpg1252\\cocoartf2512"
+        + "\n{\\colortbl;\\red255\\green255\\blue255;}"
+        + "\n\\pard\\tx560\\tx1120\\tx1680\\tx2240\\tx2800\\tx3360\\tx3920\\tx4480\\tx5040\\tx5600"
+        + "\\tx6160\\tx6720\\li0\\ri0\\sa200\\sl240\\slmult1\\f0\\fs24 \\cf0 Hello\\cf0  }"
     private var validRTFBase64: String { Data(validRTF.utf8).base64EncodedString() }
 
     /// H-7/H-8: NSAttributedString RTF parse is a pure function. Extracting it

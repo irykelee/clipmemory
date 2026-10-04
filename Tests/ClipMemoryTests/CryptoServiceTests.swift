@@ -495,7 +495,8 @@ final class CryptoServiceTests: XCTestCase {
         case .keyUnavailable:
             XCTFail("decryptWithReason returned .keyUnavailable — customKeyData should be available")
         case .dataCorrupted:
-            XCTFail("decryptWithReason returned .dataCorrupted for v2-prefixed legacy ciphertext — auto-review Finding P1 regression (inline GCM branch did not call decryptBytes)")
+            XCTFail("decryptWithReason returned .dataCorrupted for v2-prefixed legacy ciphertext — "
+                    + "auto-review Finding P1 regression (inline GCM branch did not call decryptBytes)")
         case .internalError:
             XCTFail("decryptWithReason returned .internalError for valid legacy ciphertext")
         }
@@ -726,7 +727,9 @@ final class CryptoServiceTests: XCTestCase {
         // Assert 1: fallback file MUST be preserved (transient — retry will fix).
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: keyURL.path),
-            "P2-3 (OpenCode 2026-09-23): .encryption_key fallback MUST be kept on TRANSIENT Keychain errors so next-launch retry can succeed — destroying it loses the only copy of the root key"
+            "P2-3 (OpenCode 2026-09-23): .encryption_key fallback MUST be kept on TRANSIENT "
+            + "Keychain errors so next-launch retry can succeed — destroying it loses "
+            + "the only copy of the root key"
         )
         XCTAssertEqual(
             try? Data(contentsOf: keyURL), keyData,
@@ -885,7 +888,8 @@ final class CryptoServiceTests: XCTestCase {
         let recoverable = posted.first?.userInfo?["recoverable"] as? Bool
         XCTAssertEqual(
             recoverable, true,
-            "ID-REVIEW-1008: verify-mismatch MUST be marked recoverable (next launch retries the migration; user is told 'will retry', not 'corrupted')"
+            "ID-REVIEW-1008: verify-mismatch MUST be marked recoverable "
+            + "(next launch retries the migration; user is told 'will retry', not 'corrupted')"
         )
 
         // Assert 5: status code passed through.
@@ -917,7 +921,9 @@ final class CryptoServiceTests: XCTestCase {
         let pathComponents = url.pathComponents
         XCTAssertTrue(
             pathComponents.contains("Keys-Tests"),
-            "ID-REVIEW-1009: under XCTest, keyFileURL must contain 'Keys-Tests' component; got \(url.path). If this test fails on a non-XCTest invocation, the isRunningTests probe regressed."
+            "ID-REVIEW-1009: under XCTest, keyFileURL must contain 'Keys-Tests' component; "
+            + "got \(url.path). If this test fails on a non-XCTest invocation, the "
+            + "isRunningTests probe regressed."
         )
         XCTAssertFalse(
             pathComponents.contains(".encryption_key") && !pathComponents.contains("Keys-Tests"),
@@ -941,7 +947,8 @@ final class CryptoServiceTests: XCTestCase {
         let url = CryptoService.keyFileURL
         XCTAssertTrue(
             url.lastPathComponent == ".encryption_key",
-            "ID-REVIEW-1009: keyFileURL lastPathComponent must remain '.encryption_key' (the legacy filename); the redirect only changes the parent directory."
+            "ID-REVIEW-1009: keyFileURL lastPathComponent must remain '.encryption_key' "
+            + "(the legacy filename); the redirect only changes the parent directory."
         )
     }
 }

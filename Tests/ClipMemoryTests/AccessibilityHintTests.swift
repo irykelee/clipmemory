@@ -49,7 +49,9 @@ final class AccessibilityHintTests: XCTestCase {
             XCTAssertNotEqual(value, "accessibility.\(key)",
                 "ID-APP-0005: hint key `\(key)` is missing — L10n returned the raw key (localizedString fallback).")
             XCTAssertGreaterThan(value.count, 10,
-                "ID-APP-0005: hint `\(key)` is too short to be informative (got \(value.count) chars): \(value). Per audit the hint must name the side effect (e.g. 'Sends to Trash. Recoverable within 30 days.').")
+                "ID-APP-0005: hint `\(key)` is too short to be informative "
+                + "(got \(value.count) chars): \(value). Per audit the hint must name the side "
+                + "effect (e.g. 'Sends to Trash. Recoverable within 30 days.').")
             XCTAssertFalse(value.hasPrefix("accessibility."),
                 "ID-APP-0005: hint `\(key)` is the raw key (L10n fallback), not a real string.")
         }
