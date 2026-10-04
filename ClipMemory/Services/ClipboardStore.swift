@@ -1048,36 +1048,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         let expiredItems = savedItems.filter { $0.isExpired && !$0.isPinned }
         let loadedItems = savedItems.filter { !$0.isExpired || $0.isPinned }
 
-        // Repair legacy image items incorrectly flagged by the old
-        // getDecryptedContent path: image content is a filename, never encrypted,
-        // so isEncrypted/decryptionFailed should never be true for .image items.
-        // (No crypto involved — cheap enough to stay on the load path.)
-        //
-        // ID-FIX-loadItems-text (2026-07-30 audit): also clear
-        // `decryptionFailed` on non-image items. A transient Keychain lock
-        // or a one-off decrypt failure sets the flag permanently, but the
-        // NEXT launch (with the lock released) successfully decrypts —
-        // `getDecryptedContent` short-circuits on the flag and returns nil
-        // forever, leaving the row blank. Image items were already reset
-        // here; text / richText / link items were stuck. Repaired the
-        // same way: clear the flag, let the display path retry on view.
-        // Truly-corrupt items get the flag set again on the next failed
-        // decrypt — no data loss, just an extra render round-trip.
-        var repairedItems = loadedItems
-        var repairedImages = false
-        var repairedTexts = false
-        for (index, item) in repairedItems.enumerated() where item.type == .image {
-            if item.isEncrypted || item.decryptionFailed {
-                repairedItems[index] = item.with(isEncrypted: false, decryptionFailed: false)
-                repairedImages = true
-            }
-        }
-        for (index, item) in repairedItems.enumerated() where item.type != .image {
-            if item.decryptionFailed {
-                repairedItems[index] = item.with(decryptionFailed: false)
-                repairedTexts = true
-            }
-        }
+        let (repairedItems, repairedImages, repairedTexts) = repairDecryptionFlags(in: loadedItems)
 
         items = repairedItems
         invalidateItemIndex()
@@ -1126,6 +1097,13 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // (isOldFormat is a byte-prefix check since C4); only the crypto moves
         // to a utility queue, and results merge back on main by id. Legacy
         // content stays readable in the gap via the HMAC-verified legacy path.
+        scheduleLegacyMigrationAndBackfill()
+    }
+
+    /// Detects legacy items that need v1→v2 migration or HMAC-hash backfill,
+    /// then performs both on a utility queue. Extracted from loadItems for
+    /// cyclomatic complexity reduction.
+    private func scheduleLegacyMigrationAndBackfill() {
         var migrationCandidates: [(id: UUID, content: String)] = []
         // swiftlint:disable:next large_tuple
         var backfillCandidates: [(id: UUID, content: String, isEncrypted: Bool)] = []
@@ -1264,6 +1242,37 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
         }
         return true
+    }
+
+    /// Repair legacy items incorrectly flagged by the old
+    /// getDecryptedContent path: image content is a filename, never
+    /// encrypted, so isEncrypted/decryptionFailed should never be true
+    /// for .image items. Also clear `decryptionFailed` on non-image items
+    /// (ID-FIX-loadItems-text, 2026-07-30 audit): a transient Keychain
+    /// lock or a one-off decrypt failure sets the flag permanently, but
+    /// the NEXT launch successfully decrypts — the display path retries on
+    /// view. Truly-corrupt items get the flag set again on the next
+    /// failed decrypt. Extracted from loadItems for cyclomatic complexity
+    /// reduction.
+    private func repairDecryptionFlags(
+        in loadedItems: [ClipboardItem]
+    ) -> (items: [ClipboardItem], repairedImages: Bool, repairedTexts: Bool) {
+        var repairedItems = loadedItems
+        var repairedImages = false
+        var repairedTexts = false
+        for (index, item) in repairedItems.enumerated() where item.type == .image {
+            if item.isEncrypted || item.decryptionFailed {
+                repairedItems[index] = item.with(isEncrypted: false, decryptionFailed: false)
+                repairedImages = true
+            }
+        }
+        for (index, item) in repairedItems.enumerated() where item.type != .image {
+            if item.decryptionFailed {
+                repairedItems[index] = item.with(decryptionFailed: false)
+                repairedTexts = true
+            }
+        }
+        return (repairedItems, repairedImages, repairedTexts)
     }
 
     /// Kicks off a background task that performs the JSON decode +
