@@ -581,10 +581,40 @@ struct ItemListView: View {
     private func buildItemRow(itemWithIndex: (item: ClipboardItem, globalIndex: Int)) -> some View {
         let item: ClipboardItem = itemWithIndex.item
         let itemId: UUID = item.id
-        let revealed: Bool = revealedItems.contains(itemId)
-        let kbSelected: Bool = keyboardSelectedIndex == itemWithIndex.globalIndex
-        let copied: Bool = lastCopiedId == itemId
-        let selected: Bool = selectedItems.contains(itemId)
+        let actions = makeRowActions(for: item, itemId: itemId)
+        let shareDrag = makeShareDragContext(for: item)
+        ClipboardItemRow(item: item,
+            store: store,
+            isRevealed: revealedItems.contains(itemId),
+            isKeyboardSelected: keyboardSelectedIndex == itemWithIndex.globalIndex,
+            isCopied: lastCopiedId == itemId,
+            isSelected: selectedItems.contains(itemId),
+            searchText: searchText,
+            searchTextDebounced: searchTextDebounced,
+            onCopyWithFeedback: actions.copy,
+            onPin: actions.pin,
+            onDelete: actions.delete,
+            onSelect: actions.select,
+            onToggleReveal: actions.reveal,
+            onEditTags: actions.editTags,
+            onShare: shareDrag.shareAction,
+            shareLabel: shareDrag.shareLabel,
+            onDragProviders: shareDrag.dragProviders)
+    }
+
+    /// Bundle of action closures passed to `ClipboardItemRow`. Building them
+    /// in one place keeps `buildItemRow` readable and lets the row
+    /// construction site stay at one indentation level.
+    private struct RowActions {
+        let copy: () -> Void
+        let pin: () -> Void
+        let delete: () -> Void
+        let select: (Bool) -> Void
+        let reveal: () -> Void
+        let editTags: () -> Void
+    }
+
+    private func makeRowActions(for item: ClipboardItem, itemId: UUID) -> RowActions {
         let copyAction: () -> Void = {
             self.lastCopiedId = itemId
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -592,16 +622,31 @@ struct ItemListView: View {
             }
             self.copyItem(item)
         }
-        let pinAction: () -> Void = { self.store.togglePin(item) }
-        let deleteAction: () -> Void = {
-            self.itemToDelete = item
-            self.showingDeleteAlert = true
-        }
-        let selectAction: (Bool) -> Void = { isOn in
-            if isOn { self.selectedItems.insert(itemId) } else { self.selectedItems.remove(itemId) }
-        }
-        let revealAction: () -> Void = { self.toggleReveal(itemId) }
-        let editTagsAction: () -> Void = { self.tagPickerItem = item }
+        return RowActions(
+            copy: copyAction,
+            pin: { self.store.togglePin(item) },
+            delete: {
+                self.itemToDelete = item
+                self.showingDeleteAlert = true
+            },
+            select: { isOn in
+                if isOn { self.selectedItems.insert(itemId) } else { self.selectedItems.remove(itemId) }
+            },
+            reveal: { self.toggleReveal(itemId) },
+            editTags: { self.tagPickerItem = item }
+        )
+    }
+
+    /// Bundle of share/drag-related data for a row. `nil` fields mean
+    /// the action isn't applicable for this item (e.g. text-only items
+    /// have no drag provider and no share action).
+    private struct ShareDragContext {
+        let shareAction: (() -> Void)?
+        let shareLabel: String?
+        let dragProviders: (() -> [NSItemProvider])?
+    }
+
+    private func makeShareDragContext(for item: ClipboardItem) -> ShareDragContext {
         // ID-VIEW-0030/0032 (2026-08-13, user-driven): share context. Only
         // image items are shareable. When this row is in a multi-image
         // selection, the action shares the WHOLE selection (not just this
@@ -645,23 +690,11 @@ struct ItemListView: View {
             }
             return ShareService.makeDragProviders(for: itemsToDrag)
         }
-        ClipboardItemRow(item: item,
-            store: store,
-            isRevealed: revealed,
-            isKeyboardSelected: kbSelected,
-            isCopied: copied,
-            isSelected: selected,
-            searchText: searchText,
-            searchTextDebounced: searchTextDebounced,
-            onCopyWithFeedback: copyAction,
-            onPin: pinAction,
-            onDelete: deleteAction,
-            onSelect: selectAction,
-            onToggleReveal: revealAction,
-            onEditTags: editTagsAction,
-            onShare: shareAction,
+        return ShareDragContext(
+            shareAction: shareAction,
             shareLabel: shareLabel,
-            onDragProviders: dragProviders)
+            dragProviders: dragProviders
+        )
     }
 
     // MARK: - Clear-mode plumbing
