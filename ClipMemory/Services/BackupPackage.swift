@@ -375,6 +375,53 @@ final class BackupPackage {
         try body(listing)
     }
 
+    /// Stages the stored blobs (items / tags / trash) into the export
+    /// directory and returns the decoded manifest counts. Extracted from
+    /// exportPackage for cyclomatic complexity reduction. Throws
+    /// `corruptedData` if a blob's JSON count-decode fails (L-11 audit,
+    /// 2026-07-24): silently coerced failures would have produced a
+    /// manifest with mismatched counts.
+    private static func stageStoredBlobs(
+        to staging: URL,
+        defaults: UserDefaults,
+        // swiftlint:disable:next large_tuple
+        counts: (items: Int, tags: Int, trash: Int)
+    ) throws -> (items: Int, tags: Int, trash: Int) { // swiftlint:disable:this large_tuple
+        var counts = counts
+        for blob in BackupBlobRegistry.allBlobKeys {
+            let filename = blob.filename
+            let key = blob.userDefaultsKey
+            guard let data = defaults.data(forKey: key) else { continue }
+            try data.write(to: staging.appendingPathComponent(filename), options: .atomic)
+            do {
+                switch blob {
+                case .items:
+                    counts.items = try JSONDecoder().decode([ClipboardItem].self, from: data).count
+                case .tags:
+                    counts.tags = try JSONDecoder().decode([Tag].self, from: data).count
+                case .trash:
+                    counts.trash = try JSONDecoder().decode([ClipboardItem].self, from: data).count
+                }
+            } catch {
+                Self.logger.error("Backup manifest count decode failed for \(key): \(error.localizedDescription)")
+                throw BackupPackageError.corruptedData("\(key) count decode failed", source(forKey: key))
+            }
+        }
+        return counts
+    }
+
+    /// Counts `.png` entries in the given directory. Extracted from
+    /// exportPackage for cyclomatic complexity reduction. Propagates
+    /// enumeration errors (NEW-2, 2026-08-03 audit) so a corrupt
+    /// images dir produces a hard export failure rather than a misleading
+    /// `imageCount = 0` in the manifest.
+    private static func countPNGImages(in directory: URL) throws -> Int {
+        try FileManager.default
+            .contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasSuffix(".png") }
+            .count
+    }
+
     /// ID-SECURITY-0006 pre-extraction allow-list: rejects any archive
     /// member whose path tries to escape the extraction root (`..` token,
     /// absolute path, or backslash separator). Extracted from
@@ -584,25 +631,7 @@ final class BackupPackage {
         // registry-declared metadata tested by `testAllBlobKeysDeclareDecodeType`
         // and used by future callers that want to decode without
         // hard-coding the concrete element type.
-        for blob in BackupBlobRegistry.allBlobKeys {
-            let filename = blob.filename
-            let key = blob.userDefaultsKey
-            guard let data = defaults.data(forKey: key) else { continue }
-            try data.write(to: staging.appendingPathComponent(filename), options: .atomic)
-            do {
-                switch blob {
-                case .items:
-                    counts.items = try JSONDecoder().decode([ClipboardItem].self, from: data).count
-                case .tags:
-                    counts.tags = try JSONDecoder().decode([Tag].self, from: data).count
-                case .trash:
-                    counts.trash = try JSONDecoder().decode([ClipboardItem].self, from: data).count
-                }
-            } catch {
-                Self.logger.error("Backup manifest count decode failed for \(key): \(error.localizedDescription)")
-                throw BackupPackageError.corruptedData("\(key) count decode failed", source(forKey: key))
-            }
-        }
+        counts = try stageStoredBlobs(to: staging, defaults: defaults, counts: counts)
 
         var imageCount = 0
         if FileManager.default.fileExists(atPath: imagesDirectory.path) {
@@ -618,10 +647,7 @@ final class BackupPackage {
             // `validateManifestCounts` (line 727) would reject the package
             // on import as `corruptedData`, producing a permanently
             // un-importable backup that the user believed succeeded.
-            imageCount = try FileManager.default
-                .contentsOfDirectory(atPath: imagesDestination.path)
-                .filter { $0.hasSuffix(".png") }
-                .count
+            imageCount = try countPNGImages(in: imagesDestination)
         }
 
         try sealedKeyData.write(to: staging.appendingPathComponent("key.enc"), options: .atomic)
