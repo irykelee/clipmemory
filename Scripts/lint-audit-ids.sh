@@ -52,7 +52,7 @@ done
 # ID-SILENT-0022 / ID-STORE-0011 / ID-TEST-0001 for known back-references).
 # The allow list still exempts CLAUDE.md + docs/superpowers/audits/* +
 # feedback/* + files co-locating ID-DOMAIN-NNNN.
-BAD_PATTERN='\[?(HIGH|MEDIUM|LOW|[HML])\]?-[0-9]+\]?'
+BAD_PATTERN='(\b\[?(HIGH|MEDIUM|LOW|[HML])\]?-|\[\b(HIGH|MEDIUM|LOW|[HML])\]-)[0-9]+\]?'
 GOOD_PATTERN='ID-[A-Z]+-[0-9]{4}'
 
 # Allow-list: files where non-standard ID references are intentional historical record.
