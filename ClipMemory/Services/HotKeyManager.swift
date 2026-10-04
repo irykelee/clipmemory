@@ -58,51 +58,39 @@ struct HotKeyConfig: Codable, Equatable {
     }
 
     private func keyCodeToString(_ code: UInt32) -> String {
-        switch code {
-        case UInt32(kVK_ANSI_A): return "A"
-        case UInt32(kVK_ANSI_B): return "B"
-        case UInt32(kVK_ANSI_C): return "C"
-        case UInt32(kVK_ANSI_D): return "D"
-        case UInt32(kVK_ANSI_E): return "E"
-        case UInt32(kVK_ANSI_F): return "F"
-        case UInt32(kVK_ANSI_G): return "G"
-        case UInt32(kVK_ANSI_H): return "H"
-        case UInt32(kVK_ANSI_I): return "I"
-        case UInt32(kVK_ANSI_J): return "J"
-        case UInt32(kVK_ANSI_K): return "K"
-        case UInt32(kVK_ANSI_L): return "L"
-        case UInt32(kVK_ANSI_M): return "M"
-        case UInt32(kVK_ANSI_N): return "N"
-        case UInt32(kVK_ANSI_O): return "O"
-        case UInt32(kVK_ANSI_P): return "P"
-        case UInt32(kVK_ANSI_Q): return "Q"
-        case UInt32(kVK_ANSI_R): return "R"
-        case UInt32(kVK_ANSI_S): return "S"
-        case UInt32(kVK_ANSI_T): return "T"
-        case UInt32(kVK_ANSI_U): return "U"
-        case UInt32(kVK_ANSI_V): return "V"
-        case UInt32(kVK_ANSI_W): return "W"
-        case UInt32(kVK_ANSI_X): return "X"
-        case UInt32(kVK_ANSI_Y): return "Y"
-        case UInt32(kVK_ANSI_Z): return "Z"
-        case UInt32(kVK_ANSI_0): return "0"
-        case UInt32(kVK_ANSI_1): return "1"
-        case UInt32(kVK_ANSI_2): return "2"
-        case UInt32(kVK_ANSI_3): return "3"
-        case UInt32(kVK_ANSI_4): return "4"
-        case UInt32(kVK_ANSI_5): return "5"
-        case UInt32(kVK_ANSI_6): return "6"
-        case UInt32(kVK_ANSI_7): return "7"
-        case UInt32(kVK_ANSI_8): return "8"
-        case UInt32(kVK_ANSI_9): return "9"
-        case UInt32(kVK_Space): return "Space"
-        case UInt32(kVK_Return): return "⏎"
-        case UInt32(kVK_Escape): return "ESC"
-        case UInt32(kVK_Delete): return "⌫"
-        case UInt32(kVK_Tab): return "⇥"
-        default: return "Key \(code)"
-        }
+        Self.keyCodeLabels[code] ?? "Key \(code)"
     }
+
+    /// Lookup table for kVK → display string. Extracted from keyCodeToString
+    /// for cyclomatic complexity reduction.
+    private static let keyCodeLabels: [UInt32: String] = {
+        var labels: [UInt32: String] = [:]
+        let alpha: [(Int, String)] = [
+            (kVK_ANSI_A, "A"), (kVK_ANSI_B, "B"), (kVK_ANSI_C, "C"),
+            (kVK_ANSI_D, "D"), (kVK_ANSI_E, "E"), (kVK_ANSI_F, "F"),
+            (kVK_ANSI_G, "G"), (kVK_ANSI_H, "H"), (kVK_ANSI_I, "I"),
+            (kVK_ANSI_J, "J"), (kVK_ANSI_K, "K"), (kVK_ANSI_L, "L"),
+            (kVK_ANSI_M, "M"), (kVK_ANSI_N, "N"), (kVK_ANSI_O, "O"),
+            (kVK_ANSI_P, "P"), (kVK_ANSI_Q, "Q"), (kVK_ANSI_R, "R"),
+            (kVK_ANSI_S, "S"), (kVK_ANSI_T, "T"), (kVK_ANSI_U, "U"),
+            (kVK_ANSI_V, "V"), (kVK_ANSI_W, "W"), (kVK_ANSI_X, "X"),
+            (kVK_ANSI_Y, "Y"), (kVK_ANSI_Z, "Z")
+        ]
+        let digit: [(Int, String)] = [
+            (kVK_ANSI_0, "0"), (kVK_ANSI_1, "1"), (kVK_ANSI_2, "2"),
+            (kVK_ANSI_3, "3"), (kVK_ANSI_4, "4"), (kVK_ANSI_5, "5"),
+            (kVK_ANSI_6, "6"), (kVK_ANSI_7, "7"), (kVK_ANSI_8, "8"),
+            (kVK_ANSI_9, "9")
+        ]
+        let special: [(Int, String)] = [
+            (kVK_Space, "Space"), (kVK_Return, "⏎"),
+            (kVK_Escape, "ESC"), (kVK_Delete, "⌫"), (kVK_Tab, "⇥")
+        ]
+        for (keyCode, label) in alpha + digit + special {
+            labels[UInt32(keyCode)] = label
+        }
+        return labels
+    }()
 }
 
 class HotKeyManager {
