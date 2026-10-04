@@ -1256,7 +1256,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// reduction.
     private func repairDecryptionFlags(
         in loadedItems: [ClipboardItem]
-    ) -> (items: [ClipboardItem], repairedImages: Bool, repairedTexts: Bool) {
+    ) -> (items: [ClipboardItem], repairedImages: Bool, repairedTexts: Bool) { // swiftlint:disable:this large_tuple
         var repairedItems = loadedItems
         var repairedImages = false
         var repairedTexts = false
