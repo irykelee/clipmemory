@@ -138,77 +138,113 @@ final class RestoreWizardViewModel: ObservableObject {
     /// layer (Task 6) calls `apply()` with no argument, picking up the default `.merge`.
     func apply(mode: RestoreMode = .merge) {
         precondition(mode == .merge, "RestoreMode.replace requires clearAll() implementation (phase 2). Today only .merge is supported.")
-        guard case .valid(let preview) = validation, let source = source else { return }
+        guard case .valid = validation, let source = source else { return }
         // Capture main-actor values before entering detached task.
-        let imagesDir = imagesDirectory
-        let userDefaults = defaults
-        let passphraseValue = passphrase
-        let store = ClipboardStore.shared
-        let svc = backupService
+        let context = RestoreContext(
+            source: source,
+            imagesDirectory: imagesDirectory,
+            defaults: defaults,
+            passphrase: passphrase,
+            store: ClipboardStore.shared,
+            backupService: backupService
+        )
         progress = .snapshotting
         Task.detached(priority: .userInitiated) { [weak self] in
-            // Step 0: flush pending saves (sync, ~ms).
-            await MainActor.run { ClipboardStore.shared.flushPendingSaves() }
+            await self?.performRestoreTask(context: context)
+        }
+    }
 
-            // Step 1: safety snapshot (background).
-            let snapshotURL: URL
-            do {
-                snapshotURL = try await Task.detached(priority: .userInitiated) {
-                    try svc.backupNow()
-                }.value
-                _ = snapshotURL
-            } catch {
-                await MainActor.run {
-                    self?.progress = .failed(.snapshotFailed("Snapshot failed: \(error.localizedDescription)"))
-                }
-                return
+    /// Bundle of @MainActor values that the detached restore task needs.
+    /// Captured synchronously in `apply()` before the task hop so the
+    /// background task can pass them by value (no MainActor reads inside
+    /// the detached closure except where SwiftUI bindings require them).
+    private struct RestoreContext: Sendable {
+        let source: RestoreSource
+        let imagesDirectory: URL
+        let defaults: UserDefaults
+        let passphrase: String
+        let store: ClipboardStore
+        let backupService: BackupService
+    }
+
+    /// The actual restore flow, run on a detached userInitiated task.
+    /// Split out from `apply()` so the orchestration is readable and
+    /// each step's error branch lives next to its corresponding success
+    /// branch instead of nesting three layers deep.
+    private func performRestoreTask(context: RestoreContext) async {
+        // Step 0: flush pending saves (sync, ~ms).
+        await MainActor.run { ClipboardStore.shared.flushPendingSaves() }
+        // Step 1: safety snapshot (background).
+        guard await runSafetySnapshot(backupService: context.backupService) else { return }
+        await MainActor.run { self.progress = .importing }
+        // Step 2: import (background; hops to main internally).
+        await performImportAndReport(context: context)
+    }
+
+    /// Runs the safety snapshot before any restore. Returns true on
+    /// success, false if the snapshot failed (in which case the caller
+    /// should NOT advance to the import phase).
+    private func runSafetySnapshot(backupService: BackupService) async -> Bool {
+        do {
+            _ = try await Task.detached(priority: .userInitiated) {
+                try backupService.backupNow()
+            }.value
+            return true
+        } catch {
+            await MainActor.run {
+                self.progress = .failed(.snapshotFailed("Snapshot failed: \(error.localizedDescription)"))
             }
+            return false
+        }
+    }
 
-            await MainActor.run { self?.progress = .importing }
-
-            // Step 2: import (background; hops to main internally).
-            do {
-                let result: BackupImportResult
-                switch source {
-                case .localBackup(let backup):
-                    if backup.isIncomplete {
-                        await MainActor.run { self?.progress = .failed(.corruptedData("incomplete", .manifest)) }
-                        return
-                    }
-                    result = try BackupPackage.importFromLocalBackup(
-                        backup.id, store: store,
-                        imagesDirectory: imagesDir,
-                        defaults: userDefaults
-                    )
-                case .externalFile(let url):
-                    result = try BackupPackage.importPackage(
-                        from: url,
-                        passphrase: passphraseValue,
-                        store: store,
-                        localCrypto: ServiceContainer.crypto,
-                        imagesDirectory: imagesDir,
-                        defaults: userDefaults
-                    )
+    /// Step 2: import the backup (local or external file) and translate
+    /// the outcome into the view's progress / step. `wrongPassword`
+    /// routes back to the password-entry step (F8 fix); other
+    /// `BackupPackageError`s surface as `.failed`; unknown errors get
+    /// wrapped as `corruptedData` for triage.
+    private func performImportAndReport(context: RestoreContext) async {
+        do {
+            let result: BackupImportResult
+            switch context.source {
+            case .localBackup(let backup):
+                if backup.isIncomplete {
+                    await MainActor.run { self.progress = .failed(.corruptedData("incomplete", .manifest)) }
+                    return
                 }
-                await MainActor.run {
-                    self?.result = result
-                    self?.progress = .finished(result)
-                    self?.step = .result
-                }
-            } catch BackupPackageError.wrongPassword {
-                // Defensive TOCTOU: validateExternal should have caught this
-                // first (F8 fix). If it reaches here (e.g., key changed
-                // mid-session), route back to step 2 for password re-entry.
-                await MainActor.run {
-                    self?.progress = .idle
-                    self?.validation = .wrongPassword
-                    self?.step = .validate
-                }
-            } catch let err as BackupPackageError {
-                await MainActor.run { self?.progress = .failed(err) }
-            } catch {
-                await MainActor.run { self?.progress = .failed(.corruptedData(error.localizedDescription, .manifest)) }
+                result = try BackupPackage.importFromLocalBackup(
+                    backup.id, store: context.store,
+                    imagesDirectory: context.imagesDirectory,
+                    defaults: context.defaults
+                )
+            case .externalFile(let url):
+                result = try BackupPackage.importPackage(
+                    from: url,
+                    passphrase: context.passphrase,
+                    store: context.store,
+                    localCrypto: ServiceContainer.crypto,
+                    imagesDirectory: context.imagesDirectory,
+                    defaults: context.defaults
+                )
             }
+            await MainActor.run {
+                self.result = result
+                self.progress = .finished(result)
+                self.step = .result
+            }
+        } catch BackupPackageError.wrongPassword {
+            // Defensive TOCTOU: validateExternal should have caught this
+            // first (F8 fix). If it reaches here (e.g., key changed
+            // mid-session), route back to step 2 for password re-entry.
+            await MainActor.run {
+                self.progress = .idle
+                self.validation = .wrongPassword
+                self.step = .validate
+            }
+        } catch let err as BackupPackageError {
+            await MainActor.run { self.progress = .failed(err) }
+        } catch {
+            await MainActor.run { self.progress = .failed(.corruptedData(error.localizedDescription, .manifest)) }
         }
     }
 
