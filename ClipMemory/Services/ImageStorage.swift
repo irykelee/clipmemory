@@ -224,26 +224,15 @@ class ImageStorage {
         var skippedSet = Set(defaults.stringArray(forKey: skippedFilenamesKey) ?? [])
         var hadFailure = false
 
-        for filename in legacyFiles {
-            let result = migrateLegacyFile(
-                filename: filename,
-                legacyDirectory: legacyDirectory,
-                maxFileSize: maxFileSize,
-                migratedSet: migratedSet,
-                skippedSet: skippedSet
-            )
-            switch result {
-            case .skipped:
-                break
-            case .migrated:
-                migratedFilenames.append(filename)
-                migratedSet.insert(filename)
-            case .hadFailure:
-                hadFailure = true
-            case .permanentSkip:
-                skippedSet.insert(filename)
-            }
-        }
+        let loopResult = migrateAllLegacyFiles(
+            legacyFiles: legacyFiles,
+            legacyDirectory: legacyDirectory,
+            maxFileSize: maxFileSize,
+            migratedSet: &migratedSet,
+            skippedSet: &skippedSet
+        )
+        migratedFilenames = loopResult.filenames
+        hadFailure = loopResult.hadFailure
 
         // M-8 (2026-07-25 audit): write the accumulated migrated/skipped sets
         // once now that the loop is done. This preserves resume state across
@@ -313,6 +302,45 @@ class ImageStorage {
     }
 
     /// Post-migration cleanup: remove plaintext legacy PNGs for files we
+    /// Per-iteration loop body. Extracted from migrateFromLegacyIfNeeded
+    /// for cyclomatic complexity reduction. The 4-case switch on the
+    /// migration step result drives `migratedFilenames` / `migratedSet`
+    /// / `skippedSet` / `hadFailure` updates via inout parameters.
+    /// Returns the list of successfully-migrated filenames (so the caller
+    /// can run the post-migration plaintext-cleanup loop without
+    /// re-scanning `migratedSet`).
+    private func migrateAllLegacyFiles(
+        legacyFiles: [String],
+        legacyDirectory: URL,
+        maxFileSize: Int,
+        migratedSet: inout Set<String>,
+        skippedSet: inout Set<String>
+    ) -> (filenames: [String], hadFailure: Bool) {
+        var migratedFilenames: [String] = []
+        var hadFailure = false
+        for filename in legacyFiles {
+            let result = migrateLegacyFile(
+                filename: filename,
+                legacyDirectory: legacyDirectory,
+                maxFileSize: maxFileSize,
+                migratedSet: migratedSet,
+                skippedSet: skippedSet
+            )
+            switch result {
+            case .skipped:
+                break
+            case .migrated:
+                migratedFilenames.append(filename)
+                migratedSet.insert(filename)
+            case .hadFailure:
+                hadFailure = true
+            case .permanentSkip:
+                skippedSet.insert(filename)
+            }
+        }
+        return (migratedFilenames, hadFailure)
+    }
+
     /// successfully migrated. Extracted from migrateFromLegacyIfNeeded for
     /// cyclomatic complexity reduction.
     /// Returns true if any removeItem left a plaintext on disk (caller
