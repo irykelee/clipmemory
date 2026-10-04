@@ -340,36 +340,7 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         do {
             (data, response) = try await delegate.fetch(session: session, request: request)
         } catch {
-            if let refusal = delegate.refusal {
-                switch refusal {
-                case .declaredContentLength(let declared):
-                    // swiftlint:disable:next line_length
-                    DefaultFeedProbeEngine.logger.warning("Feed Content-Length \(declared) exceeds \(Self.maxResponseBytes) bytes — refusing before download")
-                case .streamExceeded:
-                    DefaultFeedProbeEngine.logger.warning("Feed body exceeded \(Self.maxResponseBytes) bytes mid-stream — cancelling")
-                }
-                return nil
-            }
-            if let urlError = error as? URLError {
-                // L-20: separate timeout (often transient, keep .automatic
-                // patience) from other transport errors (DNS, refused, etc.)
-                // so a brief outage doesn't look like a hard failure.
-                switch urlError.code {
-                case .timedOut:
-                    // swiftlint:disable:next line_length
-                    DefaultFeedProbeEngine.logger.notice("Feed probe timed out after \(timeout, privacy: .public)s url=\(url.absoluteString, privacy: .public)")
-                case .cancelled:
-                    // Probe was cancelled by a newer probe winning the race —
-                    // expected behavior, don't surface to operators.
-                    break
-                default:
-                    // swiftlint:disable:next line_length
-                    DefaultFeedProbeEngine.logger.error("Feed probe URLError code=\(urlError.code.rawValue, privacy: .public) desc=\(urlError.localizedDescription, privacy: .public) url=\(url.absoluteString, privacy: .public)")
-                }
-            } else {
-                // swiftlint:disable:next line_length
-                DefaultFeedProbeEngine.logger.error("Feed probe non-URL error: \(String(describing: error), privacy: .public) url=\(url.absoluteString, privacy: .public)")
-            }
+            handleFetchError(error, delegate: delegate, url: url, timeout: timeout)
             return nil
         }
         guard let httpResponse = response as? HTTPURLResponse,
@@ -404,4 +375,44 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
     /// enforced by `CappedFetchDelegate` during streaming (Content-Length
     /// precheck + running-total cancel), never after a full in-memory buffer.
     static let maxResponseBytes = 1_000_000
+
+    /// Logs fetch failures (cap refusal / transport error / non-URL error).
+    /// Extracted from fetchBody for cyclomatic complexity reduction.
+    private func handleFetchError(
+        _ error: Error,
+        delegate: CappedFetchDelegate,
+        url: URL,
+        timeout: TimeInterval
+    ) {
+        if let refusal = delegate.refusal {
+            switch refusal {
+            case .declaredContentLength(let declared):
+                // swiftlint:disable:next line_length
+                DefaultFeedProbeEngine.logger.warning("Feed Content-Length \(declared) exceeds \(Self.maxResponseBytes) bytes — refusing before download")
+            case .streamExceeded:
+                DefaultFeedProbeEngine.logger.warning("Feed body exceeded \(Self.maxResponseBytes) bytes mid-stream — cancelling")
+            }
+            return
+        }
+        if let urlError = error as? URLError {
+            // L-20: separate timeout (often transient, keep .automatic
+            // patience) from other transport errors (DNS, refused, etc.)
+            // so a brief outage doesn't look like a hard failure.
+            switch urlError.code {
+            case .timedOut:
+                // swiftlint:disable:next line_length
+                DefaultFeedProbeEngine.logger.notice("Feed probe timed out after \(timeout, privacy: .public)s url=\(url.absoluteString, privacy: .public)")
+            case .cancelled:
+                // Probe was cancelled by a newer probe winning the race —
+                // expected behavior, don't surface to operators.
+                break
+            default:
+                // swiftlint:disable:next line_length
+                DefaultFeedProbeEngine.logger.error("Feed probe URLError code=\(urlError.code.rawValue, privacy: .public) desc=\(urlError.localizedDescription, privacy: .public) url=\(url.absoluteString, privacy: .public)")
+            }
+        } else {
+            // swiftlint:disable:next line_length
+            DefaultFeedProbeEngine.logger.error("Feed probe non-URL error: \(String(describing: error), privacy: .public) url=\(url.absoluteString, privacy: .public)")
+        }
+    }
 }
