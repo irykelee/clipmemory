@@ -1,4 +1,4 @@
-# ClipMemory v2.9.5
+# ClipMemory v2.9.6
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
@@ -47,6 +47,19 @@
 ---
 
 ## 📋 Registro de alterações
+
+### v2.9.6 (2026-10-04) — Rolagem em dez direções na pré-visualização de imagem com pressionamento prolongado + fechamento do backlog do code-review + encerramento do ID-CRASH-0038
+
+- **🖼 Pré-visualização de imagem com pressionamento prolongado — rolagem com a roda agora oferece suporte a rolagem vertical e horizontal + Shift+wheel** — Corrige o bug em que pressionar o botão esquerdo e rolar a roda fazia a imagem ser fechada acidentalmente (USER-FEEDBACK-2026-09-26, corrigido após várias iterações). O painel de pré-visualização permanece visível durante a rolagem; ele só fecha normalmente ao soltar o botão. Também oferece suporte a rolagem vertical, rolagem horizontal via botões laterais do mouse Logitech / swipe horizontal do Magic Mouse / swipe de dois dedos no trackpad, além de rolagem horizontal com mouse comum + Shift+wheel (convenção padrão do macOS). A barra de rolagem se move corretamente quando a imagem excede a janela de pré-visualização.
+- **🛠 Fechamento completo do backlog do code-review-2026-09-28 (38/38)** — 7 itens P1 + 18 itens P2 + 5 itens de follow-up, todos entregues; cobrindo itens de reforço como L10n / Crypto / Window / Persistence / TSan / cadeia de ferramentas de CI / dependabot / itens de documentação desatualizados. Veja `docs/audit/code-review-2026-09-28.md` para detalhes.
+- **🛠 Conclusão do mass-skip do ID-CRASH-0038 (46 → 4)** — correção da causa raiz do runner restart da issue #93 + migração completa do production code para o seam de injeção (HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + ZZZ canary reativado. 42/46 testes restaurados (AppDelegate terminate + IntegrationTests + 3 guards condicionais de HotKey + MemoryWarning + WindowManager); restam 4 casos de incompatibilidade de snapshot golden para investigação na v2.9.7 (diferença de ambiente exclusiva do CI; local 1025/4/0 realmente verde).
+- **🛠 ID-CRASH-0058/0059 — anotação `@preconcurrency` suprime warnings de strict-concurrency do Swift 6** — TSan advisory: redução líquida de 0 em 6 warnings. Anotações adicionadas no protocolo `ClipboardMonitorDelegate` + closure GCD em `ClipboardStore+OCR.swift`, sem alteração na semântica de runtime.
+- **🛠 ID-REVIEW-1012 lazy-init `ClipboardStore.shared`** — o antigo `static let shared = ClipboardStore()` era avaliado de forma eager no carregamento do módulo, enganando a detecção da variável de ambiente xcTestDefaults. Alterado para `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock para implementar lazy init real.
+- **🛠 Hygiene batch** — correção de 51 warnings de `trailing_newline` do SwiftLint + imposição de finais de linha LF no `.gitattributes`; restauração da permissão de execução perdida por `chmod -x` em 2 scripts shell.
+
+Completo: 1025 / 4 skipped / 0 failures (locale duplo en + zh-Hans).
+
+Veja `docs/skips-ledger.md` (arquivado após o ship completo da v2.9.6).
 
 ### v2.9.5 (2026-10-01) — Rolagem em dez direções na pré-visualização de imagem com pressionamento prolongado + fechamento do audit-backlog
 

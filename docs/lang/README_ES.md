@@ -1,4 +1,4 @@
-# ClipMemory v2.9.5
+# ClipMemory v2.9.6
 
 **Gestor de portapapeles de nueva generación para macOS — Un toque para buscar, instantánea para copiar**
 
@@ -47,6 +47,17 @@
 ---
 
 ## 📋 Registro de cambios
+
+### v2.9.6 (2026-10-04) — Desplazamiento en diez direcciones en la previsualización de imagen con pulsación prolongada + cierre del backlog de code-review + cierre de ID-CRASH-0038
+- **🖼 Previsualización de imagen con pulsación prolongada — el desplazamiento con la rueda ahora admite vertical y horizontal + Shift+wheel** — Corrige el bug por el que desplazar la rueda con el botón izquierdo pulsado hacía que la imagen se descartara accidentalmente (USER-FEEDBACK-2026-09-26, corregido tras varias iteraciones). El panel de previsualización permanece visible durante el desplazamiento; solo se cierra con normalidad al soltar. También admite desplazamiento vertical, desplazamiento horizontal con los botones laterales del ratón Logitech / swipe horizontal de Magic Mouse / swipe con dos dedos del trackpad, y desplazamiento horizontal con ratón normal + Shift+wheel (convención estándar de macOS). La barra de desplazamiento se mueve correctamente cuando la imagen excede la ventana de previsualización.
+- **🛠 Backlog de code-review-2026-09-28 cerrado por completo (38/38)** — Los 7 elementos P1 + 18 elementos P2 + 5 follow-ups se publicaron todos; cubre endurecimientos como L10n / Crypto / Window / Persistence / TSan / cadena de herramientas de CI / dependabot / documentación obsoleta. Consulte `docs/audit/code-review-2026-09-28.md` para más detalles.
+- **🛠 Cierre de mass-skip de ID-CRASH-0038 (46 → 4)** — Corrección de la causa raíz del reinicio del runner del issue #93 + migración completa del código de producción a seam de inyección (HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + ZZZ canary reactivado. 42/46 pruebas restauradas (AppDelegate terminate + IntegrationTests + 3 puntos con guard condicional en HotKey + MemoryWarning + WindowManager); quedan 4 discrepancias de snapshot golden para investigar en v2.9.7 (diferencia de entorno solo en CI; en local 1025/4/0 realmente en verde).
+- **🛠 ID-CRASH-0058/0059 — anotaciones `@preconcurrency` suprimen warnings de strict-concurrency de Swift 6** — TSan advisory: reducción neta de 0 en 6 warnings. Se añadieron anotaciones en dos puntos: el protocolo `ClipboardMonitorDelegate` + el closure GCD de `ClipboardStore+OCR.swift`; la semántica en runtime no cambia.
+- **🛠 ID-REVIEW-1012 lazy-init de `ClipboardStore.shared`** — El `static let shared = ClipboardStore()` original se evaluaba de forma eager al cargar el módulo, lo que engañaba la detección de la env var xcTestDefaults. Se cambió a `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock para lograr una verdadera inicialización lazy.
+- **🛠 Lote de higiene** — Corrección de 51 warnings de SwiftLint `trailing_newline` + forzado de finales de línea LF en `.gitattributes`; restauración de `chmod -x` perdido en 2 shell scripts.
+Completo: 1025 / 4 skipped / 0 failures (con doble locale: en + zh-Hans).
+
+Consulte `docs/skips-ledger.md` (archivado tras el ship completo de v2.9.6).
 
 ### v2.9.5 (2026-10-01) — Desplazamiento en diez direcciones en la previsualización de imagen con pulsación prolongada + cierre del backlog de auditoría
 

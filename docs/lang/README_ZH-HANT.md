@@ -1,4 +1,4 @@
-# 剪憶 ClipMemory v2.9.5
+# 剪憶 ClipMemory v2.9.6
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
@@ -47,6 +47,19 @@
 ---
 
 ## 📋 更新日誌
+
+### v2.9.6 (2026-10-04) — 長按圖片預覽十方向捲動 + code-review backlog 閉環 + ID-CRASH-0038 收尾
+
+- **🖼 長按圖片預覽 — 滾輪滑動同時支援縱、橫向 + Shift+wheel**：修復按住左鍵滾動滾輪導致圖片被意外 dismiss 的 bug（USER-FEEDBACK-2026-09-26，經多輪迭代修復）。現在預覽面板在捲動期間保持顯示，鬆手才正常關閉。同時支援縱向捲動、Logitech 滑鼠側鍵 / Magic Mouse 橫向 swipe / trackpad 雙指 swipe 的橫向捲動，以及一般滑鼠 + Shift+wheel 的橫向捲動（macOS 標準慣例）。圖片超過預覽視窗時捲軸正確移動。
+- **🛠 code-review-2026-09-28 backlog 全數結案（38/38）**：7 項 P1 + 18 項 P2 + 5 項 follow-up 全部 ship；涵蓋 L10n / Crypto / Window / Persistence / TSan / CI 工具鏈 / dependabot / 文件過期項 等加固。詳見 `docs/audit/code-review-2026-09-28.md`。
+- **🛠 ID-CRASH-0038 mass-skip 收尾（46 → 4）**：issue #93 runner restart 根因修復 + production code 全數遷移至注入 seam（HotKey / SafeMode / ClipboardStore / Crypto / WindowManager）+ ZZZ canary 重新啟用。42/46 測試恢復（AppDelegate terminate + IntegrationTests + HotKey 3 處條件 guard + MemoryWarning + WindowManager）；剩 4 處 snapshot golden 失配留待 v2.9.7 調查（CI-only 環境差，本地 1025/4/0 真綠）。
+- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` 標註抑制 Swift 6 strict-concurrency warnings**：TSan advisory 6 處 warning 淨減 0。`ClipboardMonitorDelegate` protocol + `ClipboardStore+OCR.swift` GCD 閉包兩處加標註，runtime 語意不變。
+- **🛠 ID-REVIEW-1012 lazy-init `ClipboardStore.shared`**：原 `static let shared = ClipboardStore()` 在模組載入時 eager 求值，xcTestDefaults env var 偵測被騙。改 `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock 實現真正的 lazy 初始化。
+- **🛠 Hygiene batch**：`trailing_newline` 51 處 SwiftLint 警告修復 + `.gitattributes` LF 行尾強制；2 個 shell script 的 `chmod -x` 遺失已恢復。
+
+完整 1025 / 4 skipped / 0 failures（en + zh-Hans 雙 locale）。
+
+詳見 `docs/skips-ledger.md`（v2.9.6 完整 ship 後歸檔）。
 
 ### v2.9.5 (2026-10-01) — 長按圖片預覽十方向捲動 + audit-backlog closure
 

@@ -1,4 +1,4 @@
-# ClipMemory v2.9.5
+# ClipMemory v2.9.6
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
@@ -47,6 +47,19 @@
 ---
 
 ## 📋 変更履歴
+
+### v2.9.6 (2026-10-04) — 長押し画像プレビューの10方向スクロール + code-review backlog クローズ + ID-CRASH-0038 の収束
+
+- **🖼 長押し画像プレビュー — ホイールスクロールが縦・横方向 + Shift+wheel に対応** — 左ボタンを押したままホイールをスクロールすると画像が意図せず dismiss される bug を修正（USER-FEEDBACK-2026-09-26、複数回の反復修正を経て）。プレビューパネルはスクロール中も表示されたままで、ボタンを離して初めて通常どおり閉じます。縦スクロール、Logitech マウスのサイドボタン / Magic Mouse の横 swipe / trackpad の2本指 swipe による横スクロール、および通常のマウス + Shift+wheel による横スクロール（macOS 標準の慣例）にも対応します。画像がプレビューウィンドウを超えるとき、スクロールバーが正しく移動します。
+- **🛠 code-review-2026-09-28 backlog 全クローズ（38/38）** — 7件の P1 + 18件の P2 + 5件の follow-up をすべて ship；L10n / Crypto / Window / Persistence / TSan / CI ツールチェーン / dependabot / ドキュメントの陳腐化項目 などの強化をカバー。詳細は `docs/audit/code-review-2026-09-28.md` を参照。
+- **🛠 ID-CRASH-0038 mass-skip 収束（46 → 4）** — issue #93 の runner restart 根本原因を修正 + production code をすべて注入 seam に移行（HotKey / SafeMode / ClipboardStore / Crypto / WindowManager）+ ZZZ canary を再有効化。42/46 のテストを復旧（AppDelegate terminate + IntegrationTests + HotKey の3箇所の条件付き guard + MemoryWarning + WindowManager）；残り4箇所の snapshot golden 不一致は v2.9.7 で調査（CI-only の環境差、ローカルでは 1025/4/0 で完全グリーン）。
+- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` アノテーションで Swift 6 strict-concurrency warnings を抑制** — TSan advisory の warning 6件、正味の削減は0。`ClipboardMonitorDelegate` protocol と `ClipboardStore+OCR.swift` の GCD クロージャの2箇所にアノテーションを追加、runtime セマンティクスは不変。
+- **🛠 ID-REVIEW-1012 `ClipboardStore.shared` の lazy-init** — 元の `static let shared = ClipboardStore()` はモジュールロード時に eager 評価され、xcTestDefaults env var の検出が誤作動していました。`nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock に変更し、真の lazy 初期化を実装。
+- **🛠 Hygiene batch** — `trailing_newline` の SwiftLint 警告51件を修正 + `.gitattributes` で LF 行末を強制；2つの shell script で失われた `chmod -x` を復元。
+
+完全 1025 / 4 skipped / 0 failures（en + zh-Hans の両 locale）。
+
+詳細は `docs/skips-ledger.md` を参照（v2.9.6 の完全 ship 後にアーカイブ）。
 
 ### v2.9.5 (2026-10-01) — 長押し画像プレビューの10方向スクロール + audit-backlog クローズ
 
