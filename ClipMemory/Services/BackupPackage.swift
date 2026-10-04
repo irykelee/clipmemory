@@ -320,6 +320,7 @@ final class BackupPackage {
         let nameData = namePipe.fileHandleForReading.readDataToEndOfFile()
         nameProcess.waitUntilExit()
         guard nameProcess.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
+        // swiftlint:disable:next optional_data_string_conversion
         let nameListing = String(decoding: nameData, as: UTF8.self)
         for rawMember in nameListing.split(separator: "\n", omittingEmptySubsequences: true) {
             let member = rawMember.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -354,6 +355,7 @@ final class BackupPackage {
         // throws on failure (fail-closed); the size-check should match
         // that discipline.
         guard sizeProcess.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
+        // swiftlint:disable:next optional_data_string_conversion
         let sizeListing = String(decoding: sizeData, as: UTF8.self)
         var totalUncompressed: Int64 = 0
         for rawLine in sizeListing.split(separator: "\n", omittingEmptySubsequences: true) {
