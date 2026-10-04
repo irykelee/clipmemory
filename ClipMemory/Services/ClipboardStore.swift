@@ -1089,9 +1089,8 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         if !trashStore.lastLoadFailed {
             ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
         } else {
-            logger.error("H-2: trash blob load failed; skipping cleanupOrphanedImages "
-                         + "to preserve possibly-referenced images. "
-                         + "Will retry on next successful loadTrashedItems().")
+            // swiftlint:disable:next line_length
+            logger.error("H-2: trash blob load failed; skipping cleanupOrphanedImages to preserve possibly-referenced images. Will retry on next successful loadTrashedItems().")
         }
 
         if repairedImages || repairedTexts {
@@ -1238,8 +1237,8 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // production from crashing if a caller is missed.
         dispatchPrecondition(condition: .onQueue(.main))
         guard Thread.isMainThread else {
-            logger.error("P2-14: waitForFirstLoadSync called off-main — returning current state "
-                         + "without barrier; caller must DispatchQueue.main.sync first")
+            // swiftlint:disable:next line_length
+            logger.error("P2-14: waitForFirstLoadSync called off-main — returning current state without barrier; caller must DispatchQueue.main.sync first")
             return firstLoadCompleted
         }
         let deadline = Date().addingTimeInterval(timeout)
@@ -1718,8 +1717,8 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
                     let kPendingKeyItemsCap = 50
                     if pendingKeyItems.count >= kPendingKeyItemsCap {
                         pendingKeyItems.removeFirst()
-                        self.logger.notice("pendingKeyItems overflow: dropped oldest entry "
-                                           + "(cap=\(kPendingKeyItemsCap)); consider recopying pre-Keychain-lock items")
+                        // swiftlint:disable:next line_length
+                        self.logger.notice("pendingKeyItems overflow: dropped oldest entry (cap=\(kPendingKeyItemsCap)); consider recopying pre-Keychain-lock items")
                     }
                     pendingKeyItems.append(item)
                     pendingKeyItemsLock.unlock()
@@ -1788,6 +1787,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
                         if ImageStorage.shared.fileExists(filename: oldFilename) {
                             ImageStorage.shared.deleteImage(filename: oldFilename)
                         }
+                        // swiftlint:disable:next line_length
                         logger.info("H-3 swap: recovered broken image entry \(existing.id, privacy: .public) with new file \(newItem.content, privacy: .public)")
                     } else {
                         ImageStorage.shared.deleteImage(filename: newItem.content)

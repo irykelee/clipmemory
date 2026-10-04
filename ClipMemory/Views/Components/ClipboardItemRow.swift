@@ -335,7 +335,17 @@ struct ClipboardItemRow: View, Equatable {
     }
 
     private var rowBackground: Color {
-        if isCopied { Color.green.opacity(0.12) } else if isSelected { Color.accentColor.opacity(0.10) } else if isHovered || isKeyboardSelected { Color.accentColor.opacity(0.06) } else if item.isSensitive { Color.orange.opacity(0.04) } else { Color.clear }
+        if isCopied {
+            Color.green.opacity(0.12)
+        } else if isSelected {
+            Color.accentColor.opacity(0.10)
+        } else if isHovered || isKeyboardSelected {
+            Color.accentColor.opacity(0.06)
+        } else if item.isSensitive {
+            Color.orange.opacity(0.04)
+        } else {
+            Color.clear
+        }
     }
     private var pinText: String { item.isPinned ? L10n.actionUnpin : L10n.actionPin }
     private var decryptedContent: String {
@@ -432,7 +442,13 @@ struct ClipboardItemRow: View, Equatable {
         let mso = text.distance(from: text.startIndex, to: fm.lowerBound)
         var prefix = ""
         let dsi: String.Index
-        if mso > 30 { dsi = text.index(text.index(text.startIndex, offsetBy: mso), offsetBy: -20, limitedBy: text.startIndex) ?? text.startIndex; prefix = "..." } else { dsi = text.startIndex }
+        if mso > 30 {
+            let backOffset = text.index(text.startIndex, offsetBy: mso)
+            dsi = text.index(backOffset, offsetBy: -20, limitedBy: text.startIndex) ?? text.startIndex
+            prefix = "..."
+        } else {
+            dsi = text.startIndex
+        }
         let dei = text.index(dsi, offsetBy: 200, limitedBy: text.endIndex) ?? text.endIndex
         let ds = String(text[dsi..<dei])
         let prefixLen = prefix.count
@@ -566,7 +582,13 @@ struct ClipboardItemRow: View, Equatable {
     // ID-CRASH-0002 (2026-07-31 audit): static + internal (with
     // `maskedHighlightedContent`) so the Unicode case-fold regression test
     // can exercise the crash path without a view tree.
-    static func maskContent(_ c: String) -> String { c.count <= 4 ? String(repeating: "\u{2022}", count: c.count) : String(c.prefix(2)) + String(repeating: "\u{2022}", count: c.count - 4) + String(c.suffix(2)) }
+    static func maskContent(_ c: String) -> String {
+        c.count <= 4
+            ? String(repeating: "\u{2022}", count: c.count)
+            : String(c.prefix(2))
+                + String(repeating: "\u{2022}", count: c.count - 4)
+                + String(c.suffix(2))
+    }
     static func maskedHighlightedContent(_ content: String, highlight: String, ctx: Int = 15) -> AttributedString {
         if highlight.isEmpty { var a = AttributedString(maskContent(content)); a.foregroundColor = .orange; return a }
         // ID-CRASH-0002 (2026-07-31 audit): same class as BUG-008 — match
@@ -578,14 +600,23 @@ struct ClipboardItemRow: View, Equatable {
         // the ORIGINAL string with `.caseInsensitive` so every Range<String
         // .Index> below is an index into `content` itself (same fix pattern
         // as `highlightedOcrContent` / BUG-008).
-        var vis: [Range<String.Index>] = []; var ss = content.startIndex
+        var vis: [Range<String.Index>] = []
+        var ss = content.startIndex
         while let r = content.range(of: highlight, options: .caseInsensitive, range: ss..<content.endIndex) {
             let cs = content.index(r.lowerBound, offsetBy: -ctx, limitedBy: content.startIndex) ?? content.startIndex
             let ce = content.index(r.upperBound, offsetBy: ctx, limitedBy: content.endIndex) ?? content.endIndex
             vis.append(cs..<ce); ss = r.upperBound
         }
-        guard !vis.isEmpty else { return AttributedString(maskContent(content)) }; vis.sort { $0.lowerBound < $1.lowerBound }
-        var merged: [Range<String.Index>] = []; for r in vis { if let last = merged.last, last.upperBound >= r.lowerBound { merged[merged.count-1] = last.lowerBound..<max(last.upperBound, r.upperBound) } else { merged.append(r) } }
+        guard !vis.isEmpty else { return AttributedString(maskContent(content)) }
+        vis.sort { $0.lowerBound < $1.lowerBound }
+        var merged: [Range<String.Index>] = []
+        for r in vis {
+            if let last = merged.last, last.upperBound >= r.lowerBound {
+                merged[merged.count - 1] = last.lowerBound..<max(last.upperBound, r.upperBound)
+            } else {
+                merged.append(r)
+            }
+        }
         var res = AttributedString()
         var ci = content.startIndex
         for r in merged {
@@ -642,7 +673,10 @@ struct ClipboardItemRow: View, Equatable {
                                 Image(nsImage: ns)
                                     .resizable().scaledToFit()
                                     .frame(maxHeight: 80)
-                                    .overlay(PressableImage { pressed in imageLongPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
+                                    .overlay(
+                                        PressableImage { pressed in imageLongPressing = pressed }
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    )
                                     .transition(.opacity)
                             } else {
                                 ZStack {
@@ -789,7 +823,10 @@ struct ClipboardItemRow: View, Equatable {
                                 if let rt = loadedRichText {
                                     Text(rt)
                                         .lineLimit(showFullContent ? nil : 3)
-                                        .overlay(PressableImage { pressed in showFullContent = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
+                                        .overlay(
+                                            PressableImage { pressed in showFullContent = pressed }
+                                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        )
                                         .transition(.opacity)
                                 } else {
                                     Text(plainTextFallback)
@@ -813,7 +850,19 @@ struct ClipboardItemRow: View, Equatable {
                     Spacer()
                 }
                 .contentShape(Rectangle())
-                HStack(spacing: 8) { Text(formattedDate).font(.system(size: sz(11))).foregroundColor(.primary.opacity(0.55)); if item.isSensitive { Label(L10n.itemSensitive, systemImage: "exclamationmark.shield").font(.system(size: sz(11))).foregroundColor(.orange) }; if !item.tagIds.isEmpty { TagChipStack(tagIds: item.tagIds, store: store) } }
+                HStack(spacing: 8) {
+                    Text(formattedDate)
+                        .font(.system(size: sz(11)))
+                        .foregroundColor(.primary.opacity(0.55))
+                    if item.isSensitive {
+                        Label(L10n.itemSensitive, systemImage: "exclamationmark.shield")
+                            .font(.system(size: sz(11)))
+                            .foregroundColor(.orange)
+                    }
+                    if !item.tagIds.isEmpty {
+                        TagChipStack(tagIds: item.tagIds, store: store)
+                    }
+                }
             }
             .contentShape(Rectangle())
             .gesture(ExclusiveGesture(TapGesture(count: 2).onEnded { onPin() }, TapGesture().onEnded { onCopyWithFeedback?() }))
@@ -832,7 +881,11 @@ struct ClipboardItemRow: View, Equatable {
                 onDelete: onDelete
             )
         }
-        .padding(.horizontal, 12).padding(.vertical, 8).background(rowBackground).animation(.easeOut(duration: 0.3), value: isCopied).contentShape(Rectangle())
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(rowBackground)
+        .animation(.easeOut(duration: 0.3), value: isCopied)
+        .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .contextMenu {
             Button(action: { onCopyWithFeedback?() }, label: {

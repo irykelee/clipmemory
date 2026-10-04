@@ -573,8 +573,8 @@ struct ContentView: View {
                     let arr = try JSONDecoder().decode([String].self, from: data)
                     return Set(arr.compactMap { TimeGroup(rawValue: $0) })
                 } catch {
-                    Self.logger.error("Failed to decode persisted collapsed groups "
-                                      + "(reset to all expanded): \(error.localizedDescription, privacy: .public)")
+                    // swiftlint:disable:next line_length
+                    Self.logger.error("Failed to decode persisted collapsed groups (reset to all expanded): \(error.localizedDescription, privacy: .public)")
                     return []
                 }
             },
@@ -592,8 +592,8 @@ struct ContentView: View {
                     }
                     self.collapsedGroupsRaw = str
                 } catch {
-                    Self.logger.error("Failed to persist collapsed groups "
-                                      + "(preference lost on next launch): \(error.localizedDescription, privacy: .public)")
+                    // swiftlint:disable:next line_length
+                    Self.logger.error("Failed to persist collapsed groups (preference lost on next launch): \(error.localizedDescription, privacy: .public)")
                 }
             }
         )

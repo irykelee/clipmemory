@@ -340,6 +340,7 @@ final class BackupService {
                 do {
                     try fileManager.removeItem(at: destination)
                 } catch {
+                    // swiftlint:disable:next line_length
                     logger.error("Failed to clean partial backup directory: \(error.localizedDescription, privacy: .public) path=\(destination.path, privacy: .public)")
                 }
             }
