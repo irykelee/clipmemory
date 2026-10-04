@@ -494,16 +494,7 @@ class CryptoService: CryptoServiceProtocol {
         case .notFound:
             break // fall through to file migration / fresh generation
         case .otherError(let status):
-            // ID-CRYPTO-0001 (2026-07-31 audit): transient Keychain errors
-            // (errSecAuthFailed, errSecServiceNotAvailable, ...) previously
-            // collapsed into the not-found path — a flaky read could then
-            // trigger regeneration and SecItemUpdate would overwrite the
-            // valid root key, permanently destroying all encrypted history.
-            // Treat exactly like .interactionLocked: log, return nil, wait
-            // for the wake retry (retryPrepareKeyIfLocked). Only a
-            // definitive .notFound may migrate / generate.
-            // swiftlint:disable:next line_length
-            logger.error("Keychain load failed (OSStatus \(status, privacy: .public)); deferring key prep to avoid overwriting a possibly-valid root key")
+            handleKeychainOtherError(status)
             return nil
         }
         // 2. Migrate a pre-C1 key file, then remove it.
@@ -671,6 +662,21 @@ class CryptoService: CryptoServiceProtocol {
             object: nil,
             userInfo: ["success": false]
         )
+    }
+
+    /// Logs a transient Keychain error and returns without further action.
+    /// ID-CRYPTO-0001 (2026-07-31 audit): transient Keychain errors
+    /// (errSecAuthFailed, errSecServiceNotAvailable, ...) previously
+    /// collapsed into the not-found path — a flaky read could then
+    /// trigger regeneration and SecItemUpdate would overwrite the
+    /// valid root key, permanently destroying all encrypted history.
+    /// Treat exactly like .interactionLocked: log, return nil, wait
+    /// for the wake retry (retryPrepareKeyIfLocked). Only a
+    /// definitive .notFound may migrate / generate.
+    /// Extracted from prepareKey for cyclomatic complexity reduction.
+    private static func handleKeychainOtherError(_ status: OSStatus) {
+        // swiftlint:disable:next line_length
+        logger.error("Keychain load failed (OSStatus \(status, privacy: .public)); deferring key prep to avoid overwriting a possibly-valid root key")
     }
 
     private static func generateAndStoreKey(
