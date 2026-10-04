@@ -557,25 +557,6 @@ class ImageStorage {
     /// Saves image data asynchronously on a background queue to avoid blocking the main thread.
     /// Encryption and disk I/O happen off the main thread.
     func saveImage(_ data: Data, id: UUID, completion: @escaping (String?) -> Void) {
-        // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): post a user-visible
-        // diagnostic when an image exceeds `maxImageSize` so the silent-drop
-        // path is no longer silent. Previously only `logger.warning` fired,
-        // which is developer-visible only — the user copied a screenshot,
-        // saw nothing appear, and had no signal that the 50 MB cap was the
-        // reason. The `imageSaveFailed` notification name is reused so a
-        // future UI banner hook can subscribe to one source for all image
-        // save failures (path / encryption / size).
-        guard data.count <= Self.maxImageSize else {
-            logger.warning("Image too large (\(data.count) bytes > \(Self.maxImageSize) max); skipping save")
-            NotificationCenter.default.post(
-                name: Notification.Name("ClipboardStore.imageSaveFailed"),
-                object: nil,
-                userInfo: ["reason": "size", "bytes": data.count, "maxBytes": Self.maxImageSize]
-            )
-            DispatchQueue.main.async { completion(nil) }
-            return
-        }
-
         // RACE-FIX (2026-07-28): mark filename in-flight BEFORE dispatching to
         // backgroundQueue. cleanupOrphanedImages can otherwise delete a file
         // that saveImage wrote but whose ClipboardItem has not yet reached
@@ -586,11 +567,11 @@ class ImageStorage {
         // in-flight and preserves it. Error paths (encryption/write failure,
         // self deallocated) remove pending immediately because no file was
         // written or the file is unusable.
+        guard !rejectOversizedImage(data, completion: completion) else { return }
         let filename = "\(id.uuidString).png"
         addPending(filename)
-
         backgroundQueue.async { [weak self] in
-            guard let self = self else {
+            guard let self else {
                 // Unreachable for the singleton, but defensive: pass-through
                 // the cleanup so a hypothetical future non-singleton use
                 // would not leak the pending mark.
@@ -598,75 +579,107 @@ class ImageStorage {
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
+            self.saveImageOffMain(filename: filename, data: data, completion: completion)
+        }
+    }
 
-            let fileURL = self.imagesDirectory.appendingPathComponent(filename)
+    /// ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): post a user-visible
+    /// diagnostic when an image exceeds `maxImageSize` so the silent-drop
+    /// path is no longer silent. Previously only `logger.warning` fired,
+    /// which is developer-visible only — the user copied a screenshot,
+    /// saw nothing appear, and had no signal that the 50 MB cap was the
+    /// reason. The `imageSaveFailed` notification name is reused so a
+    /// future UI banner hook can subscribe to one source for all image
+    /// save failures (path / encryption / size).
+    ///
+    /// - Returns: `true` if the size check rejected the data and already
+    ///   invoked `completion(nil)` on the main queue — the caller should
+    ///   bail. `false` if the caller should proceed with the background
+    ///   save pipeline.
+    private func rejectOversizedImage(_ data: Data, completion: @escaping (String?) -> Void) -> Bool {
+        guard data.count > Self.maxImageSize else { return false }
+        logger.warning("Image too large (\(data.count) bytes > \(Self.maxImageSize) max); skipping save")
+        NotificationCenter.default.post(
+            name: Notification.Name("ClipboardStore.imageSaveFailed"),
+            object: nil,
+            userInfo: ["reason": "size", "bytes": data.count, "maxBytes": Self.maxImageSize]
+        )
+        DispatchQueue.main.async { completion(nil) }
+        return true
+    }
 
-            // Encrypt image data before writing to disk (N2)
-            guard let encryptedData = ServiceContainer.crypto.encryptData(data) else {
-                self.removePending(filename)
-                self.logger.error("Failed to encrypt image data — image not saved")
-                // M-8 (2026-07-24 audit): the observer chain (AppDelegate,
-                // Settings diagnostics) expects main-thread delivery. Post
-                // via main async so any future observer that doesn't pass
-                // `queue: .main` still sees the notification on the right
-                // queue.
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: .encryptionFailed, object: nil)
-                }
-                DispatchQueue.main.async { completion(nil) }
-                return
-            }
+    /// Encrypts + writes + chmods `data` to `imagesDirectory/filename`.
+    /// Runs on `backgroundQueue`. Posts `.encryptionFailed` /
+    /// `.imageSaveFailed` notifications on failure paths so observers can
+    /// surface a single bucket of save diagnostics (see ID-CRASH-0012).
+    private func saveImageOffMain(filename: String, data: Data, completion: @escaping (String?) -> Void) {
+        let fileURL = imagesDirectory.appendingPathComponent(filename)
 
-            do {
-                try encryptedData.write(to: fileURL, options: .atomic)
-            } catch {
-                self.removePending(filename)
-                self.logger.error("Failed to save encrypted image: \(error.localizedDescription)")
-                // ID-CRASH-0012 (2026-09-28 code-review P1-2): mirror the
-                // encryption-failure path above — log + post
-                // `.imageSaveFailed` on main thread so observers can
-                // bucket this in `saveAlertThrottler`. The previous
-                // path completed with `nil` and only logged, hiding
-                // disk-full / permission-revoked failures from the
-                // user. Three-piece gate (data path's three-piece:
-                // log + signal + retry, but image saves are
-                // fire-and-forget through the completion handler
-                // so no retry queue here — the user sees the
-                // notification and can free disk space, retry the
-                // copy, etc.).
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(
-                        name: .imageSaveFailed,
-                        object: self,
-                        userInfo: ["source": "imageSave"]
-                    )
-                }
-                DispatchQueue.main.async { completion(nil) }
-                return
-            }
-
-            // ID-SECURITY-0007 (2026-08-01 audit): tighten the written image
-            // file to 0o600 (owner-only). Defense in depth — the images
-            // directory is already 0o700 and the content is AES-GCM encrypted.
-            // `.atomic` writes via a temp-file rename, so the permission must
-            // be set on the FINAL path AFTER the write. Log-only on failure:
-            // never fail an otherwise-successful save over a chmod.
-            do {
-                try self.fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
-            } catch {
-                self.logger.warning("Failed to set 0o600 on image file: \(error.localizedDescription)")
-            }
-
-            // File on disk. Defer pending removal until AFTER the main-thread
-            // completion handler runs — the completion handler triggers addItem
-            // (via the ClipboardMonitor delegate chain), so by the time it
-            // returns, the filename is in the store's keep set. Removing
-            // pending here closes the gap between "file exists" and "item in
-            // store" that cleanupOrphanedImages would otherwise exploit.
+        // Encrypt image data before writing to disk (N2)
+        guard let encryptedData = ServiceContainer.crypto.encryptData(data) else {
+            removePending(filename)
+            logger.error("Failed to encrypt image data — image not saved")
+            // M-8 (2026-07-24 audit): the observer chain (AppDelegate,
+            // Settings diagnostics) expects main-thread delivery. Post
+            // via main async so any future observer that doesn't pass
+            // `queue: .main` still sees the notification on the right
+            // queue.
             DispatchQueue.main.async {
-                completion(filename)
-                self.removePending(filename)
+                NotificationCenter.default.post(name: .encryptionFailed, object: nil)
             }
+            DispatchQueue.main.async { completion(nil) }
+            return
+        }
+
+        do {
+            try encryptedData.write(to: fileURL, options: .atomic)
+        } catch {
+            removePending(filename)
+            logger.error("Failed to save encrypted image: \(error.localizedDescription)")
+            // ID-CRASH-0012 (2026-09-28 code-review P1-2): mirror the
+            // encryption-failure path above — log + post
+            // `.imageSaveFailed` on main thread so observers can
+            // bucket this in `saveAlertThrottler`. The previous
+            // path completed with `nil` and only logged, hiding
+            // disk-full / permission-revoked failures from the
+            // user. Three-piece gate (data path's three-piece:
+            // log + signal + retry, but image saves are
+            // fire-and-forget through the completion handler
+            // so no retry queue here — the user sees the
+            // notification and can free disk space, retry the
+            // copy, etc.).
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .imageSaveFailed,
+                    object: self,
+                    userInfo: ["source": "imageSave"]
+                )
+            }
+            DispatchQueue.main.async { completion(nil) }
+            return
+        }
+
+        // ID-SECURITY-0007 (2026-08-01 audit): tighten the written image
+        // file to 0o600 (owner-only). Defense in depth — the images
+        // directory is already 0o700 and the content is AES-GCM encrypted.
+        // `.atomic` writes via a temp-file rename, so the permission must
+        // be set on the FINAL path AFTER the write. Log-only on failure:
+        // never fail an otherwise-successful save over a chmod.
+        do {
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        } catch {
+            logger.warning("Failed to set 0o600 on image file: \(error.localizedDescription)")
+        }
+
+        // File on disk. Defer pending removal until AFTER the main-thread
+        // completion handler runs — the completion handler triggers addItem
+        // (via the ClipboardMonitor delegate chain), so by the time it
+        // returns, the filename is in the store's keep set. Removing
+        // pending here closes the gap between "file exists" and "item in
+        // store" that cleanupOrphanedImages would otherwise exploit.
+        DispatchQueue.main.async {
+            completion(filename)
+            self.removePending(filename)
         }
     }
 
