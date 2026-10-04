@@ -963,7 +963,13 @@ struct ContentView: View {
                 .disabled(store.trashedItems.isEmpty)
             } else {
                 Menu {
-                    Button(action: { showingConditionalClear = true }, label: { Label(L10n.clearConditionalAction, systemImage: "line.3.horizontal.decrease.circle") })
+                    Button(
+                        action: { showingConditionalClear = true },
+                        label: {
+                            Label(L10n.clearConditionalAction,
+                                  systemImage: "line.3.horizontal.decrease.circle")
+                        }
+                    )
                     Divider()
                     Button(action: { pendingClearMode = .today }, label: { Label(L10n.clearToday, systemImage: "sunrise") })
                     Button(action: { pendingClearMode = .yesterday }, label: { Label(L10n.clearYesterday, systemImage: "sun.haze") })

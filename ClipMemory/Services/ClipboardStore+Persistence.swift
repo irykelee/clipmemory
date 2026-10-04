@@ -140,6 +140,7 @@ extension ClipboardStore {
         // what made the init variant fatal.
         if !firstLoadCompleted {
             if !waitForFirstLoadSync(timeout: 5.0) {
+                // swiftlint:disable:next line_length
                 logger.error("P2-14: flushPendingSaves called before firstLoadCompleted (5s timeout) — encoding current items snapshot; on-disk history may be incomplete if load was racing")
             }
         }

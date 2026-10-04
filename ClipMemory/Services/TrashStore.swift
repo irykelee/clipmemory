@@ -186,6 +186,7 @@ final class TrashStore: ObservableObject {
             }
             trashedItems = []
             lastLoadFailed = true
+            // swiftlint:disable:next line_length
             logger.error("Trash load failure persisted from prior launch (sentinel '\(sentinelKey)' present). Quarantined blob retained under '\(Self.trashedItemsStorageKey).corrupt-*'. Image cleanup skipped to avoid data loss.")
             NotificationCenter.default.post(
                 name: .trashLoadFailed,

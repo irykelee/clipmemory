@@ -161,6 +161,7 @@ final class VisionOCRService: OCRServiceProtocol {
             // If we still hit this branch, Vision is hung in a way even
             // `request.cancel()` couldn't unblock — return failure so the
             // serial queue at least keeps moving.
+            // swiftlint:disable:next line_length
             Self.ocrLanguageLogger.error("Vision recognition timed out after \(String(Self.performTimeoutSeconds), privacy: .public)s; returning failure")
             return .failure(NSError(
                 domain: "OCRService.timeout",
@@ -346,6 +347,7 @@ final class VisionOCRService: OCRServiceProtocol {
             supported = try recognitionLanguagesQuery(revision)
         } catch {
             ocrLanguageLogger.error(
+                // swiftlint:disable:next line_length
                 "supportedRecognitionLanguages query threw for revision \(revision, privacy: .public): \(error.localizedDescription, privacy: .public). Not caching; will re-query on next OCR call."
             )
             return []
@@ -383,6 +385,7 @@ final class VisionOCRService: OCRServiceProtocol {
                 // didn't provide.
                 let userLocale = Locale.current.identifier
                 ocrLanguageLogger.error(
+                    // swiftlint:disable:next line_length
                     "No requested OCR language is supported by Revision3 on this macOS; requested=\(requested, privacy: .public) supported=\(supported, privacy: .public) dropped=\(dropped, privacy: .public) userLocale=\(userLocale, privacy: .public). Falling back to en."
                 )
                 // ID-SYNC-0004 (2026-08-01 audit): post async on main — this
@@ -421,6 +424,7 @@ final class VisionOCRService: OCRServiceProtocol {
         if filtered.isEmpty {
             let userLocale = Locale.current.identifier
             ocrLanguageLogger.error(
+                // swiftlint:disable:next line_length
                 "No requested OCR language is supported by Revision2 on this macOS; requested=\(requested, privacy: .public) supported=\(supported, privacy: .public) userLocale=\(userLocale, privacy: .public). Falling back to en."
             )
             // ID-SYNC-0004 (2026-08-01 audit): post async on main — same

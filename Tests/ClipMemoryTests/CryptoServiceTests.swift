@@ -927,7 +927,8 @@ final class CryptoServiceTests: XCTestCase {
         )
         XCTAssertFalse(
             pathComponents.contains(".encryption_key") && !pathComponents.contains("Keys-Tests"),
-            "ID-REVIEW-1009: keyFileURL must NOT point at the production .encryption_key under XCTest (would re-introduce the data-loss bug). Got: \(url.path)"
+            "ID-REVIEW-1009: keyFileURL must NOT point at the production .encryption_key "
+            + "under XCTest (would re-introduce the data-loss bug). Got: \(url.path)"
         )
     }
 

@@ -260,6 +260,7 @@ class CryptoService: CryptoServiceProtocol {
             if domain == NSCocoaErrorDomain && code == NSFileReadNoSuchFileError {
                 return nil
             }
+            // swiftlint:disable:next line_length
             logger.error("[\(caller, privacy: .public)] Key file read error (domain=\(domain, privacy: .public) code=\(code, privacy: .public)): \(nsError.localizedDescription, privacy: .public)")
             return nil
         }
@@ -501,6 +502,7 @@ class CryptoService: CryptoServiceProtocol {
             // Treat exactly like .interactionLocked: log, return nil, wait
             // for the wake retry (retryPrepareKeyIfLocked). Only a
             // definitive .notFound may migrate / generate.
+            // swiftlint:disable:next line_length
             logger.error("Keychain load failed (OSStatus \(status, privacy: .public)); deferring key prep to avoid overwriting a possibly-valid root key")
             return nil
         }
@@ -855,6 +857,7 @@ class CryptoService: CryptoServiceProtocol {
             guard let bytes = decryptBytes(from: combined) else {
                 let key = getKey()
                 let keyAvail = key != nil ? "key=OK" : "key=nil"
+                // swiftlint:disable:next line_length
                 Self.logger.error("decryptWithReason legacy: decryptBytes returned nil (\(keyAvail, privacy: .public)), inputLength=\(combined.count, privacy: .public)")
                 return Self.cacheAndReturn(.dataCorrupted, key: cacheKey)
             }
@@ -891,6 +894,7 @@ class CryptoService: CryptoServiceProtocol {
             guard let bytes = decryptBytes(from: combined) else {
                 let key = getKey()
                 let keyAvail = key != nil ? "key=OK" : "key=nil"
+                // swiftlint:disable:next line_length
                 Self.logger.error("decryptWithReason v2: decryptBytes returned nil (\(keyAvail, privacy: .public)), inputLength=\(combined.count, privacy: .public)")
                 return Self.cacheAndReturn(.dataCorrupted, key: cacheKey)
             }
@@ -1160,6 +1164,7 @@ class CryptoService: CryptoServiceProtocol {
             // CryptoKit's `authenticationFailure` error; this brings the
             // legacy path to parity.
             guard Self.constantTimeCompare(computedHMAC, storedHMAC) else {
+                // swiftlint:disable:next line_length
                 Self.logger.error("HMAC mismatch on legacy decrypt — stored vs computed tag diverge (key? tampered ciphertext? pre-1.2.0 no-HMAC branch?)")
                 return nil
             }

@@ -237,6 +237,7 @@ class HotKeyManager {
                 self.retainedSelfPtr = nil
             }
             if hotKeyStatus == eventHotKeyExistsErr {
+                // swiftlint:disable:next line_length
                 logger.error("Hotkey \(self.config.displayString) is already registered by another app or ClipMemory instance — global hotkey inactive")
             } else {
                 logger.error("Failed to register hotkey \(self.config.displayString): \(hotKeyStatus)")

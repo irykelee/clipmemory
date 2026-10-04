@@ -375,6 +375,7 @@ final class BackupPackage {
             if let size = Int64(line[..<firstSpace]) {
                 totalUncompressed &+= size
                 if totalUncompressed > Self.maxArchiveUncompressedBytes {
+                    // swiftlint:disable:next line_length
                     logger.error("Backup package uncompressed size \(totalUncompressed) bytes exceeds \(Self.maxArchiveUncompressedBytes) byte limit — zip bomb guard")
                     throw BackupPackageError.corruptedData(
                         "archive uncompressed size \(totalUncompressed) exceeds \(Self.maxArchiveUncompressedBytes) byte limit",
@@ -551,6 +552,7 @@ final class BackupPackage {
             do {
                 try FileManager.default.removeItem(at: staging)
             } catch {
+                // swiftlint:disable:next line_length
                 Self.logger.warning("Failed to clean export staging directory (orphan in /tmp): \(error.localizedDescription, privacy: .public) path=\(staging.path, privacy: .public)")
             }
         }
@@ -654,6 +656,7 @@ final class BackupPackage {
             do {
                 try FileManager.default.removeItem(at: tempDestination)
             } catch {
+                // swiftlint:disable:next line_length
                 Self.logger.warning("Failed to clean half-zipped export temp file: \(error.localizedDescription, privacy: .public) path=\(tempDestination.path, privacy: .public)")
             }
             throw error
@@ -706,6 +709,7 @@ final class BackupPackage {
             do {
                 try FileManager.default.removeItem(at: staging)
             } catch {
+                // swiftlint:disable:next line_length
                 Self.logger.warning("Failed to clean import staging directory (orphan in /tmp): \(error.localizedDescription, privacy: .public) path=\(staging.path, privacy: .public)")
             }
         }

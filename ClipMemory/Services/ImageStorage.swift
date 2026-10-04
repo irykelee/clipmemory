@@ -332,6 +332,7 @@ class ImageStorage {
                 } catch {
                     if fileManager.fileExists(atPath: legacyURL.path) {
                         hadFailure = true
+                        // swiftlint:disable:next line_length
                         logger.error("PLAINTEXT LEGACY PNG STILL ON DISK after migration: \(filename, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                     }
                 }
@@ -353,6 +354,7 @@ class ImageStorage {
             }
         }
 
+        // swiftlint:disable:next line_length
         logger.info("Image migration complete: \(migratedFilenames.count) files migrated, \(skippedSet.count) permanently skipped, hadFailure=\(hadFailure)")
     }
 
@@ -751,6 +753,7 @@ class ImageStorage {
                     do {
                         try newEncrypted.write(to: fileURL, options: .atomic)
                     } catch {
+                        // swiftlint:disable:next line_length
                         logger.error("Failed to upgrade legacy image to v2 GCM (file stays legacy CBC): \(error.localizedDescription, privacy: .public) filename=\(filename, privacy: .public)")
                         Self.corruptionCountLock.lock()
                         Self.corruptionCount += 1
@@ -775,6 +778,7 @@ class ImageStorage {
                     do {
                         try newEncrypted.write(to: fileURL, options: .atomic)
                     } catch {
+                        // swiftlint:disable:next line_length
                         logger.error("Failed to upgrade plaintext PNG to v2 GCM (PLAINTEXT LEFT ON DISK): \(error.localizedDescription, privacy: .public) filename=\(filename, privacy: .public)")
                         Self.corruptionCountLock.lock()
                         Self.corruptionCount += 1
@@ -1058,6 +1062,7 @@ class ImageStorage {
         do {
             try fileManager.removeItem(at: fileURL)
         } catch {
+            // swiftlint:disable:next line_length
             logger.error("Failed to delete image file (orphan left on disk): \(error.localizedDescription, privacy: .public) filename=\(filename, privacy: .public)")
         }
     }
@@ -1102,6 +1107,7 @@ class ImageStorage {
                 fullSizeCache.removeObject(forKey: file as NSString)
             } catch {
                 failed += 1
+                // swiftlint:disable:next line_length
                 logger.error("deleteAllExcept: removeItem failed during bulk cleanup: \(error.localizedDescription, privacy: .public) file=\(file, privacy: .public)")
             }
         }

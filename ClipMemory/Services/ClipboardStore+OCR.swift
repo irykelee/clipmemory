@@ -72,6 +72,7 @@ extension ClipboardStore {
             } else if let contentHash = contentHash {
                 index = self.items.firstIndex(where: { $0.type == .image && $0.contentHash == contentHash })
                 if index != nil {
+                    // swiftlint:disable:next line_length
                     Self.logger.error("OCR result routed via contentHash fallback (id \(itemId, privacy: .public) was deduped away); attaching to surviving item")
                 }
             } else {
@@ -296,6 +297,7 @@ extension ClipboardStore {
                 let timeoutSeconds = perItemTimeout
                 let watchdog = DispatchWorkItem {
                     guard gate.claim() else { return }
+                    // swiftlint:disable:next line_length
                     Self.logger.error("OCR backfill: completion not called within \(timeoutSeconds, privacy: .public)s for \(item.id, privacy: .public); releasing slot (ocrAttempted stays false so a later backfill retries)")
                     semaphore.signal()
                     group.leave()
@@ -329,6 +331,7 @@ extension ClipboardStore {
                         // backfill retry automatically — the same
                         // self-healing contract as the missing-file path
                         // and BUG-010's encrypt-failure path above.
+                        // swiftlint:disable:next line_length
                         Self.logger.error("OCR backfill failed for \(item.id, privacy: .public): \(error.localizedDescription, privacy: .public); ocrAttempted stays false so a later backfill retries")
                     }
                     semaphore.signal()  // release slot only after OCR result lands

@@ -60,6 +60,7 @@ extension ClipboardStore {
         let quarantineKey = "\(key).corrupt-\(timestamp)"
         defaults.set(blob, forKey: quarantineKey)
         defaults.removeObject(forKey: key)
+        // swiftlint:disable:next line_length
         logger.error("Corrupt blob \(key) quarantined to \(quarantineKey). First-decoder error: \(error.localizedDescription). The next save will overwrite the original key with the current (empty) in-memory collection; recover from the quarantined copy or a backup before saving.")
     }
 

@@ -351,6 +351,7 @@ struct L10n {
         string("settings.backup.error.last", reason)
     }
     static var settingsBackupExportDone: String { string("settings.backup.export.done") }
+    // swiftlint:disable:next line_length
     static func settingsBackupImportResult(_ added: Int, _ skipped: Int, _ corrupt: Int, _ images: Int) -> String { string("settings.backup.import.result", added, skipped, corrupt, images) }
     // NEW-3 (2026-08-03 audit): shown when image import failed but
     // items/tags already merged. Plain string (no interpolation) so

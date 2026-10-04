@@ -97,7 +97,6 @@ import XCTest
         let r = try BackupPackage.importFromLocalBackup(backupDir, store: store, imagesDirectory: imagesDir, defaults: defaults)
         XCTAssertEqual(r.imagesImported, 0)
         let bytes = try Data(contentsOf: imagesDir.appendingPathComponent(name))
-        // swiftlint:disable:next line_length
         XCTAssertEqual(bytes, existing, "Existing image must be preserved")
     }
 

@@ -473,7 +473,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
             let afterVal = filteredAfter[key]
             let isAdded = beforeVal == nil && afterVal != nil
             let inAnyAllowlist = Self.toleratedPollution.contains(key)
-                || Self.appLifecycleKeys.contains(key) // swiftlint:disable:next line_length
+                || Self.appLifecycleKeys.contains(key)
             if isAdded && !inAnyAllowlist {
                 caughtNewPollution = true
             }

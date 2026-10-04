@@ -1889,6 +1889,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             let overflowCount = itemsExceedingMaxItems().count
             trimToMaxItems()
             if overflowCount > 0 {
+                // swiftlint:disable:next line_length
                 logger.warning("M-2: import overflowed \(overflowCount) item(s) beyond maxItems=\(self.maxItems); routed to trash (recoverable for \(self.trashStore.trashRetentionDays)-day retention)")
             }
             updatePinnedItems()
