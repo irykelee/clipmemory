@@ -478,57 +478,8 @@ final class ClipboardStore: ObservableObject {
 
         // trashRetentionDays init moved to TrashStore (HIGH-1, 2026-07-26)
 
-        // Register notification observers AFTER all properties are initialized.
-        // F-3 (2026-07-28): convert from selector-based to block-based with
-        // `queue: .main` so handlers are type-system guaranteed to run on main
-        // thread (SwiftUI @Published mutations + AppKit state). Replaces the
-        // previous defensive `DispatchQueue.main.async` wrap inside each handler.
-        imageMigrationObserver = NotificationCenter.default.addObserver(
-            forName: .imageStorageMigrationCompleted, object: nil, queue: .main
-        ) { [weak self] notification in
-            guard let self else { return }
-            guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }
-            let migratedSet = Set(migratedFilenames)
-            var didMigrateAny = false
-            for (index, item) in self.items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
-                self.items[index] = item.with(isEncrypted: true)
-                didMigrateAny = true
-            }
-            if didMigrateAny {
-                self.scheduleSave()
-            }
-        }
-        // H-2 (2026-07-25 audit): flush captures that were deferred while the
-        // encryption key was still being prepared on first launch.
-        cryptoKeyPreparedObserver = NotificationCenter.default.addObserver(
-            forName: .cryptoKeyPrepared, object: nil, queue: .main
-        ) { [weak self] notification in
-            self?.handleCryptoKeyPrepared(notification)
-        }
-
-        // Wire caches to trashStore so evictCaches can drop stale entries.
-        trashStore.contentCache = contentCache
-        trashStore.rtfPlaintextCache = rtfPlaintextCache
-
-        // Trash refresh fix (2026-07-27 user-reported): after HIGH-1 extracted
-        // the trash into a separate `TrashStore` ObservableObject, mutations
-        // to `trashStore.trashedItems` (deletePermanently, emptyTrash, restore)
-        // stopped re-rendering views that observe `ClipboardStore`. ItemListView
-        // shows the trash via `store.trashedItems`, but since it only
-        // `@ObservedObject`s the parent `ClipboardStore`, the trashStore's
-        // `@Published var trashedItems` mutation went unobserved — a user
-        // clicking "delete permanently" saw no list refresh until something
-        // else (e.g. a clipboard capture) changed `items`.
-        //
-        // Forward trashStore's change notifications through our own
-        // publisher so any view observing `ClipboardStore` re-renders when
-        // the trash mutates. The lock-free `.sink` is fine here: SwiftUI
-        // dispatches `objectWillChange` on the main thread, which is
-        // exactly the contract `trashStore`'s `@Published` already honors
-        // (per the TrashStore file-level comment).
-        trashStore.objectWillChange
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
+        registerNotificationObservers()
+        wireTrashStoreForwarding()
 
         // P1-AUDIT-2026-09-22 (P2-14): heavy JSON decode (10K items →
         // 100-300ms main-thread stall) moved off the startup path. Init now
@@ -592,6 +543,103 @@ final class ClipboardStore: ObservableObject {
             // bugfix in handleWillTerminate automatically applies here.
             self?.handleWillTerminate()
         }
+    }
+
+    /// M-3 (2026-07-24 audit): init validation must match didSet's clamp
+    /// range [minMaxItems, maxMaxItems]. Previously init used an enum of
+    /// [50, 100, 200, 500] — any other integer (250, 1000, 1_000_000 from
+    /// a corrupt UserDefaults or future-migrated value) silently fell
+    /// back to 100 even when didSet would have accepted it. Clamp with
+    /// the same bounds as didSet; migrate out-of-range values forward.
+    /// Absent key must default to 100, NOT clamp: integer(forKey:)
+    /// returns 0 for a missing key, and clamping 0 yields minMaxItems
+    /// (1) — fresh installs would silently cap history at a single item.
+    /// M-4: tune the caches to match the resolved value. Done BEFORE the
+    /// `maxItems =` write because Swift's definite-init rules forbid
+    /// touching `self.maxItems` from init body while any stored property
+    /// is still uninitialized — and we compute the same value either way.
+    private func initMaxItemsAndCaches() {
+        let savedMaxItems = defaults.object(forKey: UserDefaultsKey.maxClipboardItems.rawValue) as? Int
+        let clampedInit = savedMaxItems.map { max(Self.minMaxItems, min($0, Self.maxMaxItems)) } ?? 100
+        if savedMaxItems != nil && clampedInit != savedMaxItems {
+            defaults.set(clampedInit, forKey: UserDefaultsKey.maxClipboardItems.rawValue)
+        }
+        let initialCacheLimit = max(clampedInit, Self.minCacheCountLimit)
+        contentCache.countLimit = initialCacheLimit
+        rtfPlaintextCache.countLimit = initialCacheLimit
+        maxItems = clampedInit
+    }
+
+    /// M-4 (2026-07-25 audit): `sensitiveClearHours` is now a computed
+    /// property over `_sensitiveClearHours`. Initialize the backing stored
+    /// property directly here to satisfy Swift's definite-init rules.
+    /// ID-EXCLUDE-0001 (2026-08-14): default list moved to
+    /// KnownExcludedApps (verified ids + friendly names + the opt-in
+    /// correction table share one source). Fresh installs only — an
+    /// existing stored value is the user's setting and is never rewritten.
+    /// trashRetentionDays init moved to TrashStore (HIGH-1, 2026-07-26).
+    private func initSettings() {
+        if defaults.object(forKey: UserDefaultsKey.sensitiveClearHours.rawValue) != nil {
+            _sensitiveClearHours = defaults.integer(forKey: UserDefaultsKey.sensitiveClearHours.rawValue)
+        } else {
+            _sensitiveClearHours = 24
+        }
+        excludedBundleIdsString = defaults.string(forKey: UserDefaultsKey.excludedBundleIds.rawValue)
+            ?? KnownExcludedApps.defaultBundleIds.joined(separator: ",")
+        excludedUpdateDismissedIds = defaults.string(forKey: UserDefaultsKey.excludedUpdateDismissedIds.rawValue) ?? ""
+    }
+
+    /// Register notification observers AFTER all properties are initialized.
+    /// F-3 (2026-07-28): convert from selector-based to block-based with
+    /// `queue: .main` so handlers are type-system guaranteed to run on main
+    /// thread (SwiftUI @Published mutations + AppKit state). Replaces the
+    /// previous defensive `DispatchQueue.main.async` wrap inside each handler.
+    private func registerNotificationObservers() {
+        imageMigrationObserver = NotificationCenter.default.addObserver(
+            forName: .imageStorageMigrationCompleted, object: nil, queue: .main
+        ) { [weak self] notification in
+            self?.handleImageMigrationCompleted(notification)
+        }
+        // H-2 (2026-07-25 audit): flush captures that were deferred while the
+        // encryption key was still being prepared on first launch.
+        cryptoKeyPreparedObserver = NotificationCenter.default.addObserver(
+            forName: .cryptoKeyPrepared, object: nil, queue: .main
+        ) { [weak self] notification in
+            self?.handleCryptoKeyPrepared(notification)
+        }
+    }
+
+    /// Marks every image item whose filename was just migrated to
+    /// encrypted storage as `isEncrypted: true` so the next save
+    /// persists the corrected flag. Extracted from the observer closure
+    /// so the closure itself stays readable.
+    private func handleImageMigrationCompleted(_ notification: Notification) {
+        guard let migratedFilenames = notification.userInfo?["migratedFilenames"] as? [String] else { return }
+        let migratedSet = Set(migratedFilenames)
+        var didMigrateAny = false
+        for (index, item) in items.enumerated() where item.type == .image && migratedSet.contains(item.content) {
+            items[index] = item.with(isEncrypted: true)
+            didMigrateAny = true
+        }
+        if didMigrateAny {
+            scheduleSave()
+        }
+    }
+
+    /// Wire caches + change forwarding so the `trashStore` integrates
+    /// with the parent store's eviction paths and `@Published` events.
+    /// Trash refresh fix (2026-07-27 user-reported): after HIGH-1
+    /// extracted the trash into a separate `TrashStore` ObservableObject,
+    /// mutations to `trashStore.trashedItems` (deletePermanently,
+    /// emptyTrash, restore) stopped re-rendering views that observe
+    /// `ClipboardStore`. Forward `objectWillChange` through so any view
+    /// observing `ClipboardStore` re-renders when the trash mutates.
+    private func wireTrashStoreForwarding() {
+        trashStore.contentCache = contentCache
+        trashStore.rtfPlaintextCache = rtfPlaintextCache
+        trashStore.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     /// H2: NSCache for decrypted content — avoids repeated AES decryption on every view render.
