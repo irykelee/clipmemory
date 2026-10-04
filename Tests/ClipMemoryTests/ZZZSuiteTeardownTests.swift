@@ -310,9 +310,14 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         }
 
         if !newPollution.isEmpty {
-            let message = "ZZZ suite teardown: NEW production UserDefaults pollution detected (NOT in `toleratedPollution` or `appLifecycleKeys` allowlists):\n" +
-                newPollution.joined(separator: "\n") +
-                "\n\nIf this key is benign app lifecycle, add it to `appLifecycleKeys` in ZZZSuiteTeardownTests.swift — but understand it documents a gap in M13 init-path injection coverage (Option B), not a real bug. If this key is test-side pollution, add it to `toleratedPollution` and follow the M13 shrink path. The recommended path for BOTH is to fix the source and remove the entry."
+            let message = "ZZZ suite teardown: NEW production UserDefaults pollution detected "
+                + "(NOT in `toleratedPollution` or `appLifecycleKeys` allowlists):\n"
+                + newPollution.joined(separator: "\n")
+                + "\n\nIf this key is benign app lifecycle, add it to `appLifecycleKeys` "
+                + "in ZZZSuiteTeardownTests.swift — but understand it documents a gap in M13 "
+                + "init-path injection coverage (Option B), not a real bug. If this key is "
+                + "test-side pollution, add it to `toleratedPollution` and follow the M13 shrink "
+                + "path. The recommended path for BOTH is to fix the source and remove the entry."
             XCTFail(message)
             XCTAssert(false, message)
         }
@@ -397,9 +402,15 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         let unobservedEnforced = Self.environmentInvariants.subtracting(observedAllowlistKeys)
         if !unobservedEnforced.isEmpty {
             let list = unobservedEnforced.sorted().joined(separator: "\n  - ")
-            let message = "ZZZ environment invariant violated: the following ENVIRONMENT-INVARIANT keys are expected to appear in the production UserDefaults snapshot on every run but are absent. Either the production-writing source was fixed (then remove the entry from `environmentInvariants`) or the test host somehow stopped writing it.\n" +
-                "Unobserved environment invariants:\n  - \(list)\n\n" +
-                "Note: this is a SANITY check, not a ratchet. The `toleratedPollution` set is NOT required to shrink over time. Only `environmentInvariants` keys must appear in every run. Race-conditioned keys (e.g. Sparkle `SUUpdateGroupIdentifier`) belong ONLY in `toleratedPollution`, not in `environmentInvariants`."
+            let message = "ZZZ environment invariant violated: the following ENVIRONMENT-INVARIANT keys "
+                + "are expected to appear in the production UserDefaults snapshot on every run but "
+                + "are absent. Either the production-writing source was fixed (then remove the entry "
+                + "from `environmentInvariants`) or the test host somehow stopped writing it.\n"
+                + "Unobserved environment invariants:\n  - \(list)\n\n"
+                + "Note: this is a SANITY check, not a ratchet. The `toleratedPollution` set is NOT "
+                + "required to shrink over time. Only `environmentInvariants` keys must appear in "
+                + "every run. Race-conditioned keys (e.g. Sparkle `SUUpdateGroupIdentifier`) belong "
+                + "ONLY in `toleratedPollution`, not in `environmentInvariants`."
             XCTFail(message)
             XCTAssert(false, message)
         }
@@ -462,12 +473,14 @@ final class ZZZSuiteTeardownTests: XCTestCase {
             let afterVal = filteredAfter[key]
             let isAdded = beforeVal == nil && afterVal != nil
             let inAnyAllowlist = Self.toleratedPollution.contains(key)
-                || Self.appLifecycleKeys.contains(key)
+                || Self.appLifecycleKeys.contains(key) // swiftlint:disable:next line_length
             if isAdded && !inAnyAllowlist {
                 caughtNewPollution = true
             }
         }
         XCTAssertTrue(caughtNewPollution,
-                       "Forward assertion: a new pollution key (not in `toleratedPollution` or `appLifecycleKeys`) must be caught. If this fails, the canary's not-in-list check has been disabled.")
+                       "Forward assertion: a new pollution key (not in "
+                       + "`toleratedPollution` or `appLifecycleKeys`) must be caught. "
+                       + "If this fails, the canary's not-in-list check has been disabled.")
     }
 }

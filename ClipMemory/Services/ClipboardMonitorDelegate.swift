@@ -22,7 +22,7 @@ import Combine
 // back to main via DispatchQueue.main.async). The conformance is
 // correct as-is; only the type-system warning was wrong.
 /// Protocol for receiving clipboard monitoring events and providing configuration.
-/// H-series finding from 2026-07-20 audit: extended the surface so `ClipboardMonitor` does not
+/// H-13 (2026-07-20 audit): extended the surface so `ClipboardMonitor` does not
 /// have to reach into the `ClipboardStore.shared` singleton directly. Each
 /// method below used to be a `ClipboardStore.shared.<thing>` access inside the
 /// monitor — now the monitor asks its delegate and the concrete `ClipboardStore`

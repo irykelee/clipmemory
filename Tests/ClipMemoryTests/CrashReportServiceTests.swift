@@ -159,7 +159,11 @@ final class CrashReportServiceTests: XCTestCase {
     func testParseIpsMergesFieldsAcrossMultipleBodyObjects() throws {
         let body = """
         {"app_name":"ClipMemory","timestamp":"2026-08-15 12:00:00.00 +0800","os_version":"macOS 26.6.1 (25G76)"}
-        [{"exception":{"type":"EXC_BAD_ACCESS","signal":"SIGSEGV"},"usedImages":[{"name":"ClipMemory","uuid":"4C4C444C-5555-3144-A15A-729DD5BF04C7","base":"0x100000000"}]},{"exception":{"type":"EXC_BAD_ACCESS"}},{"threads":[{"triggered":true,"name":"main","frames":[{"imageIndex":0,"imageOffset":42,"symbol":"_main"}]}]}]
+        [{"exception":{"type":"EXC_BAD_ACCESS","signal":"SIGSEGV"},
+        "usedImages":[{"name":"ClipMemory","uuid":"4C4C444C-5555-3144-A15A-729DD5BF04C7",
+        "base":"0x100000000"}]},{"exception":{"type":"EXC_BAD_ACCESS"}},
+        {"threads":[{"triggered":true,"name":"main",
+        "frames":[{"imageIndex":0,"imageOffset":42,"symbol":"_main"}]}]}]
         """
         try writeFixture(name: "ClipMemory-multi.ips", contents: body)
         let reports = try service.listRecentCrashReports()

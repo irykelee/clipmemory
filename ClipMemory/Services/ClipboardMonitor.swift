@@ -505,7 +505,7 @@ class ClipboardMonitor {
     /// whether truncation happened so the caller can log once.
     static func truncateToCaptureLimit(_ content: String) -> (text: String, wasTruncated: Bool) {
         guard content.utf8.count > maxTextCaptureBytes else { return (content, false) }
-        let clipped = String(bytes: content.utf8.prefix(maxTextCaptureBytes), encoding: .utf8) ?? content
+        let clipped = String(decoding: content.utf8.prefix(maxTextCaptureBytes), as: UTF8.self)
         return (clipped, true)
     }
 

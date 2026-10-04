@@ -36,7 +36,20 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// a global one-shot flag that a test-host or mid-run quit can poison.
     var ocrAttempted: Bool = false
 
-    init(id: UUID = UUID(), content: String, type: ClipboardItemType, createdAt: Date = Date(), isPinned: Bool = false, isSensitive: Bool = false, expiresAt: Date? = nil, isEncrypted: Bool = false, contentHash: String? = nil, decryptionFailed: Bool = false, tagIds: Set<UUID> = [], deletedAt: Date? = nil, ocrText: String? = nil, ocrAttempted: Bool = false) {
+    init(id: UUID = UUID(),
+         content: String,
+         type: ClipboardItemType,
+         createdAt: Date = Date(),
+         isPinned: Bool = false,
+         isSensitive: Bool = false,
+         expiresAt: Date? = nil,
+         isEncrypted: Bool = false,
+         contentHash: String? = nil,
+         decryptionFailed: Bool = false,
+         tagIds: Set<UUID> = [],
+         deletedAt: Date? = nil,
+         ocrText: String? = nil,
+         ocrAttempted: Bool = false) {
         self.id = id
         self.content = content
         self.type = type

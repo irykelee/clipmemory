@@ -79,7 +79,9 @@ final class SensitiveDetectorTests: XCTestCase {
     func testJWTPatterns() {
         // JWT format: eyJ...base64...base64...signature
         let tokens = [
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+            + "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ."
+            + "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
         ]
         for token in tokens {
             let item = makeItem(content: token)

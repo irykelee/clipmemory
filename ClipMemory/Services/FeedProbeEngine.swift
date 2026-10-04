@@ -219,6 +219,12 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         )
     }
 
+    /// Why the fetch was refused; nil while the response is still legal.
+    private enum CappedFetchRefusal {
+        case declaredContentLength(Int64)
+        case streamExceeded
+    }
+
     /// ID-UPDATE-0002 (2026-07-31 audit): streams the H-20 size cap through
     /// a URLSessionDataDelegate so `fetchBody` can collect the body with ONE
     /// continuation-resume instead of iterating `bytes(for:)` one byte at a
@@ -255,12 +261,6 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
     /// URLSession's documented contract — even though Swift's type
     /// system can't see that. `@unchecked` is the explicit opt-out;
     /// without this comment a future reviewer (or a `swift migrate`)
-    /// Why the fetch was refused; nil while the response is still legal.
-    private enum CappedFetchRefusal {
-        case declaredContentLength(Int64)
-        case streamExceeded
-    }
-
     /// would correctly ask "why isn't this `actor`-isolated?"
     private final class CappedFetchDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         let maxBytes: Int

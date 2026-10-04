@@ -755,15 +755,15 @@ final class ClipboardStore: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
     // so extension can reference the queue when (re)creating saveTimer.
-    /// M-series finding from the 2026-07-25 audit: reuse a single serial queue for the save timer
+    /// M-2 (2026-07-25 audit): reuse a single serial queue for the save timer
     /// instead of creating a new `DispatchQueue` on every `scheduleSave()` call.
     let saveTimerQueue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
     // P1-AUDIT-2026-09-22 (P2-8, Task 2 split): visibility loosened
     // `private` → `internal` so the tag methods now in
     // `ClipboardStore+Tag.swift` (`scheduleTagSave`) can read this queue.
     // Logic unchanged.
-    /// HIGH series from 2026-07-26 review: reuse a single serial queue for the tag
-    /// save timer, matching the earlier M-series reuse pattern applied to saveTimerQueue.
+    /// HIGH-4 (2026-07-26 review): reuse a single serial queue for the tag
+    /// save timer, matching the M-2 reuse pattern applied to saveTimerQueue.
     let tagSaveTimerQueue = DispatchQueue(label: "com.clipmemory.tagsave", qos: .utility)
     // trashSaveTimerQueue moved to TrashStore (HIGH-1, 2026-07-26)
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`

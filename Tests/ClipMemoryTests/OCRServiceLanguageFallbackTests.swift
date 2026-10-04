@@ -63,7 +63,7 @@ final class OCRServiceLanguageFallbackTests: XCTestCase {
     /// drops everything; the fallback returns `["en"]`. Verifies the
     /// ID-OCR-0002 / M-23 "en is the canonical fallback" contract.
     func testFallbackReturnsEnWhenEnIsSupported() throws {
-        try withStubbedQuery(stub: { _ in ["en", "fr", "de"]  }, body: {
+        try withStubbedQuery( { _ in ["en", "fr", "de"]  }, body: {
             let result = VisionOCRService.supportedRecognitionLanguages(
                 from: ["zh-Hans", "zh-Hant", "ja", "ko"]
             )
@@ -77,7 +77,7 @@ final class OCRServiceLanguageFallbackTests: XCTestCase {
     /// en is missing. Captures the current behavior so any future change
     /// is a conscious decision.
     func testFallbackReturnsFirstSupportedWhenEnIsMissing() throws {
-        try withStubbedQuery(stub: { _ in ["fr", "de"]  }, body: {
+        try withStubbedQuery( { _ in ["fr", "de"]  }, body: {
             let result = VisionOCRService.supportedRecognitionLanguages(
                 from: ["zh-Hans"]
             )
@@ -97,7 +97,7 @@ final class OCRServiceLanguageFallbackTests: XCTestCase {
     /// behavior**: returns []. If a future macOS makes this crash, this
     /// test catches it.
     func testFallbackReturnsEmptyWhenSupportedIsEmpty() throws {
-        try withStubbedQuery(stub: { _ in []  }, body: {
+        try withStubbedQuery( { _ in []  }, body: {
             let result = VisionOCRService.supportedRecognitionLanguages(
                 from: ["zh-Hans"]
             )
@@ -118,7 +118,7 @@ final class OCRServiceLanguageFallbackTests: XCTestCase {
     /// the test must drain the main runloop. `XCTestExpectation` +
     /// `wait(for:)` does this correctly; a `Thread.sleep` would NOT.
     func testFallbackPostsNotificationWithFullUserInfo() throws {
-        try withStubbedQuery(stub: { _ in ["en"]  }, body: {
+        try withStubbedQuery( { _ in ["en"]  }, body: {
             let exp = expectation(description: ".ocrLanguageFallback posted")
             var captured: [AnyHashable: Any]?
             let token = NotificationCenter.default.addObserver(
@@ -163,7 +163,7 @@ final class OCRServiceLanguageFallbackTests: XCTestCase {
     /// expectation to wait for. Instead, register a flag observer; if the
     /// notification arrives within a short main-runloop drain, fail.
     func testNoNotificationWhenAllRequestedSupported() throws {
-        try withStubbedQuery(stub: { _ in ["zh-Hans", "ja", "en", "ko"]  }, body: {
+        try withStubbedQuery( { _ in ["zh-Hans", "ja", "en", "ko"]  }, body: {
             var fired = false
             let token = NotificationCenter.default.addObserver(
                 forName: .ocrLanguageFallback,
@@ -197,7 +197,7 @@ final class OCRServiceLanguageFallbackTests: XCTestCase {
     /// Document the interaction between query-throws and the fallback.
     func testQueryThrowPropagatesAsEmptyAndDoesNotCache() throws {
         // First call: throws → returns [], not cached.
-        try withStubbedQuery(stub: { _ in
+        try withStubbedQuery( { _ in
             throw NSError(domain: "Vision", code: -1)
         }, body: {
             let first = VisionOCRService.supportedRecognitionLanguages(for: 3)
@@ -206,7 +206,7 @@ final class OCRServiceLanguageFallbackTests: XCTestCase {
         })
         // Second call: stubbed to succeed → real Vision's supported list.
         // (Returning ["en"] is a reasonable supported stub.)
-        try withStubbedQuery(stub: { _ in ["en"]  }, body: {
+        try withStubbedQuery( { _ in ["en"]  }, body: {
             let second = VisionOCRService.supportedRecognitionLanguages(for: 3)
             XCTAssertEqual(second, ["en"],
                 "throw did not cache → next call queries fresh and succeeds")

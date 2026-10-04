@@ -586,9 +586,27 @@ struct ClipboardItemRow: View, Equatable {
         }
         guard !vis.isEmpty else { return AttributedString(maskContent(content)) }; vis.sort { $0.lowerBound < $1.lowerBound }
         var merged: [Range<String.Index>] = []; for r in vis { if let last = merged.last, last.upperBound >= r.lowerBound { merged[merged.count-1] = last.lowerBound..<max(last.upperBound, r.upperBound) } else { merged.append(r) } }
-        var res = AttributedString(); var ci = content.startIndex
-        for r in merged { if ci < r.lowerBound { var b = AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: r.lowerBound))); b.foregroundColor = .orange; res += b }; var h = AttributedString(String(content[r])); h.backgroundColor = .blue.opacity(0.15); h.foregroundColor = .primary; res += h; ci = r.upperBound }
-        if ci < content.endIndex { var t = AttributedString(String(repeating: "\u{2022}", count: content.distance(from: ci, to: content.endIndex))); t.foregroundColor = .orange; res += t }
+        var res = AttributedString()
+        var ci = content.startIndex
+        for r in merged {
+            if ci < r.lowerBound {
+                var b = AttributedString(String(repeating: "\u{2022}",
+                                                 count: content.distance(from: ci, to: r.lowerBound)))
+                b.foregroundColor = .orange
+                res += b
+            }
+            var h = AttributedString(String(content[r]))
+            h.backgroundColor = .blue.opacity(0.15)
+            h.foregroundColor = .primary
+            res += h
+            ci = r.upperBound
+        }
+        if ci < content.endIndex {
+            var t = AttributedString(String(repeating: "\u{2022}",
+                                             count: content.distance(from: ci, to: content.endIndex)))
+            t.foregroundColor = .orange
+            res += t
+        }
         return res
     }
 

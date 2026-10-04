@@ -95,7 +95,9 @@ final class ReleaseReadinessTests: XCTestCase {
         let matches = regex.matches(in: contents, range: range)
 
         XCTAssertEqual(matches.count, 4,
-                       "Expected exactly 4 version literals in project.pbxproj (Release+Debug × 2 keys), found \(matches.count). Run `xcodegen generate` after editing project.yml.",
+                       "Expected exactly 4 version literals in project.pbxproj "
+                       + "(Release+Debug × 2 keys), found \(matches.count). "
+                       + "Run `xcodegen generate` after editing project.yml.",
                        file: #filePath, line: #line)
 
         for match in matches {
