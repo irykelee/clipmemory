@@ -271,22 +271,49 @@ final class BackupService {
         // L-9 (2026-07-25 audit): use the cached static formatter instead of
         // creating a new DateFormatter on every backup.
         let destination = backupsDirectory.appendingPathComponent(Self.backupFormatter.string(from: Date()), isDirectory: true)
+        try prepareBackupDirectory(at: destination)
+        writeIncompleteMarker(at: destination)
 
+        // 1.2 (2026-07-23 audit): partial-failure cleanup. Once we've
+        // created the timestamped dir, any subsequent throw leaves an
+        // empty or partial dir on disk. `lastBackupDate` correctly does
+        // NOT advance (so the next backup retries), but the orphan dir
+        // would accumulate forever — combined with the now-fixed 1.1
+        // prune filter bug, this would amplify disk growth.
+        //
+        // `succeeded` flips to `true` only right before the final `return`
+        // — every other path throws and trips the defer's removeItem.
+        var succeeded = false
+        defer {
+            if !succeeded { removePartialBackup(at: destination) }
+        }
+
+        try writeBackupBlobs(to: destination)
+        try copyImagesIfPresent(to: destination)
+
+        // H-6 (2026-07-24 audit): all data has been written successfully —
+        // remove the `.incomplete` marker so the dir is treated as a valid
+        // backup by future prune calls. Removal happens BEFORE `succeeded`
+        // flips so any post-write exception (the only realistic one today is
+        // the `pruneOldBackups` log-but-don't-throw path) still leaves the
+        // dir in a consistent state: either marked incomplete (defer cleanup
+        // will remove it) or marker-free (it stays as a valid backup).
+        try removeIncompleteMarker(in: destination)
+        finalizeBackupSuccess(at: destination)
+        succeeded = true
+        return destination
+    }
+
+    /// Creates the parent `Backups/` directory (chmod 0o700 if it exists)
+    /// and the timestamped leaf directory for this run (also 0o700).
+    /// ID-SECURITY-0004 (2026-07-31): the 0o700 perm closes the
+    /// backup-metadata leak to other local users on shared hosts.
+    /// ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): also chmod the
+    /// parent — `createDirectory(withIntermediateDirectories:)` only sets
+    /// the leaf perm; the parent inherits the umask-derived default
+    /// (typically 0o755).
+    private func prepareBackupDirectory(at destination: URL) throws {
         do {
-            // ID-SECURITY-0004 (2026-07-31 audit): backup dirs were created
-            // with default 0o755, exposing backup metadata (timestamp, item
-            // count via items.json size, image count) to other local users on
-            // shared hosts. Align with ImageStorage's ID-SECURITY-0002 fix —
-            // 0o700. The blobs themselves are encrypted at rest either way.
-            // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): also chmod
-            // the parent `Backups/` directory to 0o700. `createDirectory(
-            // withIntermediateDirectories: true, ...)` only sets the
-            // perm on the leaf; the parent inherits whatever umask
-            // produced (typically 0o755). The same shared-host argument
-            // applies — directory listing leaks the existence and
-            // count of backups, which is also metadata worth closing.
-            // `setAttributes` on a non-existent path returns false; only
-            // chmod when the directory exists.
             try fileManager.createDirectory(
                 at: backupsDirectory,
                 withIntermediateDirectories: true,
@@ -306,50 +333,43 @@ final class BackupService {
             logger.error("Backup failed (directory): \(error.localizedDescription)")
             throw BackupError.directoryCreationFailed(underlying: error)
         }
+    }
 
-        // H-6 (2026-07-24 audit): drop an `.incomplete` marker the moment the
-        // dir exists. If the process crashes or is killed before we reach the
-        // matching `removeItem` at the bottom of this function, the marker
-        // tells `pruneOldBackups` to delete this dir instead of treating it
-        // as a valid backup. Best-effort write — failure to mark means the
-        // crash-consistency safety net is lost, but doesn't break the backup
-        // itself (the existing partial-dir cleanup defer still fires).
+    /// H-6 (2026-07-24 audit): drop an `.incomplete` marker the moment the
+    /// dir exists. If the process crashes or is killed before we reach the
+    /// matching `removeItem` at the bottom of this function, the marker
+    /// tells `pruneOldBackups` to delete this dir instead of treating it
+    /// as a valid backup. Best-effort write — failure to mark means the
+    /// crash-consistency safety net is lost, but doesn't break the backup
+    /// itself (the existing partial-dir cleanup defer still fires).
+    private func writeIncompleteMarker(at destination: URL) {
         do {
             try Data().write(to: destination.appendingPathComponent(Self.incompleteMarkerName))
         } catch {
             logger.warning("Backup: failed to write .incomplete marker (crash-consistency degraded): \(error.localizedDescription)")
         }
+    }
 
-        // 1.2 (2026-07-23 audit): partial-failure cleanup. Once we've
-        // created the timestamped dir, any subsequent throw leaves an
-        // empty or partial dir on disk. `lastBackupDate` correctly does
-        // NOT advance (so the next backup retries), but the orphan dir
-        // would accumulate forever — combined with the now-fixed 1.1
-        // prune filter bug, this would amplify disk growth.
-        //
-        // `succeeded` flips to `true` only right before the final `return`
-        // — every other path throws and trips the defer's removeItem.
-        var succeeded = false
-        defer {
-            if !succeeded {
-                // ID-10 (2026-07-30 audit): partial backup dir leak on
-                // backup failure. pruneOldBackups eventually picks it up
-                // if it lacks the .incomplete marker, but a write failure
-                // before the marker is written leaves a fully-formed-
-                // looking orphan that survives until the next prune.
-                do {
-                    try fileManager.removeItem(at: destination)
-                } catch {
-                    // swiftlint:disable:next line_length
-                    logger.error("Failed to clean partial backup directory: \(error.localizedDescription, privacy: .public) path=\(destination.path, privacy: .public)")
-                }
-            }
+    /// ID-10 (2026-07-30 audit): partial backup dir leak on backup
+    /// failure. pruneOldBackups eventually picks it up if it lacks the
+    /// .incomplete marker, but a write failure before the marker is
+    /// written leaves a fully-formed-looking orphan that survives until
+    /// the next prune.
+    private func removePartialBackup(at destination: URL) {
+        do {
+            try fileManager.removeItem(at: destination)
+        } catch {
+            // swiftlint:disable:next line_length
+            logger.error("Failed to clean partial backup directory: \(error.localizedDescription, privacy: .public) path=\(destination.path, privacy: .public)")
         }
+    }
 
-        // P1-AUDIT-2026-09-22 (P2-10): the (filename, key) pairs come from
-        // the central `BackupBlobRegistry` enum. BackupPackage.swift iterates
-        // the same registry, so adding a new blob type = one enum case; both
-        // backup paths get it automatically.
+    /// P1-AUDIT-2026-09-22 (P2-10): the (filename, key) pairs come from
+    /// the central `BackupBlobRegistry` enum. BackupPackage.swift iterates
+    /// the same registry, so adding a new blob type = one enum case; both
+    /// backup paths get it automatically. Each blob is chmod 0o600
+    /// (ID-REVIEW-1007) to close the per-backup metadata leak.
+    private func writeBackupBlobs(to destination: URL) throws {
         for blob in BackupBlobRegistry.allBlobKeys {
             let filename = blob.filename
             let key = blob.userDefaultsKey
@@ -357,41 +377,32 @@ final class BackupService {
             do {
                 let blobURL = destination.appendingPathComponent(filename)
                 try data.write(to: blobURL, options: .atomic)
-                // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): chmod
-                // the per-backup blob to 0o600 (owner read+write only).
-                // The blob contains AES-GCM ciphertext so a 0o644 leak
-                // wouldn't decrypt without the key, but the file's
-                // existence + size + timestamp leaks per-backup metadata
-                // (entry count via items.json, image count, retention
-                // pattern). On a USB stick or cloud-synced folder, that's
-                // already a signal worth closing. Same per-blob chmod as
-                // ImageStorage uses for its 0o600 image files.
                 try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: blobURL.path)
             } catch {
                 logger.error("Backup failed (write \(filename)): \(error.localizedDescription)")
                 throw BackupError.writeFailed(filename: filename, underlying: error)
             }
         }
+    }
 
-        if fileManager.fileExists(atPath: imagesDirectory.path) {
-            let imagesDestination = destination.appendingPathComponent("Images", isDirectory: true)
-            do {
-                try fileManager.copyItem(at: imagesDirectory, to: imagesDestination)
-            } catch {
-                logger.error("Backup failed (copy Images): \(error.localizedDescription)")
-                throw BackupError.imageCopyFailed(underlying: error)
-            }
+    /// Copies the `Images/` directory into the backup if present; no-op
+    /// otherwise. Images are already encrypted at rest by ImageStorage so
+    /// this is a straightforward recursive copy.
+    private func copyImagesIfPresent(to destination: URL) throws {
+        guard fileManager.fileExists(atPath: imagesDirectory.path) else { return }
+        let imagesDestination = destination.appendingPathComponent("Images", isDirectory: true)
+        do {
+            try fileManager.copyItem(at: imagesDirectory, to: imagesDestination)
+        } catch {
+            logger.error("Backup failed (copy Images): \(error.localizedDescription)")
+            throw BackupError.imageCopyFailed(underlying: error)
         }
+    }
 
-        // H-6 (2026-07-24 audit): all data has been written successfully —
-        // remove the `.incomplete` marker so the dir is treated as a valid
-        // backup by future prune calls. Removal happens BEFORE `succeeded`
-        // flips so any post-write exception (the only realistic one today is
-        // the `pruneOldBackups` log-but-don't-throw path) still leaves the
-        // dir in a consistent state: either marked incomplete (defer cleanup
-        // will remove it) or marker-free (it stays as a valid backup).
-        try removeIncompleteMarker(in: destination)
-
+    /// Updates UserDefaults bookkeeping (lastBackupDate, clear any prior
+    /// error record), runs the retention prune, and logs success. Caller
+    /// has already removed the `.incomplete` marker.
+    private func finalizeBackupSuccess(at destination: URL) {
         defaults.set(Date(), forKey: Self.lastBackupDateKey)
         // N-3 (2026-07-27): a successful backup clears the previous failure
         // record. The settings page only shows "Last backup failed" when
@@ -402,8 +413,6 @@ final class BackupService {
         defaults.removeObject(forKey: Self.lastBackupErrorMessageKey)
         pruneOldBackups()
         logger.info("Backup completed at \(destination.path)")
-        succeeded = true
-        return destination
     }
 
     /// BKP-1 (2026-07-24): this used to be `try?` inside
