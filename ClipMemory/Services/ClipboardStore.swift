@@ -1662,139 +1662,18 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     var tagNeedsSave = false
 
     func addItem(_ item: ClipboardItem) {
-        var newItem = item
-        let plaintextContent = item.content
-        var newHash: String?
-
-        // M3: Always encrypt text and link content (images are encrypted by ImageStorage)
-        if item.type != .image {
-            if let encrypted = ServiceContainer.crypto.encrypt(item.content) {
-                let computedHash = ServiceContainer.crypto.hmacHex(for: plaintextContent)
-                if computedHash == nil {
-                    // HMAC failure (rare — Keychain -25308 or crypto internal error).
-                    // Don't fall back to "" — that creates silent dedup collisions when
-                    // multiple distinct contents all fail HMAC. Use nil contentHash;
-                    // the dedup pre-filter below short-circuits and we fall through to
-                    // insert the item rather than risk dropping real data.
-                    logger.error("HMAC failed for clipboard item; storing without dedup fingerprint")
-                    NotificationCenter.default.post(name: .encryptionFailed, object: nil)
-                }
-                newHash = computedHash
-                newItem = item.with(content: encrypted, isEncrypted: true, contentHash: newHash)
-            } else {
-                // H-2 (2026-07-25 audit): on a fresh install the encryption key
-                // is prepared in a detached task; captures that arrive before it
-                // finishes would otherwise be silently dropped. Defer them and
-                // retry once `.cryptoKeyPrepared` signals success.
-                if CryptoService.isKeyLoadAttemptedAndMissing() {
-                    pendingKeyItemsLock.lock()
-                    // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): cap
-                    // `pendingKeyItems` at 50 entries. Without the cap, a
-                    // long Keychain-locked window + high-frequency copy
-                    // (e.g., batch copy of a folder of screenshots during
-                    // a screen-share presentation) would queue every
-                    // incoming item unbounded — each entry holds the full
-                    // plaintext `content` string plus `ocrText`, so 50
-                    // entries × ~1 MB worst case = 50 MB held in memory
-                    // until the Keychain unlocks (potentially hours if
-                    // the user walks away). On overflow, drop the oldest
-                    // (FIFO) — losing the earliest pre-lock captures is
-                    // better than an unbounded memory ceiling, and the
-                    // user can recopy anything that matters once the
-                    // Keychain is back.
-                    let kPendingKeyItemsCap = 50
-                    if pendingKeyItems.count >= kPendingKeyItemsCap {
-                        pendingKeyItems.removeFirst()
-                        // swiftlint:disable:next line_length
-                        self.logger.notice("pendingKeyItems overflow: dropped oldest entry (cap=\(kPendingKeyItemsCap)); consider recopying pre-Keychain-lock items")
-                    }
-                    pendingKeyItems.append(item)
-                    pendingKeyItemsLock.unlock()
-                    return
-                }
-                // N2: Encrypt failed — do NOT store as plaintext (security violation).
-                // Discard the item (any non-image type — M3 encrypts text + link
-                // unconditionally). H-3 (2026-07-24 audit) audit-checks for log +
-                // notify on this path; the bare notification is now tagged with
-                // `source = "addItem"` and the item type so observers can
-                // distinguish addItem from HMAC / OCR / ImageStorage failures
-                // and the user-facing alert can be debounced across sources.
-                logger.error("Encryption failed for non-image item (type: \(item.type.rawValue, privacy: .public)), discarding to protect data")
-                NotificationCenter.default.post(
-                    name: .encryptionFailed,
-                    object: nil,
-                    userInfo: [
-                        "source": "addItem",
-                        "itemType": item.type.rawValue
-                    ]
-                )
-                return
-            }
-        } else {
-            // CLIP-1: image items arrive with a contentHash computed by
-            // ClipboardMonitor over the raw image bytes (HMAC-SHA256, same
-            // style as text items). The item's `content` is a fresh UUID
-            // filename — useless for dedup — so without adopting this hash
-            // the dedup pre-filter below could never match images and every
-            // re-copy of the same picture added a new entry + file. nil
-            // (legacy items, or crypto failure at capture time) → skip
-            // dedup, same contract as the text HMAC-failure path.
-            newHash = item.contentHash
-        }
-
-        // P2 (2026-07-29 audit): O(1) contentHash dedup via Set lookup.
-        // Replaces the previous O(n) firstIndex(where:) scan that degraded
-        // to per-item AES-GCM decrypt for legacy items without contentHash.
-        // Skip dedup when newHash is nil (HMAC failure) — same contract as
-        // before: accept a duplicate rather than risk false collision.
-        if let newHash = newHash, dedupHashes.contains(newHash) {
-            if let existingIndex = items.firstIndex(where: { $0.contentHash == newHash && $0.type == newItem.type }) {
-                var existing = items.remove(at: existingIndex)
-                existing = existing.with(createdAt: Date(), contentHash: existing.contentHash ?? newHash)
-                // H-3 (2026-08-08 audit): if the existing entry's image file
-                // is already missing/corrupt, the user can never self-heal
-                // by re-copying — the branch below would unconditionally
-                // delete the freshly-saved good file and leave the broken
-                // entry in place. Swap instead: point `existing.content` at
-                // the new file, drop the old (if still on disk), and clear
-                // the id from the integrity-scan sets so ContentView's
-                // "image missing" badge disappears reactively.
-                if newItem.type == .image, newItem.content != existing.content {
-                    let existingIsBroken = imageMissingIds.contains(existing.id)
-                        || imageCorruptedIds.contains(existing.id)
-                        || !ImageStorage.shared.fileExists(filename: existing.content)
-                    if existingIsBroken {
-                        let oldFilename = existing.content
-                        existing = existing.with(content: newItem.content)
-                        imageMissingIds.remove(existing.id)
-                        imageCorruptedIds.remove(existing.id)
-                        // Old file may already be missing (no delete
-                        // needed, and deleteImage would log a misleading
-                        // "orphan left on disk" error). Skip the call in
-                        // that case to keep the log honest.
-                        if ImageStorage.shared.fileExists(filename: oldFilename) {
-                            ImageStorage.shared.deleteImage(filename: oldFilename)
-                        }
-                        // swiftlint:disable:next line_length
-                        logger.info("H-3 swap: recovered broken image entry \(existing.id, privacy: .public) with new file \(newItem.content, privacy: .public)")
-                    } else {
-                        ImageStorage.shared.deleteImage(filename: newItem.content)
-                    }
-                }
-                items.insert(existing, at: 0)
-                invalidateItemIndex()
-            } else {
-                // Hash in set but item not found (stale from incomplete
-                // rebuild after a prior mutation). Insert as new and
-                // repair the set below.
-                items.insert(newItem, at: 0)
-        invalidateItemIndex()
-                dedupHashes.insert(newHash)
-            }
-        } else {
-            items.insert(newItem, at: 0)
-            invalidateItemIndex()
-            if let newHash = newHash { dedupHashes.insert(newHash) }
+        switch prepareItemForStorage(item) {
+        case .deferForKey:
+            // H-2 (2026-07-25): Keychain still locked — item already
+            // queued in `pendingKeyItems`. Bail out; the
+            // `.cryptoKeyPrepared` observer will retry.
+            return
+        case .discard:
+            // N2: encryption permanently failed and not a Keychain-missing
+            // case — already logged + notified. Drop the item.
+            return
+        case .proceed(let prepared, let hash):
+            insertOrDeduplicate(prepared, hash: hash)
         }
 
         trimToMaxItems()
@@ -1816,6 +1695,177 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // + a willTerminate observer registered in init).
         scheduleSave()
         if !isRunningTests, let top = items.first { prewarmDecryptionCache(items: [top], cap: 1) }
+    }
+
+    /// Outcome of the encrypt + HMAC prep step that runs before the dedup
+    /// pre-filter in `addItem`. Pulled into an enum so the early-exit
+    /// branches (Keychain defer / encrypt failure) can be expressed as data
+    /// instead of nested `return` statements — keeps `addItem`'s cyclomatic
+    /// complexity readable.
+    private enum PreparedAddItem {
+        /// Item is ready to insert. `hash` may be nil if HMAC failed —
+        /// the dedup pre-filter handles that case explicitly.
+        case proceed(item: ClipboardItem, hash: String?)
+        /// Item queued in `pendingKeyItems` for retry once the key loads.
+        case deferForKey
+        /// Encryption permanently failed and not a Keychain-missing case.
+        /// Already logged + notified via `.encryptionFailed`. Drop it.
+        case discard
+    }
+
+    /// Encrypts (or adopts a hash for) `item` and returns the next step.
+    /// Image items bypass encryption (file bytes are encrypted by
+    /// `ImageStorage`) and inherit the hash computed at capture.
+    private func prepareItemForStorage(_ item: ClipboardItem) -> PreparedAddItem {
+        // M3: images arrive with a contentHash computed by ClipboardMonitor
+        // over the raw image bytes (HMAC-SHA256, same style as text). The
+        // item's `content` is a fresh UUID filename — useless for dedup —
+        // so without adopting this hash the dedup pre-filter below could
+        // never match images and every re-copy added a new entry + file.
+        // nil (legacy items, or crypto failure at capture time) → skip
+        // dedup, same contract as the text HMAC-failure path.
+        if item.type == .image {
+            return .proceed(item: item, hash: item.contentHash)
+        }
+
+        // M3: always encrypt text and link content (images encrypted by ImageStorage)
+        guard let encrypted = ServiceContainer.crypto.encrypt(item.content) else {
+            // H-2 (2026-07-25 audit): on a fresh install the encryption key
+            // is prepared in a detached task; captures that arrive before it
+            // finishes would otherwise be silently dropped. Defer them and
+            // retry once `.cryptoKeyPrepared` signals success.
+            if CryptoService.isKeyLoadAttemptedAndMissing() {
+                deferPendingKeyItem(item)
+                return .deferForKey
+            }
+            // N2: encrypt failed — do NOT store as plaintext (security
+            // violation). Discard (any non-image type — M3 encrypts text
+            // + link unconditionally). H-3 (2026-07-24 audit) audit-checks
+            // for log + notify on this path; the bare notification is now
+            // tagged with `source = "addItem"` and the item type so
+            // observers can distinguish addItem from HMAC / OCR /
+            // ImageStorage failures and the user-facing alert can be
+            // debounced across sources.
+            logger.error("Encryption failed for non-image item (type: \(item.type.rawValue, privacy: .public)), discarding to protect data")
+            NotificationCenter.default.post(
+                name: .encryptionFailed,
+                object: nil,
+                userInfo: [
+                    "source": "addItem",
+                    "itemType": item.type.rawValue
+                ]
+            )
+            return .discard
+        }
+
+        let computedHash = ServiceContainer.crypto.hmacHex(for: item.content)
+        if computedHash == nil {
+            // HMAC failure (rare — Keychain -25308 or crypto internal
+            // error). Don't fall back to "" — that creates silent dedup
+            // collisions when multiple distinct contents all fail HMAC.
+            // Use nil contentHash; the dedup pre-filter short-circuits and
+            // we fall through to insert the item rather than risk dropping
+            // real data.
+            logger.error("HMAC failed for clipboard item; storing without dedup fingerprint")
+            NotificationCenter.default.post(name: .encryptionFailed, object: nil)
+        }
+        let prepared = item.with(content: encrypted, isEncrypted: true, contentHash: computedHash)
+        return .proceed(item: prepared, hash: computedHash)
+    }
+
+    /// Appends `item` to `pendingKeyItems` under the lock, capping the
+    /// queue at 50 entries (oldest dropped FIFO; ID-REVIEW-1007).
+    private func deferPendingKeyItem(_ item: ClipboardItem) {
+        pendingKeyItemsLock.lock()
+        // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): cap
+        // `pendingKeyItems` at 50 entries. Without the cap, a long
+        // Keychain-locked window + high-frequency copy (e.g., batch copy
+        // of a folder of screenshots during a screen-share presentation)
+        // would queue every incoming item unbounded — each entry holds
+        // the full plaintext `content` string plus `ocrText`, so 50
+        // entries × ~1 MB worst case = 50 MB held in memory until the
+        // Keychain unlocks (potentially hours if the user walks away).
+        // On overflow, drop the oldest (FIFO) — losing the earliest
+        // pre-lock captures is better than an unbounded memory ceiling,
+        // and the user can recopy anything that matters once the
+        // Keychain is back.
+        let kPendingKeyItemsCap = 50
+        if pendingKeyItems.count >= kPendingKeyItemsCap {
+            pendingKeyItems.removeFirst()
+            // swiftlint:disable:next line_length
+            self.logger.notice("pendingKeyItems overflow: dropped oldest entry (cap=\(kPendingKeyItemsCap)); consider recopying pre-Keychain-lock items")
+        }
+        pendingKeyItems.append(item)
+        pendingKeyItemsLock.unlock()
+    }
+
+    /// O(1) contentHash dedup via Set lookup (P2, 2026-07-29 audit) —
+    /// replaces the previous O(n) `firstIndex(where:)` that degraded to
+    /// per-item AES-GCM decrypt for legacy items without contentHash.
+    /// Skip dedup when `hash` is nil (HMAC failure) — same contract as
+    /// before: accept a duplicate rather than risk false collision.
+    private func insertOrDeduplicate(_ newItem: ClipboardItem, hash newHash: String?) {
+        if let newHash, dedupHashes.contains(newHash) {
+            if let existingIndex = items.firstIndex(where: { $0.contentHash == newHash && $0.type == newItem.type }) {
+                let existing = items.remove(at: existingIndex)
+                let adopted = adoptExistingWithNewContent(existing, newItem: newItem, newHash: newHash)
+                items.insert(adopted, at: 0)
+            } else {
+                // Hash in set but item not found (stale from incomplete
+                // rebuild after a prior mutation). Insert as new and
+                // repair the set below.
+                items.insert(newItem, at: 0)
+                dedupHashes.insert(newHash)
+            }
+        } else {
+            items.insert(newItem, at: 0)
+            if let newHash { dedupHashes.insert(newHash) }
+        }
+        invalidateItemIndex()
+    }
+
+    /// Bumps `existing` to the top, preserving its original contentHash if
+    /// present, and runs the H-3 image-swap branch when the incoming copy
+    /// of the same image is healthier than the on-disk one.
+    private func adoptExistingWithNewContent(_ existing: ClipboardItem, newItem: ClipboardItem, newHash: String) -> ClipboardItem {
+        var adopted = existing.with(createdAt: Date(), contentHash: existing.contentHash ?? newHash)
+        // H-3 (2026-08-08 audit): if the existing entry's image file is
+        // already missing/corrupt, the user can never self-heal by
+        // re-copying — the branch below would unconditionally delete the
+        // freshly-saved good file and leave the broken entry in place.
+        // Swap instead: point `adopted.content` at the new file, drop the
+        // old (if still on disk), and clear the id from the integrity-
+        // scan sets so ContentView's "image missing" badge disappears
+        // reactively.
+        if newItem.type == .image, newItem.content != adopted.content {
+            adopted = swapBrokenImageIfRecoverable(existing: adopted, newItem: newItem)
+        }
+        return adopted
+    }
+
+    /// Implements the H-3 image self-heal swap. If the existing entry's
+    /// file is missing/corrupted, point it at the new file (and drop the
+    /// old one if still on disk). Otherwise delete the freshly-saved new
+    /// file — the existing copy is fine and we want to keep it.
+    private func swapBrokenImageIfRecoverable(existing: ClipboardItem, newItem: ClipboardItem) -> ClipboardItem {
+        let existingIsBroken = imageMissingIds.contains(existing.id)
+            || imageCorruptedIds.contains(existing.id)
+            || !ImageStorage.shared.fileExists(filename: existing.content)
+        guard existingIsBroken else {
+            ImageStorage.shared.deleteImage(filename: newItem.content)
+            return existing
+        }
+        let oldFilename = existing.content
+        imageMissingIds.remove(existing.id)
+        imageCorruptedIds.remove(existing.id)
+        // Old file may already be missing (no delete needed, and
+        // `deleteImage` would log a misleading "orphan left on disk"
+        // error). Skip the call in that case to keep the log honest.
+        if ImageStorage.shared.fileExists(filename: oldFilename) {
+            ImageStorage.shared.deleteImage(filename: oldFilename)
+        }
+        logger.info("H-3 swap: recovered broken image entry \(existing.id, privacy: .public) with new file \(newItem.content, privacy: .public)")
+        return existing.with(content: newItem.content)
     }
 
     private var isRunningTests: Bool {
