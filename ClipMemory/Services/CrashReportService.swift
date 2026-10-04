@@ -179,114 +179,22 @@ final class CrashReportService {
     }
 
     private func parseIPS(raw: String, url: URL, mtime: Date) -> CrashReport? {
-        // The .ips file is a JSON header (first line) followed by a
-        // JSON array (subsequent lines, one element per line for
-        // diff-friendliness). Split on newlines to recover the two
-        // halves; concatenate the rest to reconstruct the array.
-        let lines = raw.split(separator: "\n", omittingEmptySubsequences: false)
-        guard let headerLine = lines.first else { return nil }
-        let body = lines.dropFirst().joined(separator: "\n")
-
-        let headerData = Data(headerLine.utf8)
-        guard let header = try? JSONSerialization.jsonObject(with: headerData) as? [String: Any] else { return nil }
-
-        let bodyData = Data(body.utf8)
-        // The body shape varies by macOS release: pre-Ventura used a
-        // JSON array of objects, Sonoma+ uses a single multi-line JSON
-        // object (Apple's diff-friendly format — one object, fields
-        // spread across lines). Accept either by trying array first,
-        // falling back to single object. Missing or malformed body
-        // still lets us render the header (date + process name) — the
-        // caller shows the file in the table with placeholder exception
-        // type so the user can still reveal it in Finder.
-        let bodyObjects: [[String: Any]]
-        if let parsed = try? JSONSerialization.jsonObject(with: bodyData) {
-            if let array = parsed as? [[String: Any]] {
-                bodyObjects = array
-            } else if let single = parsed as? [String: Any] {
-                bodyObjects = [single]
-            } else {
-                bodyObjects = []
-            }
-        } else {
-            bodyObjects = []
-        }
-
-        // Header fields we care about. Fall back to mtime when the
-        // header's timestamp is missing or malformed (a real .ips from
-        // a third-party tool may omit it).
+        guard let (header, bodyObjects) = parseIPSHeaderAndBody(raw: raw) else { return nil }
         let processName = (header["app_name"] as? String) ?? "ClipMemory"
-        let date: Date = {
-            guard let ts = header["timestamp"] as? String else { return mtime }
-            return ipsTimestampFormatter.date(from: ts) ?? mtime
-        }()
+        let date = ipsDate(from: header, fallback: mtime)
 
-        // Walk the body objects for the exception record and the
-        // triggered thread. .ips puts the crash data inline as one
-        // big object, not in a labelled array, so we filter by
-        // key presence.
+        // Walk the body objects for the exception record and the triggered
+        // thread. .ips puts the crash data inline as one big object, not in
+        // a labelled array, so we filter by key presence.
         var exceptionType = "(no exception field)"
         var signal: String?
         var binaryImages: [CrashReport.BinaryImage] = []
         var triggeredThreadFrames: [CrashReport.StackFrame] = []
 
         for obj in bodyObjects {
-            if let exception = obj["exception"] as? [String: Any] {
-                exceptionType = (exception["type"] as? String) ?? exceptionType
-                // ID-CRASH-0005: preserve signal across multi-object bodies.
-                // Bare `signal = exception["signal"] as? String` would clear
-                // a prior object's signal when this one's exception has no
-                // "signal" key. exceptionType uses `??` for the same reason;
-                // apply the same defensive pattern to signal.
-                if let s = exception["signal"] as? String { signal = s }
-            }
-            if let usedImages = obj["usedImages"] as? [[String: Any]] {
-                // ID-CRASH-0005: append, don't overwrite. Multi-object .ips
-                // (pre-Ventura array format) can carry usedImages on more
-                // than one object; overwriting would drop image entries
-                // from prior objects and break symbolication offsets.
-                let parsed = usedImages.compactMap { dict -> CrashReport.BinaryImage? in
-                    guard let name = dict["name"] as? String,
-                          let uuid = dict["uuid"] as? String else { return nil }
-                    // loadAddress arrives as either a hex string
-                    // ("0x100000000") or a number (rare). Normalize.
-                    let loadAddress: String
-                    if let str = dict["base"] as? String {
-                        loadAddress = str
-                    } else if let num = dict["base"] as? UInt64 {
-                        loadAddress = String(format: "0x%llx", num)
-                    } else {
-                        loadAddress = "?"
-                    }
-                    return CrashReport.BinaryImage(name: name, uuid: uuid, loadAddress: loadAddress)
-                }
-                binaryImages.append(contentsOf: parsed)
-            }
-            if let threads = obj["threads"] as? [[String: Any]] {
-                for thread in threads {
-                    let triggered = thread["triggered"] as? Bool ?? false
-                    guard triggered else { continue }
-                    if let frames = thread["frames"] as? [[String: Any]] {
-                        // ID-CRASH-0005: append, don't overwrite. The
-                        // `break` below limits to first triggered thread
-                        // PER OBJECT but multi-object .ips can carry
-                        // triggered threads on later objects — append
-                        // preserves all of them.
-                        let parsed = frames.compactMap { dict -> CrashReport.StackFrame? in
-                            let imageIndex = (dict["imageIndex"] as? Int) ?? -1
-                            let imageOffset = (dict["imageOffset"] as? Int) ?? 0
-                            let symbol = dict["symbol"] as? String
-                            return CrashReport.StackFrame(
-                                imageIndex: imageIndex,
-                                imageOffset: imageOffset,
-                                symbol: symbol
-                            )
-                        }
-                        triggeredThreadFrames.append(contentsOf: parsed)
-                    }
-                    break
-                }
-            }
+            extractExceptionInfo(obj, exceptionType: &exceptionType, signal: &signal)
+            extractBinaryImages(obj, into: &binaryImages)
+            extractTriggeredFrames(obj, into: &triggeredThreadFrames)
         }
 
         return CrashReport(
@@ -299,6 +207,115 @@ final class CrashReportService {
             firstFrames: Array(triggeredThreadFrames.prefix(5)),
             fileURL: url
         )
+    }
+
+    /// Splits the raw .ips into (header dict, body objects). Returns nil
+    /// when the header line is missing or unparseable. Body may be empty
+    /// when malformed (caller still renders the header).
+    private func parseIPSHeaderAndBody(raw: String) -> ([String: Any], [[String: Any]])? {
+        // The .ips file is a JSON header (first line) followed by a JSON
+        // array (subsequent lines, one element per line for diff-friendliness).
+        // Split on newlines to recover the two halves; concatenate the rest
+        // to reconstruct the array.
+        let lines = raw.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let headerLine = lines.first else { return nil }
+        let body = lines.dropFirst().joined(separator: "\n")
+        let headerData = Data(headerLine.utf8)
+        guard let header = try? JSONSerialization.jsonObject(with: headerData) as? [String: Any] else { return nil }
+        let bodyData = Data(body.utf8)
+        // The body shape varies by macOS release: pre-Ventura used a JSON
+        // array of objects, Sonoma+ uses a single multi-line JSON object.
+        // Accept either by trying array first, falling back to single
+        // object. Missing or malformed body still lets us render the
+        // header (date + process name).
+        let bodyObjects: [[String: Any]]
+        if let parsed = try? JSONSerialization.jsonObject(with: bodyData) {
+            if let array = parsed as? [[String: Any]] {
+                bodyObjects = array
+            } else if let single = parsed as? [String: Any] {
+                bodyObjects = [single]
+            } else {
+                bodyObjects = []
+            }
+        } else {
+            bodyObjects = []
+        }
+        return (header, bodyObjects)
+    }
+
+    /// Parses the .ips header timestamp, falling back to `fallback` when
+    /// missing or malformed (a real .ips from a third-party tool may omit it).
+    private func ipsDate(from header: [String: Any], fallback: Date) -> Date {
+        guard let ts = header["timestamp"] as? String else { return fallback }
+        return ipsTimestampFormatter.date(from: ts) ?? fallback
+    }
+
+    /// Extracts exception type + signal from one body object. The
+    /// `??` defensive pattern preserves a prior object's value when this
+    /// one lacks the field (ID-CRASH-0005).
+    private func extractExceptionInfo(
+        _ obj: [String: Any],
+        exceptionType: inout String,
+        signal: inout String?
+    ) {
+        guard let exception = obj["exception"] as? [String: Any] else { return }
+        exceptionType = (exception["type"] as? String) ?? exceptionType
+        if let s = exception["signal"] as? String { signal = s }
+    }
+
+    /// Extracts binary-image records from one body object. Multi-object
+    /// .ips (pre-Ventura array format) can carry usedImages on more than
+    /// one object — append, don't overwrite (ID-CRASH-0005).
+    private func extractBinaryImages(
+        _ obj: [String: Any],
+        into binaryImages: inout [CrashReport.BinaryImage]
+    ) {
+        guard let usedImages = obj["usedImages"] as? [[String: Any]] else { return }
+        let parsed = usedImages.compactMap { dict -> CrashReport.BinaryImage? in
+            guard let name = dict["name"] as? String,
+                  let uuid = dict["uuid"] as? String else { return nil }
+            // loadAddress arrives as either a hex string ("0x100000000")
+            // or a number (rare). Normalize.
+            let loadAddress: String
+            if let str = dict["base"] as? String {
+                loadAddress = str
+            } else if let num = dict["base"] as? UInt64 {
+                loadAddress = String(format: "0x%llx", num)
+            } else {
+                loadAddress = "?"
+            }
+            return CrashReport.BinaryImage(name: name, uuid: uuid, loadAddress: loadAddress)
+        }
+        binaryImages.append(contentsOf: parsed)
+    }
+
+    /// Extracts triggered-thread frames from one body object. Multi-object
+    /// .ips can carry triggered threads on later objects — append
+    /// preserves all of them. The inner `break` limits to first triggered
+    /// thread PER OBJECT.
+    private func extractTriggeredFrames(
+        _ obj: [String: Any],
+        into frames: inout [CrashReport.StackFrame]
+    ) {
+        guard let threads = obj["threads"] as? [[String: Any]] else { return }
+        for thread in threads {
+            let triggered = thread["triggered"] as? Bool ?? false
+            guard triggered else { continue }
+            if let threadFrames = thread["frames"] as? [[String: Any]] {
+                let parsed = threadFrames.compactMap { dict -> CrashReport.StackFrame? in
+                    let imageIndex = (dict["imageIndex"] as? Int) ?? -1
+                    let imageOffset = (dict["imageOffset"] as? Int) ?? 0
+                    let symbol = dict["symbol"] as? String
+                    return CrashReport.StackFrame(
+                        imageIndex: imageIndex,
+                        imageOffset: imageOffset,
+                        symbol: symbol
+                    )
+                }
+                frames.append(contentsOf: parsed)
+            }
+            break
+        }
     }
 
     /// Formatter for the .ips header timestamp format

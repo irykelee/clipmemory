@@ -328,59 +328,18 @@ class ClipboardMonitor {
     // Internal (not private) so the ID-MON-0001 regression test can drive
     // the skip-window decision deterministically without the poll timer.
     func checkClipboard() {
-        // L-1 (2026-07-21 audit): the original check-then-act was two separate
-        // lock acquisitions; a recordOwnWrite() landing between the read and the
-        // false-write could re-set the flag back to true after we cleared it,
-        // defeating the skip and re-capturing our own write. Wrap the read+clear
-        // in a single withLock so the toggle is atomic with respect to the
-        // observer. (CLIP-4 below tightened WHEN the flag is consumed; the
-        // atomicity requirement is unchanged.)
-        // CLIP-4 (2026-07-24 review): consume the skip flag ONLY once our own
-        // write has actually landed (changeCount moved past the value
-        // recordOwnWrite() captured). A tick landing between recordOwnWrite()
-        // and clearContents() used to eat the flag while changeCount was still
-        // the old value; the write then landed and the next tick re-captured
-        // our own write as a duplicate entry. If the count hasn't moved yet,
-        // keep the flag and return.
         // L-1 (2026-07-25 audit): `pasteboard.changeCount` was read four
         // times per 0.5 s poll tick. The pasteboard server round-trip is
         // cheap but not free; snapshot it once per tick and reuse the value.
         let currentChangeCount = pasteboard.changeCount
-        // ID-MON-0001 (2026-07-31 audit): the old block consumed the skip
-        // flag on ANY changeCount bump — an external write landing inside
-        // the skip window was silently swallowed. Now, when the count has
-        // moved, we verify the payload fingerprint against what
-        // recordOwnWrite() captured: match → it really was our write, skip;
-        // mismatch → an external app owns this change, drop the flag and
-        // fall through to the normal capture path so the entry is not lost.
-        let skipPending = withLock { _skipNextCapture }
-        if skipPending {
-            // CLIP-4: own write hasn't landed yet — keep the flag and wait.
-            guard currentChangeCount != lastChangeCount else { return }
-            let fingerprint = Self.pasteboardContentFingerprint(pasteboard)
-            let matchesOwnWrite = withLock { () -> Bool? in
-                // The fingerprint main-async capture hasn't run yet (own
-                // write just landed): keep the flag and wait one more tick
-                // rather than guessing. Returning nil = undecided.
-                guard _ownWriteFingerprintReady else { return nil }
-                if _ownWriteFingerprint == fingerprint {
-                    _skipNextCapture = false
-                    _ownWriteFingerprint = nil
-                    _ownWriteFingerprintReady = false
-                    _lastChangeCount = currentChangeCount
-                    return true
-                }
-                // External change consumed the skip window: drop the stale
-                // skip state but do NOT advance lastChangeCount — the normal
-                // path below treats this as a fresh capture.
-                _skipNextCapture = false
-                _ownWriteFingerprint = nil
-                _ownWriteFingerprintReady = false
-                return false
-            }
-            // nil (fingerprint pending) and true (our own write) both skip
-            // this tick; false falls through to capture the external change.
-            if matchesOwnWrite != false { return }
+
+        // ID-MON-0001 (2026-07-31 audit): if a skip is pending, consume it
+        // based on fingerprint match. Returns true if the tick should be
+        // skipped (own write OR fingerprint pending); false if it's an
+        // external change that should fall through to normal capture.
+        if consumeSkipPendingIfMatched(currentChangeCount: currentChangeCount,
+                                      fingerprint: Self.pasteboardContentFingerprint(pasteboard)) {
+            return
         }
 
         // CLIP-6 (2026-07-24 review): credential-manager class apps mark
@@ -707,5 +666,56 @@ class ClipboardMonitor {
         }
 
         return false
+    }
+
+    /// Extracted from checkClipboard for cyclomatic complexity reduction.
+    /// Handles the recordOwnWrite skip-flag consumption logic. Returns true if
+    /// this tick should be skipped (own write OR fingerprint pending — the latter
+    /// means we couldn't decide and will wait one more tick); false if it's an
+    /// external change that should fall through to the normal capture path.
+    private func consumeSkipPendingIfMatched(currentChangeCount: Int, fingerprint: String?) -> Bool {
+        // L-1 (2026-07-21 audit): the original check-then-act was two separate
+        // lock acquisitions; a recordOwnWrite() landing between the read and the
+        // false-write could re-set the flag back to true after we cleared it,
+        // defeating the skip and re-capturing our own write. Wrap the read+clear
+        // in a single withLock so the toggle is atomic with respect to the
+        // observer.
+        let skipPending = withLock { _skipNextCapture }
+        guard skipPending else { return false }
+        // CLIP-4: own write hasn't landed yet — keep the flag and wait.
+        guard currentChangeCount != lastChangeCount else { return true }
+        let matchesOwnWrite: Bool? = withLock {
+            // The fingerprint main-async capture hasn't run yet (own write
+            // just landed): keep the flag and wait one more tick rather than
+            // guessing. Returning nil = undecided.
+            guard _ownWriteFingerprintReady, let fingerprint, fingerprint == _ownWriteFingerprint else {
+                if _ownWriteFingerprintReady {
+                    // External change consumed the skip window: drop the
+                    // stale skip state but do NOT advance lastChangeCount —
+                    // the normal path below treats this as a fresh capture.
+                    _skipNextCapture = false
+                    _ownWriteFingerprint = nil
+                    _ownWriteFingerprintReady = false
+                    return false
+                }
+                return nil
+            }
+            // Fingerprint matches — it really was our own write.
+            _skipNextCapture = false
+            _ownWriteFingerprint = nil
+            _ownWriteFingerprintReady = false
+            _lastChangeCount = currentChangeCount
+            return true
+            // External change consumed the skip window: drop the stale skip
+            // state but do NOT advance lastChangeCount — the normal path
+            // below treats this as a fresh capture.
+            _skipNextCapture = false
+            _ownWriteFingerprint = nil
+            _ownWriteFingerprintReady = false
+            return false
+        }
+        // nil (fingerprint pending) and true (our own write) both skip this
+        // tick; false falls through to capture the external change.
+        return matchesOwnWrite != false
     }
 }

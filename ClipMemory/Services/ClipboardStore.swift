@@ -952,11 +952,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // Only groups containing a just-backfilled item can be NEW collisions —
         // pre-existing hashed items were already deduped at insertion time.
         let backfilledIds = Set(hashes.keys)
-        var groups: [String: [Int]] = [:]
-        for (index, item) in items.enumerated() {
-            guard let hash = item.contentHash else { continue }
-            groups["\(item.type.rawValue)|\(hash)", default: []].append(index)
-        }
+        let groups = indexHashGroups()
 
         var removedIndices = Set<Int>()
         var imageFilesToDelete: [String] = []
@@ -975,17 +971,38 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         }
 
         if !removedIndices.isEmpty {
-            items = items.enumerated().filter { !removedIndices.contains($0.offset) }.map { $0.element }
-            items.sort { $0.createdAt > $1.createdAt }
-            invalidateItemIndex()
-            for filename in imageFilesToDelete {
-                ImageStorage.shared.deleteImage(filename: filename)
-            }
-            trimToMaxItems()
-            updatePinnedItems()
+            applyDedupRemovals(removedIndices: removedIndices,
+                               imageFilesToDelete: imageFilesToDelete)
         }
-        rebuildDedupHashSet()
-        scheduleSave()
+    }
+
+    /// Builds a [type|hash: [item indices]] lookup. Extracted from
+    /// mergeBackfilledHashes for cyclomatic complexity reduction.
+    private func indexHashGroups() -> [String: [Int]] {
+        var groups: [String: [Int]] = [:]
+        for (index, item) in items.enumerated() {
+            guard let hash = item.contentHash else { continue }
+            groups["\(item.type.rawValue)|\(hash)", default: []].append(index)
+        }
+        return groups
+    }
+
+    /// Applies removal + image-file cleanup after mergeBackfilledHashes
+    /// groups the new collisions. Extracted for cyclomatic complexity
+    /// reduction.
+    private func applyDedupRemovals(
+        removedIndices: Set<Int>,
+        imageFilesToDelete: [String]
+    ) {
+        guard !removedIndices.isEmpty else { return }
+        items = items.enumerated().filter { !removedIndices.contains($0.offset) }.map { $0.element }
+        items.sort { $0.createdAt > $1.createdAt }
+        invalidateItemIndex()
+        for filename in imageFilesToDelete {
+            ImageStorage.shared.deleteImage(filename: filename)
+        }
+        trimToMaxItems()
+        updatePinnedItems()
     }
 
     /// P0-2: user taps banner ✕ → dismiss until next key event.
