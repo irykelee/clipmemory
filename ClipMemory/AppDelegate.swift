@@ -593,66 +593,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         encryptionFailedObserver = NotificationCenter.default.addObserver(
             forName: .encryptionFailed, object: nil, queue: .main
         ) { [weak self] note in
-            // XCTest injects into the real app, so this observer is live
-            // during tests — and tests deliberately post .encryptionFailed
-            // (OCRTests encrypt-failure fixtures). A modal runModal there
-            // blocks the test process forever (2026-07-24 CI hang: Test
-            // step stuck >60 min). Same guard as CryptoService.isRunningTests.
-            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
-            // CLIP-3 (2026-07-24): batch failure paths (OCR backfill, bulk
-            // tag encryption) post one notification per item — one modal per
-            // notification is an alert storm. Throttle per H-3 source tag;
-            // suppressed failures are counted into the next alert's text.
-            guard let self else { return }
-            let source = EncryptionFailedAlertThrottler.sourceKey(for: note)
-            let decision = encryptionAlertThrottler.recordFailure(source: source)
-            guard decision.shouldShowAlert else { return }
-            let a = NSAlert()
-            a.messageText = L10n.error
-            a.informativeText = decision.failureCount > 1
-                ? L10n.alertEncryptFailedCount(decision.failureCount)
-                : L10n.alertEncryptFailed
-            a.alertStyle = .warning
-            a.addButton(withTitle: L10n.buttonConfirm)
-            a.runModal()
+            self?.handleEncryptionFailed(note)
         }
-
-        // H-2 (2026-08-08): log .trashLoadFailed to system log. Full
-        // user-visible surfacing (NSAlert + quarantine management UI)
-        // is deferred — the encryptionFailed observer pattern above is the
-        // template when that work lands. For now: the log line is the
-        // only post-fix user signal that a quarantine happened (pre-fix:
-        // zero signal).
         trashLoadFailedObserver = NotificationCenter.default.addObserver(
             forName: .trashLoadFailed, object: nil, queue: .main
         ) { [weak self] note in
-            // Same XCTest guard as encryptionFailedObserver above: tests
-            // deliberately post .trashLoadFailed to verify the notification
-            // fires; an NSAlert here would hang CI forever.
-            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
-            guard let self else { return }
-            let persistent = (note.userInfo?["persistent"] as? Bool) ?? false
-            let suffix = persistent ? " (persisted from prior launch)" : ""
-            let underlying = (note.userInfo?["error"] as? String) ?? "unknown"
-            // H-1 (2026-08-08 audit): NSAlert + Throttler for trash load
-            // failure visibility — was log-only before, hiding recoverable
-            // data loss from the user. Source bucket "trashLoadFailed"
-            // so disk-full vs prior-launch-persistent don't share a bucket.
-            let decision = self.trashAlertThrottler.recordFailure(source: "trashLoadFailed")
-            let detail = "Quarantined blob retained under 'ClipboardTrashedItems.corrupt-*'. Underlying error: \(underlying)"
-            guard decision.shouldShowAlert else {
-                self.logger.error("Trash load failed\(suffix). \(detail)")
-                return
-            }
-            self.logger.error("Trash load failed\(suffix). \(detail)")
-            let a = NSAlert()
-            a.messageText = L10n.error
-            a.informativeText = decision.failureCount > 1
-                ? L10n.alertTrashLoadFailedCount(decision.failureCount)
-                : L10n.alertTrashLoadFailed
-            a.alertStyle = .warning
-            a.addButton(withTitle: L10n.buttonConfirm)
-            a.runModal()
+            self?.handleTrashLoadFailed(note)
         }
 
         // ID-CRASH-0008 (2026-09-28 code-review P1-3): observer for
@@ -1104,6 +1050,57 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         a.informativeText = decision.failureCount > 1
             ? L10n.alertSaveFailedCount(decision.failureCount)
             : L10n.alertSaveFailed
+        a.alertStyle = .warning
+        a.addButton(withTitle: L10n.buttonConfirm)
+        a.runModal()
+    }
+
+    /// Extracted from setupLanguageObserver's inline closure (P1-AUDIT-2026-09-22
+    /// cyclomatic-complexity refactor). XCTest guard + throttler alert.
+    fileprivate func handleEncryptionFailed(_ note: Notification) {
+        // XCTest injects into the real app, so this observer is live
+        // during tests — and tests deliberately post .encryptionFailed
+        // (OCRTests encrypt-failure fixtures). A modal runModal there
+        // blocks the test process forever (2026-07-24 CI hang: Test
+        // step stuck >60 min). Same guard as CryptoService.isRunningTests.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        // CLIP-3 (2026-07-24): batch failure paths (OCR backfill, bulk
+        // tag encryption) post one notification per item — one modal per
+        // notification is an alert storm. Throttle per H-3 source tag;
+        // suppressed failures are counted into the next alert's text.
+        let source = EncryptionFailedAlertThrottler.sourceKey(for: note)
+        let decision = encryptionAlertThrottler.recordFailure(source: source)
+        guard decision.shouldShowAlert else { return }
+        let a = NSAlert()
+        a.messageText = L10n.error
+        a.informativeText = decision.failureCount > 1
+            ? L10n.alertEncryptFailedCount(decision.failureCount)
+            : L10n.alertEncryptFailed
+        a.alertStyle = .warning
+        a.addButton(withTitle: L10n.buttonConfirm)
+        a.runModal()
+    }
+
+    /// Extracted from setupLanguageObserver's inline closure (P1-AUDIT-2026-09-22
+    /// cyclomatic-complexity refactor). H-1 (2026-08-08 audit) alert surfacing
+    /// for trash load failure with persistent-flag suffix.
+    fileprivate func handleTrashLoadFailed(_ note: Notification) {
+        // Same XCTest guard as handleEncryptionFailed: tests deliberately
+        // post .trashLoadFailed to verify the notification fires; an
+        // NSAlert here would hang CI forever.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        let persistent = (note.userInfo?["persistent"] as? Bool) ?? false
+        let suffix = persistent ? " (persisted from prior launch)" : ""
+        let underlying = (note.userInfo?["error"] as? String) ?? "unknown"
+        let decision = trashAlertThrottler.recordFailure(source: "trashLoadFailed")
+        let detail = "Quarantined blob retained under 'ClipboardTrashedItems.corrupt-*'. Underlying error: \(underlying)"
+        logger.error("Trash load failed\(suffix). \(detail)")
+        guard decision.shouldShowAlert else { return }
+        let a = NSAlert()
+        a.messageText = L10n.error
+        a.informativeText = decision.failureCount > 1
+            ? L10n.alertTrashLoadFailedCount(decision.failureCount)
+            : L10n.alertTrashLoadFailed
         a.alertStyle = .warning
         a.addButton(withTitle: L10n.buttonConfirm)
         a.runModal()

@@ -183,68 +183,104 @@ final class NotificationObserverAssertionTests: XCTestCase {
         var byShortName: [String: DeclaredNotification] = [:]
         var rawValues: Set<String> = []
 
-        // Pass 1: static let — captures both shortName AND rawValue
-        guard let staticRe = try? NSRegularExpression(
-            pattern: staticNotificationPattern
-        ) else { return [] }
-        for (_, absPath) in files {
-            guard let contents = try? String(contentsOfFile: absPath, encoding: .utf8) else { continue }
-            let lines = contents.components(separatedBy: "\n")
-            for (idx, line) in lines.enumerated() {
-                let lineNum = idx + 1
-                let range = NSRange(location: 0, length: (line as NSString).length)
-                let matches = staticRe.matches(in: line, options: [], range: range)
-                for m in matches where m.numberOfRanges >= 3 {
-                    let shortName = (line as NSString).substring(with: m.range(at: 1))
-                    let rawValue = (line as NSString).substring(with: m.range(at: 2))
-                    let rel = (absPath as NSString).lastPathComponent
-                    byShortName[shortName] = DeclaredNotification(
-                        shortName: shortName,
-                        rawValue: rawValue,
-                        declaredAt: "\(rel):\(lineNum)"
-                    )
-                    rawValues.insert(rawValue)
-                }
-            }
-        }
-
-        // Pass 2: inline literals — only add if rawValue not already covered
-        guard let inlineRe = try? NSRegularExpression(
-            pattern: inlineNotificationPattern
-        ) else { return Array(byShortName.values) }
-        for (_, absPath) in files {
-            guard let contents = try? String(contentsOfFile: absPath, encoding: .utf8) else { continue }
-            let lines = contents.components(separatedBy: "\n")
-            for (idx, line) in lines.enumerated() {
-                let lineNum = idx + 1
-                // Skip lines already captured by static pass
-                if line.contains("static let ") && line.contains("= Notification.Name(") { continue }
-                let range = NSRange(location: 0, length: (line as NSString).length)
-                let matches = inlineRe.matches(in: line, options: [], range: range)
-                for m in matches where m.numberOfRanges >= 2 {
-                    let rawValue = (line as NSString).substring(with: m.range(at: 1))
-                    // De-duplicate: if a `static let X = Notification.Name("Y")`
-                    // already added this rawValue in Pass 1, skip the inline
-                    // duplicate. (System notifications like NSCalendarDayChanged-
-                    // Notification appear inline only — they get added once
-                    // here, then dedup is a no-op on subsequent lines.)
-                    if rawValues.contains(rawValue) { continue }
-                    rawValues.insert(rawValue)
-                    // For inline literals, derive shortName from rawValue's
-                    // last segment after the final `.`.
-                    let shortName = String(rawValue.split(separator: ".").last ?? "")
-                    guard !shortName.isEmpty else { continue }
-                    let rel = (absPath as NSString).lastPathComponent
-                    byShortName[shortName] = DeclaredNotification(
-                        shortName: shortName,
-                        rawValue: rawValue,
-                        declaredAt: "\(rel):\(lineNum)"
-                    )
-                }
-            }
-        }
+        scanStaticLetNotifications(in: files, into: &byShortName, rawValues: &rawValues)
+        scanInlineNotificationLiterals(in: files, into: &byShortName, rawValues: &rawValues)
 
         return Array(byShortName.values).sorted { $0.shortName < $1.shortName }
+    }
+
+    /// Pass 1: scan for `static let X = Notification.Name("Y")` declarations.
+    /// Captures both shortName AND rawValue.
+    private static func scanStaticLetNotifications(
+        in files: [(String, String)],
+        into byShortName: inout [String: DeclaredNotification],
+        rawValues: inout Set<String>
+    ) {
+        guard let staticRe = try? NSRegularExpression(pattern: staticNotificationPattern) else { return }
+        for (_, absPath) in files {
+            guard let contents = try? String(contentsOfFile: absPath, encoding: .utf8) else { continue }
+            applyStaticMatches(staticRe,
+                              contents: contents,
+                              absPath: absPath,
+                              byShortName: &byShortName,
+                              rawValues: &rawValues)
+        }
+    }
+
+    private static func applyStaticMatches(
+        _ regex: NSRegularExpression,
+        contents: String,
+        absPath: String,
+        byShortName: inout [String: DeclaredNotification],
+        rawValues: inout Set<String>
+    ) {
+        let lines = contents.components(separatedBy: "\n")
+        for (idx, line) in lines.enumerated() {
+            let range = NSRange(location: 0, length: (line as NSString).length)
+            let matches = regex.matches(in: line, options: [], range: range)
+            for m in matches where m.numberOfRanges >= 3 {
+                let shortName = (line as NSString).substring(with: m.range(at: 1))
+                let rawValue = (line as NSString).substring(with: m.range(at: 2))
+                let rel = (absPath as NSString).lastPathComponent
+                byShortName[shortName] = DeclaredNotification(
+                    shortName: shortName,
+                    rawValue: rawValue,
+                    declaredAt: "\(rel):\(idx + 1)"
+                )
+                rawValues.insert(rawValue)
+            }
+        }
+    }
+
+    /// Pass 2: scan for inline `Notification.Name("Y")` literals. Only adds
+    /// shortName if a `static let` for that rawValue wasn't captured in
+    /// Pass 1 (dedup).
+    private static func scanInlineNotificationLiterals(
+        in files: [(String, String)],
+        into byShortName: inout [String: DeclaredNotification],
+        rawValues: inout Set<String>
+    ) {
+        guard let inlineRe = try? NSRegularExpression(pattern: inlineNotificationPattern) else { return }
+        for (_, absPath) in files {
+            guard let contents = try? String(contentsOfFile: absPath, encoding: .utf8) else { continue }
+            applyInlineMatches(inlineRe,
+                               contents: contents,
+                               absPath: absPath,
+                               byShortName: &byShortName,
+                               rawValues: &rawValues)
+        }
+    }
+
+    private static func applyInlineMatches(
+        _ regex: NSRegularExpression,
+        contents: String,
+        absPath: String,
+        byShortName: inout [String: DeclaredNotification],
+        rawValues: inout Set<String>
+    ) {
+        let lines = contents.components(separatedBy: "\n")
+        for (idx, line) in lines.enumerated() {
+            // Skip lines already captured by static pass.
+            if line.contains("static let ") && line.contains("= Notification.Name(") { continue }
+            let range = NSRange(location: 0, length: (line as NSString).length)
+            let matches = regex.matches(in: line, options: [], range: range)
+            for m in matches where m.numberOfRanges >= 2 {
+                let rawValue = (line as NSString).substring(with: m.range(at: 1))
+                // De-duplicate (System notifications appear inline only —
+                // dedup against Pass 1's static captures).
+                if rawValues.contains(rawValue) { continue }
+                rawValues.insert(rawValue)
+                // shortName derived from rawValue's last segment after the final `.`.
+                let shortName = String(rawValue.split(separator: ".").last ?? "")
+                guard !shortName.isEmpty else { continue }
+                let rel = (absPath as NSString).lastPathComponent
+                byShortName[shortName] = DeclaredNotification(
+                    shortName: shortName,
+                    rawValue: rawValue,
+                    declaredAt: "\(rel):\(idx + 1)"
+                )
+            }
+        }
     }
 
     /// `#filePath` is not usable from a static context (instance

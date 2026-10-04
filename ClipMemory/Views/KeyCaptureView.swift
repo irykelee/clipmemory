@@ -58,52 +58,61 @@ final class KeyCaptureNSView: NSView {
 
     private func setupMonitor() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
-            // CLIP-1 secondary (2026-07-24 audit): window affinity guard.
-            // NSEvent.addLocalMonitorForEvents delivers a keyDown to EVERY
-            // registered local monitor in the app - it does not respect which
-            // NSWindow is key. When the main window and QuickBar popover are
-            // both alive, both KeyCaptureNSView instances get every keyDown,
-            // and one monitor returning nil does NOT prevent the other from
-            // running. Result: pressing Return on a QuickBar selection ALSO
-            // fires the main window's onReturn handler, and the wrong item
-            // can land on the pasteboard. Returning event unchanged when
-            // our window is not key confines the monitor to its own window.
-            //
-            // L-19 (2026-07-25 audit): require the view's window to actually
-            // be the key window. The previous `window == nil` short-circuit
-            // let a detached/transitioning view process events meant for the
-            // real key window.
-            guard self.window == NSApp.keyWindow else {
-                return event
-            }
-            // During IME composition, pass all keys through to IME
-            if let fr = NSApp.keyWindow?.firstResponder as? NSTextView, fr.hasMarkedText() {
-                return event
-            }
-            // Cmd+F — menu key equivalent is consumed before local monitor sees it,
-            // so we rely on `.onCommand` in ContentView instead.
-            if event.modifierFlags.contains(.command) && event.keyCode == UInt16(kVK_ANSI_F) {
-                self.onCommandF?()
-                return nil
-            }
-            let isTextInput = (NSApp.keyWindow?.firstResponder as? NSText)?.isEditable == true
-            // When search text is empty, arrow keys should navigate list not move cursor
-            let shouldCaptureArrows = !isTextInput || self.searchText.isEmpty
-            // When typing in any editable text field (search bar, tag name input,
-            // hotkey capture), Return / Esc belong to the field — let them
-            // propagate so .onSubmit fires and Esc clears the field. The list-level
-            // handlers (onReturn copy / onEscape close) only apply when no text
-            // field has focus. Without this guard, pressing Esc while editing a
-            // tag name would silently close the main window.
-            let shouldCaptureEnterEsc = !isTextInput
-            switch Int(event.keyCode) {
-            case kVK_UpArrow:    if shouldCaptureArrows { self.onUp?();      return nil }; return event
-            case kVK_DownArrow:  if shouldCaptureArrows { self.onDown?();    return nil }; return event
-            case kVK_Return:     if shouldCaptureEnterEsc { self.onReturn?();  return nil }; return event
-            case kVK_Escape:     if shouldCaptureEnterEsc { self.onEscape?();  return nil }; return event
-            default:             return event
-            }
+            self?.handleKeyEvent(event) ?? event
+        }
+    }
+
+    /// Handles a single keyDown event. Returns `nil` to swallow the event,
+    /// the original `event` to propagate, or a synthetic `NSEvent?` value.
+    /// Extracted from setupMonitor's inline closure (P1-AUDIT-2026-09-22
+    /// cyclomatic-complexity refactor).
+    private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
+        guard shouldHandleKey(event) else { return event }
+        if let swallowResult = tryHandleCommandF(event) { return swallowResult }
+        return routeToNavigationHandler(event)
+    }
+
+    /// Affinity guards: must be the key window, must not be inside IME composition.
+    /// Extracted for cyclomatic complexity reduction.
+    private func shouldHandleKey(_ event: NSEvent) -> Bool {
+        // CLIP-1 secondary (2026-07-24 audit): window affinity guard.
+        guard window == NSApp.keyWindow else { return false }
+        // L-19 (2026-07-25 audit): also require the actual key window.
+        // During IME composition, pass all keys through to IME.
+        if let fr = NSApp.keyWindow?.firstResponder as? NSTextView, fr.hasMarkedText() { return false }
+        return true
+    }
+
+    /// Cmd+F — menu key equivalent is consumed before local monitor sees it,
+    /// so we rely on `.onCommand` in ContentView instead. Returns `nil` to
+    /// swallow, `event` to propagate, or nil-from-this-helper if not Cmd+F.
+    private func tryHandleCommandF(_ event: NSEvent) -> NSEvent?? {
+        guard event.modifierFlags.contains(.command) && event.keyCode == UInt16(kVK_ANSI_F) else {
+            return nil
+        }
+        onCommandF?()
+        return .some(nil) // swallow
+    }
+
+    /// Routes arrow / return / escape keys to their navigation handlers.
+    /// Returns the event to propagate (or nil to swallow).
+    private func routeToNavigationHandler(_ event: NSEvent) -> NSEvent? {
+        let isTextInput = (NSApp.keyWindow?.firstResponder as? NSText)?.isEditable == true
+        // When search text is empty, arrow keys should navigate list not move cursor.
+        let shouldCaptureArrows = !isTextInput || searchText.isEmpty
+        // When typing in any editable text field (search bar, tag name input,
+        // hotkey capture), Return / Esc belong to the field — let them
+        // propagate so .onSubmit fires and Esc clears the field. The list-level
+        // handlers (onReturn copy / onEscape close) only apply when no text
+        // field has focus. Without this guard, pressing Esc while editing a
+        // tag name would silently close the main window.
+        let shouldCaptureEnterEsc = !isTextInput
+        switch Int(event.keyCode) {
+        case kVK_UpArrow:    if shouldCaptureArrows { onUp?();      return nil }; return event
+        case kVK_DownArrow:  if shouldCaptureArrows { onDown?();    return nil }; return event
+        case kVK_Return:     if shouldCaptureEnterEsc { onReturn?();  return nil }; return event
+        case kVK_Escape:     if shouldCaptureEnterEsc { onEscape?();  return nil }; return event
+        default:             return event
         }
     }
 
