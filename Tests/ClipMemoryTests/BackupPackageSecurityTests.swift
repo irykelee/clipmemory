@@ -312,7 +312,7 @@ import CryptoKit
     func testImportRejectsPackageWithAbsoluteAndBackslashMembers() throws {
         for (name, member) in [
             ("absolute.clipmemory", "/tmp/cm-evil-abs.png"),
-            ("backslash.clipmemory", "Images\\..\\cm-evil-bs.png"),
+            ("backslash.clipmemory", "Images\\..\\cm-evil-bs.png")
         ] {
             let packageURL = tempRoot.appendingPathComponent(name)
             try makeZipWithMember(member).write(to: packageURL)

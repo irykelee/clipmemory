@@ -36,7 +36,7 @@ final class BackupBlobRegistryTests: XCTestCase {
             // decodeType is a computed property returning `any Decodable.Type`;
             // verify it's non-nil and usable by decoding `[]` JSON.
             XCTAssertNotNil(blob.decodeType, "P2-10: every blob type must declare decodeType")
-            XCTAssertNoThrow(try JSONDecoder().decode(blob.decodeType, from: "[]".data(using: .utf8)!),
+            XCTAssertNoThrow(try JSONDecoder().decode(blob.decodeType, from: Data("[]".utf8)),
                              "P2-10: \(blob).decodeType must decode an empty array")
         }
     }

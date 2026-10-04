@@ -39,9 +39,9 @@ import XCTest
     }
 
     func testItemsMergedIntoStore() throws {
-        let itemJSON = """
+        let itemJSON = Data("""
         [{"id":"00000000-0000-0000-0000-000000000001","type":"text","content":"hello","contentHash":"abc","isEncrypted":false,"isPinned":false,"isSensitive":false,"appBundleID":null,"createdAt":0}]
-        """.data(using: .utf8)!
+        """.utf8)
         try writeBlob("items.json", itemJSON)
         let r = try BackupPackage.importFromLocalBackup(backupDir, store: store, imagesDirectory: imagesDir, defaults: defaults)
         XCTAssertEqual(r.itemsImported, 1)
@@ -49,9 +49,9 @@ import XCTest
     }
 
     func testTrashMergedIntoStore() throws {
-        let trashJSON = """
+        let trashJSON = Data("""
         [{"id":"00000000-0000-0000-0000-000000000002","type":"text","content":"deleted","contentHash":"def","isEncrypted":false,"isPinned":false,"isSensitive":false,"appBundleID":null,"createdAt":0,"trashedAt":100}]
-        """.data(using: .utf8)!
+        """.utf8)
         try writeBlob("trash.json", trashJSON)
         let r = try BackupPackage.importFromLocalBackup(backupDir, store: store, imagesDirectory: imagesDir, defaults: defaults)
         // Trash items go to trashedItems, not itemsImported (itemsImported is only from items.json)
@@ -59,9 +59,9 @@ import XCTest
     }
 
     func testTagsMergedIntoStore() throws {
-        let tagsJSON = """
+        let tagsJSON = Data("""
         [{"id":"00000000-0000-0000-0000-000000000003","name":"myTag","colorHex":"#ff0000","isAutoSuggested":false,"createdAt":0}]
-        """.data(using: .utf8)!
+        """.utf8)
         try writeBlob("tags.json", tagsJSON)
         let r = try BackupPackage.importFromLocalBackup(backupDir, store: store, imagesDirectory: imagesDir, defaults: defaults)
         XCTAssertEqual(r.tagsImported, 1)

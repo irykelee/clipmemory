@@ -70,7 +70,7 @@ final class HangDetectorTests: XCTestCase {
             "_dispatch_root_queue_drain",
             "HangDetector.recordHeartbeat",
             "_dispatch_source_latch_and_call",
-            "__libdispatch_source_mgr_invoke",
+            "__libdispatch_source_mgr_invoke"
         ]
         let result = HangDetector.formatStackTruncated(stack: stack)
         // App frames must remain.
@@ -97,7 +97,7 @@ final class HangDetectorTests: XCTestCase {
             "0   ClipMemory                0x000000010a3b4ef0 -[AppDelegate applicationDidFinishLaunching:] + 96",
             "1   libdispatch.dylib         0x0000000100002ac3 _dispatch_main_queue_drain + 372",
             "2   ClipMemory                0x000000010a3b5200 -[ContentView refreshDisplayedItemsCacheSoon] + 56",
-            "3   libdispatch.dylib         0x00000001000028d5 _dispatch_source_latch_and_call + 47",
+            "3   libdispatch.dylib         0x00000001000028d5 _dispatch_source_latch_and_call + 47"
         ]
         let result = HangDetector.formatStackTruncated(stack: stack)
         // App frames must remain (their full-frame strings kept).

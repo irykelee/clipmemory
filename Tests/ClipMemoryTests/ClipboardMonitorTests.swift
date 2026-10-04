@@ -153,7 +153,7 @@ final class ClipboardMonitorTests: XCTestCase {
             " ", "\t", "\n", "\r\n",
             "   ", "\t\t", " \t \n ",
             "\u{3000}",              // full-width space (CJK input method)
-            "  \u{3000}  \t",       // mixed
+            "  \u{3000}  \t"        // mixed
         ]
         for ws in whitespaceVariants {
             // P1-AUDIT-2026-09-22 (P2-7): the monitor's `shouldCapture`

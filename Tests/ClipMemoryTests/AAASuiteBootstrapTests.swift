@@ -20,7 +20,7 @@ final class AAASuiteBootstrapTests: XCTestCase {
     /// Consumed by ZZZSuiteTeardownTests.
     static var productionPersistentDomainBefore: [String: Any] = [:]
 
-    override class func setUp() {
+    override static func setUp() {
         super.setUp()
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         Self.productionPersistentDomainBefore =

@@ -81,7 +81,7 @@ final class TestHostIsolationTests: XCTestCase {
             "ClipboardTrashedItems.retentionDays", // TST-0002 (2026-08-02 audit): ClipboardStoreTrashTests
             "maxClipboardItems",            // ID-STORE-0009 (2026-08-02 v6 audit F-1): ClipboardStore.maxItems didSet
             "HotKeyKeyCode",                // ID-STORE-0009: HotKeyConfig.save()
-            "HotKeyModifiers",              // ID-STORE-0009: HotKeyConfig.save()
+            "HotKeyModifiers"               // ID-STORE-0009: HotKeyConfig.save()
         ]
         // .some(...) wrapping keeps an explicit "key was absent" entry —
         // assigning a bare nil to a Dictionary subscript would delete it.

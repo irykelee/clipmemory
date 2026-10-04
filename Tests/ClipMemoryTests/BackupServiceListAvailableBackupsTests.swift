@@ -45,7 +45,7 @@ final class BackupServiceListAvailableBackupsTests: XCTestCase {
             name: "2026-08-01_120000.000",
             files: [
                 "items.json": Data("[{\"id\":\"00000000-0000-0000-0000-000000000001\"}]".utf8),
-                "tags.json": Data("[{\"id\":\"00000000-0000-0000-0000-000000000002\",\"name\":\"t\",\"colorHex\":\"#fff\",\"isAutoSuggested\":false,\"createdAt\":0}]".utf8),
+                "tags.json": Data("[{\"id\":\"00000000-0000-0000-0000-000000000002\",\"name\":\"t\",\"colorHex\":\"#fff\",\"isAutoSuggested\":false,\"createdAt\":0}]".utf8)
             ]
         )
         let result = service.listAvailableBackups()
@@ -88,7 +88,7 @@ final class BackupServiceListAvailableBackupsTests: XCTestCase {
         XCTAssertEqual(result.map(\.directoryName), [
             "2026-08-03_120000.000",
             "2026-08-02_120000.000",
-            "2026-08-01_120000.000",
+            "2026-08-01_120000.000"
         ])
     }
 }

@@ -197,7 +197,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         "settings.selectedTab",      // SettingsRootView.swift:31 — @AppStorage, written by the selectedTabBinding setter (:37) on tab click
         // ImageStorage startup migration + cleanup:
         "ImageStorageMigrationComplete", // ImageStorage.swift:78, 159, 290 — init-time migration latch
-        "ImageStorageStartupCleanupRan", // ImageStorage.swift:889, 891 — init-time orphan cleanup latch
+        "ImageStorageStartupCleanupRan"  // ImageStorage.swift:889, 891 — init-time orphan cleanup latch
     ]
 
     // P1-AUDIT-2026-09-22 v2.9.2 follow-up (2026-09-25): reverted fontScale
@@ -235,7 +235,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // them in a given run) so they're exempt from the reverse-
         // assertion; they ARE listed in `toleratedPollution` so the
         // forward assertion accepts them when they DO appear.
-        "AppleLanguages",
+        "AppleLanguages"
     ]
 
     /// Runs LAST in the suite (alphabetically after every other class).
