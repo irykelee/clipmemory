@@ -981,61 +981,99 @@ final class BackupPackage {
             let target = imagesDirectory.appendingPathComponent(file)
             guard !FileManager.default.fileExists(atPath: target.path) else { continue }
             let fileURL = packageImages.appendingPathComponent(file)
-            // C-4 (2026-07-24 audit): the prior `if let attrs = try?` chain
-            // silently bypassed the size cap whenever `attributesOfItem`
-            // failed (permissions, broken symlink, network FS error) — a
-            // hostile or corrupted package could then `Data(contentsOf:)`
-            // a 500 MB entry and crash the app with OOM. Fail closed: skip
-            // the file rather than risk unbounded memory.
-            guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-                  let size = attrs[.size] as? Int else {
-                logger.warning("Cannot determine size of image in backup (skipping): \(file)")
+
+            guard let encrypted = try readValidatedImageFile(file: file, fileURL: fileURL, maxBytes: maxImageBytes) else {
                 continue
             }
-            guard size <= maxImageBytes else {
-                logger.warning("Skipping oversized image in backup: \(file) (\(size) bytes > \(maxImageBytes))")
+            guard let reencrypted = try decryptAndReencryptImage(
+                file: file,
+                encrypted: encrypted,
+                packageCrypto: packageCrypto,
+                localCrypto: localCrypto
+            ) else {
                 continue
             }
-            let encrypted: Data
-            do {
-                encrypted = try Data(contentsOf: fileURL)
-            } catch {
-                logger.error("Failed to read image \(file): \(error.localizedDescription)")
-                throw BackupPackageError.corruptedData(
-                    "\(file): \(error.localizedDescription)",
-                    .image
-                )
-            }
-            guard let plain = packageCrypto.decryptData(encrypted),
-                  let reencrypted = localCrypto.encryptData(plain) else {
-                logger.error("Failed to decrypt image \(file)")
-                throw BackupPackageError.corruptedData(
-                    "\(file): decrypt/auth failed",
-                    .image
-                )
-            }
-            do {
-                try reencrypted.write(to: target, options: .atomic)
-            } catch {
-                logger.error("Failed to write image \(file): \(error.localizedDescription)")
-                throw BackupPackageError.corruptedData(
-                    "\(file): \(error.localizedDescription)",
-                    .image
-                )
-            }
-            // ID-SECURITY-0007 (2026-08-01 audit): tighten the imported image
-            // to 0o600, matching ImageStorage.saveImage. `.atomic` renames a
-            // temp file, so the permission is set on the FINAL path AFTER the
-            // write. Log-only on failure (the directory is already 0o700 and
-            // the content is encrypted — defense in depth, not a hard gate).
-            do {
-                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
-            } catch {
-                logger.warning("Failed to set 0o600 on imported image \(file): \(error.localizedDescription)")
-            }
+            try writeImportedImage(target: target, file: file, data: reencrypted)
             count += 1
         }
         return count
+    }
+
+    /// Reads `fileURL` and returns its bytes after enforcing the image-size
+    /// cap. Returns nil and logs a warning when the file is unstatable
+    /// (C-4 fail-closed) or oversized (M-2 zip-bomb cap); throws on a hard
+    /// read error so the caller can surface it as `corruptedData`.
+    private static func readValidatedImageFile(file: String, fileURL: URL, maxBytes: Int) throws -> Data? {
+        // C-4 (2026-07-24 audit): the prior `if let attrs = try?` chain
+        // silently bypassed the size cap whenever `attributesOfItem`
+        // failed (permissions, broken symlink, network FS error) — a
+        // hostile or corrupted package could then `Data(contentsOf:)`
+        // a 500 MB entry and crash the app with OOM. Fail closed: skip
+        // the file rather than risk unbounded memory.
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let size = attrs[.size] as? Int else {
+            logger.warning("Cannot determine size of image in backup (skipping): \(file)")
+            return nil
+        }
+        guard size <= maxBytes else {
+            logger.warning("Skipping oversized image in backup: \(file) (\(size) bytes > \(maxBytes))")
+            return nil
+        }
+        do {
+            return try Data(contentsOf: fileURL)
+        } catch {
+            logger.error("Failed to read image \(file): \(error.localizedDescription)")
+            throw BackupPackageError.corruptedData(
+                "\(file): \(error.localizedDescription)",
+                .image
+            )
+        }
+    }
+
+    /// Decrypts `encrypted` under the package key and re-encrypts the
+    /// plaintext under the local key. Returns nil and logs on auth-failure
+    /// (which is a hard corruption signal — the helper throws instead so the
+    /// outer loop surfaces a `corruptedData` to the UI).
+    private static func decryptAndReencryptImage(
+        file: String,
+        encrypted: Data,
+        packageCrypto: CryptoServiceProtocol,
+        localCrypto: CryptoServiceProtocol
+    ) throws -> Data? {
+        guard let plain = packageCrypto.decryptData(encrypted),
+              let reencrypted = localCrypto.encryptData(plain) else {
+            logger.error("Failed to decrypt image \(file)")
+            throw BackupPackageError.corruptedData(
+                "\(file): decrypt/auth failed",
+                .image
+            )
+        }
+        return reencrypted
+    }
+
+    /// Writes the re-encrypted bytes to `target` and chmods to 0o600
+    /// (ID-SECURITY-0007, matches ImageStorage.saveImage). Throws on a
+    /// hard write failure.
+    private static func writeImportedImage(target: URL, file: String, data: Data) throws {
+        do {
+            try data.write(to: target, options: .atomic)
+        } catch {
+            logger.error("Failed to write image \(file): \(error.localizedDescription)")
+            throw BackupPackageError.corruptedData(
+                "\(file): \(error.localizedDescription)",
+                .image
+            )
+        }
+        // ID-SECURITY-0007 (2026-08-01 audit): tighten the imported image
+        // to 0o600, matching ImageStorage.saveImage. `.atomic` renames a
+        // temp file, so the permission is set on the FINAL path AFTER the
+        // write. Log-only on failure (the directory is already 0o700 and
+        // the content is encrypted — defense in depth, not a hard gate).
+        do {
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        } catch {
+            logger.warning("Failed to set 0o600 on imported image \(file): \(error.localizedDescription)")
+        }
     }
 
     /// BKP-3 (2026-07-24 audit): reject a store blob larger than
