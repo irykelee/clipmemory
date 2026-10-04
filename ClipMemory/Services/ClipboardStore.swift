@@ -2307,40 +2307,11 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         var preparedText: String?
         var preparedRtfData: Data?
 
-        switch item.type {
-        case .image:
-            // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): warm path now
-            // consults `cachedFullSizeImageObject` (the dedicated
-            // fullSizeCache), NOT `cachedImageObject` which now returns the
-            // ≤512 px row-preview thumbnail. Pre-fix (batch-6 round-1)
-            // used the old `cachedImageObject` semantics that returned
-            // whatever `loadImageObject` had cached — which was a
-            // thumbnail after the cache split, silently copying a 512-px
-            // preview to the pasteboard. Cold path uses
-            // `loadFullSizeImageAsync` (global queue, EXIF-aware,
-            // fullSizeCache-populating) with the monotonic token to
-            // discard stale completions if a newer copy started in the
-            // gap.
-            if let cached = ImageStorage.shared.cachedFullSizeImageObject(filename: item.content) {
-                preparedImage = cached
-            } else {
-                copyFullSizeImageToClipboardAsync(item)
-                return
-            }
-        case .richText:
-            if let base64 = getDecryptedContent(item), let data = Data(base64Encoded: base64) {
-                preparedRtfData = data
-                // M-3 (2026-07-21 audit): use getRTFPlaintext (cache-aware)
-                // instead of re-parsing NSAttributedString(data: .rtf) on
-                // every copy. Cache hit < 1ms vs 20-100ms sync parse. Cache
-                // is pre-populated by ClipboardItemRow.loadRichText() and
-                // QuickBarView (M-3 bridge). Miss falls back to sync
-                // RichTextParser.plaintext via getRTFPlaintext.
-                preparedText = getRTFPlaintext(item)
-            }
-        default:
-            preparedText = getDecryptedContent(item)
-        }
+        let didPrepare = prepareForCopy(item,
+                                       preparedImage: &preparedImage,
+                                       preparedText: &preparedText,
+                                       preparedRtfData: &preparedRtfData)
+        if !didPrepare { return }
 
         guard (preparedImage != nil) || (preparedText != nil) || (preparedRtfData != nil) else { return }
 
@@ -2404,6 +2375,56 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// `CGImageSourceCreateImageAtIndex` with EXIF transform, native
     /// resolution, cached in `fullSizeCache`).
     ///
+    /// Type-specific prepare for pasteboard write. Returns true if any
+    /// of the three prepared slots got populated. Returns false if the
+    /// image path needed async fallback (caller must NOT write this
+    /// tick — the async path will). Extracted from copyToClipboard for
+    /// cyclomatic complexity reduction.
+    private func prepareForCopy(
+        _ item: ClipboardItem,
+        preparedImage: inout NSImage?,
+        preparedText: inout String?,
+        preparedRtfData: inout Data?
+    ) -> Bool {
+        switch item.type {
+        case .image:
+            // P1-AUDIT-2026-09-22 (P2-16, round-2 redesign): warm path now
+            // consults `cachedFullSizeImageObject` (the dedicated
+            // fullSizeCache), NOT `cachedImageObject` which now returns the
+            // ≤512 px row-preview thumbnail. Pre-fix (batch-6 round-1)
+            // used the old `cachedImageObject` semantics that returned
+            // whatever `loadImageObject` had cached — which was a
+            // thumbnail after the cache split, silently copying a 512-px
+            // preview to the pasteboard. Cold path uses
+            // `loadFullSizeImageAsync` (global queue, EXIF-aware,
+            // fullSizeCache-populating) with the monotonic token to
+            // discard stale completions if a newer copy started in the
+            // gap.
+            if let cached = ImageStorage.shared.cachedFullSizeImageObject(filename: item.content) {
+                preparedImage = cached
+                return true
+            } else {
+                copyFullSizeImageToClipboardAsync(item)
+                return false
+            }
+        case .richText:
+            if let base64 = getDecryptedContent(item), let data = Data(base64Encoded: base64) {
+                preparedRtfData = data
+                // M-3 (2026-07-21 audit): use getRTFPlaintext (cache-aware)
+                // instead of re-parsing NSAttributedString(data: .rtf) on
+                // every copy. Cache hit < 1ms vs 20-100ms sync parse. Cache
+                // is pre-populated by ClipboardItemRow.loadRichText() and
+                // QuickBarView (M-3 bridge). Miss falls back to sync
+                // RichTextParser.plaintext via getRTFPlaintext.
+                preparedText = getRTFPlaintext(item)
+            }
+            return true
+        default:
+            preparedText = getDecryptedContent(item)
+            return true
+        }
+    }
+
     /// Ordering token (`copyGenCounter` + `pendingCopyToken`) ensures
     /// rapid A-then-B copies land on the pasteboard in user-intended
     /// order even when the slower load finishes last. When B starts, B's
