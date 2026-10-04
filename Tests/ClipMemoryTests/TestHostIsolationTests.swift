@@ -69,6 +69,7 @@ final class TestHostIsolationTests: XCTestCase {
     /// canary style: snapshot before, exercise, assert after. The canary
     /// itself restores everything it writes (see ID-STORE-0009 exercise).
     @MainActor
+    // swiftlint:disable:next function_body_length
     func testProductionDefaultsKeysAreNotMutated() {
         let canaryKeys = [
             "fontScale",                    // ID-STORE-0007

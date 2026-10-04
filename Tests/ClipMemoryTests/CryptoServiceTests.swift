@@ -684,7 +684,7 @@ final class CryptoServiceTests: XCTestCase {
     /// for these transient cases: deleting the file means the next launch
     /// sees Keychain-empty + no-file → generateAndStoreKey creates a fresh
     /// key → all existing encrypted items become permanently undecryptable.
-    func testKeychainMigrationTransientFailureKeepsFallbackFile() throws {
+    func testKeychainMigrationTransientFailureKeepsFallbackFile() throws { // swiftlint:disable:this function_body_length
         // Arrange: temp dir + 32-byte .encryption_key file
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("p2-3-transient-\(UUID().uuidString)", isDirectory: true)
