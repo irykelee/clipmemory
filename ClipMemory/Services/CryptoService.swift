@@ -460,144 +460,200 @@ class CryptoService: CryptoServiceProtocol {
         keyStore: KeyStoring = KeychainKeyStore(),
         failureHandler: (CryptoKeyFailure) -> KeyFailureAction = CryptoService.keyFailureHandler
     ) -> SymmetricKey? {
-        // 1. Keychain is the canonical store.
-        // C-2 (2026-07-24 audit): distinguish locked Keychain from "not found".
-        // Pre-fix, any non-success SecItemCopyMatching status (including
-        // errSecInteractionNotAllowed at pre-unlock launchd start) collapsed
-        // to nil, then fell through to generateAndStoreKey — overwriting the
-        // user's real key and permanently destroying all encrypted history.
-        switch keyStore.loadStatus() {
-        case .found(let data) where data.count == 32:
-            // ID-CRYPTO-0003 (2026-07-31 audit): a pre-C1 plaintext key file
-            // can linger on disk from an interrupted/failed migration even
-            // when the Keychain item is healthy. Remove it idempotently on
-            // this path too (secureRemoveKeyFile no-ops when absent) so the
-            // plaintext root key does not sit on disk forever.
-            secureRemoveKeyFile(at: keyURL)
-            return publishToSharedCache(SymmetricKey(data: data))
-        case .found:
-            logger.error("Keychain contains invalid key (not 32 bytes); treating as absent")
-            // fall through to file migration / fresh generation
-        case .interactionLocked:
-            // P0-1 follow-up (2026-07-29): .interactionLocked is retryable — do
-            // NOT post .cryptoKeyPrepared(success:false). Posting a terminal
-            // failure here would cause handleCryptoKeyPrepared to permanently
-            // drop all pendingKeyItems, losing clipboard captures that arrive
-            // between the initial failure and the retry success. The retry
-            // (retryPrepareKeyIfLocked) fires on wake / session-become-active,
-            // and publishToSharedCache posts success:true when it succeeds.
-            // Meanwhile, getKey() independently loads from Keychain/file via
-            // its own short-circuit, so encrypt/decrypt don't depend on this
-            // notification to start working.
-            logger.error("Keychain interaction not allowed (locked); deferring key prep until unlock")
+        // 1. Keychain is the canonical store. C-2 (2026-07-24 audit):
+        // distinguish locked Keychain from "not found" — collapsing every
+        // non-success status to nil + falling through to generateAndStoreKey
+        // was overwriting the user's real key on pre-unlock launchd start.
+        switch attemptKeychainLoad(keyStore: keyStore, keyURL: keyURL) {
+        case .published(let key):
+            return key
+        case .locked, .failed:
+            // Locked is retryable (P0-1 follow-up, see retryPrepareKeyIfLocked)
+            // and `handleKeychainOtherError` already surfaced the error.
             return nil
-        case .notFound:
+        case .proceed:
             break // fall through to file migration / fresh generation
-        case .otherError(let status):
-            handleKeychainOtherError(status)
-            return nil
         }
-        // 2. Migrate a pre-C1 key file, then remove it.
-        let fileManager = FileManager.default
-        if fileManager.fileExists(atPath: keyURL.path) {
-            // E1 (2026-07-29 audit): distinguish "file exists but unreadable"
-            // (transient IO/permission error — keep file, do not alert) from
-            // "read succeeded but wrong format" (corrupt — alert user).
-            // P2-3 (OpenCode 2026-09-23): store() throws KeyStoreError;
-            // see CryptoService+KeychainMigration.swift for classification.
-            // ID-CRASH-0022 (2026-09-28 code-review P2-0a): wipe the
-            // transient raw-key `Data` copy on every exit path via the
-            // shared `wipeKeyMaterial` helper (matches the defer pattern
-            // at CryptoService.swift:343, :638, BackupPackage.swift:768).
-            //
-            // v2 fix (post auto-review P1): the first version aliased the
-            // buffer via `let keyDataOpt` + `if let keyData = keyDataOpt`
-            // + `var keyDataCopy = keyData`. With three live bindings,
-            // `wipeKeyMaterial(&keyDataCopy)` triggers CoW (refcount ≥ 2)
-            // and `memset`s a *duplicate* — the original key buffer
-            // survives. The correct pattern is single-binding + nil-out
-            // alias before defer. See CryptoKeyPreparationTests
-            // `testWipeKeyMaterial_doesNotZeroAliasedBuffer` for the
-            // language-semantics regression test.
-            var keyDataRaw = readKeyFile(at: keyURL, caller: "prepareKey")
-            if keyDataRaw == nil {
-                // E1: nil from readKeyFile after fileExists confirmed →
-                // transient read error (already logged by readKeyFile).
-                // Keep the file and treat as "key preparation deferred"
-                // rather than "corrupt".
-                logger.warning("Key file exists but could not be read; deferring key prep until next launch")
-                return nil
-            }
-            // Non-nil but count != 32 → genuinely corrupt. Ask before
-            // destroying the file (preserves the original three-branch
-            // behaviour: nil / corrupt / migrate). Drop the optional
-            // binding via the `return generateAndStoreKey(...)` path — no
-            // wipe of the corrupt bytes is performed because:
-            //   (a) production entry to this site is gated by
-            //       `loadKeyData()` (CryptoService.swift:309-326) which
-            //       already filters to `count == 32`, so a >32-byte file
-            //       never reaches here via the production path;
-            //   (b) the bytes cannot decrypt the current store (the
-            //       `count == 32` filter exists precisely because
-            //       `SymmetricKey(data:)` would silently truncate to the
-            //       first 32 bytes — a 64-byte file's first 32 bytes
-            //       could match an unrelated root, so production never
-            //       trusts them);
-            //   (c) mirroring the pre-ID-CRASH-0022 behaviour: this path
-            //       was never wiped before either, and adding a wipe
-            //       would be P2-19's defensive-hygiene territory, not
-            //       P2-0a's strict-scope.
-            guard var keyData = keyDataRaw, keyData.count == 32 else {
-                guard failureHandler(.corruptExistingKey) == .regenerate else {
-                    notifyKeyPreparationFailed()
-                    return nil
-                }
-                secureRemoveKeyFile(at: keyURL)
-                return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
-            }
-            // MIGRATE path. Drop the optional read-key binding so the
-            // single live reference (`keyData`) keeps refcount = 1, which
-            // is required for `wipeKeyMaterial(&keyData)` to zero the
-            // actual buffer in place. With refcount ≥ 2, Swift's CoW would
-            // duplicate the buffer and memset the copy (auto-review P1).
-            keyDataRaw = nil
-            defer { wipeKeyMaterial(&keyData) }
-            do {
-                try keyStore.store(keyData)
-                if keyStore.load() == keyData {
-                    secureRemoveKeyFile(at: keyURL)
-                } else {
-                    // ID-REVIEW-1008 (code-review-2026-10-01 P1 1-5): the
-                    // verify-mismatch branch (Keychain write succeeded
-                    // but a follow-up read returned different bytes) was
-                    // previously classified as `.permanent`, which made
-                    // `handleKeychainMigrationFailure` `secureRemoveKeyFile`
-                    // — deleting the only known-good copy of the root
-                    // key on disk. On next launch, `prepareKey` would
-                    // load the unverified Keychain bytes as canonical,
-                    // and every ciphertext ever written becomes
-                    // permanently undecryptable. This is the classic
-                    // "Keychain is unreliable" scenario the file should
-                    // keep the fallback for — exactly opposite of what
-                    // the original code did. Demote to `.transient`
-                    // so the helper keeps the disk file and the next
-                    // launch retries the migration. The transient path
-                    // also surfaces a notice log + (via
-                    // EncryptionFailedAlertThrottler) an NSAlert so the
-                    // user still sees something — the alert is just
-                    // "keychain write flaky, will retry" instead of
-                    // "permanent corruption".
-                    Self.handleKeychainMigrationFailure(error: .transient(errSecVerifyFailed), keyURL: keyURL, logger: Self.logger)
-                }
-            } catch let error as KeyStoreError {
-                Self.handleKeychainMigrationFailure(error: error, keyURL: keyURL, logger: Self.logger)
-            } catch {
-                Self.handleKeychainMigrationFailure(error: nil, keyURL: keyURL, logger: Self.logger, reason: "\(error)")
-            }
-            return publishToSharedCache(SymmetricKey(data: keyData))
+
+        // 2. Migrate a pre-C1 key file if present.
+        if FileManager.default.fileExists(atPath: keyURL.path) {
+            // Helper decides: publish (early-success), defer (nil + log),
+            // decline-regenerate (nil + notify), or accept-regenerate
+            // (returns the fresh key inline). Either nil outcome here
+            // means the caller should NOT fall through to fresh gen — the
+            // file existed, so migration was attempted.
+            return migratePreC1KeyFileIfPresent(
+                keyURL: keyURL,
+                keyStore: keyStore,
+                failureHandler: failureHandler
+            )
         }
         // 3. Fresh generation into the Keychain.
         return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
+    }
+
+    /// Outcome of probing the Keychain for the canonical root key.
+    /// Three terminal outcomes (published / locked / failed) plus
+    /// `proceed` for the cases where `prepareKey` should fall through to
+    /// the pre-C1 file migration / fresh generation path. Extracted from
+    /// `prepareKey` so each branch's audit-history comment lives next to
+    /// the branch it explains.
+    private enum KeychainLoadOutcome {
+        case published(SymmetricKey)
+        case proceed
+        case locked
+        case failed
+    }
+
+    /// Probes the Keychain for the canonical root key. The Keychain is
+    /// preferred over the pre-C1 plaintext key file because it is the
+    /// only store with hardware-backed access control.
+    private static func attemptKeychainLoad(keyStore: KeyStoring, keyURL: URL) -> KeychainLoadOutcome {
+        switch keyStore.loadStatus() {
+        case .found(let data) where data.count == 32:
+            // ID-CRYPTO-0003 (2026-07-31 audit): a pre-C1 plaintext key
+            // file can linger on disk from an interrupted/failed migration
+            // even when the Keychain item is healthy. Remove it
+            // idempotently on this path too (secureRemoveKeyFile no-ops
+            // when absent) so the plaintext root key does not sit on disk
+            // forever.
+            secureRemoveKeyFile(at: keyURL)
+            return .published(publishToSharedCache(SymmetricKey(data: data)))
+        case .found:
+            logger.error("Keychain contains invalid key (not 32 bytes); treating as absent")
+            // fall through to file migration / fresh generation
+            return .proceed
+        case .interactionLocked:
+            // P0-1 follow-up (2026-07-29): .interactionLocked is retryable
+            // — do NOT post .cryptoKeyPrepared(success:false). Posting a
+            // terminal failure here would cause handleCryptoKeyPrepared to
+            // permanently drop all pendingKeyItems, losing clipboard
+            // captures that arrive between the initial failure and the
+            // retry success. The retry (retryPrepareKeyIfLocked) fires on
+            // wake / session-become-active, and publishToSharedCache posts
+            // success:true when it succeeds. Meanwhile, getKey()
+            // independently loads from Keychain/file via its own
+            // short-circuit, so encrypt/decrypt don't depend on this
+            // notification to start working.
+            logger.error("Keychain interaction not allowed (locked); deferring key prep until unlock")
+            return .locked
+        case .notFound:
+            // fall through to file migration / fresh generation
+            return .proceed
+        case .otherError(let status):
+            handleKeychainOtherError(status)
+            return .failed
+        }
+    }
+
+    /// Migrates a pre-C1 plaintext key file into the Keychain and
+    /// publishes the result to the shared cache. E1 (2026-07-29 audit):
+    /// distinguishes "file exists but unreadable" (transient IO/permission
+    /// error — keep file, defer to next launch) from "read succeeded but
+    /// wrong format" (corrupt — alert user and ask before destroying).
+    ///
+    /// - Returns: the published `SymmetricKey` on success (including the
+    ///   accept-regenerate case where a fresh key is generated inline);
+    ///   `nil` to signal "defer until next launch" or "user declined
+    ///   regenerate" — in both cases the caller should NOT fall through
+    ///   to fresh generation, because the file existed and was attempted.
+    private static func migratePreC1KeyFileIfPresent(
+        keyURL: URL,
+        keyStore: KeyStoring,
+        failureHandler: (CryptoKeyFailure) -> KeyFailureAction
+    ) -> SymmetricKey? {
+        // P2-3 (OpenCode 2026-09-23): store() throws KeyStoreError;
+        // see CryptoService+KeychainMigration.swift for classification.
+        // ID-CRASH-0022 (2026-09-28 code-review P2-0a): wipe the
+        // transient raw-key `Data` copy on every exit path via the
+        // shared `wipeKeyMaterial` helper (matches the defer pattern
+        // at CryptoService.swift:343, :638, BackupPackage.swift:768).
+        //
+        // v2 fix (post auto-review P1): the first version aliased the
+        // buffer via `let keyDataOpt` + `if let keyData = keyDataOpt`
+        // + `var keyDataCopy = keyData`. With three live bindings,
+        // `wipeKeyMaterial(&keyDataCopy)` triggers CoW (refcount ≥ 2)
+        // and `memset`s a *duplicate* — the original key buffer
+        // survives. The correct pattern is single-binding + nil-out
+        // alias before defer. See CryptoKeyPreparationTests
+        // `testWipeKeyMaterial_doesNotZeroAliasedBuffer` for the
+        // language-semantics regression test.
+        var keyDataRaw = readKeyFile(at: keyURL, caller: "prepareKey")
+        if keyDataRaw == nil {
+            // E1: nil from readKeyFile after fileExists confirmed →
+            // transient read error (already logged by readKeyFile).
+            // Keep the file and treat as "key preparation deferred"
+            // rather than "corrupt".
+            logger.warning("Key file exists but could not be read; deferring key prep until next launch")
+            return nil
+        }
+        // Non-nil but count != 32 → genuinely corrupt. Ask before
+        // destroying the file (preserves the original three-branch
+        // behaviour: nil / corrupt / migrate). Drop the optional
+        // binding via the `return generateAndStoreKey(...)` path — no
+        // wipe of the corrupt bytes is performed because:
+        //   (a) production entry to this site is gated by
+        //       `loadKeyData()` (CryptoService.swift:309-326) which
+        //       already filters to `count == 32`, so a >32-byte file
+        //       never reaches here via the production path;
+        //   (b) the bytes cannot decrypt the current store (the
+        //       `count == 32` filter exists precisely because
+        //       `SymmetricKey(data:)` would silently truncate to the
+        //       first 32 bytes — a 64-byte file's first 32 bytes
+        //       could match an unrelated root, so production never
+        //       trusts them);
+        //   (c) mirroring the pre-ID-CRASH-0022 behaviour: this path
+        //       was never wiped before either, and adding a wipe
+        //       would be P2-19's defensive-hygiene territory, not
+        //       P2-0a's strict-scope.
+        guard var keyData = keyDataRaw, keyData.count == 32 else {
+            guard failureHandler(.corruptExistingKey) == .regenerate else {
+                notifyKeyPreparationFailed()
+                return nil
+            }
+            secureRemoveKeyFile(at: keyURL)
+            return generateAndStoreKey(to: keyStore, failureHandler: failureHandler)
+        }
+        // MIGRATE path. Drop the optional read-key binding so the
+        // single live reference (`keyData`) keeps refcount = 1, which
+        // is required for `wipeKeyMaterial(&keyData)` to zero the
+        // actual buffer in place. With refcount ≥ 2, Swift's CoW would
+        // duplicate the buffer and memset the copy (auto-review P1).
+        keyDataRaw = nil
+        defer { wipeKeyMaterial(&keyData) }
+        do {
+            try keyStore.store(keyData)
+            if keyStore.load() == keyData {
+                secureRemoveKeyFile(at: keyURL)
+            } else {
+                // ID-REVIEW-1008 (code-review-2026-10-01 P1 1-5): the
+                // verify-mismatch branch (Keychain write succeeded
+                // but a follow-up read returned different bytes) was
+                // previously classified as `.permanent`, which made
+                // `handleKeychainMigrationFailure` `secureRemoveKeyFile`
+                // — deleting the only known-good copy of the root
+                // key on disk. On next launch, `prepareKey` would
+                // load the unverified Keychain bytes as canonical,
+                // and every ciphertext ever written becomes
+                // permanently undecryptable. This is the classic
+                // "Keychain is unreliable" scenario the file should
+                // keep the fallback for — exactly opposite of what
+                // the original code did. Demote to `.transient`
+                // so the helper keeps the disk file and the next
+                // launch retries the migration. The transient path
+                // also surfaces a notice log + (via
+                // EncryptionFailedAlertThrottler) an NSAlert so the
+                // user still sees something — the alert is just
+                // "keychain write flaky, will retry" instead of
+                // "permanent corruption".
+                Self.handleKeychainMigrationFailure(error: .transient(errSecVerifyFailed), keyURL: keyURL, logger: Self.logger)
+            }
+        } catch let error as KeyStoreError {
+            Self.handleKeychainMigrationFailure(error: error, keyURL: keyURL, logger: Self.logger)
+        } catch {
+            Self.handleKeychainMigrationFailure(error: nil, keyURL: keyURL, logger: Self.logger, reason: "\(error)")
+        }
+        return publishToSharedCache(SymmetricKey(data: keyData))
     }
 
     /// P0-1 (2026-07-28 audit): retry prepareKey after a Keychain unlock
