@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 import Vision
 @testable import ClipMemory
 
+// swiftlint:disable file_length
+
 /// OCR pipeline: model field compatibility, encrypted storage round-trip,
 /// search matching, and a real Vision recognition smoke test.
 @MainActor final class OCRTests: XCTestCase {

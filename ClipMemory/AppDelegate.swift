@@ -3,6 +3,8 @@ import SwiftUI
 import ServiceManagement
 import os.log
 
+// swiftlint:disable file_length
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     // H-2 (2026-08-08): shared logger for AppDelegate observers that
     // currently have no dedicated logger (encryptionFailedObserver uses

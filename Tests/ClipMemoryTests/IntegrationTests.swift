@@ -1,6 +1,8 @@
 import XCTest
 @testable import ClipMemory
 
+// swiftlint:disable file_length
+
 /// G.1: CRUD complete flow — addItem → persist → restart → recover
 /// G.3: Deduplication logic verification (contentHash + plaintext fallback)
 /// F-1 phase 2 (2026-07-28): @MainActor — class-level annotation because

@@ -731,7 +731,6 @@ class CryptoService: CryptoServiceProtocol {
     /// definitive .notFound may migrate / generate.
     /// Extracted from prepareKey for cyclomatic complexity reduction.
     private static func handleKeychainOtherError(_ status: OSStatus) {
-        // swiftlint:disable:next line_length
         logger.error("Keychain load failed (OSStatus \(status, privacy: .public)); deferring key prep to avoid overwriting a possibly-valid root key")
     }
 

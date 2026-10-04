@@ -2,6 +2,8 @@ import os.log
 import SwiftUI
 import AppKit
 
+// swiftlint:disable file_length
+
 // BUG-009 (2026-07-22): NSCache-backed memoization (not @State) so
 // writes during view-body evaluation do not trigger "Modifying state
 // during view update." countLimit prevents unbounded growth.

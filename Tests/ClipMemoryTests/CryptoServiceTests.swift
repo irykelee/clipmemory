@@ -3,6 +3,8 @@ import CommonCrypto
 import Security
 @testable import ClipMemory
 
+// swiftlint:disable file_length
+
 final class CryptoServiceTests: XCTestCase {
     private var crypto: CryptoService { CryptoService.shared }
 

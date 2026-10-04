@@ -4,6 +4,8 @@ import CommonCrypto
 import Security
 @testable import ClipMemory
 
+// swiftlint:disable file_length
+
 /// I.1-I.8: ImageStorage round-trip + format + cache + bulk-delete tests.
 ///
 /// Coverage map (complementing IntegrationTests):

@@ -2,6 +2,8 @@ import XCTest
 import CryptoKit
 @testable import ClipMemory
 
+// swiftlint:disable file_length
+
 /// BackupPackage export → import round-trip, passphrase check, merge dedupe.
 /// Fully sandboxed: temp dirs + throwaway CryptoService keys; the real
 /// Application Support and the app's key file are never touched.

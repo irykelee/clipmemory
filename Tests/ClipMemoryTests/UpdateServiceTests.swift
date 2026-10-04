@@ -1,6 +1,8 @@
 import XCTest
 @testable import ClipMemory
 
+// swiftlint:disable file_length
+
 /// H1: the jsDelivr mirror is used only when the primary GitHub feed is
 /// unreachable AND the user has explicitly consented AND the mirror is not
 /// older than the primary's last known appcast. Never switch silently.

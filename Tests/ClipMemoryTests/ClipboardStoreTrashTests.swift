@@ -1,6 +1,8 @@
 import XCTest
 @testable import ClipMemory
 
+// swiftlint:disable file_length
+
 /// Tests for the recycle bin (trash) feature.
 @MainActor final class ClipboardStoreTrashTests: XCTestCase {
 
