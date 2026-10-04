@@ -205,7 +205,8 @@ extension ClipboardStore {
             tagNeedsSave = true
             tagSaveRetryState.recordFailure()
             let backoff = tagSaveRetryState.nextBackoffSeconds
-            logger.error("ID-CRASH-0007: saveTags failed (attempt \(self.tagSaveRetryState.consecutiveFailures)): \(error) — auto-retry in \(backoff)s")
+            logger.error("ID-CRASH-0007: saveTags failed "
+                         + "(attempt \(self.tagSaveRetryState.consecutiveFailures)): \(error) — auto-retry in \(backoff)s")
             scheduleTagSaveRetry(after: backoff)
             NotificationCenter.default.post(
                 name: .tagSaveFailed,

@@ -87,7 +87,10 @@ struct SidebarView: View {
                     .fill(isSearchFocused ? Color.accentColor.opacity(0.08) : Color(nsColor: .textBackgroundColor).opacity(0.5))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(isSearchFocused ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.25), lineWidth: isSearchFocused ? 1.5 : 1)
+                            .stroke(
+                                isSearchFocused ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.25),
+                                lineWidth: isSearchFocused ? 1.5 : 1
+                            )
                     )
             )
             .padding(.horizontal, 12)

@@ -347,7 +347,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // (which doesn't have `didBecomeReachable`) and fail to compile.
         // The inline-literal form bypasses the member-lookup entirely
         // and the test's regex picks it up correctly.
-        NotificationCenter.default.addObserver(forName: Notification.Name("NetworkMonitor.didBecomeReachable"), object: nil, queue: .main) { [weak self] _ in
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("NetworkMonitor.didBecomeReachable"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
             NSLog("[AppDelegate] NetworkMonitor.didBecomeReachable — draining queued writes")
             ImageStorage.shared.drainPendingWrites()
             ClipboardStore.shared.flushPendingSaves()
@@ -403,7 +407,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.welcomeWindow?.close()
             onComplete?()
         })
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 740), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 740),
+                            styleMask: [.titled, .closable],
+                            backing: .buffered,
+                            defer: false)
         win.title = L10n.appName; win.isReleasedWhenClosed = false; win.center()
         win.contentView = NSHostingView(rootView: welcome); win.makeKeyAndOrderFront(nil)
         welcomeWindow = win
@@ -632,11 +639,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // data loss from the user. Source bucket "trashLoadFailed"
             // so disk-full vs prior-launch-persistent don't share a bucket.
             let decision = self.trashAlertThrottler.recordFailure(source: "trashLoadFailed")
+            let detail = "Quarantined blob retained under 'ClipboardTrashedItems.corrupt-*'. Underlying error: \(underlying)"
             guard decision.shouldShowAlert else {
-                self.logger.error("Trash load failed\(suffix). Quarantined blob retained under 'ClipboardTrashedItems.corrupt-*'. Underlying error: \(underlying)")
+                self.logger.error("Trash load failed\(suffix). \(detail)")
                 return
             }
-            self.logger.error("Trash load failed\(suffix). Quarantined blob retained under 'ClipboardTrashedItems.corrupt-*'. Underlying error: \(underlying)")
+            self.logger.error("Trash load failed\(suffix). \(detail)")
             let a = NSAlert()
             a.messageText = L10n.error
             a.informativeText = decision.failureCount > 1

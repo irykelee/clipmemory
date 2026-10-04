@@ -1089,7 +1089,9 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         if !trashStore.lastLoadFailed {
             ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
         } else {
-            logger.error("H-2: trash blob load failed; skipping cleanupOrphanedImages to preserve possibly-referenced images. Will retry on next successful loadTrashedItems().")
+            logger.error("H-2: trash blob load failed; skipping cleanupOrphanedImages "
+                         + "to preserve possibly-referenced images. "
+                         + "Will retry on next successful loadTrashedItems().")
         }
 
         if repairedImages || repairedTexts {
@@ -1236,7 +1238,8 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // production from crashing if a caller is missed.
         dispatchPrecondition(condition: .onQueue(.main))
         guard Thread.isMainThread else {
-            logger.error("P2-14: waitForFirstLoadSync called off-main — returning current state without barrier; caller must DispatchQueue.main.sync first")
+            logger.error("P2-14: waitForFirstLoadSync called off-main — returning current state "
+                         + "without barrier; caller must DispatchQueue.main.sync first")
             return firstLoadCompleted
         }
         let deadline = Date().addingTimeInterval(timeout)
@@ -1715,7 +1718,8 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
                     let kPendingKeyItemsCap = 50
                     if pendingKeyItems.count >= kPendingKeyItemsCap {
                         pendingKeyItems.removeFirst()
-                        self.logger.notice("pendingKeyItems overflow: dropped oldest entry (cap=\(kPendingKeyItemsCap)); consider recopying pre-Keychain-lock items")
+                        self.logger.notice("pendingKeyItems overflow: dropped oldest entry "
+                                           + "(cap=\(kPendingKeyItemsCap)); consider recopying pre-Keychain-lock items")
                     }
                     pendingKeyItems.append(item)
                     pendingKeyItemsLock.unlock()

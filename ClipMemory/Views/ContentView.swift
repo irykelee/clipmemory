@@ -17,10 +17,28 @@ import os.log
 enum SidebarTab: String, CaseIterable {
     case all, text, image, link, richText, pinned, trash, settings
     var icon: String {
-        switch self { case .all: "tray.full"; case .text: "doc.text"; case .image: "photo"; case .link: "link"; case .richText: "doc.richtext"; case .pinned: "star"; case .trash: "trash"; case .settings: "gear" }
+        switch self {
+        case .all: "tray.full"
+        case .text: "doc.text"
+        case .image: "photo"
+        case .link: "link"
+        case .richText: "doc.richtext"
+        case .pinned: "star"
+        case .trash: "trash"
+        case .settings: "gear"
+        }
     }
     var label: String {
-        switch self { case .all: L10n.filterAll; case .text: L10n.filterText; case .image: L10n.filterImage; case .link: L10n.filterLink; case .richText: L10n.filterRichText; case .pinned: L10n.headerShowPinned; case .trash: L10n.trashTitle; case .settings: L10n.buttonSettings }
+        switch self {
+        case .all: L10n.filterAll
+        case .text: L10n.filterText
+        case .image: L10n.filterImage
+        case .link: L10n.filterLink
+        case .richText: L10n.filterRichText
+        case .pinned: L10n.headerShowPinned
+        case .trash: L10n.trashTitle
+        case .settings: L10n.buttonSettings
+        }
     }
     var typeFilter: ClipboardItemType? {
         switch self { case .text: .text; case .image: .image; case .link: .link; case .richText: .richText; default: nil }
@@ -555,7 +573,8 @@ struct ContentView: View {
                     let arr = try JSONDecoder().decode([String].self, from: data)
                     return Set(arr.compactMap { TimeGroup(rawValue: $0) })
                 } catch {
-                    Self.logger.error("Failed to decode persisted collapsed groups (reset to all expanded): \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Failed to decode persisted collapsed groups "
+                                      + "(reset to all expanded): \(error.localizedDescription, privacy: .public)")
                     return []
                 }
             },
@@ -573,7 +592,8 @@ struct ContentView: View {
                     }
                     self.collapsedGroupsRaw = str
                 } catch {
-                    Self.logger.error("Failed to persist collapsed groups (preference lost on next launch): \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Failed to persist collapsed groups "
+                                      + "(preference lost on next launch): \(error.localizedDescription, privacy: .public)")
                 }
             }
         )
@@ -935,7 +955,9 @@ struct ContentView: View {
         }
         ToolbarItem(id: "clear") {
             if selectedTab == .trash {
-                Button(role: .destructive, action: { showingEmptyTrashAlert = true }, label: {
+                Button(role: .destructive,
+                       action: { showingEmptyTrashAlert = true },
+                       label: {
                     Label(L10n.trashEmptyConfirmTitle, systemImage: "trash")
                 })
                 .disabled(store.trashedItems.isEmpty)

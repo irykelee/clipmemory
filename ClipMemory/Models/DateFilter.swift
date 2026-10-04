@@ -10,6 +10,11 @@ import Foundation
 enum DateFilter: String, CaseIterable {
     case all, today, yesterday, older
     var label: String {
-        switch self { case .all: return L10n.dateFilterAll; case .today: return L10n.groupToday; case .yesterday: return L10n.groupYesterday; case .older: return L10n.groupOlder }
+        switch self {
+        case .all: return L10n.dateFilterAll
+        case .today: return L10n.groupToday
+        case .yesterday: return L10n.groupYesterday
+        case .older: return L10n.groupOlder
+        }
     }
 }

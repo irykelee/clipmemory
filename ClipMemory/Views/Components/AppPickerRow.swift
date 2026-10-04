@@ -29,7 +29,10 @@ struct AppPickerRow: View {
                 if let icon = resolvedIcon ?? icon {
                     Image(nsImage: icon).resizable().frame(width: 32, height: 32)
                 } else {
-                    Image(nsImage: NSImage(systemSymbolName: "app.badge.questionmark", accessibilityDescription: nil) ?? NSImage()).resizable().frame(width: 32, height: 32)
+                    Image(nsImage: NSImage(systemSymbolName: "app.badge.questionmark",
+                                          accessibilityDescription: nil) ?? NSImage())
+                        .resizable()
+                        .frame(width: 32, height: 32)
                 }
                 VStack(alignment: .leading) {
                     Text(name).font(.system(size: sz(13)))

@@ -66,9 +66,24 @@ struct WelcomeView: View {
                         .padding(.horizontal)
 
                     VStack(alignment: .leading, spacing: 16) {
-                        InstructionRow(number: "1", icon: "menubar.rectangle", title: L10n.welcomeStep1Title, description: L10n.welcomeStep1Desc)
-                        InstructionRow(number: "2", icon: "keyboard", title: L10n.welcomeStep2Title, description: L10n.welcomeStep2Desc(hotKeyManager.config.displayString))
-                        InstructionRow(number: "3", icon: "star", title: L10n.welcomeStep3Title, description: L10n.welcomeStep3Desc)
+                        InstructionRow(
+                            number: "1",
+                            icon: "menubar.rectangle",
+                            title: L10n.welcomeStep1Title,
+                            description: L10n.welcomeStep1Desc
+                        )
+                        InstructionRow(
+                            number: "2",
+                            icon: "keyboard",
+                            title: L10n.welcomeStep2Title,
+                            description: L10n.welcomeStep2Desc(hotKeyManager.config.displayString)
+                        )
+                        InstructionRow(
+                            number: "3",
+                            icon: "star",
+                            title: L10n.welcomeStep3Title,
+                            description: L10n.welcomeStep3Desc
+                        )
                         InstructionRow(number: "4", icon: "cursorarrow.click.2", title: L10n.welcomeStep4Title, description: L10n.welcomeStep4Desc)
                         InstructionRow(number: "5", icon: "hand.tap", title: L10n.welcomeStep5Title, description: L10n.welcomeStep5Desc)
                         InstructionRow(number: "6", icon: "trash", title: L10n.welcomeStep6Title, description: L10n.welcomeStep6Desc)
