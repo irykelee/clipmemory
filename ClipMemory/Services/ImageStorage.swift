@@ -3,6 +3,14 @@ import AppKit
 import ImageIO
 import os.log
 
+// Cyclomatic complexity refactor (P1-AUDIT-2026-09-22 follow-up) extracted
+// `migrateLegacyFile`, `legacyFilesToMigrate`, and `removeMigratedPlaintextFiles`
+// helpers from `migrateFromLegacyIfNeeded`, pushing this file past the 1250-line
+// hard error. Same pattern as `BackupPackage.swift` (ID-CRASH-0016) and
+// `ClipboardStore.swift` (ARCH-0002): file-level disable keeps the threshold
+// enforced on the rest of the project's 125+ Swift files.
+// swiftlint:disable file_length
+
 // CryptoService is in the same module, no import needed
 
 class ImageStorage {
@@ -204,19 +212,12 @@ class ImageStorage {
     ) {
         let legacyDirectory = legacyDirectory ?? self.legacyImagesDirectory
         let maxFileSize = maxFileSize ?? Self.maxImageSize
-        guard defaults.bool(forKey: migrationCompleteKey) == false else { return }
-        guard fileManager.fileExists(atPath: legacyDirectory.path) else {
-            defaults.set(true, forKey: migrationCompleteKey)
-            return
-        }
+        guard let legacyFiles = legacyFilesToMigrate(
+            legacyDirectory: legacyDirectory,
+            defaults: defaults
+        ) else { return }
 
         logger.info("Migrating images from legacy ClipPaste/Images/ to ClipMemory/Images/")
-
-        guard let legacyFiles = try? fileManager.contentsOfDirectory(atPath: legacyDirectory.path) else {
-            // Directory exists but could not be read; leave flag false so the
-            // next launch retries instead of silently dropping images.
-            return
-        }
 
         var migratedFilenames: [String] = []
         var migratedSet = Set(defaults.stringArray(forKey: migratedFilenamesKey) ?? [])
@@ -224,72 +225,23 @@ class ImageStorage {
         var hadFailure = false
 
         for filename in legacyFiles {
-            guard filename.hasSuffix(".png"), UUID(uuidString: String(filename.dropLast(4))) != nil else { continue }
-            guard !migratedSet.contains(filename) else { continue }
-            // STOR-4: permanently ineligible files are never retried.
-            guard !skippedSet.contains(filename) else { continue }
-
-            let legacyPath = legacyDirectory.appendingPathComponent(filename)
-            // BUG-028 (2026-07-21): check size via attributesOfItem BEFORE
-            // Data(contentsOf:) — avoids allocating a potentially-GB-sized
-            // buffer for a corrupted/expanded legacy file. L-4 previously
-            // checked after the load (50MB cap, but still allocates).
-            let fileAttrs = try? fileManager.attributesOfItem(atPath: legacyPath.path)
-            guard let fileSize = (fileAttrs?[.size] as? NSNumber)?.intValue else {
-                // Attributes unreadable — transient (permissions, race with
-                // another process writing the file); retry on next launch.
-                hadFailure = true
-                continue
-            }
-            // STOR-4 (2026-07-24): an empty file or one over the cap can
-            // NEVER become eligible (saveImage enforces the same cap, so the
-            // file could never have been captured by us at that size).
-            // Previously this set hadFailure = true, which left the global
-            // completion flag false forever: the migration "failed" on every
-            // launch and the successfully migrated plaintext files were never
-            // cleaned up. Now record the filename in the skip list — not a
-            // failure, not retried, not blocking completion.
-            guard fileSize > 0, fileSize <= maxFileSize else {
-                logger.warning("Permanently skipping ineligible legacy image: \(filename) (\(fileSize) bytes)")
-                skippedSet.insert(filename)
-                // M-8 (2026-07-25 audit): batch UserDefaults writes until after
-                // the loop to avoid O(n²) serialization of the growing set on
-                // every iteration.
-                continue
-            }
-            guard let imageData = try? Data(contentsOf: legacyPath) else {
-                // Read failure is transient (I/O error, file being replaced)
-                // — leave it out of the skip list so the next launch retries.
-                hadFailure = true
-                continue
-            }
-
-            var success = false
-            // Check if already encrypted (v2 format starts with "v2", legacy format has specific structure)
-            // Unencrypted PNG starts with signature 89 50 4E 47
-            let isUnencryptedPNG = imageData.count >= 4 &&
-                imageData[0] == 0x89 && imageData[1] == 0x50 &&
-                imageData[2] == 0x4E && imageData[3] == 0x47
-            if isUnencryptedPNG {
-                logger.info("Migrating unencrypted image: \(filename)")
-                success = migrateUnencryptedPNG(
-                    filename: filename, imageData: imageData, legacyPath: legacyPath
-                )
-            } else {
-                // Already encrypted (or legacy format), just copy to new location
-                success = copyLegacyImage(
-                    filename: filename, imageData: imageData, legacyPath: legacyPath
-                )
-            }
-
-            if success {
+            let result = migrateLegacyFile(
+                filename: filename,
+                legacyDirectory: legacyDirectory,
+                maxFileSize: maxFileSize,
+                migratedSet: migratedSet,
+                skippedSet: skippedSet
+            )
+            switch result {
+            case .skipped:
+                break
+            case .migrated:
                 migratedFilenames.append(filename)
                 migratedSet.insert(filename)
-                // M-8 (2026-07-25 audit): batch UserDefaults writes until after
-                // the loop to avoid O(n²) serialization of the growing set on
-                // every iteration.
-            } else {
+            case .hadFailure:
                 hadFailure = true
+            case .permanentSkip:
+                skippedSet.insert(filename)
             }
         }
 
@@ -307,16 +259,6 @@ class ImageStorage {
         // processed AND its plaintext legacy copy is gone from disk. If
         // anything failed, the next launch will retry the rest.
         if !hadFailure {
-            // M-3 + 2.1 (2026-07-23 audit): post-migration cleanup. Originally
-            // `removeItem(at: legacyImagesDirectory)` deleted the whole dir
-            // — but the legacy dir belongs to the old ClipPaste app and may
-            // contain user files that never matched our migration filter
-            // (non-UUID-prefix files, non-PNG extensions, subfolders, etc.).
-            // Removing the whole dir would silently destroy those. Now we
-            // remove ONLY the files we successfully migrated; anything else
-            // stays. The forensic-residue concern from M-3 is fully addressed
-            // because all plaintext PNGs eligible for migration are gone.
-            //
             // ID-SILENT-0018 (2026-07-31 audit): was `try?` per file — a
             // removeItem failure left a PLAINTEXT legacy PNG on disk (the
             // exact state this migration exists to eliminate) while the
@@ -325,18 +267,10 @@ class ImageStorage {
             // logged loudly at error level for operator grep). A failure
             // where the file is already gone (the per-file migrate step
             // removes it in-flight) is the success state, not an error.
-            for filename in migratedFilenames {
-                let legacyURL = legacyDirectory.appendingPathComponent(filename)
-                do {
-                    try fileManager.removeItem(at: legacyURL)
-                } catch {
-                    if fileManager.fileExists(atPath: legacyURL.path) {
-                        hadFailure = true
-                        // swiftlint:disable:next line_length
-                        logger.error("PLAINTEXT LEGACY PNG STILL ON DISK after migration: \(filename, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-                    }
-                }
-            }
+            hadFailure = removeMigratedPlaintextFiles(
+                legacyDirectory: legacyDirectory,
+                migratedFilenames: migratedFilenames
+            )
             if !hadFailure {
                 defaults.set(true, forKey: migrationCompleteKey)
             }
@@ -358,7 +292,146 @@ class ImageStorage {
         logger.info("Image migration complete: \(migratedFilenames.count) files migrated, \(skippedSet.count) permanently skipped, hadFailure=\(hadFailure)")
     }
 
-    /// Encrypt and write one unencrypted legacy PNG. Returns true on success.
+    /// Guard chain extracted for cyclomatic complexity reduction.
+    /// Returns the legacy file list to process, or nil if migration should
+    /// short-circuit (already complete / no legacy dir / read failure).
+    private func legacyFilesToMigrate(
+        legacyDirectory: URL,
+        defaults: UserDefaults
+    ) -> [String]? {
+        guard defaults.bool(forKey: migrationCompleteKey) == false else { return nil }
+        guard fileManager.fileExists(atPath: legacyDirectory.path) else {
+            defaults.set(true, forKey: migrationCompleteKey)
+            return nil
+        }
+        guard let legacyFiles = try? fileManager.contentsOfDirectory(atPath: legacyDirectory.path) else {
+            // Directory exists but could not be read; leave flag false so the
+            // next launch retries instead of silently dropping images.
+            return nil
+        }
+        return legacyFiles
+    }
+
+    /// Post-migration cleanup: remove plaintext legacy PNGs for files we
+    /// successfully migrated. Extracted from migrateFromLegacyIfNeeded for
+    /// cyclomatic complexity reduction.
+    /// Returns true if any removeItem left a plaintext on disk (caller
+    /// must keep hadFailure = true so the migration flag stays unset).
+    /// M-3 + 2.1 (2026-07-23 audit): only removes the files we migrated,
+    /// never the whole legacy dir (could destroy user files from the old
+    /// ClipPaste app that didn't match our filter).
+    private func removeMigratedPlaintextFiles(
+        legacyDirectory: URL,
+        migratedFilenames: [String]
+    ) -> Bool {
+        var sawFailure = false
+        for filename in migratedFilenames {
+            let legacyURL = legacyDirectory.appendingPathComponent(filename)
+            do {
+                try fileManager.removeItem(at: legacyURL)
+            } catch {
+                if fileManager.fileExists(atPath: legacyURL.path) {
+                    sawFailure = true
+                    // swiftlint:disable:next line_length
+                    logger.error("PLAINTEXT LEGACY PNG STILL ON DISK after migration: \(filename, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+        return sawFailure
+    }
+
+    /// Result of a per-file migration step. Extracted for cyclomatic
+    /// complexity reduction.
+    private enum LegacyMigrationStep {
+        /// File pre-filter rejected it (not a PNG, no UUID prefix, already
+        /// migrated). Caller does nothing.
+        case skipped
+        /// File was successfully migrated. Caller appends to migratedSet.
+        case migrated
+        /// File was successfully migrated OR had a permanent-skip decision.
+        /// Caller notes hadFailure (for retry-on-next-launch semantics).
+        case hadFailure
+        /// File is permanently ineligible (size cap / empty). Caller adds
+        /// to skippedSet so it's never retried.
+        case permanentSkip
+    }
+
+    /// Per-file migration step. Extracted from migrateFromLegacyIfNeeded
+    /// for cyclomatic complexity reduction.
+    private func migrateLegacyFile(
+        filename: String,
+        legacyDirectory: URL,
+        maxFileSize: Int,
+        migratedSet: Set<String>,
+        skippedSet: Set<String>
+    ) -> LegacyMigrationStep {
+        // Pre-filter: must be .png with UUID-name prefix; already-migrated
+        // and permanently-skipped entries short-circuit.
+        guard filename.hasSuffix(".png"),
+              UUID(uuidString: String(filename.dropLast(4))) != nil else {
+            return .skipped
+        }
+        guard !migratedSet.contains(filename) else { return .skipped }
+        // STOR-4: permanently ineligible files are never retried.
+        guard !skippedSet.contains(filename) else { return .skipped }
+
+        let legacyPath = legacyDirectory.appendingPathComponent(filename)
+        // BUG-028 (2026-07-21): check size via attributesOfItem BEFORE
+        // Data(contentsOf:) — avoids allocating a potentially-GB-sized
+        // buffer for a corrupted/expanded legacy file. L-4 previously
+        // checked after the load (50MB cap, but still allocates).
+        let fileAttrs = try? fileManager.attributesOfItem(atPath: legacyPath.path)
+        guard let fileSize = (fileAttrs?[.size] as? NSNumber)?.intValue else {
+            // Attributes unreadable — transient (permissions, race with
+            // another process writing the file); retry on next launch.
+            return .hadFailure
+        }
+        // STOR-4 (2026-07-24): an empty file or one over the cap can
+        // NEVER become eligible (saveImage enforces the same cap, so the
+        // file could never have been captured by us at that size).
+        // Previously this set hadFailure = true, which left the global
+        // completion flag false forever: the migration "failed" on every
+        // launch and the successfully migrated plaintext files were never
+        // cleaned up. Now record the filename in the skip list — not a
+        // failure, not retried, not blocking completion.
+        guard fileSize > 0, fileSize <= maxFileSize else {
+            logger.warning("Permanently skipping ineligible legacy image: \(filename) (\(fileSize) bytes)")
+            // M-8 (2026-07-25 audit): batch UserDefaults writes until after
+            // the loop to avoid O(n²) serialization of the growing set on
+            // every iteration.
+            return .permanentSkip
+        }
+        guard let imageData = try? Data(contentsOf: legacyPath) else {
+            // Read failure is transient (I/O error, file being replaced)
+            // — leave it out of the skip list so the next launch retries.
+            return .hadFailure
+        }
+
+        let isUnencryptedPNG = isUnencryptedPNGSignature(imageData)
+        let success: Bool
+        if isUnencryptedPNG {
+            logger.info("Migrating unencrypted image: \(filename)")
+            success = migrateUnencryptedPNG(
+                filename: filename, imageData: imageData, legacyPath: legacyPath
+            )
+        } else {
+            // Already encrypted (or legacy format), just copy to new location
+            success = copyLegacyImage(
+                filename: filename, imageData: imageData, legacyPath: legacyPath
+            )
+        }
+        return success ? .migrated : .hadFailure
+    }
+
+    /// Returns true if `imageData` looks like a plaintext PNG (89 50 4E 47
+    /// magic header). Encrypted payloads start with "v2:" — those take the
+    /// copy-not-re-encrypt path.
+    private func isUnencryptedPNGSignature(_ imageData: Data) -> Bool {
+        imageData.count >= 4 &&
+            imageData[0] == 0x89 && imageData[1] == 0x50 &&
+            imageData[2] == 0x4E && imageData[3] == 0x47
+    }
+
     /// STOR-6 (2026-07-24 review): encrypt failure now logs like its sibling
     /// paths — a silent skip made a broken CryptoService indistinguishable
     /// from "nothing left to migrate".

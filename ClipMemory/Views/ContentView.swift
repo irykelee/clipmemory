@@ -325,82 +325,66 @@ struct ContentView: View {
             selectedTagIds: selectedTagIds
         )
         return sidebarFiltered.filter { item in
-            // date filter
-            if item.createdAt < startOfYesterday {
-                if dateFilter == .today || dateFilter == .yesterday { return false }
-            } else if item.createdAt < startOfToday {
-                if dateFilter == .today || dateFilter == .older { return false }
-            } else {
-                if dateFilter == .yesterday || dateFilter == .older { return false }
-            }
-            // search filter
-            // CLIP-1 main (2026-07-24 audit): richText search goes through
-            // the store's rtfPlaintextCache — never parse the raw (encrypted
-            // base64) content directly here; that path returned the parser's
-            // default "Rich Text" string for every encrypted RTF item and
-            // bypassed rtfPlaintextCache (M-24 contract). Search matches the
-            // actual RTF plaintext AND respects the cache (no per-keystroke
-            // NSAttributedString parse).
-            if !searchTextDebounced.isEmpty {
-                // P0-3: check caches first instead of sync decrypt.
-                // Cold-cache items are batched for background prewarm and
-                // skipped in this pass; they reappear once caches are warm.
-                let contentKey = item.id.uuidString as NSString
-                let searchableText: String
-                // ID-PERF-0021 (2026-08-01 audit): richText used to call
-                // store.getRTFPlaintext here — a synchronous AES-GCM decrypt
-                // + RTF parse (20-100 ms/item) on a cold cache, violating
-                // the P0-3 contract above. Read the cache only, mirroring
-                // QuickBarView.computeDisplayedItems; cold items are skipped
-                // this pass and resurface after background prewarm via the
-                // ID-VIEW-0008 debounced objectWillChange rebuild.
-                if item.type == .richText {
-                    guard let cached = store.cachedRtfPlaintext(item) else { return false }
-                    searchableText = cached
-                } else if let cached = store.contentCache.object(forKey: contentKey) as? String {
-                    searchableText = cached
-                } else if item.decryptionFailed {
-                    return false
-                } else {
-                    return false
-                }
-
-                var ocrMatch = false
-                if item.type == .image {
-                    let ocrKey = (item.id.uuidString + ".ocr") as NSString
-                    if let cachedOCR = store.contentCache.object(forKey: ocrKey) as? String {
-                        ocrMatch = FuzzySearchMatcher.matches(content: cachedOCR, searchText: searchTextDebounced)
-                    }
-                    // ID-VIEW-0046 (2026-09-26): previously had a
-                    // `return false` fallback when the OCR cache was cold
-                    // (item.ocrText != nil, !item.decryptionFailed). That
-                    // branch suppressed legitimate non-OCR matches too:
-                    // image main content is "<uuid>.png", so a search
-                    // for a UUID fragment or ".png" would correctly
-                    // match `searchableText` but get dropped before the
-                    // combined `(!matches && !ocrMatch)` check ran. Worse,
-                    // a recent attempt to "fix" this by passing
-                    // `item.ocrText` straight to FuzzySearchMatcher
-                    // produced a false-positive flood: that field holds
-                    // AES-GCM ciphertext (per ClipboardItem.swift:31-33),
-                    // and the base64 alphabet overlaps every alphanum
-                    // token — every cold-cache image would match any
-                    // search. Just remove the over-suppression: cold
-                    // OCR cache means no OCR match this pass, but the
-                    // combined `searchableText` check at line 355 still
-                    // runs and can match the filename/uuid fragment.
-                    // P0-3 ("no sync decrypt on main") is preserved —
-                    // we never call `getDecryptedOcrText` from the search
-                    // hot path; the prewarm (ID-VIEW-0012 / ID-PERF-0023)
-                    // fills the OCR cache asynchronously.
-                }
-
-                if !FuzzySearchMatcher.matches(content: searchableText, searchText: searchTextDebounced), !ocrMatch {
-                    return false
-                }
-            }
+            guard passesDateFilter(item) else { return false }
+            guard passesSearchFilter(item) else { return false }
             return true
         }
+    }
+
+    /// Date filter check (yesterday / today / older). Extracted for
+    /// cyclomatic complexity reduction.
+    private func passesDateFilter(_ item: ClipboardItem) -> Bool {
+        if item.createdAt < startOfYesterday {
+            if dateFilter == .today || dateFilter == .yesterday { return false }
+        } else if item.createdAt < startOfToday {
+            if dateFilter == .today || dateFilter == .older { return false }
+        } else {
+            if dateFilter == .yesterday || dateFilter == .older { return false }
+        }
+        return true
+    }
+
+    /// Search filter check (text + optional OCR for images). Extracted for
+    /// cyclomatic complexity reduction. Returns `false` if search text is
+    /// non-empty AND item doesn't match.
+    private func passesSearchFilter(_ item: ClipboardItem) -> Bool {
+        if searchTextDebounced.isEmpty { return true }
+        guard let searchableText = searchableTextForFilter(item) else { return false }
+        let ocrMatch = item.type == .image && ocrMatchForItem(item)
+        if !FuzzySearchMatcher.matches(content: searchableText, searchText: searchTextDebounced),
+           !ocrMatch {
+            return false
+        }
+        return true
+    }
+
+    /// Resolves the searchable plaintext for the search predicate from
+    /// the rtfPlaintextCache / contentCache. Cold-cache items are skipped
+    /// (P0-3 — no sync decrypt on the search hot path); they resurface
+    /// after background prewarm via ID-VIEW-0008.
+    private func searchableTextForFilter(_ item: ClipboardItem) -> String? {
+        let contentKey = item.id.uuidString as NSString
+        if item.type == .richText {
+            return store.cachedRtfPlaintext(item)
+        }
+        if let cached = store.contentCache.object(forKey: contentKey) as? String {
+            return cached
+        }
+        // P0-3: cold-cache items are skipped (no sync decrypt). This is
+        // a deliberate failure mode (M-24 contract / ID-PERF-0021).
+        return nil
+    }
+
+    /// OCR cache lookup. Returns true if the OCR text matches the search.
+    /// Cold-cache image items just return false (no OCR match this pass;
+    /// the combined `searchableText` check still runs and can match
+    /// filename/uuid fragments — ID-VIEW-0046 fix).
+    private func ocrMatchForItem(_ item: ClipboardItem) -> Bool {
+        let ocrKey = (item.id.uuidString + ".ocr") as NSString
+        guard let cachedOCR = store.contentCache.object(forKey: ocrKey) as? String else {
+            return false
+        }
+        return FuzzySearchMatcher.matches(content: cachedOCR, searchText: searchTextDebounced)
     }
 
     /// Checks if the calendar day rolled over since `currentDate` was last set,
