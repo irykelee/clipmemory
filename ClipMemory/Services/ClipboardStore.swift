@@ -1003,6 +1003,8 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         }
         trimToMaxItems()
         updatePinnedItems()
+        rebuildDedupHashSet()
+        scheduleSave()
     }
 
     /// P0-2: user taps banner ✕ → dismiss until next key event.

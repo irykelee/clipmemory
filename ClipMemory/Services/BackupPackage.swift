@@ -310,81 +310,84 @@ final class BackupPackage {
     private static let maxArchiveUncompressedBytes: Int64 = 2 * 1024 * 1024 * 1024  // 2 GiB
     private static func validateArchiveMembers(_ archive: URL) throws {
         // Pass 1: name-only check (preserves ID-SECURITY-0006).
-        let nameProcess = Process()
-        nameProcess.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        nameProcess.arguments = ["-Z1", archive.path]
-        let namePipe = Pipe()
-        nameProcess.standardOutput = namePipe
-        nameProcess.standardError = FileHandle.nullDevice
-        try nameProcess.run()
-        let nameData = namePipe.fileHandleForReading.readDataToEndOfFile()
-        nameProcess.waitUntilExit()
-        guard nameProcess.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
-        // swiftlint:disable:next optional_data_string_conversion
-        let nameListing = String(decoding: nameData, as: UTF8.self)
-        for rawMember in nameListing.split(separator: "\n", omittingEmptySubsequences: true) {
-            let member = rawMember.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !member.isEmpty else { continue }
-            let hasDotDot = member.split(separator: "/").contains("..")
-            guard !hasDotDot, !member.hasPrefix("/"), !member.contains("\\") else {
-                logger.error("Backup package contains unsafe archive member: \(member)")
-                throw BackupPackageError.corruptedData(
-                    "unsafe archive member: \(member)", .manifest
-                )
+        try runArchiveListing(archive: archive, args: ["-Z1"]) { listing in
+            for rawMember in listing.split(separator: "\n", omittingEmptySubsequences: true) {
+                try validateArchiveMemberName(rawMember)
             }
         }
 
         // Pass 2: zip-bomb size check (ID-CRASH-0016).
-        let sizeProcess = Process()
-        sizeProcess.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        sizeProcess.arguments = ["-Z", "-v", archive.path]
-        let sizePipe = Pipe()
-        sizeProcess.standardOutput = sizePipe
-        sizeProcess.standardError = FileHandle.nullDevice
-        try sizeProcess.run()
-        let sizeData = sizePipe.fileHandleForReading.readDataToEndOfFile()
-        sizeProcess.waitUntilExit()
-        // ID-REVIEW-1007 (code-review-2026-10-01 P2 0-7): make the zip-bomb
-        // size check fail-closed. Previously a non-zero exit on the
-        // `unzip -Z -v` size listing was silently treated as
-        // non-fatal (just `return`), letting the import proceed without
-        // a total-uncompressed-size bound — a malicious archive could
-        // craft a valid `-Z1` member list (passes the name allow-list at
-        // line 322) but a malformed `-Z -v` payload to defeat the
-        // 2 GiB bomb cap. The same function's name-check at line 322
-        // throws on failure (fail-closed); the size-check should match
-        // that discipline.
-        guard sizeProcess.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
-        // swiftlint:disable:next optional_data_string_conversion
-        let sizeListing = String(decoding: sizeData, as: UTF8.self)
-        var totalUncompressed: Int64 = 0
-        for rawLine in sizeListing.split(separator: "\n", omittingEmptySubsequences: true) {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !line.isEmpty else { continue }
-            // Skip `unzip -Z -v`'s 3 header lines (Archive:
-            // ... / Length ... / ---------- ...). Those have no
-            // numeric length field and would parse as 0 anyway, but
-            // the explicit guard makes the intent clear.
-            if line.hasPrefix("Archive:") || line.hasPrefix("---") || line.hasPrefix("Length") {
-                continue
-            }
-            // `unzip -Z -v` per-member line format:
-            //   <length>  <date>  <time>  <name>
-            // The length field is the first whitespace-delimited
-            // token. Skip non-numeric / overflow cleanly so the size
-            // check itself can't be tricked into integer overflow.
-            guard let firstSpace = line.firstIndex(of: " ") else { continue }
-            if let size = Int64(line[..<firstSpace]) {
-                totalUncompressed &+= size
-                if totalUncompressed > Self.maxArchiveUncompressedBytes {
-                    // swiftlint:disable:next line_length
-                    logger.error("Backup package uncompressed size \(totalUncompressed) bytes exceeds \(Self.maxArchiveUncompressedBytes) byte limit — zip bomb guard")
-                    throw BackupPackageError.corruptedData(
-                        "archive uncompressed size \(totalUncompressed) exceeds \(Self.maxArchiveUncompressedBytes) byte limit",
-                        .manifest
-                    )
+        try runArchiveListing(archive: archive, args: ["-Z", "-v"]) { listing in
+            var totalUncompressed: Int64 = 0
+            for rawLine in listing.split(separator: "\n", omittingEmptySubsequences: true) {
+                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !line.isEmpty else { continue }
+                // Skip `unzip -Z -v`'s 3 header lines (Archive:
+                // ... / Length ... / ---------- ...). Those have no
+                // numeric length field and would parse as 0 anyway, but
+                // the explicit guard makes the intent clear.
+                if line.hasPrefix("Archive:") || line.hasPrefix("---") || line.hasPrefix("Length") {
+                    continue
+                }
+                // `unzip -Z -v` per-member line format:
+                //   <length>  <date>  <time>  <name>
+                // The length field is the first whitespace-delimited
+                // token. Skip non-numeric / overflow cleanly so the size
+                // check itself can't be tricked into integer overflow.
+                guard let firstSpace = line.firstIndex(of: " ") else { continue }
+                if let size = Int64(line[..<firstSpace]) {
+                    totalUncompressed &+= size
+                    if totalUncompressed > Self.maxArchiveUncompressedBytes {
+                        // swiftlint:disable:next line_length
+                        logger.error("Backup package uncompressed size \(totalUncompressed) bytes exceeds \(Self.maxArchiveUncompressedBytes) byte limit — zip bomb guard")
+                        throw BackupPackageError.corruptedData(
+                            "archive uncompressed size \(totalUncompressed) exceeds \(Self.maxArchiveUncompressedBytes) byte limit",
+                            .manifest
+                        )
+                    }
                 }
             }
+        }
+    }
+
+    /// Run `/usr/bin/unzip` with the given args against `archive`, capture
+    /// stdout as UTF-8 text, throw `archiveFailed` on non-zero exit, and
+    /// pass the listing to `body`. Both pre-extraction passes (name check
+    /// and zip-bomb size check) use this same shell-out — extracted
+    /// for cyclomatic complexity reduction.
+    private static func runArchiveListing(
+        archive: URL,
+        args: [String],
+        _ body: (String) throws -> Void
+    ) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        process.arguments = args + [archive.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
+        // swiftlint:disable:next optional_data_string_conversion
+        let listing = String(decoding: data, as: UTF8.self)
+        try body(listing)
+    }
+
+    /// ID-SECURITY-0006 pre-extraction allow-list: rejects any archive
+    /// member whose path tries to escape the extraction root (`..` token,
+    /// absolute path, or backslash separator). Extracted from
+    /// validateArchiveMembers for cyclomatic complexity reduction.
+    private static func validateArchiveMemberName(_ rawMember: Substring) throws {
+        let member = rawMember.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !member.isEmpty else { return }
+        let hasDotDot = member.split(separator: "/").contains("..")
+        guard !hasDotDot, !member.hasPrefix("/"), !member.contains("\\") else {
+            logger.error("Backup package contains unsafe archive member: \(member)")
+            throw BackupPackageError.corruptedData(
+                "unsafe archive member: \(member)", .manifest
+            )
         }
     }
 

@@ -706,13 +706,6 @@ class ClipboardMonitor {
             _ownWriteFingerprintReady = false
             _lastChangeCount = currentChangeCount
             return true
-            // External change consumed the skip window: drop the stale skip
-            // state but do NOT advance lastChangeCount — the normal path
-            // below treats this as a fresh capture.
-            _skipNextCapture = false
-            _ownWriteFingerprint = nil
-            _ownWriteFingerprintReady = false
-            return false
         }
         // nil (fingerprint pending) and true (our own write) both skip this
         // tick; false falls through to capture the external change.
