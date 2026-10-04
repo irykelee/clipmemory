@@ -48,18 +48,8 @@
 
 ## 📋 변경 로그
 
-### v2.9.6 (2026-10-04) — 이미지 미리보기 길게 누르기 10방향 스크롤 + code-review backlog 클로즈 + ID-CRASH-0038 마무리
+### v2.9.6 (2026-10-04) — code-review backlog 클로즈 + ID-CRASH-0038 마무리
 
-- **🖼 이미지 미리보기 길게 누르기 — 휠 스크롤이 이제 세로·가로 + Shift+wheel을 함께 지원**: 왼쪽 버튼을 누른 채 휠을 굴리면 이미지가 예기치 않게 dismiss되는 버그 수정(USER-FEEDBACK-2026-09-26, 여러 차례 반복 수정). 미리보기 패널은 스크롤 중 계속 표시되며, 손을 떼야 정상적으로 닫힙니다. 세로 스크롤, Logitech 마우스 측면 버튼 / Magic Mouse 가로 swipe / trackpad 두 손가락 swipe의 가로 스크롤, 그리고 일반 마우스 + Shift+wheel의 가로 스크롤(macOS 표준 관례)을 지원합니다. 이미지가 미리보기 창을 초과하면 스크롤바가 올바르게 이동합니다.
-- **🛠 code-review-2026-09-28 backlog 전체 클로즈(38/38)**: P1 7건 + P2 18건 + follow-up 5건 모두 ship; L10n / Crypto / Window / Persistence / TSan / CI 툴체인 / dependabot / 문서 만료 항목 등 하드닝 항목을 커버합니다. 자세한 내용은 `docs/audit/code-review-2026-09-28.md` 참조.
-- **🛠 ID-CRASH-0038 mass-skip 마무리(46 → 4)**: issue #93 runner restart 근본 원인 수정 + production code 전체를 주입 seam으로 이관(HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + ZZZ canary re-enabled. 42/46 테스트 복원(AppDelegate terminate + IntegrationTests + HotKey 3곳 조건부 guard + MemoryWarning + WindowManager); 남은 4곳의 snapshot golden 불일치는 v2.9.7에서 조사 예정(CI-only 환경 차이, 로컬 1025/4/0 실제 green).
-- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` 어노테이션으로 Swift 6 strict-concurrency warnings 억제**: TSan advisory 6곳 warning 순감소 0. `ClipboardMonitorDelegate` 프로토콜 + `ClipboardStore+OCR.swift` GCD 클로저 두 곳에 어노테이션 추가, runtime 시맨틱은 그대로입니다.
-- **🛠 ID-REVIEW-1012 lazy-init `ClipboardStore.shared`**: 기존 `static let shared = ClipboardStore()`는 모듈 로드 시 eager 평가되어 xcTestDefaults env var 감지가 잘못되었습니다. `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock으로 변경해 진정한 lazy 초기화를 구현했습니다.
-- **🛠 Hygiene batch**: `trailing_newline` 51곳 SwiftLint warning 수정 + `.gitattributes` LF 줄바꿈 강제; 2개 shell script `chmod -x` 누락 복구.
-
-총 1025 / 4 skipped / 0 failures(en + zh-Hans 2개 locale).
-
-자세한 내용은 `docs/skips-ledger.md` 참조(v2.9.6 전체 ship 후 아카이브).
 
 ### v2.9.5 (2026-10-01) — 이미지 미리보기 길게 누르기 10방향 스크롤 + audit-backlog closure
 

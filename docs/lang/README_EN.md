@@ -48,18 +48,8 @@
 
 ## 📋 Changelog
 
-### v2.9.6 (2026-10-04) — Long-press image preview 10-direction scrolling + code-review backlog closure + ID-CRASH-0038 wrap-up
+### v2.9.6 (2026-10-04) — code-review backlog closure + ID-CRASH-0038 wrap-up
 
-- **🖼 Long-press image preview — wheel scrolling now supports both vertical and horizontal + Shift+wheel** — Fixes a bug where holding the left button and scrolling the wheel caused the image to be accidentally dismissed (USER-FEEDBACK-2026-09-26, fixed over multiple iterations). The preview panel remains visible during scrolling and only closes normally when the button is released. Also supports vertical scrolling, horizontal scrolling via Logitech mouse side buttons / Magic Mouse horizontal swipe / trackpad two-finger swipe, and horizontal scrolling via regular mouse + Shift+wheel (macOS standard convention). The scrollbar moves correctly when the image exceeds the preview window.
-- **🛠 code-review-2026-09-28 backlog fully closed (38/38)** — All 7 P1 + 18 P2 + 5 follow-up items shipped; covering hardening items such as L10n / Crypto / Window / Persistence / TSan / CI toolchain / dependabot / outdated documentation items. See `docs/audit/code-review-2026-09-28.md` for details.
-- **🛠 ID-CRASH-0038 mass-skip wrap-up (46 → 4)** — issue #93 runner restart root-cause fix + all production code migrated to injection seams (HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + ZZZ canary re-enabled. 42/46 tests restored (AppDelegate terminate + IntegrationTests + 3 conditional guards in HotKey + MemoryWarning + WindowManager); remaining 4 snapshot golden mismatches left for v2.9.7 investigation (CI-only environment difference, local 1025/4/0 genuinely green).
-- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` annotations suppress Swift 6 strict-concurrency warnings** — Net reduction of 0 for the 6 TSan advisory warnings. Annotations added in two places: the `ClipboardMonitorDelegate` protocol and the GCD closure in `ClipboardStore+OCR.swift`; runtime semantics unchanged.
-- **🛠 ID-REVIEW-1012 lazy-init `ClipboardStore.shared`** — The original `static let shared = ClipboardStore()` was eagerly evaluated at module load, fooling xcTestDefaults env var detection. Changed to `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock to implement true lazy initialization.
-- **🛠 Hygiene batch** — Fixed 51 `trailing_newline` SwiftLint warnings + enforced LF line endings in `.gitattributes`; restored missing `chmod -x` on 2 shell scripts.
-
-Full 1025 / 4 skipped / 0 failures (en + zh-Hans dual locale).
-
-See `docs/skips-ledger.md` for details (archived after v2.9.6 fully shipped).
 
 ### v2.9.5 (2026-10-01) — Long-press image preview 10-direction scrolling + audit-backlog closure
 
