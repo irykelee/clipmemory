@@ -592,26 +592,11 @@ final class BackupPackage {
     ) throws {
         let salt = try randomBytes(16)
         let derivedKey = try deriveKey(passphrase: passphrase, salt: salt, version: 2)
-        let sealedKey = try AES.GCM.seal(keyData, using: derivedKey)
-        guard let sealedKeyData = sealedKey.combined else { throw BackupPackageError.missingKeyMaterial }
+        let sealedKeyData = try sealKeyForExport(derivedKey: derivedKey, keyData: keyData)
 
-        let staging = FileManager.default.temporaryDirectory
-            .appendingPathComponent("clipmemory-export-\(UUID().uuidString)", isDirectory: true)
-        defer {
-            // ID-07 (2026-07-30 audit): staging-dir leak on every export if
-            // removeItem fails (file held open, permissions denied). macOS
-            // cleans /tmp on reboot but session-long users accumulate orphans.
-            do {
-                try FileManager.default.removeItem(at: staging)
-            } catch {
-                // swiftlint:disable:next line_length
-                Self.logger.warning("Failed to clean export staging directory (orphan in /tmp): \(error.localizedDescription, privacy: .public) path=\(staging.path, privacy: .public)")
-            }
-        }
-        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let staging = try createExportStaging()
+        defer { cleanupExportStaging(staging) }
 
-        // Store blobs (still encrypted with the machine key)
-        //
         // L-11 (2026-07-24 audit): silently coerced `try?` decode failures to
         // a count of 0, so a corrupt items/tags/trash blob produced a manifest
         // claiming the package is smaller than it actually is — the on-disk
@@ -619,39 +604,78 @@ final class BackupPackage {
         // would use the wrong counts. Now: log + throw `corruptedData`, the
         // existing package-corruption error, so the export fails loudly
         // instead of producing a misleading manifest.
-        var counts = (items: 0, tags: 0, trash: 0)
-        // P1-AUDIT-2026-09-22 (P2-10): same source-of-truth fix as
-        // BackupService.swift — the loop's (filename, key) pairs come from
-        // the central `BackupBlobRegistry` enum. Round-2: the manifest
-        // count decode is now keyed on the BlobKey case (not the
-        // UserDefaultsKey rawValue), so adding a new blob type = one
-        // enum case + 3 switch arms in `BackupBlobRegistry` (filename /
-        // userDefaultsKey / decodeType); both backup paths get it
-        // automatically with no edits here. `decodeType` is the
-        // registry-declared metadata tested by `testAllBlobKeysDeclareDecodeType`
-        // and used by future callers that want to decode without
-        // hard-coding the concrete element type.
-        counts = try stageStoredBlobs(to: staging, defaults: defaults, counts: counts)
+        let counts = try stageStoredBlobs(to: staging, defaults: defaults, counts: (items: 0, tags: 0, trash: 0))
+        let imageCount = try stageImagesForExport(to: staging, imagesDirectory: imagesDirectory)
+        try writeExportKeyAndManifest(
+            to: staging,
+            sealedKeyData: sealedKeyData,
+            salt: salt,
+            counts: counts,
+            imageCount: imageCount
+        )
+        try zipAndAtomicallyReplace(from: staging, to: destination)
+        logger.info("Exported backup package to \(destination.path)")
+    }
 
-        var imageCount = 0
-        if FileManager.default.fileExists(atPath: imagesDirectory.path) {
-            let imagesDestination = staging.appendingPathComponent("Images", isDirectory: true)
-            try FileManager.default.copyItem(at: imagesDirectory, to: imagesDestination)
-            // BKP-4 (2026-07-24 review): count only .png files — the import
-            // side only accepts .png, so counting every staged file (stray
-            // .DS_Store etc.) made the manifest disagree with the importable
-            // payload.
-            // NEW-2 (2026-08-03 audit): propagate directory-enumeration
-            // failures instead of swallowing them with `try? ?? []` —
-            // a zero imageCount would land in the manifest, then
-            // `validateManifestCounts` (line 727) would reject the package
-            // on import as `corruptedData`, producing a permanently
-            // un-importable backup that the user believed succeeded.
-            imageCount = try countPNGImages(in: imagesDestination)
+    /// Wraps `keyData` with the passphrase-derived key. Throws
+    /// `missingKeyMaterial` if AES.GCM produces no combined output (rare
+    /// platform bug; not expected in practice).
+    private static func sealKeyForExport(derivedKey: SymmetricKey, keyData: Data) throws -> Data {
+        let sealedKey = try AES.GCM.seal(keyData, using: derivedKey)
+        guard let sealedKeyData = sealedKey.combined else { throw BackupPackageError.missingKeyMaterial }
+        return sealedKeyData
+    }
+
+    /// Creates the per-export staging directory under `temporaryDirectory`.
+    /// Returns the path so the caller can `defer` cleanup with
+    /// `cleanupExportStaging`.
+    private static func createExportStaging() throws -> URL {
+        let staging = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clipmemory-export-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        return staging
+    }
+
+    /// ID-07 (2026-07-30 audit): staging-dir leak on every export if
+    /// removeItem fails (file held open, permissions denied). macOS
+    /// cleans /tmp on reboot but session-long users accumulate orphans.
+    private static func cleanupExportStaging(_ staging: URL) {
+        do {
+            try FileManager.default.removeItem(at: staging)
+        } catch {
+            // swiftlint:disable:next line_length
+            Self.logger.warning("Failed to clean export staging directory (orphan in /tmp): \(error.localizedDescription, privacy: .public) path=\(staging.path, privacy: .public)")
         }
+    }
 
+    /// Stages the local-images directory into the export and returns the
+    /// count of `.png` files (the only format the import side accepts —
+    /// BKP-4 2026-07-24 review). Returns 0 if no images directory exists.
+    /// NEW-2 (2026-08-03 audit): propagates directory-enumeration failures
+    /// instead of swallowing with `try? ?? []` — a zero imageCount would
+    /// land in the manifest, then `validateManifestCounts` would reject
+    /// the package on import, producing a permanently un-importable
+    /// backup the user believed succeeded.
+    private static func stageImagesForExport(to staging: URL, imagesDirectory: URL) throws -> Int {
+        guard FileManager.default.fileExists(atPath: imagesDirectory.path) else { return 0 }
+        let imagesDestination = staging.appendingPathComponent("Images", isDirectory: true)
+        try FileManager.default.copyItem(at: imagesDirectory, to: imagesDestination)
+        return try countPNGImages(in: imagesDestination)
+    }
+
+    /// Writes `key.enc` (sealed key) and `manifest.json` (counts +
+    /// metadata) into the staging directory. The manifest is the
+    /// authoritative side of the contract that `validateManifestCounts`
+    /// cross-checks on import.
+    private static func writeExportKeyAndManifest(
+        to staging: URL,
+        sealedKeyData: Data,
+        salt: Data,
+        // swiftlint:disable:next large_tuple
+        counts: (items: Int, tags: Int, trash: Int),
+        imageCount: Int
+    ) throws {
         try sealedKeyData.write(to: staging.appendingPathComponent("key.enc"), options: .atomic)
-
         let manifest = BackupManifest(
             formatVersion: currentFormatVersion,
             createdAt: Date(),
@@ -667,23 +691,25 @@ final class BackupPackage {
             keyDerivationVersion: 2
         )
         try JSONEncoder().encode(manifest).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
+    }
 
-        // BUG-023 (2026-07-21): the old `removeItem` then `zipDirectory` was
-        // non-atomic — if zip failed (disk full, permission, sandbox block),
-        // the previous backup was already deleted and no new one existed,
-        // leaving the user with zero backups. Build the zip at a temp path
-        // first; if it succeeds, atomically replace the destination (or move
-        // into place if the destination is new). A failed zip leaves both
-        // the old backup and the temp file untouched.
+    /// BUG-023 (2026-07-21): the old `removeItem` then `zipDirectory` was
+    /// non-atomic — if zip failed (disk full, permission, sandbox block),
+    /// the previous backup was already deleted and no new one existed,
+    /// leaving the user with zero backups. Build the zip at a temp path
+    /// first; if it succeeds, atomically replace the destination (or move
+    /// into place if the destination is new). A failed zip leaves both
+    /// the old backup and the temp file untouched.
+    /// ID-09 (2026-07-30 audit): the inner try? swallowed the
+    /// cleanup-failure error. The original error is re-thrown, but the
+    /// cleanup-failure was invisible. Log it so the user can see the
+    /// half-zipped file leaking space.
+    private static func zipAndAtomicallyReplace(from staging: URL, to destination: URL) throws {
         let tempDestination = destination.deletingLastPathComponent()
             .appendingPathComponent(".clipmemory-export-\(UUID().uuidString).tmp")
         do {
             try zipDirectory(staging, to: tempDestination)
         } catch {
-            // ID-09 (2026-07-30 audit): the inner try? swallowed the
-            // cleanup-failure error. The original error is re-thrown, but
-            // the cleanup-failure was invisible. Log it so the user can
-            // see the half-zipped file leaking space.
             do {
                 try FileManager.default.removeItem(at: tempDestination)
             } catch {
@@ -706,7 +732,6 @@ final class BackupPackage {
         } else {
             try FileManager.default.moveItem(at: tempDestination, to: destination)
         }
-        logger.info("Exported backup package to \(destination.path)")
     }
 
     // MARK: - Import
