@@ -759,18 +759,52 @@ final class BackupPackage {
     ) throws -> BackupImportResult {
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("clipmemory-import-\(UUID().uuidString)", isDirectory: true)
-        defer {
-            // ID-08 (2026-07-30 audit): same orphan-dir pattern as ID-07 on
-            // the import path. One orphan per import.
-            do {
-                try FileManager.default.removeItem(at: staging)
-            } catch {
-                // swiftlint:disable:next line_length
-                Self.logger.warning("Failed to clean import staging directory (orphan in /tmp): \(error.localizedDescription, privacy: .public) path=\(staging.path, privacy: .public)")
-            }
-        }
+        defer { cleanupImportStaging(staging) }
         try unzipArchive(archive, to: staging)
 
+        let manifest = try loadAndValidateManifest(from: staging)
+        let packageCrypto = try unsealPackageKey(
+            from: staging,
+            passphrase: passphrase,
+            manifest: manifest
+        )
+
+        var result = BackupImportResult()
+        try decodeValidateAndMerge(
+            staging: staging,
+            manifest: manifest,
+            packageCrypto: packageCrypto,
+            localCrypto: localCrypto,
+            store: store,
+            result: &result
+        )
+        importImagesBestEffort(
+            staging: staging,
+            imagesDirectory: imagesDirectory,
+            packageCrypto: packageCrypto,
+            localCrypto: localCrypto,
+            result: &result
+        )
+
+        logger.info("Imported backup: \(result.itemsImported) items, \(result.tagsImported) tags")
+        return result
+    }
+
+    /// ID-08 (2026-07-30 audit): same orphan-dir pattern as ID-07 on
+    /// the import path. One orphan per import.
+    private static func cleanupImportStaging(_ staging: URL) {
+        do {
+            try FileManager.default.removeItem(at: staging)
+        } catch {
+            // swiftlint:disable:next line_length
+            Self.logger.warning("Failed to clean import staging directory (orphan in /tmp): \(error.localizedDescription, privacy: .public) path=\(staging.path, privacy: .public)")
+        }
+    }
+
+    /// Reads `manifest.json` from `staging`, enforces size and
+    /// format-version bounds, and decodes it. All read failures
+    /// surface as `corruptedData(.manifest)`.
+    private static func loadAndValidateManifest(from staging: URL) throws -> BackupManifest {
         let manifestURL = staging.appendingPathComponent("manifest.json")
         // BKP-5 (2026-08-02 audit): size guard BEFORE Data(contentsOf:) —
         // a multi-GB manifest.json would OOM the process.
@@ -793,6 +827,18 @@ final class BackupPackage {
         guard let salt = Data(base64Encoded: manifest.keySalt), salt.count >= 16 else {
             throw BackupPackageError.invalidPackage
         }
+        return manifest
+    }
+
+    /// Reads `key.enc`, derives the passphrase key, and unseals the
+    /// package key. Returns a `CryptoService` rooted at the package key.
+    /// `wrongPassword` is the only recoverable error (re-entered by the
+    /// view); structural corruption of `key.enc` is a terminal failure.
+    private static func unsealPackageKey(
+        from staging: URL,
+        passphrase: String,
+        manifest: BackupManifest
+    ) throws -> CryptoService {
         let keyEncURL = staging.appendingPathComponent("key.enc")
         // BKP-5 (2026-08-02 audit): same size guard as manifest.json —
         // key.enc is exactly 60 bytes; a hostile oversized file would
@@ -802,8 +848,10 @@ final class BackupPackage {
             // M-7: same pattern — surface which file is the offender.
             throw BackupPackageError.corruptedData("key.enc missing or unreadable", .manifest)
         }
-
         // Passphrase check: GCM open fails on wrong passphrase.
+        guard let salt = Data(base64Encoded: manifest.keySalt), salt.count >= 16 else {
+            throw BackupPackageError.invalidPackage
+        }
         let derivedKey = try deriveKey(passphrase: passphrase, salt: salt, version: manifest.keyDerivationVersion)
         // ID-BACKUP-0004 (2026-07-31 audit): a structurally broken key.enc
         // (truncated / bit-rot changing the length) must surface as package
@@ -836,22 +884,36 @@ final class BackupPackage {
         // SymmetricKey — same shared helper as the root-key paths in
         // CryptoService, so zeroing behavior is consistent everywhere.
         CryptoService.wipeKeyMaterial(&packageKeyData)
+        return packageCrypto
+    }
 
-        var result = BackupImportResult()
-
+    /// Decode items/trash/tags from the staging directory, validate the
+    /// manifest counts match, re-encrypt under the local key, and apply
+    /// the merge on the main actor. Populates `result.itemsImported`,
+    /// `result.itemsSkipped`, `result.itemsSkippedCorrupt`, and
+    /// `result.tagsImported`.
+    ///
+    /// M-9 (2026-07-25 audit): validate manifest counts BEFORE merging
+    /// data into the store or importing images. Previously the validation
+    /// ran after the merge, so a manifest/item-count mismatch left the
+    /// local store partially modified with no rollback path.
+    /// ID-BACKUP-0001 (2026-07-31): itemCount is items.json ONLY (that is
+    /// what the exporter writes); trash.json is validated separately
+    /// against the optional trashCount field.
+    private static func decodeValidateAndMerge(
+        staging: URL,
+        manifest: BackupManifest,
+        packageCrypto: CryptoService,
+        localCrypto: CryptoServiceProtocol,
+        store: ClipboardStore,
+        result: inout BackupImportResult
+    ) throws {
         // Items + trash: decode before any store mutation so a corrupt/tampered
         // manifest can be rejected without leaving a half-merged state.
         let packageItems = try decodeItems(from: staging, name: "items.json", source: .items)
         let packageTrash = try decodeItems(from: staging, name: "trash.json", source: .trash)
         let packageTags = try decodeTags(from: staging, name: "tags.json", source: .tags)
 
-        // M-9 (2026-07-25 audit): validate manifest counts BEFORE merging data
-        // into the store or importing images. Previously the validation ran
-        // after the merge, so a manifest/item-count mismatch left the local
-        // store partially modified with no rollback path.
-        // ID-BACKUP-0001 (2026-07-31): itemCount is items.json ONLY (that is
-        // what the exporter writes); trash.json is validated separately
-        // against the optional trashCount field.
         try validateManifestCounts(
             manifest: manifest,
             staging: staging,
@@ -888,9 +950,22 @@ final class BackupPackage {
         // ClipboardStore); `onMain` is now `@MainActor`-isolated by
         // signature, so no inner `MainActor.assumeIsolated` bridge needed.
         result.tagsImported = onMain { store.importBackupTags(localizedTags) }
+    }
 
-        // Images: decrypt with package key, re-encrypt with local key.
-        // Best-effort — image import failure does not roll back merged items/tags.
+    /// Best-effort image import — items/tags already merged by the time
+    /// we get here, so a failure must NOT roll them back. NEW-3
+    /// (2026-08-03 audit): surface the failure on the result so the UI
+    /// alert can distinguish "package had no images" (false) from
+    /// "image pass threw after items/tags were merged" (true). The
+    /// user's clipboard entries are intact, but their thumbnails will
+    /// be missing — the alert must not claim success silently.
+    private static func importImagesBestEffort(
+        staging: URL,
+        imagesDirectory: URL,
+        packageCrypto: CryptoService,
+        localCrypto: CryptoServiceProtocol,
+        result: inout BackupImportResult
+    ) {
         do {
             result.imagesImported = try importImages(
                 staging: staging,
@@ -899,18 +974,9 @@ final class BackupPackage {
                 localCrypto: localCrypto
             )
         } catch {
-            // NEW-3 (2026-08-03 audit): surface the failure on the result
-            // so the UI alert can distinguish "package had no images"
-            // (false) from "image pass threw after items/tags were merged"
-            // (true). Items/tags already imported at this point — the
-            // user's clipboard entries are intact, but their thumbnails
-            // will be missing. The alert must not claim success silently.
             result.imageImportFailed = true
             logger.error("Image import failed (items/tags already merged): \(error.localizedDescription)")
         }
-
-        logger.info("Imported backup: \(result.itemsImported) items, \(result.tagsImported) tags")
-        return result
     }
 
     /// BKP-4 (2026-07-24 review): manifest declared counts must match what
