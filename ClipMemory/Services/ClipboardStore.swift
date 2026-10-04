@@ -1104,71 +1104,108 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
     /// Detects legacy items that need v1→v2 migration or HMAC-hash backfill,
     /// then performs both on a utility queue. Extracted from loadItems for
-    /// cyclomatic complexity reduction.
+    /// cyclomatic complexity reduction. The work is split across three
+    /// helpers (collect / process / apply) so each piece stays well under
+    /// SwiftLint's cyclomatic_complexity warning threshold of 10.
     private func scheduleLegacyMigrationAndBackfill() {
-        var migrationCandidates: [(id: UUID, content: String)] = []
+        let (migration, backfill) = collectLegacyMigrationCandidates()
+        guard !migration.isEmpty || !backfill.isEmpty else { return }
+
+        DispatchQueue.global(qos: .utility).async {
+            let (migrated, hashes) = Self.migrateAndBackfillHashes(migration: migration, backfill: backfill)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.applyMigratedContents(migrated: migrated, hashes: hashes)
+            }
+        }
+    }
+
+    /// Single pass over `items` collecting legacy migration and HMAC-hash
+    /// backfill candidates. Returns two value-type arrays — image items
+    /// are excluded because their content is the on-disk filename, not
+    /// encrypted plaintext to migrate.
+    private func collectLegacyMigrationCandidates()
         // swiftlint:disable:next large_tuple
-        var backfillCandidates: [(id: UUID, content: String, isEncrypted: Bool)] = []
+        -> (migration: [(id: UUID, content: String)], backfill: [(id: UUID, content: String, isEncrypted: Bool)]) {
+        var migration: [(id: UUID, content: String)] = []
+        // swiftlint:disable:next large_tuple
+        var backfill: [(id: UUID, content: String, isEncrypted: Bool)] = []
         for item in items where item.type != .image {
             if item.isEncrypted && ServiceContainer.crypto.isOldFormat(item.content) {
-                migrationCandidates.append((item.id, item.content))
+                migration.append((item.id, item.content))
             }
             if item.contentHash == nil {
-                backfillCandidates.append((item.id, item.content, item.isEncrypted))
+                backfill.append((item.id, item.content, item.isEncrypted))
             }
         }
-        guard !migrationCandidates.isEmpty || !backfillCandidates.isEmpty else { return }
+        return (migration, backfill)
+    }
 
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            var migratedContents: [UUID: String] = [:]
-            for candidate in migrationCandidates {
-                if let newContent = ServiceContainer.crypto.migrateToV2(candidate.content) {
-                    migratedContents[candidate.id] = newContent
-                }
-            }
-            // Backfill contentHash for legacy items that predate HMAC-based dedup.
-            // Without this, every addItem does O(n) decrypt-and-compare against them.
-            var hashes: [UUID: String] = [:]
-            for candidate in backfillCandidates {
-                // ID-STORE-0001 (2026-07-31 audit): on decrypt failure
-                // (key not ready / corrupt blob) skip the backfill instead
-                // of falling back to the ciphertext as "plaintext" — the
-                // old `?? candidate.content` fallback persisted an HMAC of
-                // the WRONG content as the dedup fingerprint, permanently
-                // poisoning dedup for the real content. Leave contentHash
-                // nil so a later launch (key available) retries.
-                let plaintext: String
-                if candidate.isEncrypted {
-                    guard let decrypted = ServiceContainer.crypto.decrypt(candidate.content) else { continue }
-                    plaintext = decrypted
-                } else {
-                    plaintext = candidate.content
-                }
-                if let hash = ServiceContainer.crypto.hmacHex(for: plaintext) {
-                    hashes[candidate.id] = hash
-                }
-            }
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                var changed = false
-                // ID-CRASH-0023 (2026-09-28 code-review P2-12): O(1) via
-                // `resolvedIndex(for:)` (PR54-H chokepoint) instead of
-                // O(n) `firstIndex(where:)`. Per-item hot path during
-                // legacy→v2 migration, runs once at startup.
-                for (id, newContent) in migratedContents {
-                    guard let index = self.resolvedIndex(for: id) else { continue }
-                    self.items[index] = self.items[index].with(content: newContent, isEncrypted: true)
-                    changed = true
-                }
-                for (id, hash) in hashes {
-                    guard let index = self.resolvedIndex(for: id),
-                          self.items[index].contentHash == nil else { continue }
-                    self.items[index].contentHash = hash
-                    changed = true
-                }
-                if changed { self.scheduleSave(); self.rebuildDedupHashSet() }
+    /// Off-main work for the legacy migration utility queue. Pure value-in /
+    /// value-out — does not access `@MainActor` state. `nonisolated` so the
+    /// enclosing `DispatchQueue.global` closure can call it directly without
+    /// an actor hop, and `static` because `CryptoService` is the only
+    /// collaborator touched.
+    ///
+    /// - Returns: parallel dictionaries — successfully migrated v1→v2
+    ///   contents keyed by id, and computed HMAC-SHA256 hex hashes keyed
+    ///   by id. Items the service cannot decrypt are silently skipped
+    ///   (ID-STORE-0001 — never persist an HMAC of ciphertext).
+    private static nonisolated func migrateAndBackfillHashes(
+        migration: [(id: UUID, content: String)],
+        // swiftlint:disable:next large_tuple
+        backfill: [(id: UUID, content: String, isEncrypted: Bool)]
+    ) -> (migrated: [UUID: String], hashes: [UUID: String]) {
+        var migratedContents: [UUID: String] = [:]
+        for candidate in migration {
+            if let newContent = ServiceContainer.crypto.migrateToV2(candidate.content) {
+                migratedContents[candidate.id] = newContent
             }
         }
+        // Backfill contentHash for legacy items that predate HMAC-based dedup.
+        // Without this, every addItem does O(n) decrypt-and-compare against them.
+        var hashes: [UUID: String] = [:]
+        for candidate in backfill {
+            // ID-STORE-0001 (2026-07-31 audit): on decrypt failure
+            // (key not ready / corrupt blob) skip the backfill instead
+            // of falling back to the ciphertext as "plaintext" — the
+            // old `?? candidate.content` fallback persisted an HMAC of
+            // the WRONG content as the dedup fingerprint, permanently
+            // poisoning dedup for the real content. Leave contentHash
+            // nil so a later launch (key available) retries.
+            let plaintext: String
+            if candidate.isEncrypted {
+                guard let decrypted = ServiceContainer.crypto.decrypt(candidate.content) else { continue }
+                plaintext = decrypted
+            } else {
+                plaintext = candidate.content
+            }
+            if let hash = ServiceContainer.crypto.hmacHex(for: plaintext) {
+                hashes[candidate.id] = hash
+            }
+        }
+        return (migratedContents, hashes)
+    }
+
+    /// Main-actor apply step: writes migrated contents / hashes back into
+    /// the `items` array, then schedules a single save if anything changed.
+    /// ID-CRASH-0023 (2026-09-28 code-review P2-12): O(1) `resolvedIndex(for:)`
+    /// instead of O(n) `firstIndex(where:)` — per-item hot path during
+    /// legacy→v2 migration, runs once at startup.
+    private func applyMigratedContents(migrated: [UUID: String], hashes: [UUID: String]) {
+        var changed = false
+        for (id, newContent) in migrated {
+            guard let index = resolvedIndex(for: id) else { continue }
+            items[index] = items[index].with(content: newContent, isEncrypted: true)
+            changed = true
+        }
+        for (id, hash) in hashes {
+            guard let index = resolvedIndex(for: id),
+                  items[index].contentHash == nil else { continue }
+            items[index].contentHash = hash
+            changed = true
+        }
+        if changed { scheduleSave(); rebuildDedupHashSet() }
     }
 
     // MARK: - P1-AUDIT-2026-09-22 (P2-14) — background startup decode
