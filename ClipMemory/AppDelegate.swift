@@ -769,24 +769,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// main-window-embedded settings tab. Both the menu `⌘,` entry and the
     /// sidebar "Settings" tab call this method.
     @objc func showSettingsWindow() {
-        // Close any existing settings window before opening a new one so
-        // repeated invocations don't stack windows and leak the old reference.
-        // B-6 (2026-07-27): unregister the old window first so the previous
-        // reference is cleared from WindowManager's secondaryWindows table —
-        // otherwise the closed-but-not-deallocated NSWindow would still be
-        // counted as "visible" and the main-window-close policy would never
-        // sink to .accessory.
+        closeExistingSettingsWindow()
+
+        let rootView = buildSettingsRootView()
+        let win = makeSettingsWindow(rootView: rootView)
+        positionSettingsWindow(win, relativeTo: windowManager?.mainWindow)
+        win.makeKeyAndOrderFront(nil)
+        settingsWindow = win
+        // B-6 (2026-07-27): register so the main-window-close policy switch
+        // keeps the app activated while the settings window is on screen.
+        windowManager?.registerSecondaryWindow(win)
+        installSettingsCloseObserver(for: win)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Close any existing settings window before opening a new one so
+    /// repeated invocations don't stack windows and leak the old reference.
+    /// B-6 (2026-07-27): unregister the old window first so the previous
+    /// reference is cleared from WindowManager's secondaryWindows table —
+    /// otherwise the closed-but-not-deallocated NSWindow would still be
+    /// counted as "visible" and the main-window-close policy would never
+    /// sink to .accessory.
+    private func closeExistingSettingsWindow() {
         if let old = settingsWindow {
             windowManager?.unregisterSecondaryWindow(old)
             old.close()
         }
         settingsWindow = nil
+    }
 
-        // ID-CRASH-0032 (2026-09-28 code-review P2-25): route through
-        // `windowManager?.settingsRootViewFactory` so this construction
-        // site stops bypassing the factory indirection (WINDOW-P1-4
-        // exemption's premise失效 — see WindowManager.swift factories).
-        let rootView = windowManager?.settingsRootViewFactory(
+    /// ID-CRASH-0032 (2026-09-28 code-review P2-25): route through
+    /// `windowManager?.settingsRootViewFactory` so this construction
+    /// site stops bypassing the factory indirection (WINDOW-P1-4
+    /// exemption's premise失效 — see WindowManager.swift factories).
+    private func buildSettingsRootView() -> SettingsRootView {
+        windowManager?.settingsRootViewFactory(
             hotKeyManager,
             ClipboardStore.shared,
             BackupService.shared
@@ -795,59 +812,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             store: ClipboardStore.shared,
             backupService: BackupService.shared
         )
+    }
+
+    /// Builds the `NSWindow` shell with frame autosave and SwiftUI
+    /// hosting view. ID-LIFE-0027 (MEDIUM-3 audit fix, 2026-08-15):
+    /// persist the user's resized frame across launches via AppKit's
+    /// frame-autosave (matches WINDOW-0001's MainWindow convention).
+    private func makeSettingsWindow(rootView: SettingsRootView) -> NSWindow {
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 540),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered, defer: false
         )
         win.title = L10n.settingsWindowTitle
-        // ID-LIFE-0027 (MEDIUM-3 audit fix, 2026-08-15): persist the user's
-        // resized frame across launches via AppKit's frame-autosave. The
-        // MainWindow uses `setFrameAutosaveName("com.clipmemory.app.MainWindow")`
-        // (WINDOW-0001); Settings previously had no equivalent, so any
-        // resize was discarded on next open (window snapped back to the
-        // 560×540 default via `win.center()` below).
         win.setFrameAutosaveName("com.clipmemory.app.SettingsWindow")
         win.isReleasedWhenClosed = false
         win.contentView = NSHostingView(rootView: rootView)
-        // Center relative to the main ItemListView window when it's on
-        // screen (the common path: user has the main window open and
-        // clicks the sidebar "Settings" entry, or presses ⌘, while
-        // focused on it). Fall back to `win.center()` (screen-centered)
-        // when the main window isn't visible — typical when the user
-        // triggers settings from the menu bar QuickBar popover, where
-        // there is no anchoring window to relate to.
-        if let main = windowManager?.mainWindow, main.isVisible {
-            let mainFrame = main.frame
-            let settingsSize = win.frame.size
-            let origin = NSPoint(
-                x: mainFrame.midX - settingsSize.width / 2,
-                y: mainFrame.midY - settingsSize.height / 2
-            )
-            win.setFrameOrigin(origin)
-            // Clamp to the main window's screen so off-screen or
-            // straddling edge cases don't strand the settings window.
-            if let screen = main.screen ?? win.screen ?? NSScreen.main {
-                let visible = screen.visibleFrame
-                var clamped = win.frame
-                clamped.origin.x = min(max(clamped.origin.x, visible.minX),
-                                       visible.maxX - clamped.width)
-                clamped.origin.y = min(max(clamped.origin.y, visible.minY),
-                                       visible.maxY - clamped.height)
-                if clamped != win.frame { win.setFrame(clamped, display: false) }
-            }
-        } else {
+        return win
+    }
+
+    /// Center `win` relative to the main ItemListView window when it's on
+    /// screen (the common path: user has the main window open and clicks
+    /// the sidebar "Settings" entry, or presses ⌘, while focused on it).
+    /// Fall back to `win.center()` (screen-centered) when the main window
+    /// isn't visible — typical when the user triggers settings from the
+    /// menu bar QuickBar popover, where there is no anchoring window to
+    /// relate to. Clamps to the screen's visibleFrame so off-screen or
+    /// straddling edge cases don't strand the settings window.
+    private func positionSettingsWindow(_ win: NSWindow, relativeTo mainWindow: NSWindow?) {
+        guard let main = mainWindow, main.isVisible else {
             win.center()
+            return
         }
-        win.makeKeyAndOrderFront(nil)
-        settingsWindow = win
-        // B-6 (2026-07-27): register so the main-window-close policy switch
-        // keeps the app activated while the settings window is on screen.
-        windowManager?.registerSecondaryWindow(win)
-        // ID-LIFE-0004 (2026-07-30 audit): same nil-on-close as welcome window.
-        // ID-LIFE-0021 (2026-07-31 audit): keep the observer token and
-        // self-remove inside the handler — same discarded-token leak as the
-        // welcome window (ID-LIFE-0020).
+        let mainFrame = main.frame
+        let settingsSize = win.frame.size
+        let origin = NSPoint(
+            x: mainFrame.midX - settingsSize.width / 2,
+            y: mainFrame.midY - settingsSize.height / 2
+        )
+        win.setFrameOrigin(origin)
+        if let screen = main.screen ?? win.screen ?? NSScreen.main {
+            let visible = screen.visibleFrame
+            var clamped = win.frame
+            clamped.origin.x = min(max(clamped.origin.x, visible.minX),
+                                   visible.maxX - clamped.width)
+            clamped.origin.y = min(max(clamped.origin.y, visible.minY),
+                                   visible.maxY - clamped.height)
+            if clamped != win.frame { win.setFrame(clamped, display: false) }
+        }
+    }
+
+    /// ID-LIFE-0004 (2026-07-30 audit): same nil-on-close as welcome
+    /// window. ID-LIFE-0021 (2026-07-31 audit): keep the observer token
+    /// and self-remove inside the handler — same discarded-token leak as
+    /// the welcome window (ID-LIFE-0020).
+    private func installSettingsCloseObserver(for win: NSWindow) {
         if let stale = settingsCloseObserver {
             NotificationCenter.default.removeObserver(stale)
             settingsCloseObserver = nil
@@ -863,7 +882,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.settingsCloseObserver = nil
             }
         }
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Menu `⌘,` handler. Delegates to the independent settings window
