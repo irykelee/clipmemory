@@ -1527,7 +1527,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // only the crypto moves to a utility queue, and results
         // merge back on main by id. Legacy content stays readable
         // in the gap via the HMAC-verified legacy path.
-        startMigrationIfNeeded()
+        scheduleLegacyMigrationAndBackfill()
     }
 
     /// Structured result passed from background `performLoadWork` to
@@ -1549,83 +1549,6 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         }
         static func failure(error: Error) -> LoadResult {
             LoadResult(items: [], expired: [], repairedImages: false, repairedTexts: false, failureError: error)
-        }
-    }
-
-    /// Extracted migration trigger (C6) so `applyLoadResult` can fire
-    /// it in the same MainActor hop as the rest of the post-load work.
-    /// The original `loadItems()` inlined this; extracted here to keep
-    /// the apply path readable. The migration itself still runs on
-    /// `DispatchQueue.global.utility` — only the candidate detection
-    /// lives on main.
-    private func startMigrationIfNeeded() {
-        var migrationCandidates: [(id: UUID, content: String)] = []
-        // swiftlint:disable:next large_tuple
-        var backfillCandidates: [(id: UUID, content: String, isEncrypted: Bool)] = []
-        for item in items where item.type != .image {
-            if item.isEncrypted && ServiceContainer.crypto.isOldFormat(item.content) {
-                migrationCandidates.append((item.id, item.content))
-            }
-            if item.contentHash == nil {
-                backfillCandidates.append((item.id, item.content, item.isEncrypted))
-            }
-        }
-        guard !migrationCandidates.isEmpty || !backfillCandidates.isEmpty else { return }
-
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            var migratedContents: [UUID: String] = [:]
-            for candidate in migrationCandidates {
-                if let newContent = ServiceContainer.crypto.migrateToV2(candidate.content) {
-                    migratedContents[candidate.id] = newContent
-                }
-            }
-            // Backfill contentHash for legacy items that predate HMAC-based dedup.
-            // Without this, every addItem does O(n) decrypt-and-compare against them.
-            var hashes: [UUID: String] = [:]
-            for candidate in backfillCandidates {
-                // ID-STORE-0001 (2026-07-31 audit): on decrypt failure
-                // (key not ready / corrupt blob) skip the backfill instead
-                // of falling back to the ciphertext as "plaintext" — the
-                // old `?? candidate.content` fallback persisted an HMAC of
-                // the WRONG content as the dedup fingerprint, permanently
-                // poisoning dedup for the real content. Leave contentHash
-                // nil so a later launch (key available) retries.
-                let plaintext: String
-                if candidate.isEncrypted {
-                    guard let decrypted = ServiceContainer.crypto.decrypt(candidate.content) else { continue }
-                    plaintext = decrypted
-                } else {
-                    plaintext = candidate.content
-                }
-                if let hash = ServiceContainer.crypto.hmacHex(for: plaintext) {
-                    hashes[candidate.id] = hash
-                }
-            }
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                var changed = false
-                // ID-CRASH-0043 (2026-09-28 code-review P3): the audit flagged this
-                // comment block as "同一句重复两行" — comparing with the
-                // block at :1124 above, the two are word-identical except
-                // for the "Second migration path" note at :1518. The
-                // literal "同一句重复两行" was an over-count (the two
-                // paragraphs differ in their last line each). Renaming
-                // the second comment to make the divergence explicit so
-                // future readers don't grep for a missing "second
-                // copy" of the same text:
-                for (id, newContent) in migratedContents {
-                    guard let index = self.resolvedIndex(for: id) else { continue }
-                    self.items[index] = self.items[index].with(content: newContent, isEncrypted: true)
-                    changed = true
-                }
-                for (id, hash) in hashes {
-                    guard let index = self.resolvedIndex(for: id),
-                          self.items[index].contentHash == nil else { continue }
-                    self.items[index].contentHash = hash
-                    changed = true
-                }
-                if changed { self.scheduleSave(); self.rebuildDedupHashSet() }
-            }
         }
     }
 
