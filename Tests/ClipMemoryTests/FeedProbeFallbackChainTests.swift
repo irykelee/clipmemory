@@ -184,6 +184,7 @@ final class FeedProbeFallbackChainTests: XCTestCase {
 /// SizeCapURLProtocol, this one can also synthesize URLErrors per-URL so the
 /// test can exercise the timeout / cannot-connect branch.
 final class FallbackChainURLProtocol: URLProtocol {
+    // swiftlint:disable:next large_tuple
     static var stubs: [URL: (status: Int, body: Data, headers: [String: String]?)] = [:]
     static var errors: [URL: URLError] = [:]
     static var hangs: [URL: Bool] = [:]  // unused for now; reserved for future "feed never responds" tests

@@ -21,7 +21,7 @@ let itemsSaveEncoder = JSONEncoder()
 // (2) ID-CRASH-0025 (2026-09-28 code-review P2-20): the previous note
 // "As of the 2026-07-24 low-audit batch the file is ~1480 lines" was
 // stale (current count = ~2348 — see `wc -l`). The 1250-line ceiling
-// is enforced via `// swiftlint:disable file_length` so the disable is
+// is enforced via the file_length disable at the top of this file so the disable is
 // not a comment-bearing footgun (mirror of ID-CRASH-0016 BackupPackage
 // 1301 lines for BACKUP-0001). Move logic into separate files in a
 // future refactor pass (god-object breakup per P1-AUDIT-2026-09-22
@@ -345,38 +345,38 @@ final class ClipboardStore: ObservableObject {
     /// P1-AUDIT-2026-09-22 (P2-9): aliased through `UserDefaultsKey`.
     static let tagStorageKey = UserDefaultsKey.clipboardTags.rawValue
 
-    /// E.1: Pluggable storage backend (default: FileStorageBackend via UserDefaults)
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
     // so extension can call `backend.saveBlob(...)`. Logic unchanged.
+    /// E.1: Pluggable storage backend (default: FileStorageBackend via UserDefaults)
     let backend: StorageBackend
 
-    /// Separate storage backend for the tag dictionary. Defaults to an in-memory
-    /// backend in tests; production wires a FileStorageBackend keyed by `tagStorageKey`.
-    /// Keeping tags independent of items means clearing items doesn't lose tag
-    /// definitions, and the item backend stays unaware of the tag schema.
     // P1-AUDIT-2026-09-22 (P2-8, Task 2 split): visibility loosened
     // `private` → `internal` so the tag methods now in
     // `ClipboardStore+Tag.swift` (`loadTags` / `saveTags`) can read this
     // backend. Logic unchanged.
+    /// Separate storage backend for the tag dictionary. Defaults to an in-memory
+    /// backend in tests; production wires a FileStorageBackend keyed by `tagStorageKey`.
+    /// Keeping tags independent of items means clearing items doesn't lose tag
+    /// definitions, and the item backend stays unaware of the tag schema.
     let tagBackend: StorageBackend
 
     /// M13 (2026-08-03): injectable UserDefaults suite for TrashStore.
-/// Stored here so it can be passed to TrashStore during init. Production
-/// callers get `.standard`; tests inject a suite through the designated
-/// init (see `Tests/.../TestHostIsolationTests.swift` for the canary).
-///
-/// NEW-9 (2026-08-03 audit): the previous comment enumerated specific
-/// write sites (`:315-317`, `:336`) as "the only writes" to `.standard`.
-/// That description rotted the moment any didSet added a new
-/// `UserDefaults.standard.set(...)` line, which is exactly what
-/// happened — `maxItems` didSet, `sensitiveClearHours` setter,
-/// `captureRichText` didSet, and `excludedBundleIdsString` didSet all
-/// also write to `.standard`. Tests that drive these setters MUST
-/// restore the prior state in an absence-aware way (see
-/// `TestHostIsolationTests.swift:95-101` for the canonical pattern),
-/// or the canary's `key ADDED` check will fire on a fresh CI sandbox.
-/// This block now describes the invariant, not the implementation
-/// line numbers.
+    /// Stored here so it can be passed to TrashStore during init. Production
+    /// callers get `.standard`; tests inject a suite through the designated
+    /// init (see `Tests/.../TestHostIsolationTests.swift` for the canary).
+    ///
+    /// NEW-9 (2026-08-03 audit): the previous comment enumerated specific
+    /// write sites (`:315-317`, `:336`) as "the only writes" to `.standard`.
+    /// That description rotted the moment any didSet added a new
+    /// `UserDefaults.standard.set(...)` line, which is exactly what
+    /// happened — `maxItems` didSet, `sensitiveClearHours` setter,
+    /// `captureRichText` didSet, and `excludedBundleIdsString` didSet all
+    /// also write to `.standard`. Tests that drive these setters MUST
+    /// restore the prior state in an absence-aware way (see
+    /// `TestHostIsolationTests.swift:95-101` for the canonical pattern),
+    /// or the canary's `key ADDED` check will fire on a fresh CI sandbox.
+    /// This block now describes the invariant, not the implementation
+    /// line numbers.
     let defaults: UserDefaults
 
     // trashBackend moved to TrashStore (HIGH-1, 2026-07-26)
@@ -753,17 +753,17 @@ final class ClipboardStore: ObservableObject {
     /// to our own publisher so views observing `ClipboardStore` re-render
     /// when the trash mutates (deletePermanently, emptyTrash, restore).
     private var cancellables: Set<AnyCancellable> = []
-    /// M-2 (2026-07-25 audit): reuse a single serial queue for the save timer
-    /// instead of creating a new `DispatchQueue` on every `scheduleSave()` call.
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
     // so extension can reference the queue when (re)creating saveTimer.
+    /// M-2 (2026-07-25 audit): reuse a single serial queue for the save timer
+    /// instead of creating a new `DispatchQueue` on every `scheduleSave()` call.
     let saveTimerQueue = DispatchQueue(label: "com.clipmemory.save", qos: .utility)
-    /// HIGH-4 (2026-07-26 review): reuse a single serial queue for the tag
-    /// save timer, matching the M-2 reuse pattern applied to saveTimerQueue.
     // P1-AUDIT-2026-09-22 (P2-8, Task 2 split): visibility loosened
     // `private` → `internal` so the tag methods now in
     // `ClipboardStore+Tag.swift` (`scheduleTagSave`) can read this queue.
     // Logic unchanged.
+    /// HIGH-4 (2026-07-26 review): reuse a single serial queue for the tag
+    /// save timer, matching the M-2 reuse pattern applied to saveTimerQueue.
     let tagSaveTimerQueue = DispatchQueue(label: "com.clipmemory.tagsave", qos: .utility)
     // trashSaveTimerQueue moved to TrashStore (HIGH-1, 2026-07-26)
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
@@ -778,24 +778,18 @@ final class ClipboardStore: ObservableObject {
 // preserved so the file remains self-contained for grep.
 let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
+    // ARCH-0002 PR #3 (2026-08-12): visibility loosened from `private` to
+    // `internal` for cross-file extension access (ClipboardStore+Encryption).
+    // State stays here because Swift extensions can't have stored properties.
+    // Logic unchanged.
     /// H-2 (2026-07-25 audit): captures that arrive before the detached
     /// `CryptoService.prepareKey()` task finishes on first launch are held here
     /// instead of being dropped. Once `.cryptoKeyPrepared` fires with success,
     /// they are re-processed through `addItem(_:)`. Protected by its own lock
     /// because the notification may arrive on any queue.
-    // ARCH-0002 PR #3 (2026-08-12): visibility loosened from `private` to
-    // `internal` for cross-file extension access (ClipboardStore+Encryption).
-    // State stays here because Swift extensions can't have stored properties.
-    // Logic unchanged.
     var pendingKeyItems: [ClipboardItem] = []
     let pendingKeyItemsLock = NSLock()
 
-    /// C5: IDs whose decryption already failed, pending batched write-back into
-    /// `items`. The read path (getDecryptedContent) never mutates @Published
-    /// synchronously — marking hops to the main queue asynchronously so it can
-    /// never land inside a SwiftUI view-body update (the "open full window
-    /// freezes" bug class). The set also short-circuits repeat decrypt attempts
-    /// in the gap before the merge lands.
     // ID-SYNC-0003 (2026-08-01 audit): nonisolated(unsafe) — every access is
     // bracketed by the paired NSLock (contract unchanged since C5/P0-2), so
     // the nonisolated decrypt kernels may read/append from any thread.
@@ -803,6 +797,12 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     // `internal` for cross-file extension access (ClipboardStore+Encryption).
     // State stays here because Swift extensions can't have stored properties.
     // Logic unchanged.
+    /// C5: IDs whose decryption already failed, pending batched write-back into
+    /// `items`. The read path (getDecryptedContent) never mutates @Published
+    /// synchronously — marking hops to the main queue asynchronously so it can
+    /// never land inside a SwiftUI view-body update (the "open full window
+    /// freezes" bug class). The set also short-circuits repeat decrypt attempts
+    /// in the gap before the merge lands.
     nonisolated(unsafe) var pendingFailedIDs = Set<UUID>()
     nonisolated(unsafe) let pendingFailedIDsLock = NSLock()
 
@@ -869,6 +869,9 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     // ClipboardStore+Encryption.swift extension. Cross-file access to
     // pendingKeyItems/pendingKeyItemsLock/pendingFailedIDs/pendingFailedIDsLock
     // is the reason those state vars were loosened from `private` to internal.
+    // ARCH-0002 PR #3 (2026-08-12): visibility loosened from `private` to
+    // `internal` for cross-file extension access (ClipboardStore+Encryption).
+    // Logic unchanged.
     /// M2 (2026-08-01 roadmap): items stored while the encryption key was
     /// unavailable carry `contentHash = nil` — the addItem dedup pre-filter
     /// skips them ("accept a duplicate rather than risk a false collision"),
@@ -881,9 +884,6 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// ID-STORE-0001 semantics preserved: an item that still cannot be
     /// decrypted keeps `contentHash = nil` — never fingerprint the ciphertext
     /// fallback — and is retried on the next key-ready event / launch.
-    // ARCH-0002 PR #3 (2026-08-12): visibility loosened from `private` to
-    // `internal` for cross-file extension access (ClipboardStore+Encryption).
-    // Logic unchanged.
     func backfillHashesAndMergeDuplicatesAfterKeyReady() {
         struct Candidate {
             let id: UUID
@@ -995,11 +995,11 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         diagnostics = d
     }
 
-    /// P0-2 N4: reset diagnostics.dismissed so the banner reappears after a
-    /// key-preparation event (dismiss is session-scoped; new key = new state).
     // ARCH-0002 PR #3 (2026-08-12): visibility loosened from `private` to
     // `internal` for cross-file extension access (ClipboardStore+Encryption).
     // Logic unchanged.
+    /// P0-2 N4: reset diagnostics.dismissed so the banner reappears after a
+    /// key-preparation event (dismiss is session-scoped; new key = new state).
     func resetDiagnosticsDismissed() {
         if diagnostics.dismissed {
             var d = diagnostics
@@ -1109,6 +1109,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // to a utility queue, and results merge back on main by id. Legacy
         // content stays readable in the gap via the HMAC-verified legacy path.
         var migrationCandidates: [(id: UUID, content: String)] = []
+        // swiftlint:disable:next large_tuple
         var backfillCandidates: [(id: UUID, content: String, isEncrypted: Bool)] = []
         for item in items where item.type != .image {
             if item.isEncrypted && ServiceContainer.crypto.isOldFormat(item.content) {
@@ -1492,6 +1493,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// lives on main.
     private func startMigrationIfNeeded() {
         var migrationCandidates: [(id: UUID, content: String)] = []
+        // swiftlint:disable:next large_tuple
         var backfillCandidates: [(id: UUID, content: String, isEncrypted: Bool)] = []
         for item in items where item.type != .image {
             if item.isEncrypted && ServiceContainer.crypto.isOldFormat(item.content) {
@@ -1592,13 +1594,13 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         }
     }
 
+    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
+    // so extension's saveItems() can dispatch encoding to utility QoS.
     /// CLIP-2 (2026-07-24): serial queue for JSON-encoding the item array.
     /// `saveItems()` used to run the full-array JSONEncoder pass on the main
     /// thread on every clipboard ingestion (addItem → saveImmediately); with a
     /// large history that blocked the UI per capture. The encode now runs here
     /// at utility QoS; only the encoded Data crosses back for the write.
-    // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
-    // so extension's saveItems() can dispatch encoding to utility QoS.
     let itemEncodingQueue = DispatchQueue(label: "com.clipmemory.itemencode", qos: .utility)
 
     /// H-1: observable retry state — exposed for tests + diagnostics.
@@ -1634,26 +1636,26 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
 
     // MARK: - Tag name encryption helpers (state lives here, helpers in Encryption extension)
 
+    // ARCH-0002 PR #3 (2026-08-12): visibility loosened from `private` to
+    // `internal` for cross-file extension access (ClipboardStore+Encryption).
+    // Logic unchanged.
     /// Marker prefixed to encrypted tag names so `decryptTagNames` can tell
     /// them apart from plaintext names. Base64 itself never contains a colon,
     /// so "v2:" is unambiguous with encoded ciphertext.
-    // ARCH-0002 PR #3 (2026-08-12): visibility loosened from `private` to
-    // `internal` for cross-file extension access (ClipboardStore+Encryption).
-    // Logic unchanged.
     static let encryptedNamePrefix = "v2:"
 
-    /// Placeholder shown when a tag name cannot be decrypted.
     // ARCH-0002 PR #3 (2026-08-12): visibility loosened from `private` to
     // `internal` for cross-file extension access (ClipboardStore+Encryption).
     // Logic unchanged.
+    /// Placeholder shown when a tag name cannot be decrypted.
     static let lockedPlaceholder = "[locked]"
 
-    /// Backs up the original encrypted name when decryption fails so a later
-    /// `saveTags()` doesn't overwrite the on-disk ciphertext with the placeholder.
     // ARCH-0002 PR #3 (2026-08-12): visibility loosened from `private` to
     // `internal` for cross-file extension access (ClipboardStore+Encryption).
     // State stays here because Swift extensions can't have stored properties.
     // Logic unchanged.
+    /// Backs up the original encrypted name when decryption fails so a later
+    /// `saveTags()` doesn't overwrite the on-disk ciphertext with the placeholder.
     var encryptedTagNamesBackup: [UUID: String] = [:]
 
     // ARCH-0002 PR #3 (2026-08-12): encryptTagNames + decryptTagNames moved to
@@ -1958,6 +1960,8 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     // `internal` for cross-file extension access.
     nonisolated(unsafe) var pendingPrewarmWorkItem: DispatchWorkItem?
 
+    // ARCH-0002 PR #2 (2026-08-11): visibility loosened from `private` →
+    // `internal` for cross-file extension access.
     /// ID-PERF-0023 (2026-08-02 audit): view-driven prewarm entry with the
     /// same 5 s throttle as AppDelegate's activation prewarm
     /// (`lastPrewarmTime`, AppDelegate.swift:323). ID-VIEW-0012 made the two
@@ -1969,8 +1973,6 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// inside the same window. AppDelegate's observer prewarm, the
     /// new-capture single-item prewarm (:1347), and tests keep calling
     /// prewarmDecryptionCache directly (unthrottled).
-    // ARCH-0002 PR #2 (2026-08-11): visibility loosened from `private` →
-    // `internal` for cross-file extension access.
     var lastViewPrewarmTime: Date = .distantPast
 
     // ARCH-0002 PR #3 (2026-08-12): scheduleDecryptionFailedMark /
@@ -1988,6 +1990,10 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         return rtfPlaintextCache.object(forKey: item.id.uuidString as NSString) as? String
     }
 
+    // ID-SYNC-0003 (2026-08-01 audit): nonisolated decrypt kernel — touches
+    // only rtfPlaintextCache (NSCache), ServiceContainer.crypto (internally
+    // locked), RichTextParser/L10n (stateless / lock-guarded), and the
+    // NSLock-guarded failure/diagnostics helpers. Callable off-main.
     /// Returns cached RTF plaintext for an item, parsing and caching on first access.
     /// Avoids repeated NSAttributedString RTF parsing in search/filter paths.
     /// Implementation delegates to the pure `RichTextParser` so the parsing
@@ -1998,10 +2004,6 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// the RTF path avoid caching a stale fallback when .keyUnavailable later
     /// resolves — the old path cached "Rich Text" (the fallback label) and
     /// returned it forever even after the key became available.
-    // ID-SYNC-0003 (2026-08-01 audit): nonisolated decrypt kernel — touches
-    // only rtfPlaintextCache (NSCache), ServiceContainer.crypto (internally
-    // locked), RichTextParser/L10n (stateless / lock-guarded), and the
-    // NSLock-guarded failure/diagnostics helpers. Callable off-main.
     nonisolated func getRTFPlaintext(_ item: ClipboardItem) -> String {
         guard item.type == .richText else { return "" }
         let key = item.id.uuidString as NSString

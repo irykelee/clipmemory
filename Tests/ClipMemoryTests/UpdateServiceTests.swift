@@ -182,7 +182,6 @@ final class UpdateServiceTests: XCTestCase {
 
     // MARK: - ID-UPDATE-0001 (2026-07-31 Round 5): updater must start after probe
 
-
     /// ID-UPDATE-0001: `startAfterFeedProbe` captured `probeGeneration`
     /// BEFORE `triggerProbe()` — but `triggerProbe()` always increments it
     /// first thing, so the post-await guard `myGeneration == probeGeneration`
@@ -910,6 +909,7 @@ func dateFromPubDateString(_ raw: String) -> Date {
 /// Test stub: feeds canned responses based on URL → (status, body) map.
 /// Tests register an instance via `URLSessionConfiguration.protocolClasses`.
 final class MockURLProtocol: URLProtocol {
+    // swiftlint:disable:next large_tuple
     static var stubResponses: [URL: (status: Int, body: String, delay: TimeInterval?)] = [:]
     static var stubError: Error?
     /// Number of requests that reached `startLoading`. Tests that expect

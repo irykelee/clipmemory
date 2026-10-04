@@ -484,11 +484,11 @@ struct ContentView: View {
         return cachedTagCounts
     }
 
-    /// O(n) recompute helper. Called only when cachedTabCountsVersion resets
-    /// (initial render) or when invalidated by `.onChange(of: store.items.count)`.
     // ID-VIEW-0029 (2026-08-13): `static` (not `private static`) so the
     // sidebar-pinned-count test can drive this directly via @testable import.
     // Pure function, no state — safe to expose at module scope.
+    /// O(n) recompute helper. Called only when cachedTabCountsVersion resets
+    /// (initial render) or when invalidated by `.onChange(of: store.items.count)`.
     static func computeTabCounts(items: [ClipboardItem]) -> [SidebarTab: Int] {
         var counts: [SidebarTab: Int] = [.all: items.count]
         for item in items { switch item.type {
@@ -598,6 +598,7 @@ struct ContentView: View {
     }
 
     var body: some View {
+        // swiftlint:disable:next redundant_discardable_let
         let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
         return withKeyAndSheets(splitViewWithLifecycle)
             .onChange(of: store.items) { _ in
@@ -1074,11 +1075,11 @@ struct ContentView: View {
                         }
                     }
                 }
-                Button(action: { selectedTagIds.removeAll() }) {
+                Button(action: { selectedTagIds.removeAll() }, label: {
                     Text(L10n.tagFilterClearAll)
                         .font(.system(size: sz(11), weight: .medium))
                         .foregroundColor(.accentColor)
-                }
+                })
                 .buttonStyle(.plain)
                 .help(L10n.tagFilterClearAll)
                 .accessibilityLabel(L10n.tagFilterClearAll)
@@ -1105,9 +1106,9 @@ struct ContentView: View {
             Text(tag.name)
                 .font(.system(size: sz(11)))
                 .lineLimit(1)
-            Button(action: { selectedTagIds.remove(tag.id) }) {
+            Button(action: { selectedTagIds.remove(tag.id) }, label: {
                 CloseButton {}
-            }
+            })
             .buttonStyle(.plain)
             .help(L10n.tagFilterRemoveTag)
             .accessibilityLabel(Text(L10n.tagFilterRemoveTag) + Text(", ") + Text(tag.name))

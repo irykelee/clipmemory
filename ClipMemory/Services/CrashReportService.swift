@@ -226,7 +226,7 @@ final class CrashReportService {
         // big object, not in a labelled array, so we filter by
         // key presence.
         var exceptionType = "(no exception field)"
-        var signal: String? = nil
+        var signal: String?
         var binaryImages: [CrashReport.BinaryImage] = []
         var triggeredThreadFrames: [CrashReport.StackFrame] = []
 

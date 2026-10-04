@@ -213,8 +213,7 @@ import AppKit
         // real 0 back into production defaults (blank settings picker).
         let original = UserDefaults.standard.object(forKey: key) as? Double
         defer {
-            if let original { UserDefaults.standard.set(original, forKey: key) }
-            else { UserDefaults.standard.removeObject(forKey: key) }
+            if let original { UserDefaults.standard.set(original, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
         }
 
         UserDefaults.standard.set(Double.infinity, forKey: key)
@@ -248,8 +247,7 @@ import AppKit
         let key = "fontScale"
         let original = UserDefaults.standard.object(forKey: key) as? Double
         defer {
-            if let original { UserDefaults.standard.set(original, forKey: key) }
-            else { UserDefaults.standard.removeObject(forKey: key) }
+            if let original { UserDefaults.standard.set(original, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
         }
 
         // scale == 1.0 (small) — identity, no scaling.
@@ -281,8 +279,7 @@ import AppKit
         let key = "fontScale"
         let original = UserDefaults.standard.object(forKey: key) as? Double
         defer {
-            if let original { UserDefaults.standard.set(original, forKey: key) }
-            else { UserDefaults.standard.removeObject(forKey: key) }
+            if let original { UserDefaults.standard.set(original, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
         }
 
         // scale == 4.0 — strict `<` must clamp to base.
@@ -303,8 +300,7 @@ import AppKit
         let key = "fontScale"
         let original = UserDefaults.standard.object(forKey: key) as? Double
         defer {
-            if let original { UserDefaults.standard.set(original, forKey: key) }
-            else { UserDefaults.standard.removeObject(forKey: key) }
+            if let original { UserDefaults.standard.set(original, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
         }
 
         UserDefaults.standard.set(0.0, forKey: key)

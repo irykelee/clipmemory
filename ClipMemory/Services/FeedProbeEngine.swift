@@ -255,15 +255,16 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
     /// URLSession's documented contract — even though Swift's type
     /// system can't see that. `@unchecked` is the explicit opt-out;
     /// without this comment a future reviewer (or a `swift migrate`)
+    /// Why the fetch was refused; nil while the response is still legal.
+    private enum CappedFetchRefusal {
+        case declaredContentLength(Int64)
+        case streamExceeded
+    }
+
     /// would correctly ask "why isn't this `actor`-isolated?"
     private final class CappedFetchDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-        /// Why the fetch was refused; nil while the response is still legal.
-        enum Refusal {
-            case declaredContentLength(Int64)
-            case streamExceeded
-        }
         let maxBytes: Int
-        private(set) var refusal: Refusal?
+        private(set) var refusal: CappedFetchRefusal?
         private var receivedBytes = 0
         private var body = Data()
         private var response: URLResponse?

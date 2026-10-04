@@ -861,7 +861,7 @@ import Vision
 // ServiceContainer.crypto can be swapped in tests. encrypt / encryptData
 // always return nil to simulate the rare "key unavailable" failure mode
 // (e.g. Keychain locked during launchd start, per C-2). Other methods
-/// are not exercised by the H-4 path so they return harmless defaults.
+// are not exercised by the H-4 path so they return harmless defaults.
 // MARK: - H-4 test stub
 
 private struct FailingEncryptCrypto: CryptoServiceProtocol {

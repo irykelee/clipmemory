@@ -32,6 +32,7 @@ struct ConditionalClearSheet: View {
     }
 
     var body: some View {
+        // swiftlint:disable:next redundant_discardable_let
         let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
         VStack(spacing: 16) {
             Text(L10n.clearConditionalTitle)

@@ -306,7 +306,7 @@ class ClipboardMonitor {
     private var _ownWriteFingerprintReady = false
     /// Internal (not private) so the ID-MON-0001 regression test can inspect it.
     var ownWriteFingerprint: String? {
-        get { withLock { _ownWriteFingerprintReady ? _ownWriteFingerprint : nil } }
+        withLock { _ownWriteFingerprintReady ? _ownWriteFingerprint : nil }
     }
 
     /// ID-MON-0001: stable fingerprint of the pasteboard's current payload.
@@ -505,7 +505,7 @@ class ClipboardMonitor {
     /// whether truncation happened so the caller can log once.
     static func truncateToCaptureLimit(_ content: String) -> (text: String, wasTruncated: Bool) {
         guard content.utf8.count > maxTextCaptureBytes else { return (content, false) }
-        let clipped = String(decoding: content.utf8.prefix(maxTextCaptureBytes), as: UTF8.self)
+        let clipped = String(bytes: content.utf8.prefix(maxTextCaptureBytes), encoding: .utf8) ?? content
         return (clipped, true)
     }
 

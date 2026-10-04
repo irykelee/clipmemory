@@ -36,6 +36,7 @@ struct HistoryCaptureSettingsView: View {
     @State private var dropHintDismiss: DispatchWorkItem?
 
     var body: some View {
+        // swiftlint:disable:next redundant_discardable_let
         let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
         Form {
             // History

@@ -114,7 +114,7 @@ struct BackupManifest: Codable {
     /// packages written before this field existed (which also had the
     /// itemCount-excludes-trash bug) stay importable — nil means "not
     /// declared, skip the trash count check".
-    var trashCount: Int? = nil
+    var trashCount: Int?
     /// M-1 fix (2026-07-21): backup packages used HKDF-SHA256 to derive a
     /// key from a passphrase, but HKDF is unsuitable for passphrase-to-key
     /// derivation — it has no work factor. An attacker with the package can
@@ -320,7 +320,7 @@ final class BackupPackage {
         let nameData = namePipe.fileHandleForReading.readDataToEndOfFile()
         nameProcess.waitUntilExit()
         guard nameProcess.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
-        let nameListing = String(decoding: nameData, as: UTF8.self)
+        let nameListing = String(bytes: nameData, encoding: .utf8) ?? ""
         for rawMember in nameListing.split(separator: "\n", omittingEmptySubsequences: true) {
             let member = rawMember.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !member.isEmpty else { continue }
@@ -354,7 +354,7 @@ final class BackupPackage {
         // throws on failure (fail-closed); the size-check should match
         // that discipline.
         guard sizeProcess.terminationStatus == 0 else { throw BackupPackageError.archiveFailed }
-        let sizeListing = String(decoding: sizeData, as: UTF8.self)
+        let sizeListing = String(bytes: sizeData, encoding: .utf8) ?? ""
         var totalUncompressed: Int64 = 0
         for rawLine in sizeListing.split(separator: "\n", omittingEmptySubsequences: true) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)

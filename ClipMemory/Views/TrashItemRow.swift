@@ -41,7 +41,7 @@ struct TrashItemRow: View, Equatable {
     // the long-press preview. Each press mints a UUID; the async full-size
     // load's completion only acts on the result if the current
     // `previewPressToken` still matches. Symmetric to ClipboardItemRow.
-    @State private var previewPressToken: UUID? = nil
+    @State private var previewPressToken: UUID?
     // CLIP-3 (2026-07-24 review): same guard as ClipboardItemRow — fontScale
     // is only the invalidation trigger; all sizing goes through sz().
     @AppStorage("fontScale") private var fontScale: Double = 1.0
@@ -77,6 +77,7 @@ struct TrashItemRow: View, Equatable {
         // 2026-07-25: reading fontScale subscribes this view to @AppStorage
         // invalidation — an unread wrapper creates no dependency, so
         // font-size changes never re-rendered. See ClipboardItemRow.
+        // swiftlint:disable:next redundant_discardable_let
         let _ = fontScale
         HStack(alignment: .center, spacing: 8) {
             // NEW-batch-restore (2026-08-10): explicit selection column.
@@ -98,7 +99,7 @@ struct TrashItemRow: View, Equatable {
                         Group {
                             if let ns = loadedImage {
                                 Image(nsImage: ns)
-                                    .resizable().aspectRatio(contentMode: .fit)
+                                    .resizable().scaledToFit()
                                     .frame(maxHeight: 80)
                                     .overlay(PressableImage { pressed in imageLongPressing = pressed }
                                         .frame(maxWidth: .infinity, maxHeight: .infinity))

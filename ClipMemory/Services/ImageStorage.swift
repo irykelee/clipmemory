@@ -578,7 +578,6 @@ class ImageStorage {
         backgroundQueue.sync { }
     }
 
-
     // Serializes legacy-migration writes across threads. Multiple callers
     // invoking imageStatus(for:) concurrently for the same legacy PNG would
     // otherwise race against each other's re-encrypted file write (per gate 1b Medium #4 fix).

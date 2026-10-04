@@ -96,6 +96,7 @@ final class FeedProbeSizeCapTests: XCTestCase {
 /// headers (Content-Length) independently of the actual body — required to
 /// prove the UPD-2 precheck fires on the header alone.
 final class SizeCapURLProtocol: URLProtocol {
+    // swiftlint:disable:next large_tuple
     static var stubs: [URL: (status: Int, body: Data, headers: [String: String]?)] = [:]
 
     override static func canInit(with request: URLRequest) -> Bool {

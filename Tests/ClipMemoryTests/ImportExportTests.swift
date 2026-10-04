@@ -697,8 +697,8 @@ import CryptoKit
         }
     }
 
-    /// BKP-4(a): a manifest itemCount that disagrees with the items.json
-    /// payload must abort the import as corrupt.
+    // BKP-4(a): a manifest itemCount that disagrees with the items.json
+    // payload must abort the import as corrupt.
     // MARK: - ID-BACKUP-0001 (2026-07-31 Round 5): non-empty trash round-trip
 
     /// ID-BACKUP-0001: the exporter wrote `itemCount` = items.json count

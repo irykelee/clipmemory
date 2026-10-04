@@ -1,13 +1,6 @@
 import Foundation
 import Combine
 
-/// Protocol for receiving clipboard monitoring events and providing configuration.
-/// H-13 (2026-07-20 audit): extended the surface so `ClipboardMonitor` does not
-/// have to reach into the `ClipboardStore.shared` singleton directly. Each
-/// method below used to be a `ClipboardStore.shared.<thing>` access inside the
-/// monitor — now the monitor asks its delegate and the concrete `ClipboardStore`
-/// satisfies the protocol via an extension. The store stays the only writer,
-/// but the monitor stops knowing the concrete singleton.
 // ID-CRASH-0058 (code-review-2026-10-01 v2.9.7 TSan cleanup):
 // `@preconcurrency` is the canonical Swift 6 migration way to suppress
 // actor-isolation conformance warnings. The protocol declares no
@@ -28,6 +21,13 @@ import Combine
 // hotkey, Carbon event thread for clipboard polling — both dispatch
 // back to main via DispatchQueue.main.async). The conformance is
 // correct as-is; only the type-system warning was wrong.
+/// Protocol for receiving clipboard monitoring events and providing configuration.
+/// H-13 (2026-07-20 audit): extended the surface so `ClipboardMonitor` does not
+/// have to reach into the `ClipboardStore.shared` singleton directly. Each
+/// method below used to be a `ClipboardStore.shared.<thing>` access inside the
+/// monitor — now the monitor asks its delegate and the concrete `ClipboardStore`
+/// satisfies the protocol via an extension. The store stays the only writer,
+/// but the monitor stops knowing the concrete singleton.
 @preconcurrency
 protocol ClipboardMonitorDelegate: AnyObject {
     /// Configured sensitive-clear hours (0 = never auto-clear).

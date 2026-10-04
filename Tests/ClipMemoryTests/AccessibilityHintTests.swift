@@ -38,11 +38,11 @@ final class AccessibilityHintTests: XCTestCase {
         // `Scripts/lint-translations.sh` (264 keys × 7 langs) which
         // runs in pre-commit.
         let cases: [(String, () -> String)] = [
-            ("hint.pin",       { L10n.accessibilityHintPin }),
-            ("hint.unpin",     { L10n.accessibilityHintUnpin }),
-            ("hint.delete",    { L10n.accessibilityHintDelete }),
-            ("hint.clear",     { L10n.accessibilityHintClear }),
-            ("hint.restore",   { L10n.accessibilityHintRestore })
+            ("hint.pin", { L10n.accessibilityHintPin }),
+            ("hint.unpin", { L10n.accessibilityHintUnpin }),
+            ("hint.delete", { L10n.accessibilityHintDelete }),
+            ("hint.clear", { L10n.accessibilityHintClear }),
+            ("hint.restore", { L10n.accessibilityHintRestore })
         ]
         for (key, accessor) in cases {
             let value = accessor()

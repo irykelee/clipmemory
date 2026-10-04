@@ -233,12 +233,12 @@ struct ClipboardItemRow: View, Equatable {
     // this row is part of a multi-image selection, the parent passes a
     // "Share N Images..." label here so the count is visible before the
     // user clicks. `onShare` performs the actual sheet presentation.
-    var shareLabel: String? = nil
-    var onShare: (() -> Void)? = nil
+    var shareLabel: String?
+    var onShare: (() -> Void)?
     // ID-VIEW-0031 (2026-08-13, user-driven): drag closure that returns the
     // NSItemProviders for the current drag. Parent decides the drag scope
     // (single vs. selection) and which images are eligible. nil = no drag.
-    var onDragProviders: (() -> [NSItemProvider])? = nil
+    var onDragProviders: (() -> [NSItemProvider])?
     @State private var isHovered = false
     // E-13 (2026-07-23 audit): the row reads LanguageManager.shared
     // for `cachedAbsoluteDateFormatter(for:)` (line ~140) but didn't
@@ -266,7 +266,7 @@ struct ClipboardItemRow: View, Equatable {
     // load's completion only acts on the result if the current
     // `previewPressToken` still matches. Prevents a slow load from one
     // press showing a stale preview after a fast release+repress cycle.
-    @State private var previewPressToken: UUID? = nil
+    @State private var previewPressToken: UUID?
 
     static func == (lhs: ClipboardItemRow, rhs: ClipboardItemRow) -> Bool {
         lhs.item.id == rhs.item.id &&
@@ -597,6 +597,7 @@ struct ClipboardItemRow: View, Equatable {
         // @AppStorage invalidation. Declared-but-unread property wrappers
         // create no SwiftUI dependency, so font-size changes never re-
         // rendered the row even though every size goes through sz().
+        // swiftlint:disable:next redundant_discardable_let
         let _ = fontScale
         HStack(alignment: .center, spacing: 8) {
             Button {
@@ -621,7 +622,7 @@ struct ClipboardItemRow: View, Equatable {
                             Group {
                             if let ns = loadedImage {
                                 Image(nsImage: ns)
-                                    .resizable().aspectRatio(contentMode: .fit)
+                                    .resizable().scaledToFit()
                                     .frame(maxHeight: 80)
                                     .overlay(PressableImage { pressed in imageLongPressing = pressed }.frame(maxWidth: .infinity, maxHeight: .infinity))
                                     .transition(.opacity)

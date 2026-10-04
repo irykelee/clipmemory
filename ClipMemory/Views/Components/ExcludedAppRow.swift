@@ -25,6 +25,7 @@ struct ExcludedAppRow: View {
     static func rowHeight() -> CGFloat { sz(24) }
 
     var body: some View {
+        // swiftlint:disable:next redundant_discardable_let
         let _ = fontScale
         HStack(spacing: 8) {
             icon

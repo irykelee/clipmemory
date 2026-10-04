@@ -22,6 +22,7 @@ struct AppPickerRow: View {
         // 2026-07-25: reading fontScale subscribes this view to @AppStorage
         // invalidation — an unread wrapper creates no dependency, so
         // font-size changes never re-rendered. See ClipboardItemRow.
+        // swiftlint:disable:next redundant_discardable_let
         let _ = fontScale
         Button(action: onToggle) {
             HStack(spacing: 12) {

@@ -98,10 +98,10 @@ final class KeyCaptureNSView: NSView {
             // tag name would silently close the main window.
             let shouldCaptureEnterEsc = !isTextInput
             switch Int(event.keyCode) {
-            case kVK_UpArrow:    if shouldCaptureArrows    { self.onUp?();      return nil }; return event
-            case kVK_DownArrow:  if shouldCaptureArrows    { self.onDown?();    return nil }; return event
-            case kVK_Return:     if shouldCaptureEnterEsc  { self.onReturn?();  return nil }; return event
-            case kVK_Escape:     if shouldCaptureEnterEsc  { self.onEscape?();  return nil }; return event
+            case kVK_UpArrow:    if shouldCaptureArrows { self.onUp?();      return nil }; return event
+            case kVK_DownArrow:  if shouldCaptureArrows { self.onDown?();    return nil }; return event
+            case kVK_Return:     if shouldCaptureEnterEsc { self.onReturn?();  return nil }; return event
+            case kVK_Escape:     if shouldCaptureEnterEsc { self.onEscape?();  return nil }; return event
             default:             return event
             }
         }

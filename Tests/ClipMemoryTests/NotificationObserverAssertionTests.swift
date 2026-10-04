@@ -66,42 +66,42 @@ final class NotificationObserverAssertionTests: XCTestCase {
     func testEveryCustomNotificationHasAtLeastOneProductionObserver() {
         let declared = Self.cachedDeclared
         let observers = productionObserversByNotificationName()
-        let whitelisted = Set(knownZeroObserverWhitelist.map { $0.shortName })
+        let allowlisted = Set(knownZeroObserverAllowlist.map { $0.shortName })
 
         var failures: [String] = []
-        for entry in declared where !whitelisted.contains(entry.shortName) {
+        for entry in declared where !allowlisted.contains(entry.shortName) {
             if (observers[entry.shortName] ?? []).isEmpty {
                 failures.append("- \(entry.rawValue) (shortName `\(entry.shortName)`, declared at \(entry.declaredAt)): ZERO production observers.")
             }
         }
         if !failures.isEmpty {
-            XCTFail("\(failures.count) non-whitelisted custom Notification.Name(s) have zero production observers:\n"
+            XCTFail("\(failures.count) non-allowlisted custom Notification.Name(s) have zero production observers:\n"
                     + failures.joined(separator: "\n"))
         }
     }
 
-    func testWhitelistEntriesStillHaveZeroObservers() {
+    func testAllowlistEntriesStillHaveZeroObservers() {
         let observers = productionObserversByNotificationName()
         // Build a shortName → rawValue map from the declared scan
         let rawValueByShort: [String: String] = Dictionary(
             uniqueKeysWithValues: Self.cachedDeclared.map { ($0.shortName, $0.rawValue) }
         )
         var leaks: [String] = []
-        for entry in knownZeroObserverWhitelist {
+        for entry in knownZeroObserverAllowlist {
             let count = (observers[entry.shortName] ?? []).count
             if count > 0 {
                 let raw = rawValueByShort[entry.shortName] ?? entry.shortName
                 leaks.append("- \(raw) (shortName `\(entry.shortName)`): \(count) observer(s) found. "
-                              + "REMOVE FROM `knownZeroObserverWhitelist` now that the observer exists.")
+                              + "REMOVE FROM `knownZeroObserverAllowlist` now that the observer exists.")
             }
         }
         if !leaks.isEmpty {
-            XCTFail("Whitelist entries that now have observers — REMOVE FROM `knownZeroObserverWhitelist`:\n"
+            XCTFail("Allowlist entries that now have observers — REMOVE FROM `knownZeroObserverAllowlist`:\n"
                     + leaks.joined(separator: "\n"))
         }
     }
 
-    /// Whitelist of notifications currently without observers.
+    /// Allowlist of notifications currently without observers.
     /// `ledgerID` is the ledger entry these fall under (or "(none)"
     /// if there's no formal ID — they're tracked as "dead channels"
     /// in H-1 scope). `reason` is the short justification.
@@ -111,15 +111,15 @@ final class NotificationObserverAssertionTests: XCTestCase {
     /// cover these specific notifications. The notifications
     /// themselves are posted with no consumer — that gap is the
     /// H-1 "dead channel" batch.
-    private struct WhitelistEntry {
+    private struct AllowlistEntry {
         let shortName: String
         let ledgerID: String
         let reason: String
     }
-    private let knownZeroObserverWhitelist: [WhitelistEntry] = [
+    private let knownZeroObserverAllowlist: [AllowlistEntry] = [
         // ID-CRASH-0008 (2026-09-28 code-review P1-3): removed
-        // `tagBackendCorrupted` from the dead-channel whitelist.
-        // Previously whitelisted as "Posted in `ClipboardStore.loadTags`
+        // `tagBackendCorrupted` from the dead-channel allowlist.
+        // Previously allowlisted as "Posted in `ClipboardStore.loadTags`
         // only; consumer (Settings diagnostics banner) is reserved
         // channel per audit CLIP-7, no observer yet." Now:
         // AppDelegate.tagBackendCorruptedObserver wires
@@ -128,8 +128,8 @@ final class NotificationObserverAssertionTests: XCTestCase {
         // H-1 (2026-08-08): clipboardSaveFailed now has a real consumer
         // — AppDelegate.clipboardSaveFailedObserver wires NSAlert via the
         // existing 60s EncryptionFailedAlertThrottler. Removed from the
-        // whitelist so the observer-gate reverse-assertion enforces it.
-        WhitelistEntry(
+        // allowlist so the observer-gate reverse-assertion enforces it.
+        AllowlistEntry(
             shortName: "ocrLanguageFallback",
             ledgerID: "ID-SYNC-0004 (post itself FIXED; consumer leg deferred to H-1)",
             reason: "Posted in OCRService when language list unsupported; consumer (Settings banner 'OCR using English') is reserved channel per code-review-2026-09-28 P0-4 (dead channels list), no observer yet.")
@@ -271,9 +271,7 @@ final class NotificationObserverAssertionTests: XCTestCase {
     ///    references an older name)
     ///  - Selector-style `addObserver(self, selector:, name:)` not
     ///    captured (only 1 site in the project: ClipboardMonitor.swift:207)
-    private func productionObserversByNotificationName()
-        -> [String: [String]]
-    {
+    private func productionObserversByNotificationName() -> [String: [String]] {
         var result: [String: [String]] = [:]
         let root = "\(repoRoot)/ClipMemory"
         let files = Self.allSwiftSourceFiles(in: root)
@@ -319,26 +317,24 @@ final class NotificationObserverAssertionTests: XCTestCase {
                         .map { lines[$0] }
                         .joined(separator: "\n")
                     let names = matchesPattern(in: window, pattern: #"for:\s*(?:Notification\.Name\((?:rawValue:\s*)?"([\w.]+)"|\.([\w.]+))"#)
-                    for short in names {
-                        if !short.isEmpty {
-                            result[short, default: []].append("\(rel):\(lineNum)")
-                            // ID-CRASH-0003 (2026-08-16 audit MEDIUM-1
-                            // fix): mirror the `addObserver` Pattern B
-                            // last-segment fallback so an inline-literal
-                            // observer (rawValue "Module.shortName") is
-                            // also indexed under "shortName" — that's
-                            // how the declared-side lookup keys
-                            // (`observers[entry.shortName]`) finds it.
-                            // Without this, any
-                            // `.publisher(for: Notification.Name("X.Y"))`
-                            // call would dead-channel the gate even
-                            // though SafeModeBanner-style subscribers
-                            // exist. Same logic as `addObserver` lines
-                            // 304-306.
-                            if let lastSegment = short.split(separator: ".").last,
-                               String(lastSegment) != short {
-                                result[String(lastSegment), default: []].append("\(rel):\(lineNum)")
-                            }
+                    for short in names where !short.isEmpty {
+                        result[short, default: []].append("\(rel):\(lineNum)")
+                        // ID-CRASH-0003 (2026-08-16 audit MEDIUM-1
+                        // fix): mirror the `addObserver` Pattern B
+                        // last-segment fallback so an inline-literal
+                        // observer (rawValue "Module.shortName") is
+                        // also indexed under "shortName" — that's
+                        // how the declared-side lookup keys
+                        // (`observers[entry.shortName]`) finds it.
+                        // Without this, any
+                        // `.publisher(for: Notification.Name("X.Y"))`
+                        // call would dead-channel the gate even
+                        // though SafeModeBanner-style subscribers
+                        // exist. Same logic as `addObserver` lines
+                        // 304-306.
+                        if let lastSegment = short.split(separator: ".").last,
+                           String(lastSegment) != short {
+                            result[String(lastSegment), default: []].append("\(rel):\(lineNum)")
                         }
                     }
                 }

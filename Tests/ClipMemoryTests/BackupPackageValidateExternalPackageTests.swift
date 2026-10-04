@@ -1,7 +1,7 @@
 import XCTest
 @testable import ClipMemory
 
-final class BackupPackageValidateExternalPackageTests: XCTestCase {
+final class BackupPackageExtValidationTests: XCTestCase {
     var tempRoot: URL!
     var imagesDir: URL!
     var defaults: UserDefaults!
@@ -146,7 +146,7 @@ final class BackupPackageValidateExternalPackageTests: XCTestCase {
         try py.run()
         py.waitUntilExit()
         guard py.terminationStatus == 0 else {
-            let err = String(decoding: errPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            let err = String(bytes: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             throw NSError(
                 domain: "makeMaliciousArchive", code: Int(py.terminationStatus),
                 userInfo: [NSLocalizedDescriptionKey: "python3 failed: \(err)"]

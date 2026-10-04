@@ -52,8 +52,7 @@ struct GeneralSettingsView: View {
                     get: { launchAtLoginEnabled },
                     set: { v in
                         do {
-                            if v { try SMAppService.mainApp.register() }
-                            else { try SMAppService.mainApp.unregister() }
+                            if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
                             launchAtLoginEnabled = v
                         } catch {
                             showLaunchAtLoginError()

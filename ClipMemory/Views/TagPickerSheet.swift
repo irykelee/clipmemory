@@ -47,6 +47,7 @@ struct TagPickerSheet: View {
     }
 
     var body: some View {
+        // swiftlint:disable:next redundant_discardable_let
         let _ = fontScale  // 2026-07-25: subscribe to font-scale changes (see declaration)
         // ID-PERF-0013 (2026-07-30 audit): `currentItem()` was called once
         // per tag row (and per create-block), each O(n) `store.items.first`.

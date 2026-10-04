@@ -79,7 +79,7 @@ final class RestoreWizardViewModelTests: XCTestCase {
     // MARK: - External file validation tests
     //
     // The canonical wrongPassword / corrupted / archiveFailed / oversized
-    // tests live in `BackupPackageValidateExternalPackageTests` (Task 2.5) —
+    // tests live in `BackupPackageExtValidationTests` (Task 2.5) —
     // the error mapping is service-owned, so the canonical regression test
     // belongs there. These two tests cover the VM's pure state-mapping layer.
 
@@ -104,7 +104,7 @@ final class RestoreWizardViewModelTests: XCTestCase {
     }
 
     // NOTE: wrongPassword reachability is covered by
-    // `BackupPackageValidateExternalPackageTests.testWrongPassphraseThrowsWrongPassword`
+    // `BackupPackageExtValidationTests.testWrongPassphraseThrowsWrongPassword`
     // (Task 2.5) — the canonical error mapping lives in the service, so
     // the canonical regression test belongs there too.
 
