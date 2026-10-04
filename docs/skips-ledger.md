@@ -2,8 +2,9 @@
 
 - **建立**：2026-09-30（`803393b`，v2.9.5，ID-CRASH-0038 mass-skip 共 46 处 / 46 个测试）
 - **2026-10-01 → 2026-10-02 多次修订**：逐步恢复测试，**46 → 21 skip、1025/21/0 GREEN**
-- **2026-10-03 (post-#93-closed)**：**21 → 4 skip、1025/4/0 GREEN（en + zh-Hans 双 locale）**——本批 ID-CRASH-0060/0061/0062 撤 4 处（HotKey 3 处条件 guard、MemoryWarning 1 处 skip 移除、WindowManager 1 处 skip 移除）
-- **详细 commit 序列**：见 `git log --oneline 803393b..HEAD -- docs/skips-ledger.md`（21 次修订）
+- **2026-10-03 (post-#93-closed)**：**21 → 4 skip、1025/4/0 GREEN（en + zh-Hans 双 locale）**——本批 ID-CRASH-0060/0061/0062/0063 撤 4 处（HotKey 3 处条件 guard、MemoryWarning 1 处 skip 移除、WindowManager 1 处 skip 移除）
+- **2026-10-03 v2.9.6 完稿后**：CI run 37111093369 实证 `cc5f2c3` 在 build-and-test job 上**失败**：4 处 snapshot test（`ClipboardItemRowSnapshotTests` × 2 + `WelcomeViewSnapshotTests` × 1 + `SettingsTabSnapshotTests` × 1）在 CI runner 上**仍 golden 失配**。本地 1025/0/0 真绿，但 CI runner env 触发了 ledger 的「golden 失配机制未定位」假设。**Revert**（`1743657`）`3846122`（snapshot re-enable）以恢复 CI 绿；snapshot 调研记入 v2.9.7 backlog（详见 ledger「未 ship」段）。
+- **详细 commit 序列**：见 `git log --oneline 803393b..HEAD -- docs/skips-ledger.md`（22 次修订）
 - **根因追踪**：issue #93（ID-CRASH-0037，GH Actions runner 环境调查）+ ID-CRASH-0038（**主因已修复**）
 - **恢复目标**：v2.9.6（接近完成）
 - **计数口径**：4 处语句 / 4 个测试（2026-10-03 实测，本地 1025 / 4 skipped / 0 failures；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002）
