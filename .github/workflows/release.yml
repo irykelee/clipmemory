@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         # v2.5.11 hotfix: `fetch-depth: 0` fetches all branches + tags
         # so the appcast push's source-branch detection (P0-1 fix
         # from `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md`) can resolve
@@ -55,7 +55,7 @@ jobs:
       # hits so a single file change still benefits from prior brew + sparkle
       # downloads (which change less often than DerivedData).
       - name: Cache Homebrew + Sparkle + DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: |
             ~/Library/Caches/Homebrew
@@ -434,7 +434,7 @@ jobs:
 
       - name: Create GitHub Release
         if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231  # v3.0.3
         with:
           files: |
             Releases/ClipMemory.tar.gz
