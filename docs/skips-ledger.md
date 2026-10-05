@@ -97,7 +97,35 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 
 - ~~给所有 `UserDefaults.standard.set(...)` 的测试加 `tearDown` save/restore~~ **已完成（2026-10-02 rework）**：7 条 test-side 条目全部从 `toleratedPollution` 移除，canary 零 test-side 条目通过
 - 验证 ID-REVIEW-1009/1010/1011/1012 的 production 修复在 CI 端实测（v2.9.6 ship 后跑 CI 验证 ID-CRASH-0038 全部修复）
-- 评估 `release.yml` 删 `if: github.event_name == 'pull_request'` guard 恢复 fail-closed 路径（需先确认 21 处 skip 的根因都已关闭）
+- ~~评估 `release.yml` 删 `if: github.event_name == 'pull_request'` guard 恢复 fail-closed 路径~~ **已超范围推进 — 见 ID-REL-1 / ID-REL-2 段（2026-10-05）**：原 ID-CRASH-0038 自述 "v2.9.6 恢复" 的承诺由 ID-REL-1 (7e3b756, 16 actions 全 SHA pin) + ID-REL-2 (8ae0db5, tag-path 54-test smoke subset + drift guard) 落地；但因 8ae0db5 把 release.yml `if: github.event_name == 'pull_request'` 同步删除，PR dry-run 从 1025-test 全量降到同一 54-test 子集（详见 auto-review-20261005-132311 P2-3），后续若恢复 fail-closed PR 全量需权衡 PR-side 反馈信号 vs runner 时间
+
+## ID-REL-1 / ID-REL-2（2026-10-05）：发布链 SHA pin + tag-path smoke subset
+
+ID-CRASH-0038 这条 v2.9.6 恢复承诺被 ID-REL-1 + ID-REL-2 提前推动：
+
+**ID-REL-1**（`7e3b756` ci(release): SHA pin all 16 GitHub Actions uses）：
+- release.yml + ci.yml + tsan.yml 全部 16 处 `uses:` 改 40-char commit SHA（带版本注释）：checkout `fbc6f399…` (v5.1.0) / github-script `60a0d830…` (v7.0.1) / upload-artifact `ea165f8d…` (v4.6.2) / download-artifact `d3f86a10…` (v4.3.0) / cache `0057852b…` (v4.3.0) / softprops/action-gh-release `e598afbe…` (v3.0.3)
+- 6 个 SHA 经 `api.github.com` tag refs 实证对应，零虚 pin；lit-through grep 16 处 0 unpinned 残留
+- 根因：code-review-2026-10-01 五-5 已标 "15 处 `uses:` 全部用可变 major tag + dependabot 自称 'pinned by SHA'（实际 0 个）"；release.yml 持 contents:write + admin PAT，被劫持等于发布链被劫持
+- 已知 P2（auto-review-20261005-132311 P2-5）：`softprops/action-gh-release@e598afbe…` 是 annotated-tag object SHA（`api.github.com` `object.type = "tag"`），其他 5 pins 是 commit SHA——不一致但可解析；后续可改 commit SHA `efb35369e0ad2afab669f228072c1b0d510eae64`（同 SHA 的 underlying commit）以与其他 pins 对齐
+
+**ID-REL-2**（`8ae0db5` ci(release): restore tag-path test gate）：
+- release.yml `Run tests` step 删 `if: github.event_name == 'pull_request'` guard → tag path 现在跑 smoke subset
+- 子集：IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests，SUBSET_EXPECTED=54（4 snapshot 测试因 runner 渲染漂移仍 defer v2.9.7，**不在子集内**所以 SUBSET_EXPECTED 稳定）
+- drift guard（`:228-238`）：`Executed N tests` 行 grep + 与 SUBSET_EXPECTED 比对；不匹配 → `::error::Smoke subset drift` + exit 1（镜像 tsan.yml:97-103 模式）
+- 自述（comment block `:202-213`）：cdda2a6 命名漂移教训 + 子集选择理由 + 与 tsan.yml drift guard 一致
+
+**auto-review 抓到并已修（commit 在本批次内；非 ship 后 retrofit）**：
+- **P0（已修）**：release.yml:225 用了文件名 `ClipboardStoreCryptoKeyNotificationThreadTests` 而非类名 `ClipboardStoreCryptoKeyThreadTests`（`Tests/ClipboardStoreCryptoKeyNotificationThreadTests.swift:19` `@MainActor final class ClipboardStoreCryptoKeyThreadTests: XCTestCase`）——`-only-testing` 匹配类名不是文件名；2 个 crypto-thread 测试静默不跑 → 47+5=52 ≠ SUBSET_EXPECTED 54 → drift guard 触发 → 每次 v2.9.6 tag push release gate 必 FAIL。**auto-review 在任何 tag push 之前抓下**（事件先于后果）
+- **P1（已修）**：54-test gate 没有 class-existence lint 防同类型 bug 再发；扩展 `Scripts/lint-tsan-filter.sh` 接受 workflow 参数（默认仍 tsan.yml）+ sed pattern 支持双引号 SUBSET_EXPECTED（`SUBSET_EXPECTED: "54"` 是 release.yml 格式，单引号是 tsan.yml 格式）+ ci.yml lint-ids job 加新 step 跑 release.yml 版
+- **P2-1（已修）**：`set -euo pipefail` + `executed=$(grep | tail | awk)` assignment 错误处理——若 `grep` 找不到 summary line，`set -e` 让 step abort 但**无** `::error::` 诊断；改用 `|| true` 让 pipe return 0，再 `[[ -z "$executed" ]]` 兜底（tsan.yml:97 模式）
+- **P2-2（已修）**：step 加 `shell: bash`——否则 `xcodebuild test | tee` 在 GH Actions macOS 默认 `bash -e {0}`（无 pipefail）下让 tee 的 exit-0 吞失败；`shell: bash` + `set -o pipefail` 是 lint-release-yml rule 1 的合法 carve-out（ID-CI-0019）
+- **P2-3 / P2-4 / P2-5（docs drift，已修）**：7 README + dependabot.yml + code-review-2026-10-01.md 五-4 都还停留在 "release.yml Run tests step 是 PR-only / tag 不跑测试" 描述，与 ID-REL-2 实际不符（详见下方 docs drift 段）
+- **P2-6（pin kind 一致性，deferred）**：softprops 是 annotated-tag SHA，其他 5 pin 是 commit SHA——可解析但不一致；后续可改 commit SHA 与其他对齐
+- **P2-pre-existing（不动）**：ci.yml:369 注释 `SUBSET_EXPECTED=94` vs tsan.yml:39 是 `'95'`——pre-existing 注释漂移，非本 PR 引入，按 surgical changes 纪律不动
+- **P2-7（deferred 单独 follow-up）**：IntegrationTests.swift 12 处 bare-construct `ClipboardStore(backend:)` 走共享 `ClipboardStore-XCTest-isolation` suite 与 `AAASuiteBootstrapTests` 缺位子集的 deterministic risk——需源码深审（auto-review P2-7 描述），不开在本批
+
+**docs drift 同步（commit 同批）**：7 README（README.md + README_{EN,ZH-HANT,JA,KO,ES,PT}.md）v2.9.5 entry 中 "release.yml Run tests step 改为 PR-only (if: github.event_name == 'pull_request')，tag path 跳过" → 改 "tag path 跑 54-test smoke subset (IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests)，SUBSET_EXPECTED 锚定 class rename 自动 fail-closed"；code-review-2026-10-01.md 五-4 同样刷新
 
 重新生成站点统计（必须锚定行首：朴素 grep 会把注释里提到的 "throw XCTSkip" 一并计入，虚增 1——naive 22 vs anchored 21，来自 IntegrationTests.swift:626 的注释提及）：
 

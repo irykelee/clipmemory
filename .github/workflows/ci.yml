@@ -373,6 +373,21 @@ jobs:
           set -euo pipefail
           chmod +x Scripts/lint-tsan-filter.sh
           ./Scripts/lint-tsan-filter.sh
+      # ID-REL-2 (2026-10-05): extend the same class-existence /
+      # count-drift check to release.yml's tag-path smoke subset.
+      # The bug class was caught by auto-review-20261005-132311 P0
+      # before any v2.9.6 tag push would have tripped the drift
+      # guard (`ClipboardStoreCryptoKeyNotificationThreadTests` was
+      # the file name; the class is `ClipboardStoreCryptoKeyThreadTests`
+      # — `-only-testing` matches class names, not file names).
+      # Parameterized the script to accept the workflow path; default
+      # is still tsan.yml so the existing ID-CI-0010 invocation is
+      # unchanged.
+      - name: release filter lint (ID-REL-2)
+        run: |
+          set -euo pipefail
+          chmod +x Scripts/lint-tsan-filter.sh
+          ./Scripts/lint-tsan-filter.sh .github/workflows/release.yml
       # ID-CI-0011 (2026-09-27): prevents the "release.yml Run tests
       # fail-open" bug class. The 149906d commit (ID-RELEASE-0003)
       # added `|| true` to the Run tests step as a one-release

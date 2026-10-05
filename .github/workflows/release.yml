@@ -203,15 +203,28 @@ jobs:
       # 46 → 21 → 4 skip) made the full suite runner-stable; restore
       # tests on the tag path as a deterministic smoke subset:
       # - IntegrationTests — backend round-trip + restart-recovery
-      # - ClipboardStoreCryptoKeyNotificationThreadTests — crypto
-      #   path on the main thread (multi-trial gate)
+      # - ClipboardStoreCryptoKeyThreadTests — crypto path on the main
+      #   thread (multi-trial gate; note the class name matches the
+      #   declared `@MainActor final class ClipboardStoreCryptoKeyThreadTests`
+      #   in `ClipboardStoreCryptoKeyNotificationThreadTests.swift:19`,
+      #   not the file name — `-only-testing` matches class names, not
+      #   file names; lint-release-yml ID-REL-2 caught the drift
+      #   before any v2.9.6 tag push)
       # - UserDefaultsKeyTests — round-trip key persistence
       # 4 snapshot tests remain deferred to v2.9.7 (runner rendering
       # drift); none of them are in this subset so SUBSET_EXPECTED is
-      # stable. The drift-guard mirrors tsan.yml:138-140 — class rename
+      # stable. The drift-guard mirrors tsan.yml:97-103 — class rename
       # or filter divergence triggers an immediate fail with a tagged
       # hint about stale -only-testing references.
       - name: Run tests (smoke subset on tag path)
+        # ID-REL-2 (2026-10-05): declare `shell: bash` so the in-body
+        # `set -o pipefail` actually takes effect under GH Actions.
+        # GH Actions macOS default shell is `bash -e {0}` with no
+        # pipefail; `xcodebuild test | tee` then swallows upstream
+        # failures via tee's exit-0 (lint-release-yml rule 1's carve-out
+        # requires both `shell: bash` AND `set -o pipefail` to escape
+        # the fail-open trap).
+        shell: bash
         env:
           SUBSET_EXPECTED: "54"
         run: |
@@ -222,14 +235,25 @@ jobs:
             -destination 'platform=macOS' \
             CODE_SIGN_IDENTITY="-" \
             -only-testing:ClipMemoryTests/IntegrationTests \
-            -only-testing:ClipMemoryTests/ClipboardStoreCryptoKeyNotificationThreadTests \
+            -only-testing:ClipMemoryTests/ClipboardStoreCryptoKeyThreadTests \
             -only-testing:ClipMemoryTests/UserDefaultsKeyTests \
             2>&1 | tee "$log"
-          executed=$(grep -oE "Executed [0-9]+ tests" "$log" | tail -1 | awk '{print $2}')
-          if [ "$executed" != "$SUBSET_EXPECTED" ]; then
-            echo "::error::Smoke subset drift: expected ${SUBSET_EXPECTED} tests, got ${executed}. -only-testing class list may be stale (class rename/drop). Update the filter + SUBSET_EXPECTED in this step."
+          # ID-REL-2 (2026-10-05): capture exit statuses defensively.
+          # If `grep -oE` ever fails to find the summary line (Xcode
+          # output change / tee SIGPIPE / log truncation), the previous
+          # `executed=$(... | tail | awk '{print $2}')` left `executed`
+          # empty AND `set -e` aborted the step *without* the
+          # `::error::` diagnostic — drift guard loses its actionable
+          # message. `|| true` lets the pipe return 0 even on no-match,
+          # then `[[ -z "$executed" ]]` surfaces a tagged error so the
+          # run fails closed with a useful hint. Mirrors tsan.yml:97
+          # pattern.
+          executed=$(grep -oE "Executed [0-9]+ tests" "$log" | tail -1 | awk '{print $2}' || true)
+          if [[ -z "$executed" || "$executed" != "$SUBSET_EXPECTED" ]]; then
+            echo "::error::Smoke subset drift: expected ${SUBSET_EXPECTED} tests, got ${executed:-未解析}. -only-testing class list may be stale (class rename/drop). Update the filter + SUBSET_EXPECTED in this step."
             exit 1
           fi
+          echo "✅ Subset assertion passed: ${SUBSET_EXPECTED} tests executed"
 
       - name: Package and update local Cask
         # Package is publish-adjacent (tarball + verify_package) and its

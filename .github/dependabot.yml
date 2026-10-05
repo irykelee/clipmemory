@@ -6,10 +6,21 @@
 # the proximate cause of P2-15.
 #
 # Scope: SPM dependencies only (the project uses project.yml + XcodeGen,
-# not Package.swift). GitHub Actions are referenced by mutable major tags
-# (0 SHA pins as of code-review-2026-10-01 五-5 — the earlier "pinned by
-# SHA" claim here was stale); dependabot's github-actions ecosystem still
-# proposes tag-level bumps. Carthage/CocoaPods are not used.
+# not Package.swift).
+#
+# GitHub Actions SHA pinning (ID-REL-1, 2026-10-05, commit 7e3b756):
+# release.yml + ci.yml + tsan.yml 全部 16 处 `uses:` 改 40-char
+# commit SHA（带版本注释）；6 distinct SHA 经 `api.github.com`
+# tag refs 实证对应。code-review-2026-10-01 五-5 标的 0 SHA pin
+# 已闭环。Known P2 (auto-review-20261005-132311 P2-5):
+# softprops/action-gh-release 用了 annotated-tag SHA `e598afbe…`
+# (underlying commit `efb35369e0ad2afab669f228072c1b0d510eae64`)，
+# 其他 5 pins 是 commit SHA — 可解析但不一致，dependabot
+# github-actions 生态默认提议 digest 更新而非 tag 升级，所以
+# 现状已经 catch 上游劫持的供应链风险；后续可改 commit SHA
+# 与其他对齐（deferred）。dependabot github-actions 生态仅
+# bump digest（PR 出现频率高于 tag 升级），用于捕捉 GH 内部
+# rebuild 同 SHA 时的 metadata 变化。
 #
 # Cadence: weekly. Sparkle is the only SPM dep and it's pinned at major
 # 2.x with breaking sign_update API contracts every ~6 months (per
@@ -22,10 +33,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    # Actions are NOT SHA-pinned (see header note): dependabot proposes
-    # tag-level bumps. Keep the release.yml workflow (contents:write +
-    # admin PAT) as the priority for the SHA-pinning tracked in
-    # code-review-2026-10-01 五-5.
+    # ID-REL-1 (2026-10-05): 16 uses 全部 SHA-pinned；dependabot
+    # github-actions 生态仅 bump digest（捕捉 GH 内部 metadata 变化），
+    # 不再 bump tag level（pin 锚定后 tag 升级本身风险已闭环）。
     commit-message:
       prefix: "ci"
     labels:

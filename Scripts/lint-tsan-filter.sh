@@ -9,18 +9,35 @@
 # coverage silently. ID-CI-0007 (a4f87e2) fixed the immediate
 # symptom; this script prevents the next occurrence.
 #
+# ID-REL-2 (2026-10-05): parameterize on workflow path so the same
+# check covers both tsan.yml (PR-comment subset) and release.yml
+# (tag-path smoke subset). The cdda2a6 precedent was about a class
+# rename; the release.yml bug was a class name that *never existed*
+# in any test file (`ClipboardStoreCryptoKeyNotificationThreadTests`
+# is the file name; the class is `ClipboardStoreCryptoKeyThreadTests`)
+# — caught by auto-review-20261005-132311 P0 before any v2.9.6 tag
+# push would have tripped the drift guard and blocked the release.
+# The script's existence check (step 2) catches both bug classes
+# identically: a non-existent class in `-only-testing:` matches zero
+# XCTestCase declarations anywhere in Tests/ClipMemoryTests/.
+#
 # Two failure modes:
 #   1. Filter references a class that doesn't exist in
 #      Tests/ClipMemoryTests/ (class rename / file delete)
 #   2. Test function count in the listed classes doesn't
-#      match SUBSET_EXPECTED in tsan.yml:39 (drift)
+#      match SUBSET_EXPECTED in the workflow (drift)
 #
-# SUBSET_EXPECTED is read from tsan.yml:39 — single source of
+# SUBSET_EXPECTED is read from the workflow file — single source of
 # truth. Don't hardcode the number anywhere else (CLAUDE.md
-# ID-TEST-0002).
+# ID-TEST-0002). Both single-quoted (`'95'`, tsan.yml style) and
+# double-quoted (`"54"`, release.yml style) YAML strings are accepted.
 #
-# Usage: Scripts/lint-tsan-filter.sh
-# Wired into ci.yml lint-ids job (per ID-CI-0010).
+# Usage:
+#   Scripts/lint-tsan-filter.sh                                # default: tsan.yml
+#   Scripts/lint-tsan-filter.sh .github/workflows/release.yml   # explicit workflow
+#
+# Wired into ci.yml lint-ids job (per ID-CI-0010, extended ID-REL-2
+# to also run against release.yml).
 #
 # bash compat: stock macOS /bin/bash 3.2 lacks `declare -A`,
 # so per-class counts use parallel arrays. CI (ubuntu bash 5)
@@ -30,17 +47,32 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$ROOT"
 
-WORKFLOW="$ROOT/.github/workflows/tsan.yml"
+# ID-REL-2 (2026-10-05): accept the workflow file as $1 (defaults to
+# tsan.yml to keep the existing ci.yml invocation unchanged). The
+# relative-or-absolute path is resolved against $ROOT so callers can
+# pass either form from ci.yml.
+WORKFLOW="${1:-.github/workflows/tsan.yml}"
+[[ "$WORKFLOW" = /* ]] || WORKFLOW="$ROOT/$WORKFLOW"
 [[ -f "$WORKFLOW" ]] || { echo "❌ $WORKFLOW not found"; exit 1; }
+# ID-REL-3 (2026-10-05): basename for echo messages so the success
+# line reads "✅ release.yml filter OK" / "✅ tsan.yml filter OK"
+# instead of always claiming tsan.yml regardless of which workflow
+# was passed (the parameterization happened in ID-REL-2; the message
+# was the residual one-line miss).
+WORKFLOW_BASENAME="$(basename "$WORKFLOW")"
 
 TESTS_DIR="$ROOT/Tests/ClipMemoryTests"
 [[ -d "$TESTS_DIR" ]] || { echo "❌ $TESTS_DIR not found"; exit 1; }
 
-# 0. Read SUBSET_EXPECTED from tsan.yml — single source of truth.
-EXPECTED_COUNT=$(grep -E "^\s*SUBSET_EXPECTED:" "$WORKFLOW" \
+# 0. Read SUBSET_EXPECTED from the workflow — single source of truth.
+# ID-REL-2 (2026-10-05): the original regex anchored on single
+# quotes (`SUBSET_EXPECTED:[[:space:]]*'([0-9]+)'`); release.yml
+# emits the same value with double quotes (`SUBSET_EXPECTED: "54"`).
+# Both forms are valid YAML; the lint must accept either.
+EXPECTED_COUNT=$(grep -E "^[[:space:]]*SUBSET_EXPECTED:" "$WORKFLOW" \
                    | head -1 \
-                   | sed -E "s/.*SUBSET_EXPECTED:[[:space:]]*'([0-9]+)'.*/\1/")
-[[ -n "$EXPECTED_COUNT" ]] || { echo "❌ Could not parse SUBSET_EXPECTED from $WORKFLOW (expected format: SUBSET_EXPECTED: '94')"; exit 1; }
+                   | sed -E "s/.*SUBSET_EXPECTED:[[:space:]]*['\"]([0-9]+)['\"].*/\1/")
+[[ -n "$EXPECTED_COUNT" ]] || { echo "❌ Could not parse SUBSET_EXPECTED from $WORKFLOW (expected format: SUBSET_EXPECTED: '94' or SUBSET_EXPECTED: \"54\")"; exit 1; }
 
 # 1. Extract all -only-testing:ClipMemoryTests/X from tsan.yml
 FILTER_CLASSES=$(grep -E "^\s*-only-testing:ClipMemoryTests/" "$WORKFLOW" \
@@ -77,7 +109,7 @@ for cls in $FILTER_CLASSES; do
 done
 
 if [[ ${#MISSING[@]} -gt 0 ]]; then
-    echo "❌ tsan.yml filter references ${#MISSING[@]} non-existent test class(es):"
+    echo "❌ $WORKFLOW_BASENAME filter references ${#MISSING[@]} non-existent test class(es):"
     for m in "${MISSING[@]}"; do
         echo "   - ClipMemoryTests/$m"
     done
@@ -138,4 +170,4 @@ if [[ $FAILS -gt 0 ]]; then
     exit 1
 fi
 
-echo "✅ tsan.yml filter OK: $(echo "$FILTER_CLASSES" | wc -l | tr -d ' ') classes, ${ACTUAL_COUNT} tests (expected ${EXPECTED_COUNT})"
+echo "✅ $WORKFLOW_BASENAME filter OK: $(echo "$FILTER_CLASSES" | wc -l | tr -d ' ') classes, ${ACTUAL_COUNT} tests (expected ${EXPECTED_COUNT})"

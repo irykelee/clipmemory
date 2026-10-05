@@ -57,7 +57,7 @@
 
 - **🛠 code-review-2026-09-28 backlog 全數結案（38/38）** — 7 項 P1 + 18 項 P2 + 5 項 follow-up 全部 ship；涵蓋 L10n / Crypto / Window / Persistence / TSan / CI 工具鏈 / dependabot / crypto-symbol 文件化 等加固項目。詳見 `docs/audit/code-review-2026-09-28.md`。
 
-- **🛠 v2.9.5 GH Actions runner flake 緩解（ID-CRASH-0038）** — 14 個測試檔案共 46 處 env 敏感型 `XCTSkip`（46 個測試，臺帳見 `docs/skips-ledger.md`）在 CI 環境；`release.yml` 的 `Run tests` step 改為 PR-only（`if: github.event_name == 'pull_request'`），tag path 跳過（本地 `Scripts/release.sh vX.Y.Z --yes` 的 `run_preflight --tests` 仍是 authoritative gate）。runner env 根因修復目標 v2.9.6。
+- **🛠 v2.9.5 GH Actions runner flake 緩解（ID-CRASH-0038）** — 14 個測試檔案共 46 處 env 敏感型 `XCTSkip`（46 個測試，臺帳見 `docs/skips-ledger.md`）在 CI 環境；自 v2.9.6 起 `release.yml` 的 `Run tests` step 在 tag path 跑 **54-test smoke 子集**（ID-REL-2 `8ae0db5`：IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests，SUBSET_EXPECTED 錨定；class rename 自動 fail-closed），4 個 snapshot 測試因 runner 渲染漂移仍 defer v2.9.7（不在子集內所以 SUBSET_EXPECTED 穩定）。本地 `Scripts/release.sh vX.Y.Z --yes` 的 `run_preflight --tests` 仍是 authoritative gate。runner env 根因修復目標 v2.9.6。
 
 - 本地 `./Scripts/test-count.sh` 靜態估計（per CLAUDE.md ID-TEST-0002；實際數見 CI `xcodebuild test` 輸出）；`xcodebuild test` 本地全過
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5

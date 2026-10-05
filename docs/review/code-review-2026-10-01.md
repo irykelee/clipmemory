@@ -97,8 +97,8 @@
 2. **【P1】发布链签名/公证缺位**：`Apple Development` 个人证书（2027-07 过期，全靠 `--timestamp` 锚定）+ 全链路无 notarization → 用户首次打开必遇 Gatekeeper 拦截；Development 证书政策上不能走 notarytool；`DEVELOPMENT_TEAM` 个人 Team ID 硬编码入库。`project.yml:25-27`、`release.yml:130-136`。需 Apple Developer Program（$99/年）决策；Team ID 移入本地 .xcconfig 或 CI secret。
 3. **【P1】47 个 XCTSkip（约 4.6%）mass-skip，防污染 canary 与快照体系实质停摆**：`ZZZSuiteTeardownTests.testNoProductionPollution` 首行即 skip（`:235-236`）；`environmentInvariantCheck()` 不是 test 前缀方法 XCTest 永不调用；快照测试近乎全灭（含一个 `xtest` 前缀改名的测试）；xcodebuild 把 skipped 计入总数 → CI 测试数量下限门对 mass-skip 完全免疫；skip 只存在于注释里无台账跟踪。（**2026-10-01 部分闭环**：`docs/skips-ledger.md` 台账已建立——46 处/14 文件（锚定语句计数与 CI 实测一致）+ 逐条机制 + v2.9.6 恢复清单；canary 恢复仍待 v2.9.6，另发现类级 `setUpWithError` skip 在 @MainActor 类上必杀 runner 宿主，见第七节。）
    修复：建 skips 台账（docs/ 或 issue）；优先恢复 ZZZ canary（纯 UserDefaults diff，不影响 CI 稳定性）；UI 快照改环境变量门控。
-4. **【P1】tag push 发布路径完全不跑测试**（`release.yml:205-206` `if: github.event_name == 'pull_request'`，ID-CRASH-0038 自述临时妥协），发布门实际只是作者本机一次可被 `--skip-tests` 绕过的 xcodebuild。修复：tag 上恢复 smoke 子集（复用 tsan.yml 的 `-only-testing` 过滤 + `Executed N` 断言模式）。
-5. **【P1】15 处 Actions 全用可变 major tag 引用、0 个 SHA pin**，而 `.github/dependabot.yml:11-13` 自称 "pinned by SHA"——已失效。release.yml 持有 contents:write + admin PAT，checkout/gh-release 被上游劫持等于发布链被劫持。修复：发布链优先 SHA pin（dependabot github-actions 生态可帮跟 digest）。
+4. **【P1】tag push 发布路径完全不跑测试**（`release.yml:205-206` `if: github.event_name == 'pull_request'`，ID-CRASH-0038 自述临时妥协），发布门实际只是作者本机一次可被 `--skip-tests` 绕过的 xcodebuild。**已闭环（ID-REL-2 `8ae0db5`，2026-10-05）**：删 `if: github.event_name == 'pull_request'` guard → tag path 现在跑 54-test smoke 子集（IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests）+ `Executed N` 漂移断言（SUBSET_EXPECTED 锚定；class rename 自动 fail-closed，参数化的 lint-tsan-filter.sh 同时覆盖 tsan.yml + release.yml，详见 `docs/skips-ledger.md` ID-REL-1/2 段）。连带 PR dry-run 从 1025-test 全量降到同一 54-test 子集（auto-review-20261005-132311 P2-3 披露）。
+5. **【P1】15 处 Actions 全用可变 major tag 引用、0 个 SHA pin**，而 `.github/dependabot.yml:11-13` 自称 "pinned by SHA"——已失效。release.yml 持有 contents:write + admin PAT，checkout/gh-release 被上游劫持等于发布链被劫持。**已闭环（ID-REL-1 `7e3b756`，2026-10-05）**：release.yml + ci.yml + tsan.yml 全部 16 处 `uses:` 改 40-char commit SHA（带版本注释），6 distinct SHA 经 `api.github.com` tag refs 实证对应。`.github/dependabot.yml` 头部注释与下方 commit-message 同步刷新移除 "Actions are NOT SHA-pinned (0 SHA pins)" 陈述。known P2 (auto-review-20261005-132311 P2-5)：softprops/action-gh-release 用 annotated-tag SHA 而非 commit SHA，可解析但与其他 5 pins 不一致，deferred。
 6. **【P2】并发与依赖策略**：`SWIFT_STRICT_CONCURRENCY: minimal`（`project.yml:20`）+ TSan PR 门 `continue-on-error: true`（夜间全量有 fail-closed race gate，这是对的）；Sparkle `from: "2.9.5"` 浮动 + dependabot swift 生态自认占位符（无产出，建议删或换定期 bump 脚本）；`release.yml:65` 缓存 key 引用不存在的 `ClipMemory/Package.resolved` 路径（实际在 `ClipMemory.xcodeproj/.../xcshareddata/swiftpm/`）。（**2026-10-01 更正**：PR #99 证明 dependabot swift 生态实际在产出 PR，`dependabot.yml` 的"占位符"注释已过时应改写；Sparkle 已随 #99 升至 2.10.0，见第七节追记。）
 7. **【P2】SwiftLint/SwiftFormat 无版本 pin**（裸调 `which swiftlint`）；baseline 豁免 68 条全为 warning（line_length 47 条属"改 2 个字符"级别，建议一次性清掉并注销 baseline）；error 阈值（1250/400/700/45）自 2026-07 封顶后无下降计划。（**2026-10-01 SwiftLint 部分已修复**：风险已成真——新 runner 镜像删除了预装 SwiftLint 导致全分支 CI 红；ci.yml 现从 release URL 固定安装 0.65.1 + 下载 sha256 校验 + 版本漂移断言 + 绝对路径调用。SwiftFormat pin 与 baseline 清理仍开放。）
 8. **【P2】`Scripts/test/` 的 8 个脚本测试未接入任何 CI**（release.sh 1229 行的纯函数只被人肉测试）——加一个 ubuntu-latest job 即可，是性价比最高的补洞。
@@ -373,8 +373,8 @@
 ### B. 未修（与报告一致，优先级不变）
 
 - **1-1** Developer ID + 公证（$99/年决策未做）
-- **1-2** tag 路径测试门：`release.yml:206` 仍 `if: pull_request`（注释自注待 v2.9.6；ledger 记录宿主崩根因 ID-CRASH-0057 已修并实证 0 重启，恢复条件渐熟）
-- **1-3** Actions SHA pin：仍 0/15
+- **1-2** tag 路径测试门：**已闭环（ID-REL-2 `8ae0db5`，2026-10-05，见五-4 注记）**——tag path 现跑 54-test smoke 子集 + `Executed N` 漂移断言（fail-closed，排在打包/发布步骤之前）；PR 路径全量由 ci.yml 兜底（release.yml 的 PR dry-run 同步降为同一 smoke 子集，已披露）
+- **1-3** Actions SHA pin：**已闭环（ID-REL-1 `7e3b756`，2026-10-05，见五-5 注记）**——16 处 `uses:` 全部 40-char commit SHA；遗留 P2：softprops/action-gh-release 为 annotated-tag SHA（可解析，与其他 5 pins 不一致，deferred）
 - **1-4** 导出包根密钥：`sealKeyForExport` 只是重构抽取的 helper，行为未变（仍 seal 根密钥）
 - **批次 2 存储迁移 / 批次 3 拆类**：本轮 39 个 refactor 提交全部是**函数级机械拆分**（SwiftLint 阈值驱动），非第八节的目标形态（拆类 + 突变出口 + DI 收口）
 - appcast `minimumSystemVersion`（0 处）/ `releaseNotesLink`
