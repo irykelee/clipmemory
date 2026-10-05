@@ -167,12 +167,45 @@ fi
 # 模型链循环: 主模型失败(空转/Insufficient Balance/限流)时自动兜底下一个, 避免"空报告空转"。
 # REVIEW_MODEL 显式指定时链只有 1 个, 行为与旧版一致。
 USED_MODEL=""
+# ID-REVIEW-1016 (2026-10-05): per-model watchdog. 观测到的失败签名
+# (orca-auto-review-20261005-212911/-220442, 手动 gate test -230508):
+# big-pickle 免费池晚间高峰对**任何请求**(含 2-token 极小探针)挂起，
+# RAWOUT 永远 0 字节、opencode 不退出 —— 旧的同步调用让 pre-push 无限
+# 阻塞，MODEL_CHAIN 的 fallback(nemotron 白天+对照实验均 15s 正常)永远
+# 轮不到。对照组实证与本地网络无关(加速器开启依旧 0 字节)。
+# 修复 = 两层熔断，verdict 语义不变(超时走既有"未产出有效报告 → continue"):
+#   a) 首事件截止 FIRST_EVENT_DEADLINE 秒: RAWOUT 仍 0 字节 → 杀掉，
+#      立刻 fallback(成功案例全部在首 2 分钟内开始产出事件流);
+#   b) 总时长上限 REVIEW_MODEL_TIMEOUT 秒: 兜住"有事件但中途停更"。
+FIRST_EVENT_DEADLINE="${REVIEW_FIRST_EVENT_DEADLINE:-180}"
+REVIEW_MODEL_TIMEOUT="${REVIEW_MODEL_TIMEOUT:-900}"
+TIMEOUT_BIN=""
+command -v timeout >/dev/null 2>&1 && TIMEOUT_BIN="timeout"
+command -v gtimeout >/dev/null 2>&1 && [ -z "$TIMEOUT_BIN" ] && TIMEOUT_BIN="gtimeout"
 for MODEL in "${MODEL_CHAIN[@]}"; do
 RAWOUT="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.jsonl"
 RAWERR="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.err"
 
-"$OPENCODE" run --format json --dir "$ROOT" -m "$MODEL" "$PROMPT" \
-  > "$RAWOUT" 2> "$RAWERR" || true
+if [ -n "$TIMEOUT_BIN" ]; then
+  "$TIMEOUT_BIN" -k 30 "$REVIEW_MODEL_TIMEOUT" \
+    "$OPENCODE" run --format json --dir "$ROOT" -m "$MODEL" "$PROMPT" \
+    > "$RAWOUT" 2> "$RAWERR" &
+else
+  "$OPENCODE" run --format json --dir "$ROOT" -m "$MODEL" "$PROMPT" \
+    > "$RAWOUT" 2> "$RAWERR" &
+fi
+OC_PID=$!
+(
+  sleep "$FIRST_EVENT_DEADLINE"
+  [ -s "$RAWOUT" ] || kill "$OC_PID" 2>/dev/null
+) &
+WATCHDOG_PID=$!
+wait "$OC_PID" 2>/dev/null || true
+# watchdog 可能已自行退出(先于主流程的 kill)——set -e 下 kill 的非零
+# 返回会静默终止整个 hook(ID-REVIEW-1016 首测实证: nemotron 永远轮不到)。
+kill "$WATCHDOG_PID" 2>/dev/null || true
+wait "$WATCHDOG_PID" 2>/dev/null || true
+wait "$WATCHDOG_PID" 2>/dev/null || true
 
 # 抽取模型自己的文本块（type=="text"）拼成报告。三层降级，每层都留痕：
 #   L1 python3 —— 系统 python3（ClipMemory 无 runtime venv）
