@@ -375,7 +375,7 @@
 - **1-1** Developer ID + 公证（$99/年决策未做）
 - **1-2** tag 路径测试门：**已闭环（ID-REL-2 `8ae0db5`，2026-10-05，见五-4 注记）**——tag path 现跑 54-test smoke 子集 + `Executed N` 漂移断言（fail-closed，排在打包/发布步骤之前）；PR 路径全量由 ci.yml 兜底（release.yml 的 PR dry-run 同步降为同一 smoke 子集，已披露）
 - **1-3** Actions SHA pin：**已闭环（ID-REL-1 `7e3b756`，2026-10-05，见五-5 注记）**——16 处 `uses:` 全部 40-char commit SHA；遗留 P2：softprops/action-gh-release 为 annotated-tag SHA（可解析，与其他 5 pins 不一致，deferred）
-- **1-4** 导出包根密钥：`sealKeyForExport` 只是重构抽取的 helper，行为未变（仍 seal 根密钥）
+- **1-4** 导出包根密钥：**已闭环（ID-REVIEW-1015 `97151f0`，2026-10-05）**——v3 格式（formatVersion 1→3）：导出生成一次性 packageKey 并重加密全部 payload（含图片——首版实现漏了图片重加密导致含图包必然 `imageImportFailed`，复核时抓出并修复），key.enc 只含口令包裹的 packageKey，根密钥全程不出 CryptoService；导入双读 v1/v3；6 项验收测试（含跨机图片 round-trip）+ BackupPackage* 83 项全绿
 - **批次 2 存储迁移 / 批次 3 拆类**：本轮 39 个 refactor 提交全部是**函数级机械拆分**（SwiftLint 阈值驱动），非第八节的目标形态（拆类 + 突变出口 + DI 收口）
 - appcast `minimumSystemVersion`（0 处）/ `releaseNotesLink`
 - P2 余项：敏感检测归一化、terminate RunLoop 泵（部分改进：SyncBarrier 已移出 init，泵降级为显式原语）
