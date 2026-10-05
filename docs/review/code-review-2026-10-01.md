@@ -346,3 +346,50 @@
 ### 实施顺序建议
 
 批次 0 →（1-1 决策并行）→ 批次 2+3（同一批 PR）→ 批次 1 剩余项穿插。每项落地时在 `docs/skips-ledger.md` / 本报告对应条目回写状态，沿用第七节的追记格式。
+
+---
+
+## 九、状态复核（2026-10-05）：批次 0 / 1 落地审计
+
+> 第八节方案发布后，实施方（另一会话）落了 88 个提交（16 个 ID-REVIEW 修复 + 39 个机械重构 + 测试恢复）。本节逐项核对**代码现状**（非仅凭 commit message），取代第七节 C 段的状态记录。
+
+### A. 已核实落地（每项均以当前 HEAD 的代码 grep / diff 复核）
+
+| 报告项 | 状态 | 复核证据 |
+|---|---|---|
+| 0-1 release.yml PATCH 兜底 | ✅ 已删 | 全文件 0 处 `gh api -X PATCH`；`8ecb61a` |
+| 0-2 quarantine 注入 defaults | ✅ | `ClipboardStore+Utilities.swift:57` `let defaults = self.defaults` |
+| 0-3 copy token 作废 | ✅ | 同步写路径 `pendingCopyToken = nil`（`ClipboardStore.swift:2387`） |
+| 0-4 RTF 超限回退 | ✅（带已知遗留） | 平铺 gate 落地；**遗留**：RTF 解析失败路径仍丢条目（commit 自注，延后 v2.9.6 提取 `processPlaintextIfPresent`） |
+| 0-5 OCR 接入敏感检测 | ✅ | `attachOCRText` 跑 `detectSensitive` + 按规则写 `expiresAt`（`ClipboardStore+OCR.swift:91-102`） |
+| 0-6 本地化三处 | ✅ | CloseButton → `L10n.buttonClose`；TrashItemRow → `cachedRelativeDateString`；两窗口 languageManager rekey |
+| 0-7 P2 速赢包 | ✅ 五项全数 | fullSizeCache 256MB（`:71`）+ pendingKeyItems 封顶 + >50MB 诊断通知 + zip 守卫 fail-closed + Backups 0700/0600 |
+| 1-5 Keychain verify-mismatch | ✅ | 降级 `.transient` 保留回退文件 + 5 不变量回归测试（`VerifyMismatchKeychainStore` mock） |
+| 1-6 测试密钥重定向 | ✅ | XCTest 下 `keyFileURL` 重定向 + `CryptoServiceTests` 回归 |
+| 超出方案 | ✅ | 1010/1011 hotkey 与 safe-mode 测试 seam；**1012** `ClipboardStore.shared` 惰性初始化（ZZZ 假绿根因）；**1013** ZZZ canary 恢复（skip 46→17，allowlist 收敛回 4 条 framework keys，经两轮 auto-review 打回重做） |
+
+`05f623d`（"revert P0/P1 behavior changes"）复核结论：回退对象是**机械重构波自身引入的行为变更**（`String(bytes:encoding:)` 替换 `String(decoding:as:)` 破坏 zip fail-closed 与 10MB 截断语义），auto-review hook 抓住后修正——方向正确，未波及任何 ID-REVIEW 修复（1004 修正点复核仍在）。
+
+### B. 未修（与报告一致，优先级不变）
+
+- **1-1** Developer ID + 公证（$99/年决策未做）
+- **1-2** tag 路径测试门：`release.yml:206` 仍 `if: pull_request`（注释自注待 v2.9.6；ledger 记录宿主崩根因 ID-CRASH-0057 已修并实证 0 重启，恢复条件渐熟）
+- **1-3** Actions SHA pin：仍 0/15
+- **1-4** 导出包根密钥：`sealKeyForExport` 只是重构抽取的 helper，行为未变（仍 seal 根密钥）
+- **批次 2 存储迁移 / 批次 3 拆类**：本轮 39 个 refactor 提交全部是**函数级机械拆分**（SwiftLint 阈值驱动），非第八节的目标形态（拆类 + 突变出口 + DI 收口）
+- appcast `minimumSystemVersion`（0 处）/ `releaseNotesLink`
+- P2 余项：敏感检测归一化、terminate RunLoop 泵（部分改进：SyncBarrier 已移出 init，泵降级为显式原语）
+
+### C. 本轮新问题
+
+1. **【已修·随本节提交】lint-ids 在 main 红**：tsan.yml 的 `-only-testing` 引用了重构中改名的类 `ClipboardStoreCryptoKeyNotificationThreadTests`（现名 `ClipboardStoreCryptoKeyThreadTests`，2 个测试），且计数漂移 95 vs 93——这正是 ID-CRASH-0010/ID-CI-0010 lint 防的"改名 → 过滤器失配"类，lint 如期起效。修复：tsan.yml 类引用更新（计数 95 复原无需改，漂移纯因类名失配）。**结构性提示**：函数级拆分与 tsan.yml 类引用的耦合还会复发，考虑 lint 失败信息直接给出新类名建议。
+2. **tsan-full 仍红**（advisory）：TSan-only 失败（BackupServiceExceptionPathTests 等）待 triage，ledger 已记录。
+3. **快照 4 测试再延 v2.9.7**：CI golden 失配 revert（`1743657`），本地真绿——runner golden 失配机制未定位（ledger 详记）。
+4. **【P2】`05f623d` 有意恢复 5 处旧格式审计 ID**（legacy 格式字面量见该 commit message，L18 格式规则所禁）并 `--no-verify` 跳过 pre-commit：traceability vs 格式纪律的取舍已文档化，但豁免的长效策略（ID mapping 或 whitelist）待定——否则下个改动者会再撞一次。
+
+### D. 数字对账（当前 HEAD `88b911c`）
+
+- skip：46 → **17**（ZZZ canary 已恢复；4 个快照测试暂退 v2.9.7）
+- 总测试：1020 → **1025**（修复批次自带回归测试）
+- CI：build-and-test ✅ / coverage-gate ✅ / swiftlint ✅ / lint-ids ✅（本节随附 tsan.yml 修复）/ tsan-full ❌（advisory）
+- 宿主崩溃：0 重启（run f0487ea 实证，issue #93 主因关闭）

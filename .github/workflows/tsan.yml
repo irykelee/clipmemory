@@ -72,7 +72,7 @@ jobs:
             -only-testing:ClipMemoryTests/UpdateServiceTests \
             -only-testing:ClipMemoryTests/FeedProbeFallbackChainTests \
             -only-testing:ClipMemoryTests/FeedProbeSizeCapTests \
-            -only-testing:ClipMemoryTests/ClipboardStoreCryptoKeyNotificationThreadTests \
+            -only-testing:ClipMemoryTests/ClipboardStoreCryptoKeyThreadTests \
             -only-testing:ClipMemoryTests/SafeModeServiceTests \
             -only-testing:ClipMemoryTests/CrashReportServiceTests \
             2>&1 | tee /tmp/tsan.log
