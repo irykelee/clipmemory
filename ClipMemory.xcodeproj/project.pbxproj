@@ -68,6 +68,7 @@
 		44C3F6AD4411E3E63E37FCEF /* ExclusionUpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52DD73C3E0D3409D9F0B3B8D /* ExclusionUpdateTests.swift */; };
 		469A48A4E563533B46DA62DE /* UIObservability.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9DA1199ECD933699D11DC9D /* UIObservability.swift */; };
 		4846BFB82FEA5985EA064CBF /* UpdateStatusPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1101BDE75ABAC7FBD441B649 /* UpdateStatusPanelView.swift */; };
+		49C93A5B236F5F18C97236F2 /* BackupPackageV3SecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A209A66FF24143BE18B9044 /* BackupPackageV3SecurityTests.swift */; };
 		4D21B894BBC408664F1CF2D4 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF83CE3799A1C6382C0CF3D /* FlowLayout.swift */; };
 		4D32B54DDDC44273A5ACEAD8 /* MemoryWarningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B764A10AC36C2C6DE6A70C63 /* MemoryWarningTests.swift */; };
 		4E3B3A3265DFB035AF5126DA /* SensitiveDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C9E730F43E2C2EFDCABE2BC /* SensitiveDetectorTests.swift */; };
@@ -311,6 +312,7 @@
 		464B18CF83545FA192E6BABB /* TrashStoreMainActorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashStoreMainActorTests.swift; sourceTree = "<group>"; };
 		495C5B38EB5958470DBF2E7C /* TagSuggestionEmailBoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagSuggestionEmailBoundaryTests.swift; sourceTree = "<group>"; };
 		4A1735D775C6172C00D96FA5 /* RestoreWizardViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreWizardViewModelTests.swift; sourceTree = "<group>"; };
+		4A209A66FF24143BE18B9044 /* BackupPackageV3SecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupPackageV3SecurityTests.swift; sourceTree = "<group>"; };
 		4B9B5EB853EC26A6582BF318 /* BackupBlobRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupBlobRegistry.swift; sourceTree = "<group>"; };
 		4C63DA186B15CCC8937235FB /* ImagePreviewPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewPanel.swift; sourceTree = "<group>"; };
 		4D555CA30882227C142B6A55 /* CryptoKeyPreparationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoKeyPreparationTests.swift; sourceTree = "<group>"; };
@@ -566,6 +568,7 @@
 				ACF4631498BC58DA355E35D5 /* BackupIncompleteMarkerTests.swift */,
 				560139C0F75E8A292267BB24 /* BackupPackageImportFromLocalBackupTests.swift */,
 				DE40F85AB73ADECAB89A3D0C /* BackupPackageSecurityTests.swift */,
+				4A209A66FF24143BE18B9044 /* BackupPackageV3SecurityTests.swift */,
 				E6B34DE652477552079142D3 /* BackupPackageValidateExternalPackageTests.swift */,
 				85A0464EB282FBD2107A662D /* BackupServiceExceptionPathTests.swift */,
 				AC0EBBE4EBF90483898C0967 /* BackupServiceListAvailableBackupsTests.swift */,
@@ -952,6 +955,7 @@
 				663FC589C8FE074CDB8B5FA3 /* BackupIncompleteMarkerTests.swift in Sources */,
 				CBDB1962F845E54282C5DA3E /* BackupPackageImportFromLocalBackupTests.swift in Sources */,
 				F07D572ED1239E93F9399EBB /* BackupPackageSecurityTests.swift in Sources */,
+				49C93A5B236F5F18C97236F2 /* BackupPackageV3SecurityTests.swift in Sources */,
 				742D86BF198E8C04C168CB9B /* BackupPackageValidateExternalPackageTests.swift in Sources */,
 				0BDB72719C41069E657DB44F /* BackupServiceExceptionPathTests.swift in Sources */,
 				C353799CDD8D0B6FAF3AC9FC /* BackupServiceListAvailableBackupsTests.swift in Sources */,

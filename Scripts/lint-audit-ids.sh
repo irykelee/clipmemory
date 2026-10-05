@@ -142,6 +142,15 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "staged" ]; then
   echo "--- Staged changes ---"
   while IFS= read -r file; do
     [ -z "$file" ] && continue
+    # ID-REVIEW-1015 fix (2026-10-05): the allowlist (feedback/* mapping
+    # files MUST contain legacy IDs — that is their entire purpose) was
+    # only consulted in --diff/--files modes; --staged bypassed it, so a
+    # `git add` of the mapping doc self-flagged. Mirror the --diff guard.
+    is_allowlisted "$file" && continue
+    case "$file" in
+      *.md|*.swift|*.yml|*.yaml|*.sh|*.txt) ;;
+      *) continue ;;
+    esac
     while IFS= read -r added_line; do
       check_line "staged: $file" "$added_line"
     done < <(git diff --cached --no-color -- "$file" | grep -E '^\+' | grep -vE '^\+\+\+')
@@ -154,6 +163,11 @@ if [ "$MODE" = "all" ]; then
   echo "--- Working tree changes ---"
   while IFS= read -r file; do
     [ -z "$file" ] && continue
+    is_allowlisted "$file" && continue
+    case "$file" in
+      *.md|*.swift|*.yml|*.yaml|*.sh|*.txt) ;;
+      *) continue ;;
+    esac
     while IFS= read -r added_line; do
       check_line "working: $file" "$added_line"
     done < <(git diff --no-color -- "$file" | grep -E '^\+' | grep -vE '^\+\+\+')

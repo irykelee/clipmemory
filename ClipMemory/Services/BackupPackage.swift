@@ -17,7 +17,8 @@ import os.log
 ///
 /// Layout:
 ///   manifest.json  {formatVersion, createdAt, appVersion, keySalt, itemCount, tagCount, imageCount}
-///   key.enc        machine key encrypted with a passphrase-derived key (PBKDF2-SHA256 600k + AES-GCM)
+///   key.enc        package key encrypted with a passphrase-derived key (PBKDF2-SHA256 600k + AES-GCM)
+///                 — v3 ONLY; v1 packages sealed the machine root key directly here, see ID-REVIEW-1015
 ///   items.json / tags.json / trash.json   raw encrypted store blobs
 ///   Images/        encrypted image files
 ///
@@ -173,7 +174,20 @@ struct BackupImportResult: Equatable {
 
 final class BackupPackage {
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "BackupPackage")
-    private static let currentFormatVersion = 1
+    /// ID-REVIEW-1015 (code-review-2026-10-01 §八 1-4, 2026-10-05):
+    /// bumped 1 → 3. v3 packages seal a fresh one-shot `packageKey` in
+    /// `key.enc` instead of the machine root key — cracking a weak
+    /// passphrase on an exported package exposes only that export's
+    /// payload, not the user's full history or any other backup sharing
+    /// the root key. The intermediate number 2 is reserved for
+    /// `keyDerivationVersion = 2` (PBKDF2-HMAC-SHA256 600k) so it is not
+    /// used here to avoid semantic collision. v1 packages remain
+    /// importable (the dual-read path on `importPackage` still accepts
+    /// formatVersion == 1 because the per-item content encryption in
+    /// either format is identical — rootKey for v1, packageKey for v3 —
+    /// and `unsealPackageKey` just hands back a `CryptoService` rooted
+    /// at whichever bytes were sealed).
+    private static let currentFormatVersion = 3
 
     // MARK: - Passphrase key derivation
 
@@ -410,16 +424,95 @@ final class BackupPackage {
         return counts
     }
 
-    /// Counts `.png` entries in the given directory. Extracted from
-    /// exportPackage for cyclomatic complexity reduction. Propagates
-    /// enumeration errors (NEW-2, 2026-08-03 audit) so a corrupt
-    /// images dir produces a hard export failure rather than a misleading
-    /// `imageCount = 0` in the manifest.
-    private static func countPNGImages(in directory: URL) throws -> Int {
-        try FileManager.default
-            .contentsOfDirectory(atPath: directory.path)
-            .filter { $0.hasSuffix(".png") }
-            .count
+    /// ID-REVIEW-1015 (2026-10-05): v3 export re-encryption. Reads each
+    /// blob from UserDefaults (still root-key-encrypted), decodes the
+    /// per-item ciphertext with `rootCrypto`, re-encrypts each entry
+    /// with `packageCrypto`, and writes the result to staging. Manifest
+    /// counts match the SOURCE blob counts so a downstream
+    /// `importPackage` (which only re-encrypts from package → local) sees
+    /// the same shapes it would have seen from a v1 export. Per-item
+    /// GCM auth failures against the root key are dropped (their original
+    /// encryption is corrupt — same policy as the existing
+    /// `reencryptItemsWithCorruptCount`). Throws `corruptedData` if the
+    /// source blob's JSON decode fails, matching the archived audit
+    /// finding mapped to ID-L10N-0003 (see feedback/audit-id-mapping.md).
+    private static func stageStoredBlobsReencrypted(
+        to staging: URL,
+        defaults: UserDefaults,
+        rootCrypto: CryptoServiceProtocol,
+        packageCrypto: CryptoServiceProtocol,
+        // swiftlint:disable:next large_tuple
+        counts: (items: Int, tags: Int, trash: Int)
+    ) throws -> (items: Int, tags: Int, trash: Int) { // swiftlint:disable:this large_tuple
+        var counts = counts
+        for blob in BackupBlobRegistry.allBlobKeys {
+            let filename = blob.filename
+            let key = blob.userDefaultsKey
+            guard let rawData = defaults.data(forKey: key) else { continue }
+            let reencoded: Data
+            do {
+                switch blob {
+                case .items:
+                    let sourceItems = try JSONDecoder().decode([ClipboardItem].self, from: rawData)
+                    counts.items = sourceItems.count
+                    let (reencode, _) = reencryptItemsWithCorruptCount(
+                        sourceItems, from: rootCrypto, to: packageCrypto
+                    )
+                    reencoded = try JSONEncoder().encode(reencode)
+                case .trash:
+                    let sourceTrash = try JSONDecoder().decode([ClipboardItem].self, from: rawData)
+                    counts.trash = sourceTrash.count
+                    let (reencode, _) = reencryptItemsWithCorruptCount(
+                        sourceTrash, from: rootCrypto, to: packageCrypto
+                    )
+                    reencoded = try JSONEncoder().encode(reencode)
+                case .tags:
+                    let sourceTags = try JSONDecoder().decode([Tag].self, from: rawData)
+                    counts.tags = sourceTags.count
+                    let reencode = sourceTags.map { reencodeTagNameForExport($0, from: rootCrypto, to: packageCrypto) }
+                    reencoded = try JSONEncoder().encode(reencode)
+                }
+            } catch let decodeError as DecodingError {
+                Self.logger.error("Backup manifest count decode failed for \(key): \(decodeError.localizedDescription)")
+                throw BackupPackageError.corruptedData("\(key) count decode failed", source(forKey: key))
+            } catch {
+                // Re-encryption of a valid decoded item with a fresh
+                // packageKey should not fail — surface the error
+                // loudly rather than producing a misleading package.
+                Self.logger.error("Backup blob re-encryption failed for \(key): \(error.localizedDescription)")
+                throw BackupPackageError.corruptedData("\(key) re-encryption failed", source(forKey: key))
+            }
+            try reencoded.write(to: staging.appendingPathComponent(filename), options: .atomic)
+        }
+        return counts
+    }
+
+    /// ID-REVIEW-1015 (2026-10-05): symmetric counterpart to the
+    /// import-side `reencryptTagName`. On v3 export, decrypt the tag's
+    /// "v2:<ciphertext>" name with the source machine's root key, then
+    /// re-encrypt with the one-shot package key so the import side only
+    /// ever touches the package key. Tags whose name is already plaintext
+    /// (no "v2:" prefix) pass through unchanged. Failures to decrypt the
+    /// source name are passed through with the original ciphertext —
+    /// same "corrupt entry should not take down the whole export"
+    /// policy as item-level handling.
+    private static func reencodeTagNameForExport(
+        _ tag: Tag,
+        from rootCrypto: CryptoServiceProtocol,
+        to packageCrypto: CryptoServiceProtocol
+    ) -> Tag {
+        let prefix = "v2:"
+        guard tag.name.hasPrefix(prefix) else { return tag }
+        let ciphertext = String(tag.name.dropFirst(prefix.count))
+        guard let plaintext = rootCrypto.decrypt(ciphertext) else { return tag }
+        guard let newCiphertext = packageCrypto.encrypt(plaintext) else { return tag }
+        return Tag(
+            id: tag.id,
+            name: prefix + newCiphertext,
+            colorHex: tag.colorHex,
+            isAutoSuggested: tag.isAutoSuggested,
+            createdAt: tag.createdAt
+        )
     }
 
     /// ID-SECURITY-0006 pre-extraction allow-list: rejects any archive
@@ -590,22 +683,55 @@ final class BackupPackage {
         imagesDirectory: URL,
         keyData: Data
     ) throws {
+        // ID-REVIEW-1015 (code-review-2026-10-01 §八 1-4, 2026-10-05):
+        // v3 export path. A fresh one-shot `packageKey` is generated for
+        // this export; `key.enc` seals that key (NOT the machine root key)
+        // and the items/tags/trash blobs are re-encrypted under it before
+        // being staged. The root key never leaves the `CryptoService`
+        // wrapper around it — `keyData` enters the function, gets handed
+        // to `rootCrypto`, and is never written to any output file.
+        // Cracking a weak passphrase on a v3 package exposes only that
+        // export's payload, not the user's full machine history or any
+        // other backup sharing the root key.
         let salt = try randomBytes(16)
         let derivedKey = try deriveKey(passphrase: passphrase, salt: salt, version: 2)
-        let sealedKeyData = try sealKeyForExport(derivedKey: derivedKey, keyData: keyData)
+
+        let packageKey = SymmetricKey(size: .bits256)
+        var packageKeyData = packageKey.withUnsafeBytes { Data($0) }
+        let sealedKeyData = try sealKeyForExport(derivedKey: derivedKey, keyData: packageKeyData)
 
         let staging = try createExportStaging()
         defer { cleanupExportStaging(staging) }
 
-        // L-11 (2026-07-24 audit): silently coerced `try?` decode failures to
-        // a count of 0, so a corrupt items/tags/trash blob produced a manifest
-        // claiming the package is smaller than it actually is — the on-disk
-        // data and the manifest then disagreed, and a future `importPackage`
-        // would use the wrong counts. Now: log + throw `corruptedData`, the
-        // existing package-corruption error, so the export fails loudly
-        // instead of producing a misleading manifest.
-        let counts = try stageStoredBlobs(to: staging, defaults: defaults, counts: (items: 0, tags: 0, trash: 0))
-        let imageCount = try stageImagesForExport(to: staging, imagesDirectory: imagesDirectory)
+        // Two CryptoServices rooted at different keys — `rootCrypto` for
+        // reading the source blobs (still root-key-encrypted in
+        // UserDefaults), `packageCrypto` for writing the v3 package
+        // blobs. Both are scoped to this function; the transient
+        // `packageKeyData` is wiped after staging so no package key
+        // bytes survive beyond the export.
+        let rootCrypto = CryptoService(customKeyData: keyData)
+        let packageCrypto = CryptoService(customKeyData: packageKeyData)
+        CryptoService.wipeKeyMaterial(&packageKeyData)
+
+        // The archived audit finding (2026-07-24 audit; mapped to
+        // ID-L10N-0003 in feedback/audit-id-mapping.md) still applies —
+        // a corrupt source blob must surface as `corruptedData`, not a
+        // silent "manifest claims smaller than actual" mismatch. The
+        // re-encoding helper throws on a JSON decode failure of the
+        // source blob for the same reason.
+        let counts = try stageStoredBlobsReencrypted(
+            to: staging,
+            defaults: defaults,
+            rootCrypto: rootCrypto,
+            packageCrypto: packageCrypto,
+            counts: (items: 0, tags: 0, trash: 0)
+        )
+        let imageCount = try stageImagesForExport(
+            to: staging,
+            imagesDirectory: imagesDirectory,
+            rootCrypto: rootCrypto,
+            packageCrypto: packageCrypto
+        )
         try writeExportKeyAndManifest(
             to: staging,
             sealedKeyData: sealedKeyData,
@@ -614,7 +740,7 @@ final class BackupPackage {
             imageCount: imageCount
         )
         try zipAndAtomicallyReplace(from: staging, to: destination)
-        logger.info("Exported backup package to \(destination.path)")
+        logger.info("Exported v3 backup package to \(destination.path)")
     }
 
     /// Wraps `keyData` with the passphrase-derived key. Throws
@@ -649,18 +775,63 @@ final class BackupPackage {
     }
 
     /// Stages the local-images directory into the export and returns the
-    /// count of `.png` files (the only format the import side accepts —
-    /// BKP-4 2026-07-24 review). Returns 0 if no images directory exists.
+    /// count of `.png` files successfully re-encrypted under the package
+    /// key (the only format the import side accepts — BKP-4 2026-07-24
+    /// review). Returns 0 if no images directory exists.
     /// NEW-2 (2026-08-03 audit): propagates directory-enumeration failures
     /// instead of swallowing with `try? ?? []` — a zero imageCount would
     /// land in the manifest, then `validateManifestCounts` would reject
     /// the package on import, producing a permanently un-importable
     /// backup the user believed succeeded.
-    private static func stageImagesForExport(to staging: URL, imagesDirectory: URL) throws -> Int {
+    ///
+    /// ID-REVIEW-1015 fix (2026-10-05, code-review §九-C): the pre-v3
+    /// implementation was a raw `copyItem` — images at rest are
+    /// ROOT-key-encrypted, so a v3 package staged that way shipped
+    /// images the importer (holding only the unsealed packageKey)
+    /// could never decrypt: `decryptAndReencryptImage` throws
+    /// `corruptedData` on GCM auth failure and the whole image import
+    /// reports `imageImportFailed` (cross-machine AND same-machine).
+    /// Re-encrypt per file here: rootCrypto.decrypt →
+    /// packageCrypto.encrypt. Source images that fail root decryption
+    /// are dropped + logged (same policy as corrupt items in
+    /// `stageStoredBlobsReencrypted`); hard read errors throw
+    /// (fail-closed, mirrors NEW-2).
+    private static func stageImagesForExport(
+        to staging: URL,
+        imagesDirectory: URL,
+        rootCrypto: CryptoServiceProtocol,
+        packageCrypto: CryptoServiceProtocol
+    ) throws -> Int {
         guard FileManager.default.fileExists(atPath: imagesDirectory.path) else { return 0 }
         let imagesDestination = staging.appendingPathComponent("Images", isDirectory: true)
-        try FileManager.default.copyItem(at: imagesDirectory, to: imagesDestination)
-        return try countPNGImages(in: imagesDestination)
+        try FileManager.default.createDirectory(at: imagesDestination, withIntermediateDirectories: true)
+        let files = try FileManager.default.contentsOfDirectory(atPath: imagesDirectory.path)
+        var count = 0
+        for file in files where file.hasSuffix(".png") {
+            let sourceURL = imagesDirectory.appendingPathComponent(file)
+            let encrypted: Data
+            do {
+                encrypted = try Data(contentsOf: sourceURL)
+            } catch {
+                throw BackupPackageError.corruptedData(
+                    "\(file): unreadable source image", .image
+                )
+            }
+            guard let plain = rootCrypto.decryptData(encrypted) else {
+                logger.error("Export: source image failed root decrypt (dropping from v3 package): \(file)")
+                continue
+            }
+            guard let reencrypted = packageCrypto.encryptData(plain) else {
+                throw BackupPackageError.corruptedData(
+                    "\(file): package re-encrypt failed", .image
+                )
+            }
+            let target = imagesDestination.appendingPathComponent(file)
+            try reencrypted.write(to: target, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+            count += 1
+        }
+        return count
     }
 
     /// Writes `key.enc` (sealed key) and `manifest.json` (counts +

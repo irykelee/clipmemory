@@ -113,6 +113,48 @@ Source: `docs/superpowers/audits/2026-07-21-*.md` filenames use `m1` /
 > intentionally omitted — they shipped before the `ID-DOMAIN-NNNN`
 > allocator was active.
 
+## 2026-10-04 hygiene revert (`05f623d`) — intentional legacy-format exemption
+
+Source: `git show 05f623d` — fix(hygiene): revert P0/P1 behavior
+changes + audit-ID traceability. The mechanical SwiftLint refactor
+wave had inadvertently rewritten 4 audit-ID references from their
+canonical `ID-DOMAIN-NNNN` form back to the original short-form
+audit-finding IDs. `05f623d` reverted those 4 references (5 lines
+across 4 files) so traceability to the originating audit doc was
+preserved.
+
+**L18 exemption rationale** (per the commit message and
+`docs/review/code-review-2026-10-01.md` 七.4): the finding number is
+the only stable handle back to `docs/superpowers/audits/2026-08-08-comprehensive-review-v2.md`;
+deleting the identifier to pass the format rule would lose
+information. The mapping table below is the durable exemption
+strategy so future L18 lint runs don't re-flag these 5 sites as
+violations.
+
+| Old ID (line) | New ID | Summary | Site file:line |
+|---|---|---|---|
+| `H-13` | `ID-CONCURRENCY-0001` | ClipboardMonitor background `stateLock.withLock` mutates via `delegate?` (deferred P3) | `docs/superpowers/specs/2026-07-28-f1-phase3-clipboardstore-mainactor-design.md:69` |
+| `M-2` | `ID-STORE-0011` | `importBackupItems` overflow routes through trash (recoverable) | `docs/superpowers/audits/FINDINGS-LEDGER.md` (multiple sites) |
+| `HIGH-4` | `ID-DIST-0001` | Apple Development signing + no Notarization | `docs/review/code-review-2026-10-01.md` 五.4 (audit reference, not ID-DOMAIN co-located) |
+| `H-4` | `ID-PERF-0025` | FuzzySearchMatcher cold-path performance (251ms → 15ms) | `docs/superpowers/audits/FINDINGS-LEDGER.md` §10.38 |
+
+**Lint behavior**: `Scripts/lint-audit-ids.sh` exempts the
+`feedback/` directory and `docs/superpowers/audits/*` per the
+allow-list (line 70), so the H-13 / M-2 / H-4 sites in those files
+don't trigger the lint. The HIGH-4 site in `docs/review/...` is
+NOT under the allow-list — if a future lint run flags it, the
+remediation is to co-locate `ID-DIST-0001` on the same line
+(the lint regex `\bID-[A-Z]+-[0-9]{4}\b` exempts the row). Do
+NOT rewrite `HIGH-4` → `ID-DIST-0001` in place; that would lose
+the audit-doc handle that `05f623d` preserved.
+
+**Future audit batch exemption requests**: any future commit that
+needs to restore legacy-format audit IDs for traceability should
+add a new section here under the source commit SHA, citing the
+specific `ID-DOMAIN-NNNN` mapping for each legacy ID used. L18
+ship-then-retrofit ban still applies — adding to this table is
+forward documentation, not git-history rewrite.
+
 ## How to extend
 
 This file is the canonical back-reference for old short-form audit IDs. New
