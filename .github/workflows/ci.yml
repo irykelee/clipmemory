@@ -23,7 +23,7 @@ jobs:
     # any future hang fails fast instead of silently burning runner time.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # REL-23 (2026-08-03): README hygiene gate — DOC-0002/DOC-0003 prevention.
       # Ported from ~/Projects/ClipMemory-local/release.sh preflight (9eebd8d,
@@ -329,7 +329,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
       - name: L18 audit-ID format check
@@ -486,7 +486,7 @@ jobs:
     needs: build-and-test
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Download xcresult bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
@@ -533,7 +533,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       # 2026-10-01 (v2.9.5 tag run): the macos-latest runner image dropped
       # its pre-installed SwiftLint and the presence canary fired exactly
       # as designed ("swiftlint not installed on runner" — P2-18's
