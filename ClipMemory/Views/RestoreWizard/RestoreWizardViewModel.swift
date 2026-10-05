@@ -171,7 +171,16 @@ final class RestoreWizardViewModel: ObservableObject {
     /// Split out from `apply()` so the orchestration is readable and
     /// each step's error branch lives next to its corresponding success
     /// branch instead of nesting three layers deep.
-    private func performRestoreTask(context: RestoreContext) async {
+    ///
+    /// ID-REVIEW-1014 (code-review-2026-10-01 §九-C, pre-push review
+    /// 2026-10-05): this class is `@MainActor`, so without `nonisolated`
+    /// the `await self?.performRestoreTask(...)` hop in `apply()` runs the
+    /// WHOLE flow on the main executor — including `performImportAndReport`'s
+    /// synchronous `unzip` wait + PBKDF2(600k) + full AES-GCM re-encrypt,
+    /// a guaranteed multi-second UI freeze. All state mutation below goes
+    /// through `MainActor.run` on purpose; keep these helpers
+    /// `nonisolated` or the freeze returns.
+    private nonisolated func performRestoreTask(context: RestoreContext) async {
         // Step 0: flush pending saves (sync, ~ms).
         await MainActor.run { ClipboardStore.shared.flushPendingSaves() }
         // Step 1: safety snapshot (background).
@@ -184,7 +193,7 @@ final class RestoreWizardViewModel: ObservableObject {
     /// Runs the safety snapshot before any restore. Returns true on
     /// success, false if the snapshot failed (in which case the caller
     /// should NOT advance to the import phase).
-    private func runSafetySnapshot(backupService: BackupService) async -> Bool {
+    private nonisolated func runSafetySnapshot(backupService: BackupService) async -> Bool {
         do {
             _ = try await Task.detached(priority: .userInitiated) {
                 try backupService.backupNow()
@@ -203,7 +212,7 @@ final class RestoreWizardViewModel: ObservableObject {
     /// routes back to the password-entry step (F8 fix); other
     /// `BackupPackageError`s surface as `.failed`; unknown errors get
     /// wrapped as `corruptedData` for triage.
-    private func performImportAndReport(context: RestoreContext) async {
+    private nonisolated func performImportAndReport(context: RestoreContext) async {
         do {
             let result: BackupImportResult
             switch context.source {
