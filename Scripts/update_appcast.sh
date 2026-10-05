@@ -19,11 +19,21 @@ set -euo pipefail
 #   $2 — version string (e.g. "2.4.0")
 #   $3 — absolute path to the release tarball (for byte length)
 #   $4 — EdDSA signature of the tarball (from Sparkle's sign_update)
+#   $5 — optional release-notes URL (omitted → no sparkle:releaseNotesLink;
+#        pass empty string to explicitly skip)
+#
+# ID-REL-3 (REL-3, code-review-2026-10-01 §3 release infra): every NEW
+# <item> carries `sparkle:minimumSystemVersion="13.0"` (matches
+# project.yml `MACOSX_DEPLOYMENT_TARGET`). Sparkle 2.10 made this a
+# recommended field; older items were backfilled by
+# `backfill-appcast-min-sysver.sh`. Optional
+# `sparkle:releaseNotesLink` is emitted only when $5 is non-empty.
 insert_appcast_item() {
     local appcast_path="$1"
     local version="$2"
     local tarball_path="$3"
     local ed_signature="$4"
+    local release_notes_url="${5:-}"
 
     # REL-4: a missing </channel> used to make the awk below a silent no-op
     # (pattern never matched, file rewritten unchanged, "Inserted" logged) —
@@ -57,13 +67,17 @@ insert_appcast_item() {
     # write-time and matches both Sparkle docs and the consumer's
     # expectations.
     tmp=$(mktemp)
-    awk -v version="$version" -v pubdate="$pub_date" -v url="$url" -v filesize="$length" -v sig="$ed_signature" '
+    awk -v version="$version" -v pubdate="$pub_date" -v url="$url" -v filesize="$length" -v sig="$ed_signature" -v min_sysver="13.0" -v notes_url="$release_notes_url" '
         /<channel>/ {
             print
             print "    <item>"
             print "      <title>Version " version "</title>"
             print "      <sparkle:shortVersionString>" version "</sparkle:shortVersionString>"
             print "      <sparkle:version>" version "</sparkle:version>"
+            print "      <sparkle:minimumSystemVersion>" min_sysver "</sparkle:minimumSystemVersion>"
+            if (notes_url != "") {
+                print "      <sparkle:releaseNotesLink>" notes_url "</sparkle:releaseNotesLink>"
+            }
             print "      <pubDate>" pubdate "</pubDate>"
             print "      <enclosure url=\"" url "\""
             print "                 length=\"" filesize "\""
