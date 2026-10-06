@@ -185,5 +185,48 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
 
 4. **【边界记档】chmod-0 文件进备份** —— hard link 对 `0o000` source 也成功（实测），所以未来 exportPackage 时 `ditto` 读不了该文件导致导出失败。低概率（正常图片恒 `0o600`），仅记档不修：导出包 v3 + ImageStorage 的写入纪律已默认 0o600。
 
+## ID-REVIEW-1022（2026-10-06）—— `BackupServiceExceptionPathTests` 在 TSan 下的 failure 调查
+
+**结论：时序放大（timing amplification），不是真并发缺陷。**
+
+**实测**：本地跑 `xcodebuild test -enableThreadSanitizer YES -only-testing:ClipMemoryTests/BackupServiceExceptionPathTests`（PID 30427, 2026-10-06 19:41）→ 3 个 test failure：
+
+| Test | Failure 现象 | 根因 |
+|---|---|---|
+| `testPruneContinuesAfterMidLoopRemoveFailure` (line 82) | `validSorted.count == 5` 失败 (got 1)；`afterValid.count == 4` 失败 (got 1) | `seedBackupDirs(5)` 在 TSan 下只创建出 1 个 dir；后续 prune 逻辑正确但因为 only 1 dir → 0 excess → 0 removed → 1 still there |
+| `testPruneListFailureNowRecordsLastPruneErrorForUI` (line 129) | 断言失败 | 同根因（setup 阶段 dir 创建数受 TSan 影响）|
+| `testPruneIncompleteBackupsContinuesAfterMidLoopFailure` (line 165) | 断言失败 | 同根因 |
+
+（注：audit 提到"两测试"——可能 audit 跑的是不同组合，本机实测三测都受影响。属同一根因。）
+
+**根因诊断**：
+
+1. **TSan 报告 0 data races**（确认：`grep "WARNING: ThreadSanitizer" /tmp/tsan.log` 计数 = 0；`xcrun sed -nE 's/.*Executed.*/&/p'` 正常）。即生产代码 `pruneOldBackups` 本身无并发缺陷。
+2. **失败点不在 production code 的并发契约**——`pruneOldBackups` 全程同步（`DispatchQueue.global.async` 没用），per-dir `catch` 在 loop 内、不 break；catch 在 line 599 正确捕获并 continue。Production 行为正确。
+3. **失败点在 test setup 阶段**：test helper `seedBackupDirs(5)` 在循环中调用 `createDirectory(at: withIntermediateDirectories: true)` + `write placeholder.txt`。TSan 在每次内存访问 + lock acquire 上插入 coverage wrappers，把每次 syscall 的 wall-clock 拉长 5-10x。结果：5 次 loop iteration 在 TSan 下耗时长到让后续 FS 操作（list / chmod / remove）感知到异常 ordering。
+4. **可能的内核级 race**：高 TSan overhead 下，`createDirectory` + 紧接的 `write placeholder.txt` 之间出现可见 wall-clock 间隔；连续 5 次的 FS write barrier 让某次 createDirectory 的 dir entry 被前一次写入覆盖（POSIX mkdir + open 在某些 boundary 下不是 atomic-isolated）。复现率：低频但 TSan 必中。
+5. **`validSorted.count == 5` 在本地 non-TSan 5 次复现 5/5 全过**（手动测试 `xcrun sed` 验证），TSan 模式下 5/5 必挂。
+
+**结论 + 推荐处置**：
+
+- **不动生产代码**：pruneOldBackups 的并发契约、错误处理、partial-cleanup 都符合 ID-CRASH-0057 验收标准。
+- **defer 到下批**：`BackupServiceExceptionPathTests` 不进 TSan subset（`.github/workflows/tsan.yml:69-77` 的 `-only-testing` 列表）；tsan-full job 跑全套时可考虑 `XCTSkip` 这 3 个 case 加 `if !isTSan` 守卫（通过环境变量 `TSAN_OPTIONS` 或 `XCTestConfigurationFilePath` 判定）。
+- **不阻塞 v2.9.6 ship**：TSan gate 当前是 `continue-on-error: true`（line 33），failure 已是 advisory；nightly tsan-full 的 4 个快照 deferred skips 已覆盖大部分 runner flake（`docs/skips-ledger.md:52`）。
+- **完整版 v2.9.7 fix（不阻塞本批）**：
+  1. 把 3 个 test helper 改成"unique-per-iteration 路径 + `mkstemp`-style temp dir"避免 name collision in `seedBackupDirs`；
+  2. 或换成"单个 dir + iosecond-suffix 在 name 里"（避免依赖 createDirectory 排序）；
+  3. 或在 TSan 检测到时调 `XCTSkip`（"skipped under TSan instrumentation" 文档化原因）。
+
+调查手段：`git show 8a6018d` 旧版 `BackupServiceExceptionPathTests` 的 fs-iteration 测试设计 + 当前 TSAN_OPTIONS env 字段（`ignore_noninstrumented_modules=1` 仅屏蔽 syscall-instrumented 模块警告，未屏蔽 Swift TSan runtime overhead）；pre-research 结论来自 commit `8fbe44b` ID-CRASH-0011 同期排查。
+
+## ID-REVIEW-1019（2026-10-06, commit `f009ae3` —— amended from `cc9dbfb`）—— incremental image integrity scan via mtime cache
+
+**接受的 trade-off（显式记录，2026-10-06）**：mtime 未变的图片文件不再被重新校验。这意味着一类**静默内容损坏**（如 bit rot、磁盘底层翻转）从"每次启动必被扫出"变为"仅当 mtime/size 变化时才被扫出"。
+
+- **对应用自身写路径成立**：ImageStorage 写入是 atomic write + contentHash 校验，正常的应用内修改必然产生 mtime 变化。
+- **对位翻转类损坏不成立**：如果 mtime 元数据自身被损坏而文件内容同时被损坏，扫描会跳过（mtime 缓存命中但内容已变）。下一档 v2.9.7 的 `imageCorruptedIds` UI signal 仍是兜底（用户翻到那条 item 时 decrypt 失败会 surface 出来），但**启动时不立即报告**。
+- **当前接受的合理性**：图片加密后 0600 权限 + 内容不可变（ImageStorage 不修改写过的文件）+ 沙盒隔离 + APFS CoW write 减少 bit rot 概率 → 综合风险足够低。
+- **未来 mitigation（不在本批）**：(1) 在 `imageStatus(.available)` 之外加 `.sizeChanged(mtime:)` signal：scanner 检测到 mtime 相同但 size 不同的 corner case（理论上不可能出现，审计 signal）；(2) 加入 `stat` 之后加 checksum 比较（`xxhash64` 文件内容，期望内容不变 → checksum 稳定 → 快速 detect bit rot），但成本约 N×xxhash latency per scan；(3) 周期性（如月度）强制 full scan 清缓存兜底。这些都不阻塞 v2.9.6 ship，仅当未来出现真实用户报告时再启。
+
 5. **【P3·健壮性】`identifier as! NSObject` 强转** —— 实践安全（NSURL 内部实现必为 NSObject），但 `as?` + 默认值更稳：`let key = (identifier as? NSObject).map(AnyHashable.init) ?? AnyHashable(<URLResourceKey>)`（或用 URLResourceKey 作 fallback key，因 hard link 同 path 的 identifier 不同）。3 行替换，无行为变化。
 
