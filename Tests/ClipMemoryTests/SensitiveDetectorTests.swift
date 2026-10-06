@@ -25,7 +25,16 @@ final class SensitiveDetectorTests: XCTestCase {
 
         let nonMatching = [
             "Hello world",
-            "My password is not in the text",
+            // ID-REVIEW-1017: "My password is not in the text" used to be
+            // in this list — it asserted that the literal phrase "password
+            // is" should NOT trigger detection. The audit's natural-
+            // language-password fix deliberately flips this: any text
+            // containing the "password is" trigger IS treated as
+            // potentially sensitive (per the conservative-flag bias in
+            // P2-6 / report §六 P2-1). The replacement cases below cover
+            // the same semantic shape ("talks about passwords in normal
+            // prose") without matching the new keyword triggers.
+            "I changed my password yesterday",
             "api documentation",
             "Authentication required",
             "Enter your username"
@@ -240,5 +249,123 @@ final class SensitiveDetectorTests: XCTestCase {
             type: .text,
             isSensitive: isSensitive
         )
+    }
+
+    // MARK: - ID-REVIEW-1017 normalization regressions
+    //
+    // Each test below targets one of the four audit bypass vectors
+    // (code-review-2026-10-01 §六 P2-1). Acceptance is "paste form that
+    // evaded the old detector is now flagged".
+
+    /// (1) 16-digit card with space separators — common paste form
+    /// `4111 1111 1111 1111`. The old bank-card regex required bare
+    /// digit runs; now `stripCardSeparators` collapses the spaces and
+    /// the Luhn filter confirms the candidate is a real card.
+    func testSpaceSeparatedCardNumberIsFlagged() {
+        let cases = [
+            "4111 1111 1111 1111",        // Visa test number (Luhn valid)
+            "5500 0000 0000 0004",        // Mastercard test (Luhn valid)
+            "3400 0000 0000 009",         // Amex 15-digit test
+            "6011 0000 0000 0004"         // Discover test (Luhn valid)
+        ]
+        for card in cases {
+            let item = makeItem(content: "card \(card)")
+            XCTAssertTrue(item.isSensitive, "Space-separated card should be flagged: \(card)")
+        }
+    }
+
+    /// (1 cont.) Hyphen-separated card numbers — same collapse logic as
+    /// the space case.
+    func testHyphenSeparatedCardNumberIsFlagged() {
+        let cases = [
+            "4111-1111-1111-1111",
+            "5500-0000-0000-0004"
+        ]
+        for card in cases {
+            let item = makeItem(content: "PAN: \(card)")
+            XCTAssertTrue(item.isSensitive, "Hyphen-separated card should be flagged: \(card)")
+        }
+    }
+
+    /// (1 cont.) Random 16-digit run that matches the prefix regex
+    /// but FAILS Luhn must NOT be flagged — the regex catch + Luhn
+    /// filter is the audit's "real card" contract. The prefix `4` here
+    /// is non-Luhn-valid (4111111111111112 sum ≠ 0 mod 10).
+    func testNonLuhnValidDigitRunNotFlagged() {
+        let fakeCard = "4111111111111112"   // matches Visa prefix + 16 digits, fails Luhn
+        let item = makeItem(content: "ref: \(fakeCard)")
+        XCTAssertFalse(item.isSensitive, "Non-Luhn-valid 16-digit run must not be flagged as a card")
+    }
+
+    /// (2) Zero-width-character bypass. `password=x` with U+200B
+    /// inserted between letters is byte-different from `password=`,
+    /// but NFKC + the explicit zero-width strip pass turns it back into
+    /// the trigger that matches the keyword + value regex.
+    func testZeroWidthCharBypassIsFlagged() {
+        let payload = "p\u{200B}assword=secret123"
+        let item = makeItem(content: payload)
+        XCTAssertTrue(item.isSensitive,
+                      "Zero-width char in `password=` must not bypass detection: \(payload.debugDescription)")
+    }
+
+    /// (3) Natural-language password trigger — "password is X" / "passphrase X"
+    /// were silently missed by the old keyword table; now they're first-class
+    /// triggers.
+    func testNaturalLanguagePasswordTriggerIsFlagged() {
+        let cases = [
+            "the password is secret123",
+            "my passphrase is hunter2",
+            "password is my birthday"
+        ]
+        for phrase in cases {
+            let item = makeItem(content: phrase)
+            XCTAssertTrue(item.isSensitive, "Natural-language password should be flagged: \(phrase)")
+        }
+    }
+
+    /// (4) Chinese password pattern — `密码` / `口令` keywords added to
+    /// `sensitivePatterns` per audit §六 P2-1.
+    func testChinesePasswordPatternIsFlagged() {
+        let cases = [
+            "登录密码 123456",
+            "密码: hunter2",
+            "我的口令是 secret"
+        ]
+        for phrase in cases {
+            let item = makeItem(content: phrase)
+            XCTAssertTrue(item.isSensitive, "Chinese password pattern should be flagged: \(phrase)")
+        }
+    }
+
+    /// NFKC side-effect: full-width digits in a card number should also
+    /// be detected (they fold to ASCII under NFKC). Belt-and-suspenders
+    /// for the normalization pass — if a future change drops NFKC, this
+    /// test fails.
+    func testFullWidthCardNumberIsFlagged() {
+        let fullWidthCard = "４１１１ １１１１ １１１１ １１１１"
+        let item = makeItem(content: "card \(fullWidthCard)")
+        XCTAssertTrue(item.isSensitive, "Full-width-digit card must be flagged after NFKC")
+    }
+
+    /// No-false-positive regression. Text mentioning "password" in
+    /// normal prose (without the new trigger keywords / card shapes)
+    /// must NOT be flagged. The pre-existing `testNormalTextNotFlagged`
+    /// already covers most of these; this is the ID-REVIEW-1017-specific
+    /// set focusing on the new triggers (so a regression here points
+    /// squarely at this commit, not at the audit-era keyword table).
+    func testIDReview1017NoFalsePositiveRegression() {
+        let safe = [
+            "I changed my password yesterday",
+            "password strength is important",                       // "password" alone, NOT the new "password is" trigger
+            "Set up password reset link",                           // "password" alone
+            "My password was rotated last month",                    // "password" + past tense, not "password is"
+            "We use a credential manager to store them all",         // generic prose, no password pattern
+            "今天的天气不错",                                         // Chinese prose without password trigger
+            "the documentation is incomplete"                       // "the ... is ..." pattern, no password trigger
+        ]
+        for text in safe {
+            let item = makeItem(content: text)
+            XCTAssertFalse(item.isSensitive, "Should NOT detect in normal text: \(text.prefix(30))")
+        }
     }
 }

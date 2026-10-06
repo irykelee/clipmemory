@@ -113,6 +113,18 @@ class ClipboardMonitor {
         // Credentials — non-regex keywords (may have minor false positives on rare normal text)
         ("pwd", false),
         ("passcode", false),
+        // ID-REVIEW-1017 (code-review-2026-10-01 §六 P2-1, 2026-10-06):
+        // natural-language password triggers. "password is" / "passphrase"
+        // / "密码" / "口令" were silently passed through; per the audit
+        // report, common paste forms like "password is secret123" /
+        // "登录密码 123456" must be caught. The bias per P2-6 (large
+        // pastes conservatively flagged) is user-recoverable — false
+        // positives on these triggers are an acceptable trade for
+        // closing the natural-language bypass.
+        ("password is", false),
+        ("passphrase", false),
+        ("密码", false),
+        ("口令", false),
         ("ghp_", false),
         ("github_pat_", false),
         ("sk_live_", false),
@@ -156,8 +168,16 @@ class ClipboardMonitor {
         // Personal IDs
         ("\\b[1-9]\\d{5}(?:19|20)\\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{3}[\\dXx]\\b", true),  // China ID card (18-digit)
         ("\\b[1-9]\\d{7}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{3}\\b", true),                         // China ID card (15-digit)
-        // Bank cards (16-19 digit, basic check — may overlap with some IDs but safe to flag)
-        ("\\b(?:4\\d{15}|5[1-5]\\d{14}|3[47]\\d{13}|6(?:011|5\\d{2})\\d{12}|3(?:0[0-5]|[68]\\d)\\d{11}|9\\d{15})\\b", true),
+        // Bank cards (16-19 digit, basic check — may overlap with some IDs but safe to flag).
+        // ID-REVIEW-1017 (2026-10-06): removed from this table. The regex
+        // here matches 16-digit Visa / 15-digit Amex / etc. by prefix
+        // alone, which catches coincidental 16-digit runs that aren't
+        // real cards. The audit's "卡号先剥离空白/连字符再跑正则 +
+        // Luhn 校验" §六 P2-1 wording implies AND semantics — both
+        // prefix AND Luhn must pass. That stricter contract lives in
+        // `detectCardNumber(_:)` below, called from `detectSensitive`
+        // after the rest of this table's check runs.
+        // ("\\b(?:4\\d{15}|5[1-5]\\d{14}|3[47]\\d{13}|6(?:011|5\\d{2})\\d{12}|3(?:0[0-5]|[68]\\d)\\d{11}|9\\d{15})\\b", true),
         // US SSN
         ("\\b\\d{3}-\\d{2}-\\d{4}\\b", true),
         // JWT
@@ -645,30 +665,177 @@ class ClipboardMonitor {
             return true
         }
 
-        let range = NSRange(content.startIndex..., in: content)
+        // ID-REVIEW-1017 (2026-10-06): NFKC normalize + strip zero-width
+        // chars so Unicode bypasses (e.g. `p\u{200B}assword=x`) don't slip
+        // past keyword + regex checks. Full-width digits (０-９) fold to
+        // ASCII (0-9), which makes card-number detection catch
+        // `４１１１ １１１１` style pastes too. Strip zero-width chars
+        // (U+200B / U+200C / U+200D / U+FEFF) explicitly — they survive
+        // NFKC because they're already canonical.
+        let normalized = normalizeForDetection(content)
+        // Card-number-only pass strips whitespace/hyphens between digits
+        // so `4111 1111 1111 1111` (common paste form) collapses to
+        // `4111111111111111` before the bank-card regex + Luhn check.
+        let cardStripped = stripCardSeparators(normalized)
+        let range = NSRange(normalized.startIndex..., in: normalized)
 
         // Plain keyword check (non-regex) — M-1 (2026-07-24 audit): the prior
         // implementation built `content.lowercased()` (a second O(n) scan +
         // full-string allocation) only to call `.contains(pattern)` on it.
         // Case-insensitive substring search on the original string produces
-        // identical matches without the intermediate allocation.
+        // identical matches without the intermediate allocation. ID-REVIEW-1017:
+        // now runs against the normalized content so full-width / zero-width
+        // bypasses are caught at the keyword layer too.
         for (pattern, isRegex) in sensitivePatterns {
-            if !isRegex && content.range(of: pattern, options: .caseInsensitive) != nil {
+            if !isRegex && normalized.range(of: pattern, options: .caseInsensitive) != nil {
                 return true
             }
         }
 
         // Pre-compiled regex check — paired with their source patterns to avoid index misalignment
-        for (regex, _) in Self.compiledSensitivePatterns where regex.firstMatch(in: content, options: [], range: range) != nil {
+        for (regex, _) in Self.compiledSensitivePatterns where regex.firstMatch(in: normalized, options: [], range: range) != nil {
             return true
         }
 
         // R10: use pre-compiled sensitive value regexes
-        for regex in Self.sensitiveValueRegexes where regex.firstMatch(in: content, options: [], range: range) != nil {
+        for regex in Self.sensitiveValueRegexes where regex.firstMatch(in: normalized, options: [], range: range) != nil {
+            return true
+        }
+
+        // ID-REVIEW-1017: dedicated card-number pass. The bank-card regex
+        // already matches the prefix classes (Visa / MC / Amex / Discover /
+        // JCB / UnionPay / 9xxx), but raw paste forms include separators
+        // (`4111 1111 1111 1111`) and noisy prefixes that the regex
+        // misses. After `stripCardSeparators`, the regex runs against the
+        // digit-collapsed content + Luhn confirms the candidate is a real
+        // card number rather than a coincidental 16-digit run. Luhn as
+        // filter (not confirmer) per the audit's conservative-flag bias.
+        if detectCardNumber(cardStripped) {
             return true
         }
 
         return false
+    }
+
+    // MARK: - ID-REVIEW-1017 normalization helpers
+
+    /// NFKC normalize the input then strip zero-width / BOM characters
+    /// that survive NFKC. Returns the input verbatim if normalization
+    /// fails (the Foundation call has no failure mode in practice but
+    /// we guard for symmetry with `?? content`).
+    static func normalizeForDetection(_ content: String) -> String {
+        // Use CoreFoundation `CFStringNormalize` rather than
+        // `String.normalize(_:)` — the Foundation API's availability
+        // varies across Swift SDK versions, and the CoreFoundation
+        // call is guaranteed on every macOS / iOS deployment target
+        // this project supports. Result is identical: NFKC
+        // (canonical decomposition + canonical composition).
+        // Note: CFStringNormalize mutates in place, so we wrap into a
+        // NSMutableString, call the mutator, then read back as String.
+        let mutable = NSMutableString(string: content)
+        // CoreFoundation raw values: D=0, C=1, KD=2, KC=3. Use rawValue
+        // because Swift's CFStringNormalizationForm enum doesn't expose
+        // the case names (.d/.kc/.c/.kd all rejected by the compiler in
+        // this SDK). rawValue bridge keeps the symbol portable across
+        // SDK versions.
+        CFStringNormalize(mutable, CFStringNormalizationForm(rawValue: 3)!)
+        let nfkc = mutable as String
+        // Drop U+200B (zero-width space), U+200C (zero-width non-joiner),
+        // U+200D (zero-width joiner), U+FEFF (BOM / zero-width no-break
+        // space). All four are explicit Unicode-bypass vectors that
+        // NFKC leaves intact because they're already in canonical form.
+        var scalars = String.UnicodeScalarView()
+        scalars.reserveCapacity(nfkc.unicodeScalars.count)
+        for scalar in nfkc.unicodeScalars {
+            switch scalar.value {
+            case 0x200B, 0x200C, 0x200D, 0xFEFF:
+                continue
+            default:
+                scalars.append(scalar)
+            }
+        }
+        return String(String.UnicodeScalarView(scalars))
+    }
+
+    /// Collapse whitespace + hyphen runs that sit between two digits so
+    /// paste-style card numbers (`4111 1111 1111 1111`,
+    /// `4111-1111-1111-1111`) match the bare-digit bank-card regex.
+    /// Idempotent — repeated application converges in 1-2 passes for
+    /// realistic paste formats.
+    ///
+    /// ID-REVIEW-1017: NSRange must be recomputed each iteration. The
+    /// string shrinks as separators are stripped, so a range captured
+    /// at the top of the loop becomes stale and triggers
+    /// `NSRangeException` on the second pass. This was the regression
+    /// that broke pre-existing US SSN tests (input `123-45-6789` had
+    /// its hyphens stripped, the stale range then exceeded the
+    /// shorter string's bounds).
+    static func stripCardSeparators(_ content: String) -> String {
+        guard let regex = try? NSRegularExpression(
+            pattern: "(\\d)[\\s-]+(\\d)",
+            options: []
+        ) else {
+            return content
+        }
+        var current = content
+        // Fixed upper bound (4) — every realistic paste collapses in 1-2
+        // passes; the cap guards against pathological inputs without
+        // hiding regression (a paste that needs 4+ passes is itself a
+        // finding).
+        for _ in 0..<4 {
+            let range = NSRange(current.startIndex..., in: current)
+            let next = regex.stringByReplacingMatches(
+                in: current, options: [], range: range,
+                withTemplate: "$1$2"
+            )
+            if next == current { return current }
+            current = next
+        }
+        return current
+    }
+
+    /// Bank-card detection with Luhn validation. Mirrors the prefix
+    /// classes from `sensitivePatterns` (Visa / MC / Amex / Discover /
+    /// JCB / UnionPay / 9xxx) and runs Luhn on each regex match.
+    /// Luhn-as-filter (not confirmer) per P2-6 conservative-flag bias:
+    /// matching the prefix regex but failing Luhn is treated as not-a-card
+    /// and the function returns `false`. This is a stronger contract
+    /// than the audit's "regex match alone" baseline; trade-off is one
+    /// more Luhn pass per match (cheap — at most ~6 candidates per paste).
+    static func detectCardNumber(_ content: String) -> Bool {
+        let pattern = "\\b(?:4\\d{15}|5[1-5]\\d{14}|3[47]\\d{13}|6(?:011|5\\d{2})\\d{12}|3(?:0[0-5]|[68]\\d)\\d{11}|9\\d{15})\\b"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return false
+        }
+        let range = NSRange(content.startIndex..., in: content)
+        for match in regex.matches(in: content, options: [], range: range) {
+            guard let r = Range(match.range, in: content) else { continue }
+            if luhnValid(String(content[r])) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Luhn algorithm validation for 13-19 digit card numbers.
+    /// Doubled-and-subtract-9 pattern: walk digits right-to-left,
+    /// double every second digit, fold >9 by subtracting 9.
+    static func luhnValid(_ digits: String) -> Bool {
+        let chars = Array(digits)
+        guard chars.count >= 13, chars.count <= 19, chars.allSatisfy(\.isNumber) else {
+            return false
+        }
+        var sum = 0
+        for (i, ch) in chars.reversed().enumerated() {
+            guard let n = ch.wholeNumberValue else { return false }
+            if i % 2 == 1 {
+                let doubled = n * 2
+                sum += doubled > 9 ? doubled - 9 : doubled
+            } else {
+                sum += n
+            }
+        }
+        return sum % 10 == 0
     }
 
     /// Extracted from checkClipboard for cyclomatic complexity reduction.
