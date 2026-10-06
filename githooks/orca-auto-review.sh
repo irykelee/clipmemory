@@ -168,44 +168,55 @@ fi
 # REVIEW_MODEL 显式指定时链只有 1 个, 行为与旧版一致。
 USED_MODEL=""
 # ID-REVIEW-1016 (2026-10-05): per-model watchdog. 观测到的失败签名
-# (orca-auto-review-20261005-212911/-220442, 手动 gate test -230508):
-# big-pickle 免费池晚间高峰对**任何请求**(含 2-token 极小探针)挂起，
-# RAWOUT 永远 0 字节、opencode 不退出 —— 旧的同步调用让 pre-push 无限
-# 阻塞，MODEL_CHAIN 的 fallback(nemotron 白天+对照实验均 15s 正常)永远
-# 轮不到。对照组实证与本地网络无关(加速器开启依旧 0 字节)。
-# 修复 = 两层熔断，verdict 语义不变(超时走既有"未产出有效报告 → continue"):
-#   a) 首事件截止 FIRST_EVENT_DEADLINE 秒: RAWOUT 仍 0 字节 → 杀掉，
+# (orca-auto-review-20261005-212911/-220442, 手动 gate test -230508 与
+# -073418): big-pickle 免费池对**任何请求**(含 2-token 极小探针、早午晚
+# 全时段)挂起，RAWOUT 0 字节、opencode 不退出 —— 旧的同步调用让 pre-push
+# 无限阻塞，MODEL_CHAIN 的 fallback(nemotron 对照实验 15s 正常)永远轮不到。
+# 对照组实证与本地网络无关(加速器开启依旧 0 字节)。
+# 修复 = 纯 bash 双 watchdog，不依赖 timeout/gtimeout 是否存在
+# (nemotron 审核 20261006-074747 P1: stock macOS 缺 coreutils 时
+# 基于 timeout 二进制的总上限整层消失)，verdict 语义不变(超时走既有
+# "未产出有效报告 → continue"路径):
+#   A) 首事件截止 FIRST_EVENT_DEADLINE 秒: RAWOUT 仍空 → 杀掉，
 #      立刻 fallback(成功案例全部在首 2 分钟内开始产出事件流);
-#   b) 总时长上限 REVIEW_MODEL_TIMEOUT 秒: 兜住"有事件但中途停更"。
+#   B) 总时长上限 REVIEW_MODEL_TIMEOUT 秒: 兜住"有事件但中途停更"。
+# 杀进程带 TERM→KILL 5s 升级 + kill -0 活性检查(同轮审核
+# 20261006-074747 P1/P2)；watchdog 在 wait 返回后立即被主流程回收，
+# 理论上的 PID 复用窗口被压缩到纳秒级且加活性检查兜底。
 FIRST_EVENT_DEADLINE="${REVIEW_FIRST_EVENT_DEADLINE:-180}"
 REVIEW_MODEL_TIMEOUT="${REVIEW_MODEL_TIMEOUT:-900}"
-TIMEOUT_BIN=""
-command -v timeout >/dev/null 2>&1 && TIMEOUT_BIN="timeout"
-command -v gtimeout >/dev/null 2>&1 && [ -z "$TIMEOUT_BIN" ] && TIMEOUT_BIN="gtimeout"
 for MODEL in "${MODEL_CHAIN[@]}"; do
 RAWOUT="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.jsonl"
 RAWERR="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.err"
 
-if [ -n "$TIMEOUT_BIN" ]; then
-  "$TIMEOUT_BIN" -k 30 "$REVIEW_MODEL_TIMEOUT" \
-    "$OPENCODE" run --format json --dir "$ROOT" -m "$MODEL" "$PROMPT" \
-    > "$RAWOUT" 2> "$RAWERR" &
-else
-  "$OPENCODE" run --format json --dir "$ROOT" -m "$MODEL" "$PROMPT" \
-    > "$RAWOUT" 2> "$RAWERR" &
-fi
+"$OPENCODE" run --format json --dir "$ROOT" -m "$MODEL" "$PROMPT" \
+  > "$RAWOUT" 2> "$RAWERR" &
 OC_PID=$!
 (
   sleep "$FIRST_EVENT_DEADLINE"
-  [ -s "$RAWOUT" ] || kill "$OC_PID" 2>/dev/null
+  if ! [ -s "$RAWOUT" ] && kill -0 "$OC_PID" 2>/dev/null; then
+    kill "$OC_PID" 2>/dev/null || true
+    sleep 5
+    kill -9 "$OC_PID" 2>/dev/null || true
+  fi
 ) &
-WATCHDOG_PID=$!
+WATCHDOG_A=$!
+(
+  sleep "$REVIEW_MODEL_TIMEOUT"
+  if kill -0 "$OC_PID" 2>/dev/null; then
+    kill "$OC_PID" 2>/dev/null || true
+    sleep 5
+    kill -9 "$OC_PID" 2>/dev/null || true
+  fi
+) &
+WATCHDOG_B=$!
 wait "$OC_PID" 2>/dev/null || true
-# watchdog 可能已自行退出(先于主流程的 kill)——set -e 下 kill 的非零
-# 返回会静默终止整个 hook(ID-REVIEW-1016 首测实证: nemotron 永远轮不到)。
-kill "$WATCHDOG_PID" 2>/dev/null || true
-wait "$WATCHDOG_PID" 2>/dev/null || true
-wait "$WATCHDOG_PID" 2>/dev/null || true
+# watchdog 已自发杀掉 opencode 时它们往往还在 sleep 5 的 KILL 升级
+# 尾巴里——wait 返回后立即回收；set -e 下 kill 的非零返回会静默终止
+# 整个 hook(ID-REVIEW-1016 首测实证: nemotron 永远轮不到)，全部 || true。
+kill "$WATCHDOG_A" "$WATCHDOG_B" 2>/dev/null || true
+wait "$WATCHDOG_A" 2>/dev/null || true
+wait "$WATCHDOG_B" 2>/dev/null || true
 
 # 抽取模型自己的文本块（type=="text"）拼成报告。三层降级，每层都留痕：
 #   L1 python3 —— 系统 python3（ClipMemory 无 runtime venv）
