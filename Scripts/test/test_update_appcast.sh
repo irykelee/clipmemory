@@ -51,8 +51,15 @@ if ! declare -f insert_appcast_item > /dev/null; then
 fi
 
 # --- Run the function under test (twice, to verify accumulation) ---
-insert_appcast_item "$FAKE_APPCAST" "9.9.9" "$FAKE_TARBALL" "SIG_AAA=" > /dev/null
-insert_appcast_item "$FAKE_APPCAST" "9.9.10" "$FAKE_TARBALL" "SIG_BBB=" > /dev/null
+# ID-REVIEW-1021: pass the GitHub release page URL explicitly so
+# Assertion 6a can verify sparkle:releaseNotesLink is emitted with
+# the correct value. The CLI default-to-GitHub logic (in
+# update_appcast.sh's main body) is covered separately by direct CLI
+# invocation in CI; here we test the function contract directly.
+insert_appcast_item "$FAKE_APPCAST" "9.9.9" "$FAKE_TARBALL" "SIG_AAA=" \
+    "https://github.com/irykelee/clipmemory/releases/tag/v9.9.9" > /dev/null
+insert_appcast_item "$FAKE_APPCAST" "9.9.10" "$FAKE_TARBALL" "SIG_BBB=" \
+    "https://github.com/irykelee/clipmemory/releases/tag/v9.9.10" > /dev/null
 
 # --- Assertion 2: two items present ---
 item_count=$(grep -c "<item>" "$FAKE_APPCAST")
@@ -108,6 +115,31 @@ if [ "$item_count" -ne 2 ]; then
 fi
 if grep -qF "SIG_DIFFERENT=" "$FAKE_APPCAST"; then
     echo "FAIL: idempotent re-insert overwrote/duplicated the existing 9.9.10 item" >&2
+    exit 1
+fi
+
+# --- Assertion 6a (ID-REVIEW-1021, code-review §五-9): every item carries
+# sparkle:releaseNotesLink. Sparkle 2.10 recommends this field so the
+# update dialog surfaces the release notes / changelog URL instead of
+# just the version number. The default URL is the GitHub release page.
+for needle in \
+    "<sparkle:releaseNotesLink>https://github.com/irykelee/clipmemory/releases/tag/v9.9.9</sparkle:releaseNotesLink>" \
+    "<sparkle:releaseNotesLink>https://github.com/irykelee/clipmemory/releases/tag/v9.9.10</sparkle:releaseNotesLink>"; do
+    if ! grep -qF "$needle" "$FAKE_APPCAST"; then
+        echo "FAIL: sparkle:releaseNotesLink missing or wrong URL" >&2
+        echo "  needle: $needle" >&2
+        exit 1
+    fi
+done
+
+# --- Assertion 6b (ID-REVIEW-1021): an explicit release-notes URL
+# (5th positional arg) overrides the GitHub-release-page default.
+EXPLICIT_APPCAST="$TEST_DIR/appcast-explicit.xml"
+cp "$FAKE_APPCAST" "$EXPLICIT_APPCAST"
+insert_appcast_item "$EXPLICIT_APPCAST" "9.9.11" "$FAKE_TARBALL" "SIG_EEE=" \
+    "https://example.com/notes/9.9.11.md" > /dev/null
+if ! grep -qF "<sparkle:releaseNotesLink>https://example.com/notes/9.9.11.md</sparkle:releaseNotesLink>" "$EXPLICIT_APPCAST"; then
+    echo "FAIL: explicit 5th-arg URL did not override the GitHub release default" >&2
     exit 1
 fi
 

@@ -151,9 +151,19 @@ remove_appcast_item() {
 
 # --- Main body: only runs when executed, not sourced ---
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-    if [ "$#" -ne 4 ]; then
-        echo "Usage: $0 <appcast_path> <version> <tarball_path> <ed_signature>" >&2
+    if [ "$#" -ne 4 ] && [ "$#" -ne 5 ]; then
+        echo "Usage: $0 <appcast_path> <version> <tarball_path> <ed_signature> [<release_notes_url>]" >&2
+        echo "  <release_notes_url> defaults to https://github.com/irykelee/clipmemory/releases/tag/v<version>" >&2
         exit 1
+    fi
+    # ID-REVIEW-1021 (2026-10-06, code-review §五-9): when the 5th arg is
+    # omitted, default to the GitHub release page so every NEW item
+    # carries `sparkle:releaseNotesLink` (Sparkle 2.10 recommended field;
+    # backfill of older items is out of scope here). The function
+    # already conditionally emits the element when $5 is non-empty —
+    # this CLI wrapper just guarantees $5 is always populated.
+    if [ "$#" -eq 4 ]; then
+        set -- "$@" "https://github.com/irykelee/clipmemory/releases/tag/v${2}"
     fi
     insert_appcast_item "$@"
 fi
