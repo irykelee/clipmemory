@@ -1603,33 +1603,142 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// Startup image integrity scan: checks every image item's file on disk
     /// and populates `imageMissingIds` / `imageCorruptedIds`. Runs async on a
     /// utility queue so it never blocks startup. Results merge back on main.
-    func runImageIntegrityScan() {
+    ///
+    /// ID-REVIEW-1019 (2026-10-06, code-review §六 P2-3): incremental
+    /// scan via a `filename → mtime` cache persisted in UserDefaults
+    /// (`UserDefaultsKey.imageIntegrityScannedMtimes`). On each
+    /// launch, a file whose mtime matches the cache is skipped — no
+    /// re-read, no re-decrypt, no thumbnail pre-populate. Files whose
+    /// mtime changed (or are absent from the cache) get the full
+    /// verify + cache-updated path. Missing / corrupted files are
+    /// still surfaced to the UI via `imageMissingIds` /
+    /// `imageCorruptedIds` regardless of cache state — false
+    /// negatives are not accepted as a perf trade.
+    ///
+    /// For 200 4K images, the previous full scan re-read + re-decrypted
+    /// several hundred MB on every launch. With incremental scans, the
+    /// per-launch cost drops to "only the files that changed since
+    /// the last successful scan" — typically 0–2 files.
+    ///
+    /// Cache miss handling: if the UserDefaults value is missing,
+    /// corrupt (un-parseable), or doesn't include the file, the file
+    /// is treated as "needs verify" — same as a changed mtime.
+    ///
+    /// `completion` fires on `@MainActor` once `imageMissingIds` /
+    /// `imageCorruptedIds` have been updated with this scan's
+    /// results. Tests use it as a deterministic completion signal;
+    /// production code paths (the two callers in `applyLoadResult`
+    /// and `runLoadWork`) don't pass one — they fire-and-forget and
+    /// rely on the next UI render to observe the updated sets.
+    func runImageIntegrityScan(completion: (@MainActor () -> Void)? = nil) {
         let imageItems = (items + trashedItems).filter { $0.type == .image }
-        guard !imageItems.isEmpty else { return }
+        guard !imageItems.isEmpty else {
+            // No images → no scan → fire completion immediately on
+            // main so callers that pass one don't hang. (MainActor
+            // dispatch guarantees the completion fires after the
+            // current call stack returns — same semantics as the
+            // populated-scan path.)
+            if let completion {
+                Task { @MainActor in completion() }
+            }
+            return
+        }
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             var missing: Set<UUID> = []
             var corrupted: Set<UUID> = []
+            // Local copy of the mtime cache — read once at scan start,
+            // updated as files verify. Persisted back at scan end so
+            // the next launch sees this scan's view. This means a
+            // crash mid-scan resets us to the pre-scan cache state,
+            // not partial — worst case = one extra scan of files we
+            // were about to verify.
+            var scanned: [String: Int64] = self.loadIntegrityMtimes()
+
             for item in imageItems {
-                let status = ImageStorage.shared.imageStatus(for: item.content)
+                let filename = item.content
+                // mtime check (stat is a single syscall, much cheaper
+                // than the full read + decrypt). `stat` returns Int64
+                // mtime in seconds — sub-second precision is filesystem
+                // dependent (APFS supports ns but stat() rounds to s on
+                // some platforms). One-second granularity is enough to
+                // catch any real change between sessions.
+                let mtime = Self.imageFileMtime(filename)
+                if let mtime, let cached = scanned[filename], cached == mtime {
+                    // Unchanged since last successful scan — skip.
+                    continue
+                }
+                let status = ImageStorage.shared.imageStatus(for: filename)
                 switch status {
                 case .available(let data):
-                    // ID-CRASH-0033 (2026-09-28 code-review P2-7): pre-populate
-                    // the thumbnail cache from the decrypted bytes so row render
-                    // (which consults `imageCache` first) doesn't re-decrypt.
+                    // ID-CRASH-0033 (2026-09-28 code-review P2-7):
+                    // pre-populate the thumbnail cache from the
+                    // decrypted bytes so row render (which consults
+                    // `imageCache` first) doesn't re-decrypt.
                     ImageStorage.shared.prepopulateThumbnailCache(
-                        filename: item.content,
+                        filename: filename,
                         data: data
                     )
+                    // Record the verified mtime so the next launch
+                    // skips this file. Persisted at scan end below.
+                    if let mtime { scanned[filename] = mtime }
                 case .fileMissing: missing.insert(item.id)
                 case .decryptionFailed: corrupted.insert(item.id)
                 }
             }
+
+            // Persist the updated cache atomically. Writing inside the
+            // async block is fine — UserDefaults is thread-safe for
+            // individual setters, and the data blob is small (one
+            // entry per image).
+            self.persistIntegrityMtimes(scanned)
+
             Task { @MainActor [weak self] in
-                self?.imageMissingIds = missing
-                self?.imageCorruptedIds = corrupted
+                guard let self else { return }
+                self.imageMissingIds = missing
+                self.imageCorruptedIds = corrupted
+                completion?()
             }
         }
+    }
+
+    /// Read the persisted `filename → mtime-ns` cache from the store's
+    /// own UserDefaults instance (injected via init so tests can isolate
+    /// with a suite-backed defaults). Returns an empty dictionary on
+    /// miss / corrupt / unparseable — the caller treats that as "no
+    /// cache, full scan".
+    private func loadIntegrityMtimes() -> [String: Int64] {
+        let key = UserDefaultsKey.imageIntegrityScannedMtimes.rawValue
+        guard let data = defaults.data(forKey: key),
+              let json = try? JSONDecoder().decode([String: Int64].self, from: data) else {
+            return [:]
+        }
+        return json
+    }
+
+    /// Persist the `filename → mtime-ns` cache back to the store's
+    /// own UserDefaults instance. Encoding failures are logged at info
+    /// (not error) — a transient UserDefaults hiccup shouldn't break
+    /// the scan.
+    private func persistIntegrityMtimes(_ scanned: [String: Int64]) {
+        let key = UserDefaultsKey.imageIntegrityScannedMtimes.rawValue
+        do {
+            let data = try JSONEncoder().encode(scanned)
+            defaults.set(data, forKey: key)
+        } catch {
+            self.logger.info("ImageIntegrity: failed to persist mtime cache: \(error.localizedDescription)")
+        }
+    }
+
+    /// Stat the image file and return its modification time in
+    /// seconds-since-epoch (Int64). Returns nil if the file is
+    /// missing or unreadable (the caller treats nil as "needs verify",
+    /// which will then hit `.fileMissing` and surface to the UI).
+    private static func imageFileMtime(_ filename: String) -> Int64? {
+        let url = ImageStorage.shared.imagesDirectoryURL.appendingPathComponent(filename)
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        guard let mtime = attrs?[.modificationDate] as? Date else { return nil }
+        return Int64(mtime.timeIntervalSince1970)
     }
 
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened `private` → `internal`
