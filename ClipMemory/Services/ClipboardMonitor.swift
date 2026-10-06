@@ -1,3 +1,11 @@
+// swiftlint:disable file_length
+// (god-object class; ID-REVIEW-1017 added the Unicode + Luhn helpers
+// which pushed the file past 800 lines. ID-REVIEW-1020 added the
+// precompiled card-detection regexes. Both are additive, neither
+// changed existing code paths; splitting the file would create
+// unnecessary cross-file coupling for what is functionally one
+// clipboard-monitor unit.)
+
 import AppKit
 import Foundation
 import os.log
@@ -183,6 +191,43 @@ class ClipboardMonitor {
         // JWT
         ("eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}", true)
     ]
+
+    // ID-REVIEW-1020 (2026-10-06): precompile the two card-detection
+    // regexes that ID-REVIEW-1017 introduced as inline-`try?` calls.
+    // Aligns with the file's R10 convention (`sensitiveValueRegexes`
+    // above + `compiledSensitivePatterns` below — both compile once at
+    // type-init time). Per-capture recompilation costs ~10-100µs; the
+    // monitor's poll loop fires on every changeCount so this is the
+    // difference between "always compiles" and "compiles once". Both
+    // patterns use a never-matches `(?!.)` fallback if compilation
+    // fails — same fail-closed style as the other regex tables above.
+    static let cardSeparatorRegex: NSRegularExpression = {
+        do {
+            return try NSRegularExpression(
+                pattern: "(\\d)[\\s-]+(\\d)",
+                options: []
+            )
+        } catch {
+            let log = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
+            log.error("Failed to compile card separator regex: \(error.localizedDescription)")
+            // (?!.) is a never-matches placeholder; it always compiles successfully.
+            return try! NSRegularExpression(pattern: "(?!.)", options: []) // swiftlint:disable:this force_try
+        }
+    }()
+
+    static let cardNumberRegex: NSRegularExpression = {
+        do {
+            return try NSRegularExpression(
+                pattern: "\\b(?:4\\d{15}|5[1-5]\\d{14}|3[47]\\d{13}|6(?:011|5\\d{2})\\d{12}|3(?:0[0-5]|[68]\\d)\\d{11}|9\\d{15})\\b",
+                options: []
+            )
+        } catch {
+            let log = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
+            log.error("Failed to compile card number regex: \(error.localizedDescription)")
+            // (?!.) is a never-matches placeholder; it always compiles successfully.
+            return try! NSRegularExpression(pattern: "(?!.)", options: []) // swiftlint:disable:this force_try
+        }
+    }()
 
     // Pre-compiled regex patterns for sensitive value detection (R10: compile once)
     static let sensitiveValueRegexes: [NSRegularExpression] = {
@@ -771,20 +816,15 @@ class ClipboardMonitor {
     /// its hyphens stripped, the stale range then exceeded the
     /// shorter string's bounds).
     static func stripCardSeparators(_ content: String) -> String {
-        guard let regex = try? NSRegularExpression(
-            pattern: "(\\d)[\\s-]+(\\d)",
-            options: []
-        ) else {
-            return content
-        }
         var current = content
         // Fixed upper bound (4) — every realistic paste collapses in 1-2
         // passes; the cap guards against pathological inputs without
         // hiding regression (a paste that needs 4+ passes is itself a
-        // finding).
+        // finding). ID-REVIEW-1020: regex is now a static-let
+        // (`cardSeparatorRegex` above) — no per-call compilation.
         for _ in 0..<4 {
             let range = NSRange(current.startIndex..., in: current)
-            let next = regex.stringByReplacingMatches(
+            let next = cardSeparatorRegex.stringByReplacingMatches(
                 in: current, options: [], range: range,
                 withTemplate: "$1$2"
             )
@@ -802,13 +842,11 @@ class ClipboardMonitor {
     /// and the function returns `false`. This is a stronger contract
     /// than the audit's "regex match alone" baseline; trade-off is one
     /// more Luhn pass per match (cheap — at most ~6 candidates per paste).
+    /// ID-REVIEW-1020: regex is now a static-let (`cardNumberRegex`
+    /// above) — no per-call compilation.
     static func detectCardNumber(_ content: String) -> Bool {
-        let pattern = "\\b(?:4\\d{15}|5[1-5]\\d{14}|3[47]\\d{13}|6(?:011|5\\d{2})\\d{12}|3(?:0[0-5]|[68]\\d)\\d{11}|9\\d{15})\\b"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return false
-        }
         let range = NSRange(content.startIndex..., in: content)
-        for match in regex.matches(in: content, options: [], range: range) {
+        for match in cardNumberRegex.matches(in: content, options: [], range: range) {
             guard let r = Range(match.range, in: content) else { continue }
             if luhnValid(String(content[r])) {
                 return true
