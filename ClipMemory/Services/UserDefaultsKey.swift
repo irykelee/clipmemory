@@ -185,4 +185,18 @@ enum UserDefaultsKey: String, CaseIterable {
     /// Font scale factor (1.0 / 1.2 / 1.4 by Picker, defensive clamp < 4).
     /// Utils/FontScaling.swift:15.
     case fontScale = "fontScale"
+
+    // MARK: - ID-REVIEW-1019 (2026-10-06, code-review §六 P2-3)
+
+    /// `mtime → filename` map of every image file that the startup
+    /// integrity scan has already verified on a previous launch.
+    /// Compared against the current mtime on the next launch to skip
+    /// unchanged files — saves the per-launch hundreds-of-MB read
+    /// when the library is large and only a few images change between
+    /// sessions. Missing / unset → full scan (no false negatives).
+    /// Stored as `[filename: mtime-seconds]` (Data-encoded JSON
+    /// dictionary; second-resolution is enough — real file edits
+    /// between sessions always shift the whole-second value, and
+    /// nanosecond precision adds noise without value).
+    case imageIntegrityScannedMtimes = "ImageIntegrity.scannedMtimes"
 }

@@ -168,3 +168,22 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
    **真 race：0 个**。修复路径：加 `@preconcurrency` 注解或 explicit MainActor isolation。记入 v2.9.7 backlog，不阻塞 v2.9.6 ship。
 
 7. **README 注册（`sync_readme.py` 在 `release.sh` 中实际未调用）** —— 这是**故意的人类编辑门**（`Scripts/release.sh:40-45` 注释明确："user takes over the README state is correct responsibility"，因为 sync_readme.py 需要 LLM API key），**不是 bug**。本批不修。
+
+## ID-REVIEW-1018（2026-10-06, commit `53a0306`）—— backup hard-link + usage display
+
+5 个非阻塞 follow-up，按优先级 + next-batch 顺手做标记：
+
+### Next-batch 顺手做（建议随下批 ID-REVIEW-1022/Task D 一起）
+
+1. **【测试缺口·P2】** `BackupServiceTests.swift:testBackupNowCleansUpPartialDirOnImageCopyFailure` 改 NoThrow 后，**1.2 "throw mid-flight → partial-dir cleanup" 路径失去直接覆盖**。原 chmod-0 触发器对 hard-link 不再触发（`linkItem` 不读 source）。可改用 chmod-0 *destination* (`imagesDestination`) 强制 link 失败 → 断言 throw + 目录清理，单测即可恢复覆盖。回归风险：跨卷 EXDEV / 目标目录 EACCES / `imagesDestination` 已是文件 等真实失败路径目前无测试覆盖。
+
+2. **【文档】** `BackupServiceTests.swift:149` 仍写 `"chmod-0 file throws .imageCopyFailed"`，与改 NoThrow 后的新行为矛盾。同步注释指向 ID-REVIEW-1018 hard-link 章节 + 描述 `linkItem` 不读 source 的语义事实。
+
+### Defer（默认安装不受影响，下下批或下下下批处理）
+
+3. **【P3·健壮性】跨卷 EXDEV 回归** —— 若用户把 `Images/` 符号链接到其他卷（省空间），`linkItem` 报 `EXDEV` → 每日备份全失败（旧 `copyItem` 跨卷正常）。3 行修复：`catch` 中识别 `EXDEV` 时降级 `copyItem`。force-EXDEV-only path，所以默认安装（单卷 APFS）不受影响。
+
+4. **【边界记档】chmod-0 文件进备份** —— hard link 对 `0o000` source 也成功（实测），所以未来 exportPackage 时 `ditto` 读不了该文件导致导出失败。低概率（正常图片恒 `0o600`），仅记档不修：导出包 v3 + ImageStorage 的写入纪律已默认 0o600。
+
+5. **【P3·健壮性】`identifier as! NSObject` 强转** —— 实践安全（NSURL 内部实现必为 NSObject），但 `as?` + 默认值更稳：`let key = (identifier as? NSObject).map(AnyHashable.init) ?? AnyHashable(<URLResourceKey>)`（或用 URLResourceKey 作 fallback key，因 hard link 同 path 的 identifier 不同）。3 行替换，无行为变化。
+
