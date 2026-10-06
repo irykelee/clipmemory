@@ -99,6 +99,10 @@
 "settings.backup.keep" = "Copias a conservar";
 "settings.backup.keep.count" = "%d copias";
 "settings.backup.keep.count.one" = "%d copia";
+// ID-REVIEW-1018 (2026-10-06): backup tab shows total disk usage + count.
+"settings.backup.totalUsage" = "Las copias usan %@ (%@)";
+"settings.backup.totalUsage.count.one" = "%d copia";
+"settings.backup.totalUsage.count.other" = "%d copias";
 "settings.trash.retention.days.count" = "%d días";
 "settings.trash.retention.days.count.one" = "%d día";
 "settings.backup.now" = "Copiar ahora";

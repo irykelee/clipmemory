@@ -97,6 +97,10 @@
 "settings.backup.keep" = "유지할 백업 수";
 "settings.backup.keep.count" = "%d개 백업";
 "settings.backup.keep.count.one" = "%d개 백업";
+// ID-REVIEW-1018 (2026-10-06): backup tab shows total disk usage + count.
+"settings.backup.totalUsage" = "백업 사용량 %@(%@)";
+"settings.backup.totalUsage.count.one" = "%d개";
+"settings.backup.totalUsage.count.other" = "%d개";
 "settings.trash.retention.days.count" = "%d일";
 "settings.trash.retention.days.count.one" = "%d일";
 "settings.backup.now" = "지금 백업";

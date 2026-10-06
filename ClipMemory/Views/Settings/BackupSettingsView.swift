@@ -87,6 +87,20 @@ struct BackupSettingsView: View {
                             .foregroundColor(.red)
                             .id(backupRefresh)
                     }
+                    // ID-REVIEW-1018 (2026-10-06): total disk usage of all
+                    // backups + backup count. Since images are hard-linked
+                    // (see BackupService.copyImagesIfPresent), this reflects
+                    // ACTUAL unique disk blocks, not Nx duplication. Refresh
+                    // piggybacks on `backupRefresh` so a manual "Back Up Now"
+                    // click or auto-backup tick updates the line without
+                    // re-mounting the view.
+                    let usage = backupService.totalBackupDiskUsage()
+                    Text(L10n.settingsBackupTotalUsage(
+                        ByteCountFormatter.string(fromByteCount: usage.bytes, countStyle: .file),
+                        usage.count
+                    ))
+                    .foregroundColor(.secondary)
+                    .id(backupRefresh)
                 }
             }
         }

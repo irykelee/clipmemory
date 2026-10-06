@@ -385,18 +385,127 @@ final class BackupService {
         }
     }
 
-    /// Copies the `Images/` directory into the backup if present; no-op
-    /// otherwise. Images are already encrypted at rest by ImageStorage so
-    /// this is a straightforward recursive copy.
+    /// Hard-links the `Images/` directory into the backup if present;
+    /// no-op otherwise.
+    ///
+    /// ID-REVIEW-1018 (2026-10-06, code-review-2026-10-01 §六 P2-7):
+    /// previously used `fileManager.copyItem(at:to:)` which recursively
+    /// duplicates every image. With `keepCount` at 30 and a sizable
+    /// image library, a daily backup was multiplying disk usage by up
+    /// to 30x. ImageStorage saves content-immutable encrypted blobs
+    /// (UUID-named, never modified after write), so hard links to the
+    /// source files are safe — N backups share the same inodes.
+    ///
+    /// Pre-research (commit-time): on this MacBook (macOS 27.0.1,
+    /// `/dev/disk3s1` APFS volume), 10MB test file + `cp` + Swift
+    /// `copyfile(COPYFILE_CLONE)` all produced independent inodes
+    /// with full 10MB block allocation. APFS CoW clone is not
+    /// activated on this volume for `copyfile(2)`. Hard link is the
+    /// only path that achieves zero incremental disk usage without
+    /// changing the ImageStorage storage layout (per task discipline).
+    ///
+    /// Restore path (`importImages` in BackupPackage.swift) reads
+    /// bytes regardless of whether the path is a hard link, so no
+    /// restore-side change is needed.
     private func copyImagesIfPresent(to destination: URL) throws {
         guard fileManager.fileExists(atPath: imagesDirectory.path) else { return }
         let imagesDestination = destination.appendingPathComponent("Images", isDirectory: true)
         do {
-            try fileManager.copyItem(at: imagesDirectory, to: imagesDestination)
+            try fileManager.createDirectory(
+                at: imagesDestination, withIntermediateDirectories: true
+            )
         } catch {
-            logger.error("Backup failed (copy Images): \(error.localizedDescription)")
+            logger.error("Backup failed (create Images dir): \(error.localizedDescription)")
             throw BackupError.imageCopyFailed(underlying: error)
         }
+
+        let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey]
+        guard let enumerator = fileManager.enumerator(
+            at: imagesDirectory,
+            includingPropertiesForKeys: Array(resourceKeys),
+            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+        ) else {
+            return
+        }
+
+        // Hard link every regular file in `Images/`. Failures abort the
+        // backup with `imageCopyFailed` (same as the old `copyItem` path)
+        // so a broken source file doesn't produce a half-formed backup.
+        // The partial backup dir is cleaned up by `removePartialBackup`
+        // via the `.incomplete` marker pattern in the caller.
+        for case let fileURL as URL in enumerator {
+            do {
+                let values = try fileURL.resourceValues(forKeys: resourceKeys)
+                guard values.isRegularFile == true else { continue }
+                let dst = imagesDestination.appendingPathComponent(fileURL.lastPathComponent)
+                try fileManager.linkItem(at: fileURL, to: dst)
+            } catch {
+                logger.error("Backup failed (link Images): \(error.localizedDescription) source=\(fileURL.lastPathComponent)")
+                throw BackupError.imageCopyFailed(underlying: error)
+            }
+        }
+    }
+
+    /// ID-REVIEW-1018 (2026-10-06): sum of `URLResourceKey.fileAllocatedSizeKey`
+    /// across every file in every backup directory. Because images are
+    /// hard-linked, the SAME inode appears N times in the enumeration
+    /// (once per backup), and `fileAllocatedSize` reports the full
+    /// allocation per path (not deduplicated). Naive summation would
+    /// report `count × image_size` even though the disk only stores
+    /// one copy. We dedupe by `fileResourceIdentifierKey` (an
+    /// `NSURL`-internal id that uniquely identifies the underlying
+    /// inode for hard-linked files) — each unique inode is counted
+    /// exactly once.
+    ///
+    /// Read off the main actor — walks `Backups/<ts>/` recursively;
+    /// cost is acceptable because the section only refreshes on
+    /// settings tab open.
+    func totalBackupDiskUsage() -> (bytes: Int64, count: Int) {
+        let keys: Set<URLResourceKey> = [.fileAllocatedSizeKey, .fileResourceIdentifierKey]
+        var total: Int64 = 0
+        var count = 0
+        // `fileResourceIdentifier` is typed `Any?` (URLResourceKey
+        // expects URLResourceKey, but the identifier itself conforms
+        // to NSCopying & NSSecureCoding & NSObjectProtocol — i.e. it's
+        // an NSObject). Wrap in AnyHashable so we can use it as a Set
+        // key directly.
+        var seenInodes: Set<AnyHashable> = []
+        let entries = (try? fileManager.contentsOfDirectory(
+            at: backupsDirectory,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        for entry in entries {
+            // Use the same `isBackupDirName` predicate as `pruneOldBackups`
+            // so the two stay in lock-step. (The earlier version of this
+            // method used a hard-coded `Backup-` prefix + 28-char length
+            // check that matched a long-deprecated convention; real
+            // backup dir names are just `yyyy-MM-dd_HHmmss.SSS` from
+            // `backupDirTimestampFormat`.)
+            guard Self.isBackupDirName(entry.lastPathComponent) else { continue }
+            count += 1
+            guard let enumerator = fileManager.enumerator(
+                at: entry,
+                includingPropertiesForKeys: Array(keys),
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            for case let fileURL as URL in enumerator {
+                guard let values = try? fileURL.resourceValues(forKeys: keys),
+                      let size = values.fileAllocatedSize,
+                      let identifier = values.fileResourceIdentifier else { continue }
+                // First sighting of this inode → count it; subsequent
+                // hard links to the same inode → skip. Cast through NSObject
+                // since `fileResourceIdentifier` is typed `Any?` (the
+                // Foundation API returns NSObjectProtocol-conforming values
+                // but the Swift signature is loose) and AnyHashable needs
+                // a concrete Hashable type.
+                let key = AnyHashable(identifier as! NSObject)
+                if seenInodes.insert(key).inserted {
+                    total += Int64(size)
+                }
+            }
+        }
+        return (total, count)
     }
 
     /// Updates UserDefaults bookkeeping (lastBackupDate, clear any prior

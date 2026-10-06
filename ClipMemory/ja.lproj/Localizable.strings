@@ -97,6 +97,10 @@
 "settings.backup.keep" = "保持するバックアップ数";
 "settings.backup.keep.count" = "%d 件のバックアップ";
 "settings.backup.keep.count.one" = "%d 件のバックアップ";
+// ID-REVIEW-1018 (2026-10-06): backup tab shows total disk usage + count.
+"settings.backup.totalUsage" = "バックアップ使用 %@（%@）";
+"settings.backup.totalUsage.count.one" = "%d 件";
+"settings.backup.totalUsage.count.other" = "%d 件";
 "settings.trash.retention.days.count" = "%d 日";
 "settings.trash.retention.days.count.one" = "%d 日";
 "settings.backup.now" = "今すぐバックアップ";

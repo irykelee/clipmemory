@@ -416,6 +416,16 @@ struct L10n {
     static var settingsExcludedAppsEmpty: String { string("settings.excluded.apps.empty") }
     static var settingsBackupFooter: String { string("settings.backup.footer") }
     static var settingsUpdateSourceFooter: String { string("settings.updateSource.footer") }
+    // ID-REVIEW-1018 (2026-10-06): per-task spec — backup settings tab
+    // surfaces total disk usage of all backups + backup count. The bytes
+    // string is pre-formatted (e.g. "1.2 GB") by ByteCountFormatter in
+    // BackupSettingsView; this function just glues it to the count.
+    // 7-language parity is required (per CLAUDE.md L10n policy) and
+    // generated from this signature via Scripts/sync_readme.py /
+    // translation strings (en source).
+    static func settingsBackupTotalUsage(_ bytes: String, _ count: Int) -> String {
+        string("settings.backup.totalUsage", bytes, plural("settings.backup.totalUsage.count", count))
+    }
 
     /// C2 (v2.7.9): version comparison line shown in the Update tab.
     /// `status` argument is the pre-formatted "up to date" / "update available"
