@@ -38,19 +38,26 @@ done
 
 OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 # 模型链: 免费 + 非 MiniMax（生成端 Claude Code = MiniMax, 避免自己审自己）。
-# 主模型 opencode/big-pickle: opencode 自有免费池、非 MiniMax、代码审查/找 bug 专精
+# 主模型 opencode/nemotron-3-ultra-free: NVIDIA 550B 试用端点、免费、非 MiniMax。
+#   本仓库实战战绩三轮(2026-10-05/06, 事件流 28-43 万字节): 抓出 RestoreWizard
+#   主线程 P1(ID-REVIEW-1014)、ID-REL-3 类名失配; 对照实验 15s 响应、
+#   big-pickle 2026-10-05/06 故障窗口(约 11h)期间保持可用。会记录日志(trial use only)。
+# 兜底 opencode/space-bunny-free: 2026-10-06 实测全池最快(0.2s 生成)、非 MiniMax。
+# 第三 opencode/big-pickle: opencode 自有免费池、非 MiniMax、代码审查/找 bug 专精
 #   (2026-09-22 实测可用, 首份报告即抓出 2 个真 P1)。属 stealth 免费模型, 免费期数据
 #   可能用于改进模型 —— 个人本地项目可接受, 审含密钥/业务逻辑片段时慎用。
-# 兜底 opencode/nemotron-3-ultra-free: NVIDIA 550B 试用端点、免费、非 MiniMax;
-#   会记录日志(trial use only)。第三梯队候选: opencode/ling-3.0-flash-fin-free。
+#   2026-10-05 17:32 起出现退化(无效报告), 21:29→10-06 08:08 硬挂约 11h(2-token
+#   探针也挂、加速器无效), 08:40 恢复 —— 故障窗口内由 watchdog(ID-REVIEW-1016)
+#   180s 熔断换链, 恢复后自动用回, 故保留第三位。
 # REVIEW_MODEL 显式指定时只用那一个(不走兜底, 保持旧行为)。
 # 注: deepseek/* 直连 api.deepseek.com, 实测 402 "Insufficient Balance"(v4-pro 自
 #   2026-08-28, v4-flash 2026-09-22 实测同) —— 对本账号并非免费, 勿入链。
-#   minimax*/mimo 之外的免费池: mimo 系为小米 MiMo(非 MiniMax), 但 flash 档能力偏弱。
+#   minimax-cn-coding-plan/* 为 MiniMax 官方端点: 生成端同源, 按上述政策不入审核链。
+#   mimo 系为小米 MiMo(非 MiniMax), 但 flash 档能力偏弱。
 if [[ -n "${REVIEW_MODEL:-}" ]]; then
   MODEL_CHAIN=("$REVIEW_MODEL")
 else
-  MODEL_CHAIN=("opencode/big-pickle" "opencode/nemotron-3-ultra-free")
+  MODEL_CHAIN=("opencode/nemotron-3-ultra-free" "opencode/space-bunny-free" "opencode/big-pickle")
 fi
 
 # 运行时标记与失败台账落在脚本所在目录（githooks/）, 由 .gitignore 排除
