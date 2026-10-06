@@ -134,6 +134,21 @@ CREATE TABLE app_meta (
     value      BLOB    NOT NULL,
     updated_at INTEGER NOT NULL
 );
+-- value_type binary formats (P2 from auto-review, corrected):
+--   'blob'  — raw bytes, opaque to the schema (e.g. serialized Set<String>)
+--   'i64'   — 8-byte little-endian signed integer; matches `Int64` natively.
+--             Conversion helpers (corrected — `Int64` doesn't have
+--             `withUnsafeBytes` directly; use `withUnsafeBytes(of:)` for
+--             reading, and `loadUnaligned(as:)` for Data → typed reads
+--             since `Data` buffers aren't guaranteed 8-byte aligned):
+--               let data = int64Value.withUnsafeBytes(of: Int64.self) { Data($0) }
+--               let value = data.withUnsafeBytes { $0.loadUnaligned(as: Int64.self) }
+--   'json'  — UTF-8 JSON text; identical to 'blob' on the wire but tagged
+--             so callers don't need to guess whether to JSONDecoder.
+
+-- Last `updated_at` column: the schema carries this so a future
+-- "value too old to trust" check is possible without parsing the
+-- value. For now it's informational only; readers don't check it.
 -- app_meta key registry (enforced by code, not SQL — keeps the table
 -- generic). Adding a new key: also add it to `AppMetaKey` enum in
 -- the production source so the build catches typos at compile time.
@@ -192,13 +207,15 @@ protocol StorageBackend {
     func upsertTag(_ tag: Tag) throws
     func attachTag(itemID: UUID, tagID: UUID) throws
     func detachTag(itemID: UUID, tagID: UUID) throws
-    func moveToTrash(itemID: UUID, trashItems: TrashSnapshot) throws
+    func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws
     func restoreFromTrash(itemID: UUID) throws
     func hardDeleteItem(id: UUID) throws           -- removes row
     func setMeta(key: String, value: Data, type: String) throws
     func meta(key: String) throws -> Data?
 }
 ```
+
+> **`TrashSnapshot` type note** (P1 from auto-review): the protocol takes `trashSnapshot: ClipboardItem` (NOT a new `TrashSnapshot` type). The signature matches `TrashStore.moveToTrash` today — `ClipboardItem` already carries all fields needed for the trash row (content_blob snapshot, content_hash, type, is_pinned, is_sensitive, is_encrypted, source_app, created_at). The SQLite backend snapshots the item at trash time and persists it into `trash_items.content_blob`. No new type needed.
 
 `FileStorageBackend` keeps the array-level methods and **throws** `BackupError.unsupportedFeature` on granular ones (it can't do row-level on UserDefaults). `SQLiteStorageBackend` implements everything.
 
@@ -209,6 +226,16 @@ This keeps existing callers (`ClipboardStore.saveItems`, `loadItems`, `loadTags`
 Too disruptive — touches every test that uses `MemoryStorageBackend`. Option A is strictly additive and lets us flip `ClipboardStore` to granular writes one call site at a time.
 
 ### Decision: **Option A**.
+
+### 3.0 New `BackupError` case (P1 from auto-review)
+
+`BackupError.unsupportedFeature` is a **new** error case that must be added in PR-A (alongside the new SQLite backend). Currently `BackupError` (in `BackupService.swift:19-37`) has 4 cases (`directoryCreationFailed`, `writeFailed`, `imageCopyFailed`, `markerRemovalFailed`); the PR-A diff adds:
+
+```swift
+case unsupportedFeature(String)   // message describes which granular op isn't supported by this backend
+```
+
+`SQLiteStorageBackend` will **never** throw this — granular methods are its primary path. `FileStorageBackend` throws this from every granular method it doesn't implement (it's the static capability signal). `MemoryStorageBackend` will implement granular methods too (PR-A scope) so it doesn't throw this either — the legacy-test seam is array-level.
 
 ### 3.1 Fallback strategy (Option A's `unsupportedFeature` path)
 
@@ -238,17 +265,54 @@ Why this is safe:
 
 `saveBlob(_:)` semantics were originally defined for `FileStorageBackend` (whole-blob write) but are ambiguous for a SQLite backend. Per-backend:
 
-| Backend | `saveBlob(_:)` meaning |
+| Backend | `saveBlob(_:)` behavior |
 |---|---|
-| `FileStorageBackend` | Decode the JSON to `[ClipboardItem]`, then call `save(_:)` (current default impl). |
-| `SQLiteStorageBackend` | **No-op**. SQLite doesn't store blobs at all. Calling `saveBlob(_:)` is a programmer error — it throws `unsupportedFeature` with a "use `upsertItem` instead" message. The only existing caller is `flushPendingSaves` which will switch to granular methods in PR-C. |
-| `MemoryStorageBackend` | Decode the JSON, replace `_items`. Same as `save(_:)`. |
+| `FileStorageBackend` | Default protocol extension: decode the JSON to `[ClipboardItem]`, then call `save(_:)`. (Current behavior, kept for the legacy-test seam.) |
+| `SQLiteStorageBackend` | **Throws** `unsupportedFeature("saveBlob not supported on SQLite; use upsertItem instead")`. SQLite doesn't store blobs; calling `saveBlob(_:)` here is a programmer error caught at runtime. The only caller that historically used `saveBlob` is `flushPendingSaves`, which PR-C rewrites to use `upsertItem` per item (no more blob path). |
+| `MemoryStorageBackend` | Default protocol extension: decode the JSON, replace `_items`. Same as `save(_:)`. |
+
+`SQLiteStorageBackend` overrides the default `saveBlob(_:)` in its own declaration (since protocol extensions can't selectively throw — the default would silently run for everyone). The override is explicit: `func saveBlob(_ data: Data) throws { throw BackupError.unsupportedFeature("saveBlob not supported on SQLite; use upsertItem instead") }`.
 
 `loadTags()` / `saveTags(_:)` keep the same convention — they're array-level (tags have ~100 items max, no granular needed) and work uniformly across backends.
 
+### 3.2.1 Caller migration (PR-C)
+
+`ClipboardStore+Persistence.swift:34`'s `saveItems()` still uses `saveBlob(_:)`. PR-C adds a `backendType` discriminator. The shape below matches the production `ClipboardStore+Persistence.swift:34` signature (`saveItems(_ items: [ClipboardItem])` — no async, no throws change for the dual-write fallback case):
+
+```swift
+// PR-C:
+func saveItems(_ items: [ClipboardItem]) throws {
+    switch backend {
+    case let sqlite as SQLiteStorageBackend:
+        // Granular — one row per changed item, with delete-propagation
+        // for items present in DB but absent from the new array (see
+        // §4.3.2 delete-propagation note).
+        for item in items where item.changedSince(lastSaveSnapshot) {
+            try sqlite.upsertItem(item)
+        }
+        try sqlite.hardDeleteItem(id: itemID) for itemID in
+            (try sqlite.loadAllIDs()).subtracting(items.map(\.id))
+    case let file as FileStorageBackend:
+        try file.save(items)                    // array-level, unchanged
+    case let mem as MemoryStorageBackend:
+        try mem.save(items)                      // array-level, unchanged
+    case is MemoryStorageBackend:                // unreachable — covered above
+        break
+    @unknown default:
+        assertionFailure("unknown StorageBackend: \(backend)")
+    }
+}
+```
+
+> **Code-shape note** (P2 from auto-review): `FileStorageBackend.save(_:)` takes `[ClipboardItem]`, NOT `Data`. The earlier draft's `backend.save(serializeToBlob(items))` is the wrong call signature — `Data`-typed input is the `saveBlob(_:)` contract. The corrected pattern above uses `file.save(items)` which preserves the existing array-level contract.
+
+This avoids the `saveBlob` → `unsupportedFeature` exception path on SQLite while keeping `FileStorageBackend`'s blob path working.
+
+> **Telemetry note** (P3 from auto-review): `recordStorageError` (in §4.3.2 example) is **new** — not a reuse of `lastBackupErrorDate`. Storage errors and backup errors are separate telemetry chains. The `lastBackupErrorDate`/`lastBackupErrorMessage` pair is owned by `BackupService`; storage errors get their own pair (`lastStorageErrorDate`/`lastStorageErrorMessage`) under the same `app_meta` pattern.
+
 ### 3.3 Trash model — preserved as a separate store
 
-`deleted_at INTEGER` on `items` was rejected by the OpenCode review (concern: split-brain with existing `TrashStore.swift`). Instead, `trash_items` is a separate table mirroring `items` structure (see schema §2 above). The protocol adds `moveToTrash(itemID:trashItems:)` and `restoreFromTrash(itemID:)` methods; the SQLite backend writes both rows in one atomic transaction:
+`deleted_at INTEGER` on `items` was rejected by the OpenCode review (concern: split-brain with existing `TrashStore.swift`). Instead, `trash_items` is a separate table mirroring `items` structure (see schema §2 above). The protocol adds `moveToTrash(itemID:trashSnapshot:)` and `restoreFromTrash(itemID:)` methods; the SQLite backend writes both rows in one atomic transaction:
 
 ```sql
 BEGIN IMMEDIATE TRANSACTION;
@@ -309,23 +373,39 @@ The first launch after PR-B migrates the UserDefaults blob into SQLite (§4.1 ab
 2. Reads SQLite (just migrated).
 3. Computes `Set<UUID>` of item ids in each.
 4. **If they differ**: rollback to UserDefaults, surface the mismatch via `app_meta('lastMigrationMismatch')`, log to `Diagnostics`. The user sees a UI banner the next time they open Settings.
-5. **If they match**: mark `migration.v1.to.v2.validated = 1` (separate flag). No writes yet.
+5. **If they match**: mark `migration.v1.to.v2.validated = 1` (separate flag, stored in `app_meta`). No writes yet.
 
 This catches silent migration bugs (corruption, encoding drift) **before** we trust SQLite as the primary path.
 
+> **Migration flag storage** (P2 from auto-review, corrected): there's exactly ONE migration state flag, `migration.v1.to.v2.completed` (PR-B writes it, stored in **`app_meta`** — NOT in UserDefaults, despite the earlier draft saying so). The dual-read validation flag `migration.v1.to.v2.validated` (PR-B writes it on the second launch) is **separate** and also lives in **`app_meta`** — same store. The "completed" flag answers "did the migration run?"; the "validated" flag answers "does SQLite match UserDefaults?". Two flags, two questions, one store — `app_meta`. UserDefaults stays out of the migration state machine entirely. Once atomic-switch completes (PR-C-switch), both flags are checked at startup: if SQLite is missing OR `migration.v1.to.v2.validated == 0`, refuse to switch and trigger the rollback path.
+
 ### 4.3.2 Dual-write phase (PR-C + 1 release cycle)
 
-`ClipboardStore` writes to **both** backends per `addItem` / `flushPendingSaves`:
+`ClipboardStore` writes to **both** backends per `addItem` / `flushPendingSaves`, with explicit compensating semantics for the SQLite-fails path. **Order matters**: `upsertTag` BEFORE `attachTag` because `item_tags.tag_id` REFERENCES `tags.id` with `foreign_keys = ON` — attaching to a non-existent tag throws FK violation. The order below is the only correct order.
 
 ```swift
+// PR-C:
 do {
-    try sqliteBackend.upsertItem(item)
-    try sqliteBackend.attachTag(itemID: item.id, tagID: tag)
-} catch { /* ignore SQLite failures — UserDefaults is the primary */ }
-try fileBackend.upsertItem(item)   // throws `unsupportedFeature` for granular; caller falls back
+    try sqliteBackend.upsertItem(item)         // throws on real failure
+    try sqliteBackend.upsertTag(tag)           // FK prerequisite — must precede attachTag
+    try sqliteBackend.attachTag(itemID: item.id, tagID: tag.id)
+} catch {
+    // SQLite write failed. Do NOT touch UserDefaults — the
+    // split-brain would be worse than a write failure. Surface to
+    // lastBackupErrorDate-style telemetry and bail.
+    recordStorageError(message: error.localizedDescription)
+    throw error
+}
+try fileBackend.upsertItem(item)               // throws `unsupportedFeature` for granular; caller falls back
 ```
 
+> **Atomicity note** (P1 from auto-review): this is "best-effort dual-write with rollback by exception", not a distributed transaction. The fallback window (write SQLite successfully, then crash before UserDefaults write) is bounded to one user action (one `addItem` call).
+>
+> **Validation**: dual-read divergence check runs **on every launch** during the dual-write phase, not just the second-launch one-shot. `ClipboardStore.init` reads both stores on startup, computes `Set<UUID>` of items in each, and if they differ, sets `app_meta('lastDualReadMismatch') = (timestamp, diff_summary)` and surfaces the UI banner. The PR-B second-launch one-shot (`migration.v1.to.v2.validated = 1`) was a one-time integrity check; per-launch dual-read is the **continuous** integrity check that catches dual-write drift at runtime, not after a release. This closes the P1 gap the earlier draft left open.
+
 Reads go to UserDefaults first (it's the source of truth during dual-write). SQLite reads happen on launch as a warm-up cache only. **One release cycle** of dual-write is required before atomic-switch (the migration risks need real-world soak).
+
+> **Delete propagation** (P2 from auto-review): `ClipboardStore.saveItems(_:)` MUST pass the FULL current `items` array on every flush, not just changed items. The SQLite backend computes a diff and applies `DELETE` for items present in DB but not in the new array (e.g., expired items purged, items deleted via `deleteItem(_:)`). Without this, dual-write produces stale rows on the SQLite side that never get cleaned up. See §3.2.1 caller code — the diff-and-DELETE pass is part of the `case is SQLiteStorageBackend` branch.
 
 ### 4.3.3 Atomic switch (PR-C ships with the switch flag, off by default)
 
@@ -407,9 +487,9 @@ The PASSIVE mode doesn't truncate the WAL — it just advances the checkpoint so
 
 ### 5.4 Read concurrency
 
-Multiple readers can hit the same connection simultaneously (SQLite supports this — readers use a shared lock). The `NSLock` around method bodies is **exclusive** which is over-cautious for reads. To keep the implementation simple and avoid bugs from mixed locking modes, we use exclusive throughout — the cost is that a long `load()` blocks a short `upsertItem()`. For ClipMemory's data size (≤10K items) the load time is ≤50ms; the contention window is negligible.
+Multiple readers can hit the same connection simultaneously (SQLite supports this — readers use a shared lock). The `NSLock` around method bodies is **exclusive** which is over-cautious for reads (acknowledged as a deliberate v1 simplification in the auto-review). The cost is that a long `load()` blocks a short `upsertItem()`. For ClipMemory's data size (≤10K items) the load time is ≤50ms; the contention window is negligible.
 
-If profiling later shows contention, split into `readLock: NSLock` (shared via `pthread_rwlock_t`) and `writeLock: NSLock` (exclusive). For v1 we ship exclusive-only.
+If profiling later shows contention, the v2 implementation switches to `pthread_rwlock_t` (reader-writer) — `read_lock` for load methods, `write_lock` for upsertItem / moveToTrash / etc. The wire-format of `StorageBackend` doesn't change; it's a backend-internal optimization. For v1 we ship exclusive-only.
 
 ## 7. Split PR plan (5 PRs over ~2-3 weeks)
 
