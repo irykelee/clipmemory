@@ -79,7 +79,7 @@ CREATE TABLE items (
     -- decodeIfPresent; the column simply mirrors the existing model
     -- semantics.
     content_hash    TEXT,                                -- hex contentHash for dedup; NULL for legacy items
-    content_blob    BLOB    NOT NULL,                    -- AES-GCM ciphertext + tag
+    content_blob    TEXT    NOT NULL,                    -- base64-encoded AES-GCM ciphertext (ClipboardItem.content is `String?`)
     ocr_text        TEXT,                                -- nullable, when OCR was done
     ocr_attempted   INTEGER NOT NULL DEFAULT 0
     -- P0 from auto-review: NO `source_app` column. ClipboardItem has
@@ -109,7 +109,8 @@ CREATE TABLE trash_items (
     -- Snapshot of the item content at trash time. The original
     -- items.content_blob may be edited later (image re-encrypt, etc.);
     -- the trash must show what was trashed, not the current item.
-    content_blob  BLOB    NOT NULL,
+    -- TEXT (not BLOB) for the same reason as items.content_blob above.
+    content_blob  TEXT    NOT NULL,
     -- P1 from auto-review: nullable (same rationale as items.content_hash:
     -- legacy trash blobs (trashed pre-ID-STORE-0010) have no hash).
     content_hash  TEXT,
