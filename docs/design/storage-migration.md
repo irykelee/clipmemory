@@ -71,8 +71,9 @@ CREATE TABLE items (
     updated_at      INTEGER NOT NULL,
     -- P1 from auto-review: content_hash is nullable because legacy
     -- items (pre-ID-STORE-0010) may not have a hash; migration writes
-    -- empty string '' for them, which is still unique within an items
-    -- table per-id (PK constraint) but not dedup-able across ids.
+    -- NULL for them (NOT empty string — NULL and '' behave differently
+    -- under unique indexes and IS NOT NULL filters, and the column below
+    -- is nullable by design).
     content_hash    TEXT,                                -- hex contentHash for dedup; NULL for legacy items
     content_blob    BLOB    NOT NULL,                    -- AES-GCM ciphertext + tag
     ocr_text        TEXT,                                -- nullable, when OCR was done
@@ -86,6 +87,9 @@ CREATE INDEX idx_items_pinned_created_at ON items(is_pinned DESC, created_at DES
 CREATE INDEX idx_items_expires_at        ON items(expires_at) WHERE expires_at IS NOT NULL;
 CREATE INDEX idx_items_content_hash       ON items(content_hash);
 CREATE INDEX idx_items_decryption_failed ON items(decryption_failed) WHERE decryption_failed = 1;
+-- Partial index serves the failure-dashboard query (WHERE decryption_failed = 1).
+-- Healthy-item listings scan the table by design — do NOT flip this to a
+-- full index without measuring the write amplification on the hot insert path.
 
 -- Trash: SEPARATE table from items, mirroring TrashStore.swift's
 -- "trash is its own store" invariant (CLAUDE.md "TrashStore.swift —
@@ -152,7 +156,7 @@ CREATE TABLE app_meta (
 --             `withUnsafeBytes` directly; use `withUnsafeBytes(of:)` for
 --             reading, and `loadUnaligned(as:)` for Data → typed reads
 --             since `Data` buffers aren't guaranteed 8-byte aligned):
---               let data = int64Value.withUnsafeBytes(of: Int64.self) { Data($0) }
+--               let data = withUnsafeBytes(of: int64Value) { Data($0) }
 --               let value = data.withUnsafeBytes { $0.loadUnaligned(as: Int64.self) }
 --   'json'  — UTF-8 JSON text; identical to 'blob' on the wire but tagged
 --             so callers don't need to guess whether to JSONDecoder.
@@ -226,9 +230,9 @@ protocol StorageBackend {
 }
 ```
 
-> **`TrashSnapshot` type note** (P1 from auto-review): the protocol takes `trashSnapshot: ClipboardItem` (NOT a new `TrashSnapshot` type). The signature matches `TrashStore.moveToTrash` today — `ClipboardItem` already carries all fields needed for the trash row (content_blob snapshot, content_hash, type, is_pinned, is_sensitive, is_encrypted, source_app, created_at). The SQLite backend snapshots the item at trash time and persists it into `trash_items.content_blob`. No new type needed.
+> **`TrashSnapshot` type note** (P1 from auto-review): the protocol takes `trashSnapshot: ClipboardItem` (NOT a new `TrashSnapshot` type). The signature matches `TrashStore.moveToTrash` today — `ClipboardItem` already carries all fields needed for the trash row (content_blob snapshot, content_hash, type, is_pinned, is_sensitive, is_encrypted, created_at — note: ClipboardItem has NO source_app field; source bundle ids are never persisted per item). The SQLite backend snapshots the item at trash time and persists it into `trash_items.content_blob`. No new type needed.
 
-`FileStorageBackend` keeps the array-level methods and **throws** `BackupError.unsupportedFeature` on granular ones (it can't do row-level on UserDefaults). `SQLiteStorageBackend` implements everything.
+`FileStorageBackend` keeps the array-level methods and **throws** `StorageBackendError.unsupportedFeature` on granular ones (it can't do row-level on UserDefaults). `SQLiteStorageBackend` implements everything.
 
 This keeps existing callers (`ClipboardStore.saveItems`, `loadItems`, `loadTags`, etc.) working via the array-level path; only NEW write paths (the per-keystroke save in `flushPendingSaves`) use granular methods.
 
@@ -240,7 +244,11 @@ Too disruptive — touches every test that uses `MemoryStorageBackend`. Option A
 
 ### 3.0 New `StorageBackendError` enum (P1 from auto-review)
 
-The granular-method fallback requires an error type that lives in `StorageBackend.swift`, not in `BackupService.swift`'s `BackupError`. The two error enums are separate concerns (storage vs backup); coupling them would create an unwanted cross-module dependency. The PR-A diff adds to `StorageBackend.swift`:
+The granular-method fallback requires an error type that lives in `StorageBackend.swift`, not in `BackupService.swift`'s `BackupError`. The two error enums are separate concerns (storage vs backup); coupling them would create an unwanted cross-module dependency.
+
+> **Forward-looking (P0 clarification):** this enum does NOT exist in the current tree (`StorageBackend.swift` today only defines the protocol + `FileStorageBackend`/`MemoryStorageBackend`). It is introduced by PR-A. Everything below describes the post-PR-A state.
+
+The PR-A diff adds to `StorageBackend.swift`:
 
 ```swift
 // StorageBackend.swift (new enum, PR-A):
@@ -260,7 +268,8 @@ enum StorageBackendError: Error {
 func addItem(_ item: ClipboardItem) throws {
     do {
         try backend.upsertItem(item)
-        try backend.attachTag(itemID: item.id, tagID: tag.id)
+        // tag rows are dual-written the same way — see §3.2.1 for the
+        // tagID loop (the loop variable there is `tagID`, not `tag.id`).
     } catch StorageBackendError.unsupportedFeature {
         // Fall back to array-level path. This is OK because the legacy
         // FileStorageBackend only throws `unsupportedFeature` from
@@ -570,7 +579,7 @@ Each PR adds tests covering the scope. Cumulative test count target after PR-E: 
   - `testPragmaConfiguration` — verify `foreign_keys=ON`, `journal_mode=WAL`, `synchronous=NORMAL` actually applied
   - `testBulkInsertPerformance` — 10K items in <1s (vs current blob's ~3-5s)
   - `testAtomicityOnCrash` — fork subprocess that writes then SIGKILLs; verify SQLite WAL recovery
-  - `testUnsupportedFeatureForGranular` — `FileStorageBackend.upsertItem(_:)` throws `BackupError.unsupportedFeature`
+  - `testUnsupportedFeatureForGranular` — `FileStorageBackend.upsertItem(_:)` throws `StorageBackendError.unsupportedFeature`
 
 ### 8.2 PR-B test scope
 
