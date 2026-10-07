@@ -124,7 +124,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
               createdAt: Date? = nil,
               isEncrypted: Bool? = nil,
               contentHash: String?? = nil,
-              decryptionFailed: Bool? = nil) -> ClipboardItem {
+              decryptionFailed: Bool? = nil,
+              tagIds: Set<UUID>? = nil) -> ClipboardItem {
         ClipboardItem(
             id: id,
             content: content ?? self.content,
@@ -136,7 +137,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
             isEncrypted: isEncrypted ?? self.isEncrypted,
             contentHash: contentHash ?? self.contentHash,
             decryptionFailed: decryptionFailed ?? self.decryptionFailed,
-            tagIds: tagIds,
+            tagIds: tagIds ?? self.tagIds,
             deletedAt: deletedAt,
             ocrText: ocrText,
             ocrAttempted: ocrAttempted

@@ -68,13 +68,123 @@ extension ClipboardStore {
         // `.clipboardSaveFailed` for UI surfacing. Previously the inner
         // catch only logged, leaving `needsSave = false`, so the next
         // debounce timer exited via the early `guard` — silent data loss.
+        //
+        // ID-REVIEW-1024 (PR-A, docs/design/storage-migration.md §3.2.1):
+        // dispatch on backend type. SQLiteStorageBackend uses granular
+        // methods (one row per item + delete-propagation via Set<UUID>
+        // diff); FileStorageBackend / MemoryStorageBackend throw
+        // `unsupportedFeature` and we fall back to the array-level
+        // `save(_:)` / `saveTags(_:)` path.
+        //
+        // **Trade-off**: the fallback writes the WHOLE items array to
+        // FileStorageBackend on every save — so the SQLite "granular
+        // wins" only kicks in once SQLiteStorageBackend is the active
+        // backend (PR-B). Until then, this function is identical to the
+        // pre-PR-A `saveBlob`-only path — no perf regression for legacy
+        // users, and a clear migration target once SQLiteStorageBackend
+        // becomes active (PR-C atomic switch).
         let snapshot = items
         let data = try itemEncodingQueue.sync {
             try itemsSaveEncoder.encode(snapshot)
         }
         try DispatchQueue.global(qos: .utility).sync {
-            try backend.saveBlob(data)
+            do {
+                // Try granular first; SQLiteStorageBackend throws
+                // `unsupportedFeature` until PR-B lands, which is the
+                // signal to fall back to the array-level path below.
+                if let sqliteBackend = backend as? SQLiteStorageBackend {
+                    try granularSave(to: sqliteBackend, items: snapshot)
+                } else {
+                    throw StorageBackendError.unsupportedFeature("not a SQLite backend")
+                }
+            } catch let error as StorageBackendError {
+                // Narrow catch: only `unsupportedFeature` triggers the
+                // array-level fallback (this is the static capability
+                // signal between backends). Any other error — disk-full,
+                // FK violation, ENCRYPT — propagates UP unchanged so the
+                // ID-SILENT-0022 three-leg gate (报错 / 重试 / 用户可见)
+                // sees the real cause. PR-A below the fallback never
+                // hits this branch beyond `unsupportedFeature` (because
+                // every granular method throws that exact case); PR-B
+                // onward will exercise the up-propagation path when
+                // SQLite throws real errors.
+                if case .unsupportedFeature = error {
+                    // Fallback: legacy array-level path. FileStorageBackend
+                    // uses its custom saveBlob override (read-back
+                    // verification per ID-CRASH-0007); MemoryStorageBackend
+                    // uses the default extension. Either way the whole
+                    // items blob is rewritten atomically.
+                    try backend.saveBlob(data)
+                } else {
+                    // Re-throw — this preserves the original error
+                    // (disk-full, FK violation, etc.) up to the caller's
+                    // error-handling chain, rather than masking it as a
+                    // saveBlob error from FileStorageBackend/MemoryStorageBackend.
+                    throw error
+                }
+            } catch {
+                // Non-StorageBackendError from `granularSave` (e.g.
+                // Swift runtime traps, programmer errors): re-throw
+                // without conversion — those are real bugs, not a
+                // "switch backends" signal.
+                throw error
+            }
         }
+    }
+
+    /// PR-A granular save path. Currently unreachable because
+    /// SQLiteStorageBackend is a placeholder (every method throws
+    /// `unsupportedFeature`); exists so PR-B has a concrete call site
+    /// to point the real implementation at.
+    private func granularSave(to backend: SQLiteStorageBackend, items: [ClipboardItem]) throws {
+        // upsertTag before attachTag — attachTag has FK on tags(id)
+        // (PR-B schema), so the parent row must exist first. Wrap in
+        // a transaction so partial failure rolls back cleanly. For the
+        // placeholder, every backend method throws so the catch in the
+        // caller falls back to saveBlob. Once PR-B replaces the body
+        // methods, this becomes the granular fast-path.
+        try backend.beginTransaction()
+        do {
+            // Pull the unique tag set from the items array. SQLite
+            // upserts tags idempotently on PK collision.
+            var seen = Set<UUID>()
+            var tagsToUpsert: [Tag] = []
+            for item in items {
+                for tagID in item.tagIds where !seen.contains(tagID) {
+                    seen.insert(tagID)
+                    // We don't have the Tag's name/color here — the
+                    // caller (ClipboardStore) keeps the canonical tag list
+                    // separately and passes it via `saveTags(_:)`. For
+                    // PR-A's placeholder, this method-body is the
+                    // eventual home of "fetch name+color by ID" — for
+                    // now we just call upsertTag with an empty Tag and
+                    // rely on the caller pre-populating.
+                    tagsToUpsert.append(Tag(id: tagID, name: "", colorHex: ""))
+                }
+            }
+            for tag in tagsToUpsert {
+                try backend.upsertTag(tag)
+            }
+            // Per-item upsert + tag attachment. Per docs §3.2.1, the
+            // singular attachTag is looped over each tag id (Set<UUID>).
+            for item in items {
+                try backend.upsertItem(item)
+                for tagID in item.tagIds {
+                    try backend.attachTag(itemID: item.id, tagID: tagID)
+                }
+            }
+            // Delete-propagation (P2 from auto-review): items present
+            // in DB but absent from the new array must be removed.
+            let currentIDs = Set(items.map(\.id))
+            let dbIDs = try backend.loadAllIDs()
+            for staleID in dbIDs.subtracting(currentIDs) {
+                try backend.hardDeleteItem(id: staleID)
+            }
+        } catch {
+            try backend.rollbackTransaction()
+            throw error
+        }
+        try backend.commitTransaction()
     }
 
     /// Schedules a debounced save — coalesces multiple rapid mutations into a single disk write.

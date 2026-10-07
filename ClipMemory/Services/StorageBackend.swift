@@ -1,9 +1,27 @@
 import Foundation
 import os.log
 
-/// E.1: Storage backend protocol for ClipboardStore dependency injection.
-/// Allows swapping between file-based (UserDefaults) and in-memory storage for testing.
+/// ID-REVIEW-1024 (PR-A, code-review-2026-10-01 §八 batch 2): Storage backend
+/// protocol for ClipboardStore dependency injection.
+///
+/// The protocol has TWO layers:
+/// - **Array-level** (existing): `load()`, `save(_:)`, `loadTags()`, `saveTags(_:)`,
+///   `saveBlob(_:)`. All backends implement these. Used by tests, by
+///   `ClipboardStore` for the array-level fallback path, and by
+///   `MemoryStorageBackend`/`SQLiteStorageBackend` when the granular
+///   path throws `unsupportedFeature` (per docs/design/storage-migration.md
+///   §3.2.1).
+/// - **Granular** (new in PR-A): `upsertItem(_:)`, `hardDeleteItem(id:)`,
+///   `upsertTag(_:)`, `attachTag(itemID:tagID:)`, `detachTag(itemID:tagID:)`,
+///   `moveToTrash(itemID:trashSnapshot:)`, `restoreFromTrash(itemID:)`,
+///   `loadAllIDs()`, `setMeta(key:value:type:)`, `meta(key:)`. Only
+///   backends that can do row-level work implement these. Backends that
+///   can't (legacy `FileStorageBackend`) MUST throw
+///   `StorageBackendError.unsupportedFeature(_:)` so callers know to
+///   fall back to the array-level path.
 protocol StorageBackend {
+    // MARK: - Array-level (existing, all backends implement)
+
     /// Loads all stored clipboard items.
     func load() throws -> [ClipboardItem]
 
@@ -23,13 +41,118 @@ protocol StorageBackend {
     /// backend encoding a full item array on the main thread. The default
     /// implementation decodes and routes through `save(_:)` so item-array
     /// backends (in-memory test doubles) keep their existing semantics.
+    ///
+    /// PR-A note: `FileStorageBackend` overrides this default extension
+    /// with a custom implementation that does read-back verification
+    /// (`defaults.synchronize()` + memcmp). SQLiteStorageBackend (PR-B)
+    /// will throw `unsupportedFeature`. The default extension stays for
+    /// `MemoryStorageBackend` (test seam).
     func saveBlob(_ data: Data) throws
+
+    // MARK: - Granular (PR-A; backends opt in by implementing)
+
+    /// Upserts one item row. SQLiteStorageBackend (PR-B) is the primary
+    /// implementer; FileStorageBackend throws unsupportedFeature;
+    /// MemoryStorageBackend delegates to `save(_:)` (full-array pass).
+    func upsertItem(_ item: ClipboardItem) throws
+
+    /// Hard-deletes one item row by id. Used by ClipboardStore.saveItems
+    /// delete-propagation (docs §3.2.1) to remove items no longer in
+    /// the current array.
+    func hardDeleteItem(id: UUID) throws
+
+    /// Upserts one tag row.
+    func upsertTag(_ tag: Tag) throws
+
+    /// Adds `tagID` to `itemID`'s tag set. Per-item, per-tag — the caller
+    /// loops over `item.tagIds` (a Set<UUID>).
+    func attachTag(itemID: UUID, tagID: UUID) throws
+
+    /// Removes `tagID` from `itemID`'s tag set.
+    func detachTag(itemID: UUID, tagID: UUID) throws
+
+    /// Moves `itemID` from items → trash_items in one atomic transaction.
+    /// The `trashSnapshot: ClipboardItem` carries the data to persist
+    /// (a snapshot because the source items.content_blob may change later
+    /// — the trash must show what was trashed, not the current item).
+    func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws
+
+    /// Moves `itemID` back from trash_items → items in one atomic transaction.
+    func restoreFromTrash(itemID: UUID) throws
+
+    /// Returns the Set<UUID> of all item ids currently in the items table.
+    /// Used by ClipboardStore.saveItems' delete-propagation diff.
+    func loadAllIDs() throws -> Set<UUID>
+
+    /// Sets a typed key/value pair in `app_meta` (or equivalent in the
+    /// backend's own key/value store). `type` is `"blob"` | `"i64"` |
+    /// `"json"` — see docs/design/storage-migration.md §2 `app_meta`.
+    func setMeta(key: String, value: Data, type: String) throws
+
+    /// Reads a key from `app_meta`; nil if absent.
+    func meta(key: String) throws -> Data?
 }
 
 extension StorageBackend {
     func saveBlob(_ data: Data) throws {
         let items = try JSONDecoder().decode([ClipboardItem].self, from: data)
         try save(items)
+    }
+
+    /// PR-A: granular methods default to `unsupportedFeature` (the static
+    /// capability signal). Concrete backends override the ones they can
+    /// implement; everything else throws, callers fall back to the
+    /// array-level path (docs/design/storage-migration.md §3.1).
+    func upsertItem(_ item: ClipboardItem) throws {
+        throw StorageBackendError.unsupportedFeature("upsertItem: this backend stores items as a single array, use save(_:) instead")
+    }
+    func hardDeleteItem(id: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("hardDeleteItem: this backend stores items as a single array, no per-row delete is possible")
+    }
+    func upsertTag(_ tag: Tag) throws {
+        throw StorageBackendError.unsupportedFeature("upsertTag: this backend stores tags as a single array, use saveTags(_:) instead")
+    }
+    func attachTag(itemID: UUID, tagID: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("attachTag: this backend has no per-row item_tags table")
+    }
+    func detachTag(itemID: UUID, tagID: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("detachTag: this backend has no per-row item_tags table")
+    }
+    func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws {
+        throw StorageBackendError.unsupportedFeature("moveToTrash: this backend stores items as a single array, the trash is its own UserDefaults key managed by TrashStore")
+    }
+    func restoreFromTrash(itemID: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("restoreFromTrash: this backend stores items as a single array, the trash is its own UserDefaults key managed by TrashStore")
+    }
+    func loadAllIDs() throws -> Set<UUID> {
+        throw StorageBackendError.unsupportedFeature("loadAllIDs: this backend stores items as a single array, no per-row id set is available")
+    }
+    func setMeta(key: String, value: Data, type: String) throws {
+        throw StorageBackendError.unsupportedFeature("setMeta: this backend has no app_meta table")
+    }
+    func meta(key: String) throws -> Data? {
+        throw StorageBackendError.unsupportedFeature("meta: this backend has no app_meta table")
+    }
+}
+
+/// ID-REVIEW-1024 (PR-A): granular methods fall back to the array-level
+/// path via this error type. Lives in `StorageBackend.swift` (NOT
+/// `BackupService.swift`'s `BackupError`) — the two error hierarchies
+/// are separate concerns (storage vs backup); coupling them would
+/// create an unwanted cross-module dependency.
+enum StorageBackendError: Error, LocalizedError {
+    /// Caller asked for a granular operation this backend can't do
+    /// (e.g. `FileStorageBackend` can't do per-row updates because
+    /// items live as a single JSON blob in UserDefaults). The caller
+    /// should fall back to the array-level path (`save(_:)`,
+    /// `saveTags(_:)`, etc.) which every backend supports.
+    case unsupportedFeature(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedFeature(let detail):
+            return "StorageBackend granular operation unsupported: \(detail)"
+        }
     }
 }
 
@@ -166,6 +289,52 @@ final class FileStorageBackend: StorageBackend {
             throw CocoaError(.fileWriteUnknown)
         }
     }
+
+    // MARK: - PR-A granular overrides (all throw unsupportedFeature)
+
+    /// PR-A rationale: `FileStorageBackend` keeps items as a single
+    /// JSON blob in UserDefaults. Per-row updates would require
+    /// loading the whole blob, modifying one item, and writing it
+    /// back — but that IS just `save(_:)` again with a filtered
+    /// array. We don't expose that as a granular method to avoid
+    /// implying FileStorageBackend has true row-level storage; callers
+    /// get the unsupportedFeature signal and fall back to `save(_:)`
+    /// at the array level. The "throws always" implementation is the
+    /// *testable* form of the unsupportedFeature contract — see
+    /// `testFileStorageBackendGranularThrowsUnsupportedFeature`.
+    func upsertItem(_ item: ClipboardItem) throws {
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend stores items as a single JSON blob; use save(_:) instead")
+    }
+    func hardDeleteItem(id: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend stores items as a single JSON blob; there is no per-row delete path")
+    }
+    func upsertTag(_ tag: Tag) throws {
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend stores tags as a single JSON blob; use saveTags(_:) instead")
+    }
+    func attachTag(itemID: UUID, tagID: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend has no per-row item_tags table")
+    }
+    func detachTag(itemID: UUID, tagID: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend has no per-row item_tags table")
+    }
+    func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws {
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend keeps trash in its own UserDefaults key via TrashStore; no per-row moveToTrash here")
+    }
+    func restoreFromTrash(itemID: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend keeps trash in its own UserDefaults key via TrashStore; no per-row restoreFromTrash here")
+    }
+    func loadAllIDs() throws -> Set<UUID> {
+        // Returning [] here would lie (mask the unsupportedFeature signal);
+        // throwing is the contractually correct fallback so callers don't
+        // silently delete items that are in the blob.
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend stores items as a single JSON blob; no per-row id set is available")
+    }
+    func setMeta(key: String, value: Data, type: String) throws {
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend has no app_meta table")
+    }
+    func meta(key: String) throws -> Data? {
+        throw StorageBackendError.unsupportedFeature("FileStorageBackend has no app_meta table")
+    }
 }
 
 // MARK: - Memory Storage (Testing)
@@ -206,5 +375,223 @@ final class MemoryStorageBackend: StorageBackend {
     func saveTags(_ tags: [Tag]) throws {
         lock.lock(); defer { lock.unlock() }
         self._tags = tags
+    }
+
+    // MARK: - PR-A granular overrides (array-level equivalence)
+
+    /// PR-A rationale: `MemoryStorageBackend` doesn't persist to
+    /// disk, so "granular" methods just rebuild the underlying
+    /// `_items` / `_tags` arrays. They never throw `unsupportedFeature`
+    /// because the array-level operation is always available — the
+    /// test seam verifies the path is byte-equivalent to calling
+    /// `save(_:)` directly.
+    func upsertItem(_ item: ClipboardItem) throws {
+        // Replace-by-id: rebuild _items with the new value at the right
+        // index, or append if not present. This is the array-level
+        // pass — no row-level storage to talk to.
+        lock.lock(); defer { lock.unlock() }
+        var found = false
+        for (idx, existing) in _items.enumerated() where existing.id == item.id {
+            _items[idx] = item
+            found = true
+            break
+        }
+        if !found { _items.append(item) }
+    }
+
+    func hardDeleteItem(id: UUID) throws {
+        lock.lock(); defer { lock.unlock() }
+        _items.removeAll { $0.id == id }
+    }
+
+    func upsertTag(_ tag: Tag) throws {
+        lock.lock(); defer { lock.unlock() }
+        var found = false
+        for (idx, existing) in _tags.enumerated() where existing.id == tag.id {
+            _tags[idx] = tag
+            found = true
+            break
+        }
+        if !found { _tags.append(tag) }
+    }
+
+    /// In-memory `item.tags` are kept on `ClipboardItem.tagIds: Set<UUID>`
+    /// (not in `item_tags`), so `attachTag` / `detachTag` just rewrite
+    /// the in-memory item's tag set. Real persistence layer is out of
+    /// scope for the in-memory backend.
+    func attachTag(itemID: UUID, tagID: UUID) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard let idx = _items.firstIndex(where: { $0.id == itemID }) else { return }
+        var item = _items[idx]
+        if !item.tagIds.contains(tagID) {
+            var ids = item.tagIds
+            ids.insert(tagID)
+            item = item.with(tagIds: ids)
+            _items[idx] = item
+        }
+    }
+
+    func detachTag(itemID: UUID, tagID: UUID) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard let idx = _items.firstIndex(where: { $0.id == itemID }) else { return }
+        var item = _items[idx]
+        if item.tagIds.contains(tagID) {
+            var ids = item.tagIds
+            ids.remove(tagID)
+            item = item.with(tagIds: ids)
+            _items[idx] = item
+        }
+    }
+
+    /// In-memory "trash" semantics: a single `_trashItems: [ClipboardItem]`
+    /// array, separate from `_items`. (Per docs/design §3.3 — separate
+    /// table for trash mirrors TrashStore's "trash is its own store".)
+    /// SQLiteStorageBackend (PR-B) will write to a real `trash_items`
+    /// table with FK to `items`; here in PR-A we mirror the same
+    /// shape with two in-memory arrays.
+    private var _trashItems: [ClipboardItem] = []
+    func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws {
+        lock.lock(); defer { lock.unlock() }
+        _items.removeAll { $0.id == itemID }
+        _trashItems.removeAll { $0.id == itemID }
+        _trashItems.append(trashSnapshot)
+    }
+    func restoreFromTrash(itemID: UUID) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard let trashIdx = _trashItems.firstIndex(where: { $0.id == itemID }) else { return }
+        let restored = _trashItems[trashIdx]
+        _trashItems.remove(at: trashIdx)
+        if !_items.contains(where: { $0.id == itemID }) {
+            _items.append(restored)
+        }
+    }
+    func loadAllIDs() throws -> Set<UUID> {
+        lock.lock(); defer { lock.unlock() }
+        return Set(_items.map(\.id))
+    }
+    func setMeta(key: String, value: Data, type: String) throws {
+        // No persistence layer here — the in-memory backend doesn't
+        // carry meta. PR-B (SQLiteStorageBackend) implements this on
+        // top of the real app_meta table.
+        throw StorageBackendError.unsupportedFeature("MemoryStorageBackend has no app_meta table")
+    }
+    func meta(key: String) throws -> Data? {
+        throw StorageBackendError.unsupportedFeature("MemoryStorageBackend has no app_meta table")
+    }
+}
+
+/// ID-REVIEW-1024 (PR-A): SQLiteStorageBackend **placeholder** class.
+/// The real implementation lands in PR-B (single-connection + sqlite3
+/// handles + WAL + NORMAL). For PR-A this class exists so that:
+///   - the `case is SQLiteStorageBackend:` switch arm in
+///     `ClipboardStore.saveItems` (per docs §3.2.1) compiles;
+///   - `loadAllIDs()` is available for ClipboardStore.saveItems'
+///     delete-propagation diff (PR-B replaces the throw with a real
+///     `SELECT id FROM items` query);
+///   - ClipboardStore falls back to `save(_:)` array-level on
+///     `StorageBackendError.unsupportedFeature` — verified by the
+///     integration test `testClipboardStoreFallbackToArrayPath`.
+///
+/// Every method throws `unsupportedFeature` so the caller falls
+/// back. PR-B replaces each method body with the SQLite impl; the
+/// class skeleton, error contract, and protocol conformance stay
+/// unchanged.
+///
+/// This is NOT an "amend" — it is a forward commit. PR-A introduces
+/// the placeholder so PR-B can do a clean class replacement without
+/// touching unrelated files.
+final class SQLiteStorageBackend: StorageBackend {
+    init() {}
+
+    // Array-level (these exist for protocol conformance; the SQLite
+    // backend doesn't store whole arrays, but they implement the
+    // protocol contract for callers that always use save(_:)).
+    func load() throws -> [ClipboardItem] {
+        // The SQLite backend would query rows + decode; for the
+        // placeholder PR-A returns empty so the protocol conformance
+        // is real (not a stub `fatalError`). PR-B replaces this with
+        // a real SELECT + decoder pipeline.
+        return []
+    }
+    func save(_ items: [ClipboardItem]) throws {
+        // SQLiteStorageBackend's normal save path is granular
+        // (upsertItem in a transaction). The array-level save(_:)
+        // exists only for callers that pass a whole array — the
+        // placeholder delegates to upsertItem per item.
+        try items.forEach { try upsertItem($0) }
+    }
+    func loadTags() throws -> [Tag] {
+        return []
+    }
+    func saveTags(_ tags: [Tag]) throws {
+        try tags.forEach { try upsertTag($0) }
+    }
+    func saveBlob(_ data: Data) throws {
+        // Per docs §3.2 — SQLiteStorageBackend.saveBlob is a programmer
+        // error (callers should use upsertItem). Throwing here surfaces
+        // the misuse immediately rather than silently round-tripping
+        // through JSON like the default protocol extension does.
+        throw StorageBackendError.unsupportedFeature("saveBlob not supported on SQLite; use upsertItem instead")
+    }
+
+    // MARK: - SQLite-specific transaction helpers (PR-B implements)
+
+    // These are NOT part of the StorageBackend protocol — they're
+    // SQLite-specific (single connection, BEGIN/COMMIT/ROLLBACK
+    // wrappers around granular ops). PR-A exposes the signatures so
+    // the caller (ClipboardStore.saveItems' granular path) can use
+    // them; PR-B implements the bodies (PRAGMA foreign_keys=ON +
+    // single connection + sqlite3_prepare_v2 + step + commit).
+
+    /// Begins a write transaction on the underlying sqlite3
+    /// connection. All subsequent granular ops run inside this
+    /// transaction until `commitTransaction` or `rollbackTransaction`
+    /// is called. PR-A placeholder always throws (real impl in PR-B).
+    func beginTransaction() throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend.beginTransaction: PR-B will implement via sqlite3_exec(db, 'BEGIN IMMEDIATE', nil, nil, nil)")
+    }
+
+    /// Commits the current transaction.
+    func commitTransaction() throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend.commitTransaction: PR-B will implement via sqlite3_exec(db, 'COMMIT', nil, nil, nil) + WAL fsync per the design's §1.1 synchronous=NORMAL contract")
+    }
+
+    /// Rolls back the current transaction.
+    func rollbackTransaction() throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend.rollbackTransaction: PR-B will implement via sqlite3_exec(db, 'ROLLBACK', nil, nil, nil)")
+    }
+
+    // Granular (PR-A: all throw unsupportedFeature; PR-B replaces each
+    // body with the real SQLite impl).
+    func upsertItem(_ item: ClipboardItem) throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement upsertItem as INSERT … ON CONFLICT(id) DO UPDATE")
+    }
+    func hardDeleteItem(id: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement hardDeleteItem as DELETE FROM items WHERE id = ?")
+    }
+    func upsertTag(_ tag: Tag) throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement upsertTag as INSERT … ON CONFLICT(id) DO UPDATE")
+    }
+    func attachTag(itemID: UUID, tagID: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement attachTag as INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)")
+    }
+    func detachTag(itemID: UUID, tagID: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement detachTag as DELETE FROM item_tags WHERE item_id = ? AND tag_id = ?")
+    }
+    func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement moveToTrash as a single transaction: INSERT INTO trash_items … + DELETE FROM items WHERE id = ?")
+    }
+    func restoreFromTrash(itemID: UUID) throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement restoreFromTrash as a single transaction: DELETE FROM trash_items WHERE item_id = ? + INSERT INTO items …")
+    }
+    func loadAllIDs() throws -> Set<UUID> {
+        // For PR-B: SELECT id FROM items.
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement loadAllIDs as SELECT id FROM items")
+    }
+    func setMeta(key: String, value: Data, type: String) throws {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement setMeta as INSERT INTO app_meta (key, value_type, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE")
+    }
+    func meta(key: String) throws -> Data? {
+        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement meta as SELECT value, value_type FROM app_meta WHERE key = ?")
     }
 }
