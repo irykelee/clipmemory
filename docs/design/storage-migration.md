@@ -74,6 +74,10 @@ CREATE TABLE items (
     -- NULL for them (NOT empty string — NULL and '' behave differently
     -- under unique indexes and IS NOT NULL filters, and the column below
     -- is nullable by design).
+    -- P1 clarification (nemotron 2026-10-07): this is NOT a new concern —
+    -- ClipboardItem.contentHash is already `String?` with
+    -- decodeIfPresent; the column simply mirrors the existing model
+    -- semantics.
     content_hash    TEXT,                                -- hex contentHash for dedup; NULL for legacy items
     content_blob    BLOB    NOT NULL,                    -- AES-GCM ciphertext + tag
     ocr_text        TEXT,                                -- nullable, when OCR was done
@@ -165,6 +169,10 @@ CREATE TABLE app_meta (
 -- "value too old to trust" check is possible without parsing the
 -- value. For now it's informational only; readers don't check it.
 -- app_meta key registry (enforced by code, not SQL — keeps the table
+-- ID-REVIEW-1022/nemotron clarification: keys like migration.v1.to.v2.* /
+-- last*Error* live ONLY in this SQLite table — they are deliberately NOT
+-- UserDefaultsKey enum cases (migration state must not survive a rollback
+-- that restores the UserDefaults blob).
 -- generic). Adding a new key: also add it to `AppMetaKey` enum in
 -- the production source so the build catches typos at compile time.
 --
@@ -230,7 +238,7 @@ protocol StorageBackend {
 }
 ```
 
-> **`TrashSnapshot` type note** (P1 from auto-review): the protocol takes `trashSnapshot: ClipboardItem` (NOT a new `TrashSnapshot` type). The signature matches `TrashStore.moveToTrash` today — `ClipboardItem` already carries all fields needed for the trash row (content_blob snapshot, content_hash, type, is_pinned, is_sensitive, is_encrypted, created_at — note: ClipboardItem has NO source_app field; source bundle ids are never persisted per item). The SQLite backend snapshots the item at trash time and persists it into `trash_items.content_blob`. No new type needed.
+> **`TrashSnapshot` type note** (P1 from auto-review): the protocol takes `trashSnapshot: ClipboardItem` (NOT a new `TrashSnapshot` type). The signature matches `TrashStore.moveToTrash` today — `ClipboardItem` already carries all fields needed for the trash row (content_blob snapshot, content_hash, type, is_pinned, is_sensitive, is_encrypted, created_at — note: ClipboardItem has NO source_app field; source bundle ids are never persisted per item). The snapshot passed to `moveToTrash(itemID:trashSnapshot:)` MUST carry `deletedAt` already set (the caller sets it; TrashStore does not mutate the snapshot's `deletedAt` — its `var deletedAt` is caller-owned). The SQLite backend snapshots the item at trash time and persists it into `trash_items.content_blob`. No new type needed.
 
 `FileStorageBackend` keeps the array-level methods and **throws** `StorageBackendError.unsupportedFeature` on granular ones (it can't do row-level on UserDefaults). `SQLiteStorageBackend` implements everything.
 
@@ -303,6 +311,8 @@ Why this is safe:
 ### 3.2.1 Caller migration (PR-C)
 
 `ClipboardStore+Persistence.swift:34`'s `saveItems()` still uses `saveBlob(_:)`. PR-C adds a `backendType` discriminator. The shape below matches the production `ClipboardStore+Persistence.swift:34` signature (`saveItems() throws` — the current production version doesn't take an items param; the caller computes the diff locally):
+
+> **P0 clarification (nemotron 2026-10-07):** the code snippets below call protocol methods that do **not** exist in the current `StorageBackend` protocol (`loadAllIDs`, `beginTransaction`/`commitTransaction`/`rollbackTransaction`, granular ops) — they are **PR-C deliverables**, specified here so PR-C implements them. This document is a design; absence from the current tree is expected, not drift.
 
 ```swift
 // PR-C: switches the save strategy by backend type. Uses existing
