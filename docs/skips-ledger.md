@@ -208,8 +208,8 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
 **结论 + 推荐处置**：
 
 - **不动生产代码**：pruneOldBackups 的并发契约、错误处理、partial-cleanup 都符合 ID-CRASH-0057 验收标准。
-- **defer 到下批**：`BackupServiceExceptionPathTests` 不进 TSan subset（`.github/workflows/tsan.yml:69-77` 的 `-only-testing` 列表）；tsan-full job 跑全套时可考虑 `XCTSkip` 这 3 个 case 加 `if !isTSan` 守卫（通过环境变量 `TSAN_OPTIONS` 或 `XCTestConfigurationFilePath` 判定）。
-- **不阻塞 v2.9.6 ship**：TSan gate 当前是 `continue-on-error: true`（line 33），failure 已是 advisory；nightly tsan-full 的 4 个快照 deferred skips 已覆盖大部分 runner flake（`docs/skips-ledger.md:52`）。
+- **defer 到下批**：`BackupServiceExceptionPathTests` 不进 TSan subset（`.github/workflows/tsan.yml` 中 `tsan-pr-subset` 的 `-only-testing` 类列表；按名引用，勿写行号——该列表随重构漂移）；tsan-full job 跑全套时可考虑 `XCTSkip` 这 3 个 case 加 `if !isTSan` 守卫（通过环境变量 `TSAN_OPTIONS` 或 `XCTestConfigurationFilePath` 判定）。
+- **已更新（ID-CI-0022, 2026-10-15）**：本行原写「TSan gate 当前是 `continue-on-error: true`（line 33），failure 已是 advisory」——**该结论已反转**。两个 job 的 job 级 `continue-on-error: true` 已删除（它使 race 门禁的 `exit 1` 被吞，检出 data race 的 run 仍绿），改为加在 `Build + Test` **step** 上：测试级 runner flake 仍 advisory，**但 race 判定与编译失败现在会真正阻断**。若将来 `tsan-pr-subset` 变成 required check，这些 flake 会开始挡合并，需先 triage。
 - **完整版 v2.9.7 fix（不阻塞本批）**：
   1. 把 3 个 test helper 改成"unique-per-iteration 路径 + `mkstemp`-style temp dir"避免 name collision in `seedBackupDirs`；
   2. 或换成"单个 dir + iosecond-suffix 在 name 里"（避免依赖 createDirectory 排序）；

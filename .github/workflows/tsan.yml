@@ -19,7 +19,8 @@ jobs:
     # ID-CI-0009 (2026-09-26): PR subset assertion drift guard.
     # PR 触发: 跑最可能暴露 race 的 subset. The "-ne" assertion below
     # calibrates the expected count to the live `-only-testing` filter
-    # list (currently 94 — see SUBSET_EXPECTED in the assertion step).
+    # list (see SUBSET_EXPECTED in the assertion step — 95 as of
+    # 2026-10-15, confirmed by Scripts/lint-tsan-filter.sh).
     # Update that env var when intentionally adding/removing a
     # race-prone test class. ID-CI-0009 added SUBSET_PASSED export so
     # the PR comment can distinguish "subset broken" from "subset
@@ -30,7 +31,24 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 15
-    continue-on-error: true
+    # ID-CI-0022 (2026-10-15, P1): job-level `continue-on-error: true` was
+    # REMOVED here. Per GitHub workflow-syntax docs, it "prevents a workflow
+    # run from failing when a job fails" — so the `exit 1` in the race-gate
+    # and subset-assertion steps below were neutralised at run level: a job
+    # full of races rendered green. `::error::` annotations do not feed a
+    # branch-protection check conclusion either.
+    #
+    # This exact defect was flagged as P1 by the repo's own auto-review twice
+    # (auto-review-20260928-100714-98075.md, auto-review-agent-20260929-111152-89425.md)
+    # and survived both times because the gate was bolted onto tsan-full
+    # WITHOUT removing the line that swallowed it. This job — the only one
+    # that runs on pull_request — had no race gate at all. Whether it also
+    # blocks merging depends on branch-protection config, which is not
+    # stored in this repo; verify there before relying on it as a gate.
+    #
+    # Known test-level TSan failures stay non-blocking via STEP-level
+    # `continue-on-error: true` on the build+test step below, so unrelated
+    # runner flakes (see docs/skips-ledger.md) do not mask the race verdict.
     env:
       # ID-CI-0009 (2026-09-26): single source of truth for the subset
       # expected count. Both the assertion step (bash) and the PR
@@ -58,6 +76,11 @@ jobs:
         run: xcodegen generate
 
       - name: Build + Test (TSan, PR subset)
+        # ID-CI-0022 (2026-10-15): step-level (not job-level)
+        # continue-on-error. Keeps unresolved runner-specific test failures
+        # from blocking the PR, while the race gate below stays authoritative.
+        # `if: always()` on the gate guarantees it still runs afterwards.
+        continue-on-error: true
         env:
           TSAN_OPTIONS: "ignore_noninstrumented_modules=1:second_deadlock_stack=1"
         run: |
@@ -76,6 +99,47 @@ jobs:
             -only-testing:ClipMemoryTests/SafeModeServiceTests \
             -only-testing:ClipMemoryTests/CrashReportServiceTests \
             2>&1 | tee /tmp/tsan.log
+
+      # ID-CI-0022 (2026-10-15, P1): race gate for the PR path. This step did
+      # not exist before — commit 0436943 added the gate to tsan-full ONLY,
+      # leaving tsan-pr-subset (the only job that runs on pull_request) with
+      # no race verdict at all. Mirrors the identically-named
+      # "TSan race count gate (fail-closed)" step in the tsan-full job.
+      # (Referenced by name, not line number — line refs in this file drift
+      # every time a comment is added.)
+      - name: TSan race count gate (fail-closed)
+        if: always()
+        run: |
+          if [ ! -f /tmp/tsan.log ]; then
+            echo "::error::TSan log missing — cannot judge races (treating as INSTRUMENTED=NO)"
+            echo "INSTRUMENTED=NO" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          # ID-CI-0022 hardening: a COMPILE failure also produces no
+          # `Executed N test` line, so `grep -c` would return 0 and this
+          # gate would report "0 races" — the same false-green class the
+          # job-level continue-on-error used to cause. The build+test step
+          # carries `continue-on-error: true`, so a broken build reaches this
+          # gate instead of aborting the job. Require positive evidence that
+          # tests actually ran before trusting a zero count.
+          if ! grep -qE "Executed [0-9]+ test" /tmp/tsan.log; then
+            echo "::error::No 'Executed N test' in TSan log — build or test startup failed; race count is unknowable, NOT zero"
+            exit 1
+          fi
+          # Match the PR-comment counter's pattern exactly
+          # (see the github-script step below). A bare
+          # "WARNING: ThreadSanitizer" also matches SEGV / other warnings,
+          # which made the gate report "1 data race" while the comment
+          # reported "0 races" for the same run.
+          races=$(grep -c "WARNING: ThreadSanitizer: data race" /tmp/tsan.log || true)
+          if [ "${races:-0}" -eq 0 ]; then
+            echo "✅ TSan: 0 data races detected"
+          else
+            echo "::error::$races data race(s) detected by TSan"
+            echo "--- race sites (first 20) ---"
+            grep -n "WARNING: ThreadSanitizer: data race" /tmp/tsan.log | head -20
+            exit 1
+          fi
 
       - name: Build instrumentation canary (compiled evidence)
         if: always()
@@ -155,7 +219,11 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: macos-latest
     timeout-minutes: 60
-    continue-on-error: true
+    # ID-CI-0022 (2026-10-15, P1): job-level `continue-on-error: true`
+    # REMOVED. It neutralised the race gate's `exit 1` at run level, so a
+    # nightly run full of data races stayed green. Moved to STEP level on
+    # the build+test step below: unresolved runner-only test failures
+    # (docs/skips-ledger.md) stay non-blocking, the race verdict does not.
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
@@ -177,6 +245,9 @@ jobs:
         run: xcodegen generate
 
       - name: Build + Test (TSan, full suite)
+        # ID-CI-0022 (2026-10-15): step-level (not job-level)
+        # continue-on-error — see the job header above.
+        continue-on-error: true
         env:
           TSAN_OPTIONS: "ignore_noninstrumented_modules=1:second_deadlock_stack=1"
         run: |
@@ -187,19 +258,44 @@ jobs:
             ENABLE_THREAD_SANITIZER=YES \
             2>&1 | tee /tmp/tsan.log
 
-      # ID-CRASH-0009 (2026-09-28 code-review P1-4): fail-closed
-      # gate for TSan race detection. Before this step, TSan
-      # job-level `continue-on-error: true` (line 33) meant a job
-      # full of races rendered green — `raceCount` was only read by
-      # the github-script PR-comment step (line 121 per the
-      # report), never as a step-level exit code. Adding this
-      # grep-count-exit-1 step turns the suite into a real CI gate.
-      # Mirrors the existing "Build instrumentation canary" gate
-      # pattern below (also a grep + exit 1).
+      # ID-CRASH-0009 (2026-09-28 code-review P1-4): race-detection gate.
+      #
+      # ⚠️ CORRECTION (ID-CI-0022, 2026-10-15): the original comment here
+      # claimed this step "turns the suite into a real CI gate". That was
+      # FALSE for 17 days. The step existed, but its `exit 1` was swallowed
+      # by job-level `continue-on-error: true` on this job — GitHub's
+      # workflow-syntax docs: it "prevents a workflow run from failing when a
+      # job fails". `::error::` annotations do not feed branch protection
+      # either, so a run full of races stayed green. The repo's own
+      # auto-review flagged this as P1 twice
+      # (auto-review-20260928-100714-98075.md,
+      #  auto-review-agent-20260929-111152-89425.md) without the root cause
+      # being fixed. ID-CI-0022 removed the job-level flag (moved to
+      # step-level on the build+test step) — THAT is what made this gate
+      # authoritative, not the step's existence.
+      # Mirrors the "Build instrumentation canary" gate below (also grep + exit 1).
       - name: TSan race count gate (fail-closed)
         if: always()
         run: |
-          races=$(grep -c "WARNING: ThreadSanitizer" /tmp/tsan.log || true)
+          # Without this guard a missing log yields `grep -c` = 0 and the
+          # gate silently PASSES — the same false-green class as above.
+          if [ ! -f /tmp/tsan.log ]; then
+            echo "::error::TSan log missing — cannot judge races (treating as INSTRUMENTED=NO)"
+            echo "INSTRUMENTED=NO" >> "$GITHUB_ENV"
+            exit 1
+          fi
+          # ID-CI-0022 hardening: a compile failure produces no
+          # `Executed N test` line either, and this job has no
+          # subset-count assertion to back it up — so without this the
+          # gate would happily print "0 data races" for a build that
+          # never ran. Require positive evidence that tests ran.
+          if ! grep -qE "Executed [0-9]+ test" /tmp/tsan.log; then
+            echo "::error::No 'Executed N test' in TSan log — build or test startup failed; race count is unknowable, NOT zero"
+            exit 1
+          fi
+          # Pattern kept identical to the PR-comment counter in the
+          # tsan-pr-subset job so both report the same number.
+          races=$(grep -c "WARNING: ThreadSanitizer: data race" /tmp/tsan.log || true)
           if [ "${races:-0}" -eq 0 ]; then
             echo "✅ TSan: 0 races detected"
           else
