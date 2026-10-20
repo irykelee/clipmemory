@@ -84,6 +84,16 @@ extension ClipboardStore {
         // users, and a clear migration target once SQLiteStorageBackend
         // becomes active (PR-C atomic switch).
         let snapshot = items
+        // The canonical tag catalog, captured HERE on the main actor.
+        //
+        // ID-CRASH-0022 (2026-10-20): the granular path below runs on a
+        // background queue, so it must not read `self.tags` there — that
+        // would be a data race on main-actor state. `Tag` is a struct
+        // and `[UUID: Tag]` is a value type, so the copy is safe to hand
+        // across. The granular path needs the catalog because it has to
+        // write the REAL tag (name + colour) before attaching it — see
+        // `granularSave`.
+        let tagCatalog = tags
         let data = try itemEncodingQueue.sync {
             try itemsSaveEncoder.encode(snapshot)
         }
@@ -93,7 +103,7 @@ extension ClipboardStore {
                 // `unsupportedFeature` until PR-B lands, which is the
                 // signal to fall back to the array-level path below.
                 if let sqliteBackend = backend as? SQLiteStorageBackend {
-                    try granularSave(to: sqliteBackend, items: snapshot)
+                    try granularSave(to: sqliteBackend, items: snapshot, tags: tagCatalog)
                 } else {
                     throw StorageBackendError.unsupportedFeature("not a SQLite backend")
                 }
@@ -136,7 +146,17 @@ extension ClipboardStore {
     /// SQLiteStorageBackend is a placeholder (every method throws
     /// `unsupportedFeature`); exists so PR-B has a concrete call site
     /// to point the real implementation at.
-    private func granularSave(to backend: SQLiteStorageBackend, items: [ClipboardItem]) throws {
+    ///
+    /// ID-CRASH-0022 (2026-10-20): `nonisolated` because the caller
+    /// invokes this from a background queue. The method therefore takes
+    /// everything it needs as parameters and touches NO main-actor
+    /// state — the tag catalog is captured on the main actor by
+    /// `saveItems()` and handed in.
+    private nonisolated func granularSave(
+        to backend: SQLiteStorageBackend,
+        items: [ClipboardItem],
+        tags: [UUID: Tag]
+    ) throws {
         // upsertTag before attachTag — attachTag has FK on tags(id)
         // (PR-B schema), so the parent row must exist first. Wrap in
         // a transaction so partial failure rolls back cleanly. For the
@@ -147,19 +167,32 @@ extension ClipboardStore {
         do {
             // Pull the unique tag set from the items array. SQLite
             // upserts tags idempotently on PK collision.
+            //
+            // ID-CRASH-0022 (2026-10-20): the tag written here must be
+            // the REAL one. `upsertTag` does
+            // `ON CONFLICT(id) DO UPDATE SET name = excluded.name,
+            // color_hex = excluded.color_hex`, so upserting a
+            // placeholder (name: "", colorHex: "") OVERWROTE the
+            // catalog's stored name and colour — the first granular save
+            // would blank every tag in the store. The canonical catalog
+            // is `ClipboardStore.tags` (keyed by UUID), so the real tag
+            // is available right here.
+            //
+            // A tag id the catalog does NOT carry is left alone: the
+            // item_tags row then fails its foreign key inside
+            // `upsertItem`, which is the loud failure we want — a broken
+            // reference must not be papered over with a nameless tag
+            // (the same stance `ensureTagPlaceholders` documents). The
+            // app never creates such a reference: `deleteTag` strips the
+            // id from every item's tagIds.
             var seen = Set<UUID>()
             var tagsToUpsert: [Tag] = []
             for item in items {
                 for tagID in item.tagIds where !seen.contains(tagID) {
                     seen.insert(tagID)
-                    // We don't have the Tag's name/color here — the
-                    // caller (ClipboardStore) keeps the canonical tag list
-                    // separately and passes it via `saveTags(_:)`. For
-                    // PR-A's placeholder, this method-body is the
-                    // eventual home of "fetch name+color by ID" — for
-                    // now we just call upsertTag with an empty Tag and
-                    // rely on the caller pre-populating.
-                    tagsToUpsert.append(Tag(id: tagID, name: "", colorHex: ""))
+                    if let tag = tags[tagID] {
+                        tagsToUpsert.append(tag)
+                    }
                 }
             }
             for tag in tagsToUpsert {

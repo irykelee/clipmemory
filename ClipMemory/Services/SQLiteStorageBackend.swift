@@ -694,6 +694,22 @@ final class SQLiteStorageBackend: StorageBackend {
         try withLock {
             try inTransaction {
                 guard let snapshot = try loadTrashItem(itemID: itemID) else {
+                    // ID-CRASH-0022 (2026-10-20): "the row is absent" and
+                    // "the row is present but corrupt" are different
+                    // situations with different operator responses (retry
+                    // vs. restore-from-quarantine), and one message for
+                    // both sent the reader to the wrong cause.
+                    if try trashRowExists(itemID: itemID) {
+                        throw StorageBackendError.storageFailure(
+                            sql: "SELECT ... FROM trash_items WHERE item_id = ?",
+                            code: -1,
+                            detail: """
+                            the trash row for item \(itemID.uuidString) exists but could not be \
+                            decoded; the store is corrupt, not missing — use the quarantine / \
+                            restore path, a retry will not help
+                            """
+                        )
+                    }
                     throw StorageBackendError.unsupportedFeature(
                         "restoreFromTrash: no trash row for item \(itemID.uuidString)"
                     )
@@ -958,6 +974,25 @@ final class SQLiteStorageBackend: StorageBackend {
 
     private func loadTrashItem(itemID: UUID) throws -> ClipboardItem? {
         return try loadTrashItemInternal(itemID: itemID)
+    }
+
+    /// Whether a trash row exists for `itemID`, regardless of whether it
+    /// can be decoded.
+    ///
+    /// ID-CRASH-0022 (2026-10-20): `restoreFromTrash` needs to tell
+    /// "the row is absent" from "the row is present but corrupt" — two
+    /// different operator responses (retry vs. restore-from-quarantine)
+    /// that used to share one message.
+    private func trashRowExists(itemID: UUID) throws -> Bool {
+        let sql = "SELECT 1 FROM trash_items WHERE item_id = ?"
+        let stmt = try prepare(sql)
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, Self.sqlLiteTransientDestructor)
+        var found = false
+        try forEachRow(stmt, sql: sql) { _ in
+            found = true
+        }
+        return found
     }
 
     private func decodeTrashRow(stmt: OpaquePointer) -> ClipboardItem? {

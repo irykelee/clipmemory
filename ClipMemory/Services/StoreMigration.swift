@@ -126,10 +126,18 @@ enum StoreMigration {
         do {
             return try JSONDecoder().decode([T].self, from: data)
         } catch {
-            Self.logger.error(
-                "legacy blob \(key) is unreadable, refusing to skip it: \(error.localizedDescription)"
+            // ID-CRASH-0022 (2026-10-20): wrap the raw DecodingError so
+            // the KEY NAME travels with the error. The bare
+            // `DecodingError` says "the data couldn't be decoded" and
+            // nothing about WHICH blob — and the migration touches three
+            // of them.
+            let detail = "legacy blob \(key) is unreadable: \(error.localizedDescription)"
+            Self.logger.error("\(detail) — refusing to skip it")
+            throw StorageBackendError.storageFailure(
+                sql: "JSONDecoder().decode([\(T.self).self], from: defaults[\(key)])",
+                code: -1,
+                detail: detail
             )
-            throw error
         }
     }
 

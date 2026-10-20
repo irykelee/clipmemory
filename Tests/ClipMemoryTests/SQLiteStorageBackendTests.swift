@@ -423,6 +423,98 @@ final class SQLiteStorageBackendTests: XCTestCase {
                        "the failed inner write must not be committed")
     }
 
+    /// A trash operation inside a caller-owned transaction must neither
+    /// commit nor roll back that transaction.
+    ///
+    /// ID-CRASH-0022 (2026-10-20): this covers the trash paths, which the
+    /// inner-failure test above does not reach. The transaction trio
+    /// (`beginTransaction` / `commitTransaction` / `rollbackTransaction`)
+    /// takes the same recursive lock as the bulk methods, so a reader may
+    /// reasonably wonder whether a nested call commits the CALLER's
+    /// transaction. It does not: `inTransaction` checks
+    /// `sqlite3_get_autocommit` FIRST and takes the savepoint branch when
+    /// the caller already owns a transaction. The lock is a mutex for the
+    /// connection — it has no bearing on transaction ownership.
+    ///
+    /// Discriminating power: if the inner call committed the caller's
+    /// transaction, the final `commitTransaction()` would fail with
+    /// "cannot commit - no transaction is active"; if it opened a nested
+    /// BEGIN, the inner call would fail with "cannot start a transaction
+    /// within a transaction". Both turn this test red.
+    func testTrashOperationInsideCallerTransactionKeepsItOpen() throws {
+        let victimID = UUID()
+        let victim = ClipboardItem(id: victimID, content: "victim", type: .text)
+
+        try backend.beginTransaction()
+        try backend.upsertItem(ClipboardItem(content: "caller-item", type: .text))
+        try backend.upsertItem(victim)
+
+        // The inner trash operation runs inside the caller's transaction.
+        try backend.moveToTrash(itemID: victimID, trashSnapshot: victim)
+
+        // The caller's transaction must still be open: this write and
+        // the commit below must both succeed.
+        try backend.upsertItem(ClipboardItem(content: "after", type: .text))
+        try backend.commitTransaction()
+
+        let loaded = try backend.load()
+        XCTAssertTrue(loaded.contains { $0.content == "caller-item" },
+                      "the caller's pre-trash write must survive")
+        XCTAssertTrue(loaded.contains { $0.content == "after" },
+                      "the caller's post-trash write must survive")
+        XCTAssertFalse(loaded.contains { $0.content == "victim" },
+                       "the trashed item must be gone from items")
+        XCTAssertEqual(
+            try queryCount(stmt: "SELECT COUNT(*) FROM trash_items WHERE item_id = '\(victimID.uuidString)'"),
+            1, "the trash row must exist"
+        )
+    }
+
+    /// The granular save path must write the REAL tag, not a placeholder.
+    ///
+    /// ID-CRASH-0022 (2026-10-20): `upsertTag` does
+    /// `ON CONFLICT(id) DO UPDATE SET name = excluded.name,
+    /// color_hex = excluded.color_hex`, so upserting a nameless placeholder
+    /// OVERWROTE the catalog's stored name and colour — the first granular
+    /// save blanked every tag in the store. The canonical catalog is
+    /// `ClipboardStore.tags`, so the granular path has to use it instead
+    /// of inventing an empty tag.
+    ///
+    /// Discriminating power: on the unfixed implementation this test
+    /// fails with the tag name and colour wiped.
+    @MainActor
+    func testGranularSaveKeepsTheTagCatalogIntact() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GranularTags-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let backend = try SQLiteStorageBackend(
+            databaseURL: dir.appendingPathComponent("store.sqlite3")
+        )
+        let suite = "GranularTags-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+
+        let tag = Tag(id: UUID(), name: "work", colorHex: "#FF0000")
+        // The catalog row already exists — this is exactly what the
+        // placeholder used to overwrite.
+        try backend.upsertTag(tag)
+
+        let store = ClipboardStore(backend: backend, defaults: defaults)
+        store.tags[tag.id] = tag
+        store.items = [ClipboardItem(content: "x", type: .text, tagIds: [tag.id])]
+
+        try store.saveItems()
+
+        let tags = try backend.loadTags()
+        XCTAssertEqual(tags.count, 1)
+        XCTAssertEqual(tags.first?.name, "work",
+                       "the granular save must not blank the tag name")
+        XCTAssertEqual(tags.first?.colorHex, "#FF0000",
+                       "the granular save must not blank the tag colour")
+    }
+
     /// A failed ROLLBACK must not leave the connection in a state where
     /// later writes silently vanish.
     ///
