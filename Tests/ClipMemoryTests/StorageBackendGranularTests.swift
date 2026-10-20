@@ -17,20 +17,22 @@ import XCTest
 ///   4. `MemoryStorageBackend` overrides every granular method to
 ///      pass through the in-memory `_items` / `_tags` / `_trashItems`
 ///      arrays (test-seam equivalent of array-level path).
-///   5. `SQLiteStorageBackend` is a placeholder class — every method
-///      throws `unsupportedFeature` (PR-B replaces each body).
+///   5. `SQLiteStorageBackend` is the real SQLite-backed implementation
+///      (PR-B; the PR-A placeholder threw `unsupportedFeature` for every
+///      method — PR-B replaced each body, see SQLiteStorageBackendTests).
 ///   6. `ClipboardStore.saveItems` dispatches on backend type; on
 ///      `unsupportedFeature` it falls back to the array-level
 ///      `save(_:)` path.
 ///
 /// Tests in this file deliberately do NOT touch SQLiteStorageBackend
-/// implementation details — PR-B owns that. They cover:
+/// implementation details — PR-B owns that (see SQLiteStorageBackendTests).
+/// They cover:
 ///   - The protocol-level contract (every backend that conforms
 ///     responds to every granular method).
 ///   - The fallback pattern (unsupportedFeature → array-level works).
 ///   - Per-backend invariants (FileStorageBackend throws; MemoryStorageBackend
-///     mutates arrays in-place; SQLiteStorageBackend placeholder
-///     throws).
+///     mutates arrays in-place; SQLiteStorageBackend's array-level
+///     save round-trips and its saveBlob rejects).
 ///
 /// **No empty-pass guard** (user hard rule #4): every test below
 /// asserts a behavior that PRE-PR-A code paths cannot satisfy. The
@@ -39,6 +41,29 @@ import XCTest
 /// pre-PR-A; the granular-method tests reference API that didn't
 /// exist pre-PR-A.
 @MainActor final class StorageBackendGranularTests: XCTestCase {
+
+    /// ID-CRASH-0022 (2026-10-20): build a FileStorageBackend that
+    /// CANNOT touch the production UserDefaults domain.
+    ///
+    /// `FileStorageBackend()`'s convenience init defaults to the
+    /// PRODUCTION storage key (`"ClipboardItems"`) and `.standard`.
+    /// Writing a test blob through it OVERWRITES the user's real
+    /// clipboard history in the production domain — and because the
+    /// next read of that blob fails to decode, `quarantineCorruptBlob`
+    /// then REMOVES the original key outright. That is data loss, not
+    /// just pollution, and it happened on every full test run before
+    /// this seam was introduced.
+    ///
+    /// Every FileStorageBackend instance in this file must therefore go
+    /// through this helper (isolated key + isolated suite + teardown).
+    private func makeIsolatedFileBackend(_ label: String) -> FileStorageBackend {
+        let suiteName = "StorageBackendGranularTests-\(label)-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        return FileStorageBackend(storageKey: "test.items.\(label)", defaults: defaults)
+    }
 
     // MARK: - FileStorageBackend: granular methods throw unsupportedFeature
 
@@ -52,7 +77,7 @@ import XCTest
     /// the protocol exists, an implementation that returns silently
     /// (e.g. no-op) fails this test (which expects the throw).
     func testFileStorageBackendGranularThrowsUnsupportedFeature() {
-        let backend = FileStorageBackend()
+        let backend = makeIsolatedFileBackend("granularThrows")
         let item = ClipboardItem(content: "x", type: .text)
         let tag = Tag(id: UUID(), name: "t", colorHex: "#000000")
 
@@ -86,7 +111,7 @@ import XCTest
     /// override wasn't accidentally removed by PR-A's protocol
     /// refactor.
     func testFileStorageBackendSaveBlobKeepsReadBackVerification() {
-        let backend = FileStorageBackend()
+        let backend = makeIsolatedFileBackend("saveBlobReadBack")
         XCTAssertNoThrow(try backend.saveBlob(Data("test".utf8)))
         // If the default protocol extension were used (decode + save),
         // the path would skip the synchronize() + read-back. We
@@ -191,58 +216,32 @@ import XCTest
         XCTAssertEqual(try backend.loadAllIDs(), Set([id1, id2]))
     }
 
-    // MARK: - SQLiteStorageBackend: placeholder throws unsupportedFeature
+    // MARK: - SQLiteStorageBackend (PR-B real implementation lives in
+    // SQLiteStorageBackendTests; this file keeps the array-level and
+    // cross-backend contract tests only)
 
-    /// Per PR-A: SQLiteStorageBackend is a placeholder. Every method
-    /// throws `unsupportedFeature`. PR-B replaces each body.
-    ///
-    /// "Can red" check: PRE-PR-A, `SQLiteStorageBackend` didn't exist
-    /// — instantiating it didn't compile. PR-A introduces the class;
-    /// this test exercises the placeholder contract.
-    func testSQLiteStorageBackendPlaceholderThrowsUnsupportedFeature() {
-        let backend = SQLiteStorageBackend()
-        let item = ClipboardItem(content: "x", type: .text)
-        let tag = Tag(id: UUID(), name: "t", colorHex: "#000000")
-
-        let allGranularCalls: [() throws -> Void] = [
-            { try backend.upsertItem(item) },
-            { try backend.hardDeleteItem(id: UUID()) },
-            { try backend.upsertTag(tag) },
-            { try backend.attachTag(itemID: UUID(), tagID: UUID()) },
-            { try backend.detachTag(itemID: UUID(), tagID: UUID()) },
-            { try backend.moveToTrash(itemID: UUID(), trashSnapshot: item) },
-            { try backend.restoreFromTrash(itemID: UUID()) },
-            { try _ = backend.loadAllIDs() },
-            { try backend.setMeta(key: "k", value: Data(), type: "blob") },
-            { try _ = backend.meta(key: "k") }
-        ]
-
-        for call in allGranularCalls {
-            XCTAssertThrowsError(try call()) { error in
-                guard case StorageBackendError.unsupportedFeature = error else {
-                    return XCTFail("expected StorageBackendError.unsupportedFeature, got \(error)")
-                }
-            }
-        }
-    }
-
-    /// SQLiteStorageBackend's array-level methods (`save(_:)`,
-    /// `saveTags(_:)`) delegate to their granular equivalents so the
-    /// placeholder behaves correctly when a caller uses the array
-    /// path. `saveBlob` rejects (callers should use upsertItem,
+    /// PR-B: `save(_:)` is a real array-replace (same semantic as
+    /// File/Memory backends — replace every row with the array's rows)
+    /// and `saveBlob` still rejects (callers must use upsertItem,
     /// per docs §3.2).
-    func testSQLiteStorageBackendArrayLevelDelegatesAndRejectsSaveBlob() {
-        let backend = SQLiteStorageBackend()
+    ///
+    /// "Can red" check: the load-readback assertion fails on any
+    /// backend whose save(_:) silently drops data.
+    func testSQLiteStorageBackendArrayLevelSaveRoundTripsAndSaveBlobRejects() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GranularTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let backend = try SQLiteStorageBackend(
+            databaseURL: dir.appendingPathComponent("store.sqlite3")
+        )
         let item = ClipboardItem(content: "x", type: .text)
 
-        // save(_:) catches granular throws and delegates per item.
-        // Since every granular method throws, save(_:) here throws too
-        // — but that's expected for the placeholder.
-        XCTAssertThrowsError(try backend.save([item])) { error in
-            guard case StorageBackendError.unsupportedFeature = error else {
-                return XCTFail("expected StorageBackendError.unsupportedFeature, got \(error)")
-            }
-        }
+        // save(_:) replaces the full array — no throw on the real impl.
+        XCTAssertNoThrow(try backend.save([item]))
+
+        // Round trip: the saved array is readable back.
+        XCTAssertEqual(try backend.load().map(\.content), ["x"])
 
         // saveBlob explicitly rejects — per docs §3.2, SQLite backend
         // has no blob storage; callers must use upsertItem.
@@ -260,11 +259,18 @@ import XCTest
     /// enforces this at compile time, but this test verifies the
     /// concrete instances have the right type at runtime (catches
     /// accidental conformance removal or renaming).
-    func testAllBackendsConformToStorageBackend() {
+    func testAllBackendsConformToStorageBackend() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GranularTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sqliteBackend = try SQLiteStorageBackend(
+            databaseURL: dir.appendingPathComponent("store.sqlite3")
+        )
         let backends: [StorageBackend] = [
-            FileStorageBackend(),
+            makeIsolatedFileBackend("conformance"),
             MemoryStorageBackend(),
-            SQLiteStorageBackend()
+            sqliteBackend
         ]
         XCTAssertEqual(backends.count, 3)
         for backend in backends {
@@ -288,10 +294,16 @@ import XCTest
     ///   legacy in-memory array pass.
     ///
     /// This test asserts the table's contract at the call-site level.
-    func testSaveBlobSemanticsPerBackend() {
-        let fileBackend = FileStorageBackend()
+    func testSaveBlobSemanticsPerBackend() throws {
+        let fileBackend = makeIsolatedFileBackend("saveBlobSemantics")
         let memoryBackend = MemoryStorageBackend()
-        let sqliteBackend = SQLiteStorageBackend()
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GranularTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sqliteBackend = try SQLiteStorageBackend(
+            databaseURL: dir.appendingPathComponent("store.sqlite3")
+        )
 
         // FileStorageBackend: succeeds with read-back verify. (Any
         // non-throw result is "as designed" — we don't observe the

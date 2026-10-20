@@ -181,7 +181,20 @@ extension ClipboardStore {
                 try backend.hardDeleteItem(id: staleID)
             }
         } catch {
-            try backend.rollbackTransaction()
+            // ID-CRASH-0022 (2026-10-20): the rollback must never
+            // REPLACE the original error. The backend's exec helpers
+            // now throw, so `rollbackTransaction()` can itself throw
+            // (e.g. "cannot rollback - no transaction is active"), and
+            // a throw from here would hide the real cause (a FK
+            // violation, a disk-full) behind a misleading rollback
+            // error. Log the rollback failure; re-throw the original.
+            do {
+                try backend.rollbackTransaction()
+            } catch {
+                logger.error(
+                    "granularSave rollback failed: \(error.localizedDescription, privacy: .public) — re-throwing the original save error"
+                )
+            }
             throw error
         }
         try backend.commitTransaction()

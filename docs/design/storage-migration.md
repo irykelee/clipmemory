@@ -103,7 +103,25 @@ CREATE INDEX idx_items_decryption_failed ON items(decryption_failed) WHERE decry
 -- auto-purged by retention_days (default 30, configurable via
 -- 'trashedItemsRetentionDays' app_meta key).
 CREATE TABLE trash_items (
-    item_id       TEXT    PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+    -- ID-CRASH-0022 (2026-10-20): NO foreign key to items(id).
+    --
+    -- This line used to read
+    --   item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+    -- which contradicts §3.3's own moveToTrash sequence:
+    --   INSERT INTO trash_items (...) VALUES (...);
+    --   DELETE FROM items WHERE id = ?;
+    -- The CASCADE deletes the trash row that was just inserted (its
+    -- parent items row is the one being removed), so every move-to-trash
+    -- ended with an empty trash. Keeping the FK without the CASCADE
+    -- does not work either: the FK demands a live parent items row,
+    -- but the restore path moves trash → items precisely because that
+    -- items row no longer exists.
+    --
+    -- §3.3 "trash is preserved as a separate store" (the
+    -- TrashStore.swift own-store invariant, quoted above) is the
+    -- authoritative intent: a trash row is a snapshot with its own
+    -- lifecycle, not a child of an items row.
+    item_id       TEXT    PRIMARY KEY,
     trashed_at    INTEGER NOT NULL,
     expires_at    INTEGER NOT NULL,
     -- Snapshot of the item content at trash time. The original
@@ -382,16 +400,21 @@ The existing `TrashStore.swift` is rewritten as a thin wrapper over the SQLite b
 
 ### 4.1 Forward migration (UserDefaults → SQLite)
 
-**Triggered by**: app startup, behind a one-shot `UserDefaults` flag `migration.v1.to.v2.completed` (read once, set true on success). First launch after the new binary ships triggers migration.
+**Triggered by**: app startup, behind a one-shot flag `migration.v1.to.v2.completed`, stored in the SQLite `app_meta` table — **not** in UserDefaults (see the correction note in §4.3.1). First launch after the new binary ships triggers migration.
 
-**Steps**:
-1. Open SQLite at `~/Library/Application Support/ClipMemory/store.sqlite3`. If file doesn't exist, create with schema_version = 1.
-2. Read `UserDefaults` blobs for `clipboardItems` / `clipboardTrashedItems` / `clipMemoryTags`.
-3. For each item, decode JSON → INSERT into `items` table (mapping `expiresAt` to unix seconds, `tagIds: Set<UUID>` to rows in `item_tags`).
-4. For each tag, INSERT into `tags`.
-5. Wrap the whole batch in `BEGIN IMMEDIATE TRANSACTION` + `COMMIT`. Single fsync per batch.
-6. On success, set `migration.v1.to.v2.completed = true` and KEEP the UserDefaults blobs (defensive — see rollback).
-7. On failure, delete the SQLite file (atomic, no corruption) and surface the error to `lastBackupErrorDate`-style machinery (existing pattern, ID-STORE-0016).
+**Steps** (ID-CRASH-0022, 2026-10-20 — this list now matches the implementation; the earlier draft had items before tags, which cannot work):
+
+1. Open SQLite at `~/Library/Application Support/ClipMemory/store.sqlite3`. If the file doesn't exist, create it with `schema_version = 1`.
+2. Read the `UserDefaults` blobs `ClipboardItems` / `ClipboardTrashedItems` / `ClipMemoryTags`.
+3. **Tags first** — for each tag, INSERT into `tags`. `item_tags.tag_id` REFERENCES `tags(id)` with `foreign_keys = ON`, so an item whose tag has not been inserted yet fails the whole batch. The order is a hard dependency, not a preference.
+4. **Items next** — for each item, decode JSON → INSERT into `items` (mapping `expiresAt` to unix seconds) and mirror `tagIds: Set<UUID>` into `item_tags`. An item may reference a tag id the legacy tag catalog does not carry; a placeholder tag row (`name = ""`) is created for it so the membership survives instead of aborting the batch.
+5. **Trash last** — for each trashed item, write the snapshot into `trash_items` (§3.3 — an independent store, no FK to `items`).
+6. Wrap the whole batch in `BEGIN IMMEDIATE TRANSACTION` + `COMMIT`. Single fsync per batch.
+7. On success, set `migration.v1.to.v2.completed` and KEEP the UserDefaults blobs (defensive — see rollback).
+8. On failure: **roll the transaction back and keep the SQLite file**. The flag is NOT set, so the next launch retries from scratch, and the legacy blobs are never touched. (The earlier draft said "delete the SQLite file" — wrong twice over: it would destroy a partially-migrated store a retry could have completed, and it is not what the implementation does. The destructive path is §4.2's explicit, user-confirmed rollback.)
+9. A legacy blob that EXISTS but cannot be decoded is a **failure**, not "there is nothing to migrate": the migration aborts and the flag stays unset. (Treating an unreadable blob as absent made the migration report success over a batch of history that was then silently never migrated — and never migrated again, because the flag said "done".)
+
+> **Not implemented yet — the `validated` flag**: §4.3.1's second-launch dual-read check (`migration.v1.to.v2.validated`, plus `lastMigrationMismatch` / `lastDualReadMismatch`) has **no implementation anywhere in the codebase** — PR-B delivers the one-shot forward migration only. The flag, the divergence check and the banner must land before the atomic switch (§4.3.3) can be trusted; until then `migration.v1.to.v2.validated` must be treated as *absent*, never as *validated*.
 
 ### 4.2 Rollback (SQLite → UserDefaults)
 
@@ -430,7 +453,9 @@ The first launch after PR-B migrates the UserDefaults blob into SQLite (§4.1 ab
 
 This catches silent migration bugs (corruption, encoding drift) **before** we trust SQLite as the primary path.
 
-> **Migration flag storage** (P2 from auto-review, corrected): there's exactly ONE migration state flag, `migration.v1.to.v2.completed` (PR-B writes it, stored in **`app_meta`** — NOT in UserDefaults, despite the earlier draft saying so). The dual-read validation flag `migration.v1.to.v2.validated` (PR-B writes it on the second launch) is **separate** and also lives in **`app_meta`** — same store. The "completed" flag answers "did the migration run?"; the "validated" flag answers "does SQLite match UserDefaults?". Two flags, two questions, one store — `app_meta`. UserDefaults stays out of the migration state machine entirely. Once atomic-switch completes (PR-C-switch), both flags are checked at startup: if SQLite is missing OR `migration.v1.to.v2.validated == 0`, refuse to switch and trigger the rollback path.
+> **Migration flag storage** (P2 from auto-review, corrected): there's exactly ONE migration state flag, `migration.v1.to.v2.completed` (PR-B writes it, stored in **`app_meta`** — NOT in UserDefaults, despite the earlier draft saying so). The dual-read validation flag `migration.v1.to.v2.validated` is **separate** and also lives in **`app_meta`** — same store. The "completed" flag answers "did the migration run?"; the "validated" flag answers "does SQLite match UserDefaults?". Two flags, two questions, one store — `app_meta`. UserDefaults stays out of the migration state machine entirely. Once atomic-switch completes (PR-C-switch), both flags are checked at startup: if SQLite is missing OR `migration.v1.to.v2.validated == 0`, refuse to switch and trigger the rollback path.
+>
+> **ID-CRASH-0022 (2026-10-20) — status correction**: PR-B does **not** write `migration.v1.to.v2.validated`; the second-launch dual-read check described above is **not implemented** (0 references in the codebase). The clause "PR-B writes it on the second launch" was aspirational. Until it ships, the atomic switch must not be gated on that flag, and `validated` must be read as *absent* rather than *validated*.
 
 ### 4.3.2 Dual-write phase (PR-C + 1 release cycle)
 
