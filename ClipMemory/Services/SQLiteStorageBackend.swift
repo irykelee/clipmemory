@@ -45,7 +45,7 @@
 //  store.sqlite3`. The directory is created lazily (sqlite3_open with
 //  SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX).
 //
-//  Ciphertext note: ClipboardItem.content is `String?` (base64-
+//  Ciphertext note: ClipboardItem.content is a `String` (base64-
 //  encoded AES-GCM ciphertext per the schema fix in commit
 //  `7793038 docs(design): ... content_blob BLOB→TEXT`). SQLiteStorageBackend
 //  treats `content` as opaque — write the String directly, read it back
@@ -100,6 +100,20 @@ final class SQLiteStorageBackend: StorageBackend {
     /// tested at all (the real schema has exactly one version and no
     /// steps), so a driver that ignored the version entirely would
     /// pass every test.
+    ///
+    /// **The production caller must use the default.** Nothing in the
+    /// type system stops a future caller from handing the app a
+    /// synthetic schema — that is the price of the seam, and it is
+    /// paid deliberately. Two things to remember when that caller
+    /// appears:
+    /// * the shipped schema is `baseVersion == version == 1` with zero
+    ///   upgrade steps, so the migration machine has never run a
+    ///   multi-version upgrade against it — that path is only covered
+    ///   by the synthetic-schema tests;
+    /// * `init` throws when the database is newer than this build
+    ///   (see `SQLiteSchemaMigrator`). Whoever wires the backend into
+    ///   production MUST surface that to the user — see
+    ///   docs/design/storage-migration.md §4.4.
     init(
         databaseURL: URL,
         defaults: UserDefaults = .standard,
@@ -301,7 +315,7 @@ final class SQLiteStorageBackend: StorageBackend {
     /// captured so a constraint violation (e.g. `attachTag` referencing a
     /// tag row that does not exist) reaches the caller instead of being
     /// logged and swallowed.
-    private func exec(_ sql: String, _ params: [(Int32, Any)]) throws {
+    private func exec(_ sql: String, _ params: [(Int32, SQLiteValue)]) throws {
         guard let db = db else {
             throw StorageBackendError.storageFailure(
                 sql: sql, code: SQLITE_MISUSE, detail: "connection is nil"
@@ -316,7 +330,7 @@ final class SQLiteStorageBackend: StorageBackend {
             throw StorageBackendError.storageFailure(sql: sql, code: prepareRC, detail: msg)
         }
         for (index, value) in params {
-            bind(stmt: stmt, index: index, value: value)
+            SQLiteBinder.bind(stmt: stmt, index: index, value: value)
         }
         let stepRC = sqlite3_step(stmt)
         if stepRC != SQLITE_DONE {
@@ -371,39 +385,6 @@ final class SQLiteStorageBackend: StorageBackend {
             let msg = db.map { String(cString: sqlite3_errmsg($0)) } ?? "(no error message)"
             Self.logger.error("sqlite3_step failed (rc=\(rc)): \(msg) — sql=\(sql.prefix(120))")
             throw StorageBackendError.storageFailure(sql: sql, code: rc, detail: msg)
-        }
-    }
-
-    /// Bind a value to a prepared statement. Covers String, Int, Int64,
-    /// Data, Bool and NSNull (explicit NULL); anything else is bound as
-    /// NULL with a warning.
-    ///
-    /// ID-CRASH-0022 (2026-10-20): `NSNull` used to fall into the
-    /// "unsupported value type" branch, which logged a MISLEADING
-    /// warning ("unsupported value type") for a perfectly deliberate
-    /// NULL — and `upsertItemInternal` binds three NSNulls per item
-    /// (`expiresAt` / `contentHash` / `ocrText`), so every write
-    /// produced three bogus warnings. NSNull is now recognised as the
-    /// explicit-null marker it is.
-    private func bind(stmt: OpaquePointer, index: Int32, value: Any) {
-        let sqlLiteTransientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        if let s = value as? String {
-            sqlite3_bind_text(stmt, index, s, -1, sqlLiteTransientDestructor)
-        } else if let i = value as? Int {
-            sqlite3_bind_int64(stmt, index, Int64(i))
-        } else if let i = value as? Int64 {
-            sqlite3_bind_int64(stmt, index, i)
-        } else if let d = value as? Data {
-            d.withUnsafeBytes { ptr in
-                sqlite3_bind_blob(stmt, index, ptr.baseAddress, Int32(d.count), sqlLiteTransientDestructor)
-            }
-        } else if let b = value as? Bool {
-            sqlite3_bind_int(stmt, index, b ? 1 : 0)
-        } else if value is NSNull {
-            sqlite3_bind_null(stmt, index)
-        } else {
-            Self.logger.warning("bind: unsupported value type for index \(index) — binding NULL")
-            sqlite3_bind_null(stmt, index)
         }
     }
 
@@ -606,7 +587,7 @@ final class SQLiteStorageBackend: StorageBackend {
     func hardDeleteItem(id: UUID) throws {
         try withLock {
             let sql = "DELETE FROM items WHERE id = ?"
-            try exec(sql, [(1, id.uuidString)])
+            try exec(sql, [(1, .text(id.uuidString))])
         }
     }
 
@@ -642,11 +623,11 @@ final class SQLiteStorageBackend: StorageBackend {
                     ON CONFLICT(id) DO NOTHING
                     """,
                     [
-                        (1, tagID.uuidString),
-                        (2, ""),
-                        (3, ""),
-                        (4, Int(0)),
-                        (5, now)
+                        (1, .text(tagID.uuidString)),
+                        (2, .text("")),
+                        (3, .text("")),
+                        (4, .integer(0)),
+                        (5, .integer(Int64(now)))
                     ]
                 )
             }
@@ -679,14 +660,14 @@ final class SQLiteStorageBackend: StorageBackend {
                 INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)
                 ON CONFLICT(item_id, tag_id) DO NOTHING
                 """
-            try exec(sql, [(1, itemID.uuidString), (2, tagID.uuidString)])
+            try exec(sql, [(1, .text(itemID.uuidString)), (2, .text(tagID.uuidString))])
         }
     }
 
     func detachTag(itemID: UUID, tagID: UUID) throws {
         try withLock {
             let sql = "DELETE FROM item_tags WHERE item_id = ? AND tag_id = ?"
-            try exec(sql, [(1, itemID.uuidString), (2, tagID.uuidString)])
+            try exec(sql, [(1, .text(itemID.uuidString)), (2, .text(tagID.uuidString))])
         }
     }
 
@@ -698,7 +679,7 @@ final class SQLiteStorageBackend: StorageBackend {
                 // removed. Both happen in ONE transaction so a failure
                 // leaves neither half applied.
                 try upsertTrashItemInternal(itemID: itemID, snapshot: trashSnapshot)
-                try exec("DELETE FROM items WHERE id = ?", [(1, itemID.uuidString)])
+                try exec("DELETE FROM items WHERE id = ?", [(1, .text(itemID.uuidString))])
             }
         }
     }
@@ -728,7 +709,7 @@ final class SQLiteStorageBackend: StorageBackend {
                     )
                 }
                 try upsertItemInternal(snapshot)
-                try exec("DELETE FROM trash_items WHERE item_id = ?", [(1, itemID.uuidString)])
+                try exec("DELETE FROM trash_items WHERE item_id = ?", [(1, .text(itemID.uuidString))])
             }
         }
     }
@@ -769,10 +750,10 @@ final class SQLiteStorageBackend: StorageBackend {
                     updated_at = excluded.updated_at
                 """
             try exec(sql, [
-                (1, key),
-                (2, type),
-                (3, value),
-                (4, Int(Date().timeIntervalSince1970))
+                (1, .text(key)),
+                (2, .text(type)),
+                (3, .blob(value)),
+                (4, .integer(Int64(Date().timeIntervalSince1970)))
             ])
         }
     }
@@ -782,7 +763,7 @@ final class SQLiteStorageBackend: StorageBackend {
             let sql = "SELECT value, value_type FROM app_meta WHERE key = ?"
             let stmt = try prepare(sql)
             defer { sqlite3_finalize(stmt) }
-            sqlite3_bind_text(stmt, 1, key, -1, Self.sqlLiteTransientDestructor)
+            sqlite3_bind_text(stmt, 1, key, -1, SQLiteBinder.transientDestructor)
             // ID-CRASH-0022 (2026-10-20): distinguish "no such key"
             // (SQLITE_DONE → nil) from a real read failure (throw).
             // The old code collapsed both into nil, so a broken
@@ -876,19 +857,19 @@ final class SQLiteStorageBackend: StorageBackend {
                 ocr_attempted = excluded.ocr_attempted
             """
         try exec(sql, [
-            (1, item.id.uuidString),
-            (2, item.type.rawValue),
-            (3, Int(item.isPinned ? 1 : 0)),
-            (4, Int(item.isEncrypted ? 1 : 0)),
-            (5, Int(item.isSensitive ? 1 : 0)),
-            (6, Int(item.decryptionFailed ? 1 : 0)),
-            (7, item.expiresAt.map { Int($0.timeIntervalSince1970) } ?? NSNull()),
-            (8, Int(item.createdAt.timeIntervalSince1970)),
-            (9, Int(Date().timeIntervalSince1970)),
-            (10, item.contentHash ?? NSNull()),
-            (11, item.content),
-            (12, item.ocrText ?? NSNull()),
-            (13, Int(item.ocrAttempted ? 1 : 0))
+            (1, .text(item.id.uuidString)),
+            (2, .text(item.type.rawValue)),
+            (3, .integer(Int64(item.isPinned ? 1 : 0))),
+            (4, .integer(Int64(item.isEncrypted ? 1 : 0))),
+            (5, .integer(Int64(item.isSensitive ? 1 : 0))),
+            (6, .integer(Int64(item.decryptionFailed ? 1 : 0))),
+            (7, item.expiresAt.map { .integer(Int64($0.timeIntervalSince1970)) } ?? .null),
+            (8, .integer(Int64(item.createdAt.timeIntervalSince1970))),
+            (9, .integer(Int64(Date().timeIntervalSince1970))),
+            (10, item.contentHash.map { .text($0) } ?? .null),
+            (11, .text(item.content)),
+            (12, item.ocrText.map { .text($0) } ?? .null),
+            (13, .integer(Int64(item.ocrAttempted ? 1 : 0)))
         ])
 
         // Sync item.tagIds to item_tags junction table.
@@ -902,14 +883,14 @@ final class SQLiteStorageBackend: StorageBackend {
         // The DELETE-then-INSERT below is what makes it safe today;
         // the explicit ON CONFLICT keeps it safe if that DELETE is
         // ever refactored away, and mirrors `attachTag`.
-        try exec("DELETE FROM item_tags WHERE item_id = ?", [(1, item.id.uuidString)])
+        try exec("DELETE FROM item_tags WHERE item_id = ?", [(1, .text(item.id.uuidString))])
         for tagID in item.tagIds {
             try exec(
                 """
                 INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)
                 ON CONFLICT(item_id, tag_id) DO NOTHING
                 """,
-                [(1, item.id.uuidString), (2, tagID.uuidString)]
+                [(1, .text(item.id.uuidString)), (2, .text(tagID.uuidString))]
             )
         }
     }
@@ -924,11 +905,11 @@ final class SQLiteStorageBackend: StorageBackend {
                 is_auto = excluded.is_auto
             """
         try exec(sql, [
-            (1, tag.id.uuidString),
-            (2, tag.name),
-            (3, tag.colorHex),
-            (4, Int(tag.isAutoSuggested ? 1 : 0)),
-            (5, Int(tag.createdAt.timeIntervalSince1970))
+            (1, .text(tag.id.uuidString)),
+            (2, .text(tag.name)),
+            (3, .text(tag.colorHex)),
+            (4, .integer(Int64(tag.isAutoSuggested ? 1 : 0))),
+            (5, .integer(Int64(tag.createdAt.timeIntervalSince1970)))
         ])
     }
 
@@ -954,16 +935,16 @@ final class SQLiteStorageBackend: StorageBackend {
             byAdding: .day, value: 30, to: trashedAt
         ) ?? trashedAt
         try exec(sql, [
-            (1, itemID.uuidString),
-            (2, Int(trashedAt.timeIntervalSince1970)),
-            (3, Int(expiresAt.timeIntervalSince1970)),
-            (4, snapshot.content),
-            (5, snapshot.contentHash ?? NSNull()),
-            (6, Int(snapshot.isEncrypted ? 1 : 0)),
-            (7, snapshot.type.rawValue),
-            (8, Int(snapshot.isPinned ? 1 : 0)),
-            (9, Int(snapshot.isSensitive ? 1 : 0)),
-            (10, Int(snapshot.createdAt.timeIntervalSince1970))
+            (1, .text(itemID.uuidString)),
+            (2, .integer(Int64(trashedAt.timeIntervalSince1970))),
+            (3, .integer(Int64(expiresAt.timeIntervalSince1970))),
+            (4, .text(snapshot.content)),
+            (5, snapshot.contentHash.map { .text($0) } ?? .null),
+            (6, .integer(Int64(snapshot.isEncrypted ? 1 : 0))),
+            (7, .text(snapshot.type.rawValue)),
+            (8, .integer(Int64(snapshot.isPinned ? 1 : 0))),
+            (9, .integer(Int64(snapshot.isSensitive ? 1 : 0))),
+            (10, .integer(Int64(snapshot.createdAt.timeIntervalSince1970)))
         ])
     }
 
@@ -975,7 +956,7 @@ final class SQLiteStorageBackend: StorageBackend {
             """
         let stmt = try prepare(sql)
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, Self.sqlLiteTransientDestructor)
+        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, SQLiteBinder.transientDestructor)
         // ID-CRASH-0022 (2026-10-20): "no such trash row" (DONE → nil)
         // is a normal answer; a step failure is not — it must throw,
         // otherwise `restoreFromTrash` reports "no trash row for item
@@ -1005,7 +986,7 @@ final class SQLiteStorageBackend: StorageBackend {
         let sql = "SELECT 1 FROM trash_items WHERE item_id = ?"
         let stmt = try prepare(sql)
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, Self.sqlLiteTransientDestructor)
+        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, SQLiteBinder.transientDestructor)
         var found = false
         try forEachRow(stmt, sql: sql) { _ in
             found = true
@@ -1088,10 +1069,6 @@ final class SQLiteStorageBackend: StorageBackend {
         return tags
     }
 
-    private static let sqlLiteTransientDestructor = unsafeBitCast(
-        -1, to: sqlite3_destructor_type.self
-    )
-
     // MARK: - Test seams (internal; used only by StoreMigrationTests)
 
     /// Load every trash row as a flat array (per-item-id-keyed). Used
@@ -1115,8 +1092,8 @@ final class SQLiteStorageBackend: StorageBackend {
         let sql = "SELECT COUNT(*) FROM item_tags WHERE item_id = ? AND tag_id = ?"
         let stmt = try prepare(sql)
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, Self.sqlLiteTransientDestructor)
-        sqlite3_bind_text(stmt, 2, tagID.uuidString, -1, Self.sqlLiteTransientDestructor)
+        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, SQLiteBinder.transientDestructor)
+        sqlite3_bind_text(stmt, 2, tagID.uuidString, -1, SQLiteBinder.transientDestructor)
         var count = 0
         try forEachRow(stmt, sql: sql) { row in
             if let cstr = sqlite3_column_text(row, 0) {

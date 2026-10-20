@@ -212,7 +212,7 @@ CREATE TABLE app_meta (
 --   'migration.v1.to.v2.completed'       'i64'       1 once migration done
 ```
 
-Schema is **forward-only**: every column either exists from `schema_version = 1` or is added in a strictly later migration.
+Schema is **forward-only**: every column either exists from schema version 1 (`PRAGMA user_version = 1` — see §4.4) or is added in a strictly later migration.
 
 ## 3. StorageBackend protocol changes
 
@@ -404,7 +404,7 @@ The existing `TrashStore.swift` is rewritten as a thin wrapper over the SQLite b
 
 **Steps** (ID-CRASH-0022, 2026-10-20 — this list now matches the implementation; the earlier draft had items before tags, which cannot work):
 
-1. Open SQLite at `~/Library/Application Support/ClipMemory/store.sqlite3`. If the file doesn't exist, create it with `schema_version = 1`.
+1. Open SQLite at `~/Library/Application Support/ClipMemory/store.sqlite3`. If the file doesn't exist, create it at schema version 1 — i.e. `PRAGMA user_version = 1` (the authoritative version lives there, not in the `schema_version` table — see §4.4).
 2. Read the `UserDefaults` blobs `ClipboardItems` / `ClipboardTrashedItems` / `ClipMemoryTags`.
 3. **Tags first** — for each tag, INSERT into `tags`. `item_tags.tag_id` REFERENCES `tags(id)` with `foreign_keys = ON`, so an item whose tag has not been inserted yet fails the whole batch. The order is a hard dependency, not a preference.
 4. **Items next** — for each item, decode JSON → INSERT into `items` (mapping `expiresAt` to unix seconds) and mirror `tagIds: Set<UUID>` into `item_tags`. An item may reference a tag id the legacy tag catalog does not carry; a placeholder tag row (`name = ""`) is created for it so the membership survives instead of aborting the batch.
@@ -536,17 +536,40 @@ This makes rollback the explicit, last-resort path — never a silent fallback.
 | `<` this build's version | apply the base DDL (if below the base) and every upgrade step above the database's version, then stamp the version |
 | `>` this build's version | **REFUSE** — the file was written by a newer build; touching a schema this build does not understand is how databases get corrupted |
 
-Three invariants make the upgrade path safe:
+**The whole migration runs in ONE transaction** (`BEGIN IMMEDIATE` … `COMMIT`; `ROLLBACK` on any failure). The DDL, the ledger rows and the version stamp commit together or not at all. `PRAGMA user_version` lives in the database header, and the header is written like any other page — so the stamp is transactional too (measured: a `ROLLBACK` puts the old version back, under WAL as well). That is what makes "the version can never disagree with the schema" a property of the implementation rather than a hope.
 
-1. **The version is stamped LAST.** If any statement fails, the database keeps its old version and the next open retries the whole step. Therefore every statement in a step must be safe to re-run (`IF NOT EXISTS` forms; SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so a column addition has to recreate the table).
-2. **The step chain must be contiguous.** The compiled-in steps must cover `baseVersion + 1 … version` with no gap. A gap would let the database JUMP a version — the missing version's changes would never be applied, and the reachability check below would not catch it (the chain would still end on the target version).
-3. **Never stamp a version that was not reached.** The stamp happens only after the chain has landed exactly on the target version. Stamping a version whose migration never ran is the worst possible outcome: every later open would believe the upgrade happened and skip it forever.
+The version is read **twice**: once without a lock (the common case — the database is already current, and then the migration must not touch the file at all), and once **inside** the transaction, after the write lock has been granted. The second read closes the window in which another process could have changed the version between the first read and the lock.
+
+Four invariants make the upgrade path safe:
+
+1. **The version is stamped in the same transaction as the DDL it describes.** A failed migration therefore leaves the database **exactly** as it was — same version, same schema, no half-applied table (measured: after a `ROLLBACK` the main `.sqlite3` file is byte-for-byte identical, and so is the `-wal` side file; those files *may* differ in other situations, because SQLite rewrites them) — and the next open retries from a clean state. Every statement in a step must still be safe to re-run (`IF NOT EXISTS` forms; SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so a column addition has to recreate the table).
+2. **The step chain must be contiguous.** The compiled-in steps must cover `baseVersion + 1 … version` with no gap. A gap would let the database JUMP a version — the missing version's changes would never be applied. **This chain validation is the only thing that catches a gap**: the reachability check in invariant 3 would wave it through, because a chain with a hole still ends on the target version. It therefore runs *before* anything is written.
+3. **Never stamp a version that was not reached.** The stamp happens only after the chain has landed exactly on the target version. Stamping a version whose migration never ran is the worst possible outcome: every later open would believe the upgrade happened and skip it forever. (With a contiguous chain the version is always reachable, so the check in the driver is defence in depth rather than the primary guarantee — the primary guarantee is invariant 2.)
+4. **A failed step is never swallowed.** A statement that fails aborts the migration; the failure propagates out of `SQLiteStorageBackend.init`. Swallowing it would commit a half-applied step *and* stamp the version — a state no later open can tell from a successful migration. This covers the base DDL as well as the upgrade steps: the base DDL is the production path (a fresh install creates the whole schema with it), and it contains statements that can genuinely fail — `CREATE INDEX IF NOT EXISTS … ON items(is_pinned DESC, created_at DESC)` against an older `items` table with different columns raises "no such column", because `IF NOT EXISTS` skips creating a *table*, not an *index*.
 
 A version bump that forgets its step is caught the first time a database needs migrating — the driver refuses and names the missing version, instead of silently producing a database that is missing a version's changes.
 
-**Adding a schema version** is therefore: add a `SQLiteSchema.MigrationStep` to `SQLiteSchema.migrationSteps`, bump `SQLiteSchema.version`, and make the step's statements idempotent. The base DDL itself is never edited after shipping — that is what the step chain is for.
+**Adding a schema version** is therefore: add a `SQLiteSchema.MigrationStep` to `SQLiteSchema.migrationSteps`, bump `SQLiteSchema.version`, and make the step's statements idempotent. The base DDL itself is never edited after shipping — that is what the step chain is for. The base version stays at 1 forever; the driver refuses a schema whose base is anything else.
+
+**The chain is validated without materialising the version range.** The obvious check — `Array((baseVersion + 1)…version)` — asks for one element per version, so a typo in the target version (999_999_999) would allocate gigabytes before anything noticed. The driver checks the chain by **count + bounds** instead: `expectedCount` distinct versions, all inside `(baseVersion, version]`, can only *be* the whole range. It allocates nothing. The two agree for `baseVersion < version`; they differ in two places, both towards safety — the new check **rejects** a duplicated version (a set comparison would collapse it), and it **accepts** `baseVersion >= version` (the old range would trap at runtime, and the shipped schema `baseVersion == version == 1` sits exactly in that case). The missing versions are *sampled*, not enumerated — only `expectedCount` versions can be present, so the first gap always falls inside a window of that size. The target version is bounded to `0…Int32.max` (what SQLite can actually store in `PRAGMA user_version`) by the same validation, so an unstorable version is refused **before anything is written** rather than after.
 
 New migrations (`v2 → v3`) use `ALTER TABLE ... ADD COLUMN ...` with a default value, or the recreate-the-table pattern where SQLite has no idempotent form. Never destructive — no `DROP COLUMN`.
+
+**Lock contention is TRANSIENT, schema errors are PERMANENT.** The migration takes a write lock, so it can lose a race with another process; that failure is `SQLITE_BUSY` / `SQLITE_LOCKED`, the database is untouched, and the next attempt can succeed. `StorageBackendError.isRetryable` makes that distinction machine-checkable (it reads the SQLite result code the error already carries) instead of a judgement call repeated at every call site. A caller that wants a retry ladder asks that property.
+
+**WAL caveat (measured, not assumed).** In WAL mode the header change lands in the `-wal` side file first and reaches the main file at the next checkpoint. Another connection still reads the right value (it reads the WAL too), but **copying the `.sqlite3` file without its `-wal` companion yields a database that never received the migration** — and, when the WAL has not been checkpointed, the copy is missing the whole schema, not just the version (measured: `no such table`). Once the WAL *has* been checkpointed, copying the `.sqlite3` alone is correct. Any future backup of the SQLite file must either take the `-wal` file with it or checkpoint first.
+
+### 4.4.1 The obligation when this is wired up (PR-C)
+
+`SQLiteStorageBackend.init` throws — disk full, permission denied, a corrupt file, or **a database written by a newer build**. The third link of the project's "报错 → 重试 → 用户可见" rule is **not** implemented yet, and today it cannot be: the backend has **zero production call sites** (`ClipboardStore` still uses `FileStorageBackend`).
+
+Whoever wires the SQLite backend into production MUST:
+
+1. surface `init`'s failure to the user (NSAlert / DiagnosticsBanner) — **not** a log line;
+2. for the "database is newer than this build" case, say so plainly ("请升级 ClipMemory") instead of falling back to the UserDefaults store behind the user's back — a silent fallback would mean the user reading and writing two different sets of data;
+3. keep the retry trigger honest: the version stamp is not written on failure, so the next launch retries the migration from the last good state.
+
+Leaving this unwritten is how the obligation disappears with PR-C.
 
 ## 5. Concurrency / connection model (SQLite + existing thread constraints)
 
@@ -656,6 +679,16 @@ Each PR adds tests covering the scope. Cumulative test count target after PR-E: 
 
 ### 8.4 PR-D test scope
 
+- `SQLiteSchemaVersionTests` (new file, 17 tests) — ID-REVIEW-1024 N.4, the schema version is AUTHORITATIVE (`PRAGMA user_version`), not a row in the `schema_version` table:
+  - the version is stamped, and re-opening changes nothing (`testFreshDatabaseIsStampedWithTheSchemaVersion`, `testReopeningAnExistingDatabaseChangesNothing`);
+  - an existing database is brought up to the current version (`testUnstampedExistingDatabaseIsStampedOnOpen`);
+  - a database from a NEWER build is refused, not downgraded (`testDatabaseFromANewerBuildIsRefused`);
+  - the upgrade path really runs (`testUpgradePathAppliesTheSteps`, `testStepsAreAppliedOldestFirst`, `testTheUpgradeStepIsNotAppliedTwice`);
+  - a broken chain is refused — missing step and gap alike (`testAMissingStepIsRefusedAndTheVersionIsNotStamped`, `testAGapInTheStepChainIsRefused`);
+  - a FAILED migration leaves nothing behind and no open transaction (`testAFailedBaseMigrationLeavesNothingBehind` — the base DDL is the *production* path, `testAFailedMigrationLeavesNoOpenTransaction`, `testAFailedStepLeavesTheDatabaseUnchanged`);
+  - the build-level guards (`testASchemaWithAWrongBaseVersionIsRefused`, `testAnOutOfRangeSchemaVersionIsRefused`, `testAMigrationOnATransactionalConnectionIsRefused`);
+  - the transient/permanent distinction (`testALockedDatabaseFailsAsRetryableAndChangesNothing` ⇒ `SQLITE_BUSY` is retryable; `testASchemaFailureIsNotRetryable` ⇒ a broken chain is permanent).
+- `SQLiteBinderTests` (new file, 8 tests) — the shared `SQLiteValue` binder: text / integer / negative / `Int64.max` / bool / blob / **empty blob is not NULL** / explicit null. The binder is exhaustive by construction, so there is no "unsupported type" branch to test — that is the point of the enum.
 - `BackupPackageSQLiteRoundTripTests` (new file, ~6 tests):
   - `testExportReadsFromSQLiteBackend` — backup reads from SQLite via new path
   - `testImportWritesBackToSQLite` — restore path writes via new granular methods

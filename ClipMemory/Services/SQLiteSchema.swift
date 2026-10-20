@@ -3,13 +3,17 @@
 //
 //  The SQLite schema DDL, split out of `SQLiteStorageBackend.swift`.
 //
-//  ID-CRASH-0022 (2026-10-20): the backend file had reached 1246 lines
-//  — four lines below the SwiftLint `file_length` error ceiling (1250,
-//  see .swiftlint.yml). The schema text is ~100 lines of SQL and
-//  carries no behaviour, so it lives here instead. This is the same
-//  intent as the existing blanket file-length waiver on
+//  ID-CRASH-0022 (2026-10-20): the backend file had reached 1239
+//  lines — eleven lines below the SwiftLint `file_length` error
+//  ceiling (1250, see .swiftlint.yml). The schema text is ~100 lines
+//  of SQL and carries no behaviour, so it lives here instead. This is
+//  the same intent as the existing blanket file-length waiver on
 //  CryptoService.swift (CRYPTO-LINT-0001) and BackupPackage.swift
 //  (BACKUP-0001), but without adding to that debt.
+//
+//  (The 1239 is the committed line count of the parent of the split —
+//  `git show 245c50c^:ClipMemory/Services/SQLiteStorageBackend.swift`
+//  — so the next reader can check it rather than take it on faith.)
 //
 //  Contract: docs/design/storage-migration.md §2.
 
@@ -54,7 +58,7 @@ enum SQLiteSchema {
 
     /// One step of the schema upgrade path: the statements that take
     /// the schema from `version - 1` to `version`.
-    struct MigrationStep {
+    struct MigrationStep: Sendable {
         /// The version this step PRODUCES.
         let version: Int
         /// The DDL / DML of the step.
@@ -81,7 +85,11 @@ enum SQLiteSchema {
     /// `version == 1` with no steps cannot be distinguished from a
     /// driver that ignores the version entirely — the test would be
     /// green either way, i.e. a constant-true guard.
-    struct Definition {
+    ///
+    /// `Sendable`: the definition is passed into the backend and read
+    /// from the init thread; every member is immutable, so the
+    /// conformance is free.
+    struct Definition: Sendable {
         /// The version the base DDL produces.
         let baseVersion: Int
         /// The version this build expects the database to carry.
@@ -121,16 +129,27 @@ enum SQLiteSchema {
     /// time must not fail on the primary key — the row is already
     /// there from the old code path.
     ///
+    /// `OR IGNORE` also means the ledger records the FIRST application
+    /// of a version: if the same version is ever applied again (a
+    /// database whose header was rolled back by hand, say), the row
+    /// keeps its ORIGINAL `notes` and `migrated_at`. That is the
+    /// intent — the ledger is a history of what happened, not a mirror
+    /// of the current notes — but it does mean "notes changed" is not
+    /// reflected in the ledger for an already-applied version.
+    ///
     /// The values are BOUND, never interpolated into SQL. The version
     /// is bound from the same argument that names it, so the recorded
     /// version and the intended version cannot drift apart.
-    static func versionRecord(for version: Int, notes: String) -> (sql: String, bindings: [(Int32, Any)]) {
+    static func versionRecord(
+        for version: Int,
+        notes: String
+    ) -> (sql: String, bindings: [(Int32, SQLiteValue)]) {
         (
             sql: """
             INSERT OR IGNORE INTO schema_version (version, migrated_at, notes)
             VALUES (?, datetime('now'), ?)
             """,
-            bindings: [(1, version), (2, notes)]
+            bindings: [(1, .integer(Int64(version))), (2, .text(notes))]
         )
     }
 

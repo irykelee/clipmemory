@@ -1,5 +1,6 @@
 import Foundation
 import os.log
+import SQLite3
 
 /// ID-REVIEW-1024 (PR-A, code-review-2026-10-01 §八 batch 2): Storage backend
 /// protocol for ClipboardStore dependency injection.
@@ -173,6 +174,28 @@ enum StorageBackendError: Error, LocalizedError {
     /// 106 trashed entries with an empty array. This case makes that
     /// impossible: a test process can never write the user's data blobs.
     case productionWriteBlocked(storageKey: String)
+
+    /// Whether retrying the failed operation could plausibly succeed.
+    ///
+    /// ID-REVIEW-1024 (PR-D N.4, 2026-10-21): the schema migration
+    /// takes a write lock (`BEGIN IMMEDIATE`), so it can lose a race
+    /// with another process. That failure is TRANSIENT — the database
+    /// is untouched and the next attempt can succeed. A constraint
+    /// violation or a syntax error is PERMANENT — retrying it only
+    /// makes the user wait for the same failure.
+    ///
+    /// The SQLite result code is already carried by `storageFailure`, so
+    /// the distinction is machine-checkable instead of a judgement call
+    /// repeated at every call site. A caller that wants a retry ladder
+    /// asks this property; one that does not can ignore it.
+    var isRetryable: Bool {
+        switch self {
+        case .storageFailure(_, let code, _):
+            return code == SQLITE_BUSY || code == SQLITE_LOCKED
+        case .unsupportedFeature, .productionWriteBlocked:
+            return false
+        }
+    }
 
     var errorDescription: String? {
         switch self {
