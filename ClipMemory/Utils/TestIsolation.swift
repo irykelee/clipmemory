@@ -113,6 +113,20 @@ enum TestIsolation {
             }
             if candidateBlob == standardBlob { return true }
         }
+        // The production domain holds no data blob at all (a fresh
+        // install, or a domain whose blobs were quarantined). There is no
+        // user data in it to overwrite, and an empty domain is
+        // indistinguishable from an unrelated empty suite through the
+        // public UserDefaults API — so no domain-level discriminator can
+        // exist here. The residual gap is therefore bounded: it needs a
+        // SECOND instance addressing the production domain, and inside
+        // the app / test-host process that instance cannot even be
+        // created (`UserDefaults(suiteName: <own bundle id>)` returns
+        // nil — measured).
+        //
+        // Note the common case is unaffected: `UserDefaults.standard`
+        // itself is caught by the identity check above, so a test process
+        // writing `.standard` is refused whether or not the blobs exist.
         return false
     }
 

@@ -112,3 +112,5 @@
 | `BackupService.shared` 用 pid 作临时目录名、不清理 | 目录在 `NSTemporaryDirectory` 下，由系统回收；pid 后缀是为了并发测试进程不互相覆盖。 |
 | 闸门判 domain 的实现方式 | 写后读回探针**两个方向都实测无效**（同进程不同实例不共享内存缓存）；最终判据是「实例能否读到生产数据 blob 的**值**」。此外实测：在 App 进程内 `UserDefaults(suiteName: <自己的 bundle id>)` **返回 nil** ⇒ 主 domain 无法在自身进程内被重新打开 ⇒ 该场景下「实例身份 ≡ domain」。两条都有测试钉住。 |
 | `flushSave` 里 `needsSave` 的赋值顺序 | `needsSave` 在方法开头就被清成 false；永久错误分支里再显式赋一次是为了**表达意图**（这条路径不排下一次尝试），不是逻辑需要。其余失败分支仍会把它置回 true 并排重试。 |
+| 生产 domain 里**三个数据 blob 全为 nil** 时，domain 判据无法区分「同 domain 的第二实例」 | 空 domain 与「无关的空 suite」在公开 UserDefaults API 下**无法区分**——不存在可用的判据。而且常见情形根本不受影响：`.standard` 由**身份检查**直接命中，所以「测试进程写 `.standard`」在任何 blob 状态下都被拒绝。残余缺口需要有「同 domain 的第二实例」，而它在 App / 测试宿主进程内**根本创建不出来**（`UserDefaults(suiteName: <自己的 bundle id>)` 返回 nil，实测）。 |
+| 第三轮审查提出的「测试进程可能在空生产 domain 上畅通写入」 | 前提有误：闸门条件是 `isRunningTests && addressesProductionDomain(defaults)`，而 `addressesProductionDomain(.standard)` 由身份检查直接返回 true ⇒ **无论 blob 是否存在，`.standard` 都被拒绝**。被指出的假阴性只影响「非 `.standard` 的同 domain 实例」。 |
