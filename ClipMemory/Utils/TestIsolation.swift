@@ -42,22 +42,28 @@ enum TestIsolation {
     ///
     /// The per-service `xcTestDefaults` helpers used to key off
     /// `ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"]
-    /// == nil`. That variable is present in the XCTest **runner**, but a
-    /// plain launch of the app binary has no such variable — and
-    /// `xcodebuild test` launches the app binary through LaunchServices
-    /// (confirmed in the unified log: `Successfully spawned ClipMemory`).
-    /// A plain launch therefore took the PRODUCTION path and read /
-    /// wrote the user's real `com.clipmemory.app` domain.
+    /// == nil`.
     ///
-    /// Three independent signals, any of which is sufficient:
+    /// MEASURED (2026-10-20): in the app-hosted test process that variable
+    /// IS present, with an EMPTY STRING value — and `Optional("") == nil`
+    /// is false, so the old single-signal guard did detect the test host.
+    /// The first version of the incident record claimed the opposite; it
+    /// was corrected in `docs/incidents/2026-10-20-trash-purge.md` §3.
+    ///
+    /// Widening the probe was still worth doing: it previously rested on
+    /// ONE proxy for "am I in a test process?". If that proxy were ever
+    /// missing on some launch path, the process would take the PRODUCTION
+    /// path and read / write the user's real `com.clipmemory.app` domain.
+    /// Three independent signals now cover that:
     /// 1. `XCTestConfigurationFilePath` present with ANY value (an empty
-    ///    string still counts — `Optional("") == nil` is false).
+    ///    string still counts).
     /// 2. The `XCTestCase` class is loaded in this process (the XCTest
     ///    framework is injected into the host app).
     /// 3. An `.xctest` bundle is injected into this process.
     ///
-    /// Signals 2 and 3 matter because they survive the app-host launch
-    /// path, where signal 1 may be absent.
+    /// NOT a usable signal: the unified log line `Successfully spawned
+    /// ClipMemory`. The test host produces exactly the same line, so it
+    /// does not distinguish a test launch from a plain one.
     nonisolated static let isRunningTests: Bool = {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             return true

@@ -94,7 +94,7 @@
 
 | 项 | 级别 | 说明 |
 |---|---|---|
-| **单实例护栏** | 建议 | 两个 App 进程各自持有整数组快照，后写者用**陈旧快照**覆盖 ⇒ 丢更新。两个守卫都挡不住它（守卫只管测试进程）。正确解法是第二个实例立即退出（`NSRunningApplication`），但那是**产品行为变更**，需要拍板。 |
+| **单实例护栏** | ✅ 已交付 | 已获拍板并实现（`ID-CRASH-0032`，见 §9）。两个 App 进程各自持有整数组快照，后写者用**陈旧快照**覆盖 ⇒ 丢更新；两个守卫都挡不住它（守卫只管测试进程）。 |
 | 同 domain 不同实例绕过闸门 | 中 | 闸门判的是**实例身份**（`=== UserDefaults.standard`），不是 persistent domain。`UserDefaults(suiteName: "com.clipmemory.app")` 是另一个实例、指向同一 domain。仓库里**没有**这样的调用点；公开 API 也无法可靠判域（实测写后读回探针无效——同进程不同实例的内存缓存不共享）。 |
 | 大额清理预警 | 建议 | 一次删 106 条这种量级，建议先弹「将永久删除 N 条」再执行，而不是事后通知。 |
 | `.corrupt-*` 隔离副本不在备份白名单 | 低 | `BackupBlobRegistry` 只含 items/tags/trash ⇒ 被隔离的历史永远进不了备份。 |
@@ -114,3 +114,92 @@
 | `flushSave` 里 `needsSave` 的赋值顺序 | `needsSave` 在方法开头就被清成 false；永久错误分支里再显式赋一次是为了**表达意图**（这条路径不排下一次尝试），不是逻辑需要。其余失败分支仍会把它置回 true 并排重试。 |
 | 生产 domain 里**三个数据 blob 全为 nil** 时，domain 判据无法区分「同 domain 的第二实例」 | 空 domain 与「无关的空 suite」在公开 UserDefaults API 下**无法区分**——不存在可用的判据。而且常见情形根本不受影响：`.standard` 由**身份检查**直接命中，所以「测试进程写 `.standard`」在任何 blob 状态下都被拒绝。残余缺口需要有「同 domain 的第二实例」，而它在 App / 测试宿主进程内**根本创建不出来**（`UserDefaults(suiteName: <自己的 bundle id>)` 返回 nil，实测）。 |
 | 第三轮审查提出的「测试进程可能在空生产 domain 上畅通写入」 | 前提有误：闸门条件是 `isRunningTests && addressesProductionDomain(defaults)`，而 `addressesProductionDomain(.standard)` 由身份检查直接返回 true ⇒ **无论 blob 是否存在，`.standard` 都被拒绝**。被指出的假阴性只影响「非 `.standard` 的同 domain 实例」。 |
+
+## 9. 单实例护栏（ID-CRASH-0032，已交付）
+
+§7 里列为「待决策」的单实例护栏已经拍板并实现。
+
+### 9.1 为什么整数组替换需要单实例
+
+`ClipboardItems` / `ClipboardTrashedItems` 各是一整块 JSON blob，每次写都是**整数组替换**。
+两个进程各自持有同一块 blob 的快照，后写者会把先写者的内容用**陈旧快照**覆盖 ⇒
+先写者删掉的条目复活，先写者新增的条目消失。测试进程的写入闸门（§4）挡不住这个：
+闸门只管「测试进程写生产 domain」，两个**都是生产实例**的进程谁都不在闸门范围内。
+
+### 9.2 决策机制：`flock`，不是「有没有别的进程在跑」
+
+- `flock` 由**内核**在进程退出时释放（SIGKILL 也一样）⇒ 崩溃不会留下死锁。
+- 锁落在文件上 ⇒ **同一台机器上的每一份 App 副本共用同一把锁**：
+  `/Applications` 里的正式版和 DerivedData 里的 Debug 构建 bundle id 相同、
+  UserDefaults domain 相同、因而数据相同 —— 只有文件锁能把它们互斥开。
+- `flock` 是**原子**的：两个进程同一瞬间启动不可能都拿到锁；
+  「列出正在运行的进程」这种判断存在竞态窗口。
+
+实测（2026-10-20，本机）：`flock` 的锁挂在 *open file description* 上，
+所以同进程内两个不同的 fd 也会互斥 —— 这让互斥性可以在单元测试里直接验证。
+
+### 9.3 重复实例的退出路径必须绕过 AppKit 的终止流程
+
+重复实例**不能**用 `NSApp.terminate(nil)` 退出：该路径会走
+`applicationShouldTerminate` → `applicationWillTerminate`，而后者会实例化
+`ClipboardStore.shared` / `ImageStorage.shared` 并 flush、还会清 safe-mode sentinel ——
+等于让重复实例去写它本该拒绝碰的那块 blob。
+因此重复实例走 `exit(EXIT_SUCCESS)`：跳过 AppKit 的终止序列，
+而此时（守卫位于 `applicationDidFinishLaunching` 最前）本来也还没有任何
+窗口、监听、热键或 store 需要清理。
+
+### 9.4 测试宿主不抢锁
+
+`xcodebuild test` 每次都会把 App 真二进制拉起来当测试宿主。测试宿主已经隔离到
+自己的 UserDefaults suite（§5），本来就不与用户数据争用；而且它**不能**抢锁，
+否则每次跑测试都会把用户挡在自己的 App 门外。
+守卫因此以 `TestIsolation.isRunningTests` 为条件跳过。
+
+### 9.5 实测：重复实例路径其实很罕见
+
+实测（2026-10-20，用一个一次性 .app 验证）：macOS 对**已经在运行**的 App
+再执行 `open` **不会**起第二个进程，只会把旧实例激活到前台；
+只有 `open -n` 才会强制起新实例。
+⇒ 「双实例」的真实来源是：同一台机器上装了两份不同的副本（如 Debug 构建 + 正式版）、
+`open -n`、或某个外部工具以路径方式拉起 App。
+
+### 9.6 残余边界
+
+- `flock` 是**协作式**的：只有本 App 遵守。别的进程直接写同一个
+  UserDefaults domain 不受此保护。
+- 锁文件创建失败时**失败放行**（fail open）并记日志：守卫是纵深防御，
+  不是数据主路径 —— 因为锁文件建不起来就让 App 起不来，比没有守卫更糟。
+- 抢锁最多等 2 秒（覆盖「上一个实例正在退出」）；超过就拒绝启动，用户再点一次即可。
+
+## 10. 交付护栏时的实测发现：一个「游离普通实例」真的存在（2026-10-20 22:31）
+
+交付 `ID-CRASH-0032` 时顺带实测到一个此前没被记录的事实：
+
+**`xcodebuild test` 会用 bundle id 通过 LaunchServices 拉起 App**（统一日志：
+`Successfully spawned ClipMemory[...] because launch job demand`，originator =
+`com.apple.coreservices.uiagent`，描述 `LS launch com.clipmemory.app`）。
+观察窗口 22:15–22:45 内共 8 次启动，与 8 次测试调用一一对应。
+
+其中有一次是**额外的普通实例**：
+
+| 事实 | 证据 |
+|---|---|
+| 22:31:42 拉起 pid 34678（PPID=1，**未加载 XCTest** ⇒ 不是测试宿主） | `ps` + `lsof`（无 `.xctest`）+ 统一日志 `LS launch com.clipmemory.app` |
+| 它写了**生产域**的 3 个键：`lastLaunchTime`、`ImageIntegrity.scannedMtimes`、设置窗口 frame | 跑测试前后 `defaults export` 逐键比对 |
+| **用户的剪贴板数据没被动**：`ClipboardItems` 151706B / `ClipboardTrashedItems` 234307B **逐字节一致** | 同上（字节级比对） |
+| 套件内**没有任何测试**会打开 App（`NSWorkspace.open` / `Process.launch` 只用于 ditto / zip / python3 辅助进程） | 全量 grep `Tests/` |
+| App **自身也没有自启动路径**（`NSWorkspace.open` 只用于反馈 URL / 备份目录 / 崩溃报告） | 全量 grep `ClipMemory/` |
+| 单套件定向跑（22:38）**只产生 1 次启动**（测试宿主）且不残留实例 | `ps` 前后对比 |
+
+⇒ 请求方**在构建/测试工具链里，不在本仓库的代码里**，但具体是哪个组件**未能定位**
+（`lsd` 未记录客户端）。这一点如实记下，不做推测。
+
+⇒ **对护栏的意义**：这正是护栏存在的场景。实测里这个游离实例**抢到了锁**
+（`~/Library/Application Support/ClipMemory/.instance.lock` 因此被创建）——
+如果当时用户的正式版正在运行，它会**抢不到锁而直接退出**，不会去写生产域。
+
+⇒ **仍然存在的残余风险**：当用户的 App **没有**在运行时，一个游离实例仍会正常启动并写
+几个应用状态键（`lastLaunchTime` 等）。本次实测中**用户数据未受影响**；
+真正保护住那 106 条恢复数据的是 **30 天保留期**（cutoff 2026-09-20 ⇒ 0 条会被清）。
+⚠️ 保留期回落到 7 天、或超过 30 天后，游离实例的一次启动就可能清掉它们 ⇒
+**导出 `.clipmemory` 包另存**这件事不能再拖。

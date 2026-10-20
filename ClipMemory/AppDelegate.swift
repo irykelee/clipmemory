@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import SwiftUI
 import ServiceManagement
 import os.log
@@ -123,7 +124,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// so save/encryption/trash alerts don't suppress each other.
     private let trashAlertThrottler = EncryptionFailedAlertThrottler()
 
+    /// ID-CRASH-0032: how long a second instance waits for the lock before
+    /// it gives up and exits. The lock is released by the kernel when the
+    /// owning process exits, so this only has to cover "the other instance
+    /// is still shutting down" — a quitting instance drains its pending
+    /// writes first, which is bounded by `shouldTerminateTimeout` (5s).
+    /// Two seconds covers the common case (the process is gone within a
+    /// few milliseconds); a longer drain means the newcomer refuses, and
+    /// the user simply starts the app again.
+    private static let instanceLockTimeout: TimeInterval = 2.0
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // ID-CRASH-0032 (2026-10-20): single-instance guard. This MUST
+        // run before anything touches the user's data.
+        //
+        // The history and the recycle bin are stored as WHOLE-ARRAY
+        // replacements: `ClipboardItems` and `ClipboardTrashedItems` are
+        // one JSON blob each, and every write replaces the whole array.
+        // Two processes each hold their own snapshot of that blob, so the
+        // second writer replaces the first writer's blob with its own
+        // stale copy — entries the first deleted come back, entries the
+        // first added disappear.
+        //
+        // The decision is an exclusive `flock` on a lock file
+        // (`SingleInstanceLock`): the kernel releases it when the owner
+        // exits — even on SIGKILL, so a crashed instance leaves no stale
+        // lock — and every copy of the app shares it, because a
+        // `/Applications` install and a Debug build in DerivedData have the
+        // same bundle id, the same UserDefaults domain and therefore the
+        // same data.
+        //
+        // The check is skipped in a test host (`TestIsolation.isRunningTests`):
+        // the test host IS the app and the build tool launches it on every
+        // `xcodebuild test`. It is already isolated onto its own
+        // UserDefaults suite — so it never contends for the user's data —
+        // and it must not lock the user out of their own app while the
+        // suite runs. A PLAIN launch obeys the guard, and that is exactly
+        // the instance that must not write alongside another one.
+        if !TestIsolation.isRunningTests,
+           !SingleInstanceLock.shared.acquire(timeout: Self.instanceLockTimeout) {
+            refuseToRunAsDuplicateInstance()
+        }
         // HIGH-3 (2026-07-26 review): own the key-failure alert presentation
         // here instead of in CryptoService so the service layer has no AppKit
         // dependency (NSAlert, NSApp.terminate).
@@ -953,6 +994,70 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quitApp() { NSApp.terminate(nil) }
+
+    // MARK: - ID-CRASH-0032 single-instance guard
+
+    /// ID-CRASH-0032: this process could not take the instance lock, so
+    /// another live instance already owns the user's data. Bring that
+    /// instance forward, record why, and leave WITHOUT touching a byte of
+    /// the data.
+    ///
+    /// `NSApp.terminate` is deliberately NOT used here: it routes through
+    /// `applicationShouldTerminate` → `applicationWillTerminate`, and that
+    /// path instantiates `ClipboardStore.shared` / `ImageStorage.shared`
+    /// and flushes them — the duplicate would write the very blob it is
+    /// refusing to touch. `exit()` skips the AppKit termination sequence
+    /// entirely, and at this point in the launch there is nothing to clean
+    /// up: the guard runs before any window, monitor, hot key or store
+    /// exists.
+    private func refuseToRunAsDuplicateInstance() {
+        let other = Self.otherRunningInstance()
+        let message = """
+        ID-CRASH-0032: another ClipMemory instance (pid \(other?.processIdentifier ?? -1)) \
+        already owns the clipboard history; this instance exits without touching the data
+        """
+        logger.error("\(message)")
+        // `os.Logger` is asynchronous — `NSLog` guarantees the line reaches
+        // the unified log even though we are about to exit the process.
+        NSLog("%@", message)
+        // Best effort: bring the running instance forward so the user sees
+        // that the app is already open.
+        other?.activate(options: [])
+        exit(EXIT_SUCCESS)
+    }
+
+    /// The other live instance of this app, if any.
+    ///
+    /// Used for UX only — bringing the incumbent to the front. The
+    /// *decision* to refuse running is made by `SingleInstanceLock`, which
+    /// is atomic and shared by every copy of the app; this lookup is the
+    /// OS's own view of what is running and is best-effort.
+    nonisolated static func otherRunningInstance() -> NSRunningApplication? {
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.clipmemory.app"
+        let mine = ProcessInfo.processInfo.processIdentifier
+        let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .filter { !$0.isTerminated }
+        guard hasOtherLiveInstance(
+            candidateProcessIDs: candidates.map(\.processIdentifier),
+            myProcessID: mine
+        ) else {
+            return nil
+        }
+        return candidates.first { $0.processIdentifier != mine }
+    }
+
+    /// The pure decision behind "is somebody else running?", split out so
+    /// it can be pinned by a test: given the process ids of the running
+    /// instances of this app, is one of them another live instance?
+    ///
+    /// Terminated instances are filtered by the caller — this function
+    /// only answers "is there a process id that is not mine?".
+    nonisolated static func hasOtherLiveInstance(
+        candidateProcessIDs: [Int32],
+        myProcessID: Int32
+    ) -> Bool {
+        candidateProcessIDs.contains { $0 != myProcessID }
+    }
     @objc private func sendFeedback() {
         // LOW-7 (2026-07-26 review): guard-let instead of force-unwrap.
         guard let url = URL(string: "https://github.com/irykelee/clipmemory/issues/new") else { return }
