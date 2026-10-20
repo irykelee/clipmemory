@@ -375,6 +375,19 @@
 "alert.trash.load.failed" = "ゴミ箱の読み込みに失敗しました。一時的にアイテムを利用できません。";
 "alert.trash.load.failed.count" = "ゴミ箱の読み込みに失敗しました。%d 回の復元試行が失敗しました。";
 "alert.trash.load.failed.count.one" = "ゴミ箱の読み込みに失敗しました。1 回の復元試行が失敗しました。";
+"alert.trash.items.expired.title" = "ゴミ箱を整理しました";
+"alert.trash.items.expired" = "ゴミ箱内の %d 件のアイテムが %d 日間の保持期間を超えたため削除されました。";
+"alert.trash.items.expired.one" = "ゴミ箱内の %d 件のアイテムが %d 日間の保持期間を超えたため削除されました。";
+"alert.trash.purge.pending.title" = "ゴミ箱に整理が必要なアイテムがあります";
+"alert.trash.purge.pending" = "ゴミ箱内の %d 件のアイテムが %d 日間の保持期間を超えています。完全に削除すると元に戻せません。";
+"alert.trash.purge.pending.one" = "ゴミ箱内の %d 件のアイテムが %d 日間の保持期間を超えています。完全に削除すると元に戻せません。";
+"alert.trash.purge.pending.badge" = "ゴミ箱に %d 件の整理待ちアイテム";
+"alert.trash.purge.pending.badge.one" = "ゴミ箱に %d 件の整理待ちアイテム";
+"alert.trash.purge.pending.confirm" = "完全に削除";
+"alert.items.load.failed.title" = "クリップボード履歴を利用できません";
+"alert.items.load.failed" = "クリップボード履歴の読み込みに失敗しました。読み取れないコピーは保持され、ローカルバックアップから履歴を復元できます。";
+"alert.items.load.failed.count" = "クリップボード履歴の読み込みに失敗しました。%d 回の復元試行が失敗しました。";
+"alert.items.load.failed.count.one" = "クリップボード履歴の読み込みに失敗しました。1 回の復元試行が失敗しました。";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "復元ウィザード";

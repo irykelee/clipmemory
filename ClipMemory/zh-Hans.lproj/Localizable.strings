@@ -373,6 +373,19 @@
 "alert.trash.load.failed" = "回收站加载失败，内容暂时不可用。";
 "alert.trash.load.failed.count" = "回收站加载失败，%d 次恢复尝试均失败。";
 "alert.trash.load.failed.count.one" = "回收站加载失败，1 次恢复尝试失败。";
+"alert.trash.items.expired.title" = "回收站已清理";
+"alert.trash.items.expired" = "回收站中有 %d 条内容因超过 %d 天保留期被清理。";
+"alert.trash.items.expired.one" = "回收站中有 %d 条内容因超过 %d 天保留期被清理。";
+"alert.trash.purge.pending.title" = "回收站有待清理内容";
+"alert.trash.purge.pending" = "回收站中有 %d 条内容已超过 %d 天保留期，永久删除后无法恢复。";
+"alert.trash.purge.pending.one" = "回收站中有 %d 条内容已超过 %d 天保留期，永久删除后无法恢复。";
+"alert.trash.purge.pending.badge" = "回收站有 %d 条待清理";
+"alert.trash.purge.pending.badge.one" = "回收站有 %d 条待清理";
+"alert.trash.purge.pending.confirm" = "永久删除";
+"alert.items.load.failed.title" = "剪贴板历史暂时不可用";
+"alert.items.load.failed" = "剪贴板历史加载失败。无法读取的副本已保留，可从本地备份恢复历史。";
+"alert.items.load.failed.count" = "剪贴板历史加载失败，%d 次恢复尝试均失败。";
+"alert.items.load.failed.count.one" = "剪贴板历史加载失败，1 次恢复尝试失败。";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "恢复向导";

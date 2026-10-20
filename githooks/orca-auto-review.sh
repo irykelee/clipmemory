@@ -196,7 +196,15 @@ for MODEL in "${MODEL_CHAIN[@]}"; do
 RAWOUT="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.jsonl"
 RAWERR="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.err"
 
-"$OPENCODE" run --format json --dir "$ROOT" -m "$MODEL" "$PROMPT" \
+  # ID-CRASH-0022 (2026-10-20): `opencode run` in opencode v2.0.30 no
+  # longer accepts `--dir` — it exits with "Unrecognized flag: --dir" and
+  # prints the usage text, which the report validator then rejects as a
+  # failed model. The whole review chain had been silently dead since the
+  # opencode upgrade (last successful report: 2026-10-07). The project
+  # root is taken from the working directory, and this script already
+  # `cd "$ROOT"` at the top, so the flag was redundant as well as
+  # invalid.
+  "$OPENCODE" run --format json -m "$MODEL" "$PROMPT" \
   > "$RAWOUT" 2> "$RAWERR" &
 OC_PID=$!
 (

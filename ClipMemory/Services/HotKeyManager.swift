@@ -149,7 +149,9 @@ class HotKeyManager {
         // TestHostIsolationTests.
         // testSharedSingletonRoutesToIsolatedDefaultsUnderXCTest (same
         // pattern, same detection shape).
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+        // ID-CRASH-0031 (2026-10-20): shared multi-signal probe —
+        // the env var alone is not a reliable "am I under XCTest" test.
+        if !TestIsolation.isRunningTests {
             return .standard
         }
         return UserDefaults(suiteName: "HotKeyManager-XCTest-isolation") ?? .standard

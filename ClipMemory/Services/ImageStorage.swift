@@ -20,7 +20,9 @@ class ImageStorage {
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ImageStorage")
     /// L-11 (2026-07-25 audit): use a Bool probe instead of string-matching
     /// the XCTest environment variable in multiple places.
-    private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    /// ID-CRASH-0031 (2026-10-20): shared multi-signal probe — the env
+    /// var alone is not a reliable "am I under XCTest" test.
+    private static let isRunningTests = TestIsolation.isRunningTests
     /// Memory cache for row-preview thumbnails — avoids repeated disk I/O +
     /// decode for items visible in the list. P1-AUDIT-2026-09-22 (P2-16):
     /// capped via `thumbnailMaxPixelSize` (512 px) at decode time so a

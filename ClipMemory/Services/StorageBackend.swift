@@ -1,5 +1,6 @@
 import Foundation
 import os.log
+import SQLite3
 
 /// ID-REVIEW-1024 (PR-A, code-review-2026-10-01 §八 batch 2): Storage backend
 /// protocol for ClipboardStore dependency injection.
@@ -148,10 +149,62 @@ enum StorageBackendError: Error, LocalizedError {
     /// `saveTags(_:)`, etc.) which every backend supports.
     case unsupportedFeature(String)
 
+    /// A backend write failed at the storage layer (SQLite returned a
+    /// non-OK code, a FK constraint was violated, a ROLLBACK failed, …).
+    ///
+    /// ID-CRASH-0022 (2026-10-15): the SQLite backend's `exec()` helpers
+    /// used to swallow every failure — they only wrote a log line and
+    /// returned normally — which made the many `throws` signatures in
+    /// that backend a fiction. A FK violation (e.g. `attachTag` with a
+    /// missing tag row) was silently ignored, and a failed `ROLLBACK`
+    /// left writes committed. This case is the signal that makes those
+    /// signatures honest.
+    case storageFailure(sql: String, code: Int32, detail: String)
+
+    /// ID-CRASH-0031 (2026-10-20): a test process tried to write one of
+    /// the production data keys (`ClipboardItems` / `ClipboardTrashedItems`
+    /// / `ClipMemoryTags`) in the real `com.clipmemory.app` domain.
+    ///
+    /// Background: `xcodebuild test` launches the app binary through
+    /// LaunchServices, and a plain app launch has no
+    /// `XCTestConfigurationFilePath`, so the per-service `xcTestDefaults`
+    /// guard silently fell through to the PRODUCTION path. The launched
+    /// app then loaded the user's real history + recycle bin and wrote
+    /// its own snapshot back — including a retention purge that replaced
+    /// 106 trashed entries with an empty array. This case makes that
+    /// impossible: a test process can never write the user's data blobs.
+    case productionWriteBlocked(storageKey: String)
+
+    /// Whether retrying the failed operation could plausibly succeed.
+    ///
+    /// ID-REVIEW-1024 (PR-D N.4, 2026-10-21): the schema migration
+    /// takes a write lock (`BEGIN IMMEDIATE`), so it can lose a race
+    /// with another process. That failure is TRANSIENT — the database
+    /// is untouched and the next attempt can succeed. A constraint
+    /// violation or a syntax error is PERMANENT — retrying it only
+    /// makes the user wait for the same failure.
+    ///
+    /// The SQLite result code is already carried by `storageFailure`, so
+    /// the distinction is machine-checkable instead of a judgement call
+    /// repeated at every call site. A caller that wants a retry ladder
+    /// asks this property; one that does not can ignore it.
+    var isRetryable: Bool {
+        switch self {
+        case .storageFailure(_, let code, _):
+            return code == SQLITE_BUSY || code == SQLITE_LOCKED
+        case .unsupportedFeature, .productionWriteBlocked:
+            return false
+        }
+    }
+
     var errorDescription: String? {
         switch self {
         case .unsupportedFeature(let detail):
             return "StorageBackend granular operation unsupported: \(detail)"
+        case .storageFailure(let sql, let code, let detail):
+            return "StorageBackend write failed (rc=\(code)): \(detail) — sql=\(sql.prefix(120))"
+        case .productionWriteBlocked(let key):
+            return "Refusing to write production UserDefaults key '\(key)' from a test process"
         }
     }
 }
@@ -200,6 +253,37 @@ final class FileStorageBackend: StorageBackend {
         self.defaults = defaults
     }
 
+    /// ID-CRASH-0031 (2026-10-20): the write gate for the production data
+    /// blobs.
+    ///
+    /// Background: `xcodebuild test` launches the app binary through
+    /// LaunchServices. A plain app launch has no
+    /// `XCTestConfigurationFilePath`, so the per-service `xcTestDefaults`
+    /// guard fell through to the PRODUCTION path and the launched app read
+    /// and wrote the user's real `com.clipmemory.app` domain — including a
+    /// retention purge that replaced the recycle bin with an empty array.
+    ///
+    /// This gate makes that impossible from the inside: while the process
+    /// is running tests, the production data keys (`ClipboardItems` /
+    /// `ClipboardTrashedItems` / `ClipMemoryTags`) must never be written
+    /// into `.standard`.
+    ///
+    /// Scope notes:
+    /// - Only the three production DATA keys are blocked. Test fixtures
+    ///   that use their own storage key in an isolated suite (and the
+    ///   existing `prod.default.*` seam test) are untouched.
+    /// - The check is on the storage key AND `.standard`; an isolated
+    ///   suite that happens to use a production key name is a test
+    ///   fixture, not the user's data.
+    private func assertWriteAllowed() throws {
+        guard TestIsolation.mustRefuseProductionDataMutation(defaults),
+              TestIsolation.productionDataKeys.contains(storageKey) else {
+            return
+        }
+        logger.error("ID-CRASH-0031: blocked a test process from writing the production data key '\(self.storageKey, privacy: .public)'")
+        throw StorageBackendError.productionWriteBlocked(storageKey: storageKey)
+    }
+
     func load() throws -> [ClipboardItem] {
         guard let data = defaults.data(forKey: storageKey) else {
             return []
@@ -208,6 +292,7 @@ final class FileStorageBackend: StorageBackend {
     }
 
     func save(_ items: [ClipboardItem]) throws {
+        try assertWriteAllowed()
         let data = try Self.itemsEncoder.encode(items)
         defaults.set(data, forKey: storageKey)
     }
@@ -241,6 +326,7 @@ final class FileStorageBackend: StorageBackend {
     /// `SaveRetryState` backoff (ID-SILENT-0022). Throwing on
     /// in-memory failure flows through that path correctly.
     func saveBlob(_ data: Data) throws {
+        try assertWriteAllowed()
         defaults.set(data, forKey: storageKey)
         // Force-flush attempt before read-back. Deprecated since
         // macOS 10.5 but still functional — it's the only mechanism
@@ -270,6 +356,7 @@ final class FileStorageBackend: StorageBackend {
     }
 
     func saveTags(_ tags: [Tag]) throws {
+        try assertWriteAllowed()
         let data = try Self.tagsEncoder.encode(tags)
         defaults.set(data, forKey: storageKey)
         // ID-CRASH-0007 (2026-09-28 code-review P1-1): `defaults.set`
@@ -446,9 +533,12 @@ final class MemoryStorageBackend: StorageBackend {
     /// In-memory "trash" semantics: a single `_trashItems: [ClipboardItem]`
     /// array, separate from `_items`. (Per docs/design §3.3 — separate
     /// table for trash mirrors TrashStore's "trash is its own store".)
-    /// SQLiteStorageBackend (PR-B) will write to a real `trash_items`
-    /// table with FK to `items`; here in PR-A we mirror the same
-    /// shape with two in-memory arrays.
+    /// SQLiteStorageBackend (PR-B) writes to a real `trash_items` table
+    /// with NO foreign key to `items` (ID-CRASH-0022: the old
+    /// `REFERENCES items(id) ON DELETE CASCADE` made the §3.3 write
+    /// order — INSERT trash, then DELETE item — delete the trash row it
+    /// had just written); here in PR-A we mirror the same shape with two
+    /// in-memory arrays.
     private var _trashItems: [ClipboardItem] = []
     func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws {
         lock.lock(); defer { lock.unlock() }
@@ -480,118 +570,10 @@ final class MemoryStorageBackend: StorageBackend {
     }
 }
 
-/// ID-REVIEW-1024 (PR-A): SQLiteStorageBackend **placeholder** class.
-/// The real implementation lands in PR-B (single-connection + sqlite3
-/// handles + WAL + NORMAL). For PR-A this class exists so that:
-///   - the `case is SQLiteStorageBackend:` switch arm in
-///     `ClipboardStore.saveItems` (per docs §3.2.1) compiles;
-///   - `loadAllIDs()` is available for ClipboardStore.saveItems'
-///     delete-propagation diff (PR-B replaces the throw with a real
-///     `SELECT id FROM items` query);
-///   - ClipboardStore falls back to `save(_:)` array-level on
-///     `StorageBackendError.unsupportedFeature` — verified by the
-///     integration test `testClipboardStoreFallbackToArrayPath`.
-///
-/// Every method throws `unsupportedFeature` so the caller falls
-/// back. PR-B replaces each method body with the SQLite impl; the
-/// class skeleton, error contract, and protocol conformance stay
-/// unchanged.
-///
-/// This is NOT an "amend" — it is a forward commit. PR-A introduces
-/// the placeholder so PR-B can do a clean class replacement without
-/// touching unrelated files.
-final class SQLiteStorageBackend: StorageBackend {
-    init() {}
-
-    // Array-level (these exist for protocol conformance; the SQLite
-    // backend doesn't store whole arrays, but they implement the
-    // protocol contract for callers that always use save(_:)).
-    func load() throws -> [ClipboardItem] {
-        // The SQLite backend would query rows + decode; for the
-        // placeholder PR-A returns empty so the protocol conformance
-        // is real (not a stub `fatalError`). PR-B replaces this with
-        // a real SELECT + decoder pipeline.
-        return []
-    }
-    func save(_ items: [ClipboardItem]) throws {
-        // SQLiteStorageBackend's normal save path is granular
-        // (upsertItem in a transaction). The array-level save(_:)
-        // exists only for callers that pass a whole array — the
-        // placeholder delegates to upsertItem per item.
-        try items.forEach { try upsertItem($0) }
-    }
-    func loadTags() throws -> [Tag] {
-        return []
-    }
-    func saveTags(_ tags: [Tag]) throws {
-        try tags.forEach { try upsertTag($0) }
-    }
-    func saveBlob(_ data: Data) throws {
-        // Per docs §3.2 — SQLiteStorageBackend.saveBlob is a programmer
-        // error (callers should use upsertItem). Throwing here surfaces
-        // the misuse immediately rather than silently round-tripping
-        // through JSON like the default protocol extension does.
-        throw StorageBackendError.unsupportedFeature("saveBlob not supported on SQLite; use upsertItem instead")
-    }
-
-    // MARK: - SQLite-specific transaction helpers (PR-B implements)
-
-    // These are NOT part of the StorageBackend protocol — they're
-    // SQLite-specific (single connection, BEGIN/COMMIT/ROLLBACK
-    // wrappers around granular ops). PR-A exposes the signatures so
-    // the caller (ClipboardStore.saveItems' granular path) can use
-    // them; PR-B implements the bodies (PRAGMA foreign_keys=ON +
-    // single connection + sqlite3_prepare_v2 + step + commit).
-
-    /// Begins a write transaction on the underlying sqlite3
-    /// connection. All subsequent granular ops run inside this
-    /// transaction until `commitTransaction` or `rollbackTransaction`
-    /// is called. PR-A placeholder always throws (real impl in PR-B).
-    func beginTransaction() throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend.beginTransaction: PR-B will implement via sqlite3_exec(db, 'BEGIN IMMEDIATE', nil, nil, nil)")
-    }
-
-    /// Commits the current transaction.
-    func commitTransaction() throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend.commitTransaction: PR-B will implement via sqlite3_exec(db, 'COMMIT', nil, nil, nil) + WAL fsync per the design's §1.1 synchronous=NORMAL contract")
-    }
-
-    /// Rolls back the current transaction.
-    func rollbackTransaction() throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend.rollbackTransaction: PR-B will implement via sqlite3_exec(db, 'ROLLBACK', nil, nil, nil)")
-    }
-
-    // Granular (PR-A: all throw unsupportedFeature; PR-B replaces each
-    // body with the real SQLite impl).
-    func upsertItem(_ item: ClipboardItem) throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement upsertItem as INSERT … ON CONFLICT(id) DO UPDATE")
-    }
-    func hardDeleteItem(id: UUID) throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement hardDeleteItem as DELETE FROM items WHERE id = ?")
-    }
-    func upsertTag(_ tag: Tag) throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement upsertTag as INSERT … ON CONFLICT(id) DO UPDATE")
-    }
-    func attachTag(itemID: UUID, tagID: UUID) throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement attachTag as INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)")
-    }
-    func detachTag(itemID: UUID, tagID: UUID) throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement detachTag as DELETE FROM item_tags WHERE item_id = ? AND tag_id = ?")
-    }
-    func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement moveToTrash as a single transaction: INSERT INTO trash_items … + DELETE FROM items WHERE id = ?")
-    }
-    func restoreFromTrash(itemID: UUID) throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement restoreFromTrash as a single transaction: DELETE FROM trash_items WHERE item_id = ? + INSERT INTO items …")
-    }
-    func loadAllIDs() throws -> Set<UUID> {
-        // For PR-B: SELECT id FROM items.
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement loadAllIDs as SELECT id FROM items")
-    }
-    func setMeta(key: String, value: Data, type: String) throws {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement setMeta as INSERT INTO app_meta (key, value_type, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE")
-    }
-    func meta(key: String) throws -> Data? {
-        throw StorageBackendError.unsupportedFeature("SQLiteStorageBackend: PR-B will implement meta as SELECT value, value_type FROM app_meta WHERE key = ?")
-    }
-}
+// ID-REVIEW-1024 (PR-B): the SQLiteStorageBackend placeholder that PR-A
+// declared in this file (every method threw `unsupportedFeature` so the
+// caller fell back to the array-level path) has been replaced by the
+// real SQLite-backed implementation in its own file:
+//   Services/SQLiteStorageBackend.swift
+// The placeholder class body was removed with PR-B; nothing in
+// this file needs to change again for the SQLite backend.

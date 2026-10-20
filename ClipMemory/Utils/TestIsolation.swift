@@ -36,4 +36,109 @@ enum TestIsolation {
     static func setDefaults(_ defaults: UserDefaults) {
         self.defaults = defaults
     }
+
+    /// ID-CRASH-0031 (2026-10-20 data-loss incident): robust "is this
+    /// process a test process?" probe.
+    ///
+    /// The per-service `xcTestDefaults` helpers used to key off
+    /// `ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"]
+    /// == nil`.
+    ///
+    /// MEASURED (2026-10-20): in the app-hosted test process that variable
+    /// IS present, with an EMPTY STRING value — and `Optional("") == nil`
+    /// is false, so the old single-signal guard did detect the test host.
+    /// The first version of the incident record claimed the opposite; it
+    /// was corrected in `docs/incidents/2026-10-20-trash-purge.md` §3.
+    ///
+    /// Widening the probe was still worth doing: it previously rested on
+    /// ONE proxy for "am I in a test process?". If that proxy were ever
+    /// missing on some launch path, the process would take the PRODUCTION
+    /// path and read / write the user's real `com.clipmemory.app` domain.
+    /// Three independent signals now cover that:
+    /// 1. `XCTestConfigurationFilePath` present with ANY value (an empty
+    ///    string still counts).
+    /// 2. The `XCTestCase` class is loaded in this process (the XCTest
+    ///    framework is injected into the host app).
+    /// 3. An `.xctest` bundle is injected into this process.
+    ///
+    /// NOT a usable signal: the unified log line `Successfully spawned
+    /// ClipMemory`. The test host produces exactly the same line, so it
+    /// does not distinguish a test launch from a plain one.
+    nonisolated static let isRunningTests: Bool = {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return true
+        }
+        if NSClassFromString("XCTestCase") != nil {
+            return true
+        }
+        return Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
+    }()
+
+    /// ID-CRASH-0031: the UserDefaults keys that hold the user's actual
+    /// data (history / recycle bin / tags). These are the keys a test
+    /// process must never write, and the keys two app processes must
+    /// never overwrite with a stale snapshot.
+    /// ID-CRASH-0031 (2026-10-20): true when a mutation of the user's
+    /// data blobs must be REFUSED — the process runs tests AND the
+    /// target defaults addresses the production domain.
+    ///
+    /// ID-CRASH-0031 follow-up: the check is DOMAIN-level, not instance
+    /// identity. `UserDefaults(suiteName: "com.clipmemory.app")` is a
+    /// different object that addresses the SAME domain, so an identity
+    /// check would let it through. The discriminator is the VALUE of the
+    /// production data blob: an instance addressing the same domain
+    /// reports the same bytes, an unrelated suite (even one that reuses
+    /// a production key NAME) does not.
+    ///
+    /// A write-then-read-back probe was measured and does NOT work in
+    /// either direction — two UserDefaults instances in the same process
+    /// do not share their in-memory caches, so neither instance observes
+    /// the other's write.
+    nonisolated static func mustRefuseProductionDataMutation(_ defaults: UserDefaults) -> Bool {
+        isRunningTests && addressesProductionDomain(defaults)
+    }
+
+    /// True when `defaults` addresses the same persistent domain as
+    /// `UserDefaults.standard` (the app's own `com.clipmemory.app`
+    /// suite).
+    ///
+    /// Measured on this machine:
+    /// * `UserDefaults.standard` → always true (identity).
+    /// * `UserDefaults(suiteName: "com.clipmemory.app")` → true (it reads
+    ///   the app's `ClipboardItems` blob).
+    /// * an unrelated suite → false, even when it holds a key with the
+    ///   same NAME as a production data key (the VALUES differ).
+    nonisolated static func addressesProductionDomain(_ defaults: UserDefaults) -> Bool {
+        if defaults === UserDefaults.standard { return true }
+        for key in productionDataKeys {
+            guard let standardBlob = UserDefaults.standard.data(forKey: key) else {
+                continue
+            }
+            guard let candidateBlob = defaults.data(forKey: key) else {
+                continue
+            }
+            if candidateBlob == standardBlob { return true }
+        }
+        // The production domain holds no data blob at all (a fresh
+        // install, or a domain whose blobs were quarantined). There is no
+        // user data in it to overwrite, and an empty domain is
+        // indistinguishable from an unrelated empty suite through the
+        // public UserDefaults API — so no domain-level discriminator can
+        // exist here. The residual gap is therefore bounded: it needs a
+        // SECOND instance addressing the production domain, and inside
+        // the app / test-host process that instance cannot even be
+        // created (`UserDefaults(suiteName: <own bundle id>)` returns
+        // nil — measured).
+        //
+        // Note the common case is unaffected: `UserDefaults.standard`
+        // itself is caught by the identity check above, so a test process
+        // writing `.standard` is refused whether or not the blobs exist.
+        return false
+    }
+
+    nonisolated static let productionDataKeys: Set<String> = [
+        UserDefaultsKey.clipboardItems.rawValue,
+        UserDefaultsKey.trashedItems.rawValue,
+        UserDefaultsKey.clipboardTags.rawValue
+    ]
 }

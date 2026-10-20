@@ -374,6 +374,19 @@
 "alert.trash.load.failed" = "Failed to load recycle bin. Items are temporarily unavailable.";
 "alert.trash.load.failed.count" = "Failed to load recycle bin. %d recovery attempts failed.";
 "alert.trash.load.failed.count.one" = "Failed to load recycle bin. 1 recovery attempt failed.";
+"alert.trash.items.expired.title" = "Recycle bin cleaned up";
+"alert.trash.items.expired" = "Recycle bin: %d items were removed after the %d-day retention period expired.";
+"alert.trash.items.expired.one" = "Recycle bin: %d item was removed after the %d-day retention period expired.";
+"alert.trash.purge.pending.title" = "Recycle bin has items to clear";
+"alert.trash.purge.pending" = "%d items in the recycle bin are past the %d-day retention period. Deleting them permanently cannot be undone.";
+"alert.trash.purge.pending.one" = "%d item in the recycle bin is past the %d-day retention period. Deleting it permanently cannot be undone.";
+"alert.trash.purge.pending.badge" = "Recycle bin: %d items to clear";
+"alert.trash.purge.pending.badge.one" = "Recycle bin: %d item to clear";
+"alert.trash.purge.pending.confirm" = "Delete Permanently";
+"alert.items.load.failed.title" = "Clipboard history unavailable";
+"alert.items.load.failed" = "Failed to load the clipboard history. The unreadable copy is kept, and the history can be restored from a local backup.";
+"alert.items.load.failed.count" = "Failed to load the clipboard history. %d recovery attempts failed.";
+"alert.items.load.failed.count.one" = "Failed to load the clipboard history. 1 recovery attempt failed.";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "Restore Wizard";

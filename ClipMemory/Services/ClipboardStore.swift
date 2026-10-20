@@ -81,6 +81,56 @@ extension Notification.Name {
     /// the quarantine + sweep-skip happens silently and the user's
     /// trash appears empty with no explanation.
     static let trashLoadFailed = Notification.Name("TrashStore.loadFailed")
+    /// ID-CRASH-0022 (2026-10-20): posted by
+    /// `TrashStore.purgeExpiredTrash()` when the retention window
+    /// removed items from the recycle bin.
+    ///
+    /// The purge is a DELETE, and it used to run with NO user-visible
+    /// signal at all: a launch could empty the whole bin in one shot
+    /// (the 2026-10-20 incident — 106 items, every one of them past
+    /// the retention window, gone with no notice and no explanation).
+    ///
+    /// `userInfo["count"]` = how many items were removed (Int),
+    /// `userInfo["retentionDays"]` = the retention window that was
+    /// applied (Int).
+    ///
+    /// ID-CRASH-0035 (2026-10-21): this notification no longer means
+    /// "the user has been told" — it means "the purge happened". A purge
+    /// of at least `TrashStore.expiredPurgeConfirmationThreshold`
+    /// entries is announced by `.trashPurgePending` FIRST and only
+    /// happens after the user confirms, so this one carries either a
+    /// routine (silent) purge or a confirmed one.
+    static let trashItemsExpired = Notification.Name("TrashStore.itemsExpired")
+    /// ID-CRASH-0035 (2026-10-21): posted by
+    /// `TrashStore.purgeExpiredTrash()` when the retention window would
+    /// remove at least `expiredPurgeConfirmationThreshold` entries.
+    ///
+    /// Nothing has been deleted yet at that point — the entries stay in
+    /// the bin until the user confirms. The UI shows this as a badge on
+    /// the menu bar item (never a modal alert: the purge also runs on a
+    /// 60 s timer, so a modal could pop up in the middle of a session).
+    ///
+    /// `userInfo["count"]` = how many entries are waiting (Int),
+    /// `userInfo["retentionDays"]` = the retention window that was
+    /// applied (Int).
+    static let trashPurgePending = Notification.Name("TrashStore.purgePending")
+    /// ID-CRASH-0022 (2026-10-20): posted when the ITEMS blob fails to
+    /// load (it is quarantined under `ClipboardItems.corrupt-*` and the
+    /// in-memory history comes back empty).
+    ///
+    /// This is the items-side twin of `.trashLoadFailed`, and it was
+    /// MISSING: the trash side has had a user-visible signal since
+    /// 2026-08-08, the tags side has `.tagBackendCorrupted` →
+    /// `DiagnosticsBanner`, and the items side — the biggest dataset of
+    /// the three — had nothing but a log line. The user saw their
+    /// history disappear with no explanation and no way to recover it
+    /// from the quarantined copy.
+    ///
+    /// `userInfo["persistent"]` = Bool (the failure survived a
+    /// launch), `userInfo["error"]` = the underlying error text,
+    /// `userInfo["source"]` = "itemsLoadFailed" (its own throttler
+    /// bucket).
+    static let itemsLoadFailed = Notification.Name("ClipboardStore.itemsLoadFailed")
     /// NOTIFY-0001 (2026-08-10): posted by `LanguageManager` after the
     /// in-memory mirror is updated so any consumer reacting to the
     /// notification (e.g. AppDelegate refreshing `NSApp.appearance`) sees
@@ -198,7 +248,20 @@ final class ClipboardStore: ObservableObject {
     /// `nonisolated` so the `defaults:` parameter default (which is evaluated
     /// outside the class's actor isolation) can reference it.
     nonisolated static var xcTestDefaults: UserDefaults {
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+        // ID-CRASH-0031 (2026-10-20): the guard now uses
+        // `TestIsolation.isRunningTests` instead of reading
+        // `XCTestConfigurationFilePath` directly.
+        //
+        // Why: `xcodebuild test` launches the app binary through
+        // LaunchServices, and that launch is not guaranteed to carry the
+        // environment variable. When it was absent, this guard fell
+        // through to `.standard` — i.e. the launched app used the
+        // PRODUCTION storage and wrote the user's real history and
+        // recycle bin. `TestIsolation.isRunningTests` accepts three
+        // independent signals (the env var with ANY value, a loaded
+        // `XCTestCase` class, an injected `.xctest` bundle), so the
+        // isolation holds even when the env var is missing.
+        if !TestIsolation.isRunningTests {
             return .standard
         }
         return UserDefaults(suiteName: "ClipboardStore-XCTest-isolation") ?? .standard
@@ -335,6 +398,58 @@ final class ClipboardStore: ObservableObject {
     /// `ClipboardStore.itemsStorageKey` directly; the alias keeps that API
     /// stable while pointing at the central registry.
     static let itemsStorageKey = UserDefaultsKey.clipboardItems.rawValue
+
+    /// ID-CRASH-0022 (2026-10-20): the items-side twin of
+    /// `TrashStore.loadFailedSentinelKey`.
+    ///
+    /// Set when the items blob fails to load (it was quarantined), and
+    /// cleared again once a NON-EMPTY items blob loads successfully.
+    /// While it is set, the orphan-image sweep is skipped — see
+    /// `loadItems` / `applyLoadResult`.
+    static let itemsLoadFailedSentinelKey = UserDefaultsKey.clipboardItemsLoadFailedSentinel.rawValue
+
+    /// ID-CRASH-0022 (2026-10-20): true while the ITEMS blob is in a
+    /// failed state.
+    ///
+    /// The trash side has the same concept (`trashStore.lastLoadFailed`)
+    /// and the same reason: a corrupt blob is quarantined, the store
+    /// reads back EMPTY on the next launch, and the orphan-image sweep
+    /// would then delete every image the quarantined blob still
+    /// references. The images are the irrecoverable half — the blob
+    /// itself survives under the `.corrupt-*` key.
+    var itemsLoadFailed: Bool {
+        defaults.bool(forKey: Self.itemsLoadFailedSentinelKey)
+    }
+
+    /// Post `.itemsLoadFailed` **asynchronously**.
+    ///
+    /// ID-CRASH-0022 (2026-10-20): the items load runs during startup
+    /// — the sync path inside `ClipboardStore.init`, the async path on
+    /// a background queue whose result lands on the main actor — and
+    /// the AppDelegate registers its observers LATER in
+    /// `applicationDidFinishLaunching`. A synchronous post is therefore
+    /// delivered to nobody: the alert the observer exists to show
+    /// never appears. Posting after the current main-queue block lets
+    /// the launch sequence finish first (observers included).
+    private func postItemsLoadFailed(error: Error?, persistent: Bool) {
+        var userInfo: [String: Any] = [
+            "persistent": persistent,
+            // ID-CRASH-0008 (2026-08-28 audit): tag the source so the
+            // AppDelegate Throttler can bucket items failures
+            // independently from trash / save / encryption failures.
+            "source": "itemsLoadFailed"
+        ]
+        if let error {
+            userInfo["error"] = error.localizedDescription
+        }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .itemsLoadFailed,
+                object: self,
+                userInfo: userInfo
+            )
+        }
+    }
     // trashedItemsStorageKey moved to TrashStore (HIGH-1, 2026-07-26)
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened from `private`
     // to `internal` so the methods moved to `ClipboardStore+Persistence.swift`
@@ -401,9 +516,17 @@ final class ClipboardStore: ObservableObject {
         // was only swapping backend, leaving `defaults = .standard`, which
         // caused `IntegrationTests.testTrimToMaxItemsRemovesOldest` and
         // friends to leak `maxClipboardItems = 3` into the production
-        // `com.clipmemory.app` plist). `xcTestDefaults` is a no-op
-        // (`.standard`) when XCTestConfigurationFilePath is unset.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
+        // `com.clipmemory.app` plist).
+        //
+        // ID-CRASH-0031 (2026-10-20): the branch used to be keyed off
+        // `XCTestConfigurationFilePath` being ABSENT. That variable is
+        // present-but-empty in the test host (an empty string is not
+        // `nil`), so the branch was taken by luck rather than by design.
+        // `TestIsolation.isRunningTests` accepts the variable with any
+        // value, a loaded `XCTestCase` class, or an injected `.xctest`
+        // bundle — so the isolation holds even when the variable is
+        // missing entirely.
+        guard !TestIsolation.isRunningTests else {
             self.init(backend: MemoryStorageBackend(), defaults: Self.xcTestDefaults)
             return
         }
@@ -1088,7 +1211,30 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             // ID-CRASH-0003 (2026-08-02 audit): keep the ID-CRASH-0001
             // invariant — every `items` mutation invalidates itemIndex.
             invalidateItemIndex()
+            // ID-CRASH-0022 (2026-10-20): record the failure so it
+            // survives the launch. Without this, the next launch loads
+            // an EMPTY collection (the key was removed by the
+            // quarantine, so the load SUCCEEDS) and the orphan-image
+            // sweep runs with an empty `keptItems` — deleting every
+            // item image on disk while the items blob itself is still
+            // recoverable from the `.corrupt-*` key. The images are
+            // the irrecoverable half. The trash side has had this
+            // guard since 2026-08-08; the items side did not.
+            defaults.set(true, forKey: Self.itemsLoadFailedSentinelKey)
+            postItemsLoadFailed(error: error, persistent: false)
             return
+        }
+        // A non-empty load proves the store is healthy again — but an
+        // EMPTY load after a previous failure does NOT: the key is
+        // gone, so the load succeeds with nothing. Keep the sentinel
+        // in that case (same rule as the trash side).
+        if !savedItems.isEmpty {
+            defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
+        } else if itemsLoadFailed {
+            // The failure survived the launch: the blob is still
+            // unreadable, so the history is still missing. Say so
+            // again — the user has to know their history is not there.
+            postItemsLoadFailed(error: nil, persistent: true)
         }
         // ID-STORE-0002 (2026-07-31 audit): the old `!$0.isExpired` filter
         // dropped expired items silently — including PINNED ones — and the
@@ -1124,11 +1270,17 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // Skip the sweep entirely while the trash load is in a failed
         // state; the next successful loadItems() / loadTrashedItems() will
         // clear the flag and resume the normal sweep path.
-        if !trashStore.lastLoadFailed {
+        //
+        // ID-CRASH-0022 (2026-10-20): the same hole existed on the
+        // ITEMS side — a corrupt items blob was quarantined, the next
+        // launch loaded an empty collection, and the sweep deleted
+        // every item image. `itemsLoadFailed` is the items-side twin of
+        // `trashStore.lastLoadFailed`.
+        if !trashStore.lastLoadFailed && !itemsLoadFailed {
             ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
         } else {
             // swiftlint:disable:next line_length
-            logger.error("H-2: trash blob load failed; skipping cleanupOrphanedImages to preserve possibly-referenced images. Will retry on next successful loadTrashedItems().")
+            logger.error("ID-STORE-0016: trash or items blob load failed; skipping cleanupOrphanedImages to preserve possibly-referenced images. Will retry on next successful loadTrashedItems() / loadItems().")
         }
 
         if repairedImages || repairedTexts {
@@ -1467,10 +1619,32 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             // ID-CRASH-0003 (2026-08-02 audit): keep the ID-CRASH-0001
             // invariant — every `items` mutation invalidates itemIndex.
             invalidateItemIndex()
+            // ID-CRASH-0022 (2026-10-20): record the failure so it
+            // survives the launch — the quarantine removed the key, so
+            // the next launch loads an EMPTY collection and would let
+            // the orphan-image sweep delete every item image (the
+            // items blob itself survives in the `.corrupt-*` key; the
+            // images would not).
+            defaults.set(true, forKey: Self.itemsLoadFailedSentinelKey)
+            postItemsLoadFailed(error: error, persistent: false)
             logger.error("P2-14: background load failed for items blob: \(error.localizedDescription)")
             return
         }
         let loadedItems = result.items
+        // ID-CRASH-0022 (2026-10-20): a non-empty load proves the
+        // store is healthy again — clear the sentinel so the sweep
+        // resumes. An EMPTY load does NOT clear it: after a
+        // quarantine the key is gone, so the load succeeds with
+        // nothing and the store is still in the failed state (same
+        // rule as the trash side).
+        if !loadedItems.isEmpty {
+            defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
+        } else if itemsLoadFailed {
+            // The failure survived the launch — the blob is still
+            // unreadable and the history is still missing. Say so
+            // again (same rule as the trash side).
+            postItemsLoadFailed(error: nil, persistent: true)
+        }
         let expiredItems = result.expired
         let repairedImages = result.repairedImages
         let repairedTexts = result.repairedTexts
@@ -1514,7 +1688,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // (NSCache), the `pendingFilenames` snapshot pattern
         // (`ImageStorage.swift:1015`) already handles writer races
         // for the duration of the cleanup.
-        if !trashStore.lastLoadFailed {
+        if !trashStore.lastLoadFailed && !itemsLoadFailed {
             let keptItems = items + trashedItems
             Task.detached(priority: .utility) {
                 ImageStorage.shared.cleanupOrphanedImages(keptItems: keptItems)
@@ -1522,7 +1696,11 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         } else {
             // ID-STORE-0016: skip orphan sweep so possibly-referenced images survive
             // a corrupt trash blob; next successful loadTrashedItems() resumes.
-            logger.error("ID-STORE-0016: trash blob load failed; skipping cleanupOrphanedImages")
+            // ID-CRASH-0022 (2026-10-20): the items side needs the same
+            // guard — a corrupt items blob is quarantined, the next
+            // launch loads an empty collection, and the sweep would
+            // delete every item image on disk.
+            logger.error("ID-STORE-0016: trash or items blob load failed; skipping cleanupOrphanedImages")
         }
 
         // P2-14 round-2 self-review fix [P1]: extend the existing
@@ -2025,8 +2203,10 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         return existing.with(content: newItem.content)
     }
 
+    /// ID-CRASH-0031 (2026-10-20): one shared multi-signal probe
+    /// instead of a private copy of the single-environment-variable one.
     private var isRunningTests: Bool {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        TestIsolation.isRunningTests
     }
 
     /// Merges imported backup items into the store. Items arrive already
@@ -2343,6 +2523,10 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     func deletePermanently(_ item: ClipboardItem) { trashStore.deletePermanently(item) }
     func emptyTrash() { trashStore.emptyTrash() }
     func purgeExpiredTrash() { trashStore.purgeExpiredTrash() }
+    /// ID-CRASH-0035 (2026-10-21): the user confirmed the pending
+    /// retention purge — this is what actually deletes the expired
+    /// entries. Until it is called they stay in the bin.
+    func confirmExpiredPurge() { trashStore.confirmExpiredPurge() }
 
     /// M-2 (2026-08-08 audit): pure helper that returns the items that
     /// would be evicted to make `items` fit within `maxItems` — without

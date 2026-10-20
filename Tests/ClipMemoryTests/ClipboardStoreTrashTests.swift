@@ -692,11 +692,13 @@ import XCTest
         // Observe the user-visible signal
         var posted = 0
         var capturedSource: String?
+        let posted1 = expectation(description: "trash load failure posted")
         let token = NotificationCenter.default.addObserver(
             forName: .trashLoadFailed, object: nil, queue: nil
         ) { note in
             posted += 1
             capturedSource = note.userInfo?["source"] as? String
+            posted1.fulfill()
         }
         defer { NotificationCenter.default.removeObserver(token) }
 
@@ -724,7 +726,18 @@ import XCTest
 
         // And: the user-visible signal fires (XCTest env: observer still
         // receives the post — the XCTest skip is only inside the AppDelegate
-        // observer body, not in the notification dispatch itself)
+        // observer body, not in the notification dispatch itself).
+        //
+        // ID-CRASH-0022 (2026-10-20): the post is now ASYNCHRONOUS on
+        // purpose. The trash load runs inside `TrashStore.init`, i.e.
+        // while `ClipboardStore.shared` is being constructed — which
+        // happens in `applicationDidFinishLaunching` BEFORE the
+        // AppDelegate registers its observers. A synchronous post was
+        // therefore delivered to nobody, and this very alert (the one
+        // the observer exists to show) never appeared at startup. The
+        // post now happens after the launch sequence, so the observer
+        // is in place — and the assertion has to wait for it.
+        wait(for: [posted1], timeout: 2.0)
         XCTAssertGreaterThanOrEqual(posted, 1, "user-visible .trashLoadFailed must fire on launch-1 failure")
 
         // H-1 (2026-08-08 audit): the failure notification must carry a
@@ -803,6 +816,214 @@ import XCTest
         XCTAssertTrue(store2.trashStore.lastLoadFailed)
     }
 
+    /// ID-CRASH-0022 (2026-10-20): the ITEMS-side twin of the H-2
+    /// cross-launch test.
+    ///
+    /// The trash side got a persistent sentinel in 2026-08-08:
+    /// after a corrupt TRASH blob, the next launch loads an empty
+    /// collection (the key was removed by the quarantine, so the load
+    /// SUCCEEDS) and the orphan-image sweep would delete every trash
+    /// image. The ITEMS side had no equivalent — the same hole, on the
+    /// larger data set: after a corrupt ITEMS blob, the next launch
+    /// loads empty and the sweep deletes every item image on disk,
+    /// while the items blob itself survives in the `.corrupt-*` key.
+    /// The images are the irrecoverable half.
+    ///
+    /// So the failure must survive the launch (persistent sentinel),
+    /// and it must be cleared only by a NON-EMPTY load.
+    func testItemsLoadFailureSurvivesAcrossLaunches() {
+        // Pre-populate a "corrupt blob" so `quarantineCorruptBlob` has
+        // something to copy to `<key>.corrupt-*`.
+        testDefaults.set(Data([0xDE, 0xAD, 0xBE, 0xEF]), forKey: ClipboardStore.itemsStorageKey)
+
+        // LAUNCH 1: items backend throws on load() → quarantine + sentinel
+        let store1 = ClipboardStore(
+            backend: FailingItemsBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: MemoryStorageBackend(),
+            defaults: testDefaults
+        )
+        store1.loadItems()
+
+        XCTAssertTrue(
+            testDefaults.bool(forKey: ClipboardStore.itemsLoadFailedSentinelKey),
+            "launch 1 must persist the items-side failure sentinel — without it the next launch's empty load would let the orphan sweep run"
+        )
+        XCTAssertNil(testDefaults.data(forKey: ClipboardStore.itemsStorageKey),
+                     "original blob must be removed by quarantine")
+
+        // LAUNCH 2: brand-new ClipboardStore with the same defaults and
+        // a HEALTHY (empty) backend. The load succeeds with an empty
+        // collection — the key is gone — so the sentinel must still be
+        // there, and the sweep must stay disabled.
+        let store2 = ClipboardStore(
+            backend: MemoryStorageBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: MemoryStorageBackend(),
+            defaults: testDefaults
+        )
+        store2.loadItems()
+
+        XCTAssertTrue(
+            store2.itemsLoadFailed,
+            "launch 2 must STILL see the items failure via the persistent sentinel — an empty successful load does not prove the store is healthy"
+        )
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the items-side load failure must be
+    /// USER-VISIBLE.
+    ///
+    /// The trash side has had a user-visible signal since 2026-08-08
+    /// (`.trashLoadFailed` → NSAlert) and the tags side has
+    /// `.tagBackendCorrupted` → banner. The items side — the biggest
+    /// dataset of the three — had only a log line: the user saw their
+    /// history disappear with no explanation and no hint that an
+    /// unreadable copy still exists under `ClipboardItems.corrupt-*`.
+    func testItemsLoadFailureIsUserVisible() {
+        let store = ClipboardStore(
+            backend: FailingItemsBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: MemoryStorageBackend(),
+            defaults: testDefaults
+        )
+
+        let posted = expectation(description: "items load failure posted")
+        // The failure can be reported more than once (the constructor's
+        // async load and the explicit sync load below) — one delivery is
+        // enough for this test.
+        posted.assertForOverFulfill = false
+        var capturedSource: String?
+        let token = NotificationCenter.default.addObserver(
+            forName: .itemsLoadFailed, object: nil, queue: nil
+        ) { note in
+            capturedSource = note.userInfo?["source"] as? String
+            posted.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        store.loadItems()
+
+        wait(for: [posted], timeout: 2.0)
+        XCTAssertEqual(capturedSource, "itemsLoadFailed",
+                       "the items load failure must tag its own throttler bucket")
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the notification must reach an
+    /// observer that registers AFTER the failure already happened.
+    ///
+    /// This is the test that makes the async delivery observable.
+    /// The whole point of the fix is that the trash load runs inside
+    /// `TrashStore.init` — i.e. BEFORE the AppDelegate registers its
+    /// observers — so a synchronous post is delivered to nobody and the
+    /// alert never appears at startup.
+    ///
+    /// A test that registers its observer BEFORE the store cannot see
+    /// that difference (both deliveries work), so it cannot tell the
+    /// fix from the bug: an independent mutation run confirmed that
+    /// reverting the post to a synchronous one kept the whole suite
+    /// green. This one registers afterwards, so a synchronous post is
+    /// already gone and the expectation times out.
+    func testTrashLoadFailureNotificationReachesAnObserverRegisteredAfterTheLoad() {
+        // The failure happens HERE, during the store's construction.
+        _ = ClipboardStore(
+            backend: MemoryStorageBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: FailingTrashBackend(),
+            defaults: testDefaults
+        )
+
+        // Register only NOW — after the failure already happened.
+        let posted = expectation(description: "trash load failure posted")
+        posted.assertForOverFulfill = false
+        let token = NotificationCenter.default.addObserver(
+            forName: .trashLoadFailed, object: nil, queue: nil
+        ) { _ in
+            posted.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        wait(for: [posted], timeout: 2.0)
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the items-side twin of the test
+    /// above — the failure notification must be DEFERRED, not posted
+    /// inline.
+    ///
+    /// The trash side can be tested with a "late observer" (its load is
+    /// synchronous, so the post happens inside the constructor). The
+    /// items side cannot: its production load runs on a background
+    /// queue, so the arrival order of the two posts is a race. What
+    /// IS deterministic is the deferral itself: with the async post,
+    /// nothing has been delivered when the triggering call returns —
+    /// the delivery is queued behind the current main-queue turn. With
+    /// a synchronous post the observer has already been called by then.
+    ///
+    /// The observer uses `queue: .main` so every delivery happens on
+    /// the main thread — the background load's own post is therefore
+    /// also deferred and cannot race the assertion.
+    func testItemsLoadFailureNotificationIsDeferredNotPostedInline() {
+        let store = ClipboardStore(
+            backend: FailingItemsBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: MemoryStorageBackend(),
+            defaults: testDefaults
+        )
+
+        var deliveries = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .itemsLoadFailed, object: nil, queue: .main
+        ) { _ in
+            deliveries += 1
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        store.loadItems()
+
+        XCTAssertEqual(
+            deliveries, 0,
+            "the failure notification must be deferred — a synchronous post during the load "
+            + "is delivered to nobody, because the AppDelegate registers its observers later "
+            + "in the launch sequence"
+        )
+
+        // Let the main queue drain so the deferred post is delivered.
+        let posted = expectation(description: "items load failure posted")
+        posted.assertForOverFulfill = false
+        let token2 = NotificationCenter.default.addObserver(
+            forName: .itemsLoadFailed, object: nil, queue: .main
+        ) { _ in
+            posted.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token2) }
+        wait(for: [posted], timeout: 2.0)
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): a non-empty items load proves the
+    /// store is healthy again → the sentinel is cleared and the orphan
+    /// sweep resumes.
+    func testSuccessfulNonEmptyItemsLoadClearsTheFailureSentinel() throws {
+        testDefaults.set(true, forKey: ClipboardStore.itemsLoadFailedSentinelKey)
+
+        let seeded = MemoryStorageBackend()
+        try seeded.save([ClipboardItem(content: "healthy", type: .text)])
+        let store = ClipboardStore(
+            backend: seeded,
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: MemoryStorageBackend(),
+            defaults: testDefaults
+        )
+        store.loadItems()
+
+        XCTAssertFalse(
+            store.itemsLoadFailed,
+            "a non-empty items load must clear the sentinel so the orphan sweep resumes"
+        )
+        XCTAssertFalse(
+            testDefaults.bool(forKey: ClipboardStore.itemsLoadFailedSentinelKey),
+            "the persistent sentinel must be removed too — it has to survive to the NEXT launch only"
+        )
+    }
+
     /// H-2 recovery: once the user/dev-tools fixes the underlying problem
     /// (clears the sentinel + restores a valid trash blob), the NEXT
     /// launch must resume normal operation. We simulate "fixed" by
@@ -849,6 +1070,23 @@ private final class FailingTrashBackend: StorageBackend {
             domain: "FailingTrashBackend",
             code: -1,
             userInfo: [NSLocalizedDescriptionKey: "Injected trash load failure (H-2 test)"]
+        )
+    }
+    func save(_ items: [ClipboardItem]) throws { /* no-op */ }
+    func saveBlob(_ data: Data) throws { /* no-op */ }
+    func loadTags() throws -> [Tag] { return [] }
+    func saveTags(_ tags: [Tag]) throws { /* no-op */ }
+}
+
+/// ID-CRASH-0022 (2026-10-20): the ITEMS-side twin of
+/// `FailingTrashBackend` — throws on every `load()`, simulating a
+/// corrupt items blob.
+private final class FailingItemsBackend: StorageBackend {
+    func load() throws -> [ClipboardItem] {
+        throw NSError(
+            domain: "FailingItemsBackend",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Injected items load failure (ID-CRASH-0022 test)"]
         )
     }
     func save(_ items: [ClipboardItem]) throws { /* no-op */ }

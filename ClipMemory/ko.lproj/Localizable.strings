@@ -375,6 +375,19 @@
 "alert.trash.load.failed" = "휴지통 로드에 실패했습니다. 항목이 일시적으로 사용할 수 없습니다.";
 "alert.trash.load.failed.count" = "휴지통 로드에 실패했습니다. 복구 시도 %d회 실패.";
 "alert.trash.load.failed.count.one" = "휴지통 로드에 실패했습니다. 복구 시도 1회 실패.";
+"alert.trash.items.expired.title" = "휴지통 정리 완료";
+"alert.trash.items.expired" = "휴지통의 항목 %d개가 %d일 보관 기간을 초과하여 삭제되었습니다.";
+"alert.trash.items.expired.one" = "휴지통의 항목 %d개가 %d일 보관 기간을 초과하여 삭제되었습니다.";
+"alert.trash.purge.pending.title" = "휴지통에 정리할 항목이 있습니다";
+"alert.trash.purge.pending" = "휴지통의 항목 %d개가 %d일 보관 기간을 초과했습니다. 영구 삭제하면 복구할 수 없습니다.";
+"alert.trash.purge.pending.one" = "휴지통의 항목 %d개가 %d일 보관 기간을 초과했습니다. 영구 삭제하면 복구할 수 없습니다.";
+"alert.trash.purge.pending.badge" = "휴지통에 정리할 항목 %d개";
+"alert.trash.purge.pending.badge.one" = "휴지통에 정리할 항목 %d개";
+"alert.trash.purge.pending.confirm" = "영구 삭제";
+"alert.items.load.failed.title" = "클립보드 기록을 사용할 수 없습니다";
+"alert.items.load.failed" = "클립보드 기록 로드에 실패했습니다. 읽을 수 없는 사본은 보관되며, 로컬 백업에서 기록을 복원할 수 있습니다.";
+"alert.items.load.failed.count" = "클립보드 기록 로드에 실패했습니다. 복구 시도 %d회 실패.";
+"alert.items.load.failed.count.one" = "클립보드 기록 로드에 실패했습니다. 복구 시도 1회 실패.";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "복원 마법사";

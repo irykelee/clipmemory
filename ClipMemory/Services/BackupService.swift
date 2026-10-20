@@ -37,7 +37,33 @@ enum BackupError: LocalizedError {
 }
 
 final class BackupService {
-    static let shared = BackupService()
+    /// ID-CRASH-0031 (2026-10-20): under XCTest the shared instance must
+    /// not read the production `com.clipmemory.app` domain and must not
+    /// write into the production `Backups/` directory.
+    ///
+    /// Measured: a test run wrote `lastBackupDate` into the production
+    /// preferences (its timestamp lined up exactly with a test-host
+    /// launch), and once the 24 h throttle expires a test run would
+    /// create a backup dir in the user's real Backups folder — and
+    /// prune it, rotating the user's own backups out.
+    static let shared: BackupService = {
+        guard TestIsolation.isRunningTests else { return BackupService() }
+        let suiteName = "BackupService-XCTest-isolation"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            // ID-CRASH-0031 follow-up: the PID alone is not enough — a
+            // new test process can land on a recycled PID while the
+            // previous process's temp dir is still on disk. The UUID
+            // makes the directory unique per process.
+            "ClipMemory-BackupService-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        return BackupService(
+            backupsDirectory: root.appendingPathComponent("Backups", isDirectory: true),
+            imagesDirectory: root.appendingPathComponent("Images", isDirectory: true),
+            defaults: defaults
+        )
+    }()
 
     // P1-AUDIT-2026-09-22 (P2-9): the static let `xxxKey` constants used to
     // hold raw string literals. Replaced with the central `UserDefaultsKey`

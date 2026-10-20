@@ -123,6 +123,156 @@ final class TrashStoreMainActorTests: XCTestCase {
                        "ID-STORE-0003: batch must dedup against existing bin and itself")
         XCTAssertEqual(Set(store.trashedItems.map { $0.id }), Set([a.id, b.id]))
     }
+
+    /// ID-CRASH-0022 (2026-10-20): while the trash load is in a FAILED
+    /// state, the store must NOT write an EMPTY collection.
+    ///
+    /// `FileStorageBackend.save(_:)` is a WHOLE-ARRAY REPLACE. An empty
+    /// write while the load has failed would replace the store's
+    /// content with a known-empty collection — and in the
+    /// persistent-failure branch the unreadable blob is still sitting
+    /// in the main key (that branch does not quarantine it), so the
+    /// empty write is exactly what would destroy it.
+    ///
+    /// NOTE: this was originally written as "refuse EVERY write", on
+    /// the theory that the in-memory collection never represents the
+    /// store. That theory was wrong (a failed load quarantines the
+    /// blob and REMOVES the main key, so there is nothing left to
+    /// destroy) and the guard was narrowed — see
+    /// `testFailedLoadStillPersistsNewlyTrashedItem` for the other
+    /// half of the contract.
+    ///
+    /// This is the blob-side twin of the guard that already protects the
+    /// image side (`ClipboardStore.loadItems` skips
+    /// `cleanupOrphanedImages` while `lastLoadFailed` is true).
+    ///
+    /// Discriminating power: widen the guard back to "refuse every
+    /// write" and this test goes red (the empty array reaches the
+    /// store).
+    func testFailedLoadRefusesToWriteOverStore() {
+        // Launch-1 failure state: the sentinel is set, the blob is gone.
+        testDefaults.set(true, forKey: TrashStore.loadFailedSentinelKey)
+        testDefaults.removeObject(forKey: TrashStore.trashedItemsStorageKey)
+
+        let recorder = SaveRecordingTrashBackend()
+        let failingStore = TrashStore(backend: recorder, defaults: testDefaults)
+        XCTAssertTrue(failingStore.lastLoadFailed,
+                      "the sentinel short-circuit must set lastLoadFailed")
+
+        failingStore.saveTrashedItems()
+
+        XCTAssertEqual(recorder.savesObserved, 0,
+                       "a failed load must not be followed by a write — it would replace the store with an empty array")
+    }
+
+    /// The counterpart of `testFailedLoadRefusesToWriteOverStore`: a
+    /// HEALTHY store must still be able to write an EMPTY collection.
+    ///
+    /// The ID-CRASH-0022 guard keys on the load-failed flag, NOT on
+    /// emptiness — "the user emptied the recycle bin" is a legitimate
+    /// empty write, and it is the only way to clear the bin. If the
+    /// guard were written as "never write an empty array", the user
+    /// could never empty their recycle bin and this test goes red.
+    func testHealthyStoreStillWritesAnEmptyCollection() {
+        let recorder = SaveRecordingTrashBackend()
+        let healthy = TrashStore(backend: recorder, defaults: testDefaults)
+        XCTAssertFalse(healthy.lastLoadFailed,
+                       "a store with no sentinel and a healthy backend is not in the failed state")
+
+        healthy.saveTrashedItems()
+
+        XCTAssertEqual(recorder.savesObserved, 1,
+                       "an empty write from a healthy store is legitimate — it is how the user empties the recycle bin")
+    }
+
+    /// ID-CRASH-0022 (2026-10-20, corrected later the same day): the
+    /// other half of the corrected guard.
+    ///
+    /// The ORIGINAL guard refused EVERY write while `lastLoadFailed`
+    /// was true. A probe proved it protected nothing (the quarantine
+    /// MOVES the blob to a `.corrupt-*` key and REMOVES the main key,
+    /// so there was no store content left to destroy — and the
+    /// quarantined copy is byte-identical after any write).
+    ///
+    /// What it did cost was real: an item the user trashed during a
+    /// degraded launch stayed in memory only, and the app could never
+    /// leave the degraded state (the sentinel path only clears itself
+    /// when the blob comes back non-empty).
+    ///
+    /// So the guard is now narrow: an EMPTY write is still refused, a
+    /// NON-EMPTY write is allowed. This test pins the allowed half.
+    func testFailedLoadStillPersistsNewlyTrashedItem() {
+        // Launch-1 failure state: the sentinel is set, the blob is gone.
+        testDefaults.set(true, forKey: TrashStore.loadFailedSentinelKey)
+        testDefaults.removeObject(forKey: TrashStore.trashedItemsStorageKey)
+
+        let recorder = SaveRecordingTrashBackend()
+        let failingStore = TrashStore(backend: recorder, defaults: testDefaults)
+        XCTAssertTrue(failingStore.lastLoadFailed,
+                      "the sentinel short-circuit must set lastLoadFailed")
+
+        let item = ClipboardItem(content: "trashed during a degraded launch", type: .text)
+        failingStore.moveToTrash(item, evictCaches: { _ in }, didMove: {})
+        failingStore.saveTrashedItems()
+
+        XCTAssertEqual(recorder.savesObserved, 1,
+                       "a newly trashed item must still reach the store — the failed-load state is not a reason to lose the user's data")
+        XCTAssertEqual(recorder.savedItems.first?.content, "trashed during a degraded launch",
+                       "the persisted collection must carry the new item, not an empty array")
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the retention purge is a DELETE —
+    /// it removes every item past the retention window and the whole
+    /// bin is then rewritten as `[]`. It used to run with NO
+    /// user-visible signal at all, which is exactly how the 2026-10-20
+    /// incident emptied 106 items in one launch without saying
+    /// anything.
+    ///
+    /// The third leg of the data-deletion gate (报错 / 重试 / 用户可见)
+    /// requires the user to be told. This pins the notice: the count of
+    /// removed items and the window that was applied.
+    func testRetentionPurgeAnnouncesHowManyItemsItRemoved() throws {
+        let suiteName = "purge-notice-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        let expired = ClipboardItem(
+            content: "expired",
+            type: .text,
+            deletedAt: Date().addingTimeInterval(-40 * 24 * 60 * 60)
+        )
+        let fresh = ClipboardItem(
+            content: "fresh",
+            type: .text,
+            deletedAt: Date()
+        )
+        let backend = InMemoryStorageBackend(items: [expired, fresh])
+
+        let exp = expectation(description: "purge notice posted")
+        var received: [AnyHashable: Any]?
+        let token = NotificationCenter.default.addObserver(
+            forName: .trashItemsExpired, object: nil, queue: .main
+        ) { note in
+            received = note.userInfo
+            exp.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        let store = TrashStore(backend: backend, defaults: suite)
+        // The notice is posted asynchronously on purpose (the purge runs
+        // inside `TrashStore.init`, before the AppDelegate registers its
+        // observers) — spin the run loop until it arrives.
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(received?["count"] as? Int, 1,
+                       "the notice must say how many items the purge removed")
+        XCTAssertEqual(received?["retentionDays"] as? Int, 7,
+                       "the notice must say which retention window was applied")
+        XCTAssertEqual(store.trashedItems.count, 1,
+                       "only the expired item may be removed")
+        XCTAssertEqual(store.trashedItems.first?.content, "fresh",
+                       "the item inside the retention window must survive the purge")
+    }
 }
 
 #if DEBUG
@@ -273,6 +423,32 @@ final class FlakyStorageBackend: StorageBackend, @unchecked Sendable {
             failuresRemaining -= 1
             throw BackupPackageError.archiveFailed
         }
+        savedItems = items
+    }
+
+    func loadTags() throws -> [Tag] { [] }
+
+    func saveTags(_ tags: [Tag]) throws {}
+}
+
+/// StorageBackend that records every save, so a test can prove that a
+/// write did (or did not) reach the store.
+///
+/// ID-CRASH-0022 (2026-10-20) helper — the whole-array-replace hazard
+/// is invisible unless you can count the writes.
+final class SaveRecordingTrashBackend: StorageBackend, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var savesObserved = 0
+    private(set) var savedItems: [ClipboardItem] = []
+
+    func load() throws -> [ClipboardItem] {
+        lock.lock(); defer { lock.unlock() }
+        return savedItems
+    }
+
+    func save(_ items: [ClipboardItem]) throws {
+        lock.lock(); defer { lock.unlock() }
+        savesObserved += 1
         savedItems = items
     }
 

@@ -374,6 +374,19 @@
 "alert.trash.load.failed" = "Error al cargar la papelera. Los elementos no están disponibles temporalmente.";
 "alert.trash.load.failed.count" = "Error al cargar la papelera. %d intentos de recuperación fallaron.";
 "alert.trash.load.failed.count.one" = "Error al cargar la papelera. 1 intento de recuperación falló.";
+"alert.trash.items.expired.title" = "Papelera limpiada";
+"alert.trash.items.expired" = "Papelera: se eliminaron %d elementos tras superar el periodo de retención de %d días.";
+"alert.trash.items.expired.one" = "Papelera: se eliminó %d elemento tras superar el periodo de retención de %d días.";
+"alert.trash.purge.pending.title" = "La papelera tiene elementos por limpiar";
+"alert.trash.purge.pending" = "%d elementos de la papelera superaron el periodo de retención de %d días. Si se eliminan de forma permanente no se podrá deshacer.";
+"alert.trash.purge.pending.one" = "%d elemento de la papelera superó el periodo de retención de %d días. Si se elimina de forma permanente no se podrá deshacer.";
+"alert.trash.purge.pending.badge" = "Papelera: %d elementos por limpiar";
+"alert.trash.purge.pending.badge.one" = "Papelera: %d elemento por limpiar";
+"alert.trash.purge.pending.confirm" = "Eliminar permanentemente";
+"alert.items.load.failed.title" = "Historial del portapapeles no disponible";
+"alert.items.load.failed" = "Error al cargar el historial del portapapeles. La copia ilegible se conserva y el historial puede restaurarse desde una copia local.";
+"alert.items.load.failed.count" = "Error al cargar el historial del portapapeles. %d intentos de recuperación fallaron.";
+"alert.items.load.failed.count.one" = "Error al cargar el historial del portapapeles. 1 intento de recuperación falló.";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "Asistente de restauración";
