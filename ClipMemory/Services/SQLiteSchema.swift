@@ -17,22 +17,124 @@ import Foundation
 
 /// The complete schema for the ClipMemory SQLite store.
 ///
-/// The statements are applied in order by
-/// `SQLiteStorageBackend.migrateSchema()` and every one of them is
-/// idempotent (`IF NOT EXISTS`), so applying them to an existing
-/// database is a no-op.
+/// The statements are applied in order by `SQLiteSchemaMigrator`
+/// and every one of them is idempotent (`IF NOT EXISTS`), so applying
+/// them to an existing database is a no-op.
 enum SQLiteSchema {
 
-    /// Schema version recorded in the `schema_version` table.
+    // MARK: - Versions
+
+    /// The schema version this build ships.
     ///
-    /// NOTE (ID-CRASH-0022, 2026-10-20): the version is RECORDED, but
-    /// nothing READS it yet — `migrateSchema` decides whether to run
-    /// by checking whether the `items` table exists. So an existing
-    /// database can never be upgraded to a future schema by this
-    /// code. That gap is tracked as the schema-versioning debt in
-    /// docs/design/storage-migration.md (open question #4) and must be
-    /// closed before the backend carries a second schema version.
+    /// ID-REVIEW-1024 (PR-D N.4, 2026-10-21): the version is now
+    /// AUTHORITATIVE. It is read from SQLite's own `PRAGMA user_version`
+    /// (the database header) and decides which migrations run — the
+    /// `schema_version` table is only the human-readable ledger.
+    ///
+    /// Before this, the version was RECORDED but nothing READ it:
+    /// `migrateSchema` decided whether to run by asking whether the
+    /// `items` table existed, so an existing database could never be
+    /// upgraded to a future schema, and a database written by a NEWER
+    /// build was indistinguishable from a current one. That gap — and
+    /// the rules that close it — are written up in
+    /// docs/design/storage-migration.md §4.4.
     static let version = 1
+
+    /// The version the base DDL below produces.
+    ///
+    /// The base DDL creates the whole schema in one go, so it is not
+    /// an "upgrade" from anything — it is the floor. Upgrade steps
+    /// take the schema from `baseVersion + 1` upwards.
+    static let baseVersion = 1
+
+    /// Notes recorded for the base schema in the ledger.
+    static let baseVersionNotes = "ID-REVIEW-1024 PR-B initial schema"
+
+    // MARK: - Shape
+
+    /// One step of the schema upgrade path: the statements that take
+    /// the schema from `version - 1` to `version`.
+    struct MigrationStep {
+        /// The version this step PRODUCES.
+        let version: Int
+        /// The DDL / DML of the step.
+        ///
+        /// A step that fails halfway leaves the database at its OLD
+        /// version, so the next open re-runs the WHOLE step — every
+        /// statement must therefore be safe to re-run. Prefer the
+        /// `IF NOT EXISTS` forms; SQLite has no
+        /// `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so a column
+        /// addition has to recreate the table (or be guarded by the
+        /// statement itself).
+        let statements: [String]
+        /// Recorded in the `schema_version` ledger.
+        let notes: String
+    }
+
+    /// A whole schema: the base DDL plus the upgrade steps that lead
+    /// from the base version to `version`.
+    ///
+    /// This is a VALUE, not a global: `SQLiteStorageBackend` takes it
+    /// as a parameter, so a test can drive the migration driver with a
+    /// synthetic schema (a base plus one upgrade step) and prove that
+    /// the upgrade path really runs. A driver that only ever sees
+    /// `version == 1` with no steps cannot be distinguished from a
+    /// driver that ignores the version entirely — the test would be
+    /// green either way, i.e. a constant-true guard.
+    struct Definition {
+        /// The version the base DDL produces.
+        let baseVersion: Int
+        /// The version this build expects the database to carry.
+        let version: Int
+        /// The DDL that creates the base schema.
+        let baseStatements: [String]
+        /// Notes recorded for the base version.
+        let baseVersionNotes: String
+        /// The upgrade steps. Must form a contiguous chain from
+        /// `baseVersion + 1` to `version`.
+        let steps: [MigrationStep]
+    }
+
+    /// The schema this build ships.
+    static let definition = Definition(
+        baseVersion: baseVersion,
+        version: version,
+        baseStatements: statements,
+        baseVersionNotes: baseVersionNotes,
+        steps: migrationSteps
+    )
+
+    /// The upgrade steps, oldest first.
+    ///
+    /// Empty for now — version 1 is the base and is created by
+    /// `statements`. The next schema version adds its step here AND
+    /// bumps `version`; the driver refuses to stamp a version whose
+    /// step is missing.
+    static let migrationSteps: [MigrationStep] = []
+
+    // MARK: - Ledger
+
+    /// The statement and bindings that record an applied version in
+    /// the `schema_version` ledger.
+    ///
+    /// `INSERT OR IGNORE`: stamping an existing database for the first
+    /// time must not fail on the primary key — the row is already
+    /// there from the old code path.
+    ///
+    /// The values are BOUND, never interpolated into SQL. The version
+    /// is bound from the same argument that names it, so the recorded
+    /// version and the intended version cannot drift apart.
+    static func versionRecord(for version: Int, notes: String) -> (sql: String, bindings: [(Int32, Any)]) {
+        (
+            sql: """
+            INSERT OR IGNORE INTO schema_version (version, migrated_at, notes)
+            VALUES (?, datetime('now'), ?)
+            """,
+            bindings: [(1, version), (2, notes)]
+        )
+    }
+
+    // MARK: - Base DDL
 
     /// The DDL, in dependency order: parents before children, so a
     /// foreign key never references a table that does not exist yet.
@@ -131,10 +233,6 @@ enum SQLiteSchema {
             migrated_at TEXT NOT NULL,
             notes TEXT
         );
-        """,
-        """
-        INSERT INTO schema_version (version, migrated_at, notes)
-        VALUES (1, datetime('now'), 'ID-REVIEW-1024 PR-B initial schema')
         """
     ]
 }

@@ -53,9 +53,10 @@
 //  responsible for encrypting content before write; this backend
 //  never sees plaintext.
 //
-//  Lifecycle: init opens + migrates schema (idempotent — the
-//  migration is skipped when the `items` table already exists).
-//  deinit closes the connection.
+//  Lifecycle: init opens + migrates schema. The schema version is
+//  read from SQLite's own `PRAGMA user_version` and decides which
+//  migrations run — see `SQLiteSchemaMigrator.swift` (ID-REVIEW-1024,
+//  PR-D N.4, 2026-10-21). deinit closes the connection.
 //  Callers (ClipboardStore) construct exactly one instance per
 //  process and inject it into the backend protocol.
 //
@@ -90,9 +91,23 @@ final class SQLiteStorageBackend: StorageBackend {
     /// used to be logged and swallowed — the backend came back "alive"
     /// with `db == nil`, hiding the cause behind a later "connection is
     /// nil" error.
-    init(databaseURL: URL, defaults: UserDefaults = .standard) throws {
+    ///
+    /// ID-REVIEW-1024 (PR-D N.4, 2026-10-21): the schema is injected
+    /// instead of hard-coded. Production passes the default
+    /// (`SQLiteSchema.definition`); a test can pass a synthetic schema
+    /// — a base plus one upgrade step — to drive the migration path
+    /// end to end. Without that seam the upgrade path could not be
+    /// tested at all (the real schema has exactly one version and no
+    /// steps), so a driver that ignored the version entirely would
+    /// pass every test.
+    init(
+        databaseURL: URL,
+        defaults: UserDefaults = .standard,
+        schema: SQLiteSchema.Definition = SQLiteSchema.definition
+    ) throws {
         self.databaseURL = databaseURL
         self.defaults = defaults
+        self.schema = schema
         try openAndMigrate()
     }
 
@@ -114,6 +129,9 @@ final class SQLiteStorageBackend: StorageBackend {
 
     private let databaseURL: URL
     private let defaults: UserDefaults
+    /// ID-REVIEW-1024 (PR-D N.4, 2026-10-21): the schema this backend
+    /// migrates towards. Injected — see `init`.
+    private let schema: SQLiteSchema.Definition
     // ID-CRASH-0022 (2026-10-15): recursive — the transaction trio is a
     // class-external entry point (granularSave, StoreMigration call it
     // without holding this lock) while the five bulk methods above call
@@ -139,9 +157,10 @@ final class SQLiteStorageBackend: StorageBackend {
 
     // MARK: - Connection setup
 
-    /// Open the database, set PRAGMAs, and run the schema migration
-    /// (idempotent). Called from `init`; safe to call multiple times
-    /// in tests (the migration uses `CREATE TABLE IF NOT EXISTS`).
+    /// Open the database, set PRAGMAs, and run the schema migration.
+    /// Called from `init`; safe to call multiple times in tests (the
+    /// migration is driven by the database's own schema version, and
+    /// every statement it applies is idempotent).
     private func openAndMigrate() throws {
         try openConnection()
         try migrateSchema()
@@ -246,47 +265,16 @@ final class SQLiteStorageBackend: StorageBackend {
         try openConnection()
     }
 
-    /// Run the schema migration. Uses `sqlite3_master` to check if the
-    /// tables already exist (idempotent across launches). Per docs
-    /// §4.3.1, schema migration runs once per install — the
-    /// `schema_version` row in the meta table marks completion.
+    /// Run the schema migration.
+    ///
+    /// ID-REVIEW-1024 (PR-D N.4, 2026-10-21): the driver lives in
+    /// `SQLiteSchemaMigrator` — see that file for why it was split out
+    /// of this one. This method only hands it the open connection.
     private func migrateSchema() throws {
-        // If the items table exists, the migration has already run.
-        if try tableExists("items") {
-            return
-        }
-
-        // ID-CRASH-0022 (2026-10-20): the DDL lives in SQLiteSchema.swift
-        // — it is ~100 lines of text and pushed this file to within four
-        // lines of the SwiftLint `file_length` error ceiling.
-        for stmt in SQLiteSchema.statements {
-            try exec(stmt)
-        }
+        try SQLiteSchemaMigrator.migrate(db: db, schema: schema)
     }
 
     // MARK: - Helpers
-
-    /// Whether a table exists in the current schema.
-    ///
-    /// ID-CRASH-0022 (2026-10-20): a failed prepare used to answer
-    /// "no" — indistinguishable from "the table does not exist",
-    /// which made `migrateSchema` believe a fresh database was needed
-    /// and then fail on the CREATE statements with a much less obvious
-    /// error. It now throws, so the cause is the cause.
-    private func tableExists(_ name: String) throws -> Bool {
-        let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?"
-        let stmt = try prepare(sql)
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, name, -1, Self.sqlLiteTransientDestructor)
-        let rc = sqlite3_step(stmt)
-        if rc == SQLITE_DONE { return false }
-        guard rc == SQLITE_ROW else {
-            let msg = db.map { String(cString: sqlite3_errmsg($0)) } ?? "(no error message)"
-            Self.logger.error("sqlite3_step failed (rc=\(rc)): \(msg) — sql=\(sql.prefix(120))")
-            throw StorageBackendError.storageFailure(sql: sql, code: rc, detail: msg)
-        }
-        return true
-    }
 
     /// ID-CRASH-0022 (2026-10-20): this used to be non-throwing — it logged
     /// the failure and returned normally, which made every `throws` in this

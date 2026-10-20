@@ -57,6 +57,7 @@
 		31D986129C9F15C065BEF82B /* LegacyImageMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE0A37C5B380B1D3129ECBA /* LegacyImageMigrationTests.swift */; };
 		327D4E28765DDBA110807CBC /* ClipboardMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 162510951570AB9FC4207B0F /* ClipboardMonitorTests.swift */; };
 		35A5BE8D445F109A2D924033 /* RestoreWizardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2826F0BB133B0AC96DB2AB87 /* RestoreWizardViewModel.swift */; };
+		388D1F48712D6465EE66AB94 /* SQLiteSchemaVersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8342F2CE9E088D0A7B21D05 /* SQLiteSchemaVersionTests.swift */; };
 		38A15F5CDD3D5D10782D3B85 /* TagChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3E34CEE9BF8F658996168D5 /* TagChip.swift */; };
 		38F40F34D811AA8D2CC1709A /* HangDetectorCaptureGatingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735D2A6CED8A32FF5FA2D4F2 /* HangDetectorCaptureGatingTests.swift */; };
 		39604C503C6F2C0872F5EDCB /* ClipboardStore+History.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C426203B4C8506F6CD8BF60 /* ClipboardStore+History.swift */; };
@@ -226,6 +227,7 @@
 		E89EAD0E96F0484E360879B3 /* AAASuiteBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 598ED0FD98E424D7BF2897D2 /* AAASuiteBootstrapTests.swift */; };
 		EB7FE5BC339505334E453459 /* EncryptionFailureAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86B656811820158814CB1CDD /* EncryptionFailureAlert.swift */; };
 		EC9B8E180D5B18F679F1E86D /* CryptoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F250C19E7199E18D95521A3 /* CryptoService.swift */; };
+		EDB3AAB77F96C0A50EB502EB /* SQLiteSchemaMigrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34A5A550918D2B3C27033A57 /* SQLiteSchemaMigrator.swift */; };
 		EDD4772BEACF49926B32ECA9 /* ConcurrencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */; };
 		F0564A730DDCDEC5CFF13272 /* DiagnosticsBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67D7342759CC58EA571EF89D /* DiagnosticsBanner.swift */; };
 		F07D572ED1239E93F9399EBB /* BackupPackageSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE40F85AB73ADECAB89A3D0C /* BackupPackageSecurityTests.swift */; };
@@ -307,6 +309,7 @@
 		32ED9328F22F8499A3D161DB /* HotKeyRetainFailurePathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyRetainFailurePathTests.swift; sourceTree = "<group>"; };
 		339849815227F36776F365DE /* ItemListViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemListViewTests.swift; sourceTree = "<group>"; };
 		343624C58910FEDD2C23E204 /* SafeModeBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeModeBanner.swift; sourceTree = "<group>"; };
+		34A5A550918D2B3C27033A57 /* SQLiteSchemaMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteSchemaMigrator.swift; sourceTree = "<group>"; };
 		36CE7F496DD53367BA7CDB15 /* KeychainKeyStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainKeyStoreTests.swift; sourceTree = "<group>"; };
 		3837DC25F85BAAC0D17B957C /* ClipboardItemRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItemRowTests.swift; sourceTree = "<group>"; };
 		397ABF823A0998D9030774AC /* FuzzySearchMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuzzySearchMatcher.swift; sourceTree = "<group>"; };
@@ -415,6 +418,7 @@
 		A7A21DECBCDF8EB0C7D56936 /* ConcurrencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcurrencyTests.swift; sourceTree = "<group>"; };
 		A7B4D4D940383DE2B189A772 /* AppDirectories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDirectories.swift; sourceTree = "<group>"; };
 		A7F26B268CA5CF8662C3C930 /* QuickBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickBarView.swift; sourceTree = "<group>"; };
+		A8342F2CE9E088D0A7B21D05 /* SQLiteSchemaVersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteSchemaVersionTests.swift; sourceTree = "<group>"; };
 		A936C5B797F462B2E7012F25 /* ClipboardStore+Prewarm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ClipboardStore+Prewarm.swift"; sourceTree = "<group>"; };
 		AA672B12AE7F6167EAD741A5 /* AppDirectoriesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDirectoriesTests.swift; sourceTree = "<group>"; };
 		AB8F5D4712793FC8930C7DB9 /* CryptoService+TestSeams.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CryptoService+TestSeams.swift"; sourceTree = "<group>"; };
@@ -681,6 +685,7 @@
 				D7E10F948AD0876017AD54DC /* SidebarViewTests.swift */,
 				3AEFAE220ACBBE0363008EAF /* SingleInstanceGuardTests.swift */,
 				A60808BF4FD654EC8823A8EB /* SnapshotTestHelpers.swift */,
+				A8342F2CE9E088D0A7B21D05 /* SQLiteSchemaVersionTests.swift */,
 				4436DCBFB8BEC8421465B521 /* SQLiteStorageBackendTests.swift */,
 				1F09A4A042BBC01BB5C0D59F /* StartupHealthTests.swift */,
 				B8163C511D387C21C023A457 /* StorageBackendGranularTests.swift */,
@@ -818,6 +823,7 @@
 				5F278F3397CB31226656E121 /* ShareService.swift */,
 				44CF9F4848B93D05144FF188 /* SQLiteRowDecoders.swift */,
 				186A7E9476127E305E8E5F7D /* SQLiteSchema.swift */,
+				34A5A550918D2B3C27033A57 /* SQLiteSchemaMigrator.swift */,
 				734031561BB0E2E44712BE36 /* SQLiteStorageBackend.swift */,
 				C0E0F15D0596B4B0CD96170B /* StartupHealth.swift */,
 				9168850C81327649C0142FD4 /* StorageBackend.swift */,
@@ -1069,6 +1075,7 @@
 				A1B5889D4E6AD5DC1F5BDFE4 /* ReleaseReadinessTests.swift in Sources */,
 				F1DB28B410E5D9B4F69A021B /* RestoreWizardViewModelTests.swift in Sources */,
 				BA733FF9DD0FD73ACAA1907F /* RichTextParserBehaviorTests.swift in Sources */,
+				388D1F48712D6465EE66AB94 /* SQLiteSchemaVersionTests.swift in Sources */,
 				13048B021D6A2E677B333794 /* SQLiteStorageBackendTests.swift in Sources */,
 				A433A705D144484891ED34A6 /* SafeModeServiceTests.swift in Sources */,
 				4E3B3A3265DFB035AF5126DA /* SensitiveDetectorTests.swift in Sources */,
@@ -1180,6 +1187,7 @@
 				FFAC7E103564C9614B82F89B /* RichTextParser.swift in Sources */,
 				5782E380345CD7B5419BA586 /* SQLiteRowDecoders.swift in Sources */,
 				99B4FC061B7C2AC32241B6B7 /* SQLiteSchema.swift in Sources */,
+				EDB3AAB77F96C0A50EB502EB /* SQLiteSchemaMigrator.swift in Sources */,
 				CD508E53D63E290E2C7546DA /* SQLiteStorageBackend.swift in Sources */,
 				BE227B1B6992D34C37515950 /* SafeModeBanner.swift in Sources */,
 				AEEE27EC31C4AA70E55DDCB9 /* SafeModeService.swift in Sources */,

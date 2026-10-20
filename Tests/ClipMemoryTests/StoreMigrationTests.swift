@@ -184,7 +184,9 @@ import XCTest
 
     /// The migration flag must be set after a successful run. PR-B's
     /// SQLite migration writes `migration.v1.to.v2.completed = 1` into
-    /// the `schema_version` table (per docs §2).
+    /// the `app_meta` table (per docs §4.3.1) — NOT into
+    /// `schema_version`, which is the SCHEMA-version ledger
+    /// (ID-REVIEW-1024, PR-D N.4).
     func testMigrationSetsCompletedFlag() throws {
         seedItemsInSourceDefaults([makeTestItem(content: "x")])
 

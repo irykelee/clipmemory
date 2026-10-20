@@ -522,14 +522,31 @@ This makes rollback the explicit, last-resort path — never a silent fallback.
 
 ### 4.4 Schema evolution
 
-`schema_version` table is the gate. New migrations (`v2 → v3`) use `ALTER TABLE ... ADD COLUMN ...` with default value. Never destructive — no `DROP COLUMN`. Documented per-migration in `migrations/` directory:
+> **ID-REVIEW-1024 (PR-D N.4, 2026-10-21) — the gate is now `PRAGMA user_version`, not the `schema_version` table.**
+>
+> The draft below said the `schema_version` TABLE is the gate. It was not: the version was *recorded* there and **nothing read it** — `migrateSchema` decided whether to run by asking whether the `items` table existed. An existing database could therefore never be upgraded to a future schema, and a database written by a NEWER build was indistinguishable from a current one. That made every future `ALTER TABLE` a dead end: there was no mechanism to decide *which* migrations to run.
+>
+> The version now lives in SQLite's own `PRAGMA user_version` (the database header) and is authoritative. The `schema_version` table remains as a **human-readable ledger** of what was applied (it is what a human reads when asking "what happened to this file?"), not as the decision input.
 
-```
-migrations/
-├── 001_initial.sql
-├── 002_add_ocr_text_index.sql
-└── ...
-```
+**The rules** (implemented in `ClipMemory/Services/SQLiteSchemaMigrator.swift`):
+
+| Database version | Action |
+|---|---|
+| `== ` this build's version | nothing to do |
+| `<` this build's version | apply the base DDL (if below the base) and every upgrade step above the database's version, then stamp the version |
+| `>` this build's version | **REFUSE** — the file was written by a newer build; touching a schema this build does not understand is how databases get corrupted |
+
+Three invariants make the upgrade path safe:
+
+1. **The version is stamped LAST.** If any statement fails, the database keeps its old version and the next open retries the whole step. Therefore every statement in a step must be safe to re-run (`IF NOT EXISTS` forms; SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so a column addition has to recreate the table).
+2. **The step chain must be contiguous.** The compiled-in steps must cover `baseVersion + 1 … version` with no gap. A gap would let the database JUMP a version — the missing version's changes would never be applied, and the reachability check below would not catch it (the chain would still end on the target version).
+3. **Never stamp a version that was not reached.** The stamp happens only after the chain has landed exactly on the target version. Stamping a version whose migration never ran is the worst possible outcome: every later open would believe the upgrade happened and skip it forever.
+
+A version bump that forgets its step is caught the first time a database needs migrating — the driver refuses and names the missing version, instead of silently producing a database that is missing a version's changes.
+
+**Adding a schema version** is therefore: add a `SQLiteSchema.MigrationStep` to `SQLiteSchema.migrationSteps`, bump `SQLiteSchema.version`, and make the step's statements idempotent. The base DDL itself is never edited after shipping — that is what the step chain is for.
+
+New migrations (`v2 → v3`) use `ALTER TABLE ... ADD COLUMN ...` with a default value, or the recreate-the-table pattern where SQLite has no idempotent form. Never destructive — no `DROP COLUMN`.
 
 ## 5. Concurrency / connection model (SQLite + existing thread constraints)
 
