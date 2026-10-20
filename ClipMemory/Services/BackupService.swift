@@ -51,7 +51,11 @@ final class BackupService {
         let suiteName = "BackupService-XCTest-isolation"
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "ClipMemory-BackupService-\(ProcessInfo.processInfo.processIdentifier)",
+            // ID-CRASH-0031 follow-up: the PID alone is not enough — a
+            // new test process can land on a recycled PID while the
+            // previous process's temp dir is still on disk. The UUID
+            // makes the directory unique per process.
+            "ClipMemory-BackupService-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)",
             isDirectory: true
         )
         return BackupService(
