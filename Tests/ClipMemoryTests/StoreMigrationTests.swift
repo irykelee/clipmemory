@@ -197,6 +197,58 @@ import XCTest
                         "migration flag must be set after runOnce")
     }
 
+    /// ID-CRASH-0022 (2026-10-20, auto-review P1): the flag is tagged
+    /// `'i64'`, and the schema contract (docs §2) defines `'i64'` as an
+    /// 8-byte little-endian signed integer — with the read recipe
+    /// `data.withUnsafeBytes { $0.loadUnaligned(as: Int64.self) }`.
+    ///
+    /// The flag used to be written as `Data([0x01])` — ONE byte — while
+    /// tagged `'i64'`. A flag that says "i64" must BE an i64: the
+    /// doc's own read recipe traps on a 1-byte buffer, so the next
+    /// reader that follows the contract would crash.
+    ///
+    /// This test pins the on-disk encoding, and it decodes the value the
+    /// way the contract says to — so it fails if the encoding drifts.
+    func testMigrationFlagIsStoredAsEightByteLittleEndianI64() throws {
+        seedItemsInSourceDefaults([makeTestItem(content: "x")])
+
+        try StoreMigration.runOnce(source: sourceDefaults, target: backend)
+
+        let raw = try XCTUnwrap(backend.meta(key: "migration.v1.to.v2.completed"),
+                                "migration flag must be set after runOnce")
+        XCTAssertEqual(raw.count, MemoryLayout<Int64>.size,
+                       "the 'i64' contract is an 8-byte value — a 1-byte blob traps the documented read recipe")
+        let decoded = raw.withUnsafeBytes { $0.loadUnaligned(as: Int64.self) }
+        XCTAssertEqual(decoded, 1,
+                       "the flag value must decode to 1 with the documented little-endian Int64 read")
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): backwards compatibility with the
+    /// 1-byte flag the pre-2026-10-20 code wrote.
+    ///
+    /// A database written by the old code carries `Data([0x01])`. If the
+    /// new reader treated that as "not completed", the migration would
+    /// run a second time — and a re-run is destructive: `migrateTrash`
+    /// moves the legacy trash into the new store, which deletes the
+    /// item rows. An item the user had already restored would be
+    /// deleted again, silently.
+    ///
+    /// So the legacy encoding must still count as "completed".
+    func testLegacyOneByteMigrationFlagIsStillTreatedAsCompleted() throws {
+        seedItemsInSourceDefaults([makeTestItem(content: "x")])
+        try backend.setMeta(
+            key: "migration.v1.to.v2.completed",
+            value: Data([0x01]),
+            type: "i64"
+        )
+
+        try StoreMigration.runOnce(source: sourceDefaults, target: backend)
+
+        let items = try backend.load()
+        XCTAssertTrue(items.isEmpty,
+                      "a legacy 1-byte flag must count as completed — the migration must not run again")
+    }
+
     /// Per docs §4.1 step 6, the migration KEEPS the UserDefaults
     /// blobs defensively — rollback (docs §4.2) needs them. Removing
     /// them at migration time would lose the rollback path.
@@ -258,6 +310,59 @@ import XCTest
     }
 
     // MARK: - Test helpers (seed source-side blobs + backend test seams)
+
+    /// ID-CRASH-0022 (2026-10-20): a garbage flag must NOT trigger a
+    /// re-run.
+    ///
+    /// The migration reads the LEGACY blobs, which it deliberately
+    /// KEEPS (docs §4.1 step 6). So a re-run does not re-import the
+    /// current state — it re-imports the OLD snapshot over it. A flag
+    /// we cannot interpret is an anomaly; re-running on it would roll
+    /// the user's newer data back to the legacy one. Skipping is the
+    /// safe direction (nothing is lost — the legacy blobs are still
+    /// there) and the anomaly is logged.
+    func testGarbageMigrationFlagDoesNotTriggerRerun() throws {
+        seedItemsInSourceDefaults([makeTestItem(content: "x")])
+        // A flag that is neither the legacy 1-byte form nor a valid
+        // 8-byte Int64 == 1.
+        try backend.setMeta(
+            key: "migration.v1.to.v2.completed",
+            value: Data([0xFF, 0xFF, 0xFF, 0xFF]),
+            type: "i64"
+        )
+
+        try StoreMigration.runOnce(source: sourceDefaults, target: backend)
+
+        let items = try backend.load()
+        XCTAssertTrue(items.isEmpty,
+                      "an uninterpretable flag must not re-run the migration — a re-run re-imports the stale legacy snapshot")
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the migration must not delete an
+    /// item the user RESTORED after the last migration.
+    ///
+    /// The legacy blobs are kept defensively, so the legacy trash blob
+    /// still holds the old snapshot. If the migration runs again (the
+    /// flag was cleared deliberately) and the legacy trash blob holds
+    /// an id that is also in the items table, `moveToTrash` would
+    /// DELETE that row — the restored item would silently leave the
+    /// history.
+    func testMigrationDoesNotDeleteAlreadyRestoredItems() throws {
+        let restored = makeTestItem(content: "restored")
+        // The legacy trash blob still holds the item (it was restored
+        // after the last migration, and the legacy blob was never
+        // rewritten).
+        seedTrashInSourceDefaults([restored])
+        // The item is in the items table already — i.e. it was
+        // restored. A first migration would not have this.
+        try backend.upsertItem(restored)
+
+        try StoreMigration.runOnce(source: sourceDefaults, target: backend)
+
+        let items = try backend.load()
+        XCTAssertTrue(items.contains { $0.id == restored.id },
+                      "an item that is already in the items table must not be moved back to the trash by a re-run")
+    }
 
     private func seedItemsInSourceDefaults(_ items: [ClipboardItem]) {
         let data = try? JSONEncoder().encode(items)

@@ -122,7 +122,16 @@ final class SQLiteStorageBackend: StorageBackend {
     private var db: OpaquePointer?  // sqlite3 *
     /// ID-CRASH-0022 (2026-10-20): test seam — see `rollbackTransaction`.
     /// Never set in production code.
+    ///
+    /// ID-CRASH-0022 (2026-10-20, auto-review P2): the seam is
+    /// `#if DEBUG`-only now. It used to be a plain `internal var`, i.e.
+    /// it existed in every build, including Release, where nothing can
+    /// ever set it — dead surface in shipping binaries. The repo's
+    /// established pattern for test seams is the same `#if DEBUG` block
+    /// (see `TrashStore.replaceBackendForTesting`).
+    #if DEBUG
     var rollbackFailureForTest: StorageBackendError?
+    #endif
     private static let logger = Logger(
         subsystem: "com.clipmemory.app",
         category: "SQLiteStorageBackend"
@@ -145,16 +154,32 @@ final class SQLiteStorageBackend: StorageBackend {
     /// migration (the schema is idempotent, but a reset must not be
     /// the thing that decides whether the tables exist).
     private func openConnection() throws {
+        // Ensure the parent directory exists (~/Library/Application
+        // Support/ClipMemory/). macOS sandbox may not have created
+        // it yet on first launch.
+        //
+        // ID-CRASH-0022 (2026-10-20, auto-review P1): this failure used
+        // to be logged and swallowed, so the real cause ("cannot create
+        // the parent directory") was replaced by a SECONDARY error from
+        // `sqlite3_open_v2` ("unable to open database file") — the
+        // diagnostic pointed at the wrong thing. A failure here is
+        // fatal for the open, so it is thrown with its own cause
+        // attached.
         do {
-            // Ensure the parent directory exists (~/Library/Application
-            // Support/ClipMemory/). macOS sandbox may not have created
-            // it yet on first launch.
             try FileManager.default.createDirectory(
                 at: databaseURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
         } catch {
             Self.logger.error("Failed to create database parent directory: \(error.localizedDescription)")
+            throw StorageBackendError.storageFailure(
+                sql: "FileManager.createDirectory(\(databaseURL.deletingLastPathComponent().path))",
+                code: -1,
+                detail: """
+                the database's parent directory could not be created: \
+                \(error.localizedDescription)
+                """
+            )
         }
 
         var handle: OpaquePointer?
@@ -818,11 +843,16 @@ final class SQLiteStorageBackend: StorageBackend {
             // rollback fails — lets the suite exercise the reset path
             // deterministically instead of leaving it unverified.
             // One-shot: cleared when it fires.
+            //
+            // The seam is DEBUG-only (see the property declaration), so
+            // the Release build has no injection point at all.
+            #if DEBUG
             if let injected = rollbackFailureForTest {
                 rollbackFailureForTest = nil
                 try resetConnection(afterRollbackFailure: injected)
                 return
             }
+            #endif
             do {
                 try exec("ROLLBACK")
             } catch {
@@ -969,7 +999,7 @@ final class SQLiteStorageBackend: StorageBackend {
             Self.logger.error("sqlite3_step failed (rc=\(rc)): \(msg) — sql=\(sql.prefix(120))")
             throw StorageBackendError.storageFailure(sql: sql, code: rc, detail: msg)
         }
-        return decodeTrashRow(stmt: stmt)
+        return SQLiteRowDecoder.trashItem(stmt: stmt)
     }
 
     private func loadTrashItem(itemID: UUID) throws -> ClipboardItem? {
@@ -995,49 +1025,6 @@ final class SQLiteStorageBackend: StorageBackend {
         return found
     }
 
-    private func decodeTrashRow(stmt: OpaquePointer) -> ClipboardItem? {
-        func text(_ index: Int32) -> String? {
-            guard let cstr = sqlite3_column_text(stmt, index) else { return nil }
-            return String(cString: cstr)
-        }
-        func int(_ index: Int32) -> Int {
-            return Int(sqlite3_column_int64(stmt, index))
-        }
-        guard let idStr = text(0), let id = UUID(uuidString: idStr),
-              let typeStr = text(1), let type = ClipboardItemType(rawValue: typeStr) else {
-            // ID-CRASH-0022 (2026-10-20): a row we cannot decode is
-            // skipped, but it must not vanish silently — log it, so a
-            // growing pile of unreadable rows is at least visible.
-            Self.logger.error(
-                "skipping undecodable trash row (id=\(text(0) ?? "<null>"), type=\(text(1) ?? "<null>"))"
-            )
-            return nil
-        }
-        // Column order comes from the SELECT above:
-        //   0 item_id | 1 type | 2 is_pinned | 3 is_encrypted |
-        //   4 is_sensitive | 5 content_hash | 6 content_blob | 7 created_at
-        // ID-CRASH-0022 (2026-10-20): these two were swapped — content
-        // was read from the content_hash column and contentHash from
-        // content_blob, so every restored item came back with an empty
-        // content string (and the ciphertext in the hash slot).
-        let content = text(6) ?? ""
-        let contentHash = text(5)
-        let createdAt = Date(timeIntervalSince1970: TimeInterval(int(7)))
-        let isPinned = int(2) != 0
-        let isEncrypted = int(3) != 0
-        let isSensitive = int(4) != 0
-        return ClipboardItem(
-            id: id,
-            content: content,
-            type: type,
-            createdAt: createdAt,
-            isPinned: isPinned,
-            isSensitive: isSensitive,
-            isEncrypted: isEncrypted,
-            contentHash: contentHash
-        )
-    }
-
     private func loadItemsFromDB() throws -> [ClipboardItem] {
         let sql = """
             SELECT id, type, is_pinned, is_encrypted, is_sensitive,
@@ -1049,7 +1036,7 @@ final class SQLiteStorageBackend: StorageBackend {
         defer { sqlite3_finalize(stmt) }
         var items: [ClipboardItem] = []
         try forEachRow(stmt, sql: sql) { row in
-            if let item = decodeItemRow(stmt: row) {
+            if let item = SQLiteRowDecoder.item(stmt: row) {
                 items.append(item)
             }
         }
@@ -1106,82 +1093,11 @@ final class SQLiteStorageBackend: StorageBackend {
         defer { sqlite3_finalize(stmt) }
         var tags: [Tag] = []
         try forEachRow(stmt, sql: sql) { row in
-            if let tag = decodeTagRow(stmt: row) {
+            if let tag = SQLiteRowDecoder.tag(stmt: row) {
                 tags.append(tag)
             }
         }
         return tags
-    }
-
-    private func decodeItemRow(stmt: OpaquePointer) -> ClipboardItem? {
-        func text(_ index: Int32) -> String? {
-            guard let cstr = sqlite3_column_text(stmt, index) else { return nil }
-            return String(cString: cstr)
-        }
-        guard let idStr = text(0), let id = UUID(uuidString: idStr),
-              let typeStr = text(1), let type = ClipboardItemType(rawValue: typeStr) else {
-            // ID-CRASH-0022 (2026-10-20): same as decodeTrashRow — a
-            // row we cannot decode is skipped, but not silently.
-            Self.logger.error(
-                "skipping undecodable items row (id=\(text(0) ?? "<null>"), type=\(text(1) ?? "<null>"))"
-            )
-            return nil
-        }
-        let content = text(10) ?? ""
-        let contentHash = text(9)
-        let createdAt = Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 7)))
-        let expiresAt: Date? = sqlite3_column_type(stmt, 6) == SQLITE_NULL ? nil : Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 6)))
-        let isPinned = sqlite3_column_int(stmt, 2) != 0
-        let isEncrypted = sqlite3_column_int(stmt, 3) != 0
-        let isSensitive = sqlite3_column_int(stmt, 4) != 0
-        let decryptionFailed = sqlite3_column_int(stmt, 5) != 0
-        let ocrText = text(11)
-        let ocrAttempted = sqlite3_column_int(stmt, 12) != 0
-        let updatedAt = Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 8)))
-        let item = ClipboardItem(
-            id: id,
-            content: content,
-            type: type,
-            createdAt: createdAt,
-            isPinned: isPinned,
-            isSensitive: isSensitive,
-            expiresAt: expiresAt,
-            isEncrypted: isEncrypted,
-            contentHash: contentHash,
-            decryptionFailed: decryptionFailed,
-            ocrText: ocrText,
-            ocrAttempted: ocrAttempted
-        )
-        // updatedAt is not a public field on ClipboardItem, but we
-        // record the value in case future audit fields need it.
-        _ = updatedAt
-        return item
-    }
-
-    private func decodeTagRow(stmt: OpaquePointer) -> Tag? {
-        // ID-CRASH-0022 (2026-10-20): same as decodeItemRow /
-        // decodeTrashRow — a row we cannot decode is skipped, but not
-        // silently.
-        guard let idC = sqlite3_column_text(stmt, 0),
-              let nameC = sqlite3_column_text(stmt, 1) else {
-            Self.logger.error("skipping undecodable tags row")
-            return nil
-        }
-        guard let id = UUID(uuidString: String(cString: idC)) else {
-            Self.logger.error("skipping tags row with a non-UUID id")
-            return nil
-        }
-        let name = String(cString: nameC)
-        let colorHex = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? ""
-        let isAuto = sqlite3_column_int(stmt, 3) != 0
-        let createdAt = Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 4)))
-        return Tag(
-            id: id,
-            name: name,
-            colorHex: colorHex,
-            isAutoSuggested: isAuto,
-            createdAt: createdAt
-        )
     }
 
     private static let sqlLiteTransientDestructor = unsafeBitCast(
@@ -1227,10 +1143,10 @@ final class SQLiteStorageBackend: StorageBackend {
         defer { sqlite3_finalize(stmt) }
         var items: [ClipboardItem] = []
         try forEachRow(stmt, sql: sql) { row in
-            // Reuse decodeTrashRow (same column layout for shared
+            // Reuse the trash decoder (same column layout for shared
             // columns; tag_ids not stored in trash, so it's OK to
             // return ClipboardItem with an empty tagIds set).
-            if let item = decodeTrashRow(stmt: row) {
+            if let item = SQLiteRowDecoder.trashItem(stmt: row) {
                 items.append(item)
             }
         }

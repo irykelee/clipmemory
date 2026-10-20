@@ -379,6 +379,42 @@ final class SQLiteStorageBackendTests: XCTestCase {
         }
     }
 
+    /// ID-CRASH-0022 (2026-10-20, auto-review P1): the parent-directory
+    /// creation must not be swallowed.
+    ///
+    /// It used to be: the failure was logged and the open continued, so
+    /// the REAL cause ("cannot create the parent directory") was
+    /// replaced by a SECONDARY error from `sqlite3_open_v2` ("unable to
+    /// open database file"). The diagnostic pointed at the wrong thing,
+    /// and the operator had no way to tell a permissions problem from a
+    /// missing-directory problem.
+    ///
+    /// The error must now name the operation that actually failed.
+    func testCreateDirectoryFailureIsReportedWithItsOwnCause() throws {
+        // A regular file where the parent directory should be: creating
+        // a directory underneath it cannot succeed.
+        let blocker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SQLiteDirBlocker-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: blocker, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: blocker) }
+        let file = blocker.appendingPathComponent("not-a-directory")
+        try Data("x".utf8).write(to: file)
+        let badURL = file.appendingPathComponent("sub").appendingPathComponent("db.sqlite")
+
+        XCTAssertThrowsError(try SQLiteStorageBackend(databaseURL: badURL)) { error in
+            guard let backendError = error as? StorageBackendError,
+                  case .storageFailure(let sql, let code, let detail) = backendError else {
+                return XCTFail("expected StorageBackendError.storageFailure, got \(error)")
+            }
+            XCTAssertTrue(sql.contains("createDirectory"),
+                          "the error must name the operation that failed, got sql=\(sql.prefix(80))")
+            XCTAssertNotEqual(code, SQLITE_CANTOPEN,
+                              "the diagnostic must not be the secondary 'cannot open' error — it must carry the real cause")
+            XCTAssertTrue(detail.contains("parent directory"),
+                          "the detail must carry the real cause, got detail=\(detail.prefix(120))")
+        }
+    }
+
     /// Transaction ownership belongs to the CALLER. An inner write that
     /// fails must NOT roll the caller's transaction back — the caller
     /// decides. (docs §4.1 step 5, and `granularSave`'s shape.)
