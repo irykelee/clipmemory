@@ -158,6 +158,26 @@ final class TrashStoreMainActorTests: XCTestCase {
         XCTAssertEqual(recorder.savesObserved, 0,
                        "a failed load must not be followed by a write — it would replace the store with an empty array")
     }
+
+    /// The counterpart of `testFailedLoadRefusesToWriteOverStore`: a
+    /// HEALTHY store must still be able to write an EMPTY collection.
+    ///
+    /// The ID-CRASH-0022 guard keys on the load-failed flag, NOT on
+    /// emptiness — "the user emptied the recycle bin" is a legitimate
+    /// empty write, and it is the only way to clear the bin. If the
+    /// guard were written as "never write an empty array", the user
+    /// could never empty their recycle bin and this test goes red.
+    func testHealthyStoreStillWritesAnEmptyCollection() {
+        let recorder = SaveRecordingTrashBackend()
+        let healthy = TrashStore(backend: recorder, defaults: testDefaults)
+        XCTAssertFalse(healthy.lastLoadFailed,
+                       "a store with no sentinel and a healthy backend is not in the failed state")
+
+        healthy.saveTrashedItems()
+
+        XCTAssertEqual(recorder.savesObserved, 1,
+                       "an empty write from a healthy store is legitimate — it is how the user empties the recycle bin")
+    }
 }
 
 #if DEBUG
