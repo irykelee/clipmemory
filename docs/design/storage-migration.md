@@ -706,6 +706,19 @@ Each PR adds tests covering the scope. Cumulative test count target after PR-E: 
 
 4. **MemoryStorageBackend semantic** — keep as test-only seam? Or expose a `MemoryStorageBackend` adapter on top of SQLite (`:memory:` pragma) for fast tests? (Proposed: keep the in-memory array backend for tests where SQLite would be overkill; add SQLite-backed memory backend later if needed.)
 
+5. **The trash side is not yet a first-class citizen of the protocol** — **this is a PR-C gate, not a PR-B item.** ID-CRASH-0022 (2026-10-20, opencode review `auto-review-20261020-170730-89948` P1) found that the SQLite trash store does not carry the fields a faithful recycle bin needs:
+
+   | Field | Where it is lost | Consequence if SQLite becomes the trash backend |
+   |---|---|---|
+   | `deletedAt` | `upsertTrashItemInternal` writes `trashed_at = Date()`; `decodeTrashRow` never reads it back | `purgeExpiredTrash` filters on `deletedAt != nil` ⇒ **nothing would ever expire** ⇒ the retention policy is dead and the bin grows forever |
+   | `expires_at` | hardcoded to `now + 30 days`, ignoring the user's `trashRetentionDays` (3/7/14/30) | the stored expiry contradicts the user's setting |
+   | `tagIds` | no column; `decodeTrashRow` returns `tagIds = []` | restoring an item silently drops its tag associations |
+   | `ocrText` / `ocrAttempted` / `decryptionFailed` | no columns | restoring drops the cached OCR text and the decryption-failed flag |
+
+   The same gap shows up on the protocol side: `StorageBackend` has `moveToTrash` / `restoreFromTrash` but no trash DIMENSION (`loadTrashAll` / `saveTrash` / `purgeTrash`), so `TrashStore` drives the trash through the array-level `load()` / `save(_:)` — which in SQLite terms means "load the MAIN ITEMS as if they were the trash" and "write the trash by deleting every row in `items`".
+
+   ⇒ **PR-C must land both halves together**: the protocol gains a trash dimension, and `trash_items` gains the columns above (at minimum `deleted_at` + `tag_ids`; `ocr_text` / `ocr_attempted` / `decryption_failed` if the trash is to round-trip faithfully). Until then the SQLite backend must NOT be wired to `TrashStore` — the trap is dormant only because PR-B's backend has no production instantiation site.
+
 ## 12. Rollout risk summary
 
 | Risk | Mitigation |
@@ -714,6 +727,7 @@ Each PR adds tests covering the scope. Cumulative test count target after PR-E: 
 | Migration data loss | Migration wraps in `BEGIN IMMEDIATE TRANSACTION`; failure path keeps UserDefaults blobs intact (step 4.1.6); `migration.v1.to.v2.completed` flag is atomic |
 | Performance regression on tiny libraries (<100 items) | SQLite per-row overhead ≈ 5µs per write; for <100 items the array-level path is still cheaper — `SQLiteStorageBackend` will only be used when `items.count > 1000` (threshold tunable) |
 | Cross-platform SQLite behavior on macOS 13/14/15 | Use only documented-stable SQLite features (no JSON1 extension for v1, FTS5 for later); test on all 3 SDK targets via CI matrix |
+| Trash wired to SQLite before the trash dimension exists | §11 open question 5 — `TrashStore` drives the trash through the array-level `load()` / `save(_:)`, which in SQLite terms means "read the main items as the trash" and "write the trash by deleting every row in `items`". PR-C gate: the protocol gains `loadTrashAll` / `saveTrash` / `purgeTrash` AND `trash_items` gains `deleted_at` + `tag_ids` before the backend is wired |
 
 ---
 
