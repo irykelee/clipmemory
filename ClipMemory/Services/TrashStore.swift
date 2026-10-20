@@ -285,6 +285,37 @@ final class TrashStore: ObservableObject {
     /// items live in `self.trashedItems`), so the risk is "next launch
     /// has no trash" — recoverable but user-visible only on quit.
     func saveTrashedItems() {
+        // ID-CRASH-0022 (2026-10-20): refuse to write while the load is
+        // in a FAILED state.
+        //
+        // `FileStorageBackend.save(_:)` is a WHOLE-ARRAY REPLACE. While
+        // the load has failed, the in-memory `trashedItems` is empty (or
+        // partial) and does NOT represent the store's content — writing
+        // it would replace the user's entire recycle bin with an empty
+        // array. That is precisely the sequence this file's own
+        // quarantine log warns about: "The next save will overwrite the
+        // original key with the current (empty) in-memory collection;
+        // recover from the quarantined copy or a backup before saving."
+        //
+        // The image side already has this guard (`ClipboardStore.loadItems`
+        // skips `cleanupOrphanedImages` while `lastLoadFailed` is true);
+        // the SAVE side did not, so the blob itself was unprotected
+        // while its images were. Refusing keeps the recovery path
+        // intact: the corrupt blob stays under the `.corrupt-*`
+        // quarantine key and the failure is already surfaced to the user
+        // via `.trashLoadFailed` + the AppDelegate throttler.
+        if lastLoadFailed {
+            logger.error(
+                // swiftlint:disable:next line_length
+                "ID-CRASH-0022: refusing to save trashed items while the trash load is in a failed state — writing would replace the store's content with an unknown (possibly empty) collection"
+            )
+            NotificationCenter.default.post(
+                name: .clipboardSaveFailed,
+                object: self,
+                userInfo: ["source": "trashSaveFailed"]
+            )
+            return
+        }
         do {
             try backend.save(trashedItems)
         } catch {

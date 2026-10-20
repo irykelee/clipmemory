@@ -123,6 +123,41 @@ final class TrashStoreMainActorTests: XCTestCase {
                        "ID-STORE-0003: batch must dedup against existing bin and itself")
         XCTAssertEqual(Set(store.trashedItems.map { $0.id }), Set([a.id, b.id]))
     }
+
+    /// ID-CRASH-0022 (2026-10-20): while the trash load is in a FAILED
+    /// state, the store must NOT write.
+    ///
+    /// `FileStorageBackend.save(_:)` is a WHOLE-ARRAY REPLACE. While
+    /// the load has failed, the in-memory collection is empty and does
+    /// NOT represent the store's content — writing it would replace the
+    /// user's entire recycle bin with an empty array. That is exactly
+    /// the sequence the quarantine log warns about ("The next save will
+    /// overwrite the original key with the current (empty) in-memory
+    /// collection; recover from the quarantined copy or a backup before
+    /// saving").
+    ///
+    /// This is the blob-side twin of the guard that already protects the
+    /// image side (`ClipboardStore.loadItems` skips
+    /// `cleanupOrphanedImages` while `lastLoadFailed` is true).
+    ///
+    /// Discriminating power: remove the guard and `savesObserved`
+    /// becomes 1 (the empty array reaches the store) — the assertion
+    /// goes red.
+    func testFailedLoadRefusesToWriteOverStore() {
+        // Launch-1 failure state: the sentinel is set, the blob is gone.
+        testDefaults.set(true, forKey: TrashStore.loadFailedSentinelKey)
+        testDefaults.removeObject(forKey: TrashStore.trashedItemsStorageKey)
+
+        let recorder = SaveRecordingTrashBackend()
+        let failingStore = TrashStore(backend: recorder, defaults: testDefaults)
+        XCTAssertTrue(failingStore.lastLoadFailed,
+                      "the sentinel short-circuit must set lastLoadFailed")
+
+        failingStore.saveTrashedItems()
+
+        XCTAssertEqual(recorder.savesObserved, 0,
+                       "a failed load must not be followed by a write — it would replace the store with an empty array")
+    }
 }
 
 #if DEBUG
@@ -273,6 +308,32 @@ final class FlakyStorageBackend: StorageBackend, @unchecked Sendable {
             failuresRemaining -= 1
             throw BackupPackageError.archiveFailed
         }
+        savedItems = items
+    }
+
+    func loadTags() throws -> [Tag] { [] }
+
+    func saveTags(_ tags: [Tag]) throws {}
+}
+
+/// StorageBackend that records every save, so a test can prove that a
+/// write did (or did not) reach the store.
+///
+/// ID-CRASH-0022 (2026-10-20) helper — the whole-array-replace hazard
+/// is invisible unless you can count the writes.
+final class SaveRecordingTrashBackend: StorageBackend, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var savesObserved = 0
+    private var savedItems: [ClipboardItem] = []
+
+    func load() throws -> [ClipboardItem] {
+        lock.lock(); defer { lock.unlock() }
+        return savedItems
+    }
+
+    func save(_ items: [ClipboardItem]) throws {
+        lock.lock(); defer { lock.unlock() }
+        savesObserved += 1
         savedItems = items
     }
 
