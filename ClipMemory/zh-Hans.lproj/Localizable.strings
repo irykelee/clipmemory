@@ -373,6 +373,9 @@
 "alert.trash.load.failed" = "回收站加载失败，内容暂时不可用。";
 "alert.trash.load.failed.count" = "回收站加载失败，%d 次恢复尝试均失败。";
 "alert.trash.load.failed.count.one" = "回收站加载失败，1 次恢复尝试失败。";
+"alert.trash.items.expired.title" = "回收站已清理";
+"alert.trash.items.expired" = "回收站中有 %d 条内容因超过 %d 天保留期被自动删除。";
+"alert.trash.items.expired.one" = "回收站中有 %d 条内容因超过 %d 天保留期被自动删除。";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "恢复向导";

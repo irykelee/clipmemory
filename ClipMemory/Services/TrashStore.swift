@@ -188,17 +188,13 @@ final class TrashStore: ObservableObject {
             lastLoadFailed = true
             // swiftlint:disable:next line_length
             logger.error("Trash load failure persisted from prior launch (sentinel '\(sentinelKey)' present). Quarantined blob retained under '\(Self.trashedItemsStorageKey).corrupt-*'. Image cleanup skipped to avoid data loss.")
-            NotificationCenter.default.post(
-                name: .trashLoadFailed,
-                object: self,
-                userInfo: [
-                    "persistent": true,
-                    // H-1 (2026-08-08 audit): tag the source so the
-                    // AppDelegate Throttler can bucket trash failures
-                    // independently from save / encryption failures.
-                    "source": "trashLoadFailed"
-                ]
-            )
+            postTrashLoadFailed(userInfo: [
+                "persistent": true,
+                // ID-CRASH-0022 (2026-10-20): tag the source so the
+                // AppDelegate Throttler can bucket trash failures
+                // independently from save / encryption failures.
+                "source": "trashLoadFailed"
+            ])
             return
         }
 
@@ -217,17 +213,34 @@ final class TrashStore: ObservableObject {
             // launch also skips the orphan-image sweep (see above).
             defaults.set(true, forKey: sentinelKey)
             logger.error("Trash blob corrupt; quarantined + sentinel written: \(error.localizedDescription)")
+            postTrashLoadFailed(userInfo: [
+                "persistent": false,
+                "error": error.localizedDescription,
+                // ID-CRASH-0022 (2026-10-20): tag the source so the
+                // AppDelegate Throttler can bucket trash failures
+                // independently from save / encryption failures.
+                "source": "trashLoadFailed"
+            ])
+        }
+    }
+
+    /// Post `.trashLoadFailed` **asynchronously**.
+    ///
+    /// ID-CRASH-0022 (2026-10-20): the load happens inside
+    /// `TrashStore.init`, i.e. while `ClipboardStore.shared` is being
+    /// constructed — which happens in `applicationDidFinishLaunching`
+    /// BEFORE the AppDelegate registers its observers. A synchronous
+    /// post is therefore delivered to nobody: the alert the observer
+    /// exists to show never appeared. Posting after the current
+    /// main-queue block lets the launch sequence finish first
+    /// (observers included) and keeps the modal alert out of the
+    /// middle of app startup.
+    private func postTrashLoadFailed(userInfo: [String: Any]) {
+        DispatchQueue.main.async {
             NotificationCenter.default.post(
                 name: .trashLoadFailed,
                 object: self,
-                userInfo: [
-                    "persistent": false,
-                    "error": error.localizedDescription,
-                    // H-1 (2026-08-08 audit): tag the source so the
-                    // AppDelegate Throttler can bucket trash failures
-                    // independently from save / encryption failures.
-                    "source": "trashLoadFailed"
-                ]
+                userInfo: userInfo
             )
         }
     }
@@ -285,29 +298,41 @@ final class TrashStore: ObservableObject {
     /// items live in `self.trashedItems`), so the risk is "next launch
     /// has no trash" — recoverable but user-visible only on quit.
     func saveTrashedItems() {
-        // ID-CRASH-0022 (2026-10-20): refuse to write while the load is
-        // in a FAILED state.
+        // ID-CRASH-0022 (2026-10-20): refuse to write an EMPTY collection
+        // while the trash load is in a FAILED state.
         //
-        // `FileStorageBackend.save(_:)` is a WHOLE-ARRAY REPLACE. While
-        // the load has failed, the in-memory `trashedItems` is empty (or
-        // partial) and does NOT represent the store's content — writing
-        // it would replace the user's entire recycle bin with an empty
-        // array. That is precisely the sequence this file's own
-        // quarantine log warns about: "The next save will overwrite the
-        // original key with the current (empty) in-memory collection;
-        // recover from the quarantined copy or a backup before saving."
+        // ID-CRASH-0022 (2026-10-20, corrected later the same day): the
+        // original version of this guard refused EVERY write while
+        // `lastLoadFailed` was true, on the theory that the in-memory
+        // collection does not represent the store, so a whole-array
+        // replace would destroy it. That theory was wrong, and a probe
+        // proved it:
         //
-        // The image side already has this guard (`ClipboardStore.loadItems`
-        // skips `cleanupOrphanedImages` while `lastLoadFailed` is true);
-        // the SAVE side did not, so the blob itself was unprotected
-        // while its images were. Refusing keeps the recovery path
-        // intact: the corrupt blob stays under the `.corrupt-*`
-        // quarantine key and the failure is already surfaced to the user
-        // via `.trashLoadFailed` + the AppDelegate throttler.
-        if lastLoadFailed {
+        //   * A failed load means `quarantineCorruptBlob` already ran.
+        //     It MOVES the blob to a `.corrupt-*` key and REMOVES the
+        //     main key — so after the failure the main key is EMPTY.
+        //     There is no store content left for a write to destroy.
+        //   * The quarantined copy lives under a different key; a write
+        //     to the main key cannot touch it. The probe read it back
+        //     after a write: byte-identical.
+        //
+        // So the guard protected nothing, while its cost was real: an
+        // item the user trashed during a degraded launch stayed in
+        // memory only (lost on quit), and the app could never leave the
+        // degraded state — the sentinel path only clears itself when the
+        // blob comes back non-empty.
+        //
+        // The rule below is the narrow one that is actually meaningful:
+        // an EMPTY write while the load failed is refused (it would
+        // replace a store we know nothing about with a known-empty
+        // collection); a NON-EMPTY write is allowed, because its content
+        // can only be items the user has just trashed, and it lets the
+        // next launch recover (the sentinel path sees a non-empty blob
+        // and clears the failed state).
+        if lastLoadFailed && trashedItems.isEmpty {
             logger.error(
                 // swiftlint:disable:next line_length
-                "ID-CRASH-0022: refusing to save trashed items while the trash load is in a failed state — writing would replace the store's content with an unknown (possibly empty) collection"
+                "ID-CRASH-0022: refusing to write an empty collection while the trash load is in a failed state — the store's content is unknown, and an empty write would replace it with a known-empty collection"
             )
             NotificationCenter.default.post(
                 name: .clipboardSaveFailed,
@@ -435,6 +460,22 @@ final class TrashStore: ObservableObject {
         scheduleSave()
     }
 
+    /// Remove every item whose `deletedAt` is older than the retention
+    /// window.
+    ///
+    /// ID-CRASH-0022 (2026-10-20): this is a DELETE, and it used to run
+    /// with **no user-visible signal at all**. The 2026-10-20 incident
+    /// was exactly this: 106 items, every one of them past the 7-day
+    /// window, removed in one launch, and the recycle bin rewritten as
+    /// `[]` — with nothing said to the user. The data was still in the
+    /// daily backup, but the user had no way to know the bin had been
+    /// emptied.
+    ///
+    /// The purge itself is a product decision (the retention window is
+    /// the user's setting), so it stays. What was missing is the third
+    /// leg of the data-deletion gate: the user must be told. The count
+    /// and the window are posted so the UI can say how many items went
+    /// and how long they were kept.
     func purgeExpiredTrash() {
         let cutoff = Date().addingTimeInterval(-TimeInterval(trashRetentionDays * 24 * 60 * 60))
         let expired = trashedItems.filter { item in
@@ -448,6 +489,27 @@ final class TrashStore: ObservableObject {
         let expiredIds = Set(expired.map { $0.id })
         trashedItems.removeAll { expiredIds.contains($0.id) }
         scheduleSave()
+        // The notice is posted asynchronously on purpose: the purge runs
+        // from `TrashStore.init`, i.e. while `ClipboardStore.shared` is
+        // being constructed — which happens in `applicationDidFinish-
+        // Launching` BEFORE the AppDelegate registers its observers. A
+        // synchronous post would be delivered to nobody, and the user
+        // would again see the bin empty with no explanation. Posting
+        // after the current main-queue block lets the launch sequence
+        // finish first (observers included) and keeps the modal alert
+        // out of the middle of app startup.
+        let removedCount = expired.count
+        let retentionDays = trashRetentionDays
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .trashItemsExpired,
+                object: self,
+                userInfo: [
+                    "count": removedCount,
+                    "retentionDays": retentionDays
+                ]
+            )
+        }
     }
 
     // MARK: - Debounced save

@@ -374,6 +374,9 @@
 "alert.trash.load.failed" = "Failed to load recycle bin. Items are temporarily unavailable.";
 "alert.trash.load.failed.count" = "Failed to load recycle bin. %d recovery attempts failed.";
 "alert.trash.load.failed.count.one" = "Failed to load recycle bin. 1 recovery attempt failed.";
+"alert.trash.items.expired.title" = "Recycle bin cleaned up";
+"alert.trash.items.expired" = "Recycle bin: %d items were removed after the %d-day retention period expired.";
+"alert.trash.items.expired.one" = "Recycle bin: %d item was removed after the %d-day retention period expired.";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "Restore Wizard";

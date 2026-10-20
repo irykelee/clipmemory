@@ -471,6 +471,16 @@ struct L10n {
     // user action on disk.
     static var alertTrashLoadFailed: String { string("alert.trash.load.failed") }
     static func alertTrashLoadFailedCount(_ count: Int) -> String { plural("alert.trash.load.failed.count", count) }
+    // ID-CRASH-0022 (2026-10-20): the recycle bin's retention purge is a
+    // DELETE, and the user has to be told it happened — how many items
+    // it removed and how long they were kept. Plural-aware (count == 1
+    // uses the ".one" form) and carries the retention window as a
+    // second format argument, so it goes through `pluralTemplate`
+    // directly (the same shape as `tagPicker.deleteConfirm.message`).
+    static var alertTrashItemsExpiredTitle: String { string("alert.trash.items.expired.title") }
+    static func alertTrashItemsExpired(_ count: Int, retentionDays: Int) -> String {
+        String(format: pluralTemplate("alert.trash.items.expired", count), count, retentionDays)
+    }
 
     // MARK: - Trim Alert
     static var alertTrimTitle: String { string("alert.trim.title") }

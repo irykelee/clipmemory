@@ -374,6 +374,9 @@
 "alert.trash.load.failed" = "Falha ao carregar a lixeira. Itens estão temporariamente indisponíveis.";
 "alert.trash.load.failed.count" = "Falha ao carregar a lixeira. %d tentativas de recuperação falharam.";
 "alert.trash.load.failed.count.one" = "Falha ao carregar a lixeira. 1 tentativa de recuperação falhou.";
+"alert.trash.items.expired.title" = "Lixeira limpa";
+"alert.trash.items.expired" = "Lixeira: %d itens foram removidos após o período de retenção de %d dias.";
+"alert.trash.items.expired.one" = "Lixeira: %d item foi removido após o período de retenção de %d dias.";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "Assistente de restauração";

@@ -44,6 +44,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // `encryptionFailedObserver` lifecycle (registered in
     // setupObservers, released in deinit).
     private var trashLoadFailedObserver: NSObjectProtocol?
+    // ID-CRASH-0022 (2026-10-20): observer for `.trashItemsExpired` —
+    // the recycle bin's retention purge removed items, and the user
+    // must be told (the purge used to be a silent DELETE). Separate
+    // observer variable because NotificationCenter has no multi-name
+    // API in Foundation — same pattern as `.tagSaveFailed` / `.imageSaveFailed`.
+    private var trashItemsExpiredObserver: NSObjectProtocol?
     // ID-CRASH-0008 (2026-09-28 code-review P1-3): observer for
     // `.tagBackendCorrupted` so the user's tag sidebar emptiness is
     // surfaced via `DiagnosticsBanner.tagsLoadFailed` instead of
@@ -602,6 +608,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] note in
             self?.handleTrashLoadFailed(note)
         }
+        // ID-CRASH-0022 (2026-10-20): observer for `.trashItemsExpired`
+        // — the recycle bin's retention purge removed items, and the
+        // user must be told. Without this, the purge was a silent
+        // DELETE: the 2026-10-20 incident emptied 106 items in one
+        // launch and said nothing. The notification is posted
+        // asynchronously by `TrashStore.purgeExpiredTrash()` precisely
+        // so that this observer (registered here, during the launch
+        // sequence) is in place when it fires.
+        trashItemsExpiredObserver = NotificationCenter.default.addObserver(
+            forName: .trashItemsExpired, object: nil, queue: .main
+        ) { [weak self] note in
+            self?.handleTrashItemsExpired(note)
+        }
 
         // ID-CRASH-0008 (2026-09-28 code-review P1-3): observer for
         // `.tagBackendCorrupted` (posted by `ClipboardStore.loadTags()`
@@ -982,6 +1001,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // leak across AppDelegate lifetimes. Mirrors the clipboardSaveFailed
         // cleanup pattern above.
         if let o = trashLoadFailedObserver { NotificationCenter.default.removeObserver(o) }
+        // ID-CRASH-0022 (2026-10-20): mirror observer cleanup for
+        // `.trashItemsExpired`. Same leak guard as trashLoadFailedObserver
+        // above.
+        if let o = trashItemsExpiredObserver { NotificationCenter.default.removeObserver(o) }
         // ID-CRASH-0008 (2026-09-28 code-review P1-3): mirror observer
         // cleanup for `.tagBackendCorrupted`. Same leak guard as
         // trashLoadFailedObserver above.
@@ -1122,6 +1145,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ? L10n.alertTrashLoadFailedCount(decision.failureCount)
             : L10n.alertTrashLoadFailed
         a.alertStyle = .warning
+        a.addButton(withTitle: L10n.buttonConfirm)
+        a.runModal()
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the recycle bin's retention purge
+    /// removed items. This is the third leg of the data-deletion gate
+    /// (报错 / 重试 / 用户可见) — the purge is a delete, so the user
+    /// has to learn that it happened, how many items it took, and how
+    /// long they were kept.
+    fileprivate func handleTrashItemsExpired(_ note: Notification) {
+        // Same XCTest guard as handleTrashLoadFailed: a modal alert
+        // would hang CI forever.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        let count = (note.userInfo?["count"] as? Int) ?? 0
+        let retentionDays = (note.userInfo?["retentionDays"] as? Int) ?? 0
+        guard count > 0 else { return }
+        logger.error("Recycle bin retention purge removed \(count) item(s) (window: \(retentionDays) days)")
+        let a = NSAlert()
+        a.messageText = L10n.alertTrashItemsExpiredTitle
+        a.informativeText = L10n.alertTrashItemsExpired(count, retentionDays: retentionDays)
+        a.alertStyle = .informational
         a.addButton(withTitle: L10n.buttonConfirm)
         a.runModal()
     }

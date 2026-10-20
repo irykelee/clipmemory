@@ -374,6 +374,9 @@
 "alert.trash.load.failed" = "Error al cargar la papelera. Los elementos no están disponibles temporalmente.";
 "alert.trash.load.failed.count" = "Error al cargar la papelera. %d intentos de recuperación fallaron.";
 "alert.trash.load.failed.count.one" = "Error al cargar la papelera. 1 intento de recuperación falló.";
+"alert.trash.items.expired.title" = "Papelera limpiada";
+"alert.trash.items.expired" = "Papelera: se eliminaron %d elementos tras superar el periodo de retención de %d días.";
+"alert.trash.items.expired.one" = "Papelera: se eliminó %d elemento tras superar el periodo de retención de %d días.";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "Asistente de restauración";

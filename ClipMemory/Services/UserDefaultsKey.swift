@@ -45,6 +45,23 @@ enum UserDefaultsKey: String, CaseIterable {
     /// the trash blob key as `<key>.loadFailed`.
     case trashedItemsLoadFailedSentinel = "ClipboardTrashedItems.loadFailed"
 
+    /// ID-CRASH-0022 (2026-10-20): the items-side twin of
+    /// `trashedItemsLoadFailedSentinel`.
+    ///
+    /// The trash side has a persistent sentinel because a corrupt TRASH
+    /// blob used to make the image sweep delete every trash image
+    /// (2026-08-08). The ITEMS side had no equivalent: after the
+    /// items blob is quarantined, the NEXT launch loads an empty
+    /// collection (the key is gone, so the load SUCCEEDS with no
+    /// error) and the orphan sweep runs with an empty `keptItems` —
+    /// deleting every item image on disk, while the items blob itself
+    /// is still recoverable from the `.corrupt-*` quarantine key. The
+    /// images are the irrecoverable half.
+    ///
+    /// Same shape, same lifetime: set when the items load fails, cleared
+    /// on the next successful load, and consulted by the sweep.
+    case clipboardItemsLoadFailedSentinel = "ClipboardItems.loadFailed"
+
     /// Trash retention window (days). Derived from `trashedItems` in legacy
     /// code (`trashedItemsStorageKey + ".retentionDays"`); promoted here so
     /// the concat string isn't reconstructed at every call site.

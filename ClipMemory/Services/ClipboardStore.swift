@@ -81,6 +81,19 @@ extension Notification.Name {
     /// the quarantine + sweep-skip happens silently and the user's
     /// trash appears empty with no explanation.
     static let trashLoadFailed = Notification.Name("TrashStore.loadFailed")
+    /// ID-CRASH-0022 (2026-10-20): posted by
+    /// `TrashStore.purgeExpiredTrash()` when the retention window
+    /// removed items from the recycle bin.
+    ///
+    /// The purge is a DELETE, and it used to run with NO user-visible
+    /// signal at all: a launch could empty the whole bin in one shot
+    /// (the 2026-10-20 incident — 106 items, every one of them past
+    /// the retention window, gone with no notice and no explanation).
+    ///
+    /// `userInfo["count"]` = how many items were removed (Int),
+    /// `userInfo["retentionDays"]` = the retention window that was
+    /// applied (Int).
+    static let trashItemsExpired = Notification.Name("TrashStore.itemsExpired")
     /// NOTIFY-0001 (2026-08-10): posted by `LanguageManager` after the
     /// in-memory mirror is updated so any consumer reacting to the
     /// notification (e.g. AppDelegate refreshing `NSApp.appearance`) sees
@@ -335,6 +348,28 @@ final class ClipboardStore: ObservableObject {
     /// `ClipboardStore.itemsStorageKey` directly; the alias keeps that API
     /// stable while pointing at the central registry.
     static let itemsStorageKey = UserDefaultsKey.clipboardItems.rawValue
+
+    /// ID-CRASH-0022 (2026-10-20): the items-side twin of
+    /// `TrashStore.loadFailedSentinelKey`.
+    ///
+    /// Set when the items blob fails to load (it was quarantined), and
+    /// cleared again once a NON-EMPTY items blob loads successfully.
+    /// While it is set, the orphan-image sweep is skipped — see
+    /// `loadItems` / `applyLoadResult`.
+    static let itemsLoadFailedSentinelKey = UserDefaultsKey.clipboardItemsLoadFailedSentinel.rawValue
+
+    /// ID-CRASH-0022 (2026-10-20): true while the ITEMS blob is in a
+    /// failed state.
+    ///
+    /// The trash side has the same concept (`trashStore.lastLoadFailed`)
+    /// and the same reason: a corrupt blob is quarantined, the store
+    /// reads back EMPTY on the next launch, and the orphan-image sweep
+    /// would then delete every image the quarantined blob still
+    /// references. The images are the irrecoverable half — the blob
+    /// itself survives under the `.corrupt-*` key.
+    var itemsLoadFailed: Bool {
+        defaults.bool(forKey: Self.itemsLoadFailedSentinelKey)
+    }
     // trashedItemsStorageKey moved to TrashStore (HIGH-1, 2026-07-26)
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened from `private`
     // to `internal` so the methods moved to `ClipboardStore+Persistence.swift`
@@ -1088,7 +1123,24 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             // ID-CRASH-0003 (2026-08-02 audit): keep the ID-CRASH-0001
             // invariant — every `items` mutation invalidates itemIndex.
             invalidateItemIndex()
+            // ID-CRASH-0022 (2026-10-20): record the failure so it
+            // survives the launch. Without this, the next launch loads
+            // an EMPTY collection (the key was removed by the
+            // quarantine, so the load SUCCEEDS) and the orphan-image
+            // sweep runs with an empty `keptItems` — deleting every
+            // item image on disk while the items blob itself is still
+            // recoverable from the `.corrupt-*` key. The images are
+            // the irrecoverable half. The trash side has had this
+            // guard since 2026-08-08; the items side did not.
+            defaults.set(true, forKey: Self.itemsLoadFailedSentinelKey)
             return
+        }
+        // A non-empty load proves the store is healthy again — but an
+        // EMPTY load after a previous failure does NOT: the key is
+        // gone, so the load succeeds with nothing. Keep the sentinel
+        // in that case (same rule as the trash side).
+        if !savedItems.isEmpty {
+            defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
         }
         // ID-STORE-0002 (2026-07-31 audit): the old `!$0.isExpired` filter
         // dropped expired items silently — including PINNED ones — and the
@@ -1124,11 +1176,17 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // Skip the sweep entirely while the trash load is in a failed
         // state; the next successful loadItems() / loadTrashedItems() will
         // clear the flag and resume the normal sweep path.
-        if !trashStore.lastLoadFailed {
+        //
+        // ID-CRASH-0022 (2026-10-20): the same hole existed on the
+        // ITEMS side — a corrupt items blob was quarantined, the next
+        // launch loaded an empty collection, and the sweep deleted
+        // every item image. `itemsLoadFailed` is the items-side twin of
+        // `trashStore.lastLoadFailed`.
+        if !trashStore.lastLoadFailed && !itemsLoadFailed {
             ImageStorage.shared.cleanupOrphanedImages(keptItems: items + trashedItems)
         } else {
             // swiftlint:disable:next line_length
-            logger.error("H-2: trash blob load failed; skipping cleanupOrphanedImages to preserve possibly-referenced images. Will retry on next successful loadTrashedItems().")
+            logger.error("ID-STORE-0016: trash or items blob load failed; skipping cleanupOrphanedImages to preserve possibly-referenced images. Will retry on next successful loadTrashedItems() / loadItems().")
         }
 
         if repairedImages || repairedTexts {
@@ -1467,10 +1525,26 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             // ID-CRASH-0003 (2026-08-02 audit): keep the ID-CRASH-0001
             // invariant — every `items` mutation invalidates itemIndex.
             invalidateItemIndex()
+            // ID-CRASH-0022 (2026-10-20): record the failure so it
+            // survives the launch — the quarantine removed the key, so
+            // the next launch loads an EMPTY collection and would let
+            // the orphan-image sweep delete every item image (the
+            // items blob itself survives in the `.corrupt-*` key; the
+            // images would not).
+            defaults.set(true, forKey: Self.itemsLoadFailedSentinelKey)
             logger.error("P2-14: background load failed for items blob: \(error.localizedDescription)")
             return
         }
         let loadedItems = result.items
+        // ID-CRASH-0022 (2026-10-20): a non-empty load proves the
+        // store is healthy again — clear the sentinel so the sweep
+        // resumes. An EMPTY load does NOT clear it: after a
+        // quarantine the key is gone, so the load succeeds with
+        // nothing and the store is still in the failed state (same
+        // rule as the trash side).
+        if !loadedItems.isEmpty {
+            defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
+        }
         let expiredItems = result.expired
         let repairedImages = result.repairedImages
         let repairedTexts = result.repairedTexts
@@ -1514,7 +1588,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // (NSCache), the `pendingFilenames` snapshot pattern
         // (`ImageStorage.swift:1015`) already handles writer races
         // for the duration of the cleanup.
-        if !trashStore.lastLoadFailed {
+        if !trashStore.lastLoadFailed && !itemsLoadFailed {
             let keptItems = items + trashedItems
             Task.detached(priority: .utility) {
                 ImageStorage.shared.cleanupOrphanedImages(keptItems: keptItems)
@@ -1522,7 +1596,11 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         } else {
             // ID-STORE-0016: skip orphan sweep so possibly-referenced images survive
             // a corrupt trash blob; next successful loadTrashedItems() resumes.
-            logger.error("ID-STORE-0016: trash blob load failed; skipping cleanupOrphanedImages")
+            // ID-CRASH-0022 (2026-10-20): the items side needs the same
+            // guard — a corrupt items blob is quarantined, the next
+            // launch loads an empty collection, and the sweep would
+            // delete every item image on disk.
+            logger.error("ID-STORE-0016: trash or items blob load failed; skipping cleanupOrphanedImages")
         }
 
         // P2-14 round-2 self-review fix [P1]: extend the existing

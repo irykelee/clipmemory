@@ -375,6 +375,9 @@
 "alert.trash.load.failed" = "휴지통 로드에 실패했습니다. 항목이 일시적으로 사용할 수 없습니다.";
 "alert.trash.load.failed.count" = "휴지통 로드에 실패했습니다. 복구 시도 %d회 실패.";
 "alert.trash.load.failed.count.one" = "휴지통 로드에 실패했습니다. 복구 시도 1회 실패.";
+"alert.trash.items.expired.title" = "휴지통 정리 완료";
+"alert.trash.items.expired" = "휴지통의 항목 %d개가 %d일 보관 기간을 초과하여 삭제되었습니다.";
+"alert.trash.items.expired.one" = "휴지통의 항목 %d개가 %d일 보관 기간을 초과하여 삭제되었습니다.";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "복원 마법사";

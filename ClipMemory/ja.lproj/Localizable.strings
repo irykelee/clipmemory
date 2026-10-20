@@ -375,6 +375,9 @@
 "alert.trash.load.failed" = "ゴミ箱の読み込みに失敗しました。一時的にアイテムを利用できません。";
 "alert.trash.load.failed.count" = "ゴミ箱の読み込みに失敗しました。%d 回の復元試行が失敗しました。";
 "alert.trash.load.failed.count.one" = "ゴミ箱の読み込みに失敗しました。1 回の復元試行が失敗しました。";
+"alert.trash.items.expired.title" = "ゴミ箱を整理しました";
+"alert.trash.items.expired" = "ゴミ箱内の %d 件のアイテムが %d 日間の保持期間を超えたため削除されました。";
+"alert.trash.items.expired.one" = "ゴミ箱内の %d 件のアイテムが %d 日間の保持期間を超えたため削除されました。";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "復元ウィザード";
