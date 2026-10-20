@@ -228,7 +228,20 @@ final class ClipboardStore: ObservableObject {
     /// `nonisolated` so the `defaults:` parameter default (which is evaluated
     /// outside the class's actor isolation) can reference it.
     nonisolated static var xcTestDefaults: UserDefaults {
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+        // ID-CRASH-0031 (2026-10-20): the guard now uses
+        // `TestIsolation.isRunningTests` instead of reading
+        // `XCTestConfigurationFilePath` directly.
+        //
+        // Why: `xcodebuild test` launches the app binary through
+        // LaunchServices, and that launch is not guaranteed to carry the
+        // environment variable. When it was absent, this guard fell
+        // through to `.standard` — i.e. the launched app used the
+        // PRODUCTION storage and wrote the user's real history and
+        // recycle bin. `TestIsolation.isRunningTests` accepts three
+        // independent signals (the env var with ANY value, a loaded
+        // `XCTestCase` class, an injected `.xctest` bundle), so the
+        // isolation holds even when the env var is missing.
+        if !TestIsolation.isRunningTests {
             return .standard
         }
         return UserDefaults(suiteName: "ClipboardStore-XCTest-isolation") ?? .standard
@@ -483,9 +496,17 @@ final class ClipboardStore: ObservableObject {
         // was only swapping backend, leaving `defaults = .standard`, which
         // caused `IntegrationTests.testTrimToMaxItemsRemovesOldest` and
         // friends to leak `maxClipboardItems = 3` into the production
-        // `com.clipmemory.app` plist). `xcTestDefaults` is a no-op
-        // (`.standard`) when XCTestConfigurationFilePath is unset.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
+        // `com.clipmemory.app` plist).
+        //
+        // ID-CRASH-0031 (2026-10-20): the branch used to be keyed off
+        // `XCTestConfigurationFilePath` being ABSENT. That variable is
+        // present-but-empty in the test host (an empty string is not
+        // `nil`), so the branch was taken by luck rather than by design.
+        // `TestIsolation.isRunningTests` accepts the variable with any
+        // value, a loaded `XCTestCase` class, or an injected `.xctest`
+        // bundle — so the isolation holds even when the variable is
+        // missing entirely.
+        guard !TestIsolation.isRunningTests else {
             self.init(backend: MemoryStorageBackend(), defaults: Self.xcTestDefaults)
             return
         }
@@ -2162,8 +2183,10 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         return existing.with(content: newItem.content)
     }
 
+    /// ID-CRASH-0031 (2026-10-20): one shared multi-signal probe
+    /// instead of a private copy of the single-environment-variable one.
     private var isRunningTests: Bool {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        TestIsolation.isRunningTests
     }
 
     /// Merges imported backup items into the store. Items arrive already

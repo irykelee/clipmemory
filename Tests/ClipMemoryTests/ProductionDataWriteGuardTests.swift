@@ -133,4 +133,57 @@ final class ProductionDataWriteGuardTests: XCTestCase {
             ["ClipboardItems", "ClipboardTrashedItems", "ClipMemoryTags"]
         )
     }
+
+    /// ID-CRASH-0031: the quarantine path MOVES the blob — it writes a
+    /// `.corrupt-*` copy and REMOVES the original key. The removal is
+    /// more destructive than a write, so it must be guarded too.
+    func testQuarantineGuardRefusesProductionDomainMutation() {
+        XCTAssertTrue(
+            TestIsolation.mustRefuseProductionDataMutation(.standard),
+            "a test process must not mutate the production domain"
+        )
+
+        let suiteName = "ProductionDataWriteGuardTests-\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        defer { isolated.removePersistentDomain(forName: suiteName) }
+        XCTAssertFalse(
+            TestIsolation.mustRefuseProductionDataMutation(isolated),
+            "an isolated suite is a fixture, not the user's data"
+        )
+    }
+
+    /// ID-CRASH-0031: the per-service guards must use the shared
+    /// multi-signal probe. A guard that only reads
+    /// `XCTestConfigurationFilePath` silently degrades to the production
+    /// path when that variable is absent — which is exactly what the
+    /// 2026-10-20 forensics hit.
+    func testPerServiceGuardsUseTheSharedProbe() {
+        XCTAssertFalse(
+            HotKeyManager.xcTestDefaults === UserDefaults.standard,
+            "HotKeyManager must not persist to the production domain under XCTest"
+        )
+        XCTAssertFalse(
+            SafeModeService.xcTestDefaults === UserDefaults.standard,
+            "SafeModeService must not persist to the production domain under XCTest"
+        )
+        XCTAssertFalse(
+            ClipboardStore.xcTestDefaults === UserDefaults.standard,
+            "ClipboardStore must not persist to the production domain under XCTest"
+        )
+    }
+
+    /// ID-CRASH-0031: `BackupService.shared` must not write into the
+    /// production `Backups/` directory from a test process — a test run
+    /// would otherwise create a backup dir in the user's real folder and
+    /// prune it, rotating the user's own backups out.
+    func testBackupServiceSharedInstanceIsIsolatedUnderXCTest() {
+        let productionBackups = AppDirectories.applicationSupport
+            .appendingPathComponent("ClipMemory/Backups", isDirectory: true)
+            .standardizedFileURL.path
+        XCTAssertNotEqual(
+            BackupService.shared.backupsDirectoryURL.standardizedFileURL.path,
+            productionBackups,
+            "BackupService.shared must not use the production Backups directory under XCTest"
+        )
+    }
 }

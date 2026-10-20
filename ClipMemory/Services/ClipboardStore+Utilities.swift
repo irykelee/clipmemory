@@ -56,6 +56,14 @@ extension ClipboardStore {
     func quarantineCorruptBlob(key: String, error: Error) {
         let defaults = self.defaults
         guard let blob = defaults.data(forKey: key) else { return }
+        // ID-CRASH-0031 (2026-10-20): the quarantine MOVES the blob — it
+        // writes a `.corrupt-*` copy and REMOVES the original key. The
+        // removal is more destructive than a write, so it needs the same
+        // production-domain guard the write path has.
+        guard !TestIsolation.mustRefuseProductionDataMutation(defaults) else {
+            logger.error("ID-CRASH-0031: refusing to quarantine the production blob '\(key, privacy: .public)' from a test process")
+            return
+        }
         let timestamp = Self.iso8601Formatter.string(from: Date())
         let quarantineKey = "\(key).corrupt-\(timestamp)"
         defaults.set(blob, forKey: quarantineKey)

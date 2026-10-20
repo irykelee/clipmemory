@@ -339,6 +339,23 @@ extension ClipboardStore {
             // 3. 用户可见 — post .clipboardSaveFailed with sourceKey
             //    "saveFlush" so the AppDelegate Throttler can bucket
             //    this independently from .encryptionFailed sources.
+            // ID-CRASH-0031 (2026-10-20): `productionWriteBlocked` is
+            // PERMANENT — a test process must never write the production
+            // domain, and no retry can change that. Retrying it would
+            // re-post `.clipboardSaveFailed` every backoff step and pop
+            // an alert roughly every 60 s for the life of the process.
+            // Fail once, loudly, then stop.
+            if let backendError = error as? StorageBackendError,
+               case .productionWriteBlocked = backendError {
+                needsSave = false
+                logger.error("ID-CRASH-0031: production write refused, not retrying (permanent): \(error)")
+                NotificationCenter.default.post(
+                    name: .clipboardSaveFailed,
+                    object: self,
+                    userInfo: ["source": "saveFlush"]
+                )
+                return
+            }
             needsSave = true
             saveRetryState.recordFailure()
             let backoff = saveRetryState.nextBackoffSeconds

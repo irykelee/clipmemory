@@ -72,6 +72,23 @@ enum TestIsolation {
     /// data (history / recycle bin / tags). These are the keys a test
     /// process must never write, and the keys two app processes must
     /// never overwrite with a stale snapshot.
+    /// ID-CRASH-0031 (2026-10-20): true when a mutation of the user's
+    /// data blobs must be REFUSED — the process runs tests AND the
+    /// target defaults is the production domain.
+    ///
+    /// Scope note (honest): this compares the defaults INSTANCE with
+    /// `UserDefaults.standard`, not the persistent domain. A second
+    /// instance addressing the same domain
+    /// (`UserDefaults(suiteName: "com.clipmemory.app")`) is not the same
+    /// object and would not be caught. No call site in the repo creates
+    /// such an instance today; a domain-level check is not possible with
+    /// the public UserDefaults API (a write-then-read-back probe was
+    /// measured and does NOT see the other instance's write — the
+    /// per-instance in-memory caches do not share).
+    nonisolated static func mustRefuseProductionDataMutation(_ defaults: UserDefaults) -> Bool {
+        isRunningTests && defaults === UserDefaults.standard
+    }
+
     nonisolated static let productionDataKeys: Set<String> = [
         UserDefaultsKey.clipboardItems.rawValue,
         UserDefaultsKey.trashedItems.rawValue,

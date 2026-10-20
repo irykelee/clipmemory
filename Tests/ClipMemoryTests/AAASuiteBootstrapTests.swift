@@ -80,7 +80,8 @@ final class AAASuiteBootstrapTests: XCTestCase {
     private final class XCTestIsolationSuiteObserver: NSObject, XCTestObservation {
         func testCaseWillStart(_ testCase: XCTestCase) {
             for suiteName in ["ClipboardStore-XCTest-isolation",
-                              "HotKeyManager-XCTest-isolation"] {
+                              "HotKeyManager-XCTest-isolation",
+                              "BackupService-XCTest-isolation"] {
                 UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
             }
         }

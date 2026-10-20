@@ -174,23 +174,6 @@ enum StorageBackendError: Error, LocalizedError {
     /// impossible: a test process can never write the user's data blobs.
     case productionWriteBlocked(storageKey: String)
 
-    /// ID-CRASH-0031 (2026-10-20): the blob changed underneath us since
-    /// this backend instance loaded it — another process wrote the same
-    /// UserDefaults key.
-    ///
-    /// The blob is written as a WHOLE-ARRAY replacement, so a stale
-    /// snapshot does not merge: it overwrites. Two app processes (e.g. the
-    /// user's app plus an instance the build tooling launched) each hold
-    /// their own snapshot, and the second writer resurrects entries the
-    /// first already deleted — or drops entries the first added.
-    ///
-    /// Refusing the write is the honest outcome: the in-memory state is
-    /// known to be out of date, and silently overwriting would destroy
-    /// data this process never had. The caller surfaces the failure
-    /// through the existing save-failure path (notification + retry +
-    /// user-visible alert).
-    case staleBlob(storageKey: String)
-
     var errorDescription: String? {
         switch self {
         case .unsupportedFeature(let detail):
@@ -199,8 +182,6 @@ enum StorageBackendError: Error, LocalizedError {
             return "StorageBackend write failed (rc=\(code)): \(detail) — sql=\(sql.prefix(120))"
         case .productionWriteBlocked(let key):
             return "Refusing to write production UserDefaults key '\(key)' from a test process"
-        case .staleBlob(let key):
-            return "Refusing to write UserDefaults key '\(key)': the stored blob changed since it was loaded (another process wrote it)"
         }
     }
 }
@@ -272,8 +253,7 @@ final class FileStorageBackend: StorageBackend {
     ///   suite that happens to use a production key name is a test
     ///   fixture, not the user's data.
     private func assertWriteAllowed() throws {
-        guard TestIsolation.isRunningTests,
-              defaults === UserDefaults.standard,
+        guard TestIsolation.mustRefuseProductionDataMutation(defaults),
               TestIsolation.productionDataKeys.contains(storageKey) else {
             return
         }
