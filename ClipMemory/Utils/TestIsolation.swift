@@ -36,4 +36,45 @@ enum TestIsolation {
     static func setDefaults(_ defaults: UserDefaults) {
         self.defaults = defaults
     }
+
+    /// ID-CRASH-0031 (2026-10-20 data-loss incident): robust "is this
+    /// process a test process?" probe.
+    ///
+    /// The per-service `xcTestDefaults` helpers used to key off
+    /// `ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"]
+    /// == nil`. That variable is present in the XCTest **runner**, but a
+    /// plain launch of the app binary has no such variable — and
+    /// `xcodebuild test` launches the app binary through LaunchServices
+    /// (confirmed in the unified log: `Successfully spawned ClipMemory`).
+    /// A plain launch therefore took the PRODUCTION path and read /
+    /// wrote the user's real `com.clipmemory.app` domain.
+    ///
+    /// Three independent signals, any of which is sufficient:
+    /// 1. `XCTestConfigurationFilePath` present with ANY value (an empty
+    ///    string still counts — `Optional("") == nil` is false).
+    /// 2. The `XCTestCase` class is loaded in this process (the XCTest
+    ///    framework is injected into the host app).
+    /// 3. An `.xctest` bundle is injected into this process.
+    ///
+    /// Signals 2 and 3 matter because they survive the app-host launch
+    /// path, where signal 1 may be absent.
+    nonisolated static let isRunningTests: Bool = {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return true
+        }
+        if NSClassFromString("XCTestCase") != nil {
+            return true
+        }
+        return Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
+    }()
+
+    /// ID-CRASH-0031: the UserDefaults keys that hold the user's actual
+    /// data (history / recycle bin / tags). These are the keys a test
+    /// process must never write, and the keys two app processes must
+    /// never overwrite with a stale snapshot.
+    nonisolated static let productionDataKeys: Set<String> = [
+        UserDefaultsKey.clipboardItems.rawValue,
+        UserDefaultsKey.trashedItems.rawValue,
+        UserDefaultsKey.clipboardTags.rawValue
+    ]
 }

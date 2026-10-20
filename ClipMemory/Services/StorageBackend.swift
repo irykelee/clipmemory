@@ -160,12 +160,47 @@ enum StorageBackendError: Error, LocalizedError {
     /// signatures honest.
     case storageFailure(sql: String, code: Int32, detail: String)
 
+    /// ID-CRASH-0031 (2026-10-20): a test process tried to write one of
+    /// the production data keys (`ClipboardItems` / `ClipboardTrashedItems`
+    /// / `ClipMemoryTags`) in the real `com.clipmemory.app` domain.
+    ///
+    /// Background: `xcodebuild test` launches the app binary through
+    /// LaunchServices, and a plain app launch has no
+    /// `XCTestConfigurationFilePath`, so the per-service `xcTestDefaults`
+    /// guard silently fell through to the PRODUCTION path. The launched
+    /// app then loaded the user's real history + recycle bin and wrote
+    /// its own snapshot back — including a retention purge that replaced
+    /// 106 trashed entries with an empty array. This case makes that
+    /// impossible: a test process can never write the user's data blobs.
+    case productionWriteBlocked(storageKey: String)
+
+    /// ID-CRASH-0031 (2026-10-20): the blob changed underneath us since
+    /// this backend instance loaded it — another process wrote the same
+    /// UserDefaults key.
+    ///
+    /// The blob is written as a WHOLE-ARRAY replacement, so a stale
+    /// snapshot does not merge: it overwrites. Two app processes (e.g. the
+    /// user's app plus an instance the build tooling launched) each hold
+    /// their own snapshot, and the second writer resurrects entries the
+    /// first already deleted — or drops entries the first added.
+    ///
+    /// Refusing the write is the honest outcome: the in-memory state is
+    /// known to be out of date, and silently overwriting would destroy
+    /// data this process never had. The caller surfaces the failure
+    /// through the existing save-failure path (notification + retry +
+    /// user-visible alert).
+    case staleBlob(storageKey: String)
+
     var errorDescription: String? {
         switch self {
         case .unsupportedFeature(let detail):
             return "StorageBackend granular operation unsupported: \(detail)"
         case .storageFailure(let sql, let code, let detail):
             return "StorageBackend write failed (rc=\(code)): \(detail) — sql=\(sql.prefix(120))"
+        case .productionWriteBlocked(let key):
+            return "Refusing to write production UserDefaults key '\(key)' from a test process"
+        case .staleBlob(let key):
+            return "Refusing to write UserDefaults key '\(key)': the stored blob changed since it was loaded (another process wrote it)"
         }
     }
 }
@@ -214,6 +249,38 @@ final class FileStorageBackend: StorageBackend {
         self.defaults = defaults
     }
 
+    /// ID-CRASH-0031 (2026-10-20): the write gate for the production data
+    /// blobs.
+    ///
+    /// Background: `xcodebuild test` launches the app binary through
+    /// LaunchServices. A plain app launch has no
+    /// `XCTestConfigurationFilePath`, so the per-service `xcTestDefaults`
+    /// guard fell through to the PRODUCTION path and the launched app read
+    /// and wrote the user's real `com.clipmemory.app` domain — including a
+    /// retention purge that replaced the recycle bin with an empty array.
+    ///
+    /// This gate makes that impossible from the inside: while the process
+    /// is running tests, the production data keys (`ClipboardItems` /
+    /// `ClipboardTrashedItems` / `ClipMemoryTags`) must never be written
+    /// into `.standard`.
+    ///
+    /// Scope notes:
+    /// - Only the three production DATA keys are blocked. Test fixtures
+    ///   that use their own storage key in an isolated suite (and the
+    ///   existing `prod.default.*` seam test) are untouched.
+    /// - The check is on the storage key AND `.standard`; an isolated
+    ///   suite that happens to use a production key name is a test
+    ///   fixture, not the user's data.
+    private func assertWriteAllowed() throws {
+        guard TestIsolation.isRunningTests,
+              defaults === UserDefaults.standard,
+              TestIsolation.productionDataKeys.contains(storageKey) else {
+            return
+        }
+        logger.error("ID-CRASH-0031: blocked a test process from writing the production data key '\(self.storageKey, privacy: .public)'")
+        throw StorageBackendError.productionWriteBlocked(storageKey: storageKey)
+    }
+
     func load() throws -> [ClipboardItem] {
         guard let data = defaults.data(forKey: storageKey) else {
             return []
@@ -222,6 +289,7 @@ final class FileStorageBackend: StorageBackend {
     }
 
     func save(_ items: [ClipboardItem]) throws {
+        try assertWriteAllowed()
         let data = try Self.itemsEncoder.encode(items)
         defaults.set(data, forKey: storageKey)
     }
@@ -255,6 +323,7 @@ final class FileStorageBackend: StorageBackend {
     /// `SaveRetryState` backoff (ID-SILENT-0022). Throwing on
     /// in-memory failure flows through that path correctly.
     func saveBlob(_ data: Data) throws {
+        try assertWriteAllowed()
         defaults.set(data, forKey: storageKey)
         // Force-flush attempt before read-back. Deprecated since
         // macOS 10.5 but still functional — it's the only mechanism
@@ -284,6 +353,7 @@ final class FileStorageBackend: StorageBackend {
     }
 
     func saveTags(_ tags: [Tag]) throws {
+        try assertWriteAllowed()
         let data = try Self.tagsEncoder.encode(tags)
         defaults.set(data, forKey: storageKey)
         // ID-CRASH-0007 (2026-09-28 code-review P1-1): `defaults.set`
