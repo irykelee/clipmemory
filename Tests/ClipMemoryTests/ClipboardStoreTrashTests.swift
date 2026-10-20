@@ -870,6 +870,134 @@ import XCTest
         )
     }
 
+    /// ID-CRASH-0022 (2026-10-20): the items-side load failure must be
+    /// USER-VISIBLE.
+    ///
+    /// The trash side has had a user-visible signal since 2026-08-08
+    /// (`.trashLoadFailed` → NSAlert) and the tags side has
+    /// `.tagBackendCorrupted` → banner. The items side — the biggest
+    /// dataset of the three — had only a log line: the user saw their
+    /// history disappear with no explanation and no hint that an
+    /// unreadable copy still exists under `ClipboardItems.corrupt-*`.
+    func testItemsLoadFailureIsUserVisible() {
+        let store = ClipboardStore(
+            backend: FailingItemsBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: MemoryStorageBackend(),
+            defaults: testDefaults
+        )
+
+        let posted = expectation(description: "items load failure posted")
+        // The failure can be reported more than once (the constructor's
+        // async load and the explicit sync load below) — one delivery is
+        // enough for this test.
+        posted.assertForOverFulfill = false
+        var capturedSource: String?
+        let token = NotificationCenter.default.addObserver(
+            forName: .itemsLoadFailed, object: nil, queue: nil
+        ) { note in
+            capturedSource = note.userInfo?["source"] as? String
+            posted.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        store.loadItems()
+
+        wait(for: [posted], timeout: 2.0)
+        XCTAssertEqual(capturedSource, "itemsLoadFailed",
+                       "the items load failure must tag its own throttler bucket")
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the notification must reach an
+    /// observer that registers AFTER the failure already happened.
+    ///
+    /// This is the test that makes the async delivery observable.
+    /// The whole point of the fix is that the trash load runs inside
+    /// `TrashStore.init` — i.e. BEFORE the AppDelegate registers its
+    /// observers — so a synchronous post is delivered to nobody and the
+    /// alert never appears at startup.
+    ///
+    /// A test that registers its observer BEFORE the store cannot see
+    /// that difference (both deliveries work), so it cannot tell the
+    /// fix from the bug: an independent mutation run confirmed that
+    /// reverting the post to a synchronous one kept the whole suite
+    /// green. This one registers afterwards, so a synchronous post is
+    /// already gone and the expectation times out.
+    func testTrashLoadFailureNotificationReachesAnObserverRegisteredAfterTheLoad() {
+        // The failure happens HERE, during the store's construction.
+        _ = ClipboardStore(
+            backend: MemoryStorageBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: FailingTrashBackend(),
+            defaults: testDefaults
+        )
+
+        // Register only NOW — after the failure already happened.
+        let posted = expectation(description: "trash load failure posted")
+        posted.assertForOverFulfill = false
+        let token = NotificationCenter.default.addObserver(
+            forName: .trashLoadFailed, object: nil, queue: nil
+        ) { _ in
+            posted.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        wait(for: [posted], timeout: 2.0)
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the items-side twin of the test
+    /// above — the failure notification must be DEFERRED, not posted
+    /// inline.
+    ///
+    /// The trash side can be tested with a "late observer" (its load is
+    /// synchronous, so the post happens inside the constructor). The
+    /// items side cannot: its production load runs on a background
+    /// queue, so the arrival order of the two posts is a race. What
+    /// IS deterministic is the deferral itself: with the async post,
+    /// nothing has been delivered when the triggering call returns —
+    /// the delivery is queued behind the current main-queue turn. With
+    /// a synchronous post the observer has already been called by then.
+    ///
+    /// The observer uses `queue: .main` so every delivery happens on
+    /// the main thread — the background load's own post is therefore
+    /// also deferred and cannot race the assertion.
+    func testItemsLoadFailureNotificationIsDeferredNotPostedInline() {
+        let store = ClipboardStore(
+            backend: FailingItemsBackend(),
+            tagBackend: MemoryStorageBackend(),
+            trashBackend: MemoryStorageBackend(),
+            defaults: testDefaults
+        )
+
+        var deliveries = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .itemsLoadFailed, object: nil, queue: .main
+        ) { _ in
+            deliveries += 1
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        store.loadItems()
+
+        XCTAssertEqual(
+            deliveries, 0,
+            "the failure notification must be deferred — a synchronous post during the load "
+            + "is delivered to nobody, because the AppDelegate registers its observers later "
+            + "in the launch sequence"
+        )
+
+        // Let the main queue drain so the deferred post is delivered.
+        let posted = expectation(description: "items load failure posted")
+        posted.assertForOverFulfill = false
+        let token2 = NotificationCenter.default.addObserver(
+            forName: .itemsLoadFailed, object: nil, queue: .main
+        ) { _ in
+            posted.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token2) }
+        wait(for: [posted], timeout: 2.0)
+    }
+
     /// ID-CRASH-0022 (2026-10-20): a non-empty items load proves the
     /// store is healthy again → the sentinel is cleared and the orphan
     /// sweep resumes.

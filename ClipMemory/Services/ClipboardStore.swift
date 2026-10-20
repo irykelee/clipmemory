@@ -94,6 +94,23 @@ extension Notification.Name {
     /// `userInfo["retentionDays"]` = the retention window that was
     /// applied (Int).
     static let trashItemsExpired = Notification.Name("TrashStore.itemsExpired")
+    /// ID-CRASH-0022 (2026-10-20): posted when the ITEMS blob fails to
+    /// load (it is quarantined under `ClipboardItems.corrupt-*` and the
+    /// in-memory history comes back empty).
+    ///
+    /// This is the items-side twin of `.trashLoadFailed`, and it was
+    /// MISSING: the trash side has had a user-visible signal since
+    /// 2026-08-08, the tags side has `.tagBackendCorrupted` →
+    /// `DiagnosticsBanner`, and the items side — the biggest dataset of
+    /// the three — had nothing but a log line. The user saw their
+    /// history disappear with no explanation and no way to recover it
+    /// from the quarantined copy.
+    ///
+    /// `userInfo["persistent"]` = Bool (the failure survived a
+    /// launch), `userInfo["error"]` = the underlying error text,
+    /// `userInfo["source"]` = "itemsLoadFailed" (its own throttler
+    /// bucket).
+    static let itemsLoadFailed = Notification.Name("ClipboardStore.itemsLoadFailed")
     /// NOTIFY-0001 (2026-08-10): posted by `LanguageManager` after the
     /// in-memory mirror is updated so any consumer reacting to the
     /// notification (e.g. AppDelegate refreshing `NSApp.appearance`) sees
@@ -369,6 +386,36 @@ final class ClipboardStore: ObservableObject {
     /// itself survives under the `.corrupt-*` key.
     var itemsLoadFailed: Bool {
         defaults.bool(forKey: Self.itemsLoadFailedSentinelKey)
+    }
+
+    /// Post `.itemsLoadFailed` **asynchronously**.
+    ///
+    /// ID-CRASH-0022 (2026-10-20): the items load runs during startup
+    /// — the sync path inside `ClipboardStore.init`, the async path on
+    /// a background queue whose result lands on the main actor — and
+    /// the AppDelegate registers its observers LATER in
+    /// `applicationDidFinishLaunching`. A synchronous post is therefore
+    /// delivered to nobody: the alert the observer exists to show
+    /// never appears. Posting after the current main-queue block lets
+    /// the launch sequence finish first (observers included).
+    private func postItemsLoadFailed(error: Error?, persistent: Bool) {
+        var userInfo: [String: Any] = [
+            "persistent": persistent,
+            // ID-CRASH-0008 (2026-08-28 audit): tag the source so the
+            // AppDelegate Throttler can bucket items failures
+            // independently from trash / save / encryption failures.
+            "source": "itemsLoadFailed"
+        ]
+        if let error {
+            userInfo["error"] = error.localizedDescription
+        }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .itemsLoadFailed,
+                object: self,
+                userInfo: userInfo
+            )
+        }
     }
     // trashedItemsStorageKey moved to TrashStore (HIGH-1, 2026-07-26)
     // ARCH-0002 PR #1 (2026-08-11): visibility loosened from `private`
@@ -1133,6 +1180,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             // the irrecoverable half. The trash side has had this
             // guard since 2026-08-08; the items side did not.
             defaults.set(true, forKey: Self.itemsLoadFailedSentinelKey)
+            postItemsLoadFailed(error: error, persistent: false)
             return
         }
         // A non-empty load proves the store is healthy again — but an
@@ -1141,6 +1189,11 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // in that case (same rule as the trash side).
         if !savedItems.isEmpty {
             defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
+        } else if itemsLoadFailed {
+            // The failure survived the launch: the blob is still
+            // unreadable, so the history is still missing. Say so
+            // again — the user has to know their history is not there.
+            postItemsLoadFailed(error: nil, persistent: true)
         }
         // ID-STORE-0002 (2026-07-31 audit): the old `!$0.isExpired` filter
         // dropped expired items silently — including PINNED ones — and the
@@ -1532,6 +1585,7 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             // items blob itself survives in the `.corrupt-*` key; the
             // images would not).
             defaults.set(true, forKey: Self.itemsLoadFailedSentinelKey)
+            postItemsLoadFailed(error: error, persistent: false)
             logger.error("P2-14: background load failed for items blob: \(error.localizedDescription)")
             return
         }
@@ -1544,6 +1598,11 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // rule as the trash side).
         if !loadedItems.isEmpty {
             defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
+        } else if itemsLoadFailed {
+            // The failure survived the launch — the blob is still
+            // unreadable and the history is still missing. Say so
+            // again (same rule as the trash side).
+            postItemsLoadFailed(error: nil, persistent: true)
         }
         let expiredItems = result.expired
         let repairedImages = result.repairedImages

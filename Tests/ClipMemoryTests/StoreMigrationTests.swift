@@ -218,6 +218,12 @@ import XCTest
                                 "migration flag must be set after runOnce")
         XCTAssertEqual(raw.count, MemoryLayout<Int64>.size,
                        "the 'i64' contract is an 8-byte value — a 1-byte blob traps the documented read recipe")
+        // The documented read recipe TRAPS on a short buffer ("Fatal
+        // error: UnsafeRawBufferPointer.load out of bounds"), so the
+        // decode below is only reached when the length is right. The
+        // assertion above already failed — returning here keeps the
+        // failure a clean red instead of a crashed test host.
+        guard raw.count == MemoryLayout<Int64>.size else { return }
         let decoded = raw.withUnsafeBytes { $0.loadUnaligned(as: Int64.self) }
         XCTAssertEqual(decoded, 1,
                        "the flag value must decode to 1 with the documented little-endian Int64 read")

@@ -157,6 +157,77 @@ final class LocalizationKeysTests: XCTestCase {
         }
     }
 
+    /// ID-CRASH-0022 (2026-10-20): the two data-loss alerts this round
+    /// added must exist in all 7 shipping language files — same parity
+    /// rationale as the keys above (a missing locale silently degrades
+    /// to English).
+    ///
+    /// The placeholders matter as much as the key: the purge notice
+    /// carries TWO `%d` (the count and the retention window), and a
+    /// translation that drops or reorders one renders garbage.
+    func testDataLossAlertKeysExistInAllSevenLanguageFiles() throws {
+        let keys = [
+            "alert.trash.items.expired.title",
+            "alert.trash.items.expired",
+            "alert.trash.items.expired.one",
+            "alert.items.load.failed.title",
+            "alert.items.load.failed",
+            "alert.items.load.failed.count",
+            "alert.items.load.failed.count.one"
+        ]
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appResDir = projectRoot.appendingPathComponent("ClipMemory", isDirectory: true)
+
+        let languages = ["en", "es", "ja", "ko", "pt", "zh-Hans", "zh-Hant"]
+        for lang in languages {
+            let path = appResDir
+                .appendingPathComponent("\(lang).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            let content = try String(contentsOf: path, encoding: .utf8)
+            for key in keys {
+                XCTAssertTrue(
+                    content.contains("\"\(key)\""),
+                    "\(lang).lproj/Localizable.strings is missing key '\(key)'"
+                )
+            }
+            // The purge notice is formatted with (count, retentionDays)
+            // — two positional placeholders, in that order.
+            for key in ["alert.trash.items.expired", "alert.trash.items.expired.one"] {
+                let line = content
+                    .split(separator: "\n")
+                    .first { $0.contains("\"\(key)\"") }?
+                    .description ?? ""
+                XCTAssertEqual(
+                    line.components(separatedBy: "%d").count - 1, 2,
+                    "\(lang).lproj/Localizable.strings key '\(key)' must carry exactly two %d placeholders (count, retentionDays), got: \(line)"
+                )
+            }
+        }
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the rendered purge notice must
+    /// actually embed both values. A translation that keeps the
+    /// placeholders but drops one of the values renders something like
+    /// "106 items were removed after the -day retention period".
+    func testTrashItemsExpiredNoticeEmbedsCountAndWindow() {
+        let rendered = L10n.alertTrashItemsExpired(106, retentionDays: 7)
+        XCTAssertTrue(
+            rendered.contains("106"),
+            "the notice must embed the number of removed items, got: \(rendered)"
+        )
+        XCTAssertTrue(
+            rendered.contains("7"),
+            "the notice must embed the retention window, got: \(rendered)"
+        )
+        XCTAssertFalse(
+            rendered.contains("%d"),
+            "the notice must not leak an unformatted placeholder, got: \(rendered)"
+        )
+    }
+
     /// OCR search highlight keys parity pin. Without this assertion, a missing
     /// translation silently degrades to English rather than failing the build.
     func testOcrSearchHighlightKeysExistInAllSevenLanguageFiles() throws {

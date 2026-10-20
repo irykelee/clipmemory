@@ -377,6 +377,10 @@
 "alert.trash.items.expired.title" = "Papelera limpiada";
 "alert.trash.items.expired" = "Papelera: se eliminaron %d elementos tras superar el periodo de retención de %d días.";
 "alert.trash.items.expired.one" = "Papelera: se eliminó %d elemento tras superar el periodo de retención de %d días.";
+"alert.items.load.failed.title" = "Historial del portapapeles no disponible";
+"alert.items.load.failed" = "Error al cargar el historial del portapapeles. La copia ilegible se conserva y el historial puede restaurarse desde una copia local.";
+"alert.items.load.failed.count" = "Error al cargar el historial del portapapeles. %d intentos de recuperación fallaron.";
+"alert.items.load.failed.count.one" = "Error al cargar el historial del portapapeles. 1 intento de recuperación falló.";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "Asistente de restauración";

@@ -377,6 +377,10 @@
 "alert.trash.items.expired.title" = "Lixeira limpa";
 "alert.trash.items.expired" = "Lixeira: %d itens foram removidos após o período de retenção de %d dias.";
 "alert.trash.items.expired.one" = "Lixeira: %d item foi removido após o período de retenção de %d dias.";
+"alert.items.load.failed.title" = "Histórico da área de transferência indisponível";
+"alert.items.load.failed" = "Falha ao carregar o histórico da área de transferência. A cópia ilegível é mantida e o histórico pode ser restaurado a partir de um backup local.";
+"alert.items.load.failed.count" = "Falha ao carregar o histórico da área de transferência. %d tentativas de recuperação falharam.";
+"alert.items.load.failed.count.one" = "Falha ao carregar o histórico da área de transferência. 1 tentativa de recuperação falhou.";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "Assistente de restauração";

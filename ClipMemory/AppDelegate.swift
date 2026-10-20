@@ -50,6 +50,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // observer variable because NotificationCenter has no multi-name
     // API in Foundation — same pattern as `.tagSaveFailed` / `.imageSaveFailed`.
     private var trashItemsExpiredObserver: NSObjectProtocol?
+    // ID-CRASH-0022 (2026-10-20): observer for `.itemsLoadFailed` — the
+    // clipboard history blob was unreadable and was quarantined. The
+    // trash side has had a user-visible signal since 2026-08-08 and the
+    // tags side has `.tagBackendCorrupted`; the items side — the biggest
+    // dataset of the three — had only a log line, so the user saw their
+    // history disappear with no explanation. Its own throttler bucket
+    // ("itemsLoadFailed").
+    private var itemsLoadFailedObserver: NSObjectProtocol?
     // ID-CRASH-0008 (2026-09-28 code-review P1-3): observer for
     // `.tagBackendCorrupted` so the user's tag sidebar emptiness is
     // surfaced via `DiagnosticsBanner.tagsLoadFailed` instead of
@@ -594,6 +602,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// `setFrameAutosaveName`) instead of recentering every time.
     private var recentCrashesWindow: NSWindow?
 
+    /// ID-CRASH-0022 (2026-10-20): the two observers for the data-loss
+    /// signals of the recycle bin and the clipboard history.
+    ///
+    /// Split out of `setupLanguageObserver()` — that function is a
+    /// grab-bag of observer registrations and had crossed the
+    /// SwiftLint `function_body_length` ceiling.
+    ///
+    /// Both notifications are posted ASYNCHRONOUSLY by their senders
+    /// (see `TrashStore.postTrashLoadFailed` and
+    /// `ClipboardStore.postItemsLoadFailed`) precisely so that these
+    /// observers — registered here, during the launch sequence — are
+    /// in place when they fire: the sends happen inside the store's
+    /// construction, which is earlier in the same launch.
+    private func setupTrashAndItemsObservers() {
+        // The recycle bin's retention purge removed items, and the
+        // user must be told. Without this, the purge was a silent
+        // DELETE: the 2026-10-20 incident emptied 106 items in one
+        // launch and said nothing.
+        trashItemsExpiredObserver = NotificationCenter.default.addObserver(
+            forName: .trashItemsExpired, object: nil, queue: .main
+        ) { [weak self] note in
+            self?.handleTrashItemsExpired(note)
+        }
+        // The items blob was unreadable and got quarantined. Without
+        // this, the user sees their clipboard history disappear with no
+        // explanation and no hint that a `.corrupt-*` copy exists.
+        itemsLoadFailedObserver = NotificationCenter.default.addObserver(
+            forName: .itemsLoadFailed, object: nil, queue: .main
+        ) { [weak self] note in
+            self?.handleItemsLoadFailed(note)
+        }
+    }
+
     private func setupLanguageObserver() {
         languageObserver = NotificationCenter.default.addObserver(forName: .languageDidChange, object: nil, queue: .main) { [weak self] _ in
             self?.statusItem?.button?.toolTip = L10n.appName
@@ -608,19 +649,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] note in
             self?.handleTrashLoadFailed(note)
         }
-        // ID-CRASH-0022 (2026-10-20): observer for `.trashItemsExpired`
-        // — the recycle bin's retention purge removed items, and the
-        // user must be told. Without this, the purge was a silent
-        // DELETE: the 2026-10-20 incident emptied 106 items in one
-        // launch and said nothing. The notification is posted
-        // asynchronously by `TrashStore.purgeExpiredTrash()` precisely
-        // so that this observer (registered here, during the launch
-        // sequence) is in place when it fires.
-        trashItemsExpiredObserver = NotificationCenter.default.addObserver(
-            forName: .trashItemsExpired, object: nil, queue: .main
-        ) { [weak self] note in
-            self?.handleTrashItemsExpired(note)
-        }
+        setupTrashAndItemsObservers()
 
         // ID-CRASH-0008 (2026-09-28 code-review P1-3): observer for
         // `.tagBackendCorrupted` (posted by `ClipboardStore.loadTags()`
@@ -1005,6 +1034,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // `.trashItemsExpired`. Same leak guard as trashLoadFailedObserver
         // above.
         if let o = trashItemsExpiredObserver { NotificationCenter.default.removeObserver(o) }
+        // ID-CRASH-0022 (2026-10-20): mirror observer cleanup for
+        // `.itemsLoadFailed`. Same leak guard as trashLoadFailedObserver
+        // above.
+        if let o = itemsLoadFailedObserver { NotificationCenter.default.removeObserver(o) }
         // ID-CRASH-0008 (2026-09-28 code-review P1-3): mirror observer
         // cleanup for `.tagBackendCorrupted`. Same leak guard as
         // trashLoadFailedObserver above.
@@ -1166,6 +1199,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         a.messageText = L10n.alertTrashItemsExpiredTitle
         a.informativeText = L10n.alertTrashItemsExpired(count, retentionDays: retentionDays)
         a.alertStyle = .informational
+        a.addButton(withTitle: L10n.buttonConfirm)
+        a.runModal()
+    }
+
+    /// ID-CRASH-0022 (2026-10-20): the clipboard history blob was
+    /// unreadable and was quarantined.
+    ///
+    /// The items-side twin of `handleTrashLoadFailed`. The history is
+    /// the biggest dataset the app owns, and it used to fail SILENTLY:
+    /// the user saw an empty library with no explanation and no hint
+    /// that the unreadable copy still exists under
+    /// `ClipboardItems.corrupt-*`.
+    fileprivate func handleItemsLoadFailed(_ note: Notification) {
+        // Same XCTest guard as handleTrashLoadFailed: a modal alert
+        // would hang CI forever.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        let persistent = (note.userInfo?["persistent"] as? Bool) ?? false
+        let underlying = (note.userInfo?["error"] as? String) ?? "unknown"
+        let decision = trashAlertThrottler.recordFailure(source: "itemsLoadFailed")
+        let detail = "Quarantined blob retained under 'ClipboardItems.corrupt-*'. Underlying error: \(underlying)"
+        logger.error("Items load failed\(persistent ? " (persisted from prior launch)" : ""). \(detail)")
+        guard decision.shouldShowAlert else { return }
+        let a = NSAlert()
+        a.messageText = L10n.alertItemsLoadFailedTitle
+        a.informativeText = decision.failureCount > 1
+            ? L10n.alertItemsLoadFailedCount(decision.failureCount)
+            : L10n.alertItemsLoadFailed
+        a.alertStyle = .warning
         a.addButton(withTitle: L10n.buttonConfirm)
         a.runModal()
     }

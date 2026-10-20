@@ -481,6 +481,13 @@ struct L10n {
     static func alertTrashItemsExpired(_ count: Int, retentionDays: Int) -> String {
         String(format: pluralTemplate("alert.trash.items.expired", count), count, retentionDays)
     }
+    // ID-CRASH-0022 (2026-10-20): the items-side twin of
+    // `alertTrashLoadFailed` — the clipboard history blob was
+    // unreadable and got quarantined. The user has to learn that their
+    // history is not there and that an unreadable copy still exists.
+    static var alertItemsLoadFailedTitle: String { string("alert.items.load.failed.title") }
+    static var alertItemsLoadFailed: String { string("alert.items.load.failed") }
+    static func alertItemsLoadFailedCount(_ count: Int) -> String { plural("alert.items.load.failed.count", count) }
 
     // MARK: - Trim Alert
     static var alertTrimTitle: String { string("alert.trim.title") }

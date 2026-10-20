@@ -58,8 +58,12 @@ enum UserDefaultsKey: String, CaseIterable {
     /// is still recoverable from the `.corrupt-*` quarantine key. The
     /// images are the irrecoverable half.
     ///
-    /// Same shape, same lifetime: set when the items load fails, cleared
-    /// on the next successful load, and consulted by the sweep.
+    /// Same shape, same lifetime: set when the items load fails, and
+    /// cleared again once a NON-EMPTY items blob loads successfully —
+    /// an empty load does NOT clear it, because after a quarantine the
+    /// key is gone and the load succeeds with nothing (the store is
+    /// still in the failed state). Consulted by the orphan-image
+    /// sweep.
     case clipboardItemsLoadFailedSentinel = "ClipboardItems.loadFailed"
 
     /// Trash retention window (days). Derived from `trashedItems` in legacy

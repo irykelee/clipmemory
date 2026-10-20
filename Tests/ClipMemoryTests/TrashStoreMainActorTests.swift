@@ -125,24 +125,30 @@ final class TrashStoreMainActorTests: XCTestCase {
     }
 
     /// ID-CRASH-0022 (2026-10-20): while the trash load is in a FAILED
-    /// state, the store must NOT write.
+    /// state, the store must NOT write an EMPTY collection.
     ///
-    /// `FileStorageBackend.save(_:)` is a WHOLE-ARRAY REPLACE. While
-    /// the load has failed, the in-memory collection is empty and does
-    /// NOT represent the store's content — writing it would replace the
-    /// user's entire recycle bin with an empty array. That is exactly
-    /// the sequence the quarantine log warns about ("The next save will
-    /// overwrite the original key with the current (empty) in-memory
-    /// collection; recover from the quarantined copy or a backup before
-    /// saving").
+    /// `FileStorageBackend.save(_:)` is a WHOLE-ARRAY REPLACE. An empty
+    /// write while the load has failed would replace the store's
+    /// content with a known-empty collection — and in the
+    /// persistent-failure branch the unreadable blob is still sitting
+    /// in the main key (that branch does not quarantine it), so the
+    /// empty write is exactly what would destroy it.
+    ///
+    /// NOTE: this was originally written as "refuse EVERY write", on
+    /// the theory that the in-memory collection never represents the
+    /// store. That theory was wrong (a failed load quarantines the
+    /// blob and REMOVES the main key, so there is nothing left to
+    /// destroy) and the guard was narrowed — see
+    /// `testFailedLoadStillPersistsNewlyTrashedItem` for the other
+    /// half of the contract.
     ///
     /// This is the blob-side twin of the guard that already protects the
     /// image side (`ClipboardStore.loadItems` skips
     /// `cleanupOrphanedImages` while `lastLoadFailed` is true).
     ///
-    /// Discriminating power: remove the guard and `savesObserved`
-    /// becomes 1 (the empty array reaches the store) — the assertion
-    /// goes red.
+    /// Discriminating power: widen the guard back to "refuse every
+    /// write" and this test goes red (the empty array reaches the
+    /// store).
     func testFailedLoadRefusesToWriteOverStore() {
         // Launch-1 failure state: the sentinel is set, the blob is gone.
         testDefaults.set(true, forKey: TrashStore.loadFailedSentinelKey)

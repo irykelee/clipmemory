@@ -378,6 +378,10 @@
 "alert.trash.items.expired.title" = "ゴミ箱を整理しました";
 "alert.trash.items.expired" = "ゴミ箱内の %d 件のアイテムが %d 日間の保持期間を超えたため削除されました。";
 "alert.trash.items.expired.one" = "ゴミ箱内の %d 件のアイテムが %d 日間の保持期間を超えたため削除されました。";
+"alert.items.load.failed.title" = "クリップボード履歴を利用できません";
+"alert.items.load.failed" = "クリップボード履歴の読み込みに失敗しました。読み取れないコピーは保持され、ローカルバックアップから履歴を復元できます。";
+"alert.items.load.failed.count" = "クリップボード履歴の読み込みに失敗しました。%d 回の復元試行が失敗しました。";
+"alert.items.load.failed.count.one" = "クリップボード履歴の読み込みに失敗しました。1 回の復元試行が失敗しました。";
 
 /* Restore wizard (ID-BACKUP-0002) */
 "restore.wizard.title" = "復元ウィザード";
