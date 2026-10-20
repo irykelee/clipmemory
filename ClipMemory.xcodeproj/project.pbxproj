@@ -238,6 +238,7 @@
 		F9142E898BD5660C9E087A88 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 031A31F7A3F610D547F9908B /* Localizable.strings */; };
 		F9D0CA5FF9ADDF71F71F9F72 /* NewTagLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67B0F06D9FC3DEEF030857E5 /* NewTagLogicTests.swift */; };
 		FD25B677FCE4CAFF8AE8FDB4 /* DateHelpersBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50DD9DF154F40067EB9EA260 /* DateHelpersBehaviorTests.swift */; };
+		FF0BA3B90F8833AFFAEA8D01 /* TrashPurgeConfirmationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 973376D10E25B53638A0B536 /* TrashPurgeConfirmationTests.swift */; };
 		FFAC7E103564C9614B82F89B /* RichTextParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1E4EEEB18148D99A25B6FD /* RichTextParser.swift */; };
 /* End PBXBuildFile section */
 
@@ -397,6 +398,7 @@
 		950C8F766BF8F6F390BFA8EE /* SearchDebounce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchDebounce.swift; sourceTree = "<group>"; };
 		96F722DF3757FF81CD7A40CC /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.stringsdict"; sourceTree = "<group>"; };
 		9718B14C2966E47F4D80E31C /* AccessibilityHintTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityHintTests.swift; sourceTree = "<group>"; };
+		973376D10E25B53638A0B536 /* TrashPurgeConfirmationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashPurgeConfirmationTests.swift; sourceTree = "<group>"; };
 		97B0167C63BE64D5C84A942B /* RestoreWizardWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreWizardWindowController.swift; sourceTree = "<group>"; };
 		97E8E72C0DB7F434491E5A61 /* TestHostIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHostIsolationTests.swift; sourceTree = "<group>"; };
 		986AFF3842B6744174E94835 /* SingleInstanceLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingleInstanceLock.swift; sourceTree = "<group>"; };
@@ -693,6 +695,7 @@
 				C732B2DADEA223B75739B44E /* TagTests.swift */,
 				97E8E72C0DB7F434491E5A61 /* TestHostIsolationTests.swift */,
 				F64CD6E92070A29D73CED4C2 /* TrashItemRowSnapshotTests.swift */,
+				973376D10E25B53638A0B536 /* TrashPurgeConfirmationTests.swift */,
 				464B18CF83545FA192E6BABB /* TrashStoreMainActorTests.swift */,
 				77AE865BB02BB4CB6A78CACD /* UIObservabilityTests.swift */,
 				E44057AE8FB730B25A6F1C13 /* UpdateServiceStubProbeEngine.swift */,
@@ -1089,6 +1092,7 @@
 				269F1A9BFA88C2439590FF02 /* TagTests.swift in Sources */,
 				6B6A6AE9BC38FF5F46C8F5E9 /* TestHostIsolationTests.swift in Sources */,
 				AF45961FCAE09F6D67B04365 /* TrashItemRowSnapshotTests.swift in Sources */,
+				FF0BA3B90F8833AFFAEA8D01 /* TrashPurgeConfirmationTests.swift in Sources */,
 				C898FF7F77B517841D8B1E46 /* TrashStoreMainActorTests.swift in Sources */,
 				65167507610F751AAAB9F5BE /* UIObservabilityTests.swift in Sources */,
 				195B542425AE84B95C8E0632 /* UpdateServiceStubProbeEngine.swift in Sources */,

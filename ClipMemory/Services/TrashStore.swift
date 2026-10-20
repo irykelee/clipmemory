@@ -468,6 +468,25 @@ final class TrashStore: ObservableObject {
         scheduleSave()
     }
 
+    /// ID-CRASH-0035 (2026-10-21): how many expired entries an automatic
+    /// retention purge may delete before it has to ask the user first.
+    ///
+    /// Below the threshold the purge is routine housekeeping and stays
+    /// silent. At or above it the purge **waits for the user's
+    /// confirmation**: the entries stay in the bin until the user
+    /// decides. The trade-off is deliberate — the retention window stops
+    /// being a hard upper bound, but a big batch can never disappear
+    /// without a decision.
+    ///
+    /// 20 is the cut-off. The 2026-10-20 incident deleted 106 entries in
+    /// a single launch; a normal day's expiry stays far below 20.
+    static let expiredPurgeConfirmationThreshold = 20
+
+    /// ID-CRASH-0035: how many entries are currently waiting for the
+    /// user's confirmation. Used to avoid re-posting the pending notice
+    /// on every 60 s cleanup tick.
+    private(set) var pendingExpiredPurgeCount: Int = 0
+
     /// Remove every item whose `deletedAt` is older than the retention
     /// window.
     ///
@@ -484,36 +503,92 @@ final class TrashStore: ObservableObject {
     /// leg of the data-deletion gate: the user must be told. The count
     /// and the window are posted so the UI can say how many items went
     /// and how long they were kept.
+    ///
+    /// ID-CRASH-0035 (2026-10-21): the third leg is now a two-step gate.
+    /// A purge of at least `expiredPurgeConfirmationThreshold` entries
+    /// does NOT delete anything — it posts `.trashPurgePending` and the
+    /// UI asks the user to confirm. Only `confirmExpiredPurge()` (the
+    /// user's answer) deletes. Below the threshold the purge stays
+    /// silent: a handful of expired entries is housekeeping, not an event.
     func purgeExpiredTrash() {
+        let expired = expiredTrashEntries()
+        guard !expired.isEmpty else { return }
+        let removedCount = expired.count
+        let retentionDays = trashRetentionDays
+
+        if removedCount >= Self.expiredPurgeConfirmationThreshold {
+            // The notice is posted asynchronously for the same reason as
+            // the one below: `purgeExpiredTrash()` runs from
+            // `TrashStore.init`, i.e. while `ClipboardStore.shared` is
+            // still being constructed and the AppDelegate has not
+            // registered its observers yet.
+            guard pendingExpiredPurgeCount != removedCount else { return }
+            pendingExpiredPurgeCount = removedCount
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .trashPurgePending,
+                    object: self,
+                    userInfo: [
+                        "count": removedCount,
+                        "retentionDays": retentionDays
+                    ]
+                )
+            }
+            return
+        }
+
+        deleteExpiredEntries(expired)
+        postExpiredNotice(count: removedCount, retentionDays: retentionDays)
+    }
+
+    /// ID-CRASH-0035 (2026-10-21): the user confirmed the pending
+    /// retention purge. Deletes the entries that are past the window now
+    /// and reports what went.
+    func confirmExpiredPurge() {
+        let expired = expiredTrashEntries()
+        pendingExpiredPurgeCount = 0
+        guard !expired.isEmpty else { return }
+        let removedCount = expired.count
+        let retentionDays = trashRetentionDays
+        deleteExpiredEntries(expired)
+        postExpiredNotice(count: removedCount, retentionDays: retentionDays)
+    }
+
+    /// The entries that are past the retention window right now.
+    private func expiredTrashEntries() -> [ClipboardItem] {
         let cutoff = Date().addingTimeInterval(-TimeInterval(trashRetentionDays * 24 * 60 * 60))
-        let expired = trashedItems.filter { item in
+        return trashedItems.filter { item in
             guard let deletedAt = item.deletedAt else { return false }
             return deletedAt < cutoff
         }
-        guard !expired.isEmpty else { return }
-        for item in expired where item.type == .image {
+    }
+
+    /// Removes the given entries — and their image files — from the bin.
+    private func deleteExpiredEntries(_ entries: [ClipboardItem]) {
+        for item in entries where item.type == .image {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
-        let expiredIds = Set(expired.map { $0.id })
+        let expiredIds = Set(entries.map { $0.id })
         trashedItems.removeAll { expiredIds.contains($0.id) }
         scheduleSave()
-        // The notice is posted asynchronously on purpose: the purge runs
-        // from `TrashStore.init`, i.e. while `ClipboardStore.shared` is
-        // being constructed — which happens in `applicationDidFinish-
-        // Launching` BEFORE the AppDelegate registers its observers. A
-        // synchronous post would be delivered to nobody, and the user
-        // would again see the bin empty with no explanation. Posting
-        // after the current main-queue block lets the launch sequence
-        // finish first (observers included) and keeps the modal alert
-        // out of the middle of app startup.
-        let removedCount = expired.count
-        let retentionDays = trashRetentionDays
+    }
+
+    /// Posts the "the purge happened" notice.
+    ///
+    /// The post is asynchronous on purpose: the purge runs from
+    /// `TrashStore.init`, i.e. while `ClipboardStore.shared` is being
+    /// constructed — which happens in `applicationDidFinishLaunching`
+    /// BEFORE the AppDelegate registers its observers. A synchronous post
+    /// would be delivered to nobody, and the user would again see the bin
+    /// empty with no explanation. Posting after the current main-queue
+    /// block lets the launch sequence finish first (observers included).
+    private func postExpiredNotice(count: Int, retentionDays: Int) {
         DispatchQueue.main.async {
             NotificationCenter.default.post(
                 name: .trashItemsExpired,
                 object: self,
                 userInfo: [
-                    "count": removedCount,
+                    "count": count,
                     "retentionDays": retentionDays
                 ]
             )

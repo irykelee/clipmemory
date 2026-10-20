@@ -378,8 +378,14 @@
 "alert.trash.load.failed.count" = "回收桶載入失敗，%d 次復原嘗試均失敗。";
 "alert.trash.load.failed.count.one" = "回收桶載入失敗，1 次復原嘗試失敗。";
 "alert.trash.items.expired.title" = "回收桶已清理";
-"alert.trash.items.expired" = "回收桶中有 %d 筆內容因超過 %d 天保留期被自動刪除。";
-"alert.trash.items.expired.one" = "回收桶中有 %d 筆內容因超過 %d 天保留期被自動刪除。";
+"alert.trash.items.expired" = "回收桶中有 %d 筆內容因超過 %d 天保留期被清理。";
+"alert.trash.items.expired.one" = "回收桶中有 %d 筆內容因超過 %d 天保留期被清理。";
+"alert.trash.purge.pending.title" = "回收桶有待清理內容";
+"alert.trash.purge.pending" = "回收桶中有 %d 筆內容已超過 %d 天保留期，永久刪除後無法復原。";
+"alert.trash.purge.pending.one" = "回收桶中有 %d 筆內容已超過 %d 天保留期，永久刪除後無法復原。";
+"alert.trash.purge.pending.badge" = "回收桶有 %d 筆待清理";
+"alert.trash.purge.pending.badge.one" = "回收桶有 %d 筆待清理";
+"alert.trash.purge.pending.confirm" = "永久刪除";
 "alert.items.load.failed.title" = "剪貼簿歷史暫時無法使用";
 "alert.items.load.failed" = "剪貼簿歷史載入失敗。無法讀取的副本已保留，可從本機備份還原歷史。";
 "alert.items.load.failed.count" = "剪貼簿歷史載入失敗，%d 次復原嘗試均失敗。";

@@ -377,6 +377,12 @@
 "alert.trash.items.expired.title" = "Lixeira limpa";
 "alert.trash.items.expired" = "Lixeira: %d itens foram removidos após o período de retenção de %d dias.";
 "alert.trash.items.expired.one" = "Lixeira: %d item foi removido após o período de retenção de %d dias.";
+"alert.trash.purge.pending.title" = "A lixeira tem itens para limpar";
+"alert.trash.purge.pending" = "%d itens da lixeira passaram do período de retenção de %d dias. Excluir permanentemente não poderá ser desfeito.";
+"alert.trash.purge.pending.one" = "%d item da lixeira passou do período de retenção de %d dias. Excluir permanentemente não poderá ser desfeito.";
+"alert.trash.purge.pending.badge" = "Lixeira: %d itens para limpar";
+"alert.trash.purge.pending.badge.one" = "Lixeira: %d item para limpar";
+"alert.trash.purge.pending.confirm" = "Excluir permanentemente";
 "alert.items.load.failed.title" = "Histórico da área de transferência indisponível";
 "alert.items.load.failed" = "Falha ao carregar o histórico da área de transferência. A cópia ilegível é mantida e o histórico pode ser restaurado a partir de um backup local.";
 "alert.items.load.failed.count" = "Falha ao carregar o histórico da área de transferência. %d tentativas de recuperação falharam.";

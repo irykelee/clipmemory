@@ -51,6 +51,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // observer variable because NotificationCenter has no multi-name
     // API in Foundation — same pattern as `.tagSaveFailed` / `.imageSaveFailed`.
     private var trashItemsExpiredObserver: NSObjectProtocol?
+    /// ID-CRASH-0035 (2026-10-21): observer for `.trashPurgePending` —
+    /// the retention purge wants to delete a LOT of entries and is
+    /// waiting for the user's confirmation. Its own observer variable for
+    /// the same reason as the ones above (NotificationCenter has no
+    /// multi-name API).
+    private var trashPurgePendingObserver: NSObjectProtocol?
+    /// ID-CRASH-0035 (2026-10-21): how many recycle-bin entries are
+    /// waiting for the user's confirmation before the retention purge may
+    /// delete them. `0` means "nothing pending".
+    private var pendingTrashPurgeCount: Int = 0
+    /// ID-CRASH-0035: the retention window that produced the pending
+    /// purge — shown in the confirmation so the user knows the rule that
+    /// is about to apply.
+    private var pendingTrashPurgeRetentionDays: Int = 0
     // ID-CRASH-0022 (2026-10-20): observer for `.itemsLoadFailed` — the
     // clipboard history blob was unreadable and was quarantined. The
     // trash side has had a user-visible signal since 2026-08-08 and the
@@ -531,7 +545,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // tooltip below already does this; consistency across both is
             // the fix. SF Symbol name itself stays English (Apple platform
             // convention).
-            button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: L10n.appName)
+            button.image = Self.defaultStatusImage()
             button.toolTip = L10n.appName
             button.target = self; button.action = #selector(statusItemClicked)
             button.sendAction(on: [.leftMouseDown, .rightMouseDown])
@@ -540,7 +554,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let item = statusItem, let wm = windowManager { wm.setStatusItem(item) }
     }
 
-    @objc private func statusItemClicked() {
+    @MainActor @objc private func statusItemClicked() {
+        // ID-CRASH-0035 (2026-10-21): a pending retention purge takes
+        // precedence over the QuickBar. The badge is the only affordance
+        // for a decision that has to be made before data is deleted, and
+        // the user clicked it on purpose — so this is the one place where
+        // a modal confirmation is acceptable: it can never pop up on its
+        // own.
+        if pendingTrashPurgeCount > 0 {
+            presentTrashPurgeConfirmation()
+            return
+        }
         // H-1: windowManager is optional — quietly fail if setup didn't complete
         // rather than crashing. QuickBar is a nice-to-have; the app stays usable.
         windowManager?.showQuickBar()
@@ -665,6 +689,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forName: .trashItemsExpired, object: nil, queue: .main
         ) { [weak self] note in
             self?.handleTrashItemsExpired(note)
+        }
+        // ID-CRASH-0035 (2026-10-21): a retention purge that would remove
+        // a LOT of entries waits for the user's confirmation. The badge
+        // on the menu bar item carries that pending state — never a
+        // modal alert, because the purge also runs on a 60 s timer and a
+        // modal could pop up in the middle of a session.
+        trashPurgePendingObserver = NotificationCenter.default.addObserver(
+            forName: .trashPurgePending, object: nil, queue: .main
+        ) { [weak self] note in
+            self?.handleTrashPurgePending(note)
         }
         // The items blob was unreadable and got quarantined. Without
         // this, the user sees their clipboard history disappear with no
@@ -1139,6 +1173,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // `.trashItemsExpired`. Same leak guard as trashLoadFailedObserver
         // above.
         if let o = trashItemsExpiredObserver { NotificationCenter.default.removeObserver(o) }
+        // ID-CRASH-0035 (2026-10-21): mirror observer cleanup for
+        // `.trashPurgePending`. Same leak guard as trashItemsExpiredObserver
+        // above.
+        if let o = trashPurgePendingObserver { NotificationCenter.default.removeObserver(o) }
         // ID-CRASH-0022 (2026-10-20): mirror observer cleanup for
         // `.itemsLoadFailed`. Same leak guard as trashLoadFailedObserver
         // above.
@@ -1292,20 +1330,144 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// (报错 / 重试 / 用户可见) — the purge is a delete, so the user
     /// has to learn that it happened, how many items it took, and how
     /// long they were kept.
+    ///
+    /// ID-CRASH-0035 (2026-10-21): the notice is no longer a MODAL
+    /// alert. The purge also runs on a 60 s cleanup timer, so a modal
+    /// could pop up in the middle of a session and interrupt whatever
+    /// the user was doing. A purge big enough to matter now asks for
+    /// confirmation BEFORE it deletes anything (see
+    /// `handleTrashPurgePending`); what reaches this handler is either a
+    /// routine purge or one the user already confirmed.
     fileprivate func handleTrashItemsExpired(_ note: Notification) {
-        // Same XCTest guard as handleTrashLoadFailed: a modal alert
-        // would hang CI forever.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         let count = (note.userInfo?["count"] as? Int) ?? 0
         let retentionDays = (note.userInfo?["retentionDays"] as? Int) ?? 0
         guard count > 0 else { return }
         logger.error("Recycle bin retention purge removed \(count) item(s) (window: \(retentionDays) days)")
-        let a = NSAlert()
-        a.messageText = L10n.alertTrashItemsExpiredTitle
-        a.informativeText = L10n.alertTrashItemsExpired(count, retentionDays: retentionDays)
-        a.alertStyle = .informational
-        a.addButton(withTitle: L10n.buttonConfirm)
-        a.runModal()
+        // The purge is done — nothing is pending any more. The tooltip
+        // keeps the outcome, because a small purge is silent by design
+        // and this is where the user can find out what happened.
+        clearPendingPurgeBadge(
+            lastResultText: L10n.alertTrashItemsExpired(count, retentionDays: retentionDays)
+        )
+    }
+
+    /// ID-CRASH-0035 (2026-10-21): the retention purge wants to remove a
+    /// LOT of entries and is waiting for the user's confirmation. The
+    /// badge on the menu bar item is the whole UI here: it never
+    /// interrupts, and clicking it is what opens the confirmation.
+    fileprivate func handleTrashPurgePending(_ note: Notification) {
+        let count = (note.userInfo?["count"] as? Int) ?? 0
+        let retentionDays = (note.userInfo?["retentionDays"] as? Int) ?? 0
+        guard count > 0 else { return }
+        logger.error("Recycle bin retention purge is waiting for confirmation: \(count) item(s) past the \(retentionDays)-day window")
+        showPendingPurgeBadge(count: count, retentionDays: retentionDays)
+    }
+
+    /// ID-CRASH-0035 (2026-10-21): shows the count badge on the menu bar
+    /// item — the user has a decision to make.
+    private func showPendingPurgeBadge(count: Int, retentionDays: Int) {
+        pendingTrashPurgeCount = count
+        pendingTrashPurgeRetentionDays = retentionDays
+        guard let button = statusItem?.button else { return }
+        button.image = Self.badgedStatusImage(count: count)
+        button.toolTip = "\(L10n.appName) — \(L10n.alertTrashPurgePendingBadge(count))"
+    }
+
+    /// ID-CRASH-0035 (2026-10-21): clears the badge. `lastResultText` is
+    /// what the tooltip shows instead of the plain app name — the outcome
+    /// of the purge that just happened.
+    private func clearPendingPurgeBadge(lastResultText: String?) {
+        pendingTrashPurgeCount = 0
+        pendingTrashPurgeRetentionDays = 0
+        guard let button = statusItem?.button else { return }
+        button.image = Self.defaultStatusImage()
+        if let lastResultText {
+            button.toolTip = "\(L10n.appName) — \(lastResultText)"
+        } else {
+            button.toolTip = L10n.appName
+        }
+    }
+
+    /// ID-CRASH-0035 (2026-10-21): the user clicked the badge — now ask.
+    ///
+    /// "永久删除" performs the purge; "取消" leaves the entries in the
+    /// bin and keeps the badge, so the decision can be made later.
+    /// Nothing is deleted without an explicit answer.
+    @MainActor
+    private func presentTrashPurgeConfirmation() {
+        let count = pendingTrashPurgeCount
+        let retentionDays = pendingTrashPurgeRetentionDays
+        guard count > 0 else { return }
+        // The app is a menu bar app: without this the alert can open
+        // behind whatever is in front.
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = L10n.alertTrashPurgePendingTitle
+        alert.informativeText = L10n.alertTrashPurgePending(count, retentionDays: retentionDays)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.alertTrashPurgePendingConfirm)
+        alert.addButton(withTitle: L10n.buttonCancel)
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else {
+            // "取消" — keep the entries (and the badge) until the user
+            // decides.
+            return
+        }
+        ClipboardStore.shared.confirmExpiredPurge()
+    }
+
+    /// ID-CRASH-0035 (2026-10-21): renders the menu bar icon with a red
+    /// count badge, the way Mail shows its unread count.
+    ///
+    /// The composite image is NOT a template image — a template image is
+    /// tinted by the menu bar, and the badge would disappear with it.
+    /// The symbol inside is tinted with `labelColor`, so it still adapts
+    /// to light and dark menu bars.
+    ///
+    /// Measured (2026-10-21): a template image drawn into a custom image
+    /// comes out BLACK — the current drawing color is ignored. So the
+    /// tint has to be applied with a `.sourceAtop` fill, which colors
+    /// exactly the pixels the glyph covers (verified: systemRed →
+    /// r=255 g=66 b=69, labelColor → r=216 g=216 b=216).
+    static func badgedStatusImage(count: Int) -> NSImage? {
+        guard count > 0, let symbol = defaultStatusImage() else { return nil }
+        let size = NSSize(width: 20, height: 20)
+        let image = NSImage(size: size, flipped: false) { rect in
+            symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            NSColor.labelColor.setFill()
+            rect.fill(using: .sourceAtop)
+            // The badge: a red disc with the count on it.
+            let text = "\(count)" as NSString
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 9, weight: .bold),
+                .foregroundColor: NSColor.white
+            ]
+            let textSize = text.size(withAttributes: attributes)
+            let diameter = max(textSize.width, textSize.height) + 4
+            let badge = NSRect(
+                x: rect.maxX - diameter,
+                y: rect.maxY - diameter,
+                width: diameter,
+                height: diameter
+            )
+            NSColor.systemRed.setFill()
+            NSBezierPath(ovalIn: badge).fill()
+            text.draw(
+                at: NSPoint(
+                    x: badge.midX - textSize.width / 2,
+                    y: badge.midY - textSize.height / 2
+                ),
+                withAttributes: attributes
+            )
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    /// The plain menu bar icon.
+    static func defaultStatusImage() -> NSImage? {
+        NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: L10n.appName)
     }
 
     /// ID-CRASH-0022 (2026-10-20): the clipboard history blob was

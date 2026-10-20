@@ -481,6 +481,24 @@ struct L10n {
     static func alertTrashItemsExpired(_ count: Int, retentionDays: Int) -> String {
         String(format: pluralTemplate("alert.trash.items.expired", count), count, retentionDays)
     }
+    // ID-CRASH-0035 (2026-10-21): the retention purge wants to delete a
+    // LOT of entries and is waiting for the user's confirmation. These
+    // are the strings for that decision: the badge on the menu bar item
+    // and the confirmation dialog the badge opens.
+    //
+    // The pending message carries the count AND the retention window, so
+    // it goes through `pluralTemplate` directly — the same shape as
+    // `alertTrashItemsExpired`.
+    static var alertTrashPurgePendingTitle: String { string("alert.trash.purge.pending.title") }
+    static func alertTrashPurgePending(_ count: Int, retentionDays: Int) -> String {
+        String(format: pluralTemplate("alert.trash.purge.pending", count), count, retentionDays)
+    }
+    /// The short badge tooltip — it must fit in a status item tooltip, so
+    /// it carries the count and nothing else.
+    static func alertTrashPurgePendingBadge(_ count: Int) -> String {
+        String(format: pluralTemplate("alert.trash.purge.pending.badge", count), count)
+    }
+    static var alertTrashPurgePendingConfirm: String { string("alert.trash.purge.pending.confirm") }
     // ID-CRASH-0022 (2026-10-20): the items-side twin of
     // `alertTrashLoadFailed` — the clipboard history blob was
     // unreadable and got quarantined. The user has to learn that their

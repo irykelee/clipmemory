@@ -93,7 +93,27 @@ extension Notification.Name {
     /// `userInfo["count"]` = how many items were removed (Int),
     /// `userInfo["retentionDays"]` = the retention window that was
     /// applied (Int).
+    ///
+    /// ID-CRASH-0035 (2026-10-21): this notification no longer means
+    /// "the user has been told" — it means "the purge happened". A purge
+    /// of at least `TrashStore.expiredPurgeConfirmationThreshold`
+    /// entries is announced by `.trashPurgePending` FIRST and only
+    /// happens after the user confirms, so this one carries either a
+    /// routine (silent) purge or a confirmed one.
     static let trashItemsExpired = Notification.Name("TrashStore.itemsExpired")
+    /// ID-CRASH-0035 (2026-10-21): posted by
+    /// `TrashStore.purgeExpiredTrash()` when the retention window would
+    /// remove at least `expiredPurgeConfirmationThreshold` entries.
+    ///
+    /// Nothing has been deleted yet at that point — the entries stay in
+    /// the bin until the user confirms. The UI shows this as a badge on
+    /// the menu bar item (never a modal alert: the purge also runs on a
+    /// 60 s timer, so a modal could pop up in the middle of a session).
+    ///
+    /// `userInfo["count"]` = how many entries are waiting (Int),
+    /// `userInfo["retentionDays"]` = the retention window that was
+    /// applied (Int).
+    static let trashPurgePending = Notification.Name("TrashStore.purgePending")
     /// ID-CRASH-0022 (2026-10-20): posted when the ITEMS blob fails to
     /// load (it is quarantined under `ClipboardItems.corrupt-*` and the
     /// in-memory history comes back empty).
@@ -2503,6 +2523,10 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     func deletePermanently(_ item: ClipboardItem) { trashStore.deletePermanently(item) }
     func emptyTrash() { trashStore.emptyTrash() }
     func purgeExpiredTrash() { trashStore.purgeExpiredTrash() }
+    /// ID-CRASH-0035 (2026-10-21): the user confirmed the pending
+    /// retention purge — this is what actually deletes the expired
+    /// entries. Until it is called they stay in the bin.
+    func confirmExpiredPurge() { trashStore.confirmExpiredPurge() }
 
     /// M-2 (2026-08-08 audit): pure helper that returns the items that
     /// would be evicted to make `items` fit within `maxItems` — without
