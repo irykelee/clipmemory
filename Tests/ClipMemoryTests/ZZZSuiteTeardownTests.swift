@@ -176,7 +176,19 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         "lastLaunchTime",            // StartupHealth.swift:24, 144 — set in logSnapshot
         "hasLaunchedBefore",         // WelcomeView.swift:171, 178 — first launch marker
         "appLanguage",               // LanguageManager.shared init (4-LM seam) — writes current language
-        "ClipboardTrashedItems",     // TrashStore init / moveToTrash — JSON-encoded trash array
+        // ID-CRASH-0031 (2026-10-20): "ClipboardTrashedItems" and
+        // "ClipboardItems" REMOVED from this allowlist. They used to be
+        // here because the app lifecycle wrote them on every run, so the
+        // canary had to tolerate a CHANGE. A canary that tolerates a
+        // change cannot see destruction: the 2026-10-20 incident replaced
+        // 106 trashed entries with an empty array and this canary stayed
+        // green, because it only compared key PRESENCE.
+        //
+        // The two data blobs are now compared BYTE-FOR-BYTE in
+        // `testProductionDataBlobsAreUnchanged` — any write to them
+        // during a test run fails the suite. The production storage
+        // seam (M13 / ID-STORE-0014) routes the store to an isolated
+        // suite under XCTest, so a compliant run writes nothing here.
         "lastBackupDate",            // BackupService.swift:44, 320 — written when backup >24h interval
         // UpdateService init + probe:
         "UpdateFeedPolicy",          // UpdateService.swift:110, 193 — feedPolicyKey didSet
@@ -187,7 +199,10 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // <autosave name>) — NOT under "WindowFrame". If autosave ever writes
         // a key matching "WindowFrame" in the future, that's a regression.
         // ClipboardStore storage + settings:
-        "ClipboardItems",            // ClipboardStore.swift:239 — itemsStorageKey, written on save
+        // ID-CRASH-0031 (2026-10-20): "ClipboardItems" REMOVED from this
+        // allowlist — see the "ClipboardTrashedItems" note above. The
+        // user's history blob is now byte-compared in
+        // `testProductionDataBlobsAreUnchanged`.
         // ID-STORE-0014 (2026-08-10): maxClipboardItems removed from
         // appLifecycleKeys. The corresponding didSet at ClipboardStore.swift:129
         // now writes to the injected defaults suite, so tests can no longer
@@ -318,6 +333,61 @@ final class ZZZSuiteTeardownTests: XCTestCase {
                 + "init-path injection coverage (Option B), not a real bug. If this key is "
                 + "test-side pollution, add it to `toleratedPollution` and follow the M13 shrink "
                 + "path. The recommended path for BOTH is to fix the source and remove the entry."
+            XCTFail(message)
+            XCTAssert(false, message)
+        }
+    }
+
+    /// ID-CRASH-0031 (2026-10-20): the user's actual data blobs must be
+    /// BYTE-IDENTICAL before and after the test suite.
+    ///
+    /// Why a separate assertion instead of relying on
+    /// `testNoProductionPollution`: that canary compares key PRESENCE for
+    /// allowlisted keys, so it cannot distinguish "the key was rewritten
+    /// with the same semantic content" from "the key was replaced with an
+    /// empty array". On 2026-10-20 a test run replaced 106 trashed
+    /// entries with `[]` and the canary stayed green — the destruction was
+    /// invisible because the two data keys sat in `appLifecycleKeys`.
+    ///
+    /// These keys are now compared byte-for-byte against the AAA
+    /// snapshot. Any write during the run — even a semantically
+    /// equivalent re-encode — fails the suite, because a byte difference
+    /// means some process rewrote the user's data.
+    ///
+    /// Why byte equality and not "same entry count": the JSON encoder
+    /// emits keys in a different order across processes, so a benign
+    /// re-encode changes the bytes without changing the data. That is
+    /// still a write to the user's data, and it is still the thing that
+    /// hid the incident, so it must not pass silently.
+    func testProductionDataBlobsAreUnchanged() throws {
+        // ID-CRASH-0031: without the AAA baseline there is nothing to
+        // compare against — a focused run that skips the suite bootstrap.
+        // Skip explicitly (visible in the report) instead of failing with
+        // a bogus "0 bytes vs N bytes".
+        try XCTSkipUnless(
+            AAASuiteBootstrapTests.didSnapshotProductionDomain,
+            "production baseline not captured — the AAA suite bootstrap did not run in this process"
+        )
+
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
+        let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
+
+        for key in TestIsolation.productionDataKeys.sorted() {
+            let beforeData = before[key] as? Data
+            let afterData = after[key] as? Data
+
+            if beforeData == afterData { continue }
+
+            let beforeBytes = beforeData?.count ?? 0
+            let afterBytes = afterData?.count ?? 0
+            let message = """
+            ID-CRASH-0031: the production data blob "\(key)" was rewritten during the \
+            test suite (before: \(beforeBytes) bytes, after: \(afterBytes) bytes).
+            A test run must not write the user's history / recycle bin / tags.
+            Check for a code path that uses `UserDefaults.standard` or a \
+            `FileStorageBackend` with the default (production) defaults.
+            """
             XCTFail(message)
             XCTAssert(false, message)
         }

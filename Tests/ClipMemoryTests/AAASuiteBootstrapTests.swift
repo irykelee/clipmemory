@@ -20,11 +20,23 @@ final class AAASuiteBootstrapTests: XCTestCase {
     /// Consumed by ZZZSuiteTeardownTests.
     static var productionPersistentDomainBefore: [String: Any] = [:]
 
+    /// ID-CRASH-0031 (2026-10-20): whether `productionPersistentDomainBefore`
+    /// was actually captured.
+    ///
+    /// The snapshot is empty when this class never ran (e.g. a focused
+    /// `-only-testing:` run that skips the suite bootstrap). An empty
+    /// dictionary is indistinguishable from "the production domain really
+    /// is empty", so the consumers need an explicit flag: the byte-level
+    /// data-blob comparison must SKIP (not fail) when there is no baseline
+    /// to compare against.
+    static var didSnapshotProductionDomain = false
+
     override static func setUp() {
         super.setUp()
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         Self.productionPersistentDomainBefore =
             UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
+        Self.didSnapshotProductionDomain = true
         // NEW-2 follow-up (2026-08-06): redirect the
         // `LanguageManager.shared` singleton's underlying UserDefaults
         // to an isolated test suite BEFORE any other test reads
