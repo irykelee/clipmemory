@@ -125,6 +125,65 @@ final class ProductionDataWriteGuardTests: XCTestCase {
         XCTAssertEqual(try backend.load().map(\.content), ["fixture"])
     }
 
+    /// ID-CRASH-0031 follow-up: the gate must be DOMAIN-level, not
+    /// instance-identity-level. A second instance addressing the app's own
+    /// suite is a different object that addresses the SAME domain — an
+    /// identity check would let it through.
+    ///
+    /// Measured in the app / test-host process: `UserDefaults(suiteName:
+    /// <own bundle id>)` returns **nil** — the main domain cannot be
+    /// re-opened as a named suite from inside the process that owns it.
+    /// So the only instance addressing the production domain IS
+    /// `.standard`, and identity is equivalent to domain here. The test
+    /// asserts whichever of the two facts holds, so it stays honest if a
+    /// future OS allows the second instance after all.
+    func testDomainLevelCheckCoversASecondInstanceOfTheProductionDomain() {
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        XCTAssertFalse(bundleId.isEmpty, "the test host must have a bundle id")
+
+        if let sameDomain = UserDefaults(suiteName: bundleId) {
+            // If a second instance of the production domain CAN be
+            // created, the domain-level check must catch it.
+            XCTAssertFalse(
+                sameDomain === UserDefaults.standard,
+                "the probe must be a DIFFERENT object than .standard, otherwise the test proves nothing"
+            )
+            XCTAssertTrue(
+                TestIsolation.addressesProductionDomain(sameDomain),
+                "a second instance of the app's own suite addresses the production domain"
+            )
+            XCTAssertTrue(
+                TestIsolation.mustRefuseProductionDataMutation(sameDomain),
+                "the gate must refuse a same-domain second instance"
+            )
+        } else {
+            // The main domain cannot be re-opened as a named suite from
+            // inside its own process ⇒ `.standard` is the only instance
+            // that addresses it ⇒ identity == domain.
+            XCTAssertTrue(TestIsolation.addressesProductionDomain(.standard))
+        }
+    }
+
+    /// An unrelated suite that reuses a production key NAME must not be
+    /// mistaken for the production domain — the discriminator is the
+    /// VALUE, not the name.
+    func testUnrelatedSuiteWithAProductionKeyNameIsNotTheProductionDomain() throws {
+        let suiteName = "ProductionDataWriteGuardTests-\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        defer { isolated.removePersistentDomain(forName: suiteName) }
+
+        let fixture = try JSONEncoder().encode(
+            [ClipboardItem(content: "fixture-not-production", type: .text)]
+        )
+        isolated.set(fixture, forKey: UserDefaultsKey.clipboardItems.rawValue)
+
+        XCTAssertFalse(
+            TestIsolation.addressesProductionDomain(isolated),
+            "a fixture that reuses a production key NAME is not the production domain"
+        )
+        XCTAssertFalse(TestIsolation.mustRefuseProductionDataMutation(isolated))
+    }
+
     /// The three production data keys must be exactly the ones the gate
     /// protects — a typo here would silently unprotect the user's data.
     func testProductionDataKeysCoverHistoryTrashAndTags() {

@@ -347,6 +347,9 @@ extension ClipboardStore {
             // Fail once, loudly, then stop.
             if let backendError = error as? StorageBackendError,
                case .productionWriteBlocked = backendError {
+                // `needsSave` was already cleared at the top of this
+                // method; the explicit assignment states the intent —
+                // this path must NOT schedule another attempt.
                 needsSave = false
                 logger.error("ID-CRASH-0031: production write refused, not retrying (permanent): \(error)")
                 NotificationCenter.default.post(

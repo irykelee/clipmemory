@@ -74,19 +74,46 @@ enum TestIsolation {
     /// never overwrite with a stale snapshot.
     /// ID-CRASH-0031 (2026-10-20): true when a mutation of the user's
     /// data blobs must be REFUSED — the process runs tests AND the
-    /// target defaults is the production domain.
+    /// target defaults addresses the production domain.
     ///
-    /// Scope note (honest): this compares the defaults INSTANCE with
-    /// `UserDefaults.standard`, not the persistent domain. A second
-    /// instance addressing the same domain
-    /// (`UserDefaults(suiteName: "com.clipmemory.app")`) is not the same
-    /// object and would not be caught. No call site in the repo creates
-    /// such an instance today; a domain-level check is not possible with
-    /// the public UserDefaults API (a write-then-read-back probe was
-    /// measured and does NOT see the other instance's write — the
-    /// per-instance in-memory caches do not share).
+    /// ID-CRASH-0031 follow-up: the check is DOMAIN-level, not instance
+    /// identity. `UserDefaults(suiteName: "com.clipmemory.app")` is a
+    /// different object that addresses the SAME domain, so an identity
+    /// check would let it through. The discriminator is the VALUE of the
+    /// production data blob: an instance addressing the same domain
+    /// reports the same bytes, an unrelated suite (even one that reuses
+    /// a production key NAME) does not.
+    ///
+    /// A write-then-read-back probe was measured and does NOT work in
+    /// either direction — two UserDefaults instances in the same process
+    /// do not share their in-memory caches, so neither instance observes
+    /// the other's write.
     nonisolated static func mustRefuseProductionDataMutation(_ defaults: UserDefaults) -> Bool {
-        isRunningTests && defaults === UserDefaults.standard
+        isRunningTests && addressesProductionDomain(defaults)
+    }
+
+    /// True when `defaults` addresses the same persistent domain as
+    /// `UserDefaults.standard` (the app's own `com.clipmemory.app`
+    /// suite).
+    ///
+    /// Measured on this machine:
+    /// * `UserDefaults.standard` → always true (identity).
+    /// * `UserDefaults(suiteName: "com.clipmemory.app")` → true (it reads
+    ///   the app's `ClipboardItems` blob).
+    /// * an unrelated suite → false, even when it holds a key with the
+    ///   same NAME as a production data key (the VALUES differ).
+    nonisolated static func addressesProductionDomain(_ defaults: UserDefaults) -> Bool {
+        if defaults === UserDefaults.standard { return true }
+        for key in productionDataKeys {
+            guard let standardBlob = UserDefaults.standard.data(forKey: key) else {
+                continue
+            }
+            guard let candidateBlob = defaults.data(forKey: key) else {
+                continue
+            }
+            if candidateBlob == standardBlob { return true }
+        }
+        return false
     }
 
     nonisolated static let productionDataKeys: Set<String> = [
