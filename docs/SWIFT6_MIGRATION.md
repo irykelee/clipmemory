@@ -159,36 +159,113 @@ If TSan infrastructure reveals an unexpectedly high number of races, or if Swift
 > layer. These must each be either (a) migrated to actor isolation in
 > Phase 3, or (b) given a documented isolation contract in Phase 2.
 > Per audit recommendation: "把这里的高隔离决策依据记入 SWIFT6_MIGRATION.md".
+>
+> ID-CRASH-0064 (2026-10-23): **the "17" was stale AND the table was
+> internally inconsistent** — the table listed 18 declarations while the
+> prose said 17. The arithmetic behind it ("11 production cache/state
+> vars + 6 test-seam statics = 17") silently dropped
+> `LanguageManager.codeStorage`, a production state var that the very
+> same table listed. Every line number had drifted as well.
+> Re-measured on 2026-10-23: **18 declarations** — 12 production
+> cache/state vars + 6 test-seam statics.
+>
+> <!-- nonisolated-unsafe-declaration-count: 18 -->
 
-| File | Line | Symbol | Current isolation | Phase 3 plan |
-|------|------|--------|-------------------|--------------|
-| `Services/ClipboardStore.swift` | 674 | `contentCache: NSCache` | `NSCache` is documented thread-safe (per NSCache header) | actor-isolated cache |
-| `Services/ClipboardStore.swift` | 685 | `rtfPlaintextCache: NSCache` | NSCache thread-safe | actor-isolated cache |
-| `Services/ClipboardStore.swift` | 787 | `pendingFailedIDs: Set<UUID>` | NSLock at :788 | actor-isolated state |
-| `Services/ClipboardStore.swift` | 788 | `pendingFailedIDsLock: NSLock` | paired with :787 | eliminate with actor |
-| `Services/ClipboardStore.swift` | 796 | `pendingDiagnostics: [PendingDiagnostic]` | NSLock at :797 | actor-isolated state |
-| `Services/ClipboardStore.swift` | 797 | `pendingDiagnosticsLock: NSLock` | paired with :796 | eliminate with actor |
-| `Services/ClipboardStore.swift` | 1879 | `prewarmStateLock: NSLock` | paired with :1880-1891 | eliminate with actor |
-| `Services/ClipboardStore.swift` | 1880 | `prewarmInFlight: Bool` | guarded by prewarmStateLock | actor-isolated state |
-| `Services/ClipboardStore.swift` | 1881 | `prewarmPendingItems: [ClipboardItem]?` | guarded by prewarmStateLock | actor-isolated state |
-| `Services/ClipboardStore.swift` | 1882 | `prewarmPendingCompletions: [() -> Void]` | guarded by prewarmStateLock | actor-isolated state |
-| `Services/ClipboardStore.swift` | 1891 | `pendingPrewarmWorkItem: DispatchWorkItem?` | guarded by prewarmStateLock | actor-isolated state |
-| `Services/LanguageManager.swift` | 12 | `injectedForTest: LanguageManager?` | test seam | remove (use TestIsolation) |
-| `Services/LanguageManager.swift` | 57 | `defaults: UserDefaults` | test seam forwarder | forward to TestIsolation |
-| `Services/LanguageManager.swift` | 85 | `codeStorage: String` | NSLock (line :86) | eliminate with actor |
-| `Services/UpdateService.swift` | 189 | `defaults: UserDefaults` | test seam forwarder | forward to TestIsolation |
-| `Services/UpdateService.swift` | 204 | `injectedForTest: UpdateService?` | test seam | remove (use TestIsolation) |
-| `Services/WindowManager.swift` | 89 | `defaults: UserDefaults` | test seam forwarder | forward to TestIsolation |
-| `Utils/TestIsolation.swift` | 31 | `defaults: UserDefaults` | canonical seam (ID-CRASH-0029) | migrate to actor in Phase 3 |
+### How this was measured
 
-**17 declarations**, down from 18 raw lines (some lines are property
-+ lock pairs that count as one logical state holder, e.g. :787+:788,
-:796+:797, :1879+:1880+:1881+:1882+:1891 — five lines guarding four
-prewarm-state values, count as one Phase 3 actor).
+A **declaration** is a line where the keyword appears with no `//` before
+it. A comment that merely MENTIONS the keyword is NOT a declaration and
+does not count — the roster is a list of declarations, not of mentions.
 
-Pattern: 11 production cache/state vars (Phase 3 actor target) +
-6 test-seam statics (Phase 3 forward to actor-isolated TestIsolation).
+Reproduce with (run from the repo root):
+
+```bash
+rg -n --no-heading -g '*.swift' '^[^/]*nonisolated\(unsafe\)' ClipMemory/
+```
+
+Raw output on 2026-10-23 — 18 lines, i.e. 18 declarations:
+
+```
+Services/ClipboardStore.swift:859:    nonisolated(unsafe) let contentCache: NSCache<NSString, NSString> = {
+Services/ClipboardStore.swift:870:    nonisolated(unsafe) private let rtfPlaintextCache: NSCache<NSString, NSString> = {
+Services/ClipboardStore.swift:977:    nonisolated(unsafe) var pendingFailedIDs = Set<UUID>()
+Services/ClipboardStore.swift:978:    nonisolated(unsafe) let pendingFailedIDsLock = NSLock()
+Services/ClipboardStore.swift:986:    nonisolated(unsafe) var pendingDiagnostics: [PendingDiagnostic] = []
+Services/ClipboardStore.swift:987:    nonisolated(unsafe) let pendingDiagnosticsLock = NSLock()
+Services/ClipboardStore.swift:2329:    nonisolated(unsafe) let prewarmStateLock = NSLock()
+Services/ClipboardStore.swift:2330:    nonisolated(unsafe) var prewarmInFlight = false
+Services/ClipboardStore.swift:2331:    nonisolated(unsafe) var prewarmPendingItems: [ClipboardItem]?
+Services/ClipboardStore.swift:2332:    nonisolated(unsafe) var prewarmPendingCompletions: [() -> Void] = []
+Services/ClipboardStore.swift:2341:    nonisolated(unsafe) var pendingPrewarmWorkItem: DispatchWorkItem?
+Services/LanguageManager.swift:20:    nonisolated(unsafe) static var injectedForTest: LanguageManager?
+Services/LanguageManager.swift:65:    nonisolated(unsafe) static var defaults: UserDefaults {
+Services/LanguageManager.swift:93:    nonisolated(unsafe) private static var codeStorage: String = "en"
+Services/UpdateService.swift:202:    nonisolated(unsafe) static var defaults: UserDefaults {
+Services/UpdateService.swift:226:    nonisolated(unsafe) static var injectedForTest: UpdateService?
+Services/WindowManager.swift:113:    nonisolated(unsafe) static var defaults: UserDefaults {
+Utils/TestIsolation.swift:50:    nonisolated(unsafe) static var defaults: UserDefaults = .standard
+```
+
+The COUNT is enforced by a test — see "Drift protection" below. The LINE
+numbers are a 2026-10-23 snapshot and will move as the files move; only
+the count is an invariant.
+
+### The roster
+
+Isolation contracts below were re-verified against the call sites, not
+just copied from the declaration comments.
+
+| File | Line | Symbol | Current isolation (verified) | Phase 3 plan |
+|------|------|--------|------------------------------|--------------|
+| `Services/ClipboardStore.swift` | 859 | `contentCache: NSCache` | `NSCache` is documented thread-safe (per NSCache header); the nonisolated decrypt kernels touch it from prewarm's utility-queue workers | actor-isolated cache |
+| `Services/ClipboardStore.swift` | 870 | `rtfPlaintextCache: NSCache` | same NSCache thread-safety contract as `contentCache` | actor-isolated cache |
+| `Services/ClipboardStore.swift` | 977 | `pendingFailedIDs: Set<UUID>` | every access bracketed by `pendingFailedIDsLock` (`:978`) — `ClipboardStore.swift:2302`, `ClipboardStore+Encryption.swift:59,252,310,322` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 978 | `pendingFailedIDsLock: NSLock` | paired with `:977` | eliminate with actor |
+| `Services/ClipboardStore.swift` | 986 | `pendingDiagnostics: [PendingDiagnostic]` | every access bracketed by `pendingDiagnosticsLock` (`:987`) — `ClipboardStore+Encryption.swift:229,262,272` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 987 | `pendingDiagnosticsLock: NSLock` | paired with `:986` | eliminate with actor |
+| `Services/ClipboardStore.swift` | 2329 | `prewarmStateLock: NSLock` | paired with `:2330-2332` | eliminate with actor |
+| `Services/ClipboardStore.swift` | 2330 | `prewarmInFlight: Bool` | guarded by `prewarmStateLock` — `ClipboardStore+Prewarm.swift:99-107,157-167` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 2331 | `prewarmPendingItems: [ClipboardItem]?` | guarded by `prewarmStateLock` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 2332 | `prewarmPendingCompletions: [() -> Void]` | guarded by `prewarmStateLock` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 2341 | `pendingPrewarmWorkItem: DispatchWorkItem?` | ⚠ **NOT lock-guarded.** Main-thread-only: the work item is scheduled on `DispatchQueue.main` and its body runs there (`ClipboardStore+Prewarm.swift:59,60,70,74,78` — none of those take `prewarmStateLock`). The previous roster claimed "guarded by prewarmStateLock"; the code does not do that | actor-isolated state |
+| `Services/LanguageManager.swift` | 20 | `injectedForTest: LanguageManager?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
+| `Services/LanguageManager.swift` | 65 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
+| `Services/LanguageManager.swift` | 93 | `codeStorage: String` | guarded by `codeLock` at every access (`LanguageManager.swift:90`, `currentLanguageCode` at `:94`). The previous roster cited ":86", which is the computed property, not the lock | eliminate with actor |
+| `Services/UpdateService.swift` | 202 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
+| `Services/UpdateService.swift` | 226 | `injectedForTest: UpdateService?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
+| `Services/WindowManager.swift` | 113 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage). Dormant since WINDOW-0001 — frame persistence moved to AppKit's `setFrameAutosaveName` | actor-isolate the canonical seam |
+| `Utils/TestIsolation.swift` | 50 | `defaults: UserDefaults` | **canonical** storage for the whole test seam (ID-CRASH-0029). Read/written from test `setUp`/`tearDown` on the main thread | migrate to actor in Phase 3 |
+
+**18 declarations** = 12 production cache/state vars (11 in
+`ClipboardStore` + `LanguageManager.codeStorage`) + 6 test-seam statics
+(3 service forwarders + 2 `injectedForTest` + 1 canonical storage).
+
+### Not in this roster (but adjacent)
+
+* **3 concurrent accessors** of the state above are declared `nonisolated`
+  WITHOUT `(unsafe)`, so they are not declarations of this kind and are
+  not counted: `ClipboardStore+Encryption.swift:191`
+  (`getDecryptedContent`), `ClipboardStore.swift:2387`
+  (`getRTFPlaintext`), `ClipboardStore+OCR.swift:186`
+  (`getDecryptedOcrText`). They are the reason the lock contracts above
+  matter: they read/write the same state from prewarm's utility queue.
+* **Test code** carries 2 further declarations
+  (`Tests/ClipMemoryTests/ImagePreviewPanelTests.swift:175-176`). They
+  are outside this roster's scope (production code under `ClipMemory/`),
+  but they are named here so "18" is not mistaken for a repo-wide total.
+
+### Drift protection
+
+The count above is enforced, not just documented:
+`Tests/ClipMemoryTests/IsolationSeamConsolidationTests.swift`
+(`testDocumentedRosterCountMatchesTheMeasuredDeclarationCount`) re-counts
+the declarations under `ClipMemory/` with the same rule and compares them
+against the `<!-- nonisolated-unsafe-declaration-count: N -->` marker
+above. Add or remove a declaration → update the marker in the same
+commit, or the suite goes red. A stale count in this file is exactly the
+failure mode ID-CRASH-0030 was raised for, so it is now a build-time
+failure instead of a reading-time surprise.
 
 ---
 
-*Last updated: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
+*Last updated: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*

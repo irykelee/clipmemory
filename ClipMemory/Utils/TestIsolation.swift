@@ -18,6 +18,25 @@ import Foundation
 /// the Swift 6 actor cleanup commits to the service layer (per
 /// `docs/SWIFT6_MIGRATION.md` Phase 3).
 ///
+/// ID-CRASH-0064 (2026-10-23): the SCOPE of that consolidation, stated
+/// precisely so the next reader neither over- nor under-estimates it.
+///
+/// * CONSOLIDATED — the `UserDefaults` seam: ONE storage
+///   (`TestIsolation.defaults`) behind three forwarders. Changing the
+///   isolation strategy is now a one-site edit.
+/// * CONSOLIDATED — the "is this a test process?" probe:
+///   `TestIsolation.isRunningTests` (ID-CRASH-0031, three signals). The
+///   last local copy — `UpdateService`'s private `XCTestConfigurationFilePath`
+///   read — was removed by ID-CRASH-0064.
+/// * DELIBERATELY NOT CONSOLIDATED — the two `injectedForTest` seams
+///   (`LanguageManager.injectedForTest`, `UpdateService.injectedForTest`).
+///   They inject a *fake service instance* of a service-specific type, not
+///   a `UserDefaults` suite: the two hold different types, so there is no
+///   shared storage to point them at. Merging them would need type erasure
+///   (`Any` + a registry), which trades a readable seam for a runtime-cast
+///   failure mode. They stay per-service, and their contract (production
+///   never sets them; tests reset them in `tearDown`) is unchanged.
+///
 /// Why an enum (vs struct/class): namespaces for free, no initialiser
 /// surface, `static var` lives on the type. Singleton-shaped.
 /// `nonisolated(unsafe)` matches the per-service precedent: read from
@@ -25,10 +44,64 @@ import Foundation
 /// (`XCTestConfigurationFilePath` is set before any test runs).
 enum TestIsolation {
 
+    /// The IMMUTABLE baseline the seam starts on.
+    ///
+    /// ID-CRASH-0066 (2026-10-23): kept separate from `defaults` on
+    /// purpose. `defaults` is mutable and every test class that touches
+    /// the seam reassigns it — so asserting on `defaults` says something
+    /// about WHOSE TEST RAN LAST, not about the baseline. A guard on a
+    /// mutable global is therefore order-dependent: the suite could end
+    /// with the seam pointing at an isolated suite even if the baseline
+    /// were broken. This constant is the thing that can be asserted
+    /// deterministically.
+    nonisolated static let baselineDefaults: UserDefaults = defaultsFor(isTestProcess: isRunningTests)
+
     /// The single `UserDefaults` instance shared by all services in
     /// production. Tests reassign this in `setUp` and restore in
     /// `tearDown`; reading services pick up the test value transparently.
-    nonisolated(unsafe) static var defaults: UserDefaults = .standard
+    ///
+    /// ID-CRASH-0066 (2026-10-23): the BASELINE must not be the production
+    /// domain while a test process is running.
+    ///
+    /// The storage used to start as `.standard` — the production
+    /// `com.clipmemory.app` domain. Two consequences, both observed in the
+    /// wild rather than reasoned about:
+    ///
+    /// 1. "Forgot to inject a suite" was silently equivalent to "write to
+    ///    the user's real settings" (e.g. `UpdateFallbackFeedConsent`
+    ///    appearing in the production domain during a test run).
+    /// 2. A `tearDown` that reset the seam to `.standard` became a LEAK
+    ///    once ID-CRASH-0029 put all three services onto ONE storage:
+    ///    resetting one of them reset all three, so the remainder of the
+    ///    test process ran with the production domain wired in.
+    ///
+    /// The baseline now follows the pattern the store's own defaults
+    /// already use (ID-STORE-0014, `ClipboardStore.xcTestDefaults`): under
+    /// XCTest → an isolated suite; in production → `.standard`.
+    ///
+    /// The production branch is unchanged and is asserted as such by
+    /// `Tests/ClipMemoryTests/SeamBaselineIsolationTests.swift`.
+    nonisolated(unsafe) static var defaults: UserDefaults = baselineDefaults
+
+    /// The suite name for the XCTest-isolated baseline. Same naming shape
+    /// as the suite used by `ClipboardStore.xcTestDefaults`.
+    nonisolated static let xcTestIsolationSuiteName = "TestIsolation-XCTest-isolation"
+
+    /// Decides which `UserDefaults` storage the seam starts on.
+    ///
+    /// ID-CRASH-0066: split out of the `defaults` initializer so the
+    /// PRODUCTION branch can be asserted from a test process.
+    /// `isRunningTests` is a constant of the running process and cannot be
+    /// flipped, but this decision function can be called with either
+    /// argument — so "production still gets `.standard`" is a real
+    /// assertion rather than an assumption.
+    static func defaultsFor(isTestProcess: Bool) -> UserDefaults {
+        guard isTestProcess else { return .standard }
+        // `UserDefaults(suiteName:)` returns nil only for an invalid name;
+        // the constant above is valid, so the fallback is unreachable in
+        // practice. It mirrors `ClipboardStore.xcTestDefaults`.
+        return UserDefaults(suiteName: xcTestIsolationSuiteName) ?? .standard
+    }
 
     /// Tests call this in `setUp`. Existing call sites use the
     /// per-service forwarder (`LanguageManager.defaults = …`); new code

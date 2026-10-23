@@ -253,6 +253,39 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         "AppleLanguages"
     ]
 
+    /// ID-CRASH-0066 (2026-10-23): the shared `UserDefaults` seam must not
+    /// be LEFT pointing at the production domain when the suite ends.
+    ///
+    /// A test class that resets the seam to `.standard` in its `tearDown`
+    /// hands the production domain to every service for the remainder of
+    /// the process (the three services share ONE storage since
+    /// ID-CRASH-0029). Nothing notices until a later test writes a setting
+    /// key into the user's real domain — by then the cause is far away
+    /// from the effect.
+    ///
+    /// This is the runtime counterpart of the source-pattern guard in
+    /// `SeamBaselineIsolationTests`: the pattern guard knows about the
+    /// assignment SHAPE, this one knows about the resulting STATE, and
+    /// neither can be satisfied by leaving the other out.
+    ///
+    /// ORDER-DEPENDENT BY NATURE: the seam is mutable, so what this sees
+    /// is whatever the last test class left behind. It is kept because it
+    /// catches the exact historical failure — a `tearDown` that reset the
+    /// seam to `.standard` — but the DETERMINISTIC assertion about the
+    /// baseline lives in `SeamBaselineIsolationTests`
+    /// (`testTheBaselineNeverAddressesTheProductionDomain`), where it
+    /// cannot be satisfied by whoever ran last.
+    ///
+    /// Runs here because this class is last in the suite.
+    func testSharedDefaultsSeamIsNotLeftOnTheProductionDomain() {
+        XCTAssertFalse(
+            TestIsolation.addressesProductionDomain(TestIsolation.defaults),
+            "ID-CRASH-0066: the shared UserDefaults seam is pointing at the production "
+            + "domain at the end of the suite — a test class reset it to `.standard` "
+            + "instead of restoring the value it saved in `setUp`"
+        )
+    }
+
     /// Runs LAST in the suite (alphabetically after every other class).
     /// Compares the production persistent domain against the AAA snapshot.
     /// Fails on keys NOT in `toleratedPollution` (allowlist). The

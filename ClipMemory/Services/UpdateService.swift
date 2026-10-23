@@ -72,8 +72,8 @@ private final class GentleUpdateReminder: NSObject, SPUStandardUserDriverDelegat
 
 /// NEW-3 (2026-08-07 Session 4): production-side no-op probe engine.
 /// `UpdateService._sharedDefault` returns an instance wired with this engine
-/// (and `autoStart: false`) when `isRunningTests` is true, so any test that
-/// accidentally touches `UpdateService.shared` without setting
+/// (and `autoStart: false`) when `TestIsolation.isRunningTests` is true, so
+/// any test that accidentally touches `UpdateService.shared` without setting
 /// `injectedForTest` still gets a hermetic stub — no real appcast probe,
 /// no Sparkle `SPUStandardUpdaterController` startup.
 ///
@@ -120,13 +120,24 @@ final class UpdateService {
         return _sharedDefault
     }
 
-    /// NEW-3 (2026-08-07 Session 4): XCTest detection, same idiom as
-    /// `CryptoService.isRunningTests` (line 240) and `ImageStorage.isRunningTests`
-    /// (line 14). Defined here too because `isRunningTests` is a per-file
-    /// `private static` in each service that needs it; we haven't (yet) hoisted
-    /// it to a shared utility. If a third service needs the same check,
-    /// consider extracting to `ServiceTestEnvironment.isRunningTests`.
-    private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    /// ID-CRASH-0064 (2026-10-23): the per-file XCTest probe is GONE.
+    ///
+    /// This used to be a fourth, independent copy of "is this a test
+    /// process?" — `ProcessInfo.processInfo.environment
+    /// ["XCTestConfigurationFilePath"] != nil` — keyed off ONE signal.
+    /// The canonical probe is `TestIsolation.isRunningTests`
+    /// (ID-CRASH-0031), which checks three independent signals (env var
+    /// present with ANY value / `XCTestCase` loaded / `.xctest` bundle
+    /// injected). Keeping a local copy here meant the isolation strategy
+    /// still had to be changed in two places, and this copy was the WEAKER
+    /// one: had the env var been missing on some launch path, the guard
+    /// below would have fallen through to the PRODUCTION path and started
+    /// a real Sparkle updater plus a real appcast HTTP probe inside a test
+    /// run. See Utils/TestIsolation.swift for the consolidated scope.
+    ///
+    /// The guard below is unchanged in behaviour: in a test process both
+    /// the old one-signal probe and the new three-signal probe answer
+    /// `true`, and in a production process both answer `false`.
 
     @MainActor
     private static let _sharedDefault: UpdateService = {
@@ -146,12 +157,14 @@ final class UpdateService {
         // `shared` (line 111) and bypasses this guard entirely.
         //
         // ID-SYNC-0006 (2026-08-08 audit): guard is unconditional (no
-        // `#if DEBUG`) because XCTest sets `XCTestConfigurationFilePath`
-        // regardless of build config — wrapping in `#if DEBUG` would let
-        // release-config XCTest runs bypass the hermetic stub and
-        // re-trigger NEW-3 pollution. See NoOpFeedProbeEngine comment
-        // above for the symmetric rationale.
-        if isRunningTests {
+        // `#if DEBUG`) because XCTest detection does not depend on build
+        // config — wrapping in `#if DEBUG` would let release-config XCTest
+        // runs bypass the hermetic stub and re-trigger NEW-3 pollution.
+        // See NoOpFeedProbeEngine comment above for the symmetric rationale.
+        // ID-CRASH-0064: the detection now comes from the shared
+        // `TestIsolation.isRunningTests` probe (three signals) instead of a
+        // local env-var read.
+        if TestIsolation.isRunningTests {
             return UpdateService(probeEngine: NoOpFeedProbeEngine(), autoStart: false)
         }
         return UpdateService()
@@ -201,6 +214,15 @@ final class UpdateService {
     /// **Production code must never set this.** Tests reset it to nil in
     /// `tearDown`. Like `defaults`, it's `nonisolated(unsafe)` for the same
     /// reason — Swift 6 cleanup batch.
+    ///
+    /// ID-CRASH-0064: deliberately NOT folded into `TestIsolation`. This
+    /// seam injects an `UpdateService` instance (a service-specific type),
+    /// not a `UserDefaults` suite — `LanguageManager.injectedForTest` holds
+    /// a different type, so there is no single storage both could share.
+    /// Merging them would need `Any` type erasure, trading a readable seam
+    /// for a runtime-cast failure mode. The `UserDefaults` seam IS
+    /// single-source (`TestIsolation.defaults`); see
+    /// Utils/TestIsolation.swift for the full scope.
     nonisolated(unsafe) static var injectedForTest: UpdateService?
 
     private let feedProvider = FeedURLProvider()

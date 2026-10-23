@@ -12,8 +12,21 @@ final class UpdateServiceTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
 
+    /// ID-CRASH-0066 (2026-10-23): the seam value to restore on teardown.
+    ///
+    /// The old teardown reset the seam to `.standard` — the PRODUCTION
+    /// domain. That was harmless while each service owned its own static,
+    /// but ID-CRASH-0029 unified the three services onto ONE storage, so
+    /// resetting `UpdateService.defaults` also handed the production
+    /// domain to `LanguageManager` and `WindowManager` for the rest of the
+    /// test process.
+    private var savedSeam: UserDefaults?
+
     override func setUp() {
         super.setUp()
+        // ID-CRASH-0066: capture the seam BEFORE overwriting it, so the
+        // teardown can put back exactly what was there.
+        savedSeam = UpdateService.defaults
         // M13 (2026-08-03): UpdateService static accessors now use an injectable
         // defaults suite. Redirect to an isolated test suite.
         testDefaults = makeTestDefaults()
@@ -24,8 +37,11 @@ final class UpdateServiceTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        // M13: reset to production defaults.
-        UpdateService.defaults = .standard
+        // ID-CRASH-0066: restore the PREVIOUS seam value — never `.standard`.
+        if let savedSeam {
+            UpdateService.defaults = savedSeam
+        }
+        savedSeam = nil
         removeTestDefaults(testDefaults)
         testDefaults = nil
     }

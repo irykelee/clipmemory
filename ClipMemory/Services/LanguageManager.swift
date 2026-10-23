@@ -9,6 +9,14 @@ class LanguageManager: ObservableObject {
     /// Production code must never set this; tests reset it to nil in
     /// `tearDown`. `nonisolated(unsafe)` follows the
     /// `UpdateService.injectedForTest` rationale (Swift 6 cleanup batch).
+    ///
+    /// ID-CRASH-0064: deliberately NOT folded into `TestIsolation`. This
+    /// seam injects a `LanguageManager` instance (a service-specific type),
+    /// not a `UserDefaults` suite — `UpdateService.injectedForTest` holds a
+    /// different type, so there is no single storage both could share.
+    /// Merging them would need `Any` type erasure. The `UserDefaults` seam
+    /// IS single-source (`TestIsolation.defaults`); see
+    /// Utils/TestIsolation.swift for the full scope.
     nonisolated(unsafe) static var injectedForTest: LanguageManager?
 
     /// NEW-2 follow-up: return `injectedForTest` when set so tests

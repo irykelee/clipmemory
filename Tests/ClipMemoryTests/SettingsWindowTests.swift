@@ -12,8 +12,17 @@ final class SettingsWindowTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
 
+    /// ID-CRASH-0066 (2026-10-23): the seam value to restore on teardown.
+    /// The old teardown reset the seam to `.standard` (the PRODUCTION
+    /// domain); after ID-CRASH-0029 unified the three services onto ONE
+    /// storage, that also handed the production domain to
+    /// `LanguageManager` and `UpdateService` for the rest of the process.
+    private var savedSeam: UserDefaults?
+
     override func setUp() {
         super.setUp()
+        // ID-CRASH-0066: capture the seam BEFORE overwriting it.
+        savedSeam = WindowManager.defaults
         // M13 (2026-08-03): WindowManager uses a static defaults seam.
         // SettingsWindowTests show real windows which triggers savedWindowFrame
         // writes — redirect to isolated suite.
@@ -22,7 +31,11 @@ final class SettingsWindowTests: XCTestCase {
     }
 
     override func tearDown() {
-        WindowManager.defaults = .standard
+        // ID-CRASH-0066: restore the PREVIOUS seam value — never `.standard`.
+        if let savedSeam {
+            WindowManager.defaults = savedSeam
+        }
+        savedSeam = nil
         removeTestDefaults(testDefaults)
         testDefaults = nil
         super.tearDown()
