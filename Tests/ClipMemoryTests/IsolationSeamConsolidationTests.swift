@@ -254,6 +254,41 @@ final class IsolationSeamConsolidationTests: XCTestCase {
         )
     }
 
+    /// The roster's LINE NUMBERS must still point at the declarations
+    /// they claim to.
+    ///
+    /// ID-REVIEW-1024 review (2026-10-23): the count was enforced, the
+    /// snapshot was not — and the snapshot went stale within a day of
+    /// being taken (ID-CRASH-0066 moved the canonical seam's
+    /// declaration from line 50 to line 84 while the roster still said
+    /// 50). A roster row that points at a line which no longer holds
+    /// the declaration sends the next reader to the wrong place, which
+    /// is the same failure the count guard was raised for.
+    ///
+    /// The documented raw output must therefore list EXACTLY the measured
+    /// declarations — same files, same line numbers. When a file moves,
+    /// the roster is refreshed in the same commit.
+    func testDocumentedRosterLineNumbersStillPointAtTheirDeclarations() throws {
+        let docURL = Self.repoRoot.appendingPathComponent("docs/SWIFT6_MIGRATION.md")
+        let doc = try String(contentsOf: docURL, encoding: .utf8)
+
+        let documented = Self.documentedRosterEntries(in: doc)
+        XCTAssertFalse(
+            documented.isEmpty,
+            "docs/SWIFT6_MIGRATION.md §8 no longer carries a readable raw-output block"
+        )
+
+        let measured = try Self.measuredDeclarations(
+            inProductionSources: Self.repoRoot.appendingPathComponent("ClipMemory")
+        )
+        XCTAssertEqual(
+            Set(documented.map { "\($0.path):\($0.line)" }),
+            Set(measured.map { "\($0.path):\($0.line)" }),
+            "docs/SWIFT6_MIGRATION.md §8's raw output no longer matches the code — "
+            + "refresh the roster in the same commit that moved the declarations"
+        )
+    }
+
     // MARK: - Helpers
 
     /// A `UserDefaults` suite for the given name, guaranteed not to be
@@ -317,5 +352,47 @@ final class IsolationSeamConsolidationTests: XCTestCase {
             searchStart = markerRange.upperBound
         }
         return nil
+    }
+
+    /// The `(path, line)` pairs listed in §8's raw-output block.
+    ///
+    /// The block is the one right after the "Raw output on …" line; every
+    /// entry has the shape `path:line:    code`.
+    private static func documentedRosterEntries(in doc: String) -> [(path: String, line: Int)] {
+        guard let anchor = doc.range(of: "Raw output on") else { return [] }
+        guard let fenceStart = doc.range(of: "```", range: anchor.upperBound..<doc.endIndex) else { return [] }
+        guard let fenceEnd = doc.range(of: "```", range: fenceStart.upperBound..<doc.endIndex) else { return [] }
+
+        var entries: [(path: String, line: Int)] = []
+        for rawLine in doc[fenceStart.upperBound..<fenceEnd.lowerBound].split(separator: "\n") {
+            let parts = rawLine.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3 else { continue }
+            let path = parts[0].trimmingCharacters(in: .whitespaces)
+            guard path.hasSuffix(".swift") else { continue }
+            guard let line = Int(parts[1].trimmingCharacters(in: .whitespaces)) else { continue }
+            entries.append((path, line))
+        }
+        return entries
+    }
+
+    /// Every `nonisolated(unsafe)` declaration under `root`, with the
+    /// path relative to `root` (the shape §8's raw output uses).
+    private static func measuredDeclarations(
+        inProductionSources root: URL
+    ) throws -> [(path: String, line: Int)] {
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ))
+        var entries: [(path: String, line: Int)] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let relative = url.path.replacingOccurrences(of: root.path + "/", with: "")
+            for line in codeLines(containing: "nonisolated(unsafe)", in: source) {
+                entries.append((relative, line))
+            }
+        }
+        return entries
     }
 }

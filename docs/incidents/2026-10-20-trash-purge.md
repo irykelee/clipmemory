@@ -100,6 +100,7 @@
 | `.corrupt-*` 隔离副本不在备份白名单 | ✅ 已交付 | 2026-10-23 补上（`ID-BACKUP-0006`）：隔离副本进**每日自动备份**的 `Quarantine/` 目录、进 `.clipmemory` **导出包**（包密钥封装，因为隔离 blob 在 JSON 层已损坏、逐条重加密走不通），导入时还原回**原来的 `.corrupt-*` key**（绝不写主 key）。老包（manifest 无该字段）按空处理，向后兼容。 |
 | 孤儿图片清扫与 sentinel 的交互 | ✅ 已闭环 | 2026-10-20 已补（`ID-CRASH-0022`）：items 侧有**持久** sentinel（`clipboardItemsLoadFailedSentinel`），且**空加载不算健康** —— sentinel 只在**非空**加载成功时清除 ⇒ 「blob 已损坏 + 下次启动」不会再被当成孤儿把图片删掉。回收站侧同构（`trashStore.lastLoadFailed` 由持久 sentinel 在启动时推出）。本行原记为「应用级待定」，查实后确认已闭环。 |
 | 测试进程写生产域的「seam 复位」旁路 | ✅ 已交付 | 2026-10-23 修（`ID-CRASH-0066`）：`TestIsolation.defaults` 的**基线**原本是 `.standard`（生产域），且三个测试类的 `tearDown` 把它复位回 `.standard`；`ID-CRASH-0029` 把三个服务并到**同一份存储**之后，这个复位就从「只影响自己」变成「把生产域交给全部服务」。实测在测试跑期间生产域多出 `UpdateFallbackFeedConsent`（已清理）。现在基线在 XCTest 下是隔离 suite（生产分支仍为 `.standard`）、tearDown 改为**还原保存值**，并加了源码模式守卫 + 跑在最后的运行时守卫。 |
+| AppKit 帧 autosave 绕过 seam 写生产域 | 低（既有，**本批只记录不修**） | `WindowManager` / `AppDelegate` 用 AppKit 的 `setFrameAutosaveName`（WINDOW-0001，2026-08-10）保存窗口位置：主窗口、设置窗口、崩溃记录窗口共三个 autosave 名（`WindowManager.swift:205`、`AppDelegate.swift:658`、`AppDelegate.swift:951`）。AppKit **自己**把 `NSWindow Frame com.clipmemory.app.*` 写进生产域，**不经过** `TestIsolation.defaults` —— 所以 seam 覆盖不到它。实测：跑完一轮测试，生产域里唯一会变的就是这些帧键。**不影响用户数据**（只是窗口位置），但它说明「seam 覆盖了全部生产域写入」这句话不准确。本批不修：修它要改窗口持久化方案（WINDOW-0001 的设计决策），且它不属于「用户数据」这一类；下次碰窗口持久化时一并处理。 |
 
 ## 8. 审查提出但**有意不修**的项（附理由，避免反复提）
 

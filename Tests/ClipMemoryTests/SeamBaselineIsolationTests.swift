@@ -36,6 +36,19 @@ import XCTest
 /// A runtime counterpart lives in `ZZZSuiteTeardownTests`
 /// (`testSharedDefaultsSeamIsNotLeftOnTheProductionDomain`), which runs
 /// last and therefore sees whatever the rest of the suite left behind.
+///
+/// ## The scanner is itself guarded (ID-REVIEW-1024 review, 2026-10-23)
+///
+/// Guard 4 is a SOURCE SCAN, and a source scan is only as good as the
+/// spellings it knows. The first version of this guard matched the
+/// literal `.standard` only — so a file that reset the seam with
+/// `UserDefaults.standard` (the same object, written out) was NOT
+/// flagged: the mutation stayed green while the production domain was
+/// wired in. The scanner now knows every spelling of the production
+/// domain, and `testTheScannerCatchesEverySpellingOfTheProductionDomain`
+/// is its positive control: it feeds the scanner the spellings it must
+/// catch, so "the scanner would have caught it" is an assertion and not a
+/// claim.
 final class SeamBaselineIsolationTests: XCTestCase {
 
     // MARK: - The production branch is unchanged
@@ -121,8 +134,39 @@ final class SeamBaselineIsolationTests: XCTestCase {
     /// never a casual thing to do.
     private static let allowedFiles: Set<String> = []
 
-    /// Scans every Swift file in the repository for an assignment of
-    /// `.standard` to one of the seam forwarders (or to
+    /// The production domain, however it is spelled.
+    ///
+    /// * `.standard` — the usual shorthand.
+    /// * `UserDefaults.standard` — the SAME object, written out.
+    /// * `UserDefaults . standard` — the same, with spaces.
+    ///
+    /// A scanner that knows only the shorthand is a scanner that knows
+    /// one spelling: the mutation that writes the long form keeps the
+    /// production domain wired in and keeps the suite green.
+    ///
+    /// What it does NOT cover (and cannot, statically): a value that
+    /// arrives through a local alias (`let std = UserDefaults.standard`)
+    /// or through a `UserDefaults(suiteName:)` call. The latter cannot
+    /// even address the app's own domain from inside the app / test-host
+    /// process — measured: `UserDefaults(suiteName: <own bundle id>)`
+    /// returns nil there (see `TestIsolation.addressesProductionDomain`).
+    private static let productionDomainValue = "(?:\\.standard|UserDefaults\\s*\\.\\s*standard)"
+
+    /// The patterns the scan looks for.
+    ///
+    /// `\s*` spans newlines in the ICU dialect, so an assignment whose
+    /// value sits on the NEXT line is matched too.
+    private static var seamPatterns: [String] {
+        var patterns: [String] = []
+        for owner in seamOwners {
+            patterns.append("\(owner)\\.defaults\\s*=\\s*\(productionDomainValue)")
+            patterns.append("\(owner)\\.setDefaults\\(\\s*\(productionDomainValue)")
+        }
+        return patterns
+    }
+
+    /// Scans every Swift file in the repository for an assignment of the
+    /// production domain to one of the seam forwarders (or to
     /// `TestIsolation.defaults` / `TestIsolation.setDefaults`).
     ///
     /// Only CODE is matched: a line whose match is preceded by `//` is a
@@ -130,12 +174,6 @@ final class SeamBaselineIsolationTests: XCTestCase {
     /// roster guard in `IsolationSeamConsolidationTests`, so "declaration"
     /// means the same thing in both guards.
     func testNoSourceFileResetsTheSeamToTheProductionDomain() throws {
-        var patterns: [String] = []
-        for owner in Self.seamOwners {
-            patterns.append("\(owner)\\.defaults\\s*=\\s*\\.standard")
-            patterns.append("\(owner)\\.setDefaults\\(\\s*\\.standard")
-        }
-
         var offenders: [String] = []
         for root in ["Tests/ClipMemoryTests", "ClipMemory"] {
             let directory = Self.repoRoot.appendingPathComponent(root)
@@ -145,13 +183,10 @@ final class SeamBaselineIsolationTests: XCTestCase {
                 options: [.skipsHiddenFiles]
             ))
             for case let url as URL in enumerator where url.pathExtension == "swift" {
-                let relativePath = url.path.replacingOccurrences(
-                    of: Self.repoRoot.path + "/",
-                    with: ""
-                )
+                let relativePath = Self.relativePath(of: url, root: Self.repoRoot)
                 if Self.allowedFiles.contains(relativePath) { continue }
                 let source = try String(contentsOf: url, encoding: .utf8)
-                let hits = Self.codeLines(matchingAnyOf: patterns, in: source)
+                let hits = Self.codeLines(matchingAnyOf: Self.seamPatterns, in: source)
                 if !hits.isEmpty {
                     offenders.append("\(relativePath):\(hits.map(String.init).joined(separator: ","))")
                 }
@@ -165,35 +200,164 @@ final class SeamBaselineIsolationTests: XCTestCase {
         )
     }
 
+    // MARK: - The scanner's own positive control
+
+    /// The spellings the scanner must catch.
+    ///
+    /// The samples are ASSEMBLED at runtime, not written out: a literal
+    /// `"LanguageManager.defaults = .standard"` in this file would be
+    /// flagged by the scan above — the guard file must not contain the
+    /// pattern it forbids. Same convention as `seamOwners`.
+    private static var samplesToCatch: [String] {
+        let shorthands = [".standard", "UserDefaults.standard", "UserDefaults . standard"]
+        var samples: [String] = []
+        for owner in seamOwners {
+            for shorthand in shorthands {
+                samples.append("\(owner).defaults = \(shorthand)")
+                samples.append("\(owner).setDefaults(\(shorthand))")
+            }
+        }
+        // The value on the NEXT line.
+        samples.append("\(seamOwners[0]).defaults =\n    \(shorthands[1])")
+        return samples
+    }
+
+    /// Every spelling of the production domain must be caught.
+    ///
+    /// This is the control for the guard above: it feeds the scanner the
+    /// exact lines a reset would look like. If the scanner's pattern set
+    /// ever narrows again, this goes red — instead of the guard above
+    /// quietly stopping to see the mutation.
+    func testTheScannerCatchesEverySpellingOfTheProductionDomain() {
+        for sample in Self.samplesToCatch {
+            XCTAssertFalse(
+                Self.codeLines(matchingAnyOf: Self.seamPatterns, in: sample).isEmpty,
+                "the scanner must flag a seam reset written as: \(sample)"
+            )
+        }
+    }
+
+    /// …and it must NOT flag code that merely mentions the production
+    /// domain, or that assigns an unrelated `defaults` property.
+    func testTheScannerIgnoresCommentsAndUnrelatedCode() {
+        let mustNotCatch = [
+            "// LanguageManager.defaults = UserDefaults.standard",
+            "// UpdateService.setDefaults(.standard)",
+            "let defaults: UserDefaults = .standard",
+            "private let defaults: UserDefaults = .standard",
+            "someOtherService.defaults = .standard",
+            "TestIsolation.setDefaults(isolatedSuite)"
+        ]
+        for sample in mustNotCatch {
+            XCTAssertTrue(
+                Self.codeLines(matchingAnyOf: Self.seamPatterns, in: sample).isEmpty,
+                "the scanner must not flag: \(sample)"
+            )
+        }
+    }
+
+    /// The relative-path helper must survive a root that is a SYMLINK.
+    ///
+    /// This is the failure the guard's message would have shown: the
+    /// repository root comes from `#filePath` (the compile-time path,
+    /// e.g. `/tmp/whatever`) while the file enumerator hands out
+    /// resolved paths (`/private/tmp/whatever`). Comparing the raw
+    /// strings fails, and the failure message ends up carrying an
+    /// absolute path instead of the file the reader has to open.
+    func testRelativePathsSurviveASymlinkedRoot() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SeamRelativePath-\(UUID().uuidString)", isDirectory: true)
+        let real = base.appendingPathComponent("real", isDirectory: true)
+        let link = base.appendingPathComponent("link")
+        try FileManager.default.createDirectory(
+            at: real.appendingPathComponent("sub"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        addTeardownBlock { try? FileManager.default.removeItem(at: base) }
+
+        // The root as `#filePath` would give it: the symlink itself.
+        // The file as the enumerator would give it: the resolved path.
+        let file = real.appendingPathComponent("sub/File.swift")
+        XCTAssertEqual(
+            Self.relativePath(of: file, root: link),
+            "sub/File.swift",
+            "the relative path must be computed across the symlink boundary"
+        )
+    }
+
     // MARK: - Helpers
 
     /// Repository root, computed from this file's own location
     /// (`Tests/ClipMemoryTests/SeamBaselineIsolationTests.swift`).
+    ///
+    /// The path is resolved through symlinks, because the file
+    /// enumerator hands out resolved paths: on macOS a checkout under
+    /// `/tmp` is really `/private/tmp`, and comparing the two raw
+    /// strings would silently fail to produce a relative path — the
+    /// failure message would then carry a mangled absolute path
+    /// instead of the file the reader needs to open.
     private static let repoRoot: URL = {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // ClipMemoryTests/
             .deletingLastPathComponent() // Tests/
             .deletingLastPathComponent() // repo root
+            .resolvingSymlinksInPath()
     }()
 
+    /// The path of `url` relative to the repository root.
+    ///
+    /// Both sides go through `resolvingSymlinksInPath()`, because the
+    /// two sides can disagree: `#filePath` (the root) is the compile-time
+    /// path — `/tmp/whatever` — while the file enumerator hands out
+    /// resolved paths — `/private/tmp/whatever`. Comparing the raw
+    /// strings would fail to produce a relative path, and the failure
+    /// message would carry a mangled absolute path instead of the file
+    /// the reader needs to open.
+    ///
+    /// Falls back to the absolute path when the file is outside the
+    /// root, so a mismatch is visible rather than silently mangled.
+    static func relativePath(of url: URL, root: URL) -> String {
+        let filePath = url.resolvingSymlinksInPath().path
+        let rootPath = root.resolvingSymlinksInPath().path
+        guard filePath.hasPrefix(rootPath + "/") else { return filePath }
+        return String(filePath.dropFirst(rootPath.count + 1))
+    }
+
     /// 1-based line numbers where one of `patterns` matches CODE — i.e.
-    /// with no `//` before the match on that line.
+    /// with no `//` before the match on the line the match starts on.
+    ///
+    /// The scan runs over the WHOLE source, not line by line, so an
+    /// assignment whose value sits on the next line is matched too. A
+    /// match that starts on a comment line is ignored.
     private static func codeLines(matchingAnyOf patterns: [String], in source: String) -> [Int] {
-        var hits: [Int] = []
-        let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
-        for (index, line) in lines.enumerated() {
-            let text = String(line)
-            let nsText = text as NSString
-            for pattern in patterns {
-                guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
-                let fullRange = NSRange(location: 0, length: nsText.length)
-                guard let match = regex.firstMatch(in: text, range: fullRange) else { continue }
-                let prefix = nsText.substring(to: match.range.location)
-                guard !prefix.contains("//") else { continue }
-                hits.append(index + 1)
-                break
+        let nsSource = source as NSString
+        let fullRange = NSRange(location: 0, length: nsSource.length)
+        var hits: Set<Int> = []
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            for match in regex.matches(in: source, range: fullRange) {
+                let lineRange = nsSource.lineRange(for: NSRange(
+                    location: match.range.location,
+                    length: 0
+                ))
+                let prefixRange = NSRange(
+                    location: lineRange.location,
+                    length: match.range.location - lineRange.location
+                )
+                guard !nsSource.substring(with: prefixRange).contains("//") else { continue }
+                hits.insert(lineNumber(of: lineRange.location, in: nsSource))
             }
         }
-        return hits
+        return hits.sorted()
+    }
+
+    /// The 1-based number of the line that starts at `location`.
+    private static func lineNumber(of location: Int, in nsSource: NSString) -> Int {
+        var number = 1
+        for index in 0..<location where nsSource.character(at: index) == 10 {
+            number += 1
+        }
+        return number
     }
 }

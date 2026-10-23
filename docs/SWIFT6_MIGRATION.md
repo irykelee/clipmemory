@@ -203,12 +203,17 @@ Services/LanguageManager.swift:93:    nonisolated(unsafe) private static var cod
 Services/UpdateService.swift:202:    nonisolated(unsafe) static var defaults: UserDefaults {
 Services/UpdateService.swift:226:    nonisolated(unsafe) static var injectedForTest: UpdateService?
 Services/WindowManager.swift:113:    nonisolated(unsafe) static var defaults: UserDefaults {
-Utils/TestIsolation.swift:50:    nonisolated(unsafe) static var defaults: UserDefaults = .standard
+Utils/TestIsolation.swift:84:    nonisolated(unsafe) static var defaults: UserDefaults = baselineDefaults
 ```
 
 The COUNT is enforced by a test — see "Drift protection" below. The LINE
-numbers are a 2026-10-23 snapshot and will move as the files move; only
-the count is an invariant.
+numbers are a snapshot too, and since 2026-10-23 they are enforced as
+well: the raw output must list exactly the declarations the code carries,
+with their current line numbers (a row that points at a line which no
+longer holds the declaration sends the next reader to the wrong place —
+that is what happened to the `TestIsolation` row when ID-CRASH-0066 moved
+the declaration). Refresh the roster in the same commit that moves the
+declarations.
 
 ### The roster
 
@@ -234,7 +239,7 @@ just copied from the declaration comments.
 | `Services/UpdateService.swift` | 202 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
 | `Services/UpdateService.swift` | 226 | `injectedForTest: UpdateService?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
 | `Services/WindowManager.swift` | 113 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage). Dormant since WINDOW-0001 — frame persistence moved to AppKit's `setFrameAutosaveName` | actor-isolate the canonical seam |
-| `Utils/TestIsolation.swift` | 50 | `defaults: UserDefaults` | **canonical** storage for the whole test seam (ID-CRASH-0029). Read/written from test `setUp`/`tearDown` on the main thread | migrate to actor in Phase 3 |
+| `Utils/TestIsolation.swift` | 84 | `defaults: UserDefaults` | **canonical** storage for the whole test seam (ID-CRASH-0029). Read/written from test `setUp`/`tearDown` on the main thread. ID-CRASH-0066 changed its INITIALIZER from `.standard` to the immutable `baselineDefaults` (an isolated suite under XCTest, `.standard` in production) — the declaration moved from line 50 to line 84, and the earlier roster row still pointed at the old line | migrate to actor in Phase 3 |
 
 **18 declarations** = 12 production cache/state vars (11 in
 `ClipboardStore` + `LanguageManager.codeStorage`) + 6 test-seam statics
@@ -266,6 +271,12 @@ commit, or the suite goes red. A stale count in this file is exactly the
 failure mode ID-CRASH-0030 was raised for, so it is now a build-time
 failure instead of a reading-time surprise.
 
+Since 2026-10-23 the raw output's LINE NUMBERS are enforced too
+(`testDocumentedRosterLineNumbersStillPointAtTheirDeclarations`): the
+documented `(file, line)` pairs must equal the measured ones. A file that
+moves its declarations therefore needs the roster refreshed in the same
+commit — the alternative is a row that points at the wrong line.
+
 ---
 
-*Last updated: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
+*Last updated: 2026-10-23 (ID-REVIEW-1024 review: §8's `TestIsolation` row refreshed — the declaration moved from line 50 to line 84 in ID-CRASH-0066 — and the line numbers are now enforced by a test, like the count). Previous: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
