@@ -139,8 +139,16 @@ struct BackupManifest: Codable {
     /// Optional，理由有二：
     /// 1. **向后兼容** —— 老版本导出的包没有这一节（nil），导入端必须按
     ///    「空」处理，不能报错。
-    /// 2. **产物不变** —— 本次导出没有隔离副本时写 nil，JSONEncoder 会
-    ///    省略该字段，manifest 字节与改动前完全一致。
+    /// 2. **字段缺席** —— 本次导出没有隔离副本时写 nil，JSONEncoder 会
+    ///    省略该字段：manifest 的**字段集合**与改动前一致（老包读回来是
+    ///    nil，导入端按「空」处理）。
+    ///
+    ///    ID-REVIEW-1024 review (2026-10-23)：这里原来写的是「manifest
+    ///    字节与改动前完全一致」，那是错的。实测：同一个 manifest 连续
+    ///    编码两次会得到两套不同的字节（JSON 键序不稳定，跨进程更是完全
+    ///    不同）。**字节不是契约，字段在不在才是** —— 这一点由
+    ///    `BackupQuarantineTests.testExportWithoutQuarantineProducesNoQuarantineSection`
+    ///    断言（它按 key 查 JSON 对象，而不是比字节）。
     var quarantineCount: Int?
 
     enum CodingKeys: String, CodingKey {
@@ -891,8 +899,10 @@ final class BackupPackage {
             trashCount: counts.trash,
             keyDerivationVersion: 2,
             // ID-BACKUP-0006: 没有隔离副本时写 nil —— JSONEncoder 会省略
-            // 该字段，manifest 字节与改动前完全一致（老包读回来同样是
-            // nil，导入端按「空」处理）。
+            // 该字段：manifest 的**字段集合**与改动前一致（老包读回来同样
+            // 是 nil，导入端按「空」处理）。
+            // 不是「字节一致」：实测同一对象连续编码会得到不同的字节序列
+            // （JSON 键序不稳定），字节从来不是这里的契约。
             quarantineCount: quarantineCount > 0 ? quarantineCount : nil
         )
         try JSONEncoder().encode(manifest).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)

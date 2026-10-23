@@ -402,8 +402,13 @@ import CryptoKit
         XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path))
     }
 
-    /// 验收 #4b：没有隔离副本时，导出包里没有 `Quarantine/`，且 manifest 字节
-    /// 与改动前一致（`quarantineCount` 字段整个不出现）。
+    /// 验收 #4b：没有隔离副本时，导出包里没有 `Quarantine/`，且 manifest 里
+    /// `quarantineCount` 字段整个不出现。
+    ///
+    /// 断言的是「**字段缺席**」，不是「字节与改动前一致」：实测同一个
+    /// manifest 连续编码会得到不同的字节序列（JSON 键序不稳定，跨进程更是
+    /// 完全不同），字节从来不是这里的契约 —— 字段在不在才是。下面读的是
+    /// JSON 对象（按 key 查），不是原始字节。
     func testExportWithoutQuarantineProducesNoQuarantineSection() throws {
         defaults.set(
             try JSONEncoder().encode([ClipboardItem(content: "good", type: .text)]),
