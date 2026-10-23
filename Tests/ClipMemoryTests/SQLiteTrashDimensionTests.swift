@@ -87,6 +87,31 @@ final class SQLiteTrashDimensionTests: XCTestCase {
         return Int(sqlite3_column_int(stmt, 0))
     }
 
+    /// The raw value of one INTEGER column, read straight from the file.
+    ///
+    /// `nil` means SQL NULL — which is a DIFFERENT thing from a zero,
+    /// and for `expires_at` it is the whole point of the v1 → v2
+    /// mapping: the v2 column means "when this entry itself expires",
+    /// and the v1 retention deadline must not be carried into it.
+    private func rawInteger(_ column: String, in table: String) throws -> Int64? {
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(dbURL.path, &handle), SQLITE_OK)
+        defer { sqlite3_close(handle) }
+        var stmt: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_prepare_v2(handle, "SELECT \(column) FROM \(table) LIMIT 1", -1, &stmt, nil),
+            SQLITE_OK
+        )
+        defer { sqlite3_finalize(stmt) }
+        XCTAssertEqual(
+            sqlite3_step(stmt),
+            SQLITE_ROW,
+            "the table '\(table)' must hold a row to read '\(column)' from"
+        )
+        guard sqlite3_column_type(stmt, 0) != SQLITE_NULL else { return nil }
+        return sqlite3_column_int64(stmt, 0)
+    }
+
     /// Whether `table` has a column called `column`.
     private func tableHasColumn(_ table: String, _ column: String) throws -> Bool {
         var handle: OpaquePointer?
@@ -318,7 +343,15 @@ final class SQLiteTrashDimensionTests: XCTestCase {
 
     /// The array-level trash backend keeps the bin in its OWN key —
     /// the items backend must not be able to answer "give me the bin"
-    /// with the user's history.
+    /// with the user's history, nor to write the bin.
+    ///
+    /// ID-REVIEW-1024 review (2026-10-23): the items backend has NO
+    /// trash dimension at all. Before the scope existed, every
+    /// `FileStorageBackend` had one and it always addressed the bin's
+    /// key — so `FileStorageBackend(storageKey: "ClipboardItems")` could
+    /// overwrite the user's recycle bin. That is the 2026-10-20 incident
+    /// class (the bin replaced by an array it was never asked to hold),
+    /// and it is closed here: the write is refused, loudly.
     func testTheFileBackendKeepsTheTrashInItsOwnKey() throws {
         let suiteName = "SQLiteTrashDimension-File-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -326,24 +359,48 @@ final class SQLiteTrashDimensionTests: XCTestCase {
 
         let itemsBackend = FileStorageBackend(
             storageKey: "items-\(suiteName)",
-            trashStorageKey: "trash-\(suiteName)",
+            scope: .items,
             defaults: defaults
         )
         let history = ClipboardItem(content: "in-history", type: .text)
         try itemsBackend.save([history])
 
-        XCTAssertTrue(
-            try itemsBackend.loadTrashAll().isEmpty,
+        XCTAssertThrowsError(
+            try itemsBackend.loadTrashAll(),
             "the items backend must not answer the trash with the main history"
-        )
+        ) { error in
+            guard case StorageBackendError.unsupportedFeature = error else {
+                return XCTFail("expected unsupportedFeature, got \(error)")
+            }
+        }
 
+        // …and it must not be able to WRITE the bin either. The write is
+        // refused loudly (not with `unsupportedFeature`, which the caller
+        // falls back from): falling back would save the bin through the
+        // history key.
+        let binKey = "trash-\(suiteName)"
         let trashBackend = FileStorageBackend(
-            storageKey: "trash-\(suiteName)",
-            trashStorageKey: "trash-\(suiteName)",
+            storageKey: binKey,
+            scope: .trash,
             defaults: defaults
         )
         let trashed = ClipboardItem(content: "in-bin", type: .text, deletedAt: Date())
         try trashBackend.saveTrash([trashed])
+
+        XCTAssertThrowsError(
+            try itemsBackend.saveTrash([trashed]),
+            "the items backend must not be able to overwrite the user's recycle bin"
+        ) { error in
+            guard case StorageBackendError.scopeMismatch = error else {
+                return XCTFail("expected scopeMismatch, got \(error)")
+            }
+        }
+        XCTAssertEqual(
+            try trashBackend.loadTrashAll().map(\.id),
+            [trashed.id],
+            "the refused write must not have touched the bin"
+        )
+
         XCTAssertEqual(try trashBackend.loadTrashAll().map(\.id), [trashed.id])
 
         try trashBackend.purgeTrash(deleting: [trashed.id])
@@ -375,7 +432,33 @@ final class SQLiteTrashDimensionTests: XCTestCase {
         removeDatabaseFile()
         try createV1Database()
         let oldID = UUID()
-        try insertV1TrashRow(id: oldID, trashedAt: 1_600_000_000)
+        // The v1 row carries THREE different values that must not be
+        // confused with each other by the upgrade:
+        // * `trashed_at` — WHEN the entry was trashed (the only deletion
+        //   moment the v1 table had) → becomes `deleted_at`.
+        // * `created_at` — WHEN the entry was created → stays as it is.
+        // * `expires_at` — the bin's retention DEADLINE (now + 30 days),
+        //   a product policy → dropped, because the v2 column means the
+        //   entry's OWN expiry.
+        //
+        // The two moments are deliberately DIFFERENT values: with the
+        // same value in both columns, a migration that took
+        // `deleted_at` from `created_at` would look correct, and the
+        // mapping would be unpinned.
+        let v1TrashedAt: Int64 = 1_600_000_000
+        let v1CreatedAt: Int64 = 1_500_000_000
+        try insertV1TrashRow(id: oldID, trashedAt: v1TrashedAt, createdAt: v1CreatedAt)
+
+        // The fixture really does hold the three values above — a
+        // fixture that quietly wrote NULLs would make the assertions
+        // below vacuous.
+        XCTAssertEqual(try rawInteger("trashed_at", in: "trash_items"), v1TrashedAt)
+        XCTAssertEqual(try rawInteger("created_at", in: "trash_items"), v1CreatedAt)
+        XCTAssertEqual(
+            try rawInteger("expires_at", in: "trash_items"),
+            v1TrashedAt + 30 * 86_400,
+            "the v1 row must carry the bin's retention deadline before the upgrade"
+        )
 
         // Preconditions: the file really is a v1 database.
         XCTAssertEqual(try readUserVersion(at: dbURL), 1)
@@ -407,9 +490,67 @@ final class SQLiteTrashDimensionTests: XCTestCase {
         XCTAssertEqual(trash.first?.content, "v1-content")
         XCTAssertEqual(
             trash.first?.deletedAt?.timeIntervalSince1970 ?? 0,
-            1_600_000_000,
+            Double(v1TrashedAt),
             accuracy: 0.001,
             "the v1 trashed_at is the only deletion moment the old row had"
+        )
+
+        // THE MAPPING, pinned on the raw columns and on the decoded
+        // item. Two claims are made about the v1 → v2 step, and each of
+        // them is checked on the bytes the step actually wrote.
+        try assertV2TrashMapping(
+            upgraded: upgraded,
+            oldID: oldID,
+            v1TrashedAt: v1TrashedAt,
+            v1CreatedAt: v1CreatedAt
+        )
+    }
+
+    /// Asserts the two claims the v1 → v2 step makes about the trash
+    /// row, on the raw columns AND on the decoded item.
+    ///
+    /// * `deleted_at` comes from the v1 `trashed_at` — NOT from
+    ///   `created_at`. The two columns carry different values in the
+    ///   fixture, so swapping them cannot pass.
+    /// * `expires_at` is NULL — the v1 retention deadline is NOT
+    ///   carried over. The v2 column means the entry's own expiry, and
+    ///   carrying the deadline over would make a restored entry look
+    ///   expired at a time the user never asked for.
+    private func assertV2TrashMapping(
+        upgraded: SQLiteStorageBackend,
+        oldID: UUID,
+        v1TrashedAt: Int64,
+        v1CreatedAt: Int64
+    ) throws {
+        XCTAssertEqual(
+            try rawInteger("deleted_at", in: "trash_items"),
+            v1TrashedAt,
+            "deleted_at must be the v1 trashed_at — the creation moment is a different fact"
+        )
+        XCTAssertEqual(
+            try rawInteger("created_at", in: "trash_items"),
+            v1CreatedAt,
+            "created_at must survive the upgrade as the creation moment"
+        )
+        XCTAssertNil(
+            try rawInteger("expires_at", in: "trash_items"),
+            "the v1 retention deadline must not be carried into expires_at — "
+            + "the v2 column means the entry's own expiry, and the retention "
+            + "policy is computed in TrashStore"
+        )
+
+        // And the same three facts as the caller sees them.
+        let trash = try upgraded.loadTrashAll()
+        XCTAssertEqual(trash.first?.id, oldID)
+        XCTAssertEqual(
+            trash.first?.createdAt.timeIntervalSince1970 ?? 0,
+            Double(v1CreatedAt),
+            accuracy: 0.001,
+            "the decoded item must report the creation moment, not the deletion moment"
+        )
+        XCTAssertNil(
+            trash.first?.expiresAt,
+            "a migrated entry must not inherit an expiry — it has none of its own"
         )
     }
 
@@ -431,13 +572,18 @@ final class SQLiteTrashDimensionTests: XCTestCase {
     }
 
     /// Inserts a row in the v1 `trash_items` shape.
-    private func insertV1TrashRow(id: UUID, trashedAt: Int64) throws {
+    ///
+    /// `trashedAt` and `createdAt` are separate parameters on purpose:
+    /// the v1 table had BOTH moments, and a fixture that gave them the
+    /// same value would let a migration that swapped the two columns
+    /// pass unnoticed.
+    private func insertV1TrashRow(id: UUID, trashedAt: Int64, createdAt: Int64) throws {
         let sql = """
             INSERT INTO trash_items (item_id, trashed_at, expires_at, content_blob,
                                       content_hash, is_encrypted, type, is_pinned,
                                       is_sensitive, created_at)
             VALUES ('\(id.uuidString)', \(trashedAt), \(trashedAt + 30 * 86_400), 'v1-content',
-                    'v1-hash', 1, 'text', 0, 0, \(trashedAt))
+                    'v1-hash', 1, 'text', 0, 0, \(createdAt))
             """
         try execOnFile(sql)
     }

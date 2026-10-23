@@ -532,7 +532,7 @@ final class ClipboardStore: ObservableObject {
         }
         self.init(backend: FileStorageBackend(),
                   tagBackend: FileStorageBackend(storageKey: ClipboardStore.tagStorageKey),
-                  trashBackend: FileStorageBackend(storageKey: TrashStore.trashedItemsStorageKey))
+                  trashBackend: FileStorageBackend(storageKey: TrashStore.trashedItemsStorageKey, scope: .trash))
     }
 
     /// E.1: Designated initializer accepting StorageBackend instances for testing.

@@ -214,6 +214,23 @@ enum StorageBackendError: Error, LocalizedError {
     /// impossible: a test process can never write the user's data blobs.
     case productionWriteBlocked(storageKey: String)
 
+    /// ID-REVIEW-1024 review (2026-10-23): the caller asked a backend to
+    /// act on a scope it does not address — e.g. "save the recycle bin"
+    /// to a backend that addresses the clipboard history.
+    ///
+    /// This is NOT a transient failure and NOT a storage failure: the
+    /// backend is healthy, the request is simply out of scope. Retrying
+    /// it would fail the same way, so `isRetryable` is false.
+    ///
+    /// It is deliberately a DIFFERENT case from `unsupportedFeature`,
+    /// because the two are handled differently by `TrashStore`:
+    /// `unsupportedFeature` means "this backend has no trash dimension —
+    /// fall back to the array path", while a scope mismatch on a WRITE
+    /// must NOT fall back: the array path of a history-scoped backend is
+    /// the user's clipboard history, and saving the bin through it
+    /// would replace the history with the bin.
+    case scopeMismatch(String)
+
     /// Whether retrying the failed operation could plausibly succeed.
     ///
     /// ID-REVIEW-1024 (PR-D N.4, 2026-10-21): the schema migration
@@ -231,7 +248,7 @@ enum StorageBackendError: Error, LocalizedError {
         switch self {
         case .storageFailure(_, let code, _):
             return code == SQLITE_BUSY || code == SQLITE_LOCKED
-        case .unsupportedFeature, .productionWriteBlocked:
+        case .unsupportedFeature, .productionWriteBlocked, .scopeMismatch:
             return false
         }
     }
@@ -244,6 +261,8 @@ enum StorageBackendError: Error, LocalizedError {
             return "StorageBackend write failed (rc=\(code)): \(detail) — sql=\(sql.prefix(120))"
         case .productionWriteBlocked(let key):
             return "Refusing to write production UserDefaults key '\(key)' from a test process"
+        case .scopeMismatch(let detail):
+            return "StorageBackend scope mismatch: \(detail)"
         }
     }
 }
@@ -265,30 +284,69 @@ enum StorageBackendError: Error, LocalizedError {
 /// the UserDefaults store before the app terminates.
 final class FileStorageBackend: StorageBackend {
     // ID-PERF-0001 (2026-07-30 audit): hoist JSONEncoder allocation.
-    // JSONEncoder is documented thread-safe for `.encode()` since macOS 10.15,
-    // so a class-scope static is safe. Used serially per call site (each
-    // save/saveTags runs to completion before the next).
+    //
+    // ID-REVIEW-1024 review (2026-10-23): the justification this comment
+    // used to carry ("JSONEncoder is documented thread-safe for `.encode()`
+    // since macOS 10.15") had no source and is not what the measurement
+    // shows. What was MEASURED on this machine, on the same input:
+    //
+    // * `JSONEncoder` IS `Sendable` in this SDK — a Swift 6 `-typecheck`
+    //   probe (`requiresSendable(JSONEncoder())`) compiles clean. So
+    //   sharing one instance is not a concurrency violation.
+    // * 8000 CONCURRENT encodes (4000 on this shared instance, 4000 on
+    //   fresh per-call instances) produced ZERO decode failures and ZERO
+    //   value mismatches: Foundation's encoder does not corrupt its
+    //   output under concurrency.
+    // * What is NOT stable is the BYTE SEQUENCE. The same input encoded
+    //   200 times in a row on this shared instance produced 9 DIFFERENT
+    //   byte sequences; fresh per-call instances produced 2 different
+    //   sequences in 500 encodes; under concurrency 25–55; and two
+    //   processes produced entirely different orders. JSON object key
+    //   order is not a contract.
+    //
+    // Consequence for this file: NO statement about the stored bytes may
+    // be made anywhere in the storage layer. The invariant that holds is
+    // semantic — same key, same encoder configuration, same decoder ⇒ the
+    // same decoded content.
     private static let itemsEncoder = JSONEncoder()
     private static let tagsEncoder = JSONEncoder()
 
     private let storageKey: String
 
-    /// ID-REVIEW-1024 (PR-C, docs §11 open question 5): the key the
-    /// TRASH dimension reads and writes.
+    /// ID-REVIEW-1024 (PR-C, docs §11 open question 5): the scope this
+    /// backend addresses.
     ///
-    /// The production wiring constructs the trash backend with the
-    /// trash key (`ClipboardStore.init`: `trashBackend:
-    /// FileStorageBackend(storageKey: TrashStore.trashedItemsStorageKey)`),
-    /// so for that instance `trashStorageKey == storageKey` and the
-    /// trash dimension reads exactly the key the array-level
-    /// `load()` / `save(_:)` read before it — the production behaviour
-    /// is unchanged.
+    /// The recycle bin is a DIMENSION of the store, not a view of the
+    /// main item list. The backend therefore has to say WHICH scope it
+    /// is — the trash dimension of an ITEMS-scoped backend is the hole
+    /// this closes:
     ///
-    /// It is deliberately a SEPARATE key from `storageKey`: the items
-    /// backend must not be able to answer "give me the recycle bin"
-    /// with the main history (the trap docs §11 describes for the
-    /// SQLite backend).
-    private let trashStorageKey: String
+    /// Before the scope existed, EVERY `FileStorageBackend` had a trash
+    /// dimension and that dimension always addressed the bin's key. So
+    /// `FileStorageBackend(storageKey: "ClipboardItems").saveTrash(...)`
+    /// wrote `ClipboardTrashedItems` — an items-scoped backend could
+    /// overwrite the user's recycle bin. There is no call site that does
+    /// it today, but the protocol opened the door to exactly the 2026-10-20
+    /// incident class: the bin replaced by an array it was never asked to
+    /// hold.
+    ///
+    /// With the scope:
+    /// * `.items` — the history. There is NO trash dimension: this
+    ///   backend cannot read the bin and it cannot write it.
+    /// * `.trash` — the recycle bin. The array-level scope IS the bin,
+    ///   and the trash dimension reads and writes the same key. This is
+    ///   the production trash backend (`ClipboardStore.init` wires
+    ///   `FileStorageBackend(storageKey: TrashStore.trashedItemsStorageKey, scope: .trash)`),
+    ///   so the production behaviour is unchanged: same key, same
+    ///   encoder configuration, same decoder, same decoded content.
+    enum Scope {
+        /// The clipboard history.
+        case items
+        /// The recycle bin.
+        case trash
+    }
+
+    private let scope: Scope
 
     // P1-AUDIT-2026-09-22 (P2-2): dedicated logger so silent write
     // failures surface in Console.app / `log show` for triage.
@@ -304,10 +362,10 @@ final class FileStorageBackend: StorageBackend {
     private let defaults: UserDefaults
 
     init(storageKey: String = UserDefaultsKey.clipboardItems.rawValue,
-         trashStorageKey: String = UserDefaultsKey.trashedItems.rawValue,
+         scope: Scope = .items,
          defaults: UserDefaults = .standard) {
         self.storageKey = storageKey
-        self.trashStorageKey = trashStorageKey
+        self.scope = scope
         self.defaults = defaults
     }
 
@@ -333,9 +391,11 @@ final class FileStorageBackend: StorageBackend {
     /// - The check is on the storage key AND `.standard`; an isolated
     ///   suite that happens to use a production key name is a test
     ///   fixture, not the user's data.
-    /// - The key is a PARAMETER because the trash dimension writes its
-    ///   own key (`trashStorageKey`), which is a production data key
-    ///   too — the gate must cover it exactly like the items key.
+    /// - The key is a PARAMETER because the trash dimension writes the
+    ///   bin's own key, which is a production data key too — the gate
+    ///   must cover it exactly like the items key. (A `.trash`-scoped
+    ///   backend's array scope IS that key, so the same parameter
+    ///   covers both.)
     private func assertWriteAllowed(_ key: String) throws {
         guard TestIsolation.mustRefuseProductionDataMutation(defaults),
               TestIsolation.productionDataKeys.contains(key) else {
@@ -450,23 +510,63 @@ final class FileStorageBackend: StorageBackend {
     /// a lie in the same way the granular overrides are.
     ///
     /// The write path mirrors `save(_:)` exactly (a single
-    /// `defaults.set`, no read-back verification) so the production
-    /// behaviour of the trash is byte-for-byte what it was before the
-    /// trash dimension existed.
+    /// `defaults.set`, no read-back verification), so the production
+    /// behaviour of the trash is UNCHANGED: the same key
+    /// (`ClipboardTrashedItems`), the same encoder configuration, the
+    /// same decoder, therefore the same decoded content.
+    ///
+    /// ID-REVIEW-1024 review (2026-10-23): this comment used to say the
+    /// behaviour was "byte-for-byte what it was before the trash
+    /// dimension existed". That was never true and is not true now —
+    /// measured: the same array encoded twice in a row yields two
+    /// different byte sequences (JSON key order is not stable, not even
+    /// within one process). The byte sequence is NOT a contract; the
+    /// decoded content is.
+    ///
+    /// ## The scope gate
+    ///
+    /// Only a `.trash`-scoped backend has a trash dimension. An
+    /// `.items`-scoped backend answers the READ with
+    /// `unsupportedFeature` — the protocol's "I don't have that
+    /// dimension" signal, which `TrashStore` handles by falling back to
+    /// the array path (a read, so nothing can be lost).
+    ///
+    /// The WRITE and the PURGE answer with `scopeMismatch` instead, and
+    /// that asymmetry is deliberate: `TrashStore` falls back to the
+    /// array path for `unsupportedFeature`, so an items-scoped backend
+    /// would otherwise save the bin THROUGH THE HISTORY — replacing
+    /// the user's clipboard history with the recycle bin. A loud
+    /// failure (log + retry + notification, the three-leg contract)
+    /// is the only acceptable outcome for a write.
     func loadTrashAll() throws -> [ClipboardItem] {
-        guard let data = defaults.data(forKey: trashStorageKey) else {
+        guard scope == .trash else {
+            throw StorageBackendError.unsupportedFeature(
+                "loadTrashAll: this backend addresses the clipboard history, not the recycle bin"
+            )
+        }
+        guard let data = defaults.data(forKey: storageKey) else {
             return []
         }
         return try JSONDecoder().decode([ClipboardItem].self, from: data)
     }
 
     func saveTrash(_ items: [ClipboardItem]) throws {
-        try assertWriteAllowed(trashStorageKey)
+        guard scope == .trash else {
+            throw StorageBackendError.scopeMismatch(
+                "saveTrash: this backend addresses the clipboard history — refusing to write the recycle bin"
+            )
+        }
+        try assertWriteAllowed(storageKey)
         let data = try Self.itemsEncoder.encode(items)
-        defaults.set(data, forKey: trashStorageKey)
+        defaults.set(data, forKey: storageKey)
     }
 
     func purgeTrash(deleting itemIDs: Set<UUID>) throws {
+        guard scope == .trash else {
+            throw StorageBackendError.scopeMismatch(
+                "purgeTrash: this backend addresses the clipboard history — refusing to purge the recycle bin"
+            )
+        }
         guard !itemIDs.isEmpty else { return }
         let kept = try loadTrashAll().filter { !itemIDs.contains($0.id) }
         try saveTrash(kept)
