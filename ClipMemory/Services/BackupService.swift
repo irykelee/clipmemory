@@ -409,6 +409,57 @@ final class BackupService {
                 throw BackupError.writeFailed(filename: filename, underlying: error)
             }
         }
+        // ID-BACKUP-0006 (2026-10-23): 隔离副本也要进备份 ——
+        // 它是损坏 blob 的原始字节，改动前不在白名单里，会永久丢失。
+        try writeQuarantineCopies(to: destination)
+    }
+
+    /// ID-BACKUP-0006 (2026-10-23): 把隔离副本（`<key>.corrupt-<时间戳>`）
+    /// 写进备份目录下的独立子目录 `Quarantine/`。
+    ///
+    /// 文件名 = **完整的 UserDefaults key**（例如
+    /// `ClipboardItems.corrupt-2026-10-20T12:34:56.789Z`）—— 文件名即
+    /// key，导入端不需要额外的映射表就能唯一还原。
+    ///
+    /// 权限沿用现有备份 blob 的约定：文件 0o600、子目录 0o700（父级
+    /// `Backups/` 由 `prepareBackupDirectory` 保持 0o700）。隔离副本里是
+    /// 用户数据（legacy blob 甚至可能是明文），因此**不写进日志**、
+    /// **不进错误信息**（只记 key 名，不记内容）。
+    ///
+    /// 没有隔离副本时**不创建** `Quarantine/` 目录 —— 备份产物与改动前
+    /// 完全一致。
+    private func writeQuarantineCopies(to destination: URL) throws {
+        let keys = BackupBlobRegistry.quarantineKeys(in: defaults)
+        guard !keys.isEmpty else { return }
+        let quarantineDirectory = destination.appendingPathComponent(
+            BackupBlobRegistry.quarantineDirectoryName,
+            isDirectory: true
+        )
+        do {
+            try fileManager.createDirectory(
+                at: quarantineDirectory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+        } catch {
+            logger.error("Backup failed (create \(BackupBlobRegistry.quarantineDirectoryName) dir): \(error.localizedDescription)")
+            throw BackupError.writeFailed(
+                filename: BackupBlobRegistry.quarantineDirectoryName,
+                underlying: error
+            )
+        }
+        for key in keys {
+            guard let data = defaults.data(forKey: key) else { continue }
+            let fileURL = quarantineDirectory.appendingPathComponent(key)
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            } catch {
+                // 只记 key 名，不记内容 —— 隔离副本是用户数据。
+                logger.error("Backup failed (write quarantine copy \(key)): \(error.localizedDescription)")
+                throw BackupError.writeFailed(filename: key, underlying: error)
+            }
+        }
     }
 
     /// Hard-links the `Images/` directory into the backup if present;

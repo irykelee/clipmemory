@@ -21,6 +21,10 @@ import os.log
 ///                 — v3 ONLY; v1 packages sealed the machine root key directly here, see ID-REVIEW-1015
 ///   items.json / tags.json / trash.json   raw encrypted store blobs
 ///   Images/        encrypted image files
+///   Quarantine/    ID-BACKUP-0006 (2026-10-23): 损坏 blob 的隔离副本
+///                  （`<key>.corrupt-<时间戳>`），文件名即完整的
+///                  UserDefaults key；整个 blob 用包密钥封装一次。老包
+///                  没有这一节 —— 导入端读到没有隔离节时按空处理。
 ///
 /// ID-DOCS-0004 (LOW audit fix, 2026-08-15): the file-format comment
 /// previously said `HKDF-SHA256 + AES-GCM`. After the M-1 fix
@@ -62,6 +66,11 @@ enum BackupPackageError: Error, Equatable {
     /// this as a distinct error so the UI can show the correct L10n message
     /// instead of a misleading "keychain" error.
     case snapshotFailed(String)
+    /// ID-BACKUP-0006 (2026-10-23): 隔离副本写回被生产数据保护门拒绝
+    /// （`TestIsolation.mustRefuseProductionDataMutation`）—— 典型场景是
+    /// 测试进程试图把包里的隔离副本写进生产的 `com.clipmemory.app` 域。
+    /// 明确区分于 `.corruptedData`：包本身没坏，是**写回**这一步被拒。
+    case quarantineRestoreRefused
 }
 
 // MARK: - LocalizedError conformance (F12 fix, ID-BACKUP-0002)
@@ -82,6 +91,7 @@ extension BackupPackageError: LocalizedError {
             return L10n.restoreErrorUnsupportedKDF + " (v\(v))"
         case .corruptedData:               return L10n.restoreErrorCorrupted
         case .snapshotFailed(let msg):      return L10n.restoreErrorSnapshotFailed + " (" + msg + ")"
+        case .quarantineRestoreRefused:     return L10n.restoreErrorCorrupted
         }
     }
 }
@@ -124,10 +134,19 @@ struct BackupManifest: Codable {
     /// iterations (OWASP 2023) raises that cost by ~10⁵. Old packages (no
     /// `keyDerivationVersion` field) default to version 1 (HKDF) on read.
     var keyDerivationVersion: Int = 2
+    /// ID-BACKUP-0006 (2026-10-23): 隔离副本（`.corrupt-*`）的份数。
+    ///
+    /// Optional，理由有二：
+    /// 1. **向后兼容** —— 老版本导出的包没有这一节（nil），导入端必须按
+    ///    「空」处理，不能报错。
+    /// 2. **产物不变** —— 本次导出没有隔离副本时写 nil，JSONEncoder 会
+    ///    省略该字段，manifest 字节与改动前完全一致。
+    var quarantineCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case formatVersion, createdAt, appVersion, keySalt
         case itemCount, tagCount, imageCount, trashCount, keyDerivationVersion
+        case quarantineCount
     }
 }
 
@@ -151,6 +170,9 @@ extension BackupManifest {
         trashCount = try container.decodeIfPresent(Int.self, forKey: .trashCount)
         // Default HKDF (version 1) for old packages without this field.
         keyDerivationVersion = try container.decodeIfPresent(Int.self, forKey: .keyDerivationVersion) ?? 1
+        // ID-BACKUP-0006: absent in pre-2026-10-23 packages → the package
+        // carries no quarantine section, treat it as empty (not an error).
+        quarantineCount = try container.decodeIfPresent(Int.self, forKey: .quarantineCount)
     }
 }
 
@@ -732,12 +754,19 @@ final class BackupPackage {
             rootCrypto: rootCrypto,
             packageCrypto: packageCrypto
         )
+        // ID-BACKUP-0006 (2026-10-23): 隔离副本（`.corrupt-*`）也进包。
+        let quarantineCount = try stageQuarantineCopies(
+            to: staging,
+            defaults: defaults,
+            packageCrypto: packageCrypto
+        )
         try writeExportKeyAndManifest(
             to: staging,
             sealedKeyData: sealedKeyData,
             salt: salt,
             counts: counts,
-            imageCount: imageCount
+            imageCount: imageCount,
+            quarantineCount: quarantineCount
         )
         try zipAndAtomicallyReplace(from: staging, to: destination)
         logger.info("Exported v3 backup package to \(destination.path)")
@@ -844,7 +873,8 @@ final class BackupPackage {
         salt: Data,
         // swiftlint:disable:next large_tuple
         counts: (items: Int, tags: Int, trash: Int),
-        imageCount: Int
+        imageCount: Int,
+        quarantineCount: Int
     ) throws {
         try sealedKeyData.write(to: staging.appendingPathComponent("key.enc"), options: .atomic)
         let manifest = BackupManifest(
@@ -859,9 +889,67 @@ final class BackupPackage {
             // importer validates items.json against itemCount only, and
             // trash.json against this field.
             trashCount: counts.trash,
-            keyDerivationVersion: 2
+            keyDerivationVersion: 2,
+            // ID-BACKUP-0006: 没有隔离副本时写 nil —— JSONEncoder 会省略
+            // 该字段，manifest 字节与改动前完全一致（老包读回来同样是
+            // nil，导入端按「空」处理）。
+            quarantineCount: quarantineCount > 0 ? quarantineCount : nil
         )
         try JSONEncoder().encode(manifest).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
+    }
+
+    /// ID-BACKUP-0006 (2026-10-23): 把隔离副本（`<key>.corrupt-<时间戳>`）
+    /// 放进导出包的 `Quarantine/` 子目录，返回写入的份数。
+    ///
+    /// 与普通 blob 的关键差异：隔离副本在 **JSON 层面已经损坏**，走不了
+    /// `stageStoredBlobsReencrypted` 的「逐条解密再重加密」路径（根本解不
+    /// 出来）。因此整个 blob 用**包密钥整体封装一次**：包内不落明文
+    /// （legacy blob 里可能有明文内容），导入端用同一个包密钥解回来，
+    /// 字节与隔离副本逐字节相同。
+    ///
+    /// 文件名 = 完整的 UserDefaults key（与 `BackupService` 的每日备份
+    /// 保持同一约定），因此导入端不需要额外映射表。
+    ///
+    /// 没有隔离副本时**不创建** `Quarantine/` 目录 —— 导出产物与改动前
+    /// 完全一致。
+    private static func stageQuarantineCopies(
+        to staging: URL,
+        defaults: UserDefaults,
+        packageCrypto: CryptoServiceProtocol
+    ) throws -> Int {
+        let keys = BackupBlobRegistry.quarantineKeys(in: defaults)
+        guard !keys.isEmpty else { return 0 }
+        let quarantineDirectory = staging.appendingPathComponent(
+            BackupBlobRegistry.quarantineDirectoryName,
+            isDirectory: true
+        )
+        do {
+            try FileManager.default.createDirectory(
+                at: quarantineDirectory,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            logger.error("Export: cannot create quarantine staging dir: \(error.localizedDescription)")
+            throw BackupPackageError.corruptedData("cannot create quarantine staging dir", .manifest)
+        }
+        var count = 0
+        for key in keys {
+            guard let raw = defaults.data(forKey: key) else { continue }
+            guard let sealed = packageCrypto.encryptData(raw) else {
+                logger.error("Export: sealing a quarantine copy failed: \(key)")
+                throw BackupPackageError.corruptedData("quarantine copy seal failed", .manifest)
+            }
+            let target = quarantineDirectory.appendingPathComponent(key)
+            do {
+                try sealed.write(to: target, options: .atomic)
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+            } catch {
+                logger.error("Export: writing a quarantine copy failed: \(key)")
+                throw BackupPackageError.corruptedData("quarantine copy write failed", .manifest)
+            }
+            count += 1
+        }
+        return count
     }
 
     /// BUG-023 (2026-07-21): the old `removeItem` then `zipDirectory` was
@@ -938,6 +1026,19 @@ final class BackupPackage {
             from: staging,
             passphrase: passphrase,
             manifest: manifest
+        )
+
+        // ID-BACKUP-0006 (2026-10-23): 隔离副本先于数据合并还原。
+        //
+        // 顺序是刻意的：隔离副本是**损坏** blob 的唯一原始字节留存，写回
+        // 失败必须**大声失败**（抛错 → UI 显示错误 → 用户可重试），而不是
+        // 静默丢弃后继续导入其它数据。先还原再合并保证失败时 store 还没
+        // 被改动 —— 不会留下「导了一半」的中间态。
+        try restoreQuarantineCopies(
+            staging: staging,
+            defaults: defaults,
+            packageCrypto: packageCrypto,
+            declaredCount: manifest.quarantineCount
         )
 
         var result = BackupImportResult()
@@ -1148,6 +1249,132 @@ final class BackupPackage {
             result.imageImportFailed = true
             logger.error("Image import failed (items/tags already merged): \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - 隔离副本（quarantine）还原
+
+    /// ID-BACKUP-0006 (2026-10-23): 从导出包还原隔离副本。
+    ///
+    /// 字节写回**原来的 `.corrupt-*` key** —— 绝不写回主 key：主 key 里是
+    /// 用户当前的好数据，用损坏数据覆盖它等于把一次可恢复的损坏变成一次
+    /// 不可恢复的数据丢失。
+    ///
+    /// 份数校验：manifest 声明的份数必须与包内实际份数一致。老包没有这个
+    /// 字段（nil）→ 按 0 处理，即「包内没有隔离节」，**不报错**（向后
+    /// 兼容）；声明了却没有（或反之）→ 包被改动过 → 抛 `corruptedData`，
+    /// 一个字节都不写回。
+    private static func restoreQuarantineCopies(
+        staging: URL,
+        defaults: UserDefaults,
+        packageCrypto: CryptoServiceProtocol,
+        declaredCount: Int?
+    ) throws {
+        let directory = staging.appendingPathComponent(
+            BackupBlobRegistry.quarantineDirectoryName,
+            isDirectory: true
+        )
+        let entries = try quarantineEntries(in: directory)
+        let expected = declaredCount ?? 0
+        guard entries.count == expected else {
+            logger.error("Manifest quarantineCount \(expected) != packaged quarantine copies \(entries.count)")
+            throw BackupPackageError.corruptedData(
+                "manifest quarantineCount \(expected) != packaged quarantine copies \(entries.count)",
+                .manifest
+            )
+        }
+        // 没有隔离节（老包 / 本次导出没有隔离副本）→ 直接返回，不报错。
+        guard !entries.isEmpty else { return }
+        // 生产数据保护：测试进程不许写生产域（与 quarantineCorruptBlob
+        // 的写入门同一条纪律 —— 写回同样会覆盖用户数据）。
+        guard !TestIsolation.mustRefuseProductionDataMutation(defaults) else {
+            logger.error("Refusing to restore quarantine copies into the production defaults domain from a test process")
+            throw BackupPackageError.quarantineRestoreRefused
+        }
+        for (key, url) in entries {
+            // 体积闸门先于读取 —— 与普通 store blob 同一个上限（BKP-3）。
+            try guardStoreBlobSize(url: url, name: key, source: .manifest, maxBytes: maxStoreBlobBytes)
+            let sealed: Data
+            do {
+                sealed = try Data(contentsOf: url)
+            } catch {
+                logger.error("Failed to read a quarantine copy: \(key)")
+                throw BackupPackageError.corruptedData("quarantine copy unreadable", .manifest)
+            }
+            // 包内的隔离副本用包密钥整体封装过（导出侧 `stageQuarantineCopies`），
+            // 这里解回原始字节 —— 与隔离副本逐字节相同。
+            guard let raw = packageCrypto.decryptData(sealed) else {
+                logger.error("Failed to unseal a quarantine copy: \(key)")
+                throw BackupPackageError.corruptedData("quarantine copy decrypt failed", .manifest)
+            }
+            defaults.set(raw, forKey: key)
+        }
+        logger.info("Restored \(entries.count) quarantine copy/copies from the backup package")
+    }
+
+    /// ID-BACKUP-0006 (2026-10-23): 从**本地自动备份目录**还原隔离副本。
+    ///
+    /// 与包路径的唯一区别：本地备份里的隔离副本是**原始字节**（本机根密钥
+    /// 下加密 / legacy 明文），没有包密钥封装，因此直接写回。
+    private static func restoreQuarantineCopiesFromLocalBackup(
+        directory: URL,
+        defaults: UserDefaults
+    ) throws {
+        let quarantineDirectory = directory.appendingPathComponent(
+            BackupBlobRegistry.quarantineDirectoryName,
+            isDirectory: true
+        )
+        let entries = try quarantineEntries(in: quarantineDirectory)
+        guard !entries.isEmpty else { return }
+        guard !TestIsolation.mustRefuseProductionDataMutation(defaults) else {
+            logger.error("Refusing to restore quarantine copies into the production defaults domain from a test process")
+            throw BackupPackageError.quarantineRestoreRefused
+        }
+        for (key, url) in entries {
+            try guardStoreBlobSize(url: url, name: key, source: .manifest, maxBytes: maxStoreBlobBytes)
+            let raw: Data
+            do {
+                raw = try Data(contentsOf: url)
+            } catch {
+                logger.error("Failed to read a quarantine copy: \(key)")
+                throw BackupPackageError.corruptedData("quarantine copy unreadable", .manifest)
+            }
+            defaults.set(raw, forKey: key)
+        }
+        logger.info("Restored \(entries.count) quarantine copy/copies from the local backup")
+    }
+
+    /// 列出 `Quarantine/` 目录里**结构合法**的隔离副本条目。
+    ///
+    /// - 目录不存在 → 空数组（老包 / 没有隔离节）。
+    /// - 名字不合法的文件 → 跳过并记日志（不当成隔离副本，也不写回）。
+    /// - 非普通文件（子目录等）→ 跳过。
+    private static func quarantineEntries(in directory: URL) throws -> [(key: String, url: URL)] {
+        guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
+        let contents: [URL]
+        do {
+            contents = try FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.isRegularFileKey]
+            )
+        } catch {
+            logger.error("Quarantine section unreadable: \(error.localizedDescription)")
+            throw BackupPackageError.corruptedData("quarantine section unreadable", .manifest)
+        }
+        var entries: [(key: String, url: URL)] = []
+        for url in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let name = url.lastPathComponent
+            guard BackupBlobRegistry.isQuarantineKey(name) else {
+                logger.warning("Skipping unrecognized file in the quarantine section: \(name)")
+                continue
+            }
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+            guard values?.isRegularFile == true else {
+                logger.warning("Skipping non-regular file in the quarantine section: \(name)")
+                continue
+            }
+            entries.append((key: name, url: url))
+        }
+        return entries
     }
 
     /// BKP-4 (2026-07-24 review): manifest declared counts must match what
@@ -1527,6 +1754,11 @@ final class BackupPackage {
         imagesDirectory: URL,
         defaults: UserDefaults = .standard
     ) throws -> BackupImportResult {
+        // ID-BACKUP-0006 (2026-10-23): 先还原隔离副本。失败则整个导入中止
+        // —— store 还没被改动，不会留下「导了一半」的中间态；隔离副本是
+        // 损坏 blob 的唯一原始字节留存，静默丢弃比导入失败更糟。
+        try restoreQuarantineCopiesFromLocalBackup(directory: directory, defaults: defaults)
+
         let items = try decodeItems(from: directory, name: "items.json", source: .items)
         let trash = try decodeItems(from: directory, name: "trash.json", source: .trash)
         let tags = try decodeTags(from: directory, name: "tags.json", source: .tags)
