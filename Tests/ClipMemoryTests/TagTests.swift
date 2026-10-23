@@ -279,7 +279,7 @@ final class TagTests: XCTestCase {
                                    tagBackend: tagBackend)
         let tag = Tag(name: "工作", colorHex: "#4ECDC4")
         store.addTag(tag)
-        store.saveTags()
+        try store.saveTags()
 
         // The FileStorageBackend dispatches to main async; spin runloop once.
         let exp = expectation(description: "wait for main queue")
@@ -317,7 +317,7 @@ final class TagTests: XCTestCase {
                                    tagBackend: tagBackend)
         let tag = Tag(name: "v2:work", colorHex: "#4ECDC4")
         store.addTag(tag)
-        store.saveTags()
+        try store.saveTags()
 
         let exp = expectation(description: "wait for main queue")
         DispatchQueue.main.async { exp.fulfill() }

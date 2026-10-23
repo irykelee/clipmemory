@@ -148,12 +148,25 @@ extension ClipboardStore {
     /// Synchronously write the current tag dictionary to the tag backend.
     /// Names are encrypted at the persistence boundary while the in-memory
     /// `tags` dictionary stays plaintext for UI use.
-    func saveTags() {
-        do {
-            try tagBackend.saveTags(encryptTagNames(Array(tags.values)))
-        } catch {
-            logger.error("Failed to save tags: \(error.localizedDescription)")
-        }
+    ///
+    /// ID-CRASH-0065 (2026-10-23): this used to be a NON-throwing
+    /// function that swallowed the backend error in its own `catch`.
+    /// That made `flushTagSave()`'s `try saveTags()` a no-op — the
+    /// compiler said so out loud:
+    ///
+    ///     warning: no calls to throwing functions occur within 'try' expression
+    ///     warning: 'catch' block is unreachable because no errors are thrown in 'do' block
+    ///
+    /// ⇒ the WHOLE ID-CRASH-0007 three-leg gate for the tag path was
+    /// dead code: the re-armed pending flag, the backoff retry and the
+    /// `.tagSaveFailed` notification could never run. A disk-write
+    /// failure on the tag path therefore lost the user's tags for the
+    /// rest of the session — silently, with no retry and no signal.
+    ///
+    /// It THROWS now, and the caller owns the failure handling —
+    /// exactly like `flushSave()` owns it for the items path.
+    func saveTags() throws {
+        try tagBackend.saveTags(encryptTagNames(Array(tags.values)))
     }
 
     /// Debounced tag save — coalesces rapid mutations (addTag/deleteTag) into

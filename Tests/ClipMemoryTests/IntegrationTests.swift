@@ -892,7 +892,7 @@ import XCTest
         XCTAssertEqual(store.tags[tagId]?.name, "[locked]")
 
         // Trigger save (any tag mutation would do this in production)
-        store.saveTags()
+        try store.saveTags()
 
         // The saved tag must still carry the original ciphertext, not "[locked]"
         let saved = (try? tagBackend.loadTags())?.first { $0.id == tagId }

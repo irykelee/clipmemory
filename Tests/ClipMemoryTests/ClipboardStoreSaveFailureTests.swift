@@ -288,6 +288,88 @@ final class ClipboardStoreSaveFailureTests: XCTestCase {
         XCTAssertEqual(capturedSource, "saveFlush",
                        "save-failure notifications must tag source='saveFlush' so the throttler can bucket per-cause")
     }
+
+    // MARK: - ID-CRASH-0065: the TAG path's three-leg gate
+
+    /// ID-CRASH-0065 (2026-10-23): `ClipboardStore.saveTags()` swallowed
+    /// the backend error and did NOT rethrow, so `flushTagSave()`'s
+    /// `try saveTags()` never threw and its `catch` was unreachable
+    /// (the compiler said so). The ID-CRASH-0007 three-leg gate for the
+    /// tag path — re-arm the pending flag, schedule the backoff retry,
+    /// post `.tagSaveFailed` — was therefore DEAD CODE: a disk-write
+    /// failure silently lost the user's tags for the rest of the session.
+    ///
+    /// This pins the post-fix contract: all three legs must RUN.
+    func testFlushTagSaveFailureRunsTheWholeThreeLegGate() {
+        let tagBackend = CountingBackend()
+        tagBackend.failNextSaveTags = true
+        let localStore = ClipboardStore(
+            backend: MemoryStorageBackend(),
+            tagBackend: tagBackend,
+            trashBackend: MemoryStorageBackend(),
+            defaults: makeTestDefaults()
+        )
+
+        var postCount = 0
+        var capturedSource: String?
+        let token = NotificationCenter.default.addObserver(
+            forName: .tagSaveFailed,
+            object: nil,
+            queue: .main
+        ) { note in
+            postCount += 1
+            capturedSource = note.userInfo?["source"] as? String
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        // addTag arms the pending flag (that is what a tag mutation does
+        // in production); flushTagSave then performs the write.
+        localStore.addTag(Tag(name: "工作", colorHex: "#4ECDC4"))
+        localStore.flushTagSave()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        // Leg 3 — user-visible.
+        XCTAssertGreaterThanOrEqual(postCount, 1,
+                                    "a failed tag write must be user-visible (ID-CRASH-0065: this leg was dead code)")
+        XCTAssertEqual(capturedSource, "tagSave",
+                       "tag-save failures must tag their own source so the throttler buckets them independently")
+        // Leg 2 — the retry ladder advances.
+        XCTAssertEqual(localStore.tagSaveRetryState.consecutiveFailures, 1,
+                       "a failed tag write must advance the retry counter")
+        // Leg 1 — the pending flag is re-armed, so the next debounce tick
+        // (or the scheduled backoff retry) actually writes again.
+        XCTAssertTrue(localStore.tagNeedsSave,
+                      "a failed tag write must re-arm the pending flag, or the tags are lost for the session")
+    }
+
+    /// Negative test: a SUCCESSFUL tag write must not post the failure
+    /// notification — otherwise the fix would turn every save into an
+    /// alert.
+    func testFlushTagSaveSuccessDoesNotPostNotification() {
+        let tagBackend = CountingBackend()
+        let localStore = ClipboardStore(
+            backend: MemoryStorageBackend(),
+            tagBackend: tagBackend,
+            trashBackend: MemoryStorageBackend(),
+            defaults: makeTestDefaults()
+        )
+
+        var postCount = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .tagSaveFailed,
+            object: nil,
+            queue: .main
+        ) { _ in postCount += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        localStore.addTag(Tag(name: "工作", colorHex: "#4ECDC4"))
+        localStore.flushTagSave()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        XCTAssertEqual(postCount, 0, "a successful tag write must not raise a failure alert")
+        XCTAssertEqual(localStore.tagSaveRetryState.consecutiveFailures, 0,
+                       "a successful tag write must leave the retry counter at zero")
+    }
 }
 
 // MARK: - Test backend
@@ -298,6 +380,8 @@ final class ClipboardStoreSaveFailureTests: XCTestCase {
 private final class CountingBackend: StorageBackend {
     var saveCallCount = 0
     var failNextSave = false
+    /// ID-CRASH-0065: fail the next TAG write on demand.
+    var failNextSaveTags = false
 
     private let lock = NSLock()
     private var _items: [ClipboardItem] = []
@@ -338,6 +422,17 @@ private final class CountingBackend: StorageBackend {
 
     func saveTags(_ tags: [Tag]) throws {
         lock.lock(); defer { lock.unlock() }
+        // ID-CRASH-0065: the tag path needs its own failure injection —
+        // the items-path switch cannot reach it, and that is exactly why
+        // the tag path's three-leg gate could stay dead for so long.
+        if failNextSaveTags {
+            failNextSaveTags = false
+            throw NSError(
+                domain: "CountingBackend",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Injected disk-full failure (test, tags)"]
+            )
+        }
         _tags = tags
     }
 }
