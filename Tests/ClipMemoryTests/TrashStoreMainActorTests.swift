@@ -54,25 +54,32 @@ final class TrashStoreMainActorTests: XCTestCase {
     /// Pins the debounced-save contract: scheduleSave() fires once after
     /// 500ms (debounce interval), flushing needsSave → backend.
     ///
+    /// ID-FLAKE-0004 (2026-10-23): the wait is now CONDITIONAL rather than
+    /// fixed. The old form waited `asyncAfter(+0.7)` and asserted inside the
+    /// callback — but the debounce interval is 500ms, so the margin was only
+    /// 200ms. Under CI load the timer fires late and the assertion reads the
+    /// backend before the write landed, which is the confirmed flake shape.
+    /// Polling for the state makes the verdict depend on "did the write
+    /// happen", not on how fast the machine is.
+    ///
     /// Future improvement: inject `debounceInterval` so tests can use a
-    /// shorter value and avoid the 500ms wait below.
+    /// shorter value and avoid the wait below.
     func testScheduleSaveDebouncesAndFlushesToBackend() {
         let item = ClipboardItem(content: "debounce me", type: .text)
         store.moveToTrash(item, evictCaches: { _ in }, didMove: {})
 
-        // Wait for 500ms debounce + a small margin; the timer fires on
-        // .main → MainActor.assumeIsolated → flushSave → saveTrashedItems
-        // → backend.save. If any isolation link is broken, flushSave
-        // crashes and the test fails.
-        let exp = expectation(description: "debounced flush")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            // Reload from the SAME backend instance to read what was saved
-            let reload = TrashStore(backend: self.backend, defaults: self.testDefaults)
-            XCTAssertEqual(reload.trashedItems.count, 1)
-            XCTAssertEqual(reload.trashedItems.first?.content, "debounce me")
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 1.5)
+        // The flush runs .main → MainActor.assumeIsolated → flushSave →
+        // saveTrashedItems → backend.save. If any isolation link is broken,
+        // flushSave crashes and the test fails.
+        XCTAssertTrue(
+            waitForPersistedTrashCount(1),
+            "ID-FLAKE-0004: the debounced flush must reach the backend"
+        )
+
+        // Reload from the SAME backend instance to read what was saved.
+        let reload = TrashStore(backend: backend, defaults: testDefaults)
+        XCTAssertEqual(reload.trashedItems.count, 1)
+        XCTAssertEqual(reload.trashedItems.first?.content, "debounce me")
     }
 
     /// ID-LIFE-0023 (2026-07-31 Round 5): the debounced flush used to
@@ -80,22 +87,58 @@ final class TrashStoreMainActorTests: XCTestCase {
     /// GCD source silently ignores later `schedule()` calls, so after the
     /// FIRST debounced fire every subsequent trash save was lost until
     /// graceful quit. Two consecutive cycles must both reach the backend.
+    ///
+    /// ID-FLAKE-0004 (2026-10-23): the two fixed `asyncAfter(+0.7)` waits
+    /// are replaced by conditional waits (see the sibling test).
     func testSecondDebounceCycleStillPersists() {
         store.moveToTrash(ClipboardItem(content: "cycle1", type: .text), evictCaches: { _ in }, didMove: {})
-        let exp1 = expectation(description: "debounce cycle 1")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { exp1.fulfill() }
-        wait(for: [exp1], timeout: 1.5)
+        XCTAssertTrue(
+            waitForPersistedTrashCount(1),
+            "ID-FLAKE-0004: the first debounce cycle must reach the backend"
+        )
 
         // Cycle 2 — pre-fix the dead source was reused and never fired.
         store.moveToTrash(ClipboardItem(content: "cycle2", type: .text), evictCaches: { _ in }, didMove: {})
-        let exp2 = expectation(description: "debounce cycle 2")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            let reload = TrashStore(backend: self.backend, defaults: self.testDefaults)
-            XCTAssertEqual(reload.trashedItems.count, 2,
-                           "ID-LIFE-0023: second debounce cycle must still persist to the backend")
-            exp2.fulfill()
+        XCTAssertTrue(
+            waitForPersistedTrashCount(2),
+            "ID-LIFE-0023: second debounce cycle must still persist to the backend"
+        )
+
+        let reload = TrashStore(backend: backend, defaults: testDefaults)
+        XCTAssertEqual(reload.trashedItems.count, 2,
+                       "ID-LIFE-0023: second debounce cycle must still persist to the backend")
+    }
+
+    // MARK: - ID-FLAKE-0004 helpers
+
+    /// Polls until the backend really holds `expected` trashed entries.
+    ///
+    /// ID-FLAKE-0004: a fixed sleep would race the debounce timer; the
+    /// verdict must depend on the write having happened, not on elapsed
+    /// wall-clock time.
+    private func waitForPersistedTrashCount(_ expected: Int, timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if persistedTrashCount() == expected { return true }
+            // Yield the main thread: the debounce timer lives on
+            // `saveTimerQueue` (utility queue) and the flush is dispatched
+            // to `.main`, so it only runs while the main run loop spins.
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
         }
-        wait(for: [exp2], timeout: 1.5)
+        return persistedTrashCount() == expected
+    }
+
+    /// How many entries the backend currently holds in its TRASH dimension
+    /// (-1 when it cannot be read).
+    ///
+    /// ID-FLAKE-0004: this must read the trash dimension, NOT the main
+    /// items array. Since PR-C the recycle bin is its own store
+    /// (`MemoryStorageBackend._trashItems` / `FileStorageBackend`'s trash
+    /// key), so `backend.load()` answers "how many ITEMS are there" — a
+    /// permanently-zero answer that would make this wait time out on a
+    /// perfectly healthy store.
+    private func persistedTrashCount() -> Int {
+        (try? backend.loadTrashAll())?.count ?? -1
     }
 
     // MARK: - ID-STORE-0003 (2026-07-31 audit): moveToTrash idempotency
@@ -386,19 +429,41 @@ extension TrashStoreMainActorTests {
         let item = ClipboardItem.makeStub(content: "retry-me", type: .text)
         store.moveToTrash(item, evictCaches: { _ in }, didMove: {})
 
-        // Wait past the 5s retry deadline + buffer.
-        // Use DispatchQueue.main.asyncAfter + wait(for:) so the run loop
-        // spins and the .utility-queue DispatchSourceTimer can dispatch
-        // its flushSave() closure to .main. (A Thread.sleep loop on an
-        // @MainActor-isolated test method blocks the main thread and
-        // prevents the timer→main dispatch chain from ever firing.)
-        let exp = expectation(description: "retry save observed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) {
-            XCTAssertEqual(flakyBackend.savesObserved, 2,
-                           "P1-AUDIT-2026-09-22: failure path must trigger a retry save")
-            exp.fulfill()
+        // Wait for the retry save to actually happen.
+        // ID-FLAKE-0004 (2026-10-23): the old form waited a FIXED 7.0s and
+        // asserted inside the callback — a 2s margin over the 5s retry
+        // deadline, which is the same fragile shape as the debounce waits
+        // fixed earlier in this file. The wait is now conditional: poll
+        // until the backend has recorded the retry save.
+        //
+        // The main run loop has to spin either way: the retry timer lives
+        // on the .utility queue and dispatches its flushSave() closure to
+        // .main. (A Thread.sleep loop on an @MainActor-isolated test method
+        // blocks the main thread and prevents the timer→main dispatch
+        // chain from ever firing.)
+        XCTAssertTrue(
+            waitForSaveCount(2, in: flakyBackend),
+            "P1-AUDIT-2026-09-22: failure path must trigger a retry save"
+        )
+        XCTAssertEqual(flakyBackend.savesObserved, 2,
+                       "P1-AUDIT-2026-09-22: exactly one retry save — not more")
+    }
+
+    /// Polls until the backend has recorded at least `expected` saves.
+    ///
+    /// ID-FLAKE-0004: a fixed sleep races the retry timer; the verdict
+    /// must depend on the write having happened, not on elapsed time.
+    private func waitForSaveCount(
+        _ expected: Int,
+        in backend: FlakyStorageBackend,
+        timeout: TimeInterval = 15
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if backend.savesObserved >= expected { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
-        wait(for: [exp], timeout: 8.0)
+        return backend.savesObserved >= expected
     }
 }
 

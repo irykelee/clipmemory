@@ -37,12 +37,15 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         XCTAssertNil(store.contentCache.object(forKey: key), "cache must be cold before prewarm")
 
         // Pre-warm
-        store.prewarmDecryptionCache(items: store.items)
-
-        // Wait for background decrypt to complete
+        // ID-FLAKE-0005 (2026-10-23): await the completion callback instead
+        // of sleeping a fixed 0.5s. The sleep had NO margin over the
+        // background decrypt, so under load the assertion below read a cold
+        // cache. The completion fires after `group.wait()` — i.e. once every
+        // decrypt of the batch has landed — which is precisely the state
+        // these tests assert on.
         let exp = expectation(description: "prewarm completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        store.prewarmDecryptionCache(items: store.items) { exp.fulfill() }
+        wait(for: [exp], timeout: 10.0)
 
         // Cache must be warm now
         XCTAssertNotNil(store.contentCache.object(forKey: key), "cache must be populated after prewarm")
@@ -56,10 +59,15 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         store.contentCache.removeAllObjects()
 
         // Pre-warm
-        store.prewarmDecryptionCache(items: store.items)
+        // ID-FLAKE-0005 (2026-10-23): await the completion callback instead
+        // of sleeping a fixed 0.5s. The sleep had NO margin over the
+        // background decrypt, so under load the assertion below read a cold
+        // cache. The completion fires after `group.wait()` — i.e. once every
+        // decrypt of the batch has landed — which is precisely the state
+        // these tests assert on.
         let exp = expectation(description: "prewarm completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        store.prewarmDecryptionCache(items: store.items) { exp.fulfill() }
+        wait(for: [exp], timeout: 10.0)
 
         // After pre-warm, getDecryptedContent returns cached value (no decrypt needed)
         for item in store.items {
@@ -83,10 +91,15 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         XCTAssertNotNil(store.contentCache.object(forKey: cachedKey), "first item must be cached")
 
         // Pre-warm: should not re-decrypt the already-cached item (no side effects)
-        store.prewarmDecryptionCache(items: store.items)
+        // ID-FLAKE-0005 (2026-10-23): await the completion callback instead
+        // of sleeping a fixed 0.5s. The sleep had NO margin over the
+        // background decrypt, so under load the assertion below read a cold
+        // cache. The completion fires after `group.wait()` — i.e. once every
+        // decrypt of the batch has landed — which is precisely the state
+        // these tests assert on.
         let exp = expectation(description: "prewarm completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        store.prewarmDecryptionCache(items: store.items) { exp.fulfill() }
+        wait(for: [exp], timeout: 10.0)
 
         // All items should be cached now
         for item in store.items {
@@ -105,10 +118,15 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         store.contentCache.removeAllObjects()
 
         // Pre-warm with cap = 5
-        store.prewarmDecryptionCache(items: store.items, cap: 5)
+        // ID-FLAKE-0005 (2026-10-23): await the completion callback instead
+        // of sleeping a fixed 0.5s. The sleep had NO margin over the
+        // background decrypt, so under load the assertion below read a cold
+        // cache. The completion fires after `group.wait()` — i.e. once every
+        // decrypt of the batch has landed — which is precisely the state
+        // these tests assert on.
         let exp = expectation(description: "prewarm completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        store.prewarmDecryptionCache(items: store.items, cap: 5) { exp.fulfill() }
+        wait(for: [exp], timeout: 10.0)
 
         // At most 5 items should be cached
         var cachedCount = 0
@@ -140,10 +158,15 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         store.items.insert(failedItem, at: 0)
 
         // Pre-warm
-        store.prewarmDecryptionCache(items: store.items)
+        // ID-FLAKE-0005 (2026-10-23): await the completion callback instead
+        // of sleeping a fixed 0.5s. The sleep had NO margin over the
+        // background decrypt, so under load the assertion below read a cold
+        // cache. The completion fires after `group.wait()` — i.e. once every
+        // decrypt of the batch has landed — which is precisely the state
+        // these tests assert on.
         let exp = expectation(description: "prewarm completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        store.prewarmDecryptionCache(items: store.items) { exp.fulfill() }
+        wait(for: [exp], timeout: 10.0)
 
         // decryptionFailed item must NOT be cached
         let failedKey = failedItem.id.uuidString as NSString
@@ -175,10 +198,15 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         XCTAssertEqual(firstResult, "Prewarm RTF", "getRTFPlaintext must return plaintext (cold)")
 
         // Pre-warm (should populate rtfPlaintextCache)
-        store.prewarmDecryptionCache(items: store.items)
+        // ID-FLAKE-0005 (2026-10-23): await the completion callback instead
+        // of sleeping a fixed 0.5s. The sleep had NO margin over the
+        // background decrypt, so under load the assertion below read a cold
+        // cache. The completion fires after `group.wait()` — i.e. once every
+        // decrypt of the batch has landed — which is precisely the state
+        // these tests assert on.
         let exp = expectation(description: "prewarm completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        store.prewarmDecryptionCache(items: store.items) { exp.fulfill() }
+        wait(for: [exp], timeout: 10.0)
 
         // After prewarm, getRTFPlaintext returns the same value (cache hit, fast path)
         let secondResult = store.getRTFPlaintext(store.items[0])
@@ -227,10 +255,15 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         let ocrKey = (imageItem.id.uuidString + ".ocr") as NSString
         XCTAssertNil(store.contentCache.object(forKey: ocrKey), "OCR cache must be cold before prewarm")
 
-        store.prewarmDecryptionCache(items: store.items)
+        // ID-FLAKE-0005 (2026-10-23): await the completion callback instead
+        // of sleeping a fixed 0.5s. The sleep had NO margin over the
+        // background decrypt, so under load the assertion below read a cold
+        // cache. The completion fires after `group.wait()` — i.e. once every
+        // decrypt of the batch has landed — which is precisely the state
+        // these tests assert on.
         let exp = expectation(description: "prewarm completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        wait(for: [exp], timeout: 2.0)
+        store.prewarmDecryptionCache(items: store.items) { exp.fulfill() }
+        wait(for: [exp], timeout: 10.0)
 
         XCTAssertNotNil(store.contentCache.object(forKey: ocrKey),
                         "OCR cache must be populated after prewarm")
@@ -259,16 +292,25 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         // same thread — deterministically takes the coalescing path (or, at
         // worst on an extremely fast machine, the all-cached early return;
         // the assertions hold either way).
+        // ID-FLAKE-0005 (2026-10-23): await BOTH completion callbacks
+        // instead of sleeping a fixed 1.0s. The callbacks fire exactly when
+        // their round finishes, so the verdict no longer depends on how
+        // fast the machine is. A callback that fired TWICE would trip
+        // XCTest's "multiple calls to fulfill()" API violation, so the
+        // "exactly once" property is still enforced — and the counters
+        // below assert it explicitly as well.
+        let expA = expectation(description: "first completion fired")
+        let expB = expectation(description: "coalesced completion fired")
         store.prewarmDecryptionCache(items: store.items) {
             lock.lock(); callsA += 1; aOnMain = Thread.isMainThread; lock.unlock()
+            expA.fulfill()
         }
         store.prewarmDecryptionCache(items: store.items) {
             lock.lock(); callsB += 1; bOnMain = Thread.isMainThread; lock.unlock()
+            expB.fulfill()
         }
 
-        let exp = expectation(description: "coalesced rounds complete")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp.fulfill() }
-        wait(for: [exp], timeout: 5.0)
+        wait(for: [expA, expB], timeout: 10.0)
 
         lock.lock()
         XCTAssertEqual(callsA, 1, "first completion must fire exactly once")
@@ -329,9 +371,13 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         // First call: lastViewPrewarmTime is .distantPast → no throttle →
         // prewarm fires immediately for setA.
         store.prewarmDecryptionCacheThrottled(items: setA, interval: 0.5)
-        let exp1 = expectation(description: "first prewarm completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp1.fulfill() }
-        wait(for: [exp1], timeout: 2.0)
+        // ID-FLAKE-0005 (2026-10-23): wait for the CONDITION, not a fixed
+        // 0.3s. `prewarmDecryptionCacheThrottled` exposes no completion
+        // callback, so the exact signal available is the cache itself: the
+        // items are cached once the background batch has landed. The old
+        // 0.3s had no margin over that batch at all.
+        XCTAssertTrue(waitForItemsCached(setA),
+                      "ID-FLAKE-0005: setA must be cached after the first prewarm call")
         for item in setA {
             XCTAssertNotNil(store.contentCache.object(forKey: item.id.uuidString as NSString),
                             "setA must be cached after first prewarm call")
@@ -342,18 +388,38 @@ final class ClipboardStorePrewarmTests: XCTestCase {
         // scheduled to fire after the window expires.
         store.prewarmDecryptionCacheThrottled(items: setB, interval: 0.5)
 
-        // Wait long enough for the deferred re-fire (~0.5s after the second
-        // call) plus batch dispatch (~0.5s for prewarm dispatch on utility
-        // queue).
-        let exp2 = expectation(description: "deferred re-fire completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp2.fulfill() }
-        wait(for: [exp2], timeout: 3.0)
-
-        // F-3 regression assertion: setB must be cached.
-        // Under the old `return`-on-throttle behavior, setB would stay cold.
+        // The deferred re-fire is scheduled on the MAIN queue
+        // (`DispatchQueue.main.asyncAfter`), so the main run loop has to
+        // spin for it to happen at all — the poll below does that. The
+        // bound has to clear the throttle window (0.5s) plus the batch
+        // dispatch, but it must not be a FIXED sleep: the wait ends when
+        // the items are actually cached.
+        XCTAssertTrue(waitForItemsCached(setB),
+                      "F-3 regression: deferred re-fire must prewarm items dropped by throttle")
         for item in setB {
             XCTAssertNotNil(store.contentCache.object(forKey: item.id.uuidString as NSString),
                             "F-3 regression: deferred re-fire must prewarm items dropped by throttle")
         }
+    }
+
+    // MARK: - ID-FLAKE-0005 helpers
+
+    /// Polls until every given item has a cache entry.
+    ///
+    /// ID-FLAKE-0005: a fixed sleep raced the background batch; the
+    /// verdict must depend on the write having happened, not on elapsed
+    /// wall-clock time. The main run loop is spun on every poll because
+    /// the throttled re-fire is scheduled on the main queue.
+    private func waitForItemsCached(_ items: [ClipboardItem], timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if items.allSatisfy({ isCached($0) }) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        return items.allSatisfy({ isCached($0) })
+    }
+
+    private func isCached(_ item: ClipboardItem) -> Bool {
+        store.contentCache.object(forKey: item.id.uuidString as NSString) != nil
     }
 }
