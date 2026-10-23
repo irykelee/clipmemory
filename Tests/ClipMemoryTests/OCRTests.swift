@@ -3,9 +3,90 @@ import AppKit
 import ImageIO
 import UniformTypeIdentifiers
 import Vision
+import os
 @testable import ClipMemory
 
 // swiftlint:disable file_length
+
+// MARK: - Vision 框架内部瞬时失败的判定（文件级 helper）
+//
+// 证据（CI 记录，2026-10-23 由本任务简报提供）：`testVisionRecognizesRenderedText`
+// 在 4 次全量跑里红过 2 次，单独复跑 30/30 全绿 ⇒ 失败点不在我们的代码，而在
+// **Vision 框架内部**（CI 日志里出现 `E5RT Error` / `CancellationError`）。
+// 这条用例的链路上除了 Vision 之外没有第二个可能抛错的步骤：图片是
+// `renderTextImage` 现场画的、TIFF 是 `NSImage.tiffRepresentation` 直接
+// 产的、识别请求走 `VisionOCRService.performRecognition`（EXIF 解码 →
+// `VNImageRequestHandler.perform`）。
+//
+// 所以只把「Vision 明确报出来的框架内部瞬时错误」判为可重试；判据全部
+// 来自公开的 SDK 契约（Vision SDK 的 `VNError.h`），不是猜。
+
+/// Vision 错误域（`com.apple.Vision`）里语义为「这次执行没跑成」的错误码。
+///
+/// 取值来自 Vision SDK `VNError.h` 的 `VNErrorCode`：
+/// `requestCancelled`(1) / `operationFailed`(3) / `internalError`(9) /
+/// `outOfMemory`(10) / `unknownError`(11) / `timeout`(20)。
+///
+/// 刻意**不**包含的（输入/配置类错误，重试多少次结果都一样，判成可重试
+/// 只会把真回归拖成 N 次重试后才报）：`invalidFormat`(2) /
+/// `invalidArgument`(14) / `invalidImage`(13) / `invalidModel`(15) /
+/// `unsupportedRevision`(16) / `unsupportedRequest`(19) /
+/// `invalidOperation`(12) / `notImplemented`(8) 等。
+private let transientVisionErrorCodes: Set<Int> = [
+    VNErrorCode.requestCancelled.rawValue,
+    VNErrorCode.operationFailed.rawValue,
+    VNErrorCode.internalError.rawValue,
+    VNErrorCode.outOfMemory.rawValue,
+    VNErrorCode.unknownError.rawValue,
+    VNErrorCode.timeout.rawValue
+]
+
+/// Vision 识别尝试上限（含首次）。框架内部瞬时错误最多重试 2 次。
+private let visionMaxAttempts = 3
+
+/// 重试退避基数（秒）：第 n 次失败后等待 `base × n`（0.5s / 1.0s）。
+private let visionRetryBackoffSeconds: TimeInterval = 0.5
+
+private let ocrFlakeLogger = Logger(
+    subsystem: "com.clipmemory.app",
+    category: "OCRTests.visionFlake"
+)
+
+/// 一次（可能带重试的）Vision 识别结果。
+private struct VisionRecognitionResult {
+    /// 最终结果。nil 表示 completion 在超时内没有回调（ID-OCR-0010 契约被破坏）。
+    let outcome: OCROutcome?
+    /// 首次（原始）错误 —— 重试期间不覆盖；最终仍失败时要报它。
+    let originalError: Error?
+    /// 实际尝试次数。
+    let attempts: Int
+}
+
+/// 判断一个错误是不是「Vision 框架内部的瞬时错误」。
+///
+/// - `CancellationError`：Swift 标准库错误；Vision 在请求被取消时抛出。
+/// - `VNErrorDomain` + 瞬时错误码（见 `transientVisionErrorCodes`）。
+/// - `NSCocoaErrorDomain` + `NSUserCancelledError`。
+/// - 错误描述里带 Vision 内部错误记号 `E5RT`（CI 失败日志里出现过的字面量；
+///   它有时只出现在 `localizedDescription` / `userInfo` 里，不带结构化错误码）。
+private func isTransientVisionFailure(_ error: Error) -> Bool {
+    if error is CancellationError { return true }
+    let nsError = error as NSError
+    if nsError.domain == VNErrorDomain {
+        return transientVisionErrorCodes.contains(nsError.code)
+    }
+    if nsError.domain == NSCocoaErrorDomain, nsError.code == NSUserCancelledError {
+        return true
+    }
+    return containsVisionInternalToken(nsError)
+}
+
+/// Vision 内部错误记号匹配（`E5RT`）。
+private func containsVisionInternalToken(_ error: NSError) -> Bool {
+    let parts = [error.localizedDescription, error.domain]
+        + error.userInfo.values.compactMap { $0 as? String }
+    return parts.contains { $0.contains("E5RT") }
+}
 
 /// OCR pipeline: model field compatibility, encrypted storage round-trip,
 /// search matching, and a real Vision recognition smoke test.
@@ -358,22 +439,196 @@ import Vision
 
     // MARK: - Real Vision smoke test
 
+    /// ID-FLAKE-0001 (2026-10-23): 让本用例对 Vision **明确可识别的框架
+    /// 内部瞬时错误**可恢复。
+    ///
+    /// 证据：4 次全量跑红 2 次、单独复跑 30/30 全绿；失败点在 Vision 框架
+    /// 内部（CI 日志出现 `E5RT Error` / `CancellationError`）。
+    ///
+    /// 断言强度**不变**：
+    /// - `.noText`（框架正常跑完但没认出字）→ 仍然直接判红，**不重试**；
+    /// - 认出字但内容不含 "HELLO" → 仍然直接判红，**不重试**；
+    /// - 只有 Vision 抛出的框架内部瞬时错误才重试，且重试次数有上限；
+    /// - 重试全部失败 → 报出**首次（原始）**错误，不吞掉。
     func testVisionRecognizesRenderedText() {
         let image = Self.renderTextImage("HELLO")
         guard let tiff = image.tiffRepresentation else {
             XCTFail("cannot render test image")
             return
         }
-        let expectation = expectation(description: "ocr")
-        VisionOCRService.shared.recognizeText(in: tiff) { outcome in
-            if case .text(let text) = outcome {
-                XCTAssertTrue(text.contains("HELLO"), "expected HELLO in: \(text)")
-            } else {
-                XCTFail("Vision should find text in the rendered image, got \(outcome)")
-            }
-            expectation.fulfill()
+        let result = recognizeWithTransientRetry(tiff)
+        let outcome = result.outcome
+        let originalError = result.originalError
+        let attempts = result.attempts
+        guard let outcome else {
+            XCTFail("Vision completion was never invoked within 30s "
+                    + "(ID-OCR-0010 contract violation)")
+            return
         }
-        wait(for: [expectation], timeout: 30)
+        switch outcome {
+        case .text(let text):
+            XCTAssertTrue(text.contains("HELLO"), "expected HELLO in: \(text)")
+        case .noText:
+            XCTFail("Vision should find text in the rendered image, got .noText")
+        case .failure(let error):
+            XCTFail("Vision recognition failed after \(attempts) attempt(s); "
+                    + "original error: \(originalError.map { "\($0)" } ?? "none"); "
+                    + "last error: \(error)")
+        }
+    }
+
+    /// 跑一次 Vision 识别，等 completion 回来。
+    ///
+    /// 返回 nil 表示 completion 在 30s 内没有回调 —— 那违反 ID-OCR-0010 的
+    /// 「每次调用都必须回调一次」契约，属于我们自己的问题：直接判红、
+    /// **不重试**（重试只会掩盖契约被破坏）。
+    private func performRecognitionOnce(
+        _ imageData: Data,
+        recognize: (Data, @escaping (OCROutcome) -> Void) -> Void
+    ) -> OCROutcome? {
+        let exp = expectation(description: "ocr attempt")
+        var captured: OCROutcome?
+        recognize(imageData) { outcome in
+            captured = outcome
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 30)
+        return captured
+    }
+
+    /// Vision 识别 + 「框架内部瞬时错误」有界重试。
+    ///
+    /// - Returns: (最终结果, 首次(原始)错误, 尝试次数)
+    private func recognizeWithTransientRetry(
+        _ imageData: Data,
+        backoff: TimeInterval = visionRetryBackoffSeconds,
+        recognize: (Data, @escaping (OCROutcome) -> Void) -> Void = {
+            VisionOCRService.shared.recognizeText(in: $0, completion: $1)
+        }
+    ) -> VisionRecognitionResult {
+        var attempts = 0
+        var originalError: Error?
+        while attempts < visionMaxAttempts {
+            attempts += 1
+            guard let outcome = performRecognitionOnce(imageData, recognize: recognize) else {
+                return VisionRecognitionResult(
+                    outcome: nil, originalError: originalError, attempts: attempts
+                )
+            }
+            guard case .failure(let error) = outcome else {
+                return VisionRecognitionResult(
+                    outcome: outcome, originalError: originalError, attempts: attempts
+                )
+            }
+            if originalError == nil { originalError = error }
+            guard attempts < visionMaxAttempts, isTransientVisionFailure(error) else {
+                return VisionRecognitionResult(
+                    outcome: outcome, originalError: originalError, attempts: attempts
+                )
+            }
+            let delay = backoff * Double(attempts)
+            ocrFlakeLogger.error(
+                "Vision transient failure (attempt \(attempts)): \(error.localizedDescription) — retry in \(delay)s"
+            )
+            Thread.sleep(forTimeInterval: delay)
+        }
+        return VisionRecognitionResult(
+            outcome: nil, originalError: originalError, attempts: attempts
+        )
+    }
+
+    /// ID-FLAKE-0001 配套：瞬时错误必须重试并恢复。
+    ///
+    /// 用假的识别器驱动，不依赖真实 Vision 抖动 ⇒ 确定性。
+    func testVisionTransientRetryRecoversAfterTransientError() {
+        var calls = 0
+        let recovering: (Data, @escaping (OCROutcome) -> Void) -> Void = { _, completion in
+            calls += 1
+            if calls == 1 {
+                completion(.failure(NSError(
+                    domain: VNErrorDomain,
+                    code: VNErrorCode.operationFailed.rawValue
+                )))
+            } else {
+                completion(.text("HELLO"))
+            }
+        }
+        let result = recognizeWithTransientRetry(
+            Data(), backoff: 0, recognize: recovering
+        )
+        XCTAssertEqual(calls, 2, "瞬时错误必须重试一次")
+        XCTAssertEqual(result.attempts, 2, "第二次尝试就该拿到结果")
+        XCTAssertNotNil(result.originalError, "首次（原始）错误必须被保留下来")
+        guard case .text(let text)? = result.outcome else {
+            XCTFail("重试后必须拿到文本，实际 \(String(describing: result.outcome))")
+            return
+        }
+        XCTAssertTrue(text.contains("HELLO"), "expected HELLO in: \(text)")
+    }
+
+    /// ID-FLAKE-0001 配套：一直瞬时失败时，必须在上限处停下，并保留
+    /// **首次（原始）**错误供报错使用。
+    func testVisionTransientRetryStopsAtAttemptLimitAndKeepsOriginalError() {
+        var calls = 0
+        let alwaysFailing: (Data, @escaping (OCROutcome) -> Void) -> Void = { _, completion in
+            calls += 1
+            completion(.failure(NSError(
+                domain: VNErrorDomain,
+                code: VNErrorCode.internalError.rawValue
+            )))
+        }
+        let result = recognizeWithTransientRetry(
+            Data(), backoff: 0, recognize: alwaysFailing
+        )
+        // 上限用字面量 3 钉死（不是 `visionMaxAttempts`）—— 否则把上限常量
+        // 改小，这条断言会跟着一起变绿，等于没钉。
+        XCTAssertEqual(calls, 3, "重试次数必须有上限（3 次）")
+        XCTAssertEqual(result.attempts, 3, "默认重试上限必须是 3 次")
+        XCTAssertNotNil(result.originalError, "必须保留首次（原始）错误")
+        guard case .failure(let lastError)? = result.outcome else {
+            XCTFail("最终结果必须是失败，实际 \(String(describing: result.outcome))")
+            return
+        }
+        XCTAssertEqual((lastError as NSError).code, VNErrorCode.internalError.rawValue)
+    }
+
+    /// ID-FLAKE-0001 配套：**确定性**错误（输入不对，重试多少次都一样）
+    /// 一次都不许重试 —— 否则真实回归会被拖成 N 次重试后才报。
+    func testVisionTransientRetryDoesNotRetryDeterministicError() {
+        var calls = 0
+        let deterministic: (Data, @escaping (OCROutcome) -> Void) -> Void = { _, completion in
+            calls += 1
+            completion(.failure(NSError(
+                domain: VNErrorDomain,
+                code: VNErrorCode.invalidImage.rawValue
+            )))
+        }
+        let result = recognizeWithTransientRetry(
+            Data(), backoff: 0, recognize: deterministic
+        )
+        XCTAssertEqual(calls, 1, "确定性错误不允许重试")
+        XCTAssertEqual(result.attempts, 1)
+        XCTAssertNotNil(result.originalError, "原始错误必须被报出来")
+    }
+
+    /// ID-FLAKE-0001 配套：瞬时 / 确定性的分类必须精确。把「输入不对」
+    /// 的错误判成可重试，会把真实的识别回归变成「重试 3 次后才报」。
+    func testTransientVisionFailureClassification() {
+        XCTAssertTrue(isTransientVisionFailure(NSError(
+            domain: VNErrorDomain, code: VNErrorCode.operationFailed.rawValue)))
+        XCTAssertTrue(isTransientVisionFailure(NSError(
+            domain: VNErrorDomain, code: VNErrorCode.requestCancelled.rawValue)))
+        XCTAssertTrue(isTransientVisionFailure(NSError(
+            domain: VNErrorDomain, code: VNErrorCode.timeout.rawValue)))
+        XCTAssertTrue(isTransientVisionFailure(CancellationError()))
+        XCTAssertTrue(isTransientVisionFailure(NSError(
+            domain: NSCocoaErrorDomain, code: NSUserCancelledError)))
+        XCTAssertFalse(isTransientVisionFailure(NSError(
+            domain: VNErrorDomain, code: VNErrorCode.invalidImage.rawValue)))
+        XCTAssertFalse(isTransientVisionFailure(NSError(
+            domain: VNErrorDomain, code: VNErrorCode.unsupportedRevision.rawValue)))
+        XCTAssertFalse(isTransientVisionFailure(NSError(
+            domain: "OCRTests.deterministic", code: -1)))
     }
 
     // MARK: - Backfill self-healing
@@ -492,6 +747,12 @@ import Vision
     /// asserts the cap is honored, documenting the actual behavior
     /// so future readers don't conclude the cap is "inert" because
     /// it doesn't speed up Vision.
+    ///
+    /// ID-FLAKE-0003 (2026-10-23): 本用例原先偶发红（`peak == 1`）。根因
+    /// 是 mock 的「在飞窗口」只有 10ms，而 backfill 主循环在两次识别之间要
+    /// 同步读盘解密（`loadImage`）—— 机器一忙读盘就超过 10ms，重叠消失。
+    /// 修法是把窗口放宽到 250ms（见 `CountingOCR.inFlightWindow`），
+    /// **断言一条没动**：`peak <= 4` 与 `peak > 1` 照旧。
     func testBackfillMaxConcurrentOCRBoundsInFlightCallsToCap() {
         // Counting mock: increment on entry, decrement on completion,
         // track peak via a thread-safe counter (NSLock-guarded int).
@@ -540,6 +801,23 @@ import Vision
 
     /// ID-OCR-0012 test helper: track in-flight count + peak.
     private final class CountingOCR: OCRServiceProtocol, @unchecked Sendable {
+        /// 每个识别请求保持「在飞」状态的时长。
+        ///
+        /// ID-FLAKE-0003 (2026-10-23): 原来是 10ms，而 backfill 的主循环
+        /// （`ClipboardStore+OCR.swift:273` 的单个 serial global-queue block）
+        /// 在**两次识别之间**是同步做 `imageStorage.loadImage()` 的（读盘 +
+        /// AES-GCM 解密）。要让两个识别真正重叠，第 i+1 张图的加载必须在
+        /// 第 i 个识别的在飞窗口内跑完 —— 也就是 `loadImage` 必须 < 10ms。
+        /// 机器一忙（并发 xcodebuild / 常驻 app 实例）冷缓存读盘就可能超过
+        /// 10ms ⇒ 重叠消失 ⇒ peak == 1 ⇒
+        /// `XCTAssertGreaterThan(peak, 1)` 偶发红。
+        ///
+        /// 250ms 让「加载耗时 < 在飞窗口」有 ~25 倍余量（远大于任何一次
+        /// 小 PNG 的读盘+解密），重叠变成确定性的。断言一条都没动：
+        /// `peak <= cap` 与 `peak > 1` 照旧。per-item 看门狗是 30s
+        /// （`backfillPerItemCompletionTimeout`），不会被这个窗口顶到。
+        static let inFlightWindow: TimeInterval = 0.25
+
         let onStart: () -> Void
         let onComplete: () -> Void
         init(onStart: @escaping () -> Void, onComplete: @escaping () -> Void) {
@@ -548,11 +826,10 @@ import Vision
         }
         func recognizeText(in imageData: Data, completion: @escaping (OCROutcome) -> Void) {
             onStart()
-            // Decrement after a tiny delay so the increment is observed
-            // by any concurrent caller. We're testing the semaphore,
-            // not async timing — the 10 ms is enough for the in-flight
-            // counter to register.
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.01) {
+            // Decrement after a delay so the increment is observed by any
+            // concurrent caller — the window has to outlast the backfill's
+            // serial per-item image load, see `inFlightWindow` above.
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.inFlightWindow) {
                 self.onComplete()
                 completion(.text("ok"))
             }

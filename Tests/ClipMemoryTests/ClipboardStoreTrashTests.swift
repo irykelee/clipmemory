@@ -348,6 +348,19 @@ import XCTest
     /// Tags have NO write-through path — addTag/deleteTag depended
     /// entirely on this debounce. Repro: two consecutive debounced tag
     /// saves after an initial flush; pre-fix, cycle 2 never hit the backend.
+    ///
+    /// ID-FLAKE-0002 (2026-10-23): 原来这里用「睡 0.7s + 1.5s 超时」去等
+    /// 500ms 的 debounce 落盘 —— 余量只有 200ms。而 debounce 定时器跑在
+    /// `com.clipmemory.tagsave`（**utility QoS**，优先级低于默认）队列上，
+    /// CI 负载下晚触发几百毫秒是常事：cycle 2 的写盘落在断言之后，
+    /// `reload.tags` 里就少了 cycle2 ⇒ 偶发红。改成**等条件**（轮询到
+    /// tag 真的落到 backend 为止），时间窗从「200ms 余量」放宽到 10s，
+    /// 结论不再依赖机器快慢。
+    ///
+    /// 同时补上**负向断言**（`elapsed > 0.4`）：debounce 必须真的延迟
+    /// 写入。生产间隔是 500ms，GCD 定时器只会晚触发不会早触发，所以这条
+    /// 线有 ~100ms 余量；把 debounce 间隔改成 0 的话 `elapsed` 会掉到
+    /// 0.02s 左右，这条断言会红。
     func testSecondDebounceTagSaveCycleStillPersists() {
         // Force an initial flush (any first clipboard capture does this
         // via saveImmediately) so the tag timer's first cycle is the
@@ -356,17 +369,25 @@ import XCTest
         store.flushPendingSaves()
 
         // Debounced cycle 1 — creates + fires the tag timer (works even pre-fix).
+        let cycle1Start = ProcessInfo.processInfo.systemUptime
         store.addTag(Tag(name: "cycle1", colorHex: "#FF6B6B"))
-        let exp1 = expectation(description: "debounce cycle 1")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { exp1.fulfill() }
-        wait(for: [exp1], timeout: 1.5)
+        XCTAssertTrue(waitForTagPersisted(named: "cycle1"),
+                      "ID-FLAKE-0002: first debounce cycle must persist cycle1 to the backend")
+        let cycle1Elapsed = ProcessInfo.processInfo.systemUptime - cycle1Start
+        XCTAssertGreaterThan(cycle1Elapsed, 0.4,
+                             "debounce 必须真的延迟写入：cycle1 落盘耗时 \(cycle1Elapsed)s，"
+                             + "低于 0.4s 说明 debounce 间隔被改小了")
 
         // Debounced cycle 2 — pre-fix the cancelled source was reused and
         // this save NEVER reached the backend.
+        let cycle2Start = ProcessInfo.processInfo.systemUptime
         store.addTag(Tag(name: "cycle2", colorHex: "#4ECDC4"))
-        let exp2 = expectation(description: "debounce cycle 2")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { exp2.fulfill() }
-        wait(for: [exp2], timeout: 1.5)
+        XCTAssertTrue(waitForTagPersisted(named: "cycle2"),
+                      "ID-LIFE-0023: second debounce cycle must still persist to the backend")
+        let cycle2Elapsed = ProcessInfo.processInfo.systemUptime - cycle2Start
+        XCTAssertGreaterThan(cycle2Elapsed, 0.4,
+                             "debounce 必须真的延迟写入：cycle2 落盘耗时 \(cycle2Elapsed)s，"
+                             + "低于 0.4s 说明 debounce 间隔被改小了")
 
         // Reload a fresh store from the same backends: both cycles must be on disk.
         let reload = ClipboardStore(backend: backend, tagBackend: tagBackend, trashBackend: trashBackend)
@@ -374,6 +395,28 @@ import XCTest
                       "cycle 1 tag must persist")
         XCTAssertTrue(reload.tags.values.contains(where: { $0.name == "cycle2" }),
                       "ID-LIFE-0023: second debounce cycle must still persist to the backend")
+    }
+
+    /// 轮询等待某个 tag 真的落到 tag backend 里（**等条件**，不是固定 sleep）。
+    ///
+    /// 固定 sleep 会在写盘落地之前就去读 backend —— 这正是本用例偶发红的
+    /// 根因（debounce 定时器在 CI 负载下可能晚触发几百毫秒）。改成等条件
+    /// 之后，结论只取决于「写盘有没有发生」，不取决于机器快慢。
+    private func waitForTagPersisted(named name: String, timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if persistedTagNames().contains(name) { return true }
+            // 让出主线程：后台定时器 → `Task { @MainActor in flushTagSave() }`
+            // 的落盘要靠主队列被 runloop 抽干才会发生。
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        return persistedTagNames().contains(name)
+    }
+
+    /// 读出 tag backend 里已落盘的 tag 名（解开名字加密）。
+    private func persistedTagNames() -> Set<String> {
+        guard let loaded = try? tagBackend.loadTags() else { return [] }
+        return Set(store.decryptTagNames(loaded).map(\.name))
     }
 
     // MARK: - Permanent delete
