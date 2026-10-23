@@ -708,8 +708,71 @@ final class SQLiteStorageBackend: StorageBackend {
                         "restoreFromTrash: no trash row for item \(itemID.uuidString)"
                     )
                 }
+                // ID-REVIEW-1024 (PR-C, 2026-10-23): the snapshot carries
+                // the tag set it had when it was trashed, and the tag
+                // CATALOG may no longer hold those tags (the user
+                // deleted a tag while the item sat in the bin). The
+                // junction table has a foreign key on tags(id), so a
+                // restore without the placeholder rows would fail with
+                // SQLITE_CONSTRAINT_FOREIGNKEY and the item could
+                // never come back. The placeholder mechanism is the
+                // established answer to exactly this — see
+                // `ensureTagPlaceholders` and its use in StoreMigration.
+                try ensureTagPlaceholders(snapshot.tagIds)
                 try upsertItemInternal(snapshot)
                 try exec("DELETE FROM trash_items WHERE item_id = ?", [(1, .text(itemID.uuidString))])
+            }
+        }
+    }
+
+    // MARK: - Trash dimension (PR-C, docs §11 open question 5)
+
+    /// Every item in the recycle bin, newest deletion first.
+    ///
+    /// The trash is its OWN table: the main `items` table is not read
+    /// here, and an item that is still in `items` is never returned as
+    /// trashed. That separation is the whole point of the dimension —
+    /// the v1 protocol had no way to say "give me the trash" except
+    /// "give me the items", which is how the recycle bin and the
+    /// history got mixed up in the first place.
+    func loadTrashAll() throws -> [ClipboardItem] {
+        return try withLock {
+            try loadTrashAllFromDB()
+        }
+    }
+
+    /// Replaces the whole trash with `items`.
+    ///
+    /// Array-level semantics, exactly like `save(_:)` — but for the
+    /// trash table. The main `items` table is NOT touched: writing the
+    /// trash must never delete the user's history.
+    func saveTrash(_ items: [ClipboardItem]) throws {
+        try withLock {
+            try inTransaction {
+                try exec("DELETE FROM trash_items")
+                for item in items {
+                    try upsertTrashItemInternal(itemID: item.id, snapshot: item)
+                }
+            }
+        }
+    }
+
+    /// Permanently deletes the given trashed items.
+    ///
+    /// The retention window and the "ask the user before a large purge"
+    /// gate (ID-CRASH-0035) live in `TrashStore` — a product policy
+    /// with exactly one home. This method deletes the ids it is given
+    /// and nothing else; it never decides on its own what is expired.
+    func purgeTrash(deleting itemIDs: Set<UUID>) throws {
+        guard !itemIDs.isEmpty else { return }
+        try withLock {
+            try inTransaction {
+                for id in itemIDs {
+                    try exec(
+                        "DELETE FROM trash_items WHERE item_id = ?",
+                        [(1, .text(id.uuidString))]
+                    )
+                }
             }
         }
     }
@@ -915,43 +978,65 @@ final class SQLiteStorageBackend: StorageBackend {
 
     private func upsertTrashItemInternal(itemID: UUID, snapshot: ClipboardItem) throws {
         let sql = """
-            INSERT INTO trash_items (item_id, trashed_at, expires_at,
-                                      content_blob, content_hash, is_encrypted,
-                                      type, is_pinned, is_sensitive, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO trash_items (item_id, type, is_pinned, is_encrypted, is_sensitive,
+                                     decryption_failed, expires_at, created_at, deleted_at,
+                                     content_hash, content_blob, tag_ids, ocr_text, ocr_attempted)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(item_id) DO UPDATE SET
-                trashed_at = excluded.trashed_at,
-                expires_at = excluded.expires_at,
-                content_blob = excluded.content_blob,
-                content_hash = excluded.content_hash,
-                is_encrypted = excluded.is_encrypted,
                 type = excluded.type,
                 is_pinned = excluded.is_pinned,
+                is_encrypted = excluded.is_encrypted,
                 is_sensitive = excluded.is_sensitive,
-                created_at = excluded.created_at
+                decryption_failed = excluded.decryption_failed,
+                expires_at = excluded.expires_at,
+                deleted_at = excluded.deleted_at,
+                content_hash = excluded.content_hash,
+                content_blob = excluded.content_blob,
+                tag_ids = excluded.tag_ids,
+                ocr_text = excluded.ocr_text,
+                ocr_attempted = excluded.ocr_attempted
             """
-        let trashedAt = Date()
-        let expiresAt = Calendar.current.date(
-            byAdding: .day, value: 30, to: trashedAt
-        ) ?? trashedAt
+        // ID-REVIEW-1024 (PR-C, 2026-10-23): `deleted_at` is the
+        // AUTHORITATIVE deletion moment and it comes from the
+        // snapshot — `TrashStore.moveToTrash` stamps it. The v1 code
+        // wrote `trashed_at = Date()` and never read the column back,
+        // so `purgeExpiredTrash`'s `deletedAt != nil` filter never
+        // matched anything and the retention policy was dead.
+        //
+        // The fallback for a snapshot with no deletion moment (a
+        // legacy blob written before the field existed, or a caller
+        // that did not stamp it) is the WRITE moment. The
+        // alternatives are worse: `nil` would leave the row outside
+        // the retention filter forever, and the epoch would make it
+        // expired the moment it is written.
+        let deletedAt = snapshot.deletedAt ?? Date()
         try exec(sql, [
             (1, .text(itemID.uuidString)),
-            (2, .integer(Int64(trashedAt.timeIntervalSince1970))),
-            (3, .integer(Int64(expiresAt.timeIntervalSince1970))),
-            (4, .text(snapshot.content)),
-            (5, snapshot.contentHash.map { .text($0) } ?? .null),
-            (6, .integer(Int64(snapshot.isEncrypted ? 1 : 0))),
-            (7, .text(snapshot.type.rawValue)),
-            (8, .integer(Int64(snapshot.isPinned ? 1 : 0))),
-            (9, .integer(Int64(snapshot.isSensitive ? 1 : 0))),
-            (10, .integer(Int64(snapshot.createdAt.timeIntervalSince1970)))
+            (2, .text(snapshot.type.rawValue)),
+            (3, .integer(Int64(snapshot.isPinned ? 1 : 0))),
+            (4, .integer(Int64(snapshot.isEncrypted ? 1 : 0))),
+            (5, .integer(Int64(snapshot.isSensitive ? 1 : 0))),
+            (6, .integer(Int64(snapshot.decryptionFailed ? 1 : 0))),
+            // The item's OWN expiry — the same meaning as
+            // `items.expires_at`. The v1 code wrote `now + 30 days`
+            // here, which was the trash retention deadline and
+            // contradicted the user's retention setting.
+            (7, snapshot.expiresAt.map { .integer(Int64($0.timeIntervalSince1970)) } ?? .null),
+            (8, .integer(Int64(snapshot.createdAt.timeIntervalSince1970))),
+            (9, .integer(Int64(deletedAt.timeIntervalSince1970))),
+            (10, snapshot.contentHash.map { .text($0) } ?? .null),
+            (11, .text(snapshot.content)),
+            (12, .text(SQLiteTrashTagIDs.encode(snapshot.tagIds))),
+            (13, snapshot.ocrText.map { .text($0) } ?? .null),
+            (14, .integer(Int64(snapshot.ocrAttempted ? 1 : 0)))
         ])
     }
 
     private func loadTrashItemInternal(itemID: UUID) throws -> ClipboardItem? {
         let sql = """
             SELECT item_id, type, is_pinned, is_encrypted, is_sensitive,
-                   content_hash, content_blob, created_at
+                   decryption_failed, expires_at, created_at, deleted_at,
+                   content_hash, content_blob, tag_ids, ocr_text, ocr_attempted
             FROM trash_items WHERE item_id = ?
             """
         let stmt = try prepare(sql)
@@ -1074,9 +1159,11 @@ final class SQLiteStorageBackend: StorageBackend {
     /// Load every trash row as a flat array (per-item-id-keyed). Used
     /// by `StoreMigrationTests` to verify "all trashed items
     /// survived migration" — production callers use
-    /// `restoreFromTrash(itemID:)` for one-at-a-time reads.
+    /// `loadTrashAll()` / `restoreFromTrash(itemID:)`.
     func loadAllTrashInternalForTest() throws -> [ClipboardItem] {
-        return try loadItemsFromDB(query: "SELECT item_id, type, is_pinned, is_encrypted, is_sensitive, content_hash, content_blob, created_at FROM trash_items ORDER BY trashed_at")
+        return try withLock {
+            try loadTrashAllFromDB()
+        }
     }
 
     /// Count rows in `item_tags` for (itemID, tagID). Used by
@@ -1103,14 +1190,23 @@ final class SQLiteStorageBackend: StorageBackend {
         return count
     }
 
-    private func loadItemsFromDB(query sql: String) throws -> [ClipboardItem] {
+    /// Reads every row of the `trash_items` table, newest deletion
+    /// first.
+    ///
+    /// The column list is the v2 shape (see `SQLiteSchema`); the
+    /// decoder that consumes it lives in `SQLiteRowDecoders`.
+    private func loadTrashAllFromDB() throws -> [ClipboardItem] {
+        let sql = """
+            SELECT item_id, type, is_pinned, is_encrypted, is_sensitive,
+                   decryption_failed, expires_at, created_at, deleted_at,
+                   content_hash, content_blob, tag_ids, ocr_text, ocr_attempted
+            FROM trash_items
+            ORDER BY deleted_at DESC
+            """
         let stmt = try prepare(sql)
         defer { sqlite3_finalize(stmt) }
         var items: [ClipboardItem] = []
         try forEachRow(stmt, sql: sql) { row in
-            // Reuse the trash decoder (same column layout for shared
-            // columns; tag_ids not stored in trash, so it's OK to
-            // return ClipboardItem with an empty tagIds set).
             if let item = SQLiteRowDecoder.trashItem(stmt: row) {
                 items.append(item)
             }

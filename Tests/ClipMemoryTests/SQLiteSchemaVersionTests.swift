@@ -60,6 +60,32 @@ final class SQLiteSchemaVersionTests: XCTestCase {
         )
     }
 
+    /// A database at the BASE version: the shipped base DDL applied,
+    /// but none of the upgrade steps.
+    ///
+    /// ID-REVIEW-1024 (PR-C, 2026-10-23): the shipped schema now HAS a
+    /// step, so "a fresh database" is no longer "a database at the base
+    /// version" — the default `SQLiteStorageBackend` creates the base
+    /// AND applies every step. The tests that need an UPGRADE to
+    /// actually happen need a database that is still at the base.
+    private func makeBaseVersionDatabase() throws {
+        _ = try SQLiteStorageBackend(
+            databaseURL: dbURL,
+            schema: schema(version: SQLiteSchema.baseVersion, steps: [])
+        )
+    }
+
+    /// The ledger a database at the shipped version must hold: the base
+    /// version plus one row per applied upgrade step.
+    ///
+    /// DERIVED, never hard-coded: a literal `[SQLiteSchema.baseVersion]`
+    /// was true only while the schema had no step, and it went stale
+    /// the moment the first step shipped — the exact failure mode this
+    /// whole file exists to prevent.
+    private func expectedLedger() -> [Int] {
+        Array(SQLiteSchema.baseVersion...SQLiteSchema.version)
+    }
+
     /// A step that creates a table — safe to re-run, so a partially
     /// applied step can be retried.
     private func tableStep(_ version: Int, table: String) -> SQLiteSchema.MigrationStep {
@@ -167,8 +193,8 @@ final class SQLiteSchemaVersionTests: XCTestCase {
         )
         XCTAssertEqual(
             try readLedger(at: dbURL),
-            [SQLiteSchema.baseVersion],
-            "the ledger must record the base version"
+            expectedLedger(),
+            "the ledger must record the base version AND every applied upgrade step"
         )
     }
 
@@ -187,8 +213,8 @@ final class SQLiteSchemaVersionTests: XCTestCase {
         )
         XCTAssertEqual(
             try readLedger(at: dbURL),
-            [SQLiteSchema.baseVersion],
-            "the ledger must hold exactly one row for the base schema"
+            expectedLedger(),
+            "the ledger must hold exactly one row per applied version"
         )
     }
 
@@ -196,7 +222,14 @@ final class SQLiteSchemaVersionTests: XCTestCase {
     /// version (what the old table-existence check produced) is stamped
     /// when it is opened.
     func testUnstampedExistingDatabaseIsStampedOnOpen() throws {
-        _ = try SQLiteStorageBackend(databaseURL: dbURL)
+        // A BASE-shaped database (the v1 tables), then the version wiped.
+        //
+        // The default backend would create the CURRENT shape (base +
+        // every step), and re-running the v1→v2 step against a table
+        // that already has the v2 columns fails on the missing
+        // `trashed_at` — the fixture must be the shape the step expects
+        // to FIND, not the shape the step produces.
+        try makeBaseVersionDatabase()
         try writeUserVersion(0, at: dbURL)
         XCTAssertEqual(try readUserVersion(at: dbURL), 0, "precondition: the version is cleared")
 
@@ -244,8 +277,11 @@ final class SQLiteSchemaVersionTests: XCTestCase {
     /// The distinction has to be machine-checkable, otherwise every
     /// caller has to re-derive it from the SQLite result code.
     func testALockedDatabaseFailsAsRetryableAndChangesNothing() throws {
-        // A database at the base version.
-        _ = try SQLiteStorageBackend(databaseURL: dbURL)
+        // A database at the base version — so the synthetic step below
+        // really has to RUN. The default backend would already be at
+        // the shipped version, and the migration would be a no-op that
+        // never touches the lock.
+        try makeBaseVersionDatabase()
 
         // Connection A: takes the write lock and holds it.
         var lockHandle: OpaquePointer?
@@ -393,8 +429,10 @@ final class SQLiteSchemaVersionTests: XCTestCase {
     /// Both leave the database in a state no later open can tell from
     /// a successful migration.
     func testAFailedStepLeavesTheDatabaseUnchanged() throws {
-        // A database at the base version.
-        _ = try SQLiteStorageBackend(databaseURL: dbURL)
+        // A database at the base version — so the failing step below
+        // really has to RUN (and fail) instead of being skipped as
+        // "already applied".
+        try makeBaseVersionDatabase()
 
         // A step whose SECOND statement is not valid SQL.
         let broken = schema(
@@ -452,8 +490,11 @@ final class SQLiteSchemaVersionTests: XCTestCase {
     /// This is the heart of N.4. Without it, "the version is
     /// authoritative" would be an untested claim.
     func testUpgradePathAppliesTheSteps() throws {
-        // A database at the shipped (base) version.
-        _ = try SQLiteStorageBackend(databaseURL: dbURL)
+        // A database at the base version — so the upgrade step below
+        // really has to RUN. The default backend would already be at the
+        // shipped version, and the migration would be a no-op that never
+        // creates the probe table.
+        try makeBaseVersionDatabase()
         XCTAssertEqual(try readUserVersion(at: dbURL), SQLiteSchema.baseVersion)
 
         let upgraded = schema(

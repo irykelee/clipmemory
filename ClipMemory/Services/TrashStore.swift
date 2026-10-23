@@ -155,6 +155,67 @@ final class TrashStore: ObservableObject {
 
     // MARK: - Persistence
 
+    // MARK: - The trash dimension (ID-REVIEW-1024, PR-C)
+
+    /// Reads the recycle bin through the backend's TRASH dimension.
+    ///
+    /// The protocol grew a trash dimension (docs §11 open question 5):
+    /// before it, the trash was read through the array-level `load()`,
+    /// which in a row-based backend means "read the MAIN ITEMS as if
+    /// they were the recycle bin". A backend without a trash dimension
+    /// throws `unsupportedFeature` and falls back to the array-level
+    /// path. The production `FileStorageBackend` implements the
+    /// dimension, so the production behaviour is unchanged.
+    private func loadTrashAllWithFallback() throws -> [ClipboardItem] {
+        do {
+            return try backend.loadTrashAll()
+        } catch StorageBackendError.unsupportedFeature {
+            return try backend.load()
+        }
+    }
+
+    /// Writes the recycle bin through the backend's TRASH dimension,
+    /// with the same fallback as the read path.
+    ///
+    /// The fallback keeps the OLD semantics for a backend that has no
+    /// trash dimension: its array-level `save(_:)` IS the trash store
+    /// (the production wiring hands `TrashStore` a backend whose key
+    /// is the trash key).
+    private func saveTrashWithFallback(_ items: [ClipboardItem]) throws {
+        do {
+            try backend.saveTrash(items)
+        } catch StorageBackendError.unsupportedFeature {
+            try backend.save(items)
+        }
+    }
+
+    /// Deletes the given ids from the recycle bin, through the
+    /// backend's trash dimension.
+    ///
+    /// The retention DECISION is made here (`expiredTrashEntries`) —
+    /// the backend only deletes the ids it is handed, so the policy
+    /// (the window, and the "ask before a large purge" gate of
+    /// ID-CRASH-0035) has exactly one home.
+    ///
+    /// A backend without a trash dimension needs no purge call: its
+    /// array-level save rewrites the whole collection, which the
+    /// debounced save below does anyway. A REAL failure is logged
+    /// loudly — the rows stay in the store until that debounced save
+    /// removes them, and that save carries the three-leg error
+    /// contract (log + retry + user-visible notification).
+    private func purgeTrashWithFallback(_ itemIDs: Set<UUID>) {
+        guard !itemIDs.isEmpty else { return }
+        do {
+            try backend.purgeTrash(deleting: itemIDs)
+        } catch StorageBackendError.unsupportedFeature {
+            // No trash dimension — the array-level save covers it.
+        } catch {
+            logger.error(
+                "ID-REVIEW-1024: purging \(itemIDs.count) trashed item(s) failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
     func loadTrashedItems() {
         let sentinelKey = Self.loadFailedSentinelKey
         let hadPriorFailure = defaults.bool(forKey: sentinelKey)
@@ -174,7 +235,7 @@ final class TrashStore: ObservableObject {
             // allow RECOVERY — if backend.load() returns non-empty items, the user
             // has saved healthier content and we clear the sentinel.
             do {
-                let recovered = try backend.load()
+                let recovered = try loadTrashAllWithFallback()
                 if !recovered.isEmpty {
                     trashedItems = recovered
                     lastLoadFailed = false
@@ -199,7 +260,7 @@ final class TrashStore: ObservableObject {
         }
 
         do {
-            trashedItems = try backend.load()
+            trashedItems = try loadTrashAllWithFallback()
             lastLoadFailed = false
             // P1-AUDIT-2026-09-22: clear the sentinel once a healthy load
             // completes; covers the first-clean-launch path so the next
@@ -350,7 +411,7 @@ final class TrashStore: ObservableObject {
             return
         }
         do {
-            try backend.save(trashedItems)
+            try saveTrashWithFallback(trashedItems)
         } catch {
             // 1. loud log
             logger.error("ID-STORE-0019: Failed to save trashed items: \(error.localizedDescription)")
@@ -457,6 +518,7 @@ final class TrashStore: ObservableObject {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
         trashedItems.removeAll { $0.id == item.id }
+        purgeTrashWithFallback([item.id])
         scheduleSave()
     }
 
@@ -464,7 +526,9 @@ final class TrashStore: ObservableObject {
         for item in trashedItems where item.type == .image {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
+        let purgedIDs = Set(trashedItems.map { $0.id })
         trashedItems.removeAll()
+        purgeTrashWithFallback(purgedIDs)
         scheduleSave()
     }
 
@@ -555,7 +619,18 @@ final class TrashStore: ObservableObject {
     }
 
     /// The entries that are past the retention window right now.
-    private func expiredTrashEntries() -> [ClipboardItem] {
+    ///
+    /// The criterion is `deletedAt != nil && deletedAt < now - retention`.
+    /// It is the ONLY expiry rule in the product: the backend stores
+    /// the deletion moment (`deleted_at`) and the window is the user's
+    /// setting, so nothing else may decide what is expired.
+    ///
+    /// ID-REVIEW-1024 (PR-C, 2026-10-23): internal rather than private
+    /// so the criterion itself can be TESTED (see
+    /// `SQLiteTrashDimensionTests`) instead of being re-implemented in
+    /// the test — a re-implemented criterion would happily keep passing
+    /// after the production one changes.
+    func expiredTrashEntries() -> [ClipboardItem] {
         let cutoff = Date().addingTimeInterval(-TimeInterval(trashRetentionDays * 24 * 60 * 60))
         return trashedItems.filter { item in
             guard let deletedAt = item.deletedAt else { return false }
@@ -570,6 +645,7 @@ final class TrashStore: ObservableObject {
         }
         let expiredIds = Set(entries.map { $0.id })
         trashedItems.removeAll { expiredIds.contains($0.id) }
+        purgeTrashWithFallback(expiredIds)
         scheduleSave()
     }
 

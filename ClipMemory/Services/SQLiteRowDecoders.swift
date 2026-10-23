@@ -39,17 +39,26 @@ enum SQLiteRowDecoder {
         category: "SQLiteStorageBackend"
     )
 
-    /// Decode a `trash_items` row.
+    /// Decode a `trash_items` row (schema v2).
     ///
-    /// Column order comes from the SELECT in
-    /// `SQLiteStorageBackend.loadTrashItem`:
+    /// Column order comes from the SELECTs in
+    /// `SQLiteStorageBackend.loadTrashAll` and `loadTrashItem`:
     ///   0 item_id | 1 type | 2 is_pinned | 3 is_encrypted |
-    ///   4 is_sensitive | 5 content_hash | 6 content_blob | 7 created_at
+    ///   4 is_sensitive | 5 decryption_failed | 6 expires_at |
+    ///   7 created_at | 8 deleted_at | 9 content_hash |
+    ///  10 content_blob | 11 tag_ids | 12 ocr_text | 13 ocr_attempted
     ///
     /// ID-CRASH-0022 (2026-10-20): columns 5 and 6 used to be swapped
     /// — content was read from the content_hash column and contentHash
     /// from content_blob, so every restored item came back with an
     /// empty content string (and the ciphertext in the hash slot).
+    ///
+    /// ID-REVIEW-1024 (PR-C, 2026-10-23): the v1 decoder read eight
+    /// columns and dropped the rest, so a restored item came back
+    /// stripped of its `deletedAt`, `tagIds`, `ocrText` /
+    /// `ocrAttempted`, `decryptionFailed` and `expiresAt` — the
+    /// fields docs §11 open question 5 lists. The decoder now carries
+    /// the whole model, and the trash round trip is faithful.
     static func trashItem(stmt: OpaquePointer) -> ClipboardItem? {
         func text(_ index: Int32) -> String? {
             guard let cstr = sqlite3_column_text(stmt, index) else { return nil }
@@ -68,12 +77,22 @@ enum SQLiteRowDecoder {
             )
             return nil
         }
-        let content = text(6) ?? ""
-        let contentHash = text(5)
+        let content = text(10) ?? ""
+        let contentHash = text(9)
         let createdAt = Date(timeIntervalSince1970: TimeInterval(int(7)))
         let isPinned = int(2) != 0
         let isEncrypted = int(3) != 0
         let isSensitive = int(4) != 0
+        let decryptionFailed = int(5) != 0
+        let ocrAttempted = int(13) != 0
+        let ocrText = text(12)
+        let expiresAt: Date? = sqlite3_column_type(stmt, 6) == SQLITE_NULL
+            ? nil
+            : Date(timeIntervalSince1970: TimeInterval(int(6)))
+        let deletedAt: Date? = sqlite3_column_type(stmt, 8) == SQLITE_NULL
+            ? nil
+            : Date(timeIntervalSince1970: TimeInterval(int(8)))
+        let tagIds = SQLiteTrashTagIDs.decode(text(11))
         return ClipboardItem(
             id: id,
             content: content,
@@ -81,8 +100,14 @@ enum SQLiteRowDecoder {
             createdAt: createdAt,
             isPinned: isPinned,
             isSensitive: isSensitive,
+            expiresAt: expiresAt,
             isEncrypted: isEncrypted,
-            contentHash: contentHash
+            contentHash: contentHash,
+            decryptionFailed: decryptionFailed,
+            tagIds: tagIds,
+            deletedAt: deletedAt,
+            ocrText: ocrText,
+            ocrAttempted: ocrAttempted
         )
     }
 
@@ -168,5 +193,65 @@ enum SQLiteRowDecoder {
             isAutoSuggested: isAuto,
             createdAt: createdAt
         )
+    }
+}
+
+/// The `trash_items.tag_ids` JSON format.
+///
+/// ID-REVIEW-1024 (PR-C, 2026-10-23): the trash table carries the tag
+/// set as a JSON array of tag UUID strings (`"[]"` when the item has
+/// no tags) instead of joining the `item_tags` junction table — a
+/// trashed item has no row in `items` any more, and `item_tags`
+/// carries a foreign key on `items(id)`, so the junction cannot hold
+/// a trashed item's membership.
+///
+/// The encoder and the decoder live together so the two halves of the
+/// format cannot drift apart.
+enum SQLiteTrashTagIDs {
+    /// Keeps the log queries working across the split — same
+    /// subsystem/category as the rest of the SQLite layer.
+    private static let logger = Logger(
+        subsystem: "com.clipmemory.app",
+        category: "SQLiteStorageBackend"
+    )
+
+    /// Encodes a tag set as a JSON array of UUID strings.
+    ///
+    /// The ids are SORTED so the same tag set always produces the same
+    /// bytes — `Set` iteration order is not stable, and a row that
+    /// rewrites itself differently on every save is a row nobody can
+    /// diff.
+    static func encode(_ tagIds: Set<UUID>) -> String {
+        let strings = tagIds.map(\.uuidString).sorted()
+        guard let data = try? JSONEncoder().encode(strings),
+              let json = String(data: data, encoding: .utf8) else {
+            // A `[String]` cannot fail to encode; if it somehow did,
+            // "[]" is the safe answer (no tags) and is still valid
+            // JSON, so the row stays readable.
+            logger.error("could not encode a trash row's tag ids — storing an empty tag list")
+            return "[]"
+        }
+        return json
+    }
+
+    /// Decodes the JSON array of UUID strings.
+    ///
+    /// A missing blob means "no tags" and is not an error. A blob that
+    /// is present but unreadable yields an empty set: the item itself
+    /// is still worth keeping (it holds the user's content), so the
+    /// row is NOT skipped — the loss of the tag associations is logged
+    /// instead.
+    static func decode(_ raw: String?) -> Set<UUID> {
+        guard let raw else { return [] }
+        guard let data = raw.data(using: .utf8),
+              let strings = try? JSONDecoder().decode([String].self, from: data) else {
+            logger.error("a trash row carries an unreadable tag_ids blob — the item keeps its content but loses its tag associations")
+            return []
+        }
+        let ids = strings.compactMap { UUID(uuidString: $0) }
+        if ids.count != strings.count {
+            logger.error("a trash row's tag_ids blob holds \(strings.count - ids.count) malformed UUID(s) — those tags are lost")
+        }
+        return Set(ids)
     }
 }

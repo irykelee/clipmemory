@@ -303,6 +303,16 @@ enum StoreMigration {
                 )
                 continue
             }
+            // ID-REVIEW-1024 (PR-C, 2026-10-23): the trash row is
+            // written by `moveToTrash` → `upsertTrashItemInternal`,
+            // which carries the FULL v2 column set (`deleted_at`,
+            // `tag_ids`, `ocr_text`, `ocr_attempted`,
+            // `decryption_failed`, and an `expires_at` that means the
+            // item's own expiry). The legacy blob's `deletedAt` is
+            // the deletion moment, so the migrated rows keep the
+            // retention semantics they had in the UserDefaults store;
+            // a legacy row without a `deletedAt` falls back to the
+            // write moment (documented in `upsertTrashItemInternal`).
             try target.moveToTrash(itemID: trashItem.id, trashSnapshot: trashItem)
         }
     }

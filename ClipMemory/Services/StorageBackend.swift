@@ -92,6 +92,36 @@ protocol StorageBackend {
 
     /// Reads a key from `app_meta`; nil if absent.
     func meta(key: String) throws -> Data?
+
+    // MARK: - Trash dimension (PR-C gate, docs §11 open question 5)
+
+    /// Loads every item currently in the recycle bin.
+    ///
+    /// The trash is a DIMENSION of the store, not a view of the main
+    /// item list. Answering this with the main items hands the caller
+    /// the wrong data, and answering "save the trash" by replacing the
+    /// main items destroys the history — that is exactly the trap
+    /// docs §11 open question 5 describes. A backend that keeps the
+    /// trash in its own key/table implements this; a backend that
+    /// cannot MUST throw `StorageBackendError.unsupportedFeature` so
+    /// the caller falls back to the array-level path.
+    func loadTrashAll() throws -> [ClipboardItem]
+
+    /// Saves the full list of trashed items.
+    ///
+    /// Same contract as `save(_:)`, but for the trash dimension: the
+    /// array replaces the trash's own contents and MUST NOT touch the
+    /// main items.
+    func saveTrash(_ items: [ClipboardItem]) throws
+
+    /// Permanently deletes the given trashed items.
+    ///
+    /// The retention window and the "ask before a large purge" gate
+    /// (ID-CRASH-0035) are PRODUCT decisions and stay in `TrashStore`
+    /// — which is why this method takes the ids to delete and not a
+    /// retention length. A backend that computed the expiry itself
+    /// would give the policy two sources of truth.
+    func purgeTrash(deleting itemIDs: Set<UUID>) throws
 }
 
 extension StorageBackend {
@@ -133,6 +163,15 @@ extension StorageBackend {
     }
     func meta(key: String) throws -> Data? {
         throw StorageBackendError.unsupportedFeature("meta: this backend has no app_meta table")
+    }
+    func loadTrashAll() throws -> [ClipboardItem] {
+        throw StorageBackendError.unsupportedFeature("loadTrashAll: this backend has no trash dimension, the trash is managed by TrashStore")
+    }
+    func saveTrash(_ items: [ClipboardItem]) throws {
+        throw StorageBackendError.unsupportedFeature("saveTrash: this backend has no trash dimension, the trash is managed by TrashStore")
+    }
+    func purgeTrash(deleting itemIDs: Set<UUID>) throws {
+        throw StorageBackendError.unsupportedFeature("purgeTrash: this backend has no trash dimension, the trash is managed by TrashStore")
     }
 }
 
@@ -234,6 +273,23 @@ final class FileStorageBackend: StorageBackend {
 
     private let storageKey: String
 
+    /// ID-REVIEW-1024 (PR-C, docs §11 open question 5): the key the
+    /// TRASH dimension reads and writes.
+    ///
+    /// The production wiring constructs the trash backend with the
+    /// trash key (`ClipboardStore.init`: `trashBackend:
+    /// FileStorageBackend(storageKey: TrashStore.trashedItemsStorageKey)`),
+    /// so for that instance `trashStorageKey == storageKey` and the
+    /// trash dimension reads exactly the key the array-level
+    /// `load()` / `save(_:)` read before it — the production behaviour
+    /// is unchanged.
+    ///
+    /// It is deliberately a SEPARATE key from `storageKey`: the items
+    /// backend must not be able to answer "give me the recycle bin"
+    /// with the main history (the trap docs §11 describes for the
+    /// SQLite backend).
+    private let trashStorageKey: String
+
     // P1-AUDIT-2026-09-22 (P2-2): dedicated logger so silent write
     // failures surface in Console.app / `log show` for triage.
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "StorageBackend")
@@ -248,8 +304,10 @@ final class FileStorageBackend: StorageBackend {
     private let defaults: UserDefaults
 
     init(storageKey: String = UserDefaultsKey.clipboardItems.rawValue,
+         trashStorageKey: String = UserDefaultsKey.trashedItems.rawValue,
          defaults: UserDefaults = .standard) {
         self.storageKey = storageKey
+        self.trashStorageKey = trashStorageKey
         self.defaults = defaults
     }
 
@@ -275,13 +333,16 @@ final class FileStorageBackend: StorageBackend {
     /// - The check is on the storage key AND `.standard`; an isolated
     ///   suite that happens to use a production key name is a test
     ///   fixture, not the user's data.
-    private func assertWriteAllowed() throws {
+    /// - The key is a PARAMETER because the trash dimension writes its
+    ///   own key (`trashStorageKey`), which is a production data key
+    ///   too — the gate must cover it exactly like the items key.
+    private func assertWriteAllowed(_ key: String) throws {
         guard TestIsolation.mustRefuseProductionDataMutation(defaults),
-              TestIsolation.productionDataKeys.contains(storageKey) else {
+              TestIsolation.productionDataKeys.contains(key) else {
             return
         }
-        logger.error("ID-CRASH-0031: blocked a test process from writing the production data key '\(self.storageKey, privacy: .public)'")
-        throw StorageBackendError.productionWriteBlocked(storageKey: storageKey)
+        logger.error("ID-CRASH-0031: blocked a test process from writing the production data key '\(key, privacy: .public)'")
+        throw StorageBackendError.productionWriteBlocked(storageKey: key)
     }
 
     func load() throws -> [ClipboardItem] {
@@ -292,7 +353,7 @@ final class FileStorageBackend: StorageBackend {
     }
 
     func save(_ items: [ClipboardItem]) throws {
-        try assertWriteAllowed()
+        try assertWriteAllowed(storageKey)
         let data = try Self.itemsEncoder.encode(items)
         defaults.set(data, forKey: storageKey)
     }
@@ -326,7 +387,7 @@ final class FileStorageBackend: StorageBackend {
     /// `SaveRetryState` backoff (ID-SILENT-0022). Throwing on
     /// in-memory failure flows through that path correctly.
     func saveBlob(_ data: Data) throws {
-        try assertWriteAllowed()
+        try assertWriteAllowed(storageKey)
         defaults.set(data, forKey: storageKey)
         // Force-flush attempt before read-back. Deprecated since
         // macOS 10.5 but still functional — it's the only mechanism
@@ -356,7 +417,7 @@ final class FileStorageBackend: StorageBackend {
     }
 
     func saveTags(_ tags: [Tag]) throws {
-        try assertWriteAllowed()
+        try assertWriteAllowed(storageKey)
         let data = try Self.tagsEncoder.encode(tags)
         defaults.set(data, forKey: storageKey)
         // ID-CRASH-0007 (2026-09-28 code-review P1-1): `defaults.set`
@@ -375,6 +436,40 @@ final class FileStorageBackend: StorageBackend {
             logger.error("ID-CRASH-0007: saveTags failed read-back for key '\(self.storageKey)' (silent write failure)")
             throw CocoaError(.fileWriteUnknown)
         }
+    }
+
+    // MARK: - Trash dimension (PR-C, array-level equivalent)
+
+    /// ID-REVIEW-1024 (PR-C, docs §11 open question 5): the trash
+    /// dimension of the UserDefaults backend.
+    ///
+    /// The trash is one JSON blob under its own key, so the array-level
+    /// implementation is the whole story: read the blob, write the
+    /// blob, and — for a purge — read, filter, write back. There is no
+    /// row-level trash to speak of, and pretending otherwise would be
+    /// a lie in the same way the granular overrides are.
+    ///
+    /// The write path mirrors `save(_:)` exactly (a single
+    /// `defaults.set`, no read-back verification) so the production
+    /// behaviour of the trash is byte-for-byte what it was before the
+    /// trash dimension existed.
+    func loadTrashAll() throws -> [ClipboardItem] {
+        guard let data = defaults.data(forKey: trashStorageKey) else {
+            return []
+        }
+        return try JSONDecoder().decode([ClipboardItem].self, from: data)
+    }
+
+    func saveTrash(_ items: [ClipboardItem]) throws {
+        try assertWriteAllowed(trashStorageKey)
+        let data = try Self.itemsEncoder.encode(items)
+        defaults.set(data, forKey: trashStorageKey)
+    }
+
+    func purgeTrash(deleting itemIDs: Set<UUID>) throws {
+        guard !itemIDs.isEmpty else { return }
+        let kept = try loadTrashAll().filter { !itemIDs.contains($0.id) }
+        try saveTrash(kept)
     }
 
     // MARK: - PR-A granular overrides (all throw unsupportedFeature)
@@ -559,6 +654,31 @@ final class MemoryStorageBackend: StorageBackend {
         lock.lock(); defer { lock.unlock() }
         return Set(_items.map(\.id))
     }
+
+    // MARK: - Trash dimension (PR-C, array-level equivalent)
+
+    /// ID-REVIEW-1024 (PR-C, docs §11 open question 5): the trash
+    /// dimension reads and writes `_trashItems` — the SAME array the
+    /// granular `moveToTrash` / `restoreFromTrash` use. The trash is
+    /// its own store here, exactly as it is in the SQLite backend's
+    /// `trash_items` table, so the array-level path and the granular
+    /// path cannot disagree about where the trash lives.
+    func loadTrashAll() throws -> [ClipboardItem] {
+        lock.lock(); defer { lock.unlock() }
+        return _trashItems
+    }
+
+    func saveTrash(_ items: [ClipboardItem]) throws {
+        lock.lock(); defer { lock.unlock() }
+        _trashItems = items
+    }
+
+    func purgeTrash(deleting itemIDs: Set<UUID>) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard !itemIDs.isEmpty else { return }
+        _trashItems.removeAll { itemIDs.contains($0.id) }
+    }
+
     func setMeta(key: String, value: Data, type: String) throws {
         // No persistence layer here — the in-memory backend doesn't
         // carry meta. PR-B (SQLiteStorageBackend) implements this on

@@ -42,7 +42,14 @@ enum SQLiteSchema {
     /// build was indistinguishable from a current one. That gap — and
     /// the rules that close it — are written up in
     /// docs/design/storage-migration.md §4.4.
-    static let version = 1
+    ///
+    /// ID-REVIEW-1024 (PR-C, 2026-10-23): version 2 adds the trash
+    /// dimension's columns (`deleted_at` / `tag_ids` / `ocr_text` /
+    /// `ocr_attempted` / `decryption_failed`, and `expires_at` with a
+    /// new meaning) — see `migrationSteps`. The version was bumped
+    /// BECAUSE the columns changed: a database that still carried the
+    /// v1 `trash_items` shape must be upgraded, not stamped.
+    static let version = 2
 
     /// The version the base DDL below produces.
     ///
@@ -114,11 +121,107 @@ enum SQLiteSchema {
 
     /// The upgrade steps, oldest first.
     ///
-    /// Empty for now — version 1 is the base and is created by
-    /// `statements`. The next schema version adds its step here AND
-    /// bumps `version`; the driver refuses to stamp a version whose
-    /// step is missing.
-    static let migrationSteps: [MigrationStep] = []
+    /// ID-REVIEW-1024 (PR-C, 2026-10-23): version 2 is the first
+    /// upgrade step. It rebuilds `trash_items` with the columns the
+    /// trash dimension needs (docs §11 open question 5): the trash
+    /// lost `deletedAt`, `tagIds`, `ocrText` / `ocrAttempted` and
+    /// `decryptionFailed` on the way in and out, and `expires_at`
+    /// meant "the trash retention deadline" instead of "the item's own
+    /// expiry".
+    ///
+    /// The BASE DDL is deliberately NOT edited: the base version is
+    /// never changed after shipping (see
+    /// `SQLiteSchemaMigrator.validateBaseVersion`), so a fresh
+    /// database creates the v1 shape and then runs this step, exactly
+    /// like an existing v1 database does. Both end up at the same
+    /// v2 shape — which is the whole point of the version chain.
+    static let migrationSteps: [MigrationStep] = [
+        MigrationStep(
+            version: 2,
+            statements: trashItemsV2Upgrade,
+            notes: "ID-REVIEW-1024 PR-C: trash_items gains deleted_at / tag_ids / ocr_text / ocr_attempted / decryption_failed"
+        )
+    ]
+
+    // MARK: - The v1 → v2 trash_items upgrade
+
+    /// The v2 shape of `trash_items`.
+    ///
+    /// Column order mirrors the `items` table (id, type, is_pinned,
+    /// is_encrypted, is_sensitive, decryption_failed, expires_at,
+    /// created_at, content_hash, content_blob, ocr_text,
+    /// ocr_attempted) with `updated_at` replaced by `deleted_at` and
+    /// `tag_ids` added — so the row decoders for the two tables read
+    /// alike.
+    static let trashItemsV2Table = """
+        CREATE TABLE trash_items_v2 (
+            item_id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            is_pinned INTEGER NOT NULL DEFAULT 0,
+            is_encrypted INTEGER NOT NULL DEFAULT 1,
+            is_sensitive INTEGER NOT NULL DEFAULT 0,
+            decryption_failed INTEGER NOT NULL DEFAULT 0,
+            expires_at INTEGER,
+            created_at INTEGER NOT NULL,
+            deleted_at INTEGER NOT NULL,
+            content_hash TEXT,
+            content_blob TEXT NOT NULL,
+            tag_ids TEXT,
+            ocr_text TEXT,
+            ocr_attempted INTEGER NOT NULL DEFAULT 0
+        )
+        """
+
+    /// The statements that take `trash_items` from the v1 shape to the
+    /// v2 shape.
+    ///
+    /// SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so
+    /// the column additions are done the only way SQLite allows: build
+    /// the new table, copy the rows over, drop the old one, rename.
+    ///
+    /// **Re-runnable**: the step drops a leftover `trash_items_v2`
+    /// first, so a second run starts from a clean slate. (The migrator
+    /// runs the whole step inside the transaction that also carries
+    /// the version stamp, so a failure rolls the DDL back as well and
+    /// the next open starts from the v1 shape again.)
+    ///
+    /// **What the copy maps, and why:**
+    /// * `deleted_at` ← the v1 `trashed_at`. That column was the only
+    ///   record of WHEN the item was trashed, so it is the honest
+    ///   source for the authoritative deletion moment.
+    /// * `expires_at` ← NULL. The v1 column held the trash retention
+    ///   deadline (`now + 30 days`), which is a PRODUCT policy, not
+    ///   the item's own expiry — the v2 column means the item's own
+    ///   expiry, exactly like `items.expires_at`. Carrying the old
+    ///   value over would make a restored item look expired at a time
+    ///   the user never asked for. The retention deadline is no longer
+    ///   stored at all: `TrashStore` computes it from `deleted_at`
+    ///   and the user's retention setting, which is the only place
+    ///   that policy may live.
+    /// * `tag_ids` ← `'[]'`, `ocr_text` ← NULL, `ocr_attempted` ← 0,
+    ///   `decryption_failed` ← 0: the v1 table had no such columns,
+    ///   so there is nothing to carry over. The rows themselves (the
+    ///   content, the hash, the type, the flags, the creation time)
+    ///   are preserved — that is the data the user would lose.
+    static let trashItemsV2Upgrade: [String] = [
+        "DROP TABLE IF EXISTS trash_items_v2",
+        trashItemsV2Table,
+        """
+        INSERT INTO trash_items_v2 (
+            item_id, type, is_pinned, is_encrypted, is_sensitive,
+            decryption_failed, expires_at, created_at, deleted_at,
+            content_hash, content_blob, tag_ids, ocr_text, ocr_attempted
+        )
+        SELECT
+            item_id, type, is_pinned, is_encrypted, is_sensitive,
+            0, NULL, created_at, trashed_at,
+            content_hash, content_blob, '[]', NULL, 0
+        FROM trash_items
+        """,
+        "DROP TABLE trash_items",
+        "ALTER TABLE trash_items_v2 RENAME TO trash_items",
+        "CREATE INDEX IF NOT EXISTS idx_trash_items_deleted_at ON trash_items(deleted_at)"
+    ]
 
     // MARK: - Ledger
 
@@ -202,6 +305,18 @@ enum SQLiteSchema {
             -- because §3.3's restore path moves trash → items
             -- precisely because that items row is gone.
             -- Full argument: docs/design/storage-migration.md §2.
+            --
+            -- ID-REVIEW-1024 (PR-C, 2026-10-23): this is still the V1
+            -- shape, and that is deliberate — the base DDL is the
+            -- schema as it shipped at version 1 and is never edited
+            -- after shipping (the version chain is what carries a
+            -- schema forward). The v2 shape — `deleted_at`,
+            -- `tag_ids`, `ocr_text`, `ocr_attempted`,
+            -- `decryption_failed`, and an `expires_at` that means the
+            -- item's own expiry — is created by the v1 → v2 step in
+            -- `trashItemsV2Upgrade`. A fresh database runs the base
+            -- DDL and then that step, so it ends up with exactly the
+            -- same table an upgraded database has.
             item_id TEXT PRIMARY KEY,
             trashed_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL,
