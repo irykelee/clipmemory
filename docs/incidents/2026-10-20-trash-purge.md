@@ -97,8 +97,9 @@
 | **单实例护栏** | ✅ 已交付 | 已获拍板并实现（`ID-CRASH-0032`，见 §9）。两个 App 进程各自持有整数组快照，后写者用**陈旧快照**覆盖 ⇒ 丢更新；两个守卫都挡不住它（守卫只管测试进程）。 |
 | 同 domain 不同实例绕过闸门 | 中 | 闸门判的是**实例身份**（`=== UserDefaults.standard`），不是 persistent domain。`UserDefaults(suiteName: "com.clipmemory.app")` 是另一个实例、指向同一 domain。仓库里**没有**这样的调用点；公开 API 也无法可靠判域（实测写后读回探针无效——同进程不同实例的内存缓存不共享）。 |
 | 大额清理预警 | ✅ 已交付 | 见 §11（`ID-CRASH-0035`）：保留期清理一次性要删 ≥ 20 条时**先问再删**，低于阈值静默删除；过期的模态弹窗改成菜单栏角标。 |
-| `.corrupt-*` 隔离副本不在备份白名单 | 低 | `BackupBlobRegistry` 只含 items/tags/trash ⇒ 被隔离的历史永远进不了备份。 |
-| 孤儿图片清扫与 sentinel 的交互 | 应用级 | 与本次事故无关，但会影响「损坏后能否恢复图片」。 |
+| `.corrupt-*` 隔离副本不在备份白名单 | ✅ 已交付 | 2026-10-23 补上（`ID-BACKUP-0006`）：隔离副本进**每日自动备份**的 `Quarantine/` 目录、进 `.clipmemory` **导出包**（包密钥封装，因为隔离 blob 在 JSON 层已损坏、逐条重加密走不通），导入时还原回**原来的 `.corrupt-*` key**（绝不写主 key）。老包（manifest 无该字段）按空处理，向后兼容。 |
+| 孤儿图片清扫与 sentinel 的交互 | ✅ 已闭环 | 2026-10-20 已补（`ID-CRASH-0022`）：items 侧有**持久** sentinel（`clipboardItemsLoadFailedSentinel`），且**空加载不算健康** —— sentinel 只在**非空**加载成功时清除 ⇒ 「blob 已损坏 + 下次启动」不会再被当成孤儿把图片删掉。回收站侧同构（`trashStore.lastLoadFailed` 由持久 sentinel 在启动时推出）。本行原记为「应用级待定」，查实后确认已闭环。 |
+| 测试进程写生产域的「seam 复位」旁路 | ✅ 已交付 | 2026-10-23 修（`ID-CRASH-0066`）：`TestIsolation.defaults` 的**基线**原本是 `.standard`（生产域），且三个测试类的 `tearDown` 把它复位回 `.standard`；`ID-CRASH-0029` 把三个服务并到**同一份存储**之后，这个复位就从「只影响自己」变成「把生产域交给全部服务」。实测在测试跑期间生产域多出 `UpdateFallbackFeedConsent`（已清理）。现在基线在 XCTest 下是隔离 suite（生产分支仍为 `.standard`）、tearDown 改为**还原保存值**，并加了源码模式守卫 + 跑在最后的运行时守卫。 |
 
 ## 8. 审查提出但**有意不修**的项（附理由，避免反复提）
 
