@@ -809,9 +809,17 @@ import XCTest
     /// must write UserDefaults synchronously so data survives an immediate
     /// process termination (e.g. Xcode rebuild). The previous async main-queue
     /// dispatch could lose the write if the app was killed before the block ran.
+    /// ID-TEST-1024 (2026-10-24): inject an isolated suite — the default init
+    /// targets `UserDefaults.standard` (pinned by
+    /// FileStorageBackendDefaultsSeamTests), and these tests must never write
+    /// the production domain. The synchronous-write property under test is
+    /// independent of which persistent domain receives the bytes.
     func testFileStorageBackendSaveIsSynchronous() throws {
+        let suiteName = "IntegrationTests.sync.\(UUID().uuidString)"
+        let suite = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { suite.removePersistentDomain(forName: suiteName) }
         let key = "ClipboardItems.sync.test.\(UUID().uuidString)"
-        let backend = FileStorageBackend(storageKey: key)
+        let backend = FileStorageBackend(storageKey: key, defaults: suite)
         let item = ClipboardItem(content: "sync test", type: .text)
 
         try backend.save([item])
@@ -820,13 +828,15 @@ import XCTest
         let loaded = try backend.load()
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded.first?.content, "sync test")
-
-        UserDefaults.standard.removeObject(forKey: key)
     }
 
     func testFileStorageBackendSaveTagsIsSynchronous() throws {
+        // Same isolation as testFileStorageBackendSaveIsSynchronous (ID-TEST-1024).
+        let suiteName = "IntegrationTests.sync.\(UUID().uuidString)"
+        let suite = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { suite.removePersistentDomain(forName: suiteName) }
         let key = "ClipboardTags.sync.test.\(UUID().uuidString)"
-        let backend = FileStorageBackend(storageKey: key)
+        let backend = FileStorageBackend(storageKey: key, defaults: suite)
         let tag = Tag(name: "sync", colorHex: "#FF6B6B")
 
         try backend.saveTags([tag])
@@ -834,8 +844,6 @@ import XCTest
         let loaded = try backend.loadTags()
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded.first?.name, "sync")
-
-        UserDefaults.standard.removeObject(forKey: key)
     }
 
     // MARK: - Image items must not be marked decryptionFailed
