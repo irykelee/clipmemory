@@ -476,7 +476,16 @@ final class BackupService {
     /// 完全一致。
     private func writeQuarantineCopies(to destination: URL) {
         let keys = BackupBlobRegistry.quarantineKeys(in: defaults)
-        guard !keys.isEmpty else { return }
+        guard !keys.isEmpty else {
+            // ID-REVIEW-1025 (2026-10-24): there is nothing to copy, so
+            // there is nothing to fail. A previous run's record must be
+            // cleared here too — otherwise a stale red line keeps telling
+            // the user that quarantine copies are missing long after the
+            // quarantined blob was recovered or removed.
+            defaults.removeObject(forKey: Self.lastQuarantineErrorDateKey)
+            defaults.removeObject(forKey: Self.lastQuarantineErrorMessageKey)
+            return
+        }
         let quarantineDirectory = destination.appendingPathComponent(
             BackupBlobRegistry.quarantineDirectoryName,
             isDirectory: true
@@ -499,8 +508,15 @@ final class BackupService {
             return
         }
         var failures: [String] = []
+        var attempted = 0
         for key in keys {
             guard let data = defaults.data(forKey: key) else { continue }
+            // ID-REVIEW-1025 (2026-10-24): the denominator must be the
+            // copies that were ACTUALLY attempted. A key whose blob has
+            // been recovered/removed is skipped, and counting it as a
+            // failure would report "2 of 3 could not be written" when
+            // only one copy was even tried.
+            attempted += 1
             let fileURL = quarantineDirectory.appendingPathComponent(key)
             do {
                 try data.write(to: fileURL, options: .atomic)
@@ -519,7 +535,7 @@ final class BackupService {
             defaults.removeObject(forKey: Self.lastQuarantineErrorMessageKey)
         } else {
             recordQuarantineError(
-                message: "\(failures.count) of \(keys.count) quarantine copies could not be written"
+                message: "\(failures.count) of \(attempted) quarantine copies could not be written"
             )
         }
     }
