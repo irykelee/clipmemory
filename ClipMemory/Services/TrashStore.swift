@@ -615,8 +615,8 @@ final class TrashStore: ObservableObject {
     static let expiredPurgeConfirmationThreshold = 20
 
     /// ID-CRASH-0035: how many entries are currently waiting for the
-    /// user's confirmation. Used to avoid re-posting the pending notice
-    /// on every 60 s cleanup tick.
+    /// user's confirmation. It is the SIZE of `pendingExpiredPurgeIDs`
+    /// — a convenience mirror for the UI, never the marker itself.
     private(set) var pendingExpiredPurgeCount: Int = 0
 
     /// ID-REVIEW-1025 (2026-10-24): the **identity** of the pending set.
@@ -641,6 +641,26 @@ final class TrashStore: ObservableObject {
     private func clearPendingPurgeState() {
         pendingExpiredPurgeIDs = []
         pendingExpiredPurgeCount = 0
+    }
+
+    /// Posts the "N entries are waiting for your decision" notice.
+    ///
+    /// `count == 0` is the RESOLVED signal: the entries the notice
+    /// referred to have left the bin (restored, or deleted one by one),
+    /// so there is nothing left to decide and the UI must drop the
+    /// badge. Without that signal the AppDelegate keeps a stale count,
+    /// and the badge gates the QuickBar — the app would look stuck.
+    private func postPurgePendingNotice(count: Int, retentionDays: Int) {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .trashPurgePending,
+                object: self,
+                userInfo: [
+                    "count": count,
+                    "retentionDays": retentionDays
+                ]
+            )
+        }
     }
 
     /// Remove every item whose `deletedAt` is older than the retention
@@ -668,17 +688,49 @@ final class TrashStore: ObservableObject {
     /// silent: a handful of expired entries is housekeeping, not an event.
     func purgeExpiredTrash() {
         let expired = expiredTrashEntries()
-        guard !expired.isEmpty else {
-            // Nothing is expired anymore — the entries the pending notice
-            // referred to were restored or deleted elsewhere, so the
-            // pending state is resolved. Clearing it here is what keeps
-            // the next batch of the same size from being swallowed.
-            clearPendingPurgeState()
+        let expiredIDs = Set(expired.map { $0.id })
+        let retentionDays = trashRetentionDays
+
+        // ID-REVIEW-1025 (2026-10-24, independent review P1+P2): an
+        // OUTSTANDING QUESTION takes priority over everything else.
+        //
+        // The user was told a batch is waiting for their decision. While
+        // that question is open, NOTHING may be deleted automatically —
+        // not even a batch that has fallen below the threshold:
+        //
+        //   25 entries expire → the user is asked (badge: 25);
+        //   the user restores 6 of them → 19 are left;
+        //   the next tick sees 19 < 20 → the ROUTINE branch used to
+        //   delete them, with no decision at all.
+        //
+        // That broke the promise the badge makes ("a big batch can never
+        // disappear without a decision"). The gate is now: a question
+        // that has been asked stays open until the user answers it.
+        if !pendingExpiredPurgeIDs.isEmpty {
+            let stillPending = pendingExpiredPurgeIDs.intersection(expiredIDs)
+            if stillPending.isEmpty {
+                // Every entry the question referred to has left the bin
+                // (restored, or deleted one by one) → the question is
+                // moot. Resolve it AND tell the UI: the badge gates the
+                // QuickBar, so a stale count would leave the app
+                // unreachable until it is restarted.
+                clearPendingPurgeState()
+                postPurgePendingNotice(count: 0, retentionDays: retentionDays)
+                return
+            }
+            if stillPending != pendingExpiredPurgeIDs {
+                // The user restored some of the pending entries → the
+                // count on the badge must follow, and the set is
+                // re-asked with the new membership.
+                pendingExpiredPurgeIDs = stillPending
+                pendingExpiredPurgeCount = stillPending.count
+                postPurgePendingNotice(count: stillPending.count, retentionDays: retentionDays)
+            }
             return
         }
-        let expiredIDs = Set(expired.map { $0.id })
+
+        guard !expired.isEmpty else { return }
         let removedCount = expired.count
-        let retentionDays = trashRetentionDays
 
         if removedCount >= Self.expiredPurgeConfirmationThreshold {
             // The notice is posted asynchronously for the same reason as
@@ -692,27 +744,16 @@ final class TrashStore: ObservableObject {
             // re-runs this method with the same entries and must stay
             // quiet; a DIFFERENT set of entries — even one of the same
             // size — must ask again.
-            guard pendingExpiredPurgeCount != removedCount else { return }
             pendingExpiredPurgeIDs = expiredIDs
             pendingExpiredPurgeCount = removedCount
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: .trashPurgePending,
-                    object: self,
-                    userInfo: [
-                        "count": removedCount,
-                        "retentionDays": retentionDays
-                    ]
-                )
-            }
+            postPurgePendingNotice(count: removedCount, retentionDays: retentionDays)
             return
         }
 
-        // Below the threshold the purge is routine — but it also RESOLVES
-        // any pending state: the entries the pending notice referred to
-        // are being deleted right now. Leaving the marker behind would
-        // suppress the notice for a later batch of the same size.
-        pendingExpiredPurgeCount = 0
+        // Below the threshold the purge is routine: it asks nothing and
+        // deletes right away. There is no outstanding question at this
+        // point (the branch above returned early if there were one), so
+        // there is no pending state to clear.
         deleteExpiredEntries(expired)
         postExpiredNotice(count: removedCount, retentionDays: retentionDays)
     }
@@ -720,14 +761,52 @@ final class TrashStore: ObservableObject {
     /// ID-CRASH-0035 (2026-10-21): the user confirmed the pending
     /// retention purge. Deletes the entries that are past the window now
     /// and reports what went.
+    ///
+    /// ID-REVIEW-1025 (2026-10-24, independent review P2): it deletes
+    /// EXACTLY the set the user was shown. The confirmation dialog
+    /// carries the count that was on the badge, so the number in the
+    /// dialog and the number deleted have to be the same number —
+    /// recomputing "everything expired right now" would silently add
+    /// entries that expired while the dialog was open.
     func confirmExpiredPurge() {
         let expired = expiredTrashEntries()
-        clearPendingPurgeState()
-        guard !expired.isEmpty else { return }
-        let removedCount = expired.count
+        let expiredIDs = Set(expired.map { $0.id })
         let retentionDays = trashRetentionDays
-        deleteExpiredEntries(expired)
+        let target = pendingExpiredPurgeIDs.isEmpty
+            ? expiredIDs
+            : pendingExpiredPurgeIDs.intersection(expiredIDs)
+        clearPendingPurgeState()
+        guard !target.isEmpty else {
+            // Nothing left to delete — the question is resolved, and the
+            // UI must drop the badge (see `postPurgePendingNotice`).
+            postPurgePendingNotice(count: 0, retentionDays: retentionDays)
+            return
+        }
+        let entries = expired.filter { target.contains($0.id) }
+        let removedCount = entries.count
+        deleteExpiredEntries(entries)
         postExpiredNotice(count: removedCount, retentionDays: retentionDays)
+    }
+
+    /// ID-REVIEW-1025 (2026-10-24, independent review P2): the user
+    /// DECLINED the pending purge ("取消" in the confirmation dialog).
+    ///
+    /// Nothing is deleted — the entries stay in the bin. What is
+    /// forgotten is the QUESTION: the pending set is cleared and the UI
+    /// is told, so the badge goes away.
+    ///
+    /// The old behaviour kept both, and the badge's count gates the
+    /// QuickBar (`AppDelegate.statusItemClicked`) — so every later click
+    /// on the menu bar icon opened the same modal again and the QuickBar
+    /// could not be reached at all. The user was trapped in a
+    /// destructive-or-nothing loop.
+    ///
+    /// The next 60 s tick asks again (the batch is still in the bin, so
+    /// the question comes back as a fresh badge — not as a trap).
+    func declineExpiredPurge() {
+        let retentionDays = trashRetentionDays
+        clearPendingPurgeState()
+        postPurgePendingNotice(count: 0, retentionDays: retentionDays)
     }
 
     /// The entries that are past the retention window right now.

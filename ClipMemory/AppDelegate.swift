@@ -1364,8 +1364,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // The purge is done — nothing is pending any more. The tooltip
         // keeps the outcome, because a small purge is silent by design
         // and this is where the user can find out what happened.
+        //
+        // ID-REVIEW-1025 (2026-10-24, independent review P2): the
+        // `alert.trash.items.expired.title` key ("回收站已清理") was
+        // added to all 7 languages but never referenced by anything —
+        // dead weight that also documented the intent (a titled message,
+        // not a bare count). The tooltip now carries it.
         clearPendingPurgeBadge(
-            lastResultText: L10n.alertTrashItemsExpired(count, retentionDays: retentionDays)
+            lastResultText: "\(L10n.alertTrashItemsExpiredTitle)：\(L10n.alertTrashItemsExpired(count, retentionDays: retentionDays))"
         )
     }
 
@@ -1373,10 +1379,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// LOT of entries and is waiting for the user's confirmation. The
     /// badge on the menu bar item is the whole UI here: it never
     /// interrupts, and clicking it is what opens the confirmation.
+    ///
+    /// ID-REVIEW-1025 (2026-10-24, independent review P1): `count == 0`
+    /// is the RESOLVED signal — the entries the notice referred to have
+    /// left the bin (the user restored them, or deleted them one by
+    /// one), so there is nothing left to decide.
+    ///
+    /// It has to be handled rather than ignored: `pendingTrashPurgeCount`
+    /// gates the QuickBar (`statusItemClicked`), so a stale count left
+    /// the app unreachable for the rest of the session — every click
+    /// opened a confirmation for a batch that no longer existed, and the
+    /// badge never went away. The user had to restart the app.
     fileprivate func handleTrashPurgePending(_ note: Notification) {
         let count = (note.userInfo?["count"] as? Int) ?? 0
         let retentionDays = (note.userInfo?["retentionDays"] as? Int) ?? 0
-        guard count > 0 else { return }
+        guard count > 0 else {
+            clearPendingPurgeBadge(lastResultText: nil)
+            return
+        }
         logger.error("Recycle bin retention purge is waiting for confirmation: \(count) item(s) past the \(retentionDays)-day window")
         showPendingPurgeBadge(count: count, retentionDays: retentionDays)
     }
@@ -1414,11 +1434,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// ID-CRASH-0035 (2026-10-21): the user clicked the badge — now ask.
     ///
     /// "永久删除" performs the purge; "取消" leaves the entries in the
-    /// bin and keeps the badge, so the decision can be made later.
-    /// Nothing is deleted without an explicit answer.
+    /// bin and defers the decision. Nothing is deleted without an
+    /// explicit answer.
+    ///
+    /// ID-REVIEW-1025 (2026-10-24, independent review P2): "取消" used to
+    /// keep the badge AND the count, and the count gates the QuickBar
+    /// (`statusItemClicked`) — so every later click on the menu bar icon
+    /// opened the same modal again and the QuickBar (the app's only
+    /// window) could not be reached at all. The user was trapped in a
+    /// destructive-or-nothing loop.
+    ///
+    /// "取消" now DECLINES the batch: the store forgets the pending set
+    /// and the badge goes away, so the QuickBar opens normally. The
+    /// entries stay in the bin — nothing is deleted — and the 60 s tick
+    /// asks again (the batch is still there, so the question comes back
+    /// as a fresh badge, not as a trap).
     @MainActor
     private func presentTrashPurgeConfirmation() {
-        let count = pendingTrashPurgeCount
+        // ID-REVIEW-1025 (2026-10-24, independent review P3): the
+        // dialog must state the number that will ACTUALLY be deleted.
+        // The badge's cached count can be up to one cleanup tick stale
+        // (the user may have restored an entry since the notice), so the
+        // live value is read from the store.
+        let count = ClipboardStore.shared.pendingExpiredPurgeCount
         let retentionDays = pendingTrashPurgeRetentionDays
         guard count > 0 else { return }
         // The app is a menu bar app: without this the alert can open
@@ -1432,8 +1470,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: L10n.buttonCancel)
         let response = alert.runModal()
         guard response == .alertFirstButtonReturn else {
-            // "取消" — keep the entries (and the badge) until the user
-            // decides.
+            // "取消" — the entries stay, the badge goes away, and the
+            // next tick asks again.
+            ClipboardStore.shared.declineExpiredPurge()
             return
         }
         ClipboardStore.shared.confirmExpiredPurge()

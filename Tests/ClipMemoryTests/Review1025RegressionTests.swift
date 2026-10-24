@@ -8,11 +8,12 @@ import XCTest
 /// could not) describe, because they are all invisible from the outside:
 ///
 /// 1. **The retention purge's "already asked" marker was the pending
-///    COUNT** (`TrashStore.pendingExpiredPurgeCount`). The same count
-///    describes a completely different set of entries later on, so the
-///    second batch was silently swallowed — the purge stopped working
-///    for one size class and the bin grew with no user-visible signal.
-///    That is the exact failure ID-CRASH-0035 was raised to prevent.
+///    COUNT** (it compared the number of entries waiting). The same
+///    count describes a completely different set of entries later on,
+///    so the second batch was silently swallowed — the purge stopped
+///    working for one size class and the bin grew with no user-visible
+///    signal. That is the exact failure ID-CRASH-0035 was raised to
+///    prevent.
 /// 2. **The `sk-` sensitive patterns had no left boundary**, so the
 ///    literal `sk-` was found INSIDE `task-` / `risk-` / `disk-` and
 ///    ordinary text with a long alphanumeric tail was flagged sensitive
@@ -34,37 +35,43 @@ final class Review1025RegressionTests: XCTestCase {
     /// See `TrashPurgeConfirmationTests` for the sibling cases; this one
     /// pins the identity rule directly against `TrashStore`.
     ///
-    /// The verdict is the NUMBER OF NOTICES, not the pending count: the
-    /// count is `count` in both the broken and the fixed implementation
-    /// (the broken one simply never asks the second time), so asserting
-    /// on it would pass either way.
+    /// The verdict is the NUMBER OF "ASK" NOTICES, not the pending
+    /// count: the count is `count` in both the broken and the fixed
+    /// implementation (the broken one simply never asks the second
+    /// time), so asserting on it would pass either way.
+    ///
+    /// Only the notices with `count > 0` are counted — a `count == 0`
+    /// notice is the "resolved" signal (the entries left the bin), not
+    /// a new question.
     func testPendingPurgeMarkerIsTheSetNotTheCount() {
         let count = TrashStore.expiredPurgeConfirmationThreshold
         let backend = InMemoryStorageBackend(items: Self.expiredItems(count))
         let defaults = Self.makeDefaults()
         defer { Self.removeDefaults(defaults) }
 
-        var notices = 0
+        var asks = 0
         let token = NotificationCenter.default.addObserver(
             forName: .trashPurgePending, object: nil, queue: .main
-        ) { _ in notices += 1 }
+        ) { note in
+            if let count = note.userInfo?["count"] as? Int, count > 0 { asks += 1 }
+        }
         defer { NotificationCenter.default.removeObserver(token) }
 
         let store = TrashStore(backend: backend, defaults: defaults)
         drainNotifications()
-        XCTAssertEqual(notices, 1, "the first batch must ask")
+        XCTAssertEqual(asks, 1, "the first batch must ask")
 
         // The pending state resolves (the entries leave the bin).
         store.trashedItems = []
         store.purgeExpiredTrash()
         drainNotifications()
-        XCTAssertEqual(notices, 1, "an empty bin has nothing to ask about")
+        XCTAssertEqual(asks, 1, "an empty bin has nothing to ask about")
 
         // A NEW batch of the SAME size must ask again.
         store.trashedItems = Self.expiredItems(count)
         store.purgeExpiredTrash()
         drainNotifications()
-        XCTAssertEqual(notices, 2,
+        XCTAssertEqual(asks, 2,
                        "a different batch of the same size must ask again")
     }
 

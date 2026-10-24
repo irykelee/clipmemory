@@ -2545,6 +2545,20 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     /// retention purge — this is what actually deletes the expired
     /// entries. Until it is called they stay in the bin.
     func confirmExpiredPurge() { trashStore.confirmExpiredPurge() }
+    /// ID-REVIEW-1025 (2026-10-24, independent review P2): the user
+    /// DECLINED the pending purge ("取消"). Nothing is deleted — the
+    /// entries stay in the bin — but the question is forgotten and the
+    /// badge goes away, so the menu bar icon opens the QuickBar again
+    /// instead of the same modal.
+    func declineExpiredPurge() { trashStore.declineExpiredPurge() }
+    /// ID-REVIEW-1025 (2026-10-24, independent review P3): how many
+    /// entries are waiting for the user's decision RIGHT NOW.
+    ///
+    /// The confirmation dialog has to state the number that will
+    /// actually be deleted. The AppDelegate's cached badge count can be
+    /// up to one cleanup tick stale (the user may have restored an
+    /// entry since the notice), so the dialog reads the live value.
+    var pendingExpiredPurgeCount: Int { trashStore.pendingExpiredPurgeCount }
 
     /// M-2 (2026-08-08 audit): pure helper that returns the items that
     /// would be evicted to make `items` fit within `maxItems` — without
