@@ -255,8 +255,17 @@ final class BackupService {
             } catch {
                 let message = (error as? LocalizedError)?.errorDescription
                     ?? error.localizedDescription
-                self.defaults.set(Date(), forKey: Self.lastBackupErrorDateKey)
+                // Message BEFORE date: the two defaults writes are not
+                // atomic, and the ordering makes "lastBackupErrorDate is
+                // set ⇒ the record is complete" a real invariant. Pollers
+                // (testPerformBackupIfNeededRecordsFailureWhenBackupNowThrows)
+                // and the settings page both read the message off the date's
+                // presence; writing the date last means they can never see
+                // a date whose message hasn't landed yet. (Caught live
+                // 2026-10-24: the test's 10ms poll landed inside the
+                // date→message gap and read an empty message.)
                 self.defaults.set(message, forKey: Self.lastBackupErrorMessageKey)
+                self.defaults.set(Date(), forKey: Self.lastBackupErrorDateKey)
                 self.logger.error("Auto-backup failed: \(message)")
             }
         }
