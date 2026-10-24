@@ -54,10 +54,18 @@ OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 #   2026-08-28, v4-flash 2026-09-22 实测同) —— 对本账号并非免费, 勿入链。
 #   minimax-cn-coding-plan/* 为 MiniMax 官方端点: 生成端同源, 按上述政策不入审核链。
 #   mimo 系为小米 MiMo(非 MiniMax), 但 flash 档能力偏弱。
+#
+# ID-REVIEW-1025 (2026-10-24): opencode 自有免费池当日全部耗尽额度
+#   (provider.quota / HTTP 429 "Free usage limit reached" —— nemotron-3-ultra-free /
+#   space-bunny-free / big-pickle 三个全部一样), 审核门禁整条链死掉一整天,
+#   pre-push 每次都走到 "所有候选模型均未产出有效报告" 然后 exit 1 阻断 push。
+#   openrouter/nvidia/nemotron-3-ultra-550b-a55b:free 是同一族模型(NVIDIA 550B)
+#   的 OpenRouter 免费档, 2026-10-24 实测可用(2-token 探针即返回 PONG)——
+#   放进链首, 原来的三个保留在后面(额度恢复后自动用回)。
 if [[ -n "${REVIEW_MODEL:-}" ]]; then
   MODEL_CHAIN=("$REVIEW_MODEL")
 else
-  MODEL_CHAIN=("opencode/nemotron-3-ultra-free" "opencode/space-bunny-free" "opencode/big-pickle")
+  MODEL_CHAIN=("openrouter/nvidia/nemotron-3-ultra-550b-a55b:free" "opencode/nemotron-3-ultra-free" "opencode/space-bunny-free" "opencode/big-pickle")
 fi
 
 # 运行时标记与失败台账落在脚本所在目录（githooks/）, 由 .gitignore 排除
