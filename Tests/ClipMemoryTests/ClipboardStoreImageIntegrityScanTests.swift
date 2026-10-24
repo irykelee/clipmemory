@@ -107,8 +107,8 @@ import XCTest
     /// completion signal; no polling, no race against the async
     /// background queue.
     private func runImageIntegrityScanSync(timeout: TimeInterval = 5.0,
-                                          file: StaticString = #filePath,
-                                          line: UInt = #line) {
+                                           file: StaticString = #filePath,
+                                           line: UInt = #line) {
         let exp = expectation(description: "image integrity scan completion")
         store.runImageIntegrityScan { exp.fulfill() }
         wait(for: [exp], timeout: timeout)

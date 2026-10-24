@@ -68,12 +68,12 @@ final class SQLiteStorageBackendTests: XCTestCase {
             stmt: "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         )
         // Required tables per docs/design/storage-migration.md §2:
-        XCTAssertTrue(names.contains("items"),         "items table must exist")
-        XCTAssertTrue(names.contains("tags"),          "tags table must exist")
-        XCTAssertTrue(names.contains("item_tags"),     "item_tags junction must exist")
-        XCTAssertTrue(names.contains("trash_items"),   "trash_items must exist")
-        XCTAssertTrue(names.contains("app_meta"),       "app_meta must exist")
-        XCTAssertTrue(names.contains("schema_version"),"schema_version must exist")
+        XCTAssertTrue(names.contains("items"), "items table must exist")
+        XCTAssertTrue(names.contains("tags"), "tags table must exist")
+        XCTAssertTrue(names.contains("item_tags"), "item_tags junction must exist")
+        XCTAssertTrue(names.contains("trash_items"), "trash_items must exist")
+        XCTAssertTrue(names.contains("app_meta"), "app_meta must exist")
+        XCTAssertTrue(names.contains("schema_version"), "schema_version must exist")
     }
 
     /// Second init must be idempotent (don't re-create tables, don't
@@ -97,7 +97,7 @@ final class SQLiteStorageBackendTests: XCTestCase {
             stmt: "SELECT name FROM sqlite_master WHERE type='table'"
         )
         XCTAssertEqual(names.count, 6,
-                       "exactly 6 tables expected (items, tags, item_tags, trash_items, app_meta, schema_version); idempotent reopen must NOT re-create them")
+                       "exactly 6 tables expected (items, tags, item_tags, trash_items, app_meta, schema_version); reopen must NOT re-create them")
     }
 
     // MARK: - Granular CRUD
