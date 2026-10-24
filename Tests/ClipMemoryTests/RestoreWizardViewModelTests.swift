@@ -56,8 +56,13 @@ final class RestoreWizardViewModelTests: XCTestCase {
         await vm.loadList()
         guard let backup = vm.backups.first else { XCTFail("no backup"); return }
         vm.selectLocalBackup(backup)
-        // Wait for validation to complete (synchronous for local).
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // ID-FLAKE-0006 (2026-10-24): validation runs in an unstructured
+        // `Task { @MainActor }` inside selectLocalBackup — wait for the
+        // transition instead of a fixed sleep that flakes on slow CI.
+        let deadline = Date().addingTimeInterval(5)
+        while vm.step != .preview && Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
         XCTAssertNotNil(vm.source)
         XCTAssertEqual(vm.step, .preview)
         if case .valid(let preview) = vm.validation {

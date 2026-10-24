@@ -249,11 +249,17 @@ final class UpdateServiceTests: XCTestCase {
         var startCount = 0
         service.startUpdaterHook = { startCount += 1 }
 
+        // Let the first probe get in flight — observed via the stub's
+        // onEnter signal (ID-FLAKE-0007: a fixed sleep flakes on slow CI,
+        // where the probe might not have reached resolve yet), then run a
+        // newer probe (setPolicy does exactly this in production). The
+        // stub's queue is empty for it → nil decision → only the
+        // generation bump matters.
+        let firstProbeEntered = expectation(description: "first probe entered stub.resolve")
+        firstProbeEntered.assertForOverFulfill = false
+        await stub.setOnEnter { firstProbeEntered.fulfill() }
         async let firstProbe: Void = service.startAfterFeedProbe()
-        // Let the first probe get in flight, then run a newer probe
-        // (setPolicy does exactly this in production). The stub's queue is
-        // empty for it → nil decision → only the generation bump matters.
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [firstProbeEntered], timeout: 5)
         await service.triggerProbe()
         await firstProbe
 
@@ -585,8 +591,15 @@ final class UpdateServiceTests: XCTestCase {
         // Simulate the startup probe firing alongside a fast user-driven
         // probe. We kick them off in order; the second awaits zero delay and
         // finishes first, then the first resumes and would normally clobber.
+        // ID-FLAKE-0008 (2026-10-24): gate the second probe on the first
+        // actually having entered the stub (and dequeued the slow decision)
+        // — a fixed sleep let a slow CI start probe 2 first, inverting the
+        // premise.
+        let firstProbeEntered = expectation(description: "slow probe entered stub.resolve")
+        firstProbeEntered.assertForOverFulfill = false
+        await stub.setOnEnter { firstProbeEntered.fulfill() }
         async let firstProbe: Void = service.triggerProbe()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        await fulfillment(of: [firstProbeEntered], timeout: 5)
         async let secondProbe: Void = service.triggerProbe()
         _ = await (firstProbe, secondProbe)
 
@@ -864,6 +877,7 @@ actor StubProbeEngine: FeedProbeEngine {
     private var queue: [PendingDecision] = []
     private(set) var callCount: Int = 0
     private var onResolve: ((UpdateFeedPolicy) -> Void)?
+    private var onEnter: (() -> Void)?
 
     func setNextDecision(_ decision: FeedProbeDecision) {
         queue.append(PendingDecision(decision: decision, delaySeconds: 0))
@@ -877,6 +891,16 @@ actor StubProbeEngine: FeedProbeEngine {
         onResolve = callback
     }
 
+    /// ID-FLAKE-0007/0008 (2026-10-24): fires when a resolve() call is
+    /// entered, BEFORE its delay. Tests awaiting "the first probe is in
+    /// flight" use this + `fulfillment(of:timeout:)` so the ordering is an
+    /// observed fact instead of a wall-clock sleep that flakes on slow CI.
+    /// (Fires on every resolve entry; tests that only gate the first one
+    /// set `assertForOverFulfill = false`.)
+    func setOnEnter(_ callback: (() -> Void)?) {
+        onEnter = callback
+    }
+
     func resolve(
         policy: UpdateFeedPolicy,
         lastKnownDate: Date?,
@@ -884,6 +908,7 @@ actor StubProbeEngine: FeedProbeEngine {
         timeout: TimeInterval?
     ) async -> FeedProbeDecision? {
         callCount += 1
+        onEnter?()
         let next = queue.isEmpty ? nil : queue.removeFirst()
         if let next {
             if next.delaySeconds > 0 {
