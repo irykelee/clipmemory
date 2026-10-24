@@ -1290,11 +1290,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let source = EncryptionFailedAlertThrottler.sourceKey(for: note)
         let decision = encryptionAlertThrottler.recordFailure(source: source)
         guard decision.shouldShowAlert else { return }
+        // ID-REVIEW-1024 follow-up (2026-10-24, independent review P2):
+        // a `recoverable` failure is one where nothing was lost:
+        //   - "keychainLoad" (CryptoService.handleKeychainOtherError) —
+        //     the keychain was momentarily unreadable, so key preparation
+        //     was DEFERRED: the root key was NOT regenerated and nothing
+        //     was overwritten;
+        //   - "keychainMigration.transient" / ".unknown" — the legacy key
+        //     file stays in place and keeps serving the session.
+        // Telling the user "encryption failed, item was not saved" for
+        // those cases was both wrong and alarming — it sent people
+        // looking for data loss that never happened. The recoverable case
+        // gets its own wording; the throttler bucket is still the
+        // per-source one, so the count semantics are unchanged.
+        let isRecoverable = (note.userInfo?["recoverable"] as? Bool) == true
         let a = NSAlert()
         a.messageText = L10n.error
-        a.informativeText = decision.failureCount > 1
-            ? L10n.alertEncryptFailedCount(decision.failureCount)
-            : L10n.alertEncryptFailed
+        if isRecoverable {
+            a.informativeText = L10n.alertEncryptKeychainRecoverable
+        } else {
+            a.informativeText = decision.failureCount > 1
+                ? L10n.alertEncryptFailedCount(decision.failureCount)
+                : L10n.alertEncryptFailed
+        }
         a.alertStyle = .warning
         a.addButton(withTitle: L10n.buttonConfirm)
         a.runModal()
