@@ -741,10 +741,28 @@ class CryptoService: CryptoServiceProtocol {
     /// the .interactionLocked comment in attemptKeychainLoad).
     private static func handleKeychainOtherError(_ status: OSStatus) {
         logger.error("Keychain load failed (OSStatus \(status, privacy: .public)); deferring key prep to avoid overwriting a possibly-valid root key")
+        // ID-REVIEW-1025 (2026-10-24): the RECOVERABLE wording ("the
+        // keychain is temporarily unavailable; retrying. Existing data is
+        // unaffected") is only true for a TRANSIENT failure. A permanent
+        // one (errSecParam, errSecMissingEntitlement, …) is rejected
+        // definitively — no retry will ever succeed, so promising a retry
+        // is a promise the code cannot keep. The permanent case falls
+        // back to the "item was not saved" wording, which is the honest
+        // one: the captures that arrive meanwhile are not being stored.
+        //
+        // The classification is not invented here — it is the SAME one
+        // `KeyStoreError.classify` already applies to the store path, so
+        // the two paths cannot drift apart.
+        let recoverable: Bool
+        if case .transient = KeyStoreError.classify(status) {
+            recoverable = true
+        } else {
+            recoverable = false
+        }
         NotificationCenter.default.post(
             name: .encryptionFailed,
             object: nil,
-            userInfo: ["source": "keychainLoad", "recoverable": true, "status": Int(status)]
+            userInfo: ["source": "keychainLoad", "recoverable": recoverable, "status": Int(status)]
         )
     }
 

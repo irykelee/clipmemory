@@ -2129,6 +2129,24 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             pendingKeyItems.removeFirst()
             // swiftlint:disable:next line_length
             self.logger.notice("pendingKeyItems overflow: dropped oldest entry (cap=\(kPendingKeyItemsCap)); consider recopying pre-Keychain-lock items")
+            // ID-REVIEW-1025 (2026-10-24): the drop is a LOSS — the
+            // capture is gone, not delayed. The log line above is for
+            // developers; the user needs to know their copy did not make
+            // it, otherwise the "existing data is unaffected" wording
+            // elsewhere on this path reads as "nothing was lost".
+            //
+            // The three-leg gate: 报错 = the log line above; 重试 = the
+            // user can re-copy once the Keychain is back (the queue
+            // itself cannot be replayed — the item is gone); 用户可见 =
+            // this notification, which the AppDelegate's throttler turns
+            // into the existing "item was not saved" alert. The source
+            // tag keeps it in its OWN bucket, so it does not merge with
+            // the keychain-load failures' count.
+            NotificationCenter.default.post(
+                name: .encryptionFailed,
+                object: nil,
+                userInfo: ["source": "pendingKeyOverflow", "recoverable": false]
+            )
         }
         pendingKeyItems.append(item)
         pendingKeyItemsLock.unlock()

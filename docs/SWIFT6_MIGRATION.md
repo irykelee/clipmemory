@@ -192,11 +192,11 @@ Services/ClipboardStore.swift:977:    nonisolated(unsafe) var pendingFailedIDs =
 Services/ClipboardStore.swift:978:    nonisolated(unsafe) let pendingFailedIDsLock = NSLock()
 Services/ClipboardStore.swift:986:    nonisolated(unsafe) var pendingDiagnostics: [PendingDiagnostic] = []
 Services/ClipboardStore.swift:987:    nonisolated(unsafe) let pendingDiagnosticsLock = NSLock()
-Services/ClipboardStore.swift:2329:    nonisolated(unsafe) let prewarmStateLock = NSLock()
-Services/ClipboardStore.swift:2330:    nonisolated(unsafe) var prewarmInFlight = false
-Services/ClipboardStore.swift:2331:    nonisolated(unsafe) var prewarmPendingItems: [ClipboardItem]?
-Services/ClipboardStore.swift:2332:    nonisolated(unsafe) var prewarmPendingCompletions: [() -> Void] = []
-Services/ClipboardStore.swift:2341:    nonisolated(unsafe) var pendingPrewarmWorkItem: DispatchWorkItem?
+Services/ClipboardStore.swift:2347:    nonisolated(unsafe) let prewarmStateLock = NSLock()
+Services/ClipboardStore.swift:2348:    nonisolated(unsafe) var prewarmInFlight = false
+Services/ClipboardStore.swift:2349:    nonisolated(unsafe) var prewarmPendingItems: [ClipboardItem]?
+Services/ClipboardStore.swift:2350:    nonisolated(unsafe) var prewarmPendingCompletions: [() -> Void] = []
+Services/ClipboardStore.swift:2359:    nonisolated(unsafe) var pendingPrewarmWorkItem: DispatchWorkItem?
 Services/LanguageManager.swift:20:    nonisolated(unsafe) static var injectedForTest: LanguageManager?
 Services/LanguageManager.swift:65:    nonisolated(unsafe) static var defaults: UserDefaults {
 Services/LanguageManager.swift:93:    nonisolated(unsafe) private static var codeStorage: String = "en"
@@ -279,4 +279,4 @@ commit — the alternative is a row that points at the wrong line.
 
 ---
 
-*Last updated: 2026-10-23 (ID-REVIEW-1024 review: §8's `TestIsolation` row refreshed — the declaration moved from line 50 to line 84 in ID-CRASH-0066 — and the line numbers are now enforced by a test, like the count). Previous: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
+*Last updated: 2026-10-24 (ID-REVIEW-1025: §8's `ClipboardStore` prewarm rows refreshed — the declarations moved from lines 2329–2341 to 2347–2359 when the `pendingKeyItems` overflow notification was added above them; the COUNT is unchanged). Previous: 2026-10-23 (ID-REVIEW-1024 review: §8's `TestIsolation` row refreshed — the declaration moved from line 50 to line 84 in ID-CRASH-0066 — and the line numbers are now enforced by a test, like the count). Previous: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
