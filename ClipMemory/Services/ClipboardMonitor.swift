@@ -166,6 +166,16 @@ class ClipboardMonitor {
         // flagged sensitive → auto-expired after 24 h → the user's
         // ordinary text silently disappears from the history. The
         // boundary is the same one the vendor pattern below uses.
+        //
+        // THE TRADE-OFF (recorded because it is invisible from the
+        // pattern): a token whose tail has no run of ≥20/24/48
+        // consecutive alphanumerics is no longer flagged. A missed
+        // token is not auto-expired — it stays in the (encrypted)
+        // history until the retention settings remove it. No real
+        // provider issues such short tails, and the alternative
+        // (the bare "sk-" keyword) flagged the user's own text.
+        // The bias is deliberate: a false positive destroys the
+        // user's data, a false negative only leaves it in place.
         ("(?<![A-Za-z0-9-])sk-[A-Za-z0-9]{48}", true),
         // OpenAI project key (`sk-proj-…` — the legacy regex above stops at
         // the hyphen). Hyphens/underscores allowed in the tail.

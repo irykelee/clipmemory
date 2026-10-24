@@ -653,6 +653,21 @@ try backend.commitTransaction()  // ← 持锁 → 释放锁
 2. **补一条并发回归测试**：一条线程持事务时，另一线程并发写，断言写入不会挂进别人的事务、也不会被外层 ROLLBACK 吞掉。当前 `Tests/ClipMemoryTests/SQLiteStorageBackendTests.swift` 里只有一条并发用例（`testConcurrentUpsertsDoNotCorruptOrLoseRows`，4 线程 × 25 次 upsert），而**每次 `upsertItem` 自带 BEGIN…COMMIT**，没有出现「一条线程持事务、另一线程在其间写入」的情形，**覆盖不到这条路径**。
 3. **接线时把本节列进 PR-C 的 review checklist**：§4.4.1 的「报错 → 重试 → 用户可见」义务管的是 `init` 的失败；本节管的是事务正确性，两者都要在接线 PR 里同时满足。
 
+### 5.6 ⚠️ 已知未修复：一条悬空标签引用会作废整次 items 保存（接线前必须解决）
+
+**状态：2026-10-24 独立审核发现，**未**修复。** 未接线所以对用户无影响；它是 PR-C 接线的硬前置条件。**
+
+**缺陷。** `ClipboardStore+Persistence.granularSave` 对每个 item 都会 `attachTag(itemID:tagID:)`，但只在 `tags` 目录里**找得到**该 tag 时才 `upsertTag`。标签目录读不出来时（`.tagBackendCorrupted` → `tags = [:]`）而 items blob 带着 tag id，`attachTag` 就会撞上 `item_tags` 的外键约束 → 整个事务回滚 → **用户的整份剪贴板历史这一轮全部保存失败**。
+
+代码里的注释把它称为"the loud failure we want"——**响是响的，但爆炸半径不对**：一个悬空引用本该只影响那一条关联，实际却作废了整次保存。（现状的取舍本身没错：不可以用一个无名占位 tag 把断链糊过去。问题在于失败的范围。）
+
+**为什么本次不修。** 同 §5.5：`SQLiteStorageBackend` 目前**零生产调用点**，`granularSave` 只在后端切到 SQLite 时才走这条路。发版当天改事务/外键语义，比缺陷本身更危险。
+
+**接线前必须做的两件事：**
+
+1. **缩小失败范围**：让那一条 `item_tags` 写失败只跳过这一条关联（并记日志），而不是回滚整次保存；或者先补齐标签行再写关联。断言：标签目录为空 + item 带 tag id 时，**其余 item 仍然保存成功**。
+2. **给标签目录一个明确的所有者**：现在 `saveTags()` 写的是**另一个** backend 实例，而 `granularSave` 只 upsert **被 item 引用到**的 tag —— 目录里没有 item 引用的 tag 永远不会进库。接线时必须指定唯一 owner，否则两处会各写一半。
+
 ## 7. Split PR plan (5 PRs over ~2-3 weeks)
 
 Each PR is independently mergeable, independently testable, and ships a working binary. Reversible at any commit because `FileStorageBackend` is always present.
