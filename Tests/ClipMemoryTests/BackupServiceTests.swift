@@ -136,22 +136,24 @@ final class BackupServiceTests: XCTestCase {
         }
     }
 
-    /// Regression for 1.2 (2026-07-23 audit): when `backupNow()` throws
-    /// mid-flight (after creating the timestamped dir), the partial dir
-    /// must be removed so it doesn't accumulate alongside successful
-    /// backups. Before the fix, a failed `copyItem(Images)` left an empty
-    /// `<ts>/` on disk forever — combined with the broken 1.1 prune, this
-    /// was a silent disk leak.
+    /// ID-REVIEW-1018 (2026-10-06): with the hard-link backup, chmod-0
+    /// SOURCE files no longer trigger a failure — `linkItem` only needs
+    /// directory execute, never reads file content, so unreadable sources
+    /// are hard-linked in like any other file. This test pins THAT
+    /// behavior (see body below).
     ///
-    /// Trigger: put a chmod-0 file inside `imagesDirectory`. `fileExists`
-    /// returns true (the dir is valid), so the copy branch runs, but
-    /// `copyItem` recursively reads the dir's contents — hitting the
-    /// chmod-0 file throws `.imageCopyFailed`.
+    /// Direct coverage for the audit's 1.2 ("throw mid-flight → partial-dir
+    /// cleanup") moved to `testBackupNowCleansUpPartialDirOnLinkFailure`,
+    /// which injects a link failure through a FileManager test double —
+    /// the only way to make the hard-link path throw mid-flight without
+    /// depending on filesystem permission tricks that link(2) ignores.
     ///
     /// History note: an earlier draft replaced `imagesDirectory` with a
     /// regular file, but `copyItem(file, path)` doesn't throw — it
-    /// happily creates a new file at `path`. Hence this version uses an
-    /// unreadable file INSIDE an otherwise-valid directory.
+    /// happily creates a new file at `path`. The pre-hard-link version
+    /// used an unreadable file INSIDE an otherwise-valid directory
+    /// (`copyItem` recursively read it and threw); that trigger died
+    /// with `copyItem`.
     func testBackupNowCleansUpPartialDirOnImageCopyFailure() {
         // ID-REVIEW-1018 (2026-10-06): the original test made a chmod-0
         // file inside `imagesDir` because `fileManager.copyItem`
@@ -709,5 +711,106 @@ final class BackupServiceTests: XCTestCase {
         // blocks shared = at least > 5MB total. Use a loose floor.
         XCTAssertGreaterThan(after3.bytes, 1024 * 1024,
             "total backup size must exceed 1MB (sanity floor)")
+    }
+
+    // MARK: - ID-REVIEW-1018 follow-ups (2026-10-24)
+
+    /// Restores the direct coverage the hard-link switch removed (ledger
+    /// ID-REVIEW-1018 item 1): "backupNow throws mid-flight (AFTER the
+    /// `<ts>/Images` dir exists) → the partial dir is cleaned up". The
+    /// only reliable way to make the hard-link path throw mid-flight is a
+    /// FileManager test double — link(2) ignores source permissions and
+    /// no same-volume filesystem trick produces a deterministic failure.
+    func testBackupNowCleansUpPartialDirOnLinkFailure() throws {
+        seedStoreData()
+        let stub = LinkStubFileManager()
+        stub.linkError = NSError(
+            domain: NSPOSIXErrorDomain, code: Int(EACCES),
+            userInfo: [NSLocalizedDescriptionKey: "injected link failure (test)"]
+        )
+        let stubbedService = BackupService(
+            backupsDirectory: backupsDir, imagesDirectory: imagesDir,
+            defaults: defaults, fileManager: stub
+        )
+
+        XCTAssertThrowsError(try stubbedService.backupNow()) { error in
+            guard case BackupError.imageCopyFailed = error else {
+                XCTFail("expected .imageCopyFailed, got \(error)")
+                return
+            }
+        }
+        XCTAssertEqual(stub.linkCalls, 1, "the injected failure must have been reached")
+
+        // The mid-flight cleanup contract: no leftover timestamped dir,
+        // no `.incomplete` marker residue.
+        let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: backupsDir.path)) ?? []
+        XCTAssertTrue(leftovers.isEmpty,
+                      "partial backup dir must be cleaned up on mid-flight failure, found: \(leftovers)")
+    }
+
+    /// `Images/` symlinked to another volume makes link(2) fail with
+    /// EXDEV — before the fallback the whole daily backup failed on an
+    /// otherwise healthy setup. The backup must degrade to a real copy
+    /// for that file and still succeed (ledger ID-REVIEW-1018 item 3).
+    func testBackupNowFallsBackToCopyWhenLinkCrossesDevices() throws {
+        seedStoreData()
+        let stub = LinkStubFileManager()
+        stub.linkError = NSError(domain: NSPOSIXErrorDomain, code: Int(EXDEV), userInfo: nil)
+        let stubbedService = BackupService(
+            backupsDirectory: backupsDir, imagesDirectory: imagesDir,
+            defaults: defaults, fileManager: stub
+        )
+
+        let dir = try stubbedService.backupNow()
+
+        XCTAssertEqual(stub.linkCalls, 1, "the EXDEV link attempt must have happened")
+        XCTAssertEqual(stub.copyCalls, 1, "the EXDEV failure must fall back to copyItem")
+        let backedUp = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("Images").path)
+        )
+        XCTAssertEqual(backedUp.count, 1, "the image must land in the backup via the copy fallback")
+    }
+
+    /// Pins the classification helper both error shapes travel through:
+    /// the raw POSIX error and the Cocoa-wrapped (underlying error) form.
+    func testIsCrossDeviceLinkFailureClassification() {
+        XCTAssertTrue(BackupService.isCrossDeviceLinkFailure(
+            NSError(domain: NSPOSIXErrorDomain, code: Int(EXDEV), userInfo: nil)
+        ))
+        XCTAssertTrue(BackupService.isCrossDeviceLinkFailure(
+            NSError(
+                domain: NSCocoaErrorDomain, code: NSFileWriteUnknownError,
+                userInfo: [NSUnderlyingErrorKey: NSError(
+                    domain: NSPOSIXErrorDomain, code: Int(EXDEV), userInfo: nil
+                )]
+            )
+        ))
+        XCTAssertFalse(BackupService.isCrossDeviceLinkFailure(
+            NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES), userInfo: nil)
+        ))
+        XCTAssertFalse(BackupService.isCrossDeviceLinkFailure(
+            NSError(domain: NSCocoaErrorDomain, code: NSFileWriteUnknownError, userInfo: nil)
+        ))
+    }
+}
+
+/// FileManager test double for the BackupService link-path tests.
+/// `linkItem` throws the injected `linkError` when set (delegating to
+/// super otherwise); `copyItem` is counted so the EXDEV fallback test
+/// can assert the degradation actually ran. Everything else delegates.
+final class LinkStubFileManager: FileManager {
+    var linkError: Error?
+    private(set) var linkCalls = 0
+    private(set) var copyCalls = 0
+
+    override func linkItem(at srcURL: URL, to dstURL: URL) throws {
+        linkCalls += 1
+        if let linkError { throw linkError }
+        try super.linkItem(at: srcURL, to: dstURL)
+    }
+
+    override func copyItem(at srcURL: URL, to dstURL: URL) throws {
+        copyCalls += 1
+        try super.copyItem(at: srcURL, to: dstURL)
     }
 }

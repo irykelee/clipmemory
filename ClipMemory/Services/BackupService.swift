@@ -515,12 +515,38 @@ final class BackupService {
                 let values = try fileURL.resourceValues(forKeys: resourceKeys)
                 guard values.isRegularFile == true else { continue }
                 let dst = imagesDestination.appendingPathComponent(fileURL.lastPathComponent)
-                try fileManager.linkItem(at: fileURL, to: dst)
+                do {
+                    try fileManager.linkItem(at: fileURL, to: dst)
+                } catch let linkError as NSError where Self.isCrossDeviceLinkFailure(linkError) {
+                    // ID-REVIEW-1018 follow-up (2026-10-24): `Images/`
+                    // symlinked to another volume makes link(2) fail with
+                    // EXDEV — before this fallback the whole daily backup
+                    // failed on an otherwise healthy setup. Degrade to a
+                    // real copy for that file: the same bytes-identical
+                    // contract the pre-hard-link path had, at the cost of
+                    // disk space for exactly this cross-volume corner.
+                    logger.notice("Hard link crossed devices for \(fileURL.lastPathComponent, privacy: .public); falling back to copy")
+                    try fileManager.copyItem(at: fileURL, to: dst)
+                }
             } catch {
                 logger.error("Backup failed (link Images): \(error.localizedDescription) source=\(fileURL.lastPathComponent)")
                 throw BackupError.imageCopyFailed(underlying: error)
             }
         }
+    }
+
+    /// Whether `error` is link(2) failing with EXDEV (source and
+    /// destination on different filesystems). FileManager surfaces the
+    /// raw POSIX error on some paths and wraps it in an
+    /// NSCocoaErrorDomain error (POSIX error as `NSUnderlyingErrorKey`)
+    /// on others — check both. Internal so the EXDEV fallback test can
+    /// pin the classification.
+    static func isCrossDeviceLinkFailure(_ error: NSError) -> Bool {
+        if error.domain == NSPOSIXErrorDomain && error.code == Int(EXDEV) { return true }
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+            return underlying.domain == NSPOSIXErrorDomain && underlying.code == Int(EXDEV)
+        }
+        return false
     }
 
     /// ID-REVIEW-1018 (2026-10-06): sum of `URLResourceKey.fileAllocatedSizeKey`
