@@ -48,21 +48,19 @@
 
 ## 📋 更新日誌
 
-### v2.9.6 (2026-10-04) — code-review backlog 閉環 + ID-CRASH-0038 收尾
+### v2.9.6 (2026-10-24) — 垃圾桶不再靜默遺失資料
 
-- **🛠 code-review-2026-09-28 backlog 全閉環（38/38）** — 7 項 P1 + 18 項 P2 + 5 項 follow-up 全部 ship；涵蓋 L10n / Crypto / Window / Persistence / TSan / CI 工具鏈 / dependabot / crypto-symbol 文件化等加固項。詳見 `docs/audit/code-review-2026-09-28-backlog.md`。
+- **🗑️ 大批量清理垃圾桶前先問你** — 一次性要刪 ≥20 條過期條目時不再直接動手：選單列圖示亮起紅色數字角標，點它才彈確認框（永久刪除 / 取消）；低於門檻的小額清理保持靜默。保留期從此不再是硬上限。
 
-- **🛠 ID-CRASH-0038 大規模 skip 收尾（46 → 4）** — 修復 issue #93 runner 重啟根因 + 生產代碼全量遷移到注入 seam（HotKey / SafeMode / ClipboardStore / Crypto / WindowManager）+ 重新啟用 ZZZ canary。42/46 個測試恢復；剩 4 處 snapshot golden 差異推遲到 v2.9.7 調查（僅 CI 環境差異；本地 1025/4/0 全綠）。
+- **🛡️ 垃圾桶與剪貼簿歷史不再靜默遺失資料** — 垃圾桶讀入失敗不再被空陣列覆蓋（以前會把你的垃圾桶整個抹掉）；垃圾桶的刪除對你看得到，不再只寫進 log；剪貼簿寫入失敗會重試且狀態可觀測。兩個剪憶同時開著也不會互相覆蓋——第二個實例啟動即退，一個位元組都不碰。
 
-- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` 註解壓制 Swift 6 strict-concurrency 警告** — TSan 建議：6 個警告淨減 0。共兩處：`ClipboardMonitorDelegate` 協議 + `ClipboardStore+OCR.swift` 的 GCD 閉包；運行時語義不變。
+- **🛡️ 備份漏寫隔離副本現在會告訴你** — 隔離副本寫入失敗以前會讓**整份每日備份一起作廢**（備份目錄被刪掉）；現在失敗被單獨記下來，備份本身照常完成，並在「設定 → 備份」頁顯示紅色提示。隔離副本本身也被帶進每日備份與匯出包。
 
-- **🛠 ID-REVIEW-1012 `ClipboardStore.shared` 惰性初始化** — 原 `static let shared = ClipboardStore()` 在模組載入時 eager 求值，騙過 xcTestDefaults 環境變數檢測。改為 `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock 實現真惰性。
+- **🔐 `sk-` 服務權杖重新被識別** — 廠商前綴型密鑰（`sk-ant-…`、`sk-or-…`）的尾端帶連字號，上一版規則會在第一個連字號處停住而漏判；現在能識別，同時不會再誤傷 `task-` / `risk-` 這類普通帶連字號的詞。
 
-- **🛠 衛生批次** — 修復 51 處 SwiftLint `trailing_newline` 警告 + `.gitattributes` 強制 LF 行尾；恢復 2 個 shell 腳本丟失的 `chmod -x`。
+- **⚙️ 新的 SQLite 儲存層已就位，但尚未啟用** — 真實的 SQLite 後端、schema 版本權威化、原子遷移與垃圾桶獨立維度都已完成。**你的資料仍在原來的本地檔案後端裡，加密格式和儲存位置都沒有變化**；這一層是為將來接線做好的預備件。
 
-完整結果：1025 / 4 skipped / 0 failures（雙語環境：en + zh-Hans）。
-
-詳見 `docs/skips-ledger.md`（v2.9.6 完整 ship 後歸檔）。
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.6
 
 ### v2.9.5 (2026-10-01) — 長按圖片預覽十方向捲動 + audit-backlog closure
 

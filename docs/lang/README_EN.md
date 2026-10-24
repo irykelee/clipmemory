@@ -48,21 +48,19 @@
 
 ## 📋 Changelog
 
-### v2.9.6 (2026-10-04) — code-review backlog closure + ID-CRASH-0038 wrap-up
+### v2.9.6 (2026-10-24) — The Trash no longer loses data silently
 
-- **🛠 code-review-2026-09-28 backlog fully closed (38/38)** — All 7 P1 + 18 P2 + 5 follow-up items shipped; covering hardening items such as L10n / Crypto / Window / Persistence / TSan / CI toolchain / dependabot / crypto-symbol documentation. See `docs/audit/code-review-2026-09-28-backlog.md` for details.
+- **🗑️ A large Trash purge now asks you first** — When one purge would delete 20 or more expired entries, ClipMemory no longer acts on its own: the menu-bar icon lights up a red count badge, and clicking it opens the confirmation (Delete Forever / Cancel). Smaller purges stay silent. The retention window stops being a hard upper bound.
 
-- **🛠 ID-CRASH-0038 mass-skip closure (46 → 4)** — Fixed the issue #93 runner-restart root cause + migrated the production code to injection seams across the board (HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + re-enabled the ZZZ canary. 42/46 tests restored; the remaining 4 snapshot golden discrepancies are deferred to v2.9.7 (CI-environment-only diff; locally 1025/4/0 fully green).
+- **🛡️ The Trash and clipboard history no longer lose data silently** — a failed Trash load is no longer overwritten with an empty array (which used to wipe your Trash outright); deletions from the Trash are visible instead of only reaching the log; and a failed clipboard write retries with an observable state. Two copies of ClipMemory running at once no longer overwrite each other either — the second process exits at launch without touching a byte.
 
-- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` annotations silence Swift 6 strict-concurrency warnings** — TSan advisory: a net reduction of 0 out of 6 warnings. Two sites annotated: the `ClipboardMonitorDelegate` protocol + the GCD closure in `ClipboardStore+OCR.swift`; runtime semantics unchanged.
+- **🛡️ A backup that missed quarantine copies now says so** — the failure used to take the WHOLE daily backup down with it (the backup directory was deleted); now it is recorded on its own channel, the backup itself completes as usual, and the reason is shown in red under Settings → Backup. The quarantined copies also travel with the daily backup and the export package.
 
-- **🛠 ID-REVIEW-1012 lazy init of `ClipboardStore.shared`** — The original `static let shared = ClipboardStore()` evaluated eagerly at module load, defeating the xcTestDefaults env-var detection. Changed to `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock for true lazy initialization.
+- **🔐 `sk-` service tokens are recognised again** — vendor-prefixed keys (`sk-ant-…`, `sk-or-…`) have hyphens in the tail, so the previous rule stopped at the first one and missed them; they are detected now, without matching ordinary hyphenated words like `task-` or `risk-`.
 
-- **🛠 Hygiene batch** — Fixed 51 SwiftLint `trailing_newline` warnings + enforced LF line endings via `.gitattributes`; restored the lost `chmod -x` on 2 shell scripts.
+- **⚙️ A new SQLite storage layer is in place, but not yet switched on** — the real SQLite backend, the authoritative schema version, the atomic migration and the Trash's own dimension are all done. **Your data still lives in the same local file backend; neither the encryption format nor where data lives changed.** The new layer is a prepared component for a future cutover.
 
-Full result: 1025 / 4 skipped / 0 failures (dual locale: en + zh-Hans).
-
-See `docs/skips-ledger.md` (archived after the full v2.9.6 ship).
+- Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.6
 
 ### v2.9.5 (2026-10-01) — Long-press image preview 10-direction scrolling + audit-backlog closure
 

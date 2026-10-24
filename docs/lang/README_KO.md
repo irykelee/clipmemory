@@ -48,21 +48,19 @@
 
 ## 📋 변경 로그
 
-### v2.9.6 (2026-10-04) — code-review backlog 클로즈 + ID-CRASH-0038 마무리
+### v2.9.6 (2026-10-24) — 휴지통이 조용히 데이터를 잃지 않게 되었습니다
 
-- **🛠 code-review-2026-09-28 백로그 전량 클로즈(38/38)** — P1 7건 + P2 18건 + 후속 조치 5건 모두 출시. L10n / Crypto / Window / Persistence / TSan / CI 툴체인 / dependabot / crypto-symbol 문서화 등 강화 항목 포함. 자세한 내용은 `docs/audit/code-review-2026-09-28-backlog.md` 참조.
+- **🗑️ 대량 휴지통 비우기 전에 먼저 묻습니다** — 한 번에 만료 항목 20개 이상을 지우려 할 때 ClipMemory가 알아서 처리하지 않습니다. 메뉴 바 아이콘에 빨간 숫자 배지가 켜지고, 그것을 클릭하면 확인 대화상자(영구 삭제 / 취소)가 나타납니다. 임계값 이하의 소량 정리는 늘처럼 조용히 처리됩니다. 보관 기간은 더 이상 하드 상한이 아닙니다.
 
-- **🛠 ID-CRASH-0038 대규모 skip 마무리(46 → 4)** — issue #93 러너 재시작 근본 원인 수정 + 프로덕션 코드 전면 injection seam 이관(HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + ZZZ canary 재활성화. 42/46 테스트 복구. 남은 4건의 snapshot golden 차이는 v2.9.7에서 조사(CI 환경 전용 차이. 로컬은 1025/4/0 전부 그린).
+- **🛡️ 휴지통과 클립보드 기록이 조용히 데이터를 잃지 않게 되었습니다** — 휴지통 읽기 실패가 빈 배열로 덮어써지지 않습니다(그랬다면 휴지통 전체가 지워졌습니다). 휴지통에서의 삭제는 이제 로그뿐 아니라 화면에서도 보이고, 클립보드 쓰기 실패는 재시도되며 상태를 관찰할 수 있습니다. ClipMemory 두 개를 동시에 실행해도 서로의 데이터를 덮어쓰지 않습니다(두 번째 프로세스는 시작 즉시 종료하며 한 바이트도 건드리지 않습니다).
 
-- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` 어노테이션으로 Swift 6 strict-concurrency 경고 억제** — TSan 권고: 6개 경고 중 순감소 0. 두 곳에 적용: `ClipboardMonitorDelegate` 프로토콜 + `ClipboardStore+OCR.swift`의 GCD 클로저. 런타임 의미론은 변경 없음.
+- **🛡️ 백업이 격리 사본을 누락하면 이제 알려줍니다** — 격리 사본 쓰기 실패는 이전에는 **일일 백업 전체를 함께 무너뜨렸습니다**(백업 디렉터리까지 삭제됨). 이제 실패를 별도로 기록하고, 백업 자체는 정상적으로 완료되며, 「설정 → 백업」 화면에 빨간색으로 표시합니다. 격리 사본 자체도 일일 백업과 내보내기 패키지에 포함됩니다.
 
-- **🛠 ID-REVIEW-1012 `ClipboardStore.shared` 지연 초기화** — 기존 `static let shared = ClipboardStore()`는 모듈 로드 시점에 eager 평가되어 xcTestDefaults 환경변수 감지를 속였습니다. `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock로 진짜 지연 초기화로 변경.
+- **🔐 `sk-` 서비스 토큰을 다시 인식합니다** — 벤더 접두사가 붙은 키(`sk-ant-…`, `sk-or-…`)는 뒤쪽에 하이픈이 있어 이전 규칙이 첫 하이픈에서 멈추고 놓쳤습니다. 지금은 인식되며, `task-`나 `risk-` 같은 일반적인 하이픈 단어와는 혼동하지 않습니다.
 
-- **🛠 위생 배치** — SwiftLint `trailing_newline` 경고 51건 수정 + `.gitattributes`로 LF 줄바꿈 강제 + 손실된 셸 스크립트 2건의 `chmod -x` 복원.
+- **⚙️ 새로운 SQLite 저장 계층은 준비됐지만 아직 켜지지 않았습니다** — 실제 SQLite 백엔드, 스키마 버전의 권위화, 원자적 마이그레이션, 휴지통 전용 차원이 모두 완료되었습니다. **데이터는 여전히 기존의 로컬 파일 백엔드에 있으며 암호화 형식도 저장 위치도 바뀌지 않았습니다.** 향후 전환을 위한 준비 단계입니다.
 
-전체 결과: 1025 / 4 skipped / 0 실패(이중 로케일: en + zh-Hans).
-
-자세한 내용은 `docs/skips-ledger.md`(v2.9.6 전체 출시 후 보관) 참조.
+- 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.9.6
 
 ### v2.9.5 (2026-10-01) — 이미지 미리보기 길게 누르기 10방향 스크롤 + audit-backlog closure
 

@@ -48,21 +48,19 @@
 
 ## 📋 更新日志
 
-### v2.9.6 (2026-10-04) — code-review backlog 闭环 + ID-CRASH-0038 收尾
+### v2.9.6 (2026-10-24) — 回收站不再静默丢数据
 
-- **🛠 code-review-2026-09-28 backlog 全闭环（38/38）** — 7 项 P1 + 18 项 P2 + 5 项 follow-up 全部 ship；覆盖 L10n / Crypto / Window / Persistence / TSan / CI 工具链 / dependabot / crypto-symbol 文档化等加固项。详见 `docs/audit/code-review-2026-09-28-backlog.md`。
+- **🗑️ 大批量清理回收站前先问你** — 一次性要删 ≥20 条过期条目时不再直接动手：菜单栏图标亮起红色数字角标，点它才弹确认框（永久删除 / 取消）；低于阈值的小额清理保持静默。保留期从此不再是硬上限。
 
-- **🛠 ID-CRASH-0038 大规模 skip 收尾（46 → 4）** — 修复 issue #93 runner 重启根因 + 生产代码全量迁移到注入 seam（HotKey / SafeMode / ClipboardStore / Crypto / WindowManager）+ 重新启用 ZZZ canary。42/46 个测试恢复；剩 4 处 snapshot golden 差异推迟到 v2.9.7 调查（仅 CI 环境差异；本地 1025/4/0 全绿）。
+- **🛡️ 回收站与剪贴板历史不再静默丢数据** — 回收站读入失败不再被空数组覆盖（以前会把你的回收站整个抹掉）；回收站的删除对你可见，不再只写进 log；剪贴板写入失败会重试且状态可观测。两个剪忆同时开着也不会互相覆盖——第二个实例启动即退，一个字节都不碰。
 
-- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` 注解压制 Swift 6 strict-concurrency 警告** — TSan 建议：6 个警告净减 0。共两处：`ClipboardMonitorDelegate` 协议 + `ClipboardStore+OCR.swift` 的 GCD 闭包；运行时语义不变。
+- **🛡️ 备份漏写隔离副本现在会告诉你** — 隔离副本写入失败以前会让**整份每日备份一起作废**（备份目录被删掉）；现在失败被单独记下来，备份本身照常完成，并在「设置 → 备份」页显示红色提示。隔离副本本身也被带进每日备份和导出包。
 
-- **🛠 ID-REVIEW-1012 `ClipboardStore.shared` 惰性初始化** — 原 `static let shared = ClipboardStore()` 在模块加载时 eager 求值，骗过 xcTestDefaults 环境变量检测。改为 `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock 实现真惰性。
+- **🔐 `sk-` 服务令牌重新被识别** — 厂商前缀型密钥（`sk-ant-…`、`sk-or-…`）的尾部带连字符，上一版规则会在第一个连字符处停住而漏判；现在能识别，同时不会再误伤 `task-` / `risk-` 这类普通带连字符的词。
 
-- **🛠 卫生批处理** — 修复 51 处 SwiftLint `trailing_newline` 警告 + `.gitattributes` 强制 LF 行尾；恢复 2 个 shell 脚本丢失的 `chmod -x`。
+- **⚙️ 新的 SQLite 存储层已就位，但尚未启用** — 真实的 SQLite 后端、schema 版本权威化、原子迁移与回收站独立维度都已完成。**你的数据仍在原来的本地文件后端里，加密格式和存储位置都没有变化**；这一层是为将来接线做好的预备件。
 
-完整结果：1025 / 4 skipped / 0 failures（双语环境：en + zh-Hans）。
-
-详见 `docs/skips-ledger.md`（v2.9.6 完整 ship 后归档）。
+- 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.6
 
 ### v2.9.5 (2026-10-01) — 长按图片预览十方向滚动 + audit-backlog closure
 

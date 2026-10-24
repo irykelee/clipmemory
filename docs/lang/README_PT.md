@@ -48,21 +48,14 @@
 
 ## 📋 Registro de alterações
 
-### v2.9.6 (2026-10-04) — fechamento do backlog do code-review + encerramento do ID-CRASH-0038
+### v2.9.6 (2026-10-24) — A lixeira não perde mais dados em silêncio
 
-- **🛠 Backlog de code-review-2026-09-28 totalmente fechado (38/38)** — Os 7 itens P1 + 18 itens P2 + 5 follow-ups foram todos publicados; abrange endurecimentos como L10n / Crypto / Window / Persistence / TSan / toolchain de CI / dependabot / documentação obsoleta. Consulte `docs/audit/code-review-2026-09-28-backlog.md` para mais detalhes.
-
-- **🛠 Encerramento do mass-skip do ID-CRASH-0038 (46 → 4)** — Correção da causa raiz do reinício do runner do issue #93 + migração completa do código de produção para seams de injeção (HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + reativação do ZZZ canary. 42/46 testes restaurados; as 4 divergências de snapshot golden restantes ficam para o v2.9.7 (diferença só no ambiente de CI; local 1025/4/0 totalmente verde).
-
-- **🛠 ID-CRASH-0058/0059 — anotações `@preconcurrency` suprimem avisos de strict-concurrency do Swift 6** — Advertência do TSan: redução líquida de 0 em 6 avisos. Duas anotações: o protocolo `ClipboardMonitorDelegate` + o closure GCD de `ClipboardStore+OCR.swift`; a semântica em tempo de execução não muda.
-
-- **🛠 ID-REVIEW-1012 lazy-init de `ClipboardStore.shared`** — O `static let shared = ClipboardStore()` original era avaliado de forma eager ao carregar o módulo, enganando a detecção da env var xcTestDefaults. Alterado para `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock para uma inicialização verdadeiramente lazy.
-
-- **🛠 Lote de higiene** — Correção de 51 avisos do SwiftLint `trailing_newline` + imposição de finais de linha LF no `.gitattributes`; restauração do `chmod -x` perdido em 2 scripts de shell.
-
-Completo: 1025 / 4 skipped / 0 falhas (com locale duplo: en + zh-Hans).
-
-Consulte `docs/skips-ledger.md` (arquivado após o ship completo do v2.9.6).
+- **🗑️ Uma limpeza grande da lixeira pergunta antes** — Quando uma limpeza apagaria 20 ou mais entradas expiradas, o ClipMemory deixa de agir por conta própria: o ícone da barra de menus acende um selo vermelho com o número, e clicar nele abre a confirmação (Apagar definitivamente / Cancelar). As limpezas pequenas continuam silenciosas. O período de retenção deixa de ser um limite rígido.
+- **🛡️ A lixeira e o histórico da área de transferência não perdem mais dados em silêncio** — uma leitura falha da lixeira não é mais sobrescrita por um array vazio (o que antes apagava a sua lixeira inteira); as remoções da lixeira agora são visíveis e não chegam apenas ao log; e uma falha ao gravar na área de transferência é repetida com um estado observável. Duas cópias do ClipMemory abertas ao mesmo tempo também não se sobrescrevem: o segundo processo sai ao iniciar sem tocar em um único byte.
+- **🛡️ Agora o app avisa quando uma cópia de segurança deixa de fora as cópias em quarentena** — a falha antes levava junto a cópia de segurança diária INTEIRA (o diretório da cópia era apagado); agora a falha é registrada em separado, a cópia de segurança é concluída normalmente e o motivo aparece em vermelho em Ajustes → Cópia de segurança. As cópias em quarentena também acompanham a cópia diária e o pacote de exportação.
+- **🔐 Os tokens de serviço `sk-` voltaram a ser detectados** — as chaves com prefixo de fornecedor (`sk-ant-…`, `sk-or-…`) têm hifens no final, então a regra anterior parava no primeiro e não as detectava; agora são detectadas, sem confundir palavras comuns com hífen como `task-` ou `risk-`.
+- **⚙️ Uma nova camada de armazenamento SQLite está pronta, mas ainda não está ativa** — o backend SQLite real, a versão de esquema autoritativa, a migração atômica e a dimensão própria da lixeira estão concluídos. **Os seus dados continuam no mesmo backend de ficheiro local; nem o formato de cifra nem a localização dos dados mudaram.** É uma peça preparada para uma futura migração.
+- Registo completo de alterações: https://github.com/irykelee/clipmemory/releases/tag/v2.9.6
 
 ### v2.9.5 (2026-10-01) — Rolagem em dez direções na pré-visualização de imagem com pressionamento prolongado + fechamento do audit-backlog
 

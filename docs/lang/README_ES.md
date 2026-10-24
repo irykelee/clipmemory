@@ -48,15 +48,14 @@
 
 ## 📋 Registro de cambios
 
-### v2.9.6 (2026-10-04) — cierre del backlog de code-review + cierre de ID-CRASH-0038
-- **🛠 Backlog de code-review-2026-09-28 cerrado por completo (38/38)** — Los 7 elementos P1 + 18 elementos P2 + 5 follow-ups se publicaron todos; cubre endurecimientos como L10n / Crypto / Window / Persistence / TSan / cadena de herramientas de CI / dependabot / documentación obsoleta. Consulte `docs/audit/code-review-2026-09-28-backlog.md` para más detalles.
-- **🛠 Cierre de mass-skip de ID-CRASH-0038 (46 → 4)** — Corrección de la causa raíz del reinicio del runner del issue #93 + migración completa del código de producción a seam de inyección (HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + ZZZ canary reactivado. 42/46 pruebas restauradas (AppDelegate terminate + IntegrationTests + 3 puntos con guard condicional en HotKey + MemoryWarning + WindowManager); quedan 4 discrepancias de snapshot golden para investigar en v2.9.7 (diferencia de entorno solo en CI; en local 1025/4/0 realmente en verde).
-- **🛠 ID-CRASH-0058/0059 — anotaciones `@preconcurrency` suprimen warnings de strict-concurrency de Swift 6** — TSan advisory: reducción neta de 0 en 6 warnings. Se añadieron anotaciones en dos puntos: el protocolo `ClipboardMonitorDelegate` + el closure GCD de `ClipboardStore+OCR.swift`; la semántica en runtime no cambia.
-- **🛠 ID-REVIEW-1012 lazy-init de `ClipboardStore.shared`** — El `static let shared = ClipboardStore()` original se evaluaba de forma eager al cargar el módulo, lo que engañaba la detección de la env var xcTestDefaults. Se cambió a `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock para lograr una verdadera inicialización lazy.
-- **🛠 Lote de higiene** — Corrección de 51 warnings de SwiftLint `trailing_newline` + forzado de finales de línea LF en `.gitattributes`; restauración de `chmod -x` perdido en 2 shell scripts.
-Completo: 1025 / 4 skipped / 0 failures (con doble locale: en + zh-Hans).
+### v2.9.6 (2026-10-24) — La papelera ya no pierde datos en silencio
 
-Consulte `docs/skips-ledger.md` (archivado tras el ship completo de v2.9.6).
+- **🗑️ Una purga grande de la papelera te pregunta primero** — Cuando una purga borraría 20 o más entradas caducadas, ClipMemory ya no actúa por su cuenta: el icono de la barra de menús se enciende con una insignia roja con el número, y al hacer clic se abre la confirmación (Eliminar para siempre / Cancelar). Las purgas pequeñas siguen siendo silenciosas. El periodo de retención deja de ser un límite estricto.
+- **🛡️ La papelera y el historial del portapapeles ya no pierden datos en silencio** — una carga fallida de la papelera ya no se sobrescribe con un array vacío (lo que antes borraba tu papelera entera); los borrados en la papelera ahora son visibles y no solo llegan al log; y un fallo al escribir en el portapapeles reintenta con un estado observable. Dos copias de ClipMemory abiertas a la vez tampoco se sobrescriben: el segundo proceso sale al arrancar sin tocar un solo byte.
+- **🛡️ Ahora se avisa cuando una copia de seguridad no incluye las copias en cuarentena** — el fallo antes se llevaba por delante la copia de seguridad diaria COMPLETA (se borraba el directorio de la copia); ahora se registra por separado, la copia de seguridad se completa con normalidad y el motivo se muestra en rojo en Ajustes → Copia de seguridad. Las copias en cuarentena también viajan con la copia diaria y con el paquete de exportación.
+- **🔐 Los tokens de servicio `sk-` vuelven a detectarse** — las claves con prefijo de proveedor (`sk-ant-…`, `sk-or-…`) llevan guiones en la cola, así que la regla anterior se detenía en el primero y no las detectaba; ahora sí se detectan, sin confundir palabras normales con guiones como `task-` o `risk-`.
+- **⚙️ Una nueva capa de almacenamiento SQLite está lista, pero todavía no está activada** — el backend SQLite real, la versión de esquema autoritativa, la migración atómica y la dimensión propia de la papelera están terminados. **Tus datos siguen en el mismo backend de archivos local; ni el formato de cifrado ni la ubicación de los datos han cambiado.** Es una pieza preparada para una futura migración.
+- Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.6
 
 ### v2.9.5 (2026-10-01) — Desplazamiento en diez direcciones en la previsualización de imagen con pulsación prolongada + cierre del backlog de auditoría
 
