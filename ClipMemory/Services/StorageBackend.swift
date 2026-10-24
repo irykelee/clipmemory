@@ -150,10 +150,10 @@ extension StorageBackend {
         throw StorageBackendError.unsupportedFeature("detachTag: this backend has no per-row item_tags table")
     }
     func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws {
-        throw StorageBackendError.unsupportedFeature("moveToTrash: this backend stores items as a single array, the trash is its own UserDefaults key managed by TrashStore")
+        throw StorageBackendError.unsupportedFeature("moveToTrash: items are one array here; trash is TrashStore's own UserDefaults key")
     }
     func restoreFromTrash(itemID: UUID) throws {
-        throw StorageBackendError.unsupportedFeature("restoreFromTrash: this backend stores items as a single array, the trash is its own UserDefaults key managed by TrashStore")
+        throw StorageBackendError.unsupportedFeature("restoreFromTrash: items are one array here; trash is TrashStore's own UserDefaults key")
     }
     func loadAllIDs() throws -> Set<UUID> {
         throw StorageBackendError.unsupportedFeature("loadAllIDs: this backend stores items as a single array, no per-row id set is available")
@@ -509,11 +509,14 @@ final class FileStorageBackend: StorageBackend {
     /// row-level trash to speak of, and pretending otherwise would be
     /// a lie in the same way the granular overrides are.
     ///
-    /// The write path mirrors `save(_:)` exactly (a single
-    /// `defaults.set`, no read-back verification), so the production
-    /// behaviour of the trash is UNCHANGED: the same key
-    /// (`ClipboardTrashedItems`), the same encoder configuration, the
-    /// same decoder, therefore the same decoded content.
+    /// The write path mirrors `save(_:)` plus the read-back verification
+    /// that `saveBlob` / `saveTags` already carry: `defaults.set` is
+    /// Void-returning and silently drops the value when cfprefsd rejects
+    /// the write, and `TrashStore.saveTrashedItems`'s three-leg catch
+    /// (log + needsSave retry + `.clipboardSaveFailed`) is only reachable
+    /// if the backend throws. Counting on JSONEncoder alone (which is the
+    /// only thing that threw before) would leave the most common failure
+    /// class — the silent write — permanently outside the gate.
     ///
     /// ID-REVIEW-1024 review (2026-10-23): this comment used to say the
     /// behaviour was "byte-for-byte what it was before the trash
@@ -559,6 +562,18 @@ final class FileStorageBackend: StorageBackend {
         try assertWriteAllowed(storageKey)
         let data = try Self.itemsEncoder.encode(items)
         defaults.set(data, forKey: storageKey)
+        // Same read-back contract as saveBlob / saveTags: defaults.set
+        // never throws, so without this the TrashStore catch gates are
+        // dead code on the most common failure class (ID-REVIEW-1024
+        // review, 2026-10-24). Async daemon flush failures and post-set
+        // crashes remain outside what read-back can catch — see the
+        // honesty block above saveBlob.
+        defaults.synchronize()
+        guard let readBack = defaults.data(forKey: storageKey),
+              readBack == data else {
+            logger.error("saveTrash failed read-back for key '\(self.storageKey)' (silent write failure)")
+            throw CocoaError(.fileWriteUnknown)
+        }
     }
 
     func purgeTrash(deleting itemIDs: Set<UUID>) throws {
@@ -600,10 +615,10 @@ final class FileStorageBackend: StorageBackend {
         throw StorageBackendError.unsupportedFeature("FileStorageBackend has no per-row item_tags table")
     }
     func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws {
-        throw StorageBackendError.unsupportedFeature("FileStorageBackend keeps trash in its own UserDefaults key via TrashStore; no per-row moveToTrash here")
+        throw StorageBackendError.unsupportedFeature("moveToTrash: trash lives in TrashStore's own UserDefaults key; no per-row call here")
     }
     func restoreFromTrash(itemID: UUID) throws {
-        throw StorageBackendError.unsupportedFeature("FileStorageBackend keeps trash in its own UserDefaults key via TrashStore; no per-row restoreFromTrash here")
+        throw StorageBackendError.unsupportedFeature("restoreFromTrash: trash lives in TrashStore's own UserDefaults key; no per-row call here")
     }
     func loadAllIDs() throws -> Set<UUID> {
         // Returning [] here would lie (mask the unsupportedFeature signal);
