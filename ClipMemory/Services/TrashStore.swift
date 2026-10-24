@@ -730,7 +730,15 @@ final class TrashStore: ObservableObject {
     }
 
     func flushPendingSave() {
-        if needsSave { saveTrashedItems(); needsSave = false }
+        guard needsSave else { return }
+        // Clear the flag BEFORE saving, mirroring flushSave. The catch in
+        // saveTrashedItems re-sets needsSave and schedules the retry timer;
+        // clearing the flag after the call would erase that retry leg and
+        // the 5s re-flush would guard-exit forever (ID-REVIEW-1024,
+        // 2026-10-24 — same dead-gate shape that P1-AUDIT-2026-09-22 P1-3
+        // fixed elsewhere).
+        needsSave = false
+        saveTrashedItems()
     }
 
     /// Trigger a debounced save — for callers that batch-modify trashedItems directly.
