@@ -242,9 +242,17 @@ final class BackupService {
     // ID-STORE-0016: shared writer used by both pruneOldBackups catch
     // branches (initial listing + post-incomplete-sweep re-listing). Mirror
     // of the N-3 pattern in performBackupIfNeeded (line 189-191).
+    //
+    // ID-REVIEW-1025 (2026-10-24, independent review P3): the message
+    // is written BEFORE the date, like the other two error channels.
+    // `BackupSettingsView` gates the prune line on BOTH keys, so a
+    // reader that lands between the two writes sees the date without
+    // the message and renders nothing — the invariant "a reader that
+    // sees the date always sees the message" only holds if the message
+    // lands first.
     private func recordPruneError(message: String) {
-        defaults.set(Date(), forKey: Self.lastPruneErrorDateKey)
         defaults.set(message, forKey: Self.lastPruneErrorMessageKey)
+        defaults.set(Date(), forKey: Self.lastPruneErrorDateKey)
     }
 
     /// Daily trigger from app launch. Runs on a utility queue; no-op when
