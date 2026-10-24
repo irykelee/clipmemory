@@ -5,9 +5,15 @@
 //  ID-REVIEW-1024 (PR-B, code-review §八 batch 2): forward migration
 //  from UserDefaults blobs to SQLite.
 //
-//  Trigger: `runOnce` is called by `ClipboardStore` (via `init` or
-//  first `loadItems` call, whichever the integration prefers). It
-//  checks `migration.v1.to.v2.completed` in the SQLite `app_meta` table
+//  Trigger: `runOnce` will be called by `ClipboardStore` once the
+//  SQLite backend is wired into production. Today there are ZERO
+//  production call sites — only `StoreMigrationTests` drives it (the
+//  same "backend currently has zero production call sites" state that
+//  CLAUDE.md records). When wiring it in, the `init` throw MUST be
+//  routed to a user-visible channel (NSAlert / DiagnosticsBanner), not
+//  silently swallowed back to UserDefaults — the obligation is written
+//  down in docs/design/storage-migration.md §4.4.1. It checks
+//  `migration.v1.to.v2.completed` in the SQLite `app_meta` table
 //  and is a no-op if it's already set. On a fresh install with no
 //  UserDefaults blobs, the migration still sets the flag — future
 //  launches skip the read pass.
