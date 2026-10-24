@@ -137,7 +137,6 @@ class ClipboardMonitor {
         ("github_pat_", false),
         ("sk_live_", false),
         ("sk_test_", false),
-        ("sk-", false),
         ("bearer", false),
         ("ssh-rsa", false),
         // Private keys
@@ -158,6 +157,14 @@ class ClipboardMonitor {
         ("mfa\\.[\\w-]{84}", true),
         // OpenAI API key
         ("sk-[A-Za-z0-9]{48}", true),
+        // OpenAI project key (`sk-proj-…` — the legacy regex above stops at
+        // the hyphen). Hyphens/underscores allowed in the tail.
+        ("sk-proj-[A-Za-z0-9_-]{20,}", true),
+        // Generic `sk-` service token (DeepSeek 32-hex, Groq, etc.). The
+        // tail must be ≥24 consecutive alphanumerics: the old bare "sk-"
+        // keyword also matched inside natural-language hyphenated words
+        // (task- / risk- / desk-), silently expiring normal text after 24h.
+        ("sk-[A-Za-z0-9]{24,}", true),
         // Twilio API key
         ("SK[0-9a-fA-F]{32}", true),
         // SendGrid API key
