@@ -2,7 +2,7 @@
 
 **次世代 macOS クリップボード管理 — ワンタップで起動、複製即検索**
 
-[English](./README_EN.md) · [简体中文](./README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
+[English](./README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
@@ -50,12 +50,25 @@
 
 ### v2.9.6 (2026-10-04) — code-review backlog クローズ + ID-CRASH-0038 の収束
 
+- **🛠 code-review-2026-09-28 バックログ完全クローズ（38/38）** — P1 7 件 + P2 18 件 + フォローアップ 5 件をすべて出荷。L10n / Crypto / Window / Persistence / TSan / CI ツールチェーン / dependabot / crypto-symbol ドキュメントなどの強化をカバー。詳細は `docs/audit/code-review-2026-09-28-backlog.md` を参照。
+
+- **🛠 ID-CRASH-0038 大規模 skip の収束（46 → 4）** — issue #93 のランナー再起動 root cause を修正 + 本番コードを注入 seam へ全面移行（HotKey / SafeMode / ClipboardStore / Crypto / WindowManager）+ ZZZ canary を再有効化。42/46 テストを復旧。残る 4 件の snapshot golden 差異は v2.9.7 で調査（CI 環境のみの差異。ローカルは 1025/4/0 で全グリーン）。
+
+- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` アノテーションで Swift 6 strict-concurrency 警告を抑制** — TSan 助言：6 警告の純減 0。対象は 2 箇所：`ClipboardMonitorDelegate` プロトコル + `ClipboardStore+OCR.swift` の GCD クロージャ。実行時セマンティクスは不変。
+
+- **🛠 ID-REVIEW-1012 `ClipboardStore.shared` の遅延初期化** — 従来の `static let shared = ClipboardStore()` はモジュール読み込み時に eager 評価され、xcTestDefaults 環境変数の検出を欺いていました。`nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock による真の遅延初期化に変更。
+
+- **🛠 衛生バッチ** — SwiftLint `trailing_newline` 警告 51 件を修正 + `.gitattributes` で LF 行末を強制 + 失われていた 2 件のシェルスクリプトの `chmod -x` を復元。
+
+完全結果：1025 / 4 skipped / 0 failures（デュアルロケール：en + zh-Hans）。
+
+詳細は `docs/skips-ledger.md`（v2.9.6 完全出荷後にアーカイブ）を参照。
 
 ### v2.9.5 (2026-10-01) — 長押し画像プレビューの10方向スクロール + audit-backlog クローズ
 
 - **🖼 長押し画像プレビュー — ホイールスクロールが縦・横方向 + Shift+wheel に対応** — 左ボタンを押したままホイールをスクロールすると画像が意図せず dismiss される bug を修正（USER-FEEDBACK-2026-09-26 の報告、複数回の反復修正を経て）。プレビューパネルはスクロール中も表示されたままで、ボタンを離して初めて通常どおり閉じます。縦スクロール、Logitech マウスのサイドボタン / Magic Mouse の横 swipe / trackpad の2本指 swipe による横スクロール、および通常のマウス + Shift+wheel による横スクロール（macOS 標準の慣例）にも対応します。画像がプレビューウィンドウを超えるとき、スクロールバーが正しく移動します。
 
-- **🛠 code-review-2026-09-28 backlog 全クローズ（38/38）** — 7件の P1 + 18件の P2 + 5件の follow-up をすべて ship；L10n / Crypto / Window / Persistence / TSan / CI ツールチェーン / dependabot / crypto-symbol ドキュメント化 などの強化項目をカバー。詳細は `docs/audit/code-review-2026-09-28.md` を参照。
+- **🛠 code-review-2026-09-28 backlog 全クローズ（38/38）** — 7件の P1 + 18件の P2 + 5件の follow-up をすべて ship；L10n / Crypto / Window / Persistence / TSan / CI ツールチェーン / dependabot / crypto-symbol ドキュメント化 などの強化項目をカバー。詳細は `docs/audit/code-review-2026-09-28-backlog.md` を参照。
 
 - **🛠 v2.9.5 GH Actions runner flake 緩和（ID-CRASH-0038）** — 14 ファイル計 46 箇所の env 依存 `XCTSkip`（46 テスト、台帳は `docs/skips-ledger.md`）が CI 環境で；v2.9.6 以降 `release.yml` の `Run tests` step は tag path で **54-test smoke サブセット** を実行（ID-REL-2 `8ae0db5`：IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests、SUBSET_EXPECTED アンカー；class rename で自動 fail-closed）、4 つの snapshot テストは runner レンダリングドリフトにより v2.9.7 へ defer（サブセット外なので SUBSET_EXPECTED は安定）。ローカル `Scripts/release.sh vX.Y.Z --yes` の `run_preflight --tests` は引き続き authoritative gate。runner env の根本原因修正は v2.9.6 を目標。
 

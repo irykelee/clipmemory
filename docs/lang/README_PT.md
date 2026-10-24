@@ -2,7 +2,7 @@
 
 **Gestor de área de transferência de nova geração para macOS — Um toque para pesquisar, cópia instantânea**
 
-[English](./README_EN.md) · [简体中文](./README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
+[English](./README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
@@ -50,12 +50,25 @@
 
 ### v2.9.6 (2026-10-04) — fechamento do backlog do code-review + encerramento do ID-CRASH-0038
 
+- **🛠 Backlog de code-review-2026-09-28 totalmente fechado (38/38)** — Os 7 itens P1 + 18 itens P2 + 5 follow-ups foram todos publicados; abrange endurecimentos como L10n / Crypto / Window / Persistence / TSan / toolchain de CI / dependabot / documentação obsoleta. Consulte `docs/audit/code-review-2026-09-28-backlog.md` para mais detalhes.
+
+- **🛠 Encerramento do mass-skip do ID-CRASH-0038 (46 → 4)** — Correção da causa raiz do reinício do runner do issue #93 + migração completa do código de produção para seams de injeção (HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + reativação do ZZZ canary. 42/46 testes restaurados; as 4 divergências de snapshot golden restantes ficam para o v2.9.7 (diferença só no ambiente de CI; local 1025/4/0 totalmente verde).
+
+- **🛠 ID-CRASH-0058/0059 — anotações `@preconcurrency` suprimem avisos de strict-concurrency do Swift 6** — Advertência do TSan: redução líquida de 0 em 6 avisos. Duas anotações: o protocolo `ClipboardMonitorDelegate` + o closure GCD de `ClipboardStore+OCR.swift`; a semântica em tempo de execução não muda.
+
+- **🛠 ID-REVIEW-1012 lazy-init de `ClipboardStore.shared`** — O `static let shared = ClipboardStore()` original era avaliado de forma eager ao carregar o módulo, enganando a detecção da env var xcTestDefaults. Alterado para `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock para uma inicialização verdadeiramente lazy.
+
+- **🛠 Lote de higiene** — Correção de 51 avisos do SwiftLint `trailing_newline` + imposição de finais de linha LF no `.gitattributes`; restauração do `chmod -x` perdido em 2 scripts de shell.
+
+Completo: 1025 / 4 skipped / 0 falhas (com locale duplo: en + zh-Hans).
+
+Consulte `docs/skips-ledger.md` (arquivado após o ship completo do v2.9.6).
 
 ### v2.9.5 (2026-10-01) — Rolagem em dez direções na pré-visualização de imagem com pressionamento prolongado + fechamento do audit-backlog
 
 - **🖼 Pré-visualização de imagem com pressionamento prolongado — a rolagem com a roda agora oferece suporte a rolagem vertical e horizontal + Shift+wheel** — Corrige o bug em que pressionar o botão esquerdo e rolar a roda fazia a imagem ser fechada acidentalmente (reportado em USER-FEEDBACK-2026-09-26, corrigido após várias iterações). O painel de pré-visualização permanece visível durante a rolagem; ele só fecha normalmente ao soltar o botão. Também oferece suporte a rolagem vertical, rolagem horizontal via botões laterais do mouse Logitech / swipe horizontal do Magic Mouse / swipe de dois dedos no trackpad, além de rolagem horizontal com mouse comum + Shift+wheel (convenção padrão do macOS). A barra de rolagem se move corretamente quando a imagem excede a janela de pré-visualização.
 
-- **🛠 Fechamento completo do backlog do code-review-2026-09-28 (38/38)** — 7 itens P1 + 18 itens P2 + 5 itens de follow-up, todos entregues; cobrindo itens de reforço como L10n / Crypto / Window / Persistence / TSan / cadeia de ferramentas de CI / dependabot / documentação de crypto-symbol. Veja `docs/audit/code-review-2026-09-28.md` para detalhes.
+- **🛠 Fechamento completo do backlog do code-review-2026-09-28 (38/38)** — 7 itens P1 + 18 itens P2 + 5 itens de follow-up, todos entregues; cobrindo itens de reforço como L10n / Crypto / Window / Persistence / TSan / cadeia de ferramentas de CI / dependabot / documentação de crypto-symbol. Veja `docs/audit/code-review-2026-09-28-backlog.md` para detalhes.
 
 - **🛠 Mitigação de flake do runner do GH Actions na v2.9.5 (ID-CRASH-0038)** — `XCTSkip` incondicional no ambiente de CI em 46 pontos de 14 arquivos de teste (46 testes; registro em `docs/skips-ledger.md`); a partir da v2.9.6 o step `Run tests` do `release.yml` executa um **subconjunto smoke de 54 testes no caminho de tag** (ID-REL-2 `8ae0db5`: IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests, ancorado em SUBSET_EXPECTED; class rename auto fail-closed), com 4 testes snapshot diferidos para v2.9.7 devido a drift de renderização do runner (fora do subconjunto, então SUBSET_EXPECTED permanece estável). O `run_preflight --tests` do `Scripts/release.sh vX.Y.Z --yes` local continua sendo o gate autoritativo. A correção da causa raiz do env do runner tem como alvo a v2.9.6.
 

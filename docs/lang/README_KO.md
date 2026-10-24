@@ -2,7 +2,7 @@
 
 **차세대 macOS 클립보드 관리자 — 원 탭으로 실행, 복사 즉시 검색**
 
-[English](./README_EN.md) · [简体中文](./README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
+[English](./README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
@@ -50,12 +50,25 @@
 
 ### v2.9.6 (2026-10-04) — code-review backlog 클로즈 + ID-CRASH-0038 마무리
 
+- **🛠 code-review-2026-09-28 백로그 전량 클로즈(38/38)** — P1 7건 + P2 18건 + 후속 조치 5건 모두 출시. L10n / Crypto / Window / Persistence / TSan / CI 툴체인 / dependabot / crypto-symbol 문서화 등 강화 항목 포함. 자세한 내용은 `docs/audit/code-review-2026-09-28-backlog.md` 참조.
+
+- **🛠 ID-CRASH-0038 대규모 skip 마무리(46 → 4)** — issue #93 러너 재시작 근본 원인 수정 + 프로덕션 코드 전면 injection seam 이관(HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + ZZZ canary 재활성화. 42/46 테스트 복구. 남은 4건의 snapshot golden 차이는 v2.9.7에서 조사(CI 환경 전용 차이. 로컬은 1025/4/0 전부 그린).
+
+- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` 어노테이션으로 Swift 6 strict-concurrency 경고 억제** — TSan 권고: 6개 경고 중 순감소 0. 두 곳에 적용: `ClipboardMonitorDelegate` 프로토콜 + `ClipboardStore+OCR.swift`의 GCD 클로저. 런타임 의미론은 변경 없음.
+
+- **🛠 ID-REVIEW-1012 `ClipboardStore.shared` 지연 초기화** — 기존 `static let shared = ClipboardStore()`는 모듈 로드 시점에 eager 평가되어 xcTestDefaults 환경변수 감지를 속였습니다. `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock로 진짜 지연 초기화로 변경.
+
+- **🛠 위생 배치** — SwiftLint `trailing_newline` 경고 51건 수정 + `.gitattributes`로 LF 줄바꿈 강제 + 손실된 셸 스크립트 2건의 `chmod -x` 복원.
+
+전체 결과: 1025 / 4 skipped / 0 실패(이중 로케일: en + zh-Hans).
+
+자세한 내용은 `docs/skips-ledger.md`(v2.9.6 전체 출시 후 보관) 참조.
 
 ### v2.9.5 (2026-10-01) — 이미지 미리보기 길게 누르기 10방향 스크롤 + audit-backlog closure
 
 - **🖼 이미지 미리보기 길게 누르기 — 휠 스크롤이 이제 세로·가로 + Shift+wheel을 함께 지원** — 왼쪽 버튼을 누른 채 휠을 굴리면 이미지가 예기치 않게 dismiss되는 버그 수정(USER-FEEDBACK-2026-09-26 보고, 여러 차례 반복 수정). 미리보기 패널은 스크롤 중 계속 표시되며, 손을 떼야 정상적으로 닫힙니다. 세로 스크롤, Logitech 마우스 측면 버튼 / Magic Mouse 가로 swipe / trackpad 두 손가락 swipe의 가로 스크롤, 그리고 일반 마우스 + Shift+wheel의 가로 스크롤(macOS 표준 관례)을 지원합니다. 이미지가 미리보기 창을 초과하면 스크롤바가 올바르게 이동합니다.
 
-- **🛠 code-review-2026-09-28 backlog 전체 클로즈(38/38)** — P1 7건 + P2 18건 + follow-up 5건 모두 ship; L10n / Crypto / Window / Persistence / TSan / CI 툴체인 / dependabot / crypto-symbol 문서화 등 하드닝 항목을 커버합니다. 자세한 내용은 `docs/audit/code-review-2026-09-28.md` 참조.
+- **🛠 code-review-2026-09-28 backlog 전체 클로즈(38/38)** — P1 7건 + P2 18건 + follow-up 5건 모두 ship; L10n / Crypto / Window / Persistence / TSan / CI 툴체인 / dependabot / crypto-symbol 문서화 등 하드닝 항목을 커버합니다. 자세한 내용은 `docs/audit/code-review-2026-09-28-backlog.md` 참조.
 
 - **🛠 v2.9.5 GH Actions runner flake 완화(ID-CRASH-0038)** — 14개 테스트 파일 총 46곳의 env 민감형 `XCTSkip`(46개 테스트,台账는 `docs/skips-ledger.md`)이 CI 환경에서; v2.9.6부터 `release.yml`의 `Run tests` step은 tag path에서 **54-test smoke 서브셋**을 실행함 (ID-REL-2 `8ae0db5`: IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests, SUBSET_EXPECTED 앵커; class rename 자동 fail-closed), 4개의 snapshot 테스트는 runner 렌더링 드리프트로 인해 v2.9.7로 defer (서브셋 외이므로 SUBSET_EXPECTED는 안정). 로컬 `Scripts/release.sh vX.Y.Z --yes`의 `run_preflight --tests`는 여전히 authoritative gate. runner env 근본 원인 수정 목표 v2.9.6.
 

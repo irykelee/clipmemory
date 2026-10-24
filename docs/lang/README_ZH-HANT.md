@@ -2,7 +2,7 @@
 
 **新一代 macOS 剪貼簿管理器 — 一步開啟，複製即搜**
 
-[English](./README_EN.md) · [简体中文](./README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
+[English](./README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
@@ -50,12 +50,25 @@
 
 ### v2.9.6 (2026-10-04) — code-review backlog 閉環 + ID-CRASH-0038 收尾
 
+- **🛠 code-review-2026-09-28 backlog 全閉環（38/38）** — 7 項 P1 + 18 項 P2 + 5 項 follow-up 全部 ship；涵蓋 L10n / Crypto / Window / Persistence / TSan / CI 工具鏈 / dependabot / crypto-symbol 文件化等加固項。詳見 `docs/audit/code-review-2026-09-28-backlog.md`。
+
+- **🛠 ID-CRASH-0038 大規模 skip 收尾（46 → 4）** — 修復 issue #93 runner 重啟根因 + 生產代碼全量遷移到注入 seam（HotKey / SafeMode / ClipboardStore / Crypto / WindowManager）+ 重新啟用 ZZZ canary。42/46 個測試恢復；剩 4 處 snapshot golden 差異推遲到 v2.9.7 調查（僅 CI 環境差異；本地 1025/4/0 全綠）。
+
+- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` 註解壓制 Swift 6 strict-concurrency 警告** — TSan 建議：6 個警告淨減 0。共兩處：`ClipboardMonitorDelegate` 協議 + `ClipboardStore+OCR.swift` 的 GCD 閉包；運行時語義不變。
+
+- **🛠 ID-REVIEW-1012 `ClipboardStore.shared` 惰性初始化** — 原 `static let shared = ClipboardStore()` 在模組載入時 eager 求值，騙過 xcTestDefaults 環境變數檢測。改為 `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock 實現真惰性。
+
+- **🛠 衛生批次** — 修復 51 處 SwiftLint `trailing_newline` 警告 + `.gitattributes` 強制 LF 行尾；恢復 2 個 shell 腳本丟失的 `chmod -x`。
+
+完整結果：1025 / 4 skipped / 0 failures（雙語環境：en + zh-Hans）。
+
+詳見 `docs/skips-ledger.md`（v2.9.6 完整 ship 後歸檔）。
 
 ### v2.9.5 (2026-10-01) — 長按圖片預覽十方向捲動 + audit-backlog closure
 
 - **🖼 長按圖片預覽 — 滾輪滑動現在同時支援縱、橫向 + Shift+wheel** — 修復按住左鍵滾動滾輪導致圖片被意外 dismiss 的 bug（USER-FEEDBACK-2026-09-26 回報，經多輪迭代修復）。預覽面板在捲動期間保持顯示，鬆手才正常關閉。同時支援縱向捲動、Logitech 滑鼠側鍵 / Magic Mouse 橫向 swipe / trackpad 雙指 swipe 的橫向捲動，以及一般滑鼠 + Shift+wheel 的橫向捲動（macOS 標準慣例）。圖片超過預覽視窗時捲軸正確移動。
 
-- **🛠 code-review-2026-09-28 backlog 全數結案（38/38）** — 7 項 P1 + 18 項 P2 + 5 項 follow-up 全部 ship；涵蓋 L10n / Crypto / Window / Persistence / TSan / CI 工具鏈 / dependabot / crypto-symbol 文件化 等加固項目。詳見 `docs/audit/code-review-2026-09-28.md`。
+- **🛠 code-review-2026-09-28 backlog 全數結案（38/38）** — 7 項 P1 + 18 項 P2 + 5 項 follow-up 全部 ship；涵蓋 L10n / Crypto / Window / Persistence / TSan / CI 工具鏈 / dependabot / crypto-symbol 文件化 等加固項目。詳見 `docs/audit/code-review-2026-09-28-backlog.md`。
 
 - **🛠 v2.9.5 GH Actions runner flake 緩解（ID-CRASH-0038）** — 14 個測試檔案共 46 處 env 敏感型 `XCTSkip`（46 個測試，臺帳見 `docs/skips-ledger.md`）在 CI 環境；自 v2.9.6 起 `release.yml` 的 `Run tests` step 在 tag path 跑 **54-test smoke 子集**（ID-REL-2 `8ae0db5`：IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests，SUBSET_EXPECTED 錨定；class rename 自動 fail-closed），4 個 snapshot 測試因 runner 渲染漂移仍 defer v2.9.7（不在子集內所以 SUBSET_EXPECTED 穩定）。本地 `Scripts/release.sh vX.Y.Z --yes` 的 `run_preflight --tests` 仍是 authoritative gate。runner env 根因修復目標 v2.9.6。
 

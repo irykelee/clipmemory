@@ -50,12 +50,25 @@
 
 ### v2.9.6 (2026-10-04) — code-review backlog 闭环 + ID-CRASH-0038 收尾
 
+- **🛠 code-review-2026-09-28 backlog 全闭环（38/38）** — 7 项 P1 + 18 项 P2 + 5 项 follow-up 全部 ship；覆盖 L10n / Crypto / Window / Persistence / TSan / CI 工具链 / dependabot / crypto-symbol 文档化等加固项。详见 `docs/audit/code-review-2026-09-28-backlog.md`。
+
+- **🛠 ID-CRASH-0038 大规模 skip 收尾（46 → 4）** — 修复 issue #93 runner 重启根因 + 生产代码全量迁移到注入 seam（HotKey / SafeMode / ClipboardStore / Crypto / WindowManager）+ 重新启用 ZZZ canary。42/46 个测试恢复；剩 4 处 snapshot golden 差异推迟到 v2.9.7 调查（仅 CI 环境差异；本地 1025/4/0 全绿）。
+
+- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` 注解压制 Swift 6 strict-concurrency 警告** — TSan 建议：6 个警告净减 0。共两处：`ClipboardMonitorDelegate` 协议 + `ClipboardStore+OCR.swift` 的 GCD 闭包；运行时语义不变。
+
+- **🛠 ID-REVIEW-1012 `ClipboardStore.shared` 惰性初始化** — 原 `static let shared = ClipboardStore()` 在模块加载时 eager 求值，骗过 xcTestDefaults 环境变量检测。改为 `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock 实现真惰性。
+
+- **🛠 卫生批处理** — 修复 51 处 SwiftLint `trailing_newline` 警告 + `.gitattributes` 强制 LF 行尾；恢复 2 个 shell 脚本丢失的 `chmod -x`。
+
+完整结果：1025 / 4 skipped / 0 failures（双语环境：en + zh-Hans）。
+
+详见 `docs/skips-ledger.md`（v2.9.6 完整 ship 后归档）。
 
 ### v2.9.5 (2026-10-01) — 长按图片预览十方向滚动 + audit-backlog closure
 
 - **🖼 长按图片预览 — 滚轮滑动现在同时支持纵、横向 + Shift+wheel** — 修复按住左键滚动滚轮导致图片被意外 dismiss 的 bug（USER-FEEDBACK-2026-09-26 报告，经多轮迭代修复）。预览面板在滚动期间保持显示，松手才正常关闭。同时支持纵向滚动、Logitech 鼠标侧键 / Magic Mouse 横向 swipe / trackpad 双指 swipe 的横向滚动，以及普通鼠标 + Shift+wheel 的横向滚动（macOS 标准约定）。图片超过预览窗口时滚动条正确移动。
 
-- **🛠 code-review-2026-09-28 backlog 全闭环（38/38）** — 7 项 P1 + 18 项 P2 + 5 项 follow-up 全部 ship；覆盖 L10n / Crypto / Window / Persistence / TSan / CI 工具链 / dependabot / crypto-symbol 文档化 等加固项。详见 `docs/audit/code-review-2026-09-28.md`。
+- **🛠 code-review-2026-09-28 backlog 全闭环（38/38）** — 7 项 P1 + 18 项 P2 + 5 项 follow-up 全部 ship；覆盖 L10n / Crypto / Window / Persistence / TSan / CI 工具链 / dependabot / crypto-symbol 文档化 等加固项。详见 `docs/audit/code-review-2026-09-28-backlog.md`。
 
 - **🛠 v2.9.5 GH Actions runner flake 缓解（ID-CRASH-0038）** — 14 个测试文件共 46 处 env 敏感型 `XCTSkip`（46 个测试，台账见 `docs/skips-ledger.md`）在 CI 环境；`release.yml` 的 `Run tests` step 自 v2.9.6 起在 tag path 跑 **54-test smoke 子集**（ID-REL-2 `8ae0db5`：IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests，SUBSET_EXPECTED 锚定；class rename 自动 fail-closed），4 snapshot 测试因 runner 渲染漂移仍 defer v2.9.7（不在子集内所以 SUBSET_EXPECTED 稳定）。本地 `Scripts/release.sh vX.Y.Z --yes` 的 `run_preflight --tests` 仍是 authoritative gate。runner env 根因修复目标 v2.9.6。
 
@@ -562,7 +575,7 @@ brew install --cask clipmemory
 2. Fork 本项目, 改 `project.yml` 的 `CODE_SIGN_IDENTITY` 与 release.yml 加 `notarytool submit` → `stapler staple` → `spctl --assess` 三步
 3. 个人/组织自愿承担分发成本, 本项目无义务提供
 
-这是项目维护者 (2026-07-19 commit `307818e`) 做出的 **已锁决策** — Personal Team 路径免费 + 简化分发, 不付费注册 Developer ID。详见 `CLAUDE.md` 「已锁决策」段。
+这是项目维护者 (2026-07-19 commit `307818e`) 做出的 **已锁决策** — Personal Team 路径免费 + 简化分发, 不付费注册 Developer ID。
 
 ---
 

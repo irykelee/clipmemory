@@ -2,7 +2,7 @@
 
 **Next-generation macOS clipboard manager — one tap to search, instant to copy**
 
-[English](./README_EN.md) · [简体中文](./README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
+[English](./README_EN.md) · [简体中文](../README.md) · [繁體中文](./README_ZH-HANT.md) · [日本語](./README_JA.md) · [한국어](./README_KO.md) · [Español](./README_ES.md) · [Português](./README_PT.md)
 
 ---
 
@@ -50,12 +50,25 @@
 
 ### v2.9.6 (2026-10-04) — code-review backlog closure + ID-CRASH-0038 wrap-up
 
+- **🛠 code-review-2026-09-28 backlog fully closed (38/38)** — All 7 P1 + 18 P2 + 5 follow-up items shipped; covering hardening items such as L10n / Crypto / Window / Persistence / TSan / CI toolchain / dependabot / crypto-symbol documentation. See `docs/audit/code-review-2026-09-28-backlog.md` for details.
+
+- **🛠 ID-CRASH-0038 mass-skip closure (46 → 4)** — Fixed the issue #93 runner-restart root cause + migrated the production code to injection seams across the board (HotKey / SafeMode / ClipboardStore / Crypto / WindowManager) + re-enabled the ZZZ canary. 42/46 tests restored; the remaining 4 snapshot golden discrepancies are deferred to v2.9.7 (CI-environment-only diff; locally 1025/4/0 fully green).
+
+- **🛠 ID-CRASH-0058/0059 — `@preconcurrency` annotations silence Swift 6 strict-concurrency warnings** — TSan advisory: a net reduction of 0 out of 6 warnings. Two sites annotated: the `ClipboardMonitorDelegate` protocol + the GCD closure in `ClipboardStore+OCR.swift`; runtime semantics unchanged.
+
+- **🛠 ID-REVIEW-1012 lazy init of `ClipboardStore.shared`** — The original `static let shared = ClipboardStore()` evaluated eagerly at module load, defeating the xcTestDefaults env-var detection. Changed to `nonisolated(unsafe) static var shared` + `MainActor.assumeIsolated` + NSLock for true lazy initialization.
+
+- **🛠 Hygiene batch** — Fixed 51 SwiftLint `trailing_newline` warnings + enforced LF line endings via `.gitattributes`; restored the lost `chmod -x` on 2 shell scripts.
+
+Full result: 1025 / 4 skipped / 0 failures (dual locale: en + zh-Hans).
+
+See `docs/skips-ledger.md` (archived after the full v2.9.6 ship).
 
 ### v2.9.5 (2026-10-01) — Long-press image preview 10-direction scrolling + audit-backlog closure
 
 - **🖼 Long-press image preview — wheel scrolling now supports both vertical and horizontal + Shift+wheel** — Fixes a bug where holding the left button and scrolling the wheel caused the image to be accidentally dismissed (reported in USER-FEEDBACK-2026-09-26, fixed over multiple iterations). The preview panel remains visible during scrolling and only closes normally when the button is released. Also supports vertical scrolling, horizontal scrolling via Logitech mouse side buttons / Magic Mouse horizontal swipe / trackpad two-finger swipe, and horizontal scrolling via regular mouse + Shift+wheel (macOS standard convention). The scrollbar moves correctly when the image exceeds the preview window.
 
-- **🛠 code-review-2026-09-28 backlog fully closed (38/38)** — All 7 P1 + 18 P2 + 5 follow-up items shipped; covering hardening items such as L10n / Crypto / Window / Persistence / TSan / CI toolchain / dependabot / crypto-symbol documentation. See `docs/audit/code-review-2026-09-28.md` for details.
+- **🛠 code-review-2026-09-28 backlog fully closed (38/38)** — All 7 P1 + 18 P2 + 5 follow-up items shipped; covering hardening items such as L10n / Crypto / Window / Persistence / TSan / CI toolchain / dependabot / crypto-symbol documentation. See `docs/audit/code-review-2026-09-28-backlog.md` for details.
 
 - **🛠 v2.9.5 GH Actions runner flake mitigation (ID-CRASH-0038)** — 46 env-sensitive `XCTSkip` sites across 14 test files (~48 tests; ledger in `docs/skips-ledger.md`) in the CI environment; as of v2.9.6 the `Run tests` step in `release.yml` runs a **54-test smoke subset on the tag path** (ID-REL-2 `8ae0db5`: IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests, anchored on SUBSET_EXPECTED; class rename auto fail-closed), with 4 snapshot tests deferred to v2.9.7 due to runner rendering drift (not in the subset so SUBSET_EXPECTED stays stable). The local `Scripts/release.sh vX.Y.Z --yes` `run_preflight --tests` remains the authoritative gate. Root-cause fix for runner env is targeted for v2.9.6.
 
