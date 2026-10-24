@@ -203,16 +203,36 @@ final class TrashStore: ObservableObject {
     /// loudly — the rows stay in the store until that debounced save
     /// removes them, and that save carries the three-leg error
     /// contract (log + retry + user-visible notification).
-    private func purgeTrashWithFallback(_ itemIDs: Set<UUID>) {
-        guard !itemIDs.isEmpty else { return }
+    /// Returns whether the deletion is durably recorded. `true` when the
+    /// backend purged the rows, `true` on `unsupportedFeature` (the
+    /// array-level save covers it), `false` when the backend write failed —
+    /// callers use it to decide whether the image files may be physically
+    /// deleted yet (see the ordering note on `deletePermanently`).
+    @discardableResult
+    private func purgeTrashWithFallback(_ itemIDs: Set<UUID>) -> Bool {
+        guard !itemIDs.isEmpty else { return true }
         do {
             try backend.purgeTrash(deleting: itemIDs)
+            return true
         } catch StorageBackendError.unsupportedFeature {
             // No trash dimension — the array-level save covers it.
+            return true
         } catch {
             logger.error(
                 "ID-REVIEW-1024: purging \(itemIDs.count) trashed item(s) failed: \(error.localizedDescription)"
             )
+            // Three-piece gate third leg (ID-REVIEW-1024, 2026-10-24):
+            // this catch used to be log-only. The retry leg is
+            // scheduleSave()'s blob rewrite, but that only alerts on ITS
+            // OWN failure — post here too, with the same source bucket as
+            // saveTrashedItems, so "the bin can't be persisted" shows the
+            // user one throttled alert no matter which leg caught it.
+            NotificationCenter.default.post(
+                name: .clipboardSaveFailed,
+                object: self,
+                userInfo: ["source": "trashSaveFailed"]
+            )
+            return false
         }
     }
 
@@ -513,23 +533,33 @@ final class TrashStore: ObservableObject {
         scheduleSave()
     }
 
+    /// Ordering contract for every delete path: remove the rows from the
+    /// bin and persist that FIRST, delete the image files LAST. If the
+    /// process dies in between, the worst outcome is an orphan image file
+    /// (reaped by cleanupOrphanedImages); the opposite order leaves a live
+    /// trash row pointing at a file that no longer exists — an
+    /// unrecoverable broken entry. And when the backend purge itself
+    /// failed, the files are NOT deleted: the row is still in the bin, so
+    /// the image must stay reachable behind it.
     func deletePermanently(_ item: ClipboardItem) {
-        if item.type == .image {
+        trashedItems.removeAll { $0.id == item.id }
+        let persisted = purgeTrashWithFallback([item.id])
+        scheduleSave()
+        if persisted, item.type == .image {
             ImageStorage.shared.deleteImage(filename: item.content)
         }
-        trashedItems.removeAll { $0.id == item.id }
-        purgeTrashWithFallback([item.id])
-        scheduleSave()
     }
 
     func emptyTrash() {
-        for item in trashedItems where item.type == .image {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
+        let imageContents = trashedItems.filter { $0.type == .image }.map { $0.content }
         let purgedIDs = Set(trashedItems.map { $0.id })
         trashedItems.removeAll()
-        purgeTrashWithFallback(purgedIDs)
+        let persisted = purgeTrashWithFallback(purgedIDs)
         scheduleSave()
+        guard persisted else { return }
+        for content in imageContents {
+            ImageStorage.shared.deleteImage(filename: content)
+        }
     }
 
     /// ID-CRASH-0035 (2026-10-21): how many expired entries an automatic
@@ -638,15 +668,18 @@ final class TrashStore: ObservableObject {
         }
     }
 
-    /// Removes the given entries — and their image files — from the bin.
+    /// Removes the given entries from the bin; image files go last (see
+    /// the ordering contract on `deletePermanently`).
     private func deleteExpiredEntries(_ entries: [ClipboardItem]) {
-        for item in entries where item.type == .image {
-            ImageStorage.shared.deleteImage(filename: item.content)
-        }
+        let imageContents = entries.filter { $0.type == .image }.map { $0.content }
         let expiredIds = Set(entries.map { $0.id })
         trashedItems.removeAll { expiredIds.contains($0.id) }
-        purgeTrashWithFallback(expiredIds)
+        let persisted = purgeTrashWithFallback(expiredIds)
         scheduleSave()
+        guard persisted else { return }
+        for content in imageContents {
+            ImageStorage.shared.deleteImage(filename: content)
+        }
     }
 
     /// Posts the "the purge happened" notice.
