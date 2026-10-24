@@ -40,9 +40,29 @@ func renderToImage<V: View>(_ view: V, size: CGSize = CGSize(width: 800, height:
     renderer.scale = 1.0
     renderer.proposedSize = .init(width: size.width, height: size.height)
     guard let cgImage = renderer.cgImage else {
-        fatalError("ImageRenderer failed for view at size \(size)")
+        // ID-TEST-1024 (2026-10-24): failure used to `fatalError` — killing
+        // the whole test host, indistinguishable from the ID-CRASH-class
+        // restarts that ID-CRASH-0057 spent 16 .ips files hunting. Fail the
+        // current test via XCTFail instead and return a 1×1 opaque red
+        // sentinel so the golden comparison below fails deterministically
+        // (and the harness keeps running the remaining suites).
+        XCTFail("ImageRenderer failed for view at size \(size)")
+        return opaqueRedSentinelImage()
     }
     return cgImage
+}
+
+/// A 1×1 opaque red image used as the render-failure sentinel. Built
+/// through `CGContext`, whose constant arguments here cannot fail.
+private func opaqueRedSentinelImage() -> CGImage {
+    let context = CGContext(
+        data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+    return context.makeImage()!
 }
 
 func pngData(from cgImage: CGImage) -> Data {
