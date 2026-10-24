@@ -484,17 +484,31 @@ final class BackupPackage {
                 switch blob {
                 case .items:
                     let sourceItems = try JSONDecoder().decode([ClipboardItem].self, from: rawData)
-                    counts.items = sourceItems.count
-                    let (reencode, _) = reencryptItemsWithCorruptCount(
+                    let (reencode, corruptCount) = reencryptItemsWithCorruptCount(
                         sourceItems, from: rootCrypto, to: packageCrypto
                     )
+                    if corruptCount > 0 {
+                        Self.logger.error(
+                            "Export dropped \(corruptCount) undecryptable item(s) from \(key); manifest counts the payload, not the source")
+                    }
+                    // The manifest must describe the payload: import
+                    // rejects `manifest.itemCount != items.json entries`
+                    // (validateManifestCounts), so counting the source
+                    // here would produce an export that can never be
+                    // imported. Undecryptable entries are excluded from
+                    // both.
+                    counts.items = reencode.count
                     reencoded = try JSONEncoder().encode(reencode)
                 case .trash:
                     let sourceTrash = try JSONDecoder().decode([ClipboardItem].self, from: rawData)
-                    counts.trash = sourceTrash.count
-                    let (reencode, _) = reencryptItemsWithCorruptCount(
+                    let (reencode, corruptCount) = reencryptItemsWithCorruptCount(
                         sourceTrash, from: rootCrypto, to: packageCrypto
                     )
+                    if corruptCount > 0 {
+                        Self.logger.error(
+                            "Export dropped \(corruptCount) undecryptable trash entries from \(key); manifest counts the payload, not the source")
+                    }
+                    counts.trash = reencode.count
                     reencoded = try JSONEncoder().encode(reencode)
                 case .tags:
                     let sourceTags = try JSONDecoder().decode([Tag].self, from: rawData)

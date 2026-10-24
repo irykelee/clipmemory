@@ -310,6 +310,53 @@ import CryptoKit
         XCTAssertEqual(store.tags.values.first?.name, "工作")
     }
 
+    func testExportExcludesUndecryptableItemsAndStillImports() throws {
+        // ID-REVIEW-1024 regression: the manifest must count the
+        // re-encrypted payload, not the source. One good item + one item
+        // whose ciphertext cannot be decrypted under the root key → the
+        // export must write itemCount=1 (not 2), or the import-side
+        // validateManifestCounts rejects the package as corruptedData and
+        // the user is left holding an "export succeeded" backup that can
+        // never be restored.
+        let goodItem = ClipboardItem(
+            content: try XCTUnwrap(localCrypto.encrypt("good")),
+            type: .text,
+            isEncrypted: true,
+            contentHash: try XCTUnwrap(localCrypto.hmacHex(for: "good"))
+        )
+        let wrongCrypto = CryptoService(customKeyData: Data((96..<128).map { UInt8($0 & 0xFF) }))
+        let undecryptable = ClipboardItem(
+            content: try XCTUnwrap(wrongCrypto.encrypt("lost")),
+            type: .text,
+            isEncrypted: true,
+            contentHash: try XCTUnwrap(wrongCrypto.hmacHex(for: "lost"))
+        )
+        defaults.set(try JSONEncoder().encode([goodItem, undecryptable]), forKey: "ClipboardItems")
+
+        let packageURL = tempRoot.appendingPathComponent("backup-corrupt-source.clipmemory")
+        try BackupPackage.exportPackage(
+            to: packageURL,
+            passphrase: "secret123",
+            defaults: defaults,
+            imagesDirectory: imagesDir,
+            keyData: localKeyData
+        )
+
+        // Pre-fix the package carried itemCount=2 against a 1-entry payload
+        // and import rejected it outright; post-fix the round trip succeeds
+        // and restores exactly the decryptable item.
+        let result = try BackupPackage.importPackage(
+            from: packageURL,
+            passphrase: "secret123",
+            store: store,
+            localCrypto: localCrypto,
+            imagesDirectory: imagesDir
+        )
+        XCTAssertEqual(result.itemsImported, 1)
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.getDecryptedContent(store.items[0]), "good")
+    }
+
     func testImportDeduplicatesWithinSamePackage() throws {
         // Two entries with different ids but identical content/hash in one
         // package — the second must be skipped (M3 regression coverage).
