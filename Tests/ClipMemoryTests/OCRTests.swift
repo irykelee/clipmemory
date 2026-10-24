@@ -41,9 +41,22 @@ private let transientVisionErrorCodes: Set<Int> = [
     VNErrorCode.timeout.rawValue
 ]
 
+/// OCRService 自己抛出的「看门狗超时」错误的域与码。
+///
+/// `OCRService.performTimeoutSeconds` 到点后放弃等待 Vision 回调，就用这个
+/// 域/码把失败交出来（`ClipMemory/Services/OCRService.swift`）。它表达的是
+/// 「Vision 在 15 秒内没回话」——机器负载高时的时序抖动，不是输入或配置
+/// 问题，所以和 Vision 自己的 `timeout(20)` 一样属于可重试的瞬时错误。
+///
+/// ID-FLAKE-0001 只覆盖了 Vision 框架自己报的内部错误，漏了这一类：全量跑
+/// 在负载高时最常撞上的恰恰是**服务自己的看门狗超时**，它不在 Vision 的
+/// 错误域里，于是被判成不可重试，直接判红（实测：4 次全量跑红 2 次，
+/// 单独复跑 30/30 全绿）。
+private let ocrServiceTimeoutDomain = "OCRService.timeout"
+private let ocrServiceTimeoutCode = -1
+
 /// Vision 识别尝试上限（含首次）。框架内部瞬时错误最多重试 2 次。
 private let visionMaxAttempts = 3
-
 /// 重试退避基数（秒）：第 n 次失败后等待 `base × n`（0.5s / 1.0s）。
 private let visionRetryBackoffSeconds: TimeInterval = 0.5
 
@@ -74,6 +87,11 @@ private func isTransientVisionFailure(_ error: Error) -> Bool {
     let nsError = error as NSError
     if nsError.domain == VNErrorDomain {
         return transientVisionErrorCodes.contains(nsError.code)
+    }
+    // ID-FLAKE-0001 补齐：服务自己的看门狗超时（Vision 没在时限内回话）
+    // 是负载相关的时序抖动，重试有意义 —— 见 `ocrServiceTimeoutDomain`。
+    if nsError.domain == ocrServiceTimeoutDomain, nsError.code == ocrServiceTimeoutCode {
+        return true
     }
     if nsError.domain == NSCocoaErrorDomain, nsError.code == NSUserCancelledError {
         return true
@@ -535,6 +553,36 @@ private func containsVisionInternalToken(_ error: NSError) -> Bool {
         return VisionRecognitionResult(
             outcome: nil, originalError: originalError, attempts: attempts
         )
+    }
+
+    /// ID-FLAKE-0001 补齐：服务自己的看门狗超时也必须可重试。
+    ///
+    /// 这条用假的识别器驱动，不依赖真实 Vision 抖动 ⇒ 确定性。它钉的是
+    /// **分类**（服务自己的 `OCRService.timeout` 属于瞬时错误 → 走重试），
+    /// 而「重试几次仍失败就判红」的上限由下面那条用例负责。
+    func testVisionServiceWatchdogTimeoutIsRetried() {
+        var calls = 0
+        let recovering: (Data, @escaping (OCROutcome) -> Void) -> Void = { _, completion in
+            calls += 1
+            if calls <= 2 {
+                completion(.failure(NSError(
+                    domain: ocrServiceTimeoutDomain,
+                    code: ocrServiceTimeoutCode,
+                    userInfo: [NSLocalizedDescriptionKey: "Vision recognition timed out"]
+                )))
+            } else {
+                completion(.text("HELLO"))
+            }
+        }
+
+        let result = recognizeWithTransientRetry(Data(), backoff: 0, recognize: recovering)
+
+        XCTAssertEqual(calls, 3, "服务自己的看门狗超时必须走重试（最多 3 次尝试）")
+        guard case .text(let text) = result.outcome else {
+            XCTFail("重试后必须恢复出文本，实际: \(String(describing: result.outcome))")
+            return
+        }
+        XCTAssertTrue(text.contains("HELLO"), "expected HELLO in: \(text)")
     }
 
     /// ID-FLAKE-0001 配套：瞬时错误必须重试并恢复。
