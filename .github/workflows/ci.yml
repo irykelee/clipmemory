@@ -366,7 +366,7 @@ jobs:
       # stopped running under TSan until ID-CI-0007 fixed it manually
       # (a4f87e2, 2026-09-26). The script verifies each filter
       # reference points at a class that actually exists, and that the
-      # static test count in those classes matches SUBSET_EXPECTED=94.
+      # static test count in those classes matches SUBSET_EXPECTED=95.
       # Catches the same failure mode automatically next time.
       - name: tsan filter lint (ID-CI-0010)
         run: |
