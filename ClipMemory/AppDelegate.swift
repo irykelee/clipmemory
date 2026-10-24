@@ -223,7 +223,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // every test run. Skip in test host — same pattern as the test-host
         // guard at :108. StartupHealthTests does not depend on AppDelegate's
         // call path; it invokes logSnapshot directly with an isolated suite.
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+        if !TestIsolation.isRunningTests {
             StartupHealth.logSnapshot(counts: startupCounts)
         }
         setupHotKey()
@@ -262,7 +262,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // at :86 (ID-APP-0003) because it writes lastLaunchTime to the
         // shared .standard domain, not a fresh store. Observer setup above
         // is read-only or test-inert and stays unguarded.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard !TestIsolation.isRunningTests else { return }
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
         // Start Sparkle: daily background check per SUEnableAutomaticChecks.
         _ = UpdateService.shared
@@ -743,7 +743,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // observers above — tests deliberately post this
             // notification to verify the banner path; banner
             // mutations are main-actor only.
-            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard !TestIsolation.isRunningTests else { return }
             // Same strongSelf unwrap pattern as ID-CRASH-0007.
             guard let strongSelf = self else { return }
             ClipboardStore.shared.diagnostics.tagsLoadFailed = true
@@ -764,7 +764,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Same XCTest guard: tests deliberately post
             // .clipboardSaveFailed to verify flushSave's failure path;
             // runModal here would hang CI forever.
-            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard !TestIsolation.isRunningTests else { return }
             guard let strongSelf = self else { return }
             strongSelf.handleSaveFailureNotification(note)
         }
@@ -780,7 +780,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forName: .tagSaveFailed, object: nil, queue: .main
         ) { [weak self] note in
             // Same XCTest guard as clipboardSaveFailedObserver above.
-            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard !TestIsolation.isRunningTests else { return }
             guard let strongSelf = self else { return }
             strongSelf.handleSaveFailureNotification(note)
         }
@@ -795,7 +795,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forName: .imageSaveFailed, object: nil, queue: .main
         ) { [weak self] note in
             // Same XCTest guard as tagSaveFailedObserver above.
-            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard !TestIsolation.isRunningTests else { return }
             guard let strongSelf = self else { return }
             strongSelf.handleSaveFailureNotification(note)
         }
@@ -1116,7 +1116,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // ImageStorage first-touch above (tests rely on it for migration
         // coverage); skip only the live monitor. Tests that exercise
         // ClipboardMonitor construct their own instance.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard !TestIsolation.isRunningTests else { return }
         // H-1: optional — guard init result so a partial ClipboardMonitor
         // construction doesn't take the whole app down. We still let the
         // store run; the menu bar QuickBar just won't auto-refresh from
@@ -1260,7 +1260,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // deliberately post `.clipboardSaveFailed` to verify
         // `flushSave()`'s failure path; runModal here would hang
         // CI forever.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard !TestIsolation.isRunningTests else { return }
         let source = EncryptionFailedAlertThrottler.sourceKey(for: note)
         let decision = saveAlertThrottler.recordFailure(source: source)
         guard decision.shouldShowAlert else { return }
@@ -1282,7 +1282,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // (OCRTests encrypt-failure fixtures). A modal runModal there
         // blocks the test process forever (2026-07-24 CI hang: Test
         // step stuck >60 min). Same guard as CryptoService.isRunningTests.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard !TestIsolation.isRunningTests else { return }
         // CLIP-3 (2026-07-24): batch failure paths (OCR backfill, bulk
         // tag encryption) post one notification per item — one modal per
         // notification is an alert storm. Throttle per H-3 source tag;
@@ -1325,7 +1325,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Same XCTest guard as handleEncryptionFailed: tests deliberately
         // post .trashLoadFailed to verify the notification fires; an
         // NSAlert here would hang CI forever.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard !TestIsolation.isRunningTests else { return }
         let persistent = (note.userInfo?["persistent"] as? Bool) ?? false
         let suffix = persistent ? " (persisted from prior launch)" : ""
         let underlying = (note.userInfo?["error"] as? String) ?? "unknown"
@@ -1387,7 +1387,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pendingTrashPurgeCount = count
         pendingTrashPurgeRetentionDays = retentionDays
         guard let button = statusItem?.button else { return }
-        button.image = Self.badgedStatusImage(count: count)
+        // ID-REVIEW-1025 (2026-10-24): the badge is drawn ON TOP of the
+        // menu bar symbol, so a `nil` badge must never mean "no icon at
+        // all" — the app would become unreachable. Falling back to the
+        // plain symbol keeps the icon (and the badge count in the
+        // tooltip) visible even if the composite cannot be built.
+        button.image = Self.badgedStatusImage(count: count) ?? Self.defaultStatusImage()
         button.toolTip = "\(L10n.appName) — \(L10n.alertTrashPurgePendingBadge(count))"
     }
 
@@ -1499,7 +1504,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     fileprivate func handleItemsLoadFailed(_ note: Notification) {
         // Same XCTest guard as handleTrashLoadFailed: a modal alert
         // would hang CI forever.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        //
+        // ID-REVIEW-1025 (2026-10-24): the guard reads the CANONICAL
+        // probe (`TestIsolation.isRunningTests`, three signals) instead
+        // of the raw `XCTestConfigurationFilePath` lookup. The raw
+        // lookup rests on ONE signal: if it is missing on some launch
+        // path, the process takes the PRODUCTION path, opens a modal
+        // `NSAlert` inside the test host, and the CI job hangs until
+        // its timeout. Production behaviour is unchanged — none of the
+        // three signals fires in a real launch.
+        guard !TestIsolation.isRunningTests else { return }
         let persistent = (note.userInfo?["persistent"] as? Bool) ?? false
         let underlying = (note.userInfo?["error"] as? String) ?? "unknown"
         let decision = trashAlertThrottler.recordFailure(source: "itemsLoadFailed")
