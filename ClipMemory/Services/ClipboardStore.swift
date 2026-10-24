@@ -411,27 +411,70 @@ final class ClipboardStore: ObservableObject {
     /// skipped — see `loadItems` / `applyLoadResult`.
     static let itemsLoadFailedSentinelKey = UserDefaultsKey.clipboardItemsLoadFailedSentinel.rawValue
 
-    /// The ids the quarantined copies of the ITEMS blob still hold.
+    /// ID-REVIEW-1026 (2026-10-24): does a quarantined copy of `key` still
+    /// exist in `defaults`?
     ///
-    /// ID-REVIEW-1025 (2026-10-24): the quarantine writes the bytes to
-    /// `<items key>.corrupt-<timestamp>` and REMOVES the original key,
-    /// so the quarantined copy is the only place the original history
-    /// still exists. Its IMAGE files are still on disk too, and they
-    /// are the irrecoverable half — the orphan-image sweep would delete
-    /// them as orphans the moment the sentinel is cleared.
+    /// ID-REVIEW-1025 (2026-10-24) tried to answer a DIFFERENT question
+    /// here — "does the loaded set cover the ids the quarantined copy
+    /// holds?" — and could not answer it. The quarantined bytes ARE the
+    /// bytes that just failed to decode as `[ClipboardItem]`
+    /// (`FileStorageBackend.load()` throws on that decode and nothing
+    /// else, and `quarantineCorruptBlob` copies those exact bytes), so
+    /// decoding them again as `[ClipboardItem]` yields nothing. The rule
+    /// it installed could therefore never fire, and the regression test
+    /// that guarded it wrote a DECODABLE blob under a `.corrupt-*` key —
+    /// a state production cannot produce (test green, production broken).
     ///
-    /// An empty result means there is no quarantined copy (the failure
-    /// was a decode error that healed on its own), in which case the
-    /// sentinel can be cleared as before.
-    static func quarantinedItemIDs(defaults: UserDefaults) -> Set<UUID> {
-        let prefix = "\(UserDefaultsKey.clipboardItems.rawValue).corrupt-"
-        var ids = Set<UUID>()
-        for (key, _) in defaults.dictionaryRepresentation() where key.hasPrefix(prefix) {
-            guard let data = defaults.data(forKey: key) else { continue }
-            guard let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) else { continue }
-            ids.formUnion(items.map { $0.id })
+    /// The question that CAN be answered is existence. While a quarantined
+    /// copy exists, those bytes are the only record of the user's
+    /// history, and the image files they reference are referenced by
+    /// nothing else — the orphan-image sweep would delete them as
+    /// orphans. So the load-failed sentinel must survive exactly as long
+    /// as that copy does.
+    ///
+    /// Existence needs no decoding, which is the whole point: the rule no
+    /// longer depends on reading bytes that cannot be read.
+    ///
+    /// Deliberate consequence: nothing removes a quarantined copy today,
+    /// so while one exists the sentinel stays set and the orphan-image
+    /// sweep stays off (disk hygiene deferred, data safety first). The
+    /// sentinel clears as soon as the copy is gone.
+    static func hasQuarantinedCopy(defaults: UserDefaults, key: String) -> Bool {
+        let prefix = "\(key).corrupt-"
+        return defaults.dictionaryRepresentation().keys.contains { $0.hasPrefix(prefix) }
+    }
+
+    /// ID-REVIEW-1026 (2026-10-24): the load-failed sentinel must survive
+    /// exactly as long as a quarantined copy of the items blob exists.
+    ///
+    /// The decision is EXISTENCE, not id coverage: the quarantined bytes
+    /// ARE the bytes that just failed to decode, so their ids cannot be
+    /// read back (see `hasQuarantinedCopy`). While the copy exists, its
+    /// bytes are the only record of the user's history and the image files
+    /// they refer to are referenced by nothing else — so the orphan-image
+    /// sweep must not run.
+    ///
+    /// Three cases, one rule:
+    /// * a quarantined copy exists → the sentinel is SET. It has to be set
+    ///   even on a healthy, non-empty load: a crash between the quarantine
+    ///   write and the sentinel write would otherwise leave a quarantined
+    ///   copy with NO sentinel at all, and the sweep would then delete the
+    ///   images that copy still refers to.
+    /// * no quarantined copy, non-empty load → the sentinel is cleared (the
+    ///   store is healthy again).
+    /// * no quarantined copy, empty load → the sentinel is left alone (an
+    ///   empty load after a failure is still a failure; the caller decides
+    ///   whether to notify the user).
+    private func reconcileItemsLoadFailedSentinel(loadedCount: Int) {
+        if Self.hasQuarantinedCopy(defaults: defaults, key: Self.itemsStorageKey) {
+            defaults.set(true, forKey: Self.itemsLoadFailedSentinelKey)
+            // swiftlint:disable:next line_length
+            logger.error("ID-REVIEW-1026: the items blob loaded with \(loadedCount) item(s) but a quarantined copy still exists — keeping the load-failed sentinel so the orphan-image sweep does not delete the images that copy still refers to")
+            return
         }
-        return ids
+        if loadedCount > 0 {
+            defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
+        }
     }
 
     /// ID-CRASH-0022 (2026-10-20): true while the ITEMS blob is in a
@@ -1270,17 +1313,8 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // it. When the failure was a decode error that healed on its
         // own there is no quarantined blob at all, and the sentinel
         // clears as before.
-        if !savedItems.isEmpty {
-            let quarantined = Self.quarantinedItemIDs(defaults: defaults)
-            let coversQuarantined = quarantined.isEmpty
-                || Set(savedItems.map { $0.id }).isSuperset(of: quarantined)
-            if coversQuarantined {
-                defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
-            } else {
-                // swiftlint:disable:next line_length
-                logger.error("ID-REVIEW-1025: the items blob loaded with \(savedItems.count) item(s) but the quarantined copy still holds \(quarantined.count) id(s) — keeping the load-failed sentinel so the orphan-image sweep does not delete their images")
-            }
-        } else if itemsLoadFailed {
+        reconcileItemsLoadFailedSentinel(loadedCount: savedItems.count)
+        if savedItems.isEmpty, itemsLoadFailed {
             // The failure survived the launch: the blob is still
             // unreadable, so the history is still missing. Say so
             // again — the user has to know their history is not there.
@@ -1687,9 +1721,23 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
         // quarantine the key is gone, so the load succeeds with
         // nothing and the store is still in the failed state (same
         // rule as the trash side).
-        if !loadedItems.isEmpty {
-            defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
-        } else if itemsLoadFailed {
+        //
+        // ID-REVIEW-1026 (2026-10-24): "non-empty" is not enough on its
+        // own, and THIS is the path production actually takes — the
+        // background load (`loadItemsInBackgroundAsync` →
+        // `performLoadWork` → `applyLoadResult`) is what `init` fires,
+        // while `loadItems()` is the synchronous path. ID-REVIEW-1025
+        // installed its rule on `loadItems()` only, so the production
+        // path still cleared the sentinel on the first non-empty load
+        // and the orphan-image sweep deleted the images the quarantined
+        // copy still refers to.
+        //
+        // The rule is now the same on both paths, and it is EXISTENCE,
+        // not id coverage: the quarantined bytes are the bytes that just
+        // failed to decode, so their ids cannot be read back (see
+        // `hasQuarantinedCopy`).
+        reconcileItemsLoadFailedSentinel(loadedCount: loadedItems.count)
+        if loadedItems.isEmpty, itemsLoadFailed {
             // The failure survived the launch — the blob is still
             // unreadable and the history is still missing. Say so
             // again (same rule as the trash side).

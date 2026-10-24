@@ -1045,11 +1045,12 @@ import XCTest
     /// store is healthy again → the sentinel is cleared and the orphan
     /// sweep resumes.
     ///
-    /// ID-REVIEW-1025 (2026-10-24): "non-empty" is not enough on its
-    /// own — the quarantine MOVED the blob away, so a load that returns
-    /// the FRESH blob (written by the next save) does not mean the
-    /// history came back. The sentinel must survive until the loaded
-    /// set actually covers the quarantined ids.
+    /// ID-REVIEW-1026 (2026-10-24): "non-empty" is not enough on its own
+    /// — the quarantine MOVED the blob away, so a load that returns the
+    /// FRESH blob (written by the next save) does not mean the history
+    /// came back. The sentinel must survive while a quarantined copy
+    /// exists; see `Review1026RegressionTests` for the production-path
+    /// coverage of that rule (this file's case is the DEGRADED one).
     ///
     /// This test pins the DEGRADED case (no quarantined copy at all —
     /// a decode error that healed on its own): there is nothing to
@@ -1074,78 +1075,6 @@ import XCTest
         XCTAssertFalse(
             testDefaults.bool(forKey: ClipboardStore.itemsLoadFailedSentinelKey),
             "the persistent sentinel must be removed too — it has to survive to the NEXT launch only"
-        )
-    }
-
-    /// ID-REVIEW-1025 (2026-10-24, independent review P3): the
-    /// quarantined copy is the ONLY place the original history still
-    /// exists, and its IMAGE files are still on disk. Clearing the
-    /// sentinel while the loaded set does not cover the quarantined ids
-    /// lets the orphan-image sweep delete exactly those images.
-    ///
-    /// Scenario: the items blob is corrupt → quarantined → the user
-    /// copies something → the store writes a FRESH blob → the next
-    /// launch loads that fresh blob (non-empty!) → the sentinel used to
-    /// be cleared → the sweep deleted every image the quarantined blob
-    /// still referred to.
-    func testTheSentinelSurvivesWhileTheQuarantinedHistoryIsNotRecovered() throws {
-        // The quarantined copy: one item with an image, still on disk.
-        let quarantinedItem = ClipboardItem(content: "quarantined.png", type: .image)
-        let quarantinedBlob = try JSONEncoder().encode([quarantinedItem])
-        testDefaults.set(quarantinedBlob, forKey: "\(ClipboardStore.itemsStorageKey).corrupt-2026-10-24T00:00:00Z")
-        testDefaults.set(true, forKey: ClipboardStore.itemsLoadFailedSentinelKey)
-
-        // The fresh blob the user created after the quarantine: ONE new
-        // capture, nothing from the original history.
-        let seeded = MemoryStorageBackend()
-        try seeded.save([ClipboardItem(content: "brand new", type: .text)])
-
-        let store = ClipboardStore(
-            backend: seeded,
-            tagBackend: MemoryStorageBackend(),
-            trashBackend: MemoryStorageBackend(),
-            defaults: testDefaults
-        )
-        store.loadItems()
-
-        XCTAssertTrue(
-            store.itemsLoadFailed,
-            "the sentinel must survive while the quarantined history has not been recovered"
-        )
-        XCTAssertTrue(
-            testDefaults.bool(forKey: ClipboardStore.itemsLoadFailedSentinelKey),
-            "the orphan-image sweep must stay off — the quarantined blob's images are the irrecoverable half"
-        )
-        XCTAssertEqual(
-            ClipboardStore.quarantinedItemIDs(defaults: testDefaults),
-            [quarantinedItem.id],
-            "the quarantined ids must be readable — the coverage check depends on them"
-        )
-    }
-
-    /// The other half of the contract: once the history IS back (the
-    /// loaded set covers the quarantined ids), the sentinel clears and
-    /// the orphan sweep resumes.
-    func testTheSentinelClearsOnceTheQuarantinedHistoryIsRecovered() throws {
-        let recovered = ClipboardItem(content: "recovered.png", type: .image)
-        let quarantinedBlob = try JSONEncoder().encode([recovered])
-        testDefaults.set(quarantinedBlob, forKey: "\(ClipboardStore.itemsStorageKey).corrupt-2026-10-24T00:00:00Z")
-        testDefaults.set(true, forKey: ClipboardStore.itemsLoadFailedSentinelKey)
-
-        let seeded = MemoryStorageBackend()
-        try seeded.save([recovered, ClipboardItem(content: "brand new", type: .text)])
-
-        let store = ClipboardStore(
-            backend: seeded,
-            tagBackend: MemoryStorageBackend(),
-            trashBackend: MemoryStorageBackend(),
-            defaults: testDefaults
-        )
-        store.loadItems()
-
-        XCTAssertFalse(
-            store.itemsLoadFailed,
-            "the history is back — the sentinel must clear so the orphan sweep resumes"
         )
     }
 

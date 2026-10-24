@@ -296,8 +296,37 @@ final class TrashStore: ObservableObject {
                 let recovered = try loadTrashAllWithFallback()
                 if !recovered.isEmpty {
                     trashedItems = recovered
-                    lastLoadFailed = false
-                    defaults.removeObject(forKey: Self.loadFailedSentinelKey)
+                    // ID-REVIEW-1026 (2026-10-24): a non-empty load does
+                    // NOT mean the quarantined trash came back. The
+                    // quarantine MOVED the blob to `<key>.corrupt-*` and
+                    // REMOVED the original key, so the next save writes a
+                    // FRESH blob and the next launch loads that fresh
+                    // blob. While the quarantined copy exists, the image
+                    // files it refers to are referenced by nothing else —
+                    // the orphan-image sweep would delete them as
+                    // orphans, and the images are the irrecoverable half.
+                    //
+                    // The decision is EXISTENCE, not id coverage: the
+                    // quarantined bytes are the bytes that just failed to
+                    // decode, so their ids cannot be read back. The items
+                    // side has the same rule (`ClipboardStore.
+                    // hasQuarantinedCopy`).
+                    if ClipboardStore.hasQuarantinedCopy(defaults: defaults, key: Self.trashedItemsStorageKey) {
+                        // `lastLoadFailed` stays TRUE on purpose: its
+                        // documented job is exactly this — keep
+                        // `cleanupOrphanedImages` off while the trash blob
+                        // itself is the corrupt artifact. The in-memory
+                        // collection is healthy, so the empty-write
+                        // guards (`lastLoadFailed && trashedItems.isEmpty`)
+                        // stay inactive.
+                        lastLoadFailed = true
+                        defaults.set(true, forKey: Self.loadFailedSentinelKey)
+                        // swiftlint:disable:next line_length
+                        logger.error("ID-REVIEW-1026: the trash blob loaded with \(recovered.count) item(s) but a quarantined copy still exists — keeping the load-failed sentinel so the orphan-image sweep does not delete the images that copy still refers to")
+                    } else {
+                        lastLoadFailed = false
+                        defaults.removeObject(forKey: Self.loadFailedSentinelKey)
+                    }
                     return
                 }
             } catch {
@@ -319,11 +348,25 @@ final class TrashStore: ObservableObject {
 
         do {
             trashedItems = try loadTrashAllWithFallback()
-            lastLoadFailed = false
-            // P1-AUDIT-2026-09-22: clear the sentinel once a healthy load
-            // completes; covers the first-clean-launch path so the next
-            // launch never starts with a stale flag.
-            defaults.removeObject(forKey: Self.loadFailedSentinelKey)
+            // ID-REVIEW-1026 (2026-10-24): the healthy path still has to
+            // respect an unresolved quarantine. The sentinel is normally
+            // written in the catch below, but a crash between the
+            // quarantine write and the sentinel write would leave a
+            // quarantined copy with NO sentinel — and the orphan-image
+            // sweep would then delete the images that copy still refers
+            // to. Existence is the decidable signal, so ask it here too.
+            if ClipboardStore.hasQuarantinedCopy(defaults: defaults, key: Self.trashedItemsStorageKey) {
+                lastLoadFailed = true
+                defaults.set(true, forKey: Self.loadFailedSentinelKey)
+                // swiftlint:disable:next line_length
+                logger.error("ID-REVIEW-1026: the trash blob loaded healthy but a quarantined copy still exists — keeping the load-failed sentinel so the orphan-image sweep does not delete the images that copy still refers to")
+            } else {
+                lastLoadFailed = false
+                // P1-AUDIT-2026-09-22: clear the sentinel once a healthy load
+                // completes; covers the first-clean-launch path so the next
+                // launch never starts with a stale flag.
+                defaults.removeObject(forKey: Self.loadFailedSentinelKey)
+            }
         } catch {
             quarantineCorruptBlob(error: error)
             trashedItems = []
