@@ -625,6 +625,34 @@ Multiple readers can hit the same connection simultaneously (SQLite supports thi
 
 If profiling later shows contention, the v2 implementation switches to `pthread_rwlock_t` (reader-writer) — `read_lock` for load methods, `write_lock` for upsertItem / moveToTrash / etc. The wire-format of `StorageBackend` doesn't change; it's a backend-internal optimization. For v1 we ship exclusive-only.
 
+### 5.5 ⚠️ 已知未修复：事务归属按连接状态推断（接线前必须解决）
+
+**状态：2026-10-24 独立审核发现，**未**修复。** 未接线所以对用户无影响；但它是 PR-C 接线的硬前置条件。**
+
+**缺陷。** `inTransaction` 用 `isInsideTransaction`（即 `sqlite3_get_autocommit(db) == 0`，**连接级**状态）来判断"调用方是否已经拥有事务"。可是锁是**每次方法调用**级别的：`withLock` 只在单个 public 方法体内持有 `NSRecursiveLock`，`beginTransaction()` 返回后锁就释放了。
+
+于是 `ClipboardStore+Persistence.swift` 里这种写法会留下窗口：
+
+```swift
+try backend.beginTransaction()   // ← 持锁 → 释放锁
+try backend.upsertItem(...)      // ← 持锁 → 释放锁
+try backend.commitTransaction()  // ← 持锁 → 释放锁
+```
+
+在 `beginTransaction()` 与 `commitTransaction()` 之间，另一条线程可以进来。它看到 `autocommit == 0`，就以为"调用方拥有事务"，于是走 SAVEPOINT 分支，**把自己的写操作挂进了别人的事务**。后果：
+
+1. 另一线程的写入被外层事务的 COMMIT 一起提交 —— 它自己以为还没提交；
+2. 外层事务若走 ROLLBACK（错误路径），另一线程刚刚"成功"返回的写入会**一起被回滚**，看起来像凭空消失；
+3. 事务归属没有任何显式记录，日志里也看不出这次写入到底归谁 —— 出事后无法归因。
+
+**为什么本次不修。** `SQLiteStorageBackend` 目前**零生产调用点**（`ClipboardStore` 仍用 `FileStorageBackend`），所以这是潜伏缺陷，不影响 v2.9.6 的用户。修它意味着重写事务所有权模型（把 BEGIN…COMMIT 收敛成**一个**持锁的闭包，或按线程/owner token 显式记录归属），属于并发模型改造 —— 在发版当天对一段没有调用方的代码做这种改造，风险高于收益。**遗留缺陷记在这里，比悄悄带过更安全。**
+
+**接线前必须做的三件事：**
+
+1. **把事务收敛成单一持锁作用域**：提供 `withTransaction { … }` 一次持锁完成 BEGIN…COMMIT，中间所有语句都在同一把锁内；或者显式记录 owner（thread id / token），`isInsideTransaction` 改成"**我**拥有事务吗"而不是"连接上有事务吗"。
+2. **补一条并发回归测试**：一条线程持事务时，另一线程并发写，断言写入不会挂进别人的事务、也不会被外层 ROLLBACK 吞掉。当前 `Tests/ClipMemoryTests/SQLiteStorageBackendTests.swift` 全是单线程，**覆盖不到这条路径**。
+3. **接线时把本节列进 PR-C 的 review checklist**：§4.4.1 的「报错 → 重试 → 用户可见」义务管的是 `init` 的失败；本节管的是事务正确性，两者都要在接线 PR 里同时满足。
+
 ## 7. Split PR plan (5 PRs over ~2-3 weeks)
 
 Each PR is independently mergeable, independently testable, and ships a working binary. Reversible at any commit because `FileStorageBackend` is always present.
