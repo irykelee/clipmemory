@@ -402,8 +402,11 @@ class ClipboardMonitor {
         // based on fingerprint match. Returns true if the tick should be
         // skipped (own write OR fingerprint pending); false if it's an
         // external change that should fall through to normal capture.
+        // The fingerprint provider is lazy: the common tick has no skip
+        // pending, and computing the fingerprint would copy + HMAC the
+        // whole pasteboard payload for nothing.
         if consumeSkipPendingIfMatched(currentChangeCount: currentChangeCount,
-                                      fingerprint: Self.pasteboardContentFingerprint(pasteboard)) {
+                                      fingerprintProvider: { Self.pasteboardContentFingerprint(pasteboard) }) {
             return
         }
 
@@ -881,7 +884,11 @@ class ClipboardMonitor {
     /// this tick should be skipped (own write OR fingerprint pending — the latter
     /// means we couldn't decide and will wait one more tick); false if it's an
     /// external change that should fall through to the normal capture path.
-    private func consumeSkipPendingIfMatched(currentChangeCount: Int, fingerprint: String?) -> Bool {
+    /// The fingerprint is a provider, evaluated only after the skip flag is
+    /// found pending — computing it eagerly on every 0.5 s tick would copy +
+    /// HMAC the full pasteboard payload (10 MB text cap, image UTI probes)
+    /// just to throw the result away in the common no-skip case.
+    private func consumeSkipPendingIfMatched(currentChangeCount: Int, fingerprintProvider: () -> String?) -> Bool {
         // L-1 (2026-07-21 audit): the original check-then-act was two separate
         // lock acquisitions; a recordOwnWrite() landing between the read and the
         // false-write could re-set the flag back to true after we cleared it,
@@ -892,6 +899,7 @@ class ClipboardMonitor {
         guard skipPending else { return false }
         // CLIP-4: own write hasn't landed yet — keep the flag and wait.
         guard currentChangeCount != lastChangeCount else { return true }
+        let fingerprint = fingerprintProvider()
         let matchesOwnWrite: Bool? = withLock {
             // The fingerprint main-async capture hasn't run yet (own write
             // just landed): keep the flag and wait one more tick rather than
