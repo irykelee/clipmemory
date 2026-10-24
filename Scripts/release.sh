@@ -442,8 +442,14 @@ extract_readme_changelog() {
         echo "### v${version} (${date}) — ${subtitle}"
         echo ""
         # Only the 中文 section: from '## 中文' up to (not incl.) '## English'.
+        # NOTE: `| head -5` was a SIGPIPE trap — head closes the pipe after
+        # 5 lines, awk dies with SIGPIPE, and under `set -o pipefail` +
+        # `set -e` that kills the whole script (exit 141). Any release whose
+        # 中文 section has more than 5 bullets aborted here: the dry-run
+        # died mid-preview, and the real run died before commit. `sed -n`
+        # reads the whole stream instead, so nothing is closed early.
         awk '/^## 中文/{f=1; next} /^## English/{f=0} f && /^- /' "$notes" \
-            | head -5
+            | sed -n '1,5p'
         echo "- 完整 changelog: https://github.com/${GH_OWNER_REPO}/releases/tag/v${version}"
     } > "$outfile"
 }
