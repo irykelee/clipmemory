@@ -650,7 +650,7 @@ try backend.commitTransaction()  // ← 持锁 → 释放锁
 **接线前必须做的三件事：**
 
 1. **把事务收敛成单一持锁作用域**：提供 `withTransaction { … }` 一次持锁完成 BEGIN…COMMIT，中间所有语句都在同一把锁内；或者显式记录 owner（thread id / token），`isInsideTransaction` 改成"**我**拥有事务吗"而不是"连接上有事务吗"。
-2. **补一条并发回归测试**：一条线程持事务时，另一线程并发写，断言写入不会挂进别人的事务、也不会被外层 ROLLBACK 吞掉。当前 `Tests/ClipMemoryTests/SQLiteStorageBackendTests.swift` 全是单线程，**覆盖不到这条路径**。
+2. **补一条并发回归测试**：一条线程持事务时，另一线程并发写，断言写入不会挂进别人的事务、也不会被外层 ROLLBACK 吞掉。当前 `Tests/ClipMemoryTests/SQLiteStorageBackendTests.swift` 里只有一条并发用例（`testConcurrentUpsertsDoNotCorruptOrLoseRows`，4 线程 × 25 次 upsert），而**每次 `upsertItem` 自带 BEGIN…COMMIT**，没有出现「一条线程持事务、另一线程在其间写入」的情形，**覆盖不到这条路径**。
 3. **接线时把本节列进 PR-C 的 review checklist**：§4.4.1 的「报错 → 重试 → 用户可见」义务管的是 `init` 的失败；本节管的是事务正确性，两者都要在接线 PR 里同时满足。
 
 ## 7. Split PR plan (5 PRs over ~2-3 weeks)

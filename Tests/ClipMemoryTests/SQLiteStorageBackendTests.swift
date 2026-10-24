@@ -15,13 +15,17 @@ import SQLite3
 /// transaction (PR-A's flush-catch made this riskier; PR-B's
 /// begin/commit/rollback is real).
 ///
-/// **No concurrent-write test in PR-B** (deferred): the NSLock-
-/// protected writer + 10-thread stress test would have validated
-/// the "no SQLite 'database is locked' errors" contract, but the
-/// test seam (Mirror reflection on a private `db` field) is fragile
-/// and risks false negatives. PR-C (where SQLiteStorageBackend
-/// becomes the primary backend) owns the real concurrent-stress test
-/// — the test seam will be a public `internal(set) var dbForTesting`
+/// **Concurrent-write coverage** (corrected 2026-10-24, ID-REVIEW-1025):
+/// the file DOES have a concurrent test —
+/// `testConcurrentUpsertsDoNotCorruptOrLoseRows` (4 threads × 25
+/// upserts) — but it does NOT cover the path `docs/design/storage-migration.md`
+/// §5.5 is about: there, each `upsertItem` call owns its own
+/// BEGIN…COMMIT, so no thread ever writes *while another thread holds
+/// an open transaction*. The "one thread holds a transaction, another
+/// writes" case is still untested, and it is exactly the case whose
+/// ownership inference §5.5 flags as broken. PR-C (where
+/// SQLiteStorageBackend becomes the primary backend) owns that test —
+/// the test seam will be a public `internal(set) var dbForTesting`
 /// property added in PR-C once it's needed.
 final class SQLiteStorageBackendTests: XCTestCase {
 
