@@ -156,15 +156,25 @@ class ClipboardMonitor {
         // Discord bot token
         ("mfa\\.[\\w-]{84}", true),
         // OpenAI API key
-        ("sk-[A-Za-z0-9]{48}", true),
+        //
+        // ID-REVIEW-1025 (2026-10-24): the left boundary is mandatory on
+        // EVERY `sk-` pattern. Without it, the literal "sk-" is found
+        // INSIDE any word that ends in "…sk-" — "task-", "risk-",
+        // "disk-" — and the tail that follows decides the match. A UUID
+        // or a hash after such a prefix ("task-4f8a2b9c…", 32 hex
+        // chars) satisfies the tail requirement and the entry is then
+        // flagged sensitive → auto-expired after 24 h → the user's
+        // ordinary text silently disappears from the history. The
+        // boundary is the same one the vendor pattern below uses.
+        ("(?<![A-Za-z0-9-])sk-[A-Za-z0-9]{48}", true),
         // OpenAI project key (`sk-proj-…` — the legacy regex above stops at
         // the hyphen). Hyphens/underscores allowed in the tail.
-        ("sk-proj-[A-Za-z0-9_-]{20,}", true),
+        ("(?<![A-Za-z0-9-])sk-proj-[A-Za-z0-9_-]{20,}", true),
         // Generic `sk-` service token (DeepSeek 32-hex, Groq, etc.). The
         // tail must be ≥24 consecutive alphanumerics: the old bare "sk-"
         // keyword also matched inside natural-language hyphenated words
         // (task- / risk- / desk-), silently expiring normal text after 24h.
-        ("sk-[A-Za-z0-9]{24,}", true),
+        ("(?<![A-Za-z0-9-])sk-[A-Za-z0-9]{24,}", true),
         // Vendor-prefixed `sk-` keys (Anthropic `sk-ant-api03-…`,
         // OpenRouter `sk-or-v1-…`). Their tails contain hyphens, so the
         // hyphen-free patterns above stop at the first one and MISS them

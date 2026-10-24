@@ -276,6 +276,34 @@ final class SensitiveDetectorTests: XCTestCase {
         }
     }
 
+    /// ID-REVIEW-1025 (2026-10-24, independent review P2): the `sk-`
+    /// patterns carried no LEFT boundary, so the literal `sk-` was found
+    /// INSIDE any word that ends in `…sk-` — `task-`, `risk-`, `disk-`.
+    /// The tail then decided the match: a UUID or a hash after such a
+    /// prefix (`task-` + 32 hex characters) satisfies the "≥24
+    /// consecutive alphanumerics" requirement, so ordinary text was
+    /// flagged sensitive → auto-expired after 24 h → the user's own
+    /// notes silently vanished from the history.
+    ///
+    /// This is the user-visible data-loss class the release notes promise
+    /// is gone, so it is pinned here: the boundary must hold while the
+    /// real keys (the test above) stay detected.
+    func testHyphenatedPrefixWithLongAlphanumericTailIsNotFlagged() {
+        let safe = [
+            "task-" + String(repeating: "4f8a2b9c", count: 4),
+            "disk-" + String(repeating: "a1b2c3d4", count: 4),
+            "risk-" + String(repeating: "Z9", count: 14),
+            "desk-proj-" + String(repeating: "T", count: 40),
+            "my-sk-" + String(repeating: "a", count: 48)
+        ]
+        for text in safe {
+            XCTAssertFalse(
+                ClipboardMonitor.detectSensitive(text),
+                "Should NOT detect a hyphenated prefix with a long tail: \(text.prefix(24))"
+            )
+        }
+    }
+
     // MARK: - Helper
 
     private func makeItem(content: String) -> ClipboardItem {
