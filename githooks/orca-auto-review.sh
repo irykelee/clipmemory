@@ -63,11 +63,14 @@ OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 #   的 OpenRouter 免费档, 2026-10-24 实测可用(2-token 探针即返回 PONG)。
 #
 # 链首放 **本地** ollama/qwen3.5:9b(本机 127.0.0.1, 不出网): 推代码这件事
-# 本身要把 diff 送出机器, 审核再送一份给第三方就更没必要了 —— 本地模型能力
-# 弱(9B), 但**它真的读了代码**(见下面的 diff 构造修复), 而外部模型一旦
-# 额度恢复就能接管(链是按顺序试的, 本地失败才轮下一个)。把外部模型放在
-# 后面, 意味着额度恢复后需要把 ollama 挪回链尾才会优先用它们 —— 这一点
-# 写在注释里, 改链顺序时请连同这段一起看。
+# 本身要把 diff 送出机器, 审核再送一份给第三方就更没必要 —— 本地能审就本地审,
+# 审不动才落到外部端点。
+#
+# ⚠️ 本机的 9B **装不下这份 diff**(step_finish reason=length, 2046 output
+# tokens 就被截断, 只吐出一段"请告诉我下一步的具体目标"), 所以今天它每次
+# 都会白跑一轮再落到 openrouter(约 3 分钟)。这是本机模型上下文不够, 不是链的
+# 设计问题 —— 换个上下文更大的本地模型就自动生效, 而且**审核全程不出网**。
+# 想立刻省掉这 3 分钟: 把 ollama 挪到链尾, 或删掉它。
 if [[ -n "${REVIEW_MODEL:-}" ]]; then
   MODEL_CHAIN=("$REVIEW_MODEL")
 else
@@ -158,15 +161,21 @@ $DIFF
 安全（Keychain / 文件权限 / 加密）/ 与仓库既有风格及 CLAUDE.md 约定一致性 / 测试覆盖。
 文档与 SPEC（提交含 .md / SPEC / 账本 / 计划类文件时必须审, 纯文档提交同样全量审）:
 与实现是否漂移、过时描述、计数/账本一致性、文档自身自洽（不得引用已被本次提交删除或改名的机制）。
-输出格式:
-- FINDINGS: 每条一行, 标注严重度 [P0]/[P1]/[P2]
-- REVIEW_VERDICT: 必须是你的**最后一行输出**, 单独成行, 值为 PASS 或 FAIL
-  （存在 P0 或 P1 则 FAIL）。给出结论后不要再继续探索或输出其它内容。
 
 重要约束: **只在本仓库目录内操作，且只做只读验证**（git / xcodebuild / 读文件 / rg），
 不要访问 /tmp 或仓库外的路径，也不要在仓库里创建临时文件 —— 受限环境下写仓库外路径的权限
-会被自动拒绝，导致本次审核半途而废、拿不到结论。无论验证到什么程度，
-**都必须先给出 REVIEW_VERDICT**。"
+会被自动拒绝，导致本次审核半途而废、拿不到结论。
+
+================ 请现在开始输出报告, 不要再调用任何工具 ================
+输出格式（**必须原样照抄这两行前缀**, 报告的全部内容都在回复正文里, 不要写进文件）:
+
+FINDINGS: <每条发现一行, 前面标 [P0]/[P1]/[P2]; 没有发现就写 'FINDINGS: none'>
+FINDINGS: <可重复多行>
+REVIEW_VERDICT: PASS
+
+（REVIEW_VERDICT 必须是你的**最后一行**, 单独成行, 值为 PASS 或 FAIL —— 存在 P0 或 P1 则 FAIL。
+没有发现问题时也**必须**输出 REVIEW_VERDICT: PASS, 不能只写一段叙述。
+你的最终回复必须以 REVIEW_VERDICT 结尾。）"
 
 TMPREPORT="$REPORT_DIR/.tmp-review-$STAMP.md"
 # 原始 JSON 事件流与 stderr 分开落盘（stderr 混进 JSON 会让解析失败）。
@@ -361,9 +370,20 @@ is_valid_report() {
   local f="$1"
   local size
   size=$(wc -c < "$f" | tr -d ' ')
-  [[ "$size" -lt 300 ]] && return 1
   grep -qiE 'insufficient balance|rate.?limit|quota exceeded|unauthorized|402 payment' "$f" && return 1
-  grep -qE '^[[:space:]#*_>-]*(FINDINGS|REVIEW_VERDICT)' "$f" || return 1
+  # ID-REVIEW-1025 (2026-10-24): a report that carries the CONCLUSION is
+  # a report, whatever its length. "FINDINGS: none" + "REVIEW_VERDICT:
+  # PASS" is a legitimate ~40-byte report — the 300B floor was calibrated
+  # on real reports (whose smallest was ~1KB) and would have rejected
+  # exactly that one, i.e. the gate would have failed a CLEAN review.
+  if grep -qE '^[[:space:]#*_>-]*REVIEW_VERDICT' "$f"; then
+    return 0
+  fi
+  # No conclusion → demand more: the historical size floor AND a
+  # line-anchored FINDINGS line (a truncated report with neither is a
+  # shell, and a shell must not pass).
+  [[ "$size" -lt 300 ]] && return 1
+  grep -qE '^[[:space:]#*_>-]*FINDINGS' "$f" || return 1
   return 0
 }
 
