@@ -403,10 +403,36 @@ final class ClipboardStore: ObservableObject {
     /// `TrashStore.loadFailedSentinelKey`.
     ///
     /// Set when the items blob fails to load (it was quarantined), and
-    /// cleared again once a NON-EMPTY items blob loads successfully.
-    /// While it is set, the orphan-image sweep is skipped — see
-    /// `loadItems` / `applyLoadResult`.
+    /// cleared again once the loaded items actually COVER the
+    /// quarantined copy — a non-empty load is not enough on its own
+    /// (ID-REVIEW-1025: the quarantine moved the blob away, so the next
+    /// save writes a FRESH blob, and loading that one does not mean the
+    /// history came back). While it is set, the orphan-image sweep is
+    /// skipped — see `loadItems` / `applyLoadResult`.
     static let itemsLoadFailedSentinelKey = UserDefaultsKey.clipboardItemsLoadFailedSentinel.rawValue
+
+    /// The ids the quarantined copies of the ITEMS blob still hold.
+    ///
+    /// ID-REVIEW-1025 (2026-10-24): the quarantine writes the bytes to
+    /// `<items key>.corrupt-<timestamp>` and REMOVES the original key,
+    /// so the quarantined copy is the only place the original history
+    /// still exists. Its IMAGE files are still on disk too, and they
+    /// are the irrecoverable half — the orphan-image sweep would delete
+    /// them as orphans the moment the sentinel is cleared.
+    ///
+    /// An empty result means there is no quarantined copy (the failure
+    /// was a decode error that healed on its own), in which case the
+    /// sentinel can be cleared as before.
+    static func quarantinedItemIDs(defaults: UserDefaults) -> Set<UUID> {
+        let prefix = "\(UserDefaultsKey.clipboardItems.rawValue).corrupt-"
+        var ids = Set<UUID>()
+        for (key, _) in defaults.dictionaryRepresentation() where key.hasPrefix(prefix) {
+            guard let data = defaults.data(forKey: key) else { continue }
+            guard let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) else { continue }
+            ids.formUnion(items.map { $0.id })
+        }
+        return ids
+    }
 
     /// ID-CRASH-0022 (2026-10-20): true while the ITEMS blob is in a
     /// failed state.
@@ -1224,12 +1250,36 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             postItemsLoadFailed(error: error, persistent: false)
             return
         }
-        // A non-empty load proves the store is healthy again — but an
-        // EMPTY load after a previous failure does NOT: the key is
-        // gone, so the load succeeds with nothing. Keep the sentinel
-        // in that case (same rule as the trash side).
+        // A non-empty load does NOT prove the store is healthy again —
+        // and an EMPTY load after a previous failure does not either:
+        // the key is gone, so the load succeeds with nothing. Keep the
+        // sentinel in that case (same rule as the trash side).
+        //
+        // ID-REVIEW-1025 (2026-10-24, independent review P3): the
+        // non-empty case was just as wrong, and worse. The quarantine
+        // MOVED the blob to `<key>.corrupt-*` and REMOVED the original
+        // key, so the next save writes a FRESH blob — and the next
+        // launch loads that fresh blob (the one capture the user made
+        // in the meantime). Clearing the sentinel there re-opens the
+        // hole the sentinel exists to close: the orphan-image sweep
+        // then deletes every image the QUARANTINED blob still refers
+        // to, and the images are the irrecoverable half.
+        //
+        // The history is only healthy again when the loaded set
+        // actually COVERS the quarantined ids — i.e. the user restored
+        // it. When the failure was a decode error that healed on its
+        // own there is no quarantined blob at all, and the sentinel
+        // clears as before.
         if !savedItems.isEmpty {
-            defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
+            let quarantined = Self.quarantinedItemIDs(defaults: defaults)
+            let coversQuarantined = quarantined.isEmpty
+                || Set(savedItems.map { $0.id }).isSuperset(of: quarantined)
+            if coversQuarantined {
+                defaults.removeObject(forKey: Self.itemsLoadFailedSentinelKey)
+            } else {
+                // swiftlint:disable:next line_length
+                logger.error("ID-REVIEW-1025: the items blob loaded with \(savedItems.count) item(s) but the quarantined copy still holds \(quarantined.count) id(s) — keeping the load-failed sentinel so the orphan-image sweep does not delete their images")
+            }
         } else if itemsLoadFailed {
             // The failure survived the launch: the blob is still
             // unreadable, so the history is still missing. Say so
