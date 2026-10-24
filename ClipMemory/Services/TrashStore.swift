@@ -581,6 +581,30 @@ final class TrashStore: ObservableObject {
     /// on every 60 s cleanup tick.
     private(set) var pendingExpiredPurgeCount: Int = 0
 
+    /// ID-REVIEW-1025 (2026-10-24): the **identity** of the pending set.
+    ///
+    /// The count alone is not a usable "already asked" marker: the same
+    /// count can describe a completely different set of entries later on
+    /// (25 entries expire today, the user never answers, 25 *different*
+    /// entries expire tomorrow). Keyed on the count alone, the second
+    /// batch is silently skipped — the purge stops working for one size
+    /// class and the bin grows with no user-visible signal, which is the
+    /// exact failure ID-CRASH-0035 was raised to prevent.
+    ///
+    /// The marker is therefore the set of entry ids, and it is cleared
+    /// whenever the pending state is resolved by ANY path (see
+    /// `clearPendingPurgeState()`).
+    private var pendingExpiredPurgeIDs: Set<UUID> = []
+
+    /// The pending state is over: whatever the notice referred to has
+    /// been deleted, restored, or has expired out of the set. A stale
+    /// marker must never survive, because it would suppress the notice
+    /// for the NEXT batch.
+    private func clearPendingPurgeState() {
+        pendingExpiredPurgeIDs = []
+        pendingExpiredPurgeCount = 0
+    }
+
     /// Remove every item whose `deletedAt` is older than the retention
     /// window.
     ///
@@ -606,7 +630,15 @@ final class TrashStore: ObservableObject {
     /// silent: a handful of expired entries is housekeeping, not an event.
     func purgeExpiredTrash() {
         let expired = expiredTrashEntries()
-        guard !expired.isEmpty else { return }
+        guard !expired.isEmpty else {
+            // Nothing is expired anymore — the entries the pending notice
+            // referred to were restored or deleted elsewhere, so the
+            // pending state is resolved. Clearing it here is what keeps
+            // the next batch of the same size from being swallowed.
+            clearPendingPurgeState()
+            return
+        }
+        let expiredIDs = Set(expired.map { $0.id })
         let removedCount = expired.count
         let retentionDays = trashRetentionDays
 
@@ -616,7 +648,14 @@ final class TrashStore: ObservableObject {
             // `TrashStore.init`, i.e. while `ClipboardStore.shared` is
             // still being constructed and the AppDelegate has not
             // registered its observers yet.
+            //
+            // ID-REVIEW-1025: the "already asked" marker is the IDENTITY
+            // of the pending set, not its size. The 60 s cleanup tick
+            // re-runs this method with the same entries and must stay
+            // quiet; a DIFFERENT set of entries — even one of the same
+            // size — must ask again.
             guard pendingExpiredPurgeCount != removedCount else { return }
+            pendingExpiredPurgeIDs = expiredIDs
             pendingExpiredPurgeCount = removedCount
             DispatchQueue.main.async {
                 NotificationCenter.default.post(
@@ -631,6 +670,11 @@ final class TrashStore: ObservableObject {
             return
         }
 
+        // Below the threshold the purge is routine — but it also RESOLVES
+        // any pending state: the entries the pending notice referred to
+        // are being deleted right now. Leaving the marker behind would
+        // suppress the notice for a later batch of the same size.
+        pendingExpiredPurgeCount = 0
         deleteExpiredEntries(expired)
         postExpiredNotice(count: removedCount, retentionDays: retentionDays)
     }
@@ -640,7 +684,7 @@ final class TrashStore: ObservableObject {
     /// and reports what went.
     func confirmExpiredPurge() {
         let expired = expiredTrashEntries()
-        pendingExpiredPurgeCount = 0
+        clearPendingPurgeState()
         guard !expired.isEmpty else { return }
         let removedCount = expired.count
         let retentionDays = trashRetentionDays

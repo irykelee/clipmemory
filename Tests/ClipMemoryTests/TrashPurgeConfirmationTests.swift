@@ -155,6 +155,96 @@ final class TrashPurgeConfirmationTests: XCTestCase {
                        "a repeated tick must still not delete anything")
     }
 
+    /// ID-REVIEW-1025 (2026-10-24, independent review P1): the "already
+    /// asked" marker was the pending COUNT. The same count describes a
+    /// completely different set of entries later on, so the second batch
+    /// was silently swallowed — the retention purge stopped working for
+    /// one size class and the bin grew with no user-visible signal,
+    /// which is the exact failure ID-CRASH-0035 was raised to prevent.
+    ///
+    /// The marker is the IDENTITY of the pending set, and it is cleared
+    /// whenever the pending state is resolved by ANY path.
+    func testANewBatchOfTheSameSizeIsNotSilentlySkipped() {
+        let count = TrashStore.expiredPurgeConfirmationThreshold
+        let backend = InMemoryStorageBackend(items: makeExpiredItems(count))
+        let defaults = makeTestDefaults()
+        defer { removeTestDefaults(defaults) }
+
+        var pendingNotices = 0
+        let pendingToken = NotificationCenter.default.addObserver(
+            forName: .trashPurgePending, object: nil, queue: .main
+        ) { _ in pendingNotices += 1 }
+        defer { NotificationCenter.default.removeObserver(pendingToken) }
+
+        let store = TrashStore(backend: backend, defaults: defaults)
+        drainNotifications()
+        XCTAssertEqual(pendingNotices, 1)
+
+        // The pending state is resolved WITHOUT the user answering: the
+        // entries leave the bin, so the next tick has nothing to purge.
+        store.trashedItems = []
+        store.purgeExpiredTrash()
+        drainNotifications()
+        XCTAssertEqual(pendingNotices, 1,
+                       "an empty bin has nothing to ask about")
+
+        // A NEW batch of the SAME SIZE arrives (different entries).
+        store.trashedItems = makeExpiredItems(count)
+        store.purgeExpiredTrash()
+        drainNotifications()
+
+        XCTAssertEqual(pendingNotices, 2,
+                       "a different batch of the same size must ask again — the marker is keyed on the set, not on its size")
+        XCTAssertEqual(store.trashedItems.count, count,
+                       "nothing may be deleted before the user confirms")
+    }
+
+    /// The same contract through the OTHER resolution path: a routine
+    /// purge below the threshold also resolves the pending state, so the
+    /// next batch of the same size is not swallowed by a stale counter.
+    func testARoutinePurgeResolvesThePendingState() {
+        let count = TrashStore.expiredPurgeConfirmationThreshold
+        let backend = InMemoryStorageBackend(items: makeExpiredItems(count))
+        let defaults = makeTestDefaults()
+        defer { removeTestDefaults(defaults) }
+
+        var pendingNotices = 0
+        var expiredNotices = 0
+        let pendingToken = NotificationCenter.default.addObserver(
+            forName: .trashPurgePending, object: nil, queue: .main
+        ) { _ in pendingNotices += 1 }
+        let expiredToken = NotificationCenter.default.addObserver(
+            forName: .trashItemsExpired, object: nil, queue: .main
+        ) { _ in expiredNotices += 1 }
+        defer {
+            NotificationCenter.default.removeObserver(pendingToken)
+            NotificationCenter.default.removeObserver(expiredToken)
+        }
+
+        let store = TrashStore(backend: backend, defaults: defaults)
+        drainNotifications()
+        XCTAssertEqual(pendingNotices, 1)
+
+        // One entry leaves the bin → the next tick is BELOW the
+        // threshold and purges routinely, without asking.
+        store.trashedItems.removeLast()
+        store.purgeExpiredTrash()
+        drainNotifications()
+        XCTAssertEqual(pendingNotices, 1,
+                       "a routine purge must not ask anything")
+        XCTAssertEqual(expiredNotices, 1,
+                       "the routine purge must still report what it removed")
+
+        // A new batch of the SAME SIZE must be asked about.
+        store.trashedItems = makeExpiredItems(count)
+        store.purgeExpiredTrash()
+        drainNotifications()
+        XCTAssertEqual(pendingNotices, 2,
+                       "the routine purge resolved the pending state — the next batch must ask again")
+        XCTAssertEqual(store.trashedItems.count, count,
+                       "nothing may be deleted before the user confirms")
+    }
+
     /// The menu bar badge exists exactly while there is something to
     /// decide about.
     func testStatusBadgeImageExistsOnlyForAPendingCount() {
