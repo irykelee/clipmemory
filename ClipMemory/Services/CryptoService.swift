@@ -730,8 +730,22 @@ class CryptoService: CryptoServiceProtocol {
     /// for the wake retry (retryPrepareKeyIfLocked). Only a
     /// definitive .notFound may migrate / generate.
     /// Extracted from prepareKey for cyclomatic complexity reduction.
+    ///
+    /// Three-piece gate (ID-REVIEW-1024, 2026-10-24): this path used to be
+    /// log-only. While it waits for the wake retry, every encrypt() misses
+    /// the key latch and captures pile into `pendingKeyItems` (cap 50,
+    /// FIFO) — drops the user never hears about. The throttled
+    /// `.encryptionFailed` post gives the session a visible signal without
+    /// the data-loss side effect a `.cryptoKeyPrepared(success: false)`
+    /// would have (that contract is reserved for definitive failures, see
+    /// the .interactionLocked comment in attemptKeychainLoad).
     private static func handleKeychainOtherError(_ status: OSStatus) {
         logger.error("Keychain load failed (OSStatus \(status, privacy: .public)); deferring key prep to avoid overwriting a possibly-valid root key")
+        NotificationCenter.default.post(
+            name: .encryptionFailed,
+            object: nil,
+            userInfo: ["source": "keychainLoad", "recoverable": true, "status": Int(status)]
+        )
     }
 
     private static func generateAndStoreKey(
