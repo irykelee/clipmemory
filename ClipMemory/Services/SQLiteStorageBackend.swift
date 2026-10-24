@@ -572,7 +572,25 @@ final class SQLiteStorageBackend: StorageBackend {
         try withLock {
             // ID-CRASH-0022 (2026-10-20): same as `save(_:)` above.
             try inTransaction {
-                try exec("DELETE FROM tags")
+                // ID-REVIEW-1024 follow-up (2026-10-24, independent review
+                // P1): the old body was a blanket `DELETE FROM tags` — and
+                // `item_tags.tag_id REFERENCES tags(id) ON DELETE CASCADE`
+                // (SQLiteSchema) runs with `PRAGMA foreign_keys = ON`.
+                // Deleting the whole catalog therefore cascaded away
+                // EVERY item↔tag row, and since `items` has no `tag_ids`
+                // column (`item_tags` is the only source of membership),
+                // the next load showed every item untagged. Delete only
+                // the tags that are actually gone from the catalog; the
+                // ones that survive keep their memberships.
+                if tags.isEmpty {
+                    try exec("DELETE FROM tags")
+                } else {
+                    let placeholders = Array(repeating: "?", count: tags.count).joined(separator: ",")
+                    let params: [(Int32, SQLiteValue)] = tags.enumerated().map { index, tag in
+                        (Int32(index + 1), .text(tag.id.uuidString))
+                    }
+                    try exec("DELETE FROM tags WHERE id NOT IN (\(placeholders))", params)
+                }
                 for tag in tags {
                     try upsertTagInternal(tag)
                 }

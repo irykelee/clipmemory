@@ -244,6 +244,45 @@ final class SQLiteStorageBackendTests: XCTestCase {
                        "the membership must survive the round trip")
     }
 
+    /// ID-REVIEW-1024 follow-up (2026-10-24, independent review P1):
+    /// `saveTags` used to `DELETE FROM tags` wholesale. With
+    /// `item_tags.tag_id REFERENCES tags(id) ON DELETE CASCADE` and
+    /// `PRAGMA foreign_keys = ON`, that cascaded away every item↔tag
+    /// row — and since `items` has no `tag_ids` column, the next load
+    /// showed every item untagged. Saving the catalog must not touch
+    /// the memberships of the tags that are still in it.
+    func testSaveTagsKeepsItemTagMembershipOfSurvivingTags() throws {
+        let itemID = UUID()
+        let keptTag = Tag(id: UUID(), name: "kept", colorHex: "#111")
+        let droppedTag = Tag(id: UUID(), name: "dropped", colorHex: "#222")
+        try backend.upsertItem(ClipboardItem(id: itemID, content: "x", type: .text))
+        try backend.upsertTag(keptTag)
+        try backend.upsertTag(droppedTag)
+        try backend.attachTag(itemID: itemID, tagID: keptTag.id)
+        try backend.attachTag(itemID: itemID, tagID: droppedTag.id)
+
+        // The catalog now only carries `keptTag` — `droppedTag` was deleted.
+        try backend.saveTags([keptTag])
+
+        XCTAssertEqual(
+            try queryCount(stmt: "SELECT COUNT(*) FROM item_tags WHERE item_id = '\(itemID.uuidString)'"),
+            1,
+            "saving the tag catalog must not wipe the item's tag membership"
+        )
+        XCTAssertEqual(
+            try queryCount(stmt: "SELECT COUNT(*) FROM item_tags WHERE tag_id = '\(keptTag.id.uuidString)'"),
+            1,
+            "the surviving tag must keep its item membership"
+        )
+        XCTAssertEqual(
+            try queryCount(stmt: "SELECT COUNT(*) FROM tags WHERE id = '\(droppedTag.id.uuidString)'"),
+            0,
+            "the tag that left the catalog must be gone"
+        )
+        XCTAssertEqual(try backend.load().first?.tagIds ?? [], [keptTag.id],
+                       "the item must still carry the surviving tag after a catalog save")
+    }
+
     func testMoveToTrashRemovesFromItemsAddsToTrash() throws {
         let itemID = UUID()
         let original = ClipboardItem(
