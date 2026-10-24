@@ -330,13 +330,29 @@ final class SQLiteStorageBackend: StorageBackend {
             throw StorageBackendError.storageFailure(sql: sql, code: prepareRC, detail: msg)
         }
         for (index, value) in params {
-            SQLiteBinder.bind(stmt: stmt, index: index, value: value)
+            try bindParam(stmt, index, value, sql: sql)
         }
         let stepRC = sqlite3_step(stmt)
         if stepRC != SQLITE_DONE {
             let msg = String(cString: sqlite3_errmsg(db))
             Self.logger.error("sqlite3_step failed for sql: \(sql.prefix(120))")
             throw StorageBackendError.storageFailure(sql: sql, code: stepRC, detail: msg)
+        }
+    }
+
+    /// Binds one parameter and throws when SQLite rejects the bind.
+    ///
+    /// ID-REVIEW-1024 (2026-10-24): the bind result codes used to be
+    /// discarded everywhere — SQLITE_RANGE (bad index) or SQLITE_NOMEM
+    /// would let the statement step with NULL / unbound parameters, the
+    /// exact silent-missing-value failure SQLiteBinder exists to prevent.
+    /// Every bind in this file goes through here.
+    private func bindParam(_ stmt: OpaquePointer, _ index: Int32, _ value: SQLiteValue, sql: String) throws {
+        let rc = SQLiteBinder.bind(stmt: stmt, index: index, value: value)
+        guard rc == SQLITE_OK else {
+            let msg = db.map { String(cString: sqlite3_errmsg($0)) } ?? "(no error message)"
+            Self.logger.error("sqlite3_bind failed (rc=\(rc)): \(msg) — sql=\(sql.prefix(120))")
+            throw StorageBackendError.storageFailure(sql: sql, code: rc, detail: msg)
         }
     }
 
@@ -826,7 +842,7 @@ final class SQLiteStorageBackend: StorageBackend {
             let sql = "SELECT value, value_type FROM app_meta WHERE key = ?"
             let stmt = try prepare(sql)
             defer { sqlite3_finalize(stmt) }
-            sqlite3_bind_text(stmt, 1, key, -1, SQLiteBinder.transientDestructor)
+            try bindParam(stmt, 1, .text(key), sql: sql)
             // ID-CRASH-0022 (2026-10-20): distinguish "no such key"
             // (SQLITE_DONE → nil) from a real read failure (throw).
             // The old code collapsed both into nil, so a broken
@@ -1041,7 +1057,7 @@ final class SQLiteStorageBackend: StorageBackend {
             """
         let stmt = try prepare(sql)
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, SQLiteBinder.transientDestructor)
+        try bindParam(stmt, 1, .text(itemID.uuidString), sql: sql)
         // ID-CRASH-0022 (2026-10-20): "no such trash row" (DONE → nil)
         // is a normal answer; a step failure is not — it must throw,
         // otherwise `restoreFromTrash` reports "no trash row for item
@@ -1071,7 +1087,7 @@ final class SQLiteStorageBackend: StorageBackend {
         let sql = "SELECT 1 FROM trash_items WHERE item_id = ?"
         let stmt = try prepare(sql)
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, SQLiteBinder.transientDestructor)
+        try bindParam(stmt, 1, .text(itemID.uuidString), sql: sql)
         var found = false
         try forEachRow(stmt, sql: sql) { _ in
             found = true
@@ -1179,8 +1195,8 @@ final class SQLiteStorageBackend: StorageBackend {
         let sql = "SELECT COUNT(*) FROM item_tags WHERE item_id = ? AND tag_id = ?"
         let stmt = try prepare(sql)
         defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, itemID.uuidString, -1, SQLiteBinder.transientDestructor)
-        sqlite3_bind_text(stmt, 2, tagID.uuidString, -1, SQLiteBinder.transientDestructor)
+        try bindParam(stmt, 1, .text(itemID.uuidString), sql: sql)
+        try bindParam(stmt, 2, .text(tagID.uuidString), sql: sql)
         var count = 0
         try forEachRow(stmt, sql: sql) { row in
             if let cstr = sqlite3_column_text(row, 0) {

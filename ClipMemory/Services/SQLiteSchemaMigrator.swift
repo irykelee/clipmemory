@@ -478,7 +478,15 @@ enum SQLiteSchemaMigrator {
             throw StorageBackendError.storageFailure(sql: sql, code: prepareRC, detail: msg)
         }
         for (index, value) in params {
-            SQLiteBinder.bind(stmt: stmt, index: index, value: value)
+            // ID-REVIEW-1024 (2026-10-24): a rejected bind (SQLITE_RANGE /
+            // SQLITE_NOMEM) must abort the migration step, not step the
+            // statement with NULL / unbound parameters.
+            let rc = SQLiteBinder.bind(stmt: stmt, index: index, value: value)
+            guard rc == SQLITE_OK else {
+                let msg = String(cString: sqlite3_errmsg(db))
+                logger.error("sqlite3_bind failed (rc=\(rc)): \(msg) — sql=\(sql.prefix(120))")
+                throw StorageBackendError.storageFailure(sql: sql, code: rc, detail: msg)
+            }
         }
         let stepRC = sqlite3_step(stmt)
         if stepRC != SQLITE_DONE {

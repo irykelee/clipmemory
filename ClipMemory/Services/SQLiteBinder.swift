@@ -51,12 +51,21 @@ enum SQLiteBinder {
     /// SQLite storage class. There is no "unsupported" fallback —
     /// binding NULL for a value nobody recognised is how data goes
     /// quietly missing.
-    static func bind(stmt: OpaquePointer, index: Int32, value: SQLiteValue) {
+    ///
+    /// Returns the raw `sqlite3_bind_*` result code (SQLITE_OK on
+    /// success). ID-REVIEW-1024 (2026-10-24): the codes used to be
+    /// discarded, so SQLITE_RANGE (bad index) or SQLITE_NOMEM left the
+    /// statement executing with NULL / unbound parameters — exactly the
+    /// silent-missing-value failure this file exists to prevent. Callers
+    /// MUST check the code (the backend's `bindParam` helper throws on
+    /// anything but SQLITE_OK).
+    @discardableResult
+    static func bind(stmt: OpaquePointer, index: Int32, value: SQLiteValue) -> Int32 {
         switch value {
         case .text(let s):
-            sqlite3_bind_text(stmt, index, s, -1, transientDestructor)
+            return sqlite3_bind_text(stmt, index, s, -1, transientDestructor)
         case .integer(let i):
-            sqlite3_bind_int64(stmt, index, i)
+            return sqlite3_bind_int64(stmt, index, i)
         case .blob(let d):
             // An EMPTY blob must bind as a blob, never as NULL.
             //
@@ -69,16 +78,15 @@ enum SQLiteBinder {
             // depend on that detail, and a future Foundation change
             // cannot turn an empty blob into a silently missing value.
             if d.isEmpty {
-                sqlite3_bind_zeroblob(stmt, index, 0)
-            } else {
-                d.withUnsafeBytes { ptr in
-                    sqlite3_bind_blob(stmt, index, ptr.baseAddress, Int32(d.count), transientDestructor)
-                }
+                return sqlite3_bind_zeroblob(stmt, index, 0)
+            }
+            return d.withUnsafeBytes { ptr in
+                sqlite3_bind_blob(stmt, index, ptr.baseAddress, Int32(d.count), transientDestructor)
             }
         case .boolean(let b):
-            sqlite3_bind_int(stmt, index, b ? 1 : 0)
+            return sqlite3_bind_int(stmt, index, b ? 1 : 0)
         case .null:
-            sqlite3_bind_null(stmt, index)
+            return sqlite3_bind_null(stmt, index)
         }
     }
 }
