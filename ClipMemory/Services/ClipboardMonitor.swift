@@ -165,6 +165,19 @@ class ClipboardMonitor {
         // keyword also matched inside natural-language hyphenated words
         // (task- / risk- / desk-), silently expiring normal text after 24h.
         ("sk-[A-Za-z0-9]{24,}", true),
+        // Vendor-prefixed `sk-` keys (Anthropic `sk-ant-api03-…`,
+        // OpenRouter `sk-or-v1-…`). Their tails contain hyphens, so the
+        // hyphen-free patterns above stop at the first one and MISS them
+        // — dropping the bare `sk-` keyword (ID-REVIEW-1024) turned that
+        // miss into a silent leak: the key was no longer flagged
+        // sensitive, so it never expired and stayed in the history.
+        // Two guards keep the old false positives out:
+        //   - the left boundary — `sk-` must not follow a letter, digit
+        //     or hyphen, so "task-" / "desk-" / "risk-" never match;
+        //   - the lookahead — the tail must contain an unbroken run of
+        //     ≥20 alphanumerics, so an ordinary hyphenated word
+        //     ("sk-some-very-long-word") is not flagged either.
+        ("(?<![A-Za-z0-9-])sk-(?=[A-Za-z0-9_-]*[A-Za-z0-9]{20})[A-Za-z0-9][A-Za-z0-9_-]{18,}[A-Za-z0-9]", true),
         // Twilio API key
         ("SK[0-9a-fA-F]{32}", true),
         // SendGrid API key

@@ -235,6 +235,47 @@ final class SensitiveDetectorTests: XCTestCase {
         }
     }
 
+    // MARK: - Service token (`sk-`) regressions
+
+    /// ID-REVIEW-1024 follow-up (2026-10-24, independent review P1):
+    /// replacing the bare `sk-` keyword with hyphen-free regexes made
+    /// the vendor-prefixed keys invisible to the detector — Anthropic
+    /// (`sk-ant-api03-…`) and OpenRouter (`sk-or-v1-…`) both carry a
+    /// hyphen right after `sk-`, so every pattern stopped there. The
+    /// keys stopped being flagged sensitive → never expired → stayed in
+    /// the history in the clear. This pins the vendor forms back on.
+    func testVendorPrefixedServiceTokensAreFlagged() {
+        let keys = [
+            "sk-ant-api03-" + String(repeating: "aA1", count: 32),
+            "sk-or-v1-" + String(repeating: "0f1a2b3c", count: 8),
+            "sk-proj-" + String(repeating: "T", count: 40),
+            "sk-" + String(repeating: "a", count: 48)
+        ]
+        for key in keys {
+            XCTAssertTrue(
+                ClipboardMonitor.detectSensitive(key),
+                "Should detect service token: \(key.prefix(20))"
+            )
+        }
+    }
+
+    /// The counterweight to the test above: the left boundary and the
+    /// long-run lookahead must keep ordinary hyphenated words out —
+    /// that was the whole reason the bare `sk-` keyword was dropped.
+    func testHyphenatedWordsDoNotTriggerServiceTokenPattern() {
+        let safe = [
+            "this is a task-risky desk-item list",
+            "risk-desk-item and ask-me-something",
+            "sk-some-very-long-word-here-x"
+        ]
+        for text in safe {
+            XCTAssertFalse(
+                ClipboardMonitor.detectSensitive(text),
+                "Should NOT detect in ordinary text: \(text.prefix(40))"
+            )
+        }
+    }
+
     // MARK: - Helper
 
     private func makeItem(content: String) -> ClipboardItem {
