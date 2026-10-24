@@ -105,9 +105,35 @@ fi
 # ---------------------------------------------------------------- 生成 diff 与提交摘要
 # 注意: head 提前关管道会让 git 收到 SIGPIPE(141), 在 pipefail+set -e 下会静默退出。
 # 必须加 || true 兜底（DIFF 仍会保留 head 已读到的前 400 行, 正是截断语义）。
-DIFF=$(git diff "$RANGE" 2>/dev/null | head -400 || true)
+#
+# ID-REVIEW-1025 (2026-10-24, 独立审核发现): 那条 `| head -400` 截断是
+# **按路径顺序**切的, 所以在一个大分支上, 审核模型可能从头到尾只看到
+# .github/workflows/*.yml、CHANGELOG 和 project.pbxproj —— **一行 Swift
+# 代码都看不到**, 然后照样输出 "REVIEW_VERDICT: PASS"。
+# 也就是说这个门禁可以在"根本没看代码"的情况下放行 —— 正是"绿灯必须
+# 能证伪"要防的那件事。实测: 一次 16670 行的 diff, 前 400 行只覆盖
+# 4 个文件, 全是元数据。
+#
+# 改法: ① 跳过生成物与无关文件（pbxproj / workflows / CHANGELOG）,
+# ② 改成**按文件**给预算（每文件 N 行, 最多 M 个文件）, 让有限的行数
+# 覆盖尽量多的文件, 而不是被前 4 个文件吃光。
+DIFF=$(
+  {
+    git diff "$RANGE" -- \
+      '*.swift' '*.md' '*.sh' '*.yml' '*.yaml' 2>/dev/null \
+      | awk -v per_file=90 -v max_files=40 '
+          /^diff --git / {
+            file_no++
+            if (file_no > max_files) { exit }
+            print
+            next
+          }
+          file_no > 0 { if (lines < per_file) { print; lines++ } }
+        ' || true
+  } | head -1200 || true
+)
 [[ -z "$DIFF" ]] && DIFF="(无 diff, 可能只有提交信息变更)"
-LOG=$(git log --oneline "$RANGE" 2>/dev/null | head -10 || true)
+LOG=$(git log --oneline "$RANGE" 2>/dev/null | head -20 || true)
 
 # ---------------------------------------------------------------- opencode 独立审核
 mkdir -p "$REPORT_DIR"
