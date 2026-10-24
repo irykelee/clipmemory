@@ -366,6 +366,13 @@ struct L10n {
     static func settingsBackupPruneErrorLast(_ reason: String) -> String {
         string("settings.backup.pruneError.last", reason)
     }
+    // ID-REVIEW-1024 follow-up (2026-10-24): the backup itself succeeded;
+    // only the supplementary quarantine copies were missing from it. Shown
+    // on its own line so a partial backup is never mistaken for a failed
+    // one (or the other way round).
+    static func settingsBackupQuarantineErrorLast(_ reason: String) -> String {
+        string("settings.backup.quarantineError.last", reason)
+    }
     static func clearTypeAction(_ typeName: String) -> String { string("clear.type.action", typeName) }
     // ID-L10N-0016 (2026-07-30 audit): plural-aware; count=1 uses ".one".
     static func clearTypeConfirm(_ typeName: String, _ count: Int) -> String {
@@ -454,6 +461,11 @@ struct L10n {
     static var sendFeedback: String { string("app.send.feedback") }
     static var viewWelcomeGuide: String { string("app.view.welcome.guide") }
     static var alertEncryptFailed: String { string("alert.encrypt.failed") }
+    // ID-REVIEW-1024 follow-up (2026-10-24): the keychain was momentarily
+    // unreadable, so key preparation was DEFERRED — no data was lost and
+    // nothing was overwritten. The old wording ("encryption failed, item
+    // was not saved") was both wrong and alarming for this case.
+    static var alertEncryptKeychainRecoverable: String { string("alert.encrypt.keychain.recoverable") }
     // CLIP-3 (2026-07-24): coalesced variant used when the throttler
     // suppressed repeat failures inside its window — reports the total count.
     // ID-L10N-0016 (2026-07-30 audit): use `plural()` so count=1 picks up
@@ -725,6 +737,11 @@ struct L10n {
     static var restoreResultImageFailed: String { string("restore.result.imageFailed") }
     static var restoreResultClose: String { string("restore.result.close") }
     static var restoreErrorCorrupted: String { string("restore.error.corrupted") }
+    // ID-REVIEW-1024 follow-up (2026-10-24): the refusal is about the
+    // QUARANTINE COPY only — the package itself passed every check. The
+    // old mapping to `restore.error.corrupted` ("the package is
+    // corrupted") sent the user off to re-export a perfectly good backup.
+    static var restoreErrorQuarantineRefused: String { string("restore.error.quarantineRefused") }
     static var restoreErrorUnsupportedVersion: String { string("restore.error.unsupportedVersion") }
     static var restoreErrorUnsupportedKDF: String { string("restore.error.unsupportedKDF") }
     static var restoreErrorArchiveFailed: String { string("restore.error.archiveFailed") }

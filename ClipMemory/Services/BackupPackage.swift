@@ -91,7 +91,7 @@ extension BackupPackageError: LocalizedError {
             return L10n.restoreErrorUnsupportedKDF + " (v\(v))"
         case .corruptedData:               return L10n.restoreErrorCorrupted
         case .snapshotFailed(let msg):      return L10n.restoreErrorSnapshotFailed + " (" + msg + ")"
-        case .quarantineRestoreRefused:     return L10n.restoreErrorCorrupted
+        case .quarantineRestoreRefused:     return L10n.restoreErrorQuarantineRefused
         }
     }
 }

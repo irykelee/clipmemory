@@ -170,6 +170,7 @@
 "batch.selected.one" = "1 seleccionado";
 "app.send.feedback" = "Comentarios";
 "alert.encrypt.failed" = "Error al cifrar datos sensibles. El elemento no se guardó.";
+"alert.encrypt.keychain.recoverable" = "El llavero no está disponible temporalmente; reintentando. Los datos existentes no se ven afectados.";
 "alert.encrypt.failed.count" = "Error al cifrar datos sensibles. No se guardaron %d elementos.";
 
 /* Welcome View */
@@ -344,6 +345,7 @@
 "settings.tab.update" = "Actualización y acerca de";
 "settings.backup.error.last" = "La última copia falló: %@";
 "settings.backup.pruneError.last" = "La última limpieza falló: %@";
+"settings.backup.quarantineError.last" = "Copias de cuarentena ausentes en la copia de seguridad: %@";
 "item.ocrProcessing" = "Procesando OCR…";
 "item.ocrUnreadable" = "Texto OCR ilegible";
 "settings.historyCapture.ocrPreview" = "Mostrar texto OCR en resultados de búsqueda de imágenes";
@@ -419,6 +421,7 @@
 "restore.result.imageFailed" = "Algunas imágenes no se han podido restaurar. Comprueba los permisos de almacenamiento.";
 "restore.result.close" = "Cerrar";
 "restore.error.corrupted" = "El archivo de copia de seguridad está corrupto o ha sido modificado externamente";
+"restore.error.quarantineRefused" = "Se rechazó restaurar la copia de cuarentena (el paquete en sí está intacto)";
 "restore.error.unsupportedVersion" = "Copia de seguridad de una versión incompatible";
 "restore.error.unsupportedKDF" = "Versión de derivación de clave de copia de seguridad incompatible";
 "restore.error.archiveFailed" = "No se puede extraer el archivo de copia de seguridad";

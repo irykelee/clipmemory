@@ -87,6 +87,19 @@ struct BackupSettingsView: View {
                             .foregroundColor(.red)
                             .id(backupRefresh)
                     }
+                    // ID-REVIEW-1024 follow-up (2026-10-24): a failed
+                    // quarantine-copy write means the backup LOOKED
+                    // successful but some items were left out of it. The
+                    // user has to know — otherwise they believe they have a
+                    // complete backup when they do not. Shown separately
+                    // from the backup error because the backup itself did
+                    // succeed; only the quarantine copies were missing.
+                    if let quarantineErrorDate = backupService.lastQuarantineErrorDate,
+                       let quarantineMessage = backupService.lastQuarantineErrorMessage {
+                        Text(L10n.settingsBackupQuarantineErrorLast(quarantineMessage))
+                            .foregroundColor(.red)
+                            .id(backupRefresh)
+                    }
                     // ID-REVIEW-1018 (2026-10-06): total disk usage of all
                     // backups + backup count. Since images are hard-linked
                     // (see BackupService.copyImagesIfPresent), this reflects

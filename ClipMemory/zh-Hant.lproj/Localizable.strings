@@ -166,6 +166,7 @@
 "batch.selected" = "已選擇 %d 項";
 "app.send.feedback" = "回饋";
 "alert.encrypt.failed" = "敏感資料加密失敗，內容未儲存。";
+"alert.encrypt.keychain.recoverable" = "鑰匙串暫時無法使用，正在重試。既有資料未受影響。";
 "alert.encrypt.failed.count" = "敏感資料加密失敗，%d 筆內容未儲存。";
 
 /* Welcome View */
@@ -342,6 +343,7 @@
 "settings.tab.update" = "更新與關於";
 "settings.backup.error.last" = "上次備份失敗：%@";
 "settings.backup.pruneError.last" = "上次清理失敗：%@";
+"settings.backup.quarantineError.last" = "隔離副本未寫入備份：%@";
 "item.ocrProcessing" = "OCR 處理中…";
 "item.ocrUnreadable" = "OCR 文字損壞";
 "settings.historyCapture.ocrPreview" = "圖片搜尋結果顯示 OCR 文字";
@@ -422,6 +424,7 @@
 "restore.result.imageFailed" = "部分圖片復原失敗，請檢查儲存權限。";
 "restore.result.close" = "關閉";
 "restore.error.corrupted" = "備份檔案已損壞或被外部修改";
+"restore.error.quarantineRefused" = "隔離副本被拒絕還原（備份包本身未損壞）";
 "restore.error.unsupportedVersion" = "備份來自不相容的版本";
 "restore.error.unsupportedKDF" = "備份密鑰派生版本不相容";
 "restore.error.archiveFailed" = "無法解壓縮備份檔案";

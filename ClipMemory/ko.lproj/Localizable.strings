@@ -166,6 +166,7 @@
 "batch.selected" = "%d개 선택됨";
 "app.send.feedback" = "피드백";
 "alert.encrypt.failed" = "민감 데이터 암호화에 실패했습니다. 저장되지 않았습니다.";
+"alert.encrypt.keychain.recoverable" = "키체인에 일시적으로 접근할 수 없습니다. 재시도 중이며 기존 데이터에는 영향이 없습니다.";
 "alert.encrypt.failed.count" = "민감 데이터 암호화에 실패했습니다. %d개 항목이 저장되지 않았습니다.";
 
 /* Welcome View */
@@ -340,6 +341,7 @@
 "settings.tab.update" = "업데이트 및 정보";
 "settings.backup.error.last" = "마지막 백업 실패: %@";
 "settings.backup.pruneError.last" = "마지막 정리 실패: %@";
+"settings.backup.quarantineError.last" = "격리 복사본이 백업에 포함되지 않음: %@";
 "item.ocrProcessing" = "OCR 처리 중…";
 "item.ocrUnreadable" = "OCR 텍스트를 읽을 수 없음";
 "settings.historyCapture.ocrPreview" = "이미지 검색 결과에 OCR 텍스트 표시";
@@ -420,6 +422,7 @@
 "restore.result.imageFailed" = "일부 이미지의 복원에 실패했습니다. 저장소 권한을 확인하세요.";
 "restore.result.close" = "닫기";
 "restore.error.corrupted" = "백업 파일이 손상되었거나 외부에서 수정되었습니다";
+"restore.error.quarantineRefused" = "격리 복사본 복원이 거부되었습니다(패키지 자체는 손상되지 않았습니다)";
 "restore.error.unsupportedVersion" = "호환되지 않는 버전의 백업입니다";
 "restore.error.unsupportedKDF" = "백업 키 파생 버전이 호환되지 않습니다";
 "restore.error.archiveFailed" = "백업 파일의 압축을 풀 수 없습니다";

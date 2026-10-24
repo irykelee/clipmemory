@@ -169,6 +169,7 @@
 "batch.selected.one" = "1 selecionado";
 "app.send.feedback" = "Feedback";
 "alert.encrypt.failed" = "Falha ao criptografar dados sensíveis. Item não foi salvo.";
+"alert.encrypt.keychain.recoverable" = "O chaveiro está temporariamente indisponível; tentando novamente. Os dados existentes não foram afetados.";
 "alert.encrypt.failed.count" = "Falha ao criptografar dados sensíveis. %d itens não foram salvos.";
 
 /* Welcome View */
@@ -344,6 +345,7 @@
 "settings.tab.update" = "Atualização e sobre";
 "settings.backup.error.last" = "Última cópia falhou: %@";
 "settings.backup.pruneError.last" = "Falha na última limpeza: %@";
+"settings.backup.quarantineError.last" = "Cópias de quarentena ausentes na cópia de segurança: %@";
 "item.ocrProcessing" = "Processando OCR…";
 "item.ocrUnreadable" = "Texto OCR ilegível";
 "settings.historyCapture.ocrPreview" = "Mostrar texto OCR nos resultados de busca de imagens";
@@ -419,6 +421,7 @@
 "restore.result.imageFailed" = "Algumas imagens não foram restauradas. Verifique as permissões de armazenamento.";
 "restore.result.close" = "Fechar";
 "restore.error.corrupted" = "Arquivo de backup corrompido ou modificado externamente";
+"restore.error.quarantineRefused" = "Recusada a restauração da cópia de quarentena (o pacote em si está intacto)";
 "restore.error.unsupportedVersion" = "Backup de versão incompatível";
 "restore.error.unsupportedKDF" = "Versão de derivação de chave do backup incompatível";
 "restore.error.archiveFailed" = "Não foi possível extrair o arquivo de backup";

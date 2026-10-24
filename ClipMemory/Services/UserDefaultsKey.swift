@@ -145,6 +145,19 @@ enum UserDefaultsKey: String, CaseIterable {
     /// backup; collapsing them would hide the prune signal.
     case lastPruneErrorDate = "lastPruneErrorDate"
 
+    // MARK: - BackupService (2026-10-24, ID-REVIEW-1024 follow-up)
+
+    /// Error message paired with `lastQuarantineErrorDate`.
+    case lastQuarantineErrorMessage = "lastQuarantineErrorMessage"
+
+    /// Timestamp of the last quarantine-copy write failure (2026-10-24).
+    /// Distinct from `lastBackupErrorDate` because the backup itself
+    /// SUCCEEDED — only the supplementary quarantine copies were missing.
+    /// Collapsing them would make a partial backup look like a failed one
+    /// (and vice versa: the user would read "backup failed" for a backup
+    /// that is on disk and restorable).
+    case lastQuarantineErrorDate = "lastQuarantineErrorDate"
+
     // MARK: - UpdateService (Sparkle fallback feed)
 
     /// User consent to use the jsDelivr fallback feed (legacy single-Bool).

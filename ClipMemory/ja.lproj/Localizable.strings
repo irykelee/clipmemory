@@ -166,6 +166,7 @@
 "batch.selected" = "%d 件選択中";
 "app.send.feedback" = "フィードバック";
 "alert.encrypt.failed" = "機密データの暗号化に失敗しました。保存されませんでした。";
+"alert.encrypt.keychain.recoverable" = "キーチェーンに一時的にアクセスできません。再試行しています。既存データへの影響はありません。";
 "alert.encrypt.failed.count" = "機密データの暗号化に失敗しました。%d 件保存されませんでした。";
 
 /* Welcome View */
@@ -340,6 +341,7 @@
 "settings.tab.update" = "アップデートと情報";
 "settings.backup.error.last" = "前回のバックアップに失敗しました：%@";
 "settings.backup.pruneError.last" = "前回の整理に失敗しました：%@";
+"settings.backup.quarantineError.last" = "隔離コピーがバックアップに含まれていません：%@";
 "item.ocrProcessing" = "OCR 処理中…";
 "item.ocrUnreadable" = "OCR テキストを読み込めません";
 "settings.historyCapture.ocrPreview" = "画像検索結果に OCR テキストを表示";
@@ -420,6 +422,7 @@
 "restore.result.imageFailed" = "一部の画像の復元に失敗しました。ストレージのアクセス許可を確認してください。";
 "restore.result.close" = "閉じる";
 "restore.error.corrupted" = "バックアップファイルが破損しているか、外部で変更されました";
+"restore.error.quarantineRefused" = "隔離コピーの復元が拒否されました（パッケージ自体は破損していません）";
 "restore.error.unsupportedVersion" = "互換性のないバージョンのバックアップです";
 "restore.error.unsupportedKDF" = "バックアップの鍵導出バージョンが互換ではありません";
 "restore.error.archiveFailed" = "バックアップファイルを解凍できません";

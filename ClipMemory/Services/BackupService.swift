@@ -91,6 +91,20 @@ final class BackupService {
     // would hide the prune signal under a recent backup success.
     private static var lastPruneErrorDateKey: String { UserDefaultsKey.lastPruneErrorDate.rawValue }
     private static var lastPruneErrorMessageKey: String { UserDefaultsKey.lastPruneErrorMessage.rawValue }
+
+    // ID-REVIEW-1024 follow-up (2026-10-24, independent review P2): the
+    // quarantine copies are a SUPPLEMENTARY artifact of the backup — the
+    // original bytes of the blobs that were corrupt enough to be
+    // quarantined. Writing them used to throw, and a throw from
+    // `writeBackupBlobs` tears down the whole run (`performBackupUnlocked`'s
+    // defer removes the timestamped directory), so a disk-full or a
+    // permission error on the Quarantine/ subdirectory cost the user
+    // their ENTIRE daily backup — and, because the quarantine keys live
+    // in UserDefaults and never expire, it recurred every single day.
+    // The failure is now recorded on its own channel (mirroring
+    // lastPruneErrorDate) and the backup itself completes.
+    private static var lastQuarantineErrorDateKey: String { UserDefaultsKey.lastQuarantineErrorDate.rawValue }
+    private static var lastQuarantineErrorMessageKey: String { UserDefaultsKey.lastQuarantineErrorMessage.rawValue }
     private static let minimumInterval: TimeInterval = 24 * 60 * 60
     /// H-6 (2026-07-24 audit): marker file dropped at the start of every
     /// backup and removed on success. An orphan timestamped dir carrying
@@ -202,6 +216,27 @@ final class BackupService {
     }
     var lastPruneErrorMessage: String? {
         defaults.string(forKey: Self.lastPruneErrorMessageKey)
+    }
+
+    // ID-REVIEW-1024 follow-up (2026-10-24): the quarantine-copy failure
+    // channel. The backup succeeded; only the supplementary quarantine
+    // copies are missing from it. Surfaced in Settings next to the prune
+    // error so "backup is fresh but incomplete" is visible without
+    // pretending the whole backup failed.
+    var lastQuarantineErrorDate: Date? {
+        defaults.object(forKey: Self.lastQuarantineErrorDateKey) as? Date
+    }
+    var lastQuarantineErrorMessage: String? {
+        defaults.string(forKey: Self.lastQuarantineErrorMessageKey)
+    }
+
+    /// ID-REVIEW-1024 follow-up (2026-10-24): shared writer for the
+    /// quarantine-copy failure channel. Message BEFORE date, same
+    /// ordering invariant as the N-3 backup-error pair: a reader that
+    /// sees the date always sees the message.
+    private func recordQuarantineError(message: String) {
+        defaults.set(message, forKey: Self.lastQuarantineErrorMessageKey)
+        defaults.set(Date(), forKey: Self.lastQuarantineErrorDateKey)
     }
 
     // ID-STORE-0016: shared writer used by both pruneOldBackups catch
@@ -420,7 +455,9 @@ final class BackupService {
         }
         // ID-BACKUP-0006 (2026-10-23): 隔离副本也要进备份 ——
         // 它是损坏 blob 的原始字节，改动前不在白名单里，会永久丢失。
-        try writeQuarantineCopies(to: destination)
+        // ID-REVIEW-1024 follow-up (2026-10-24): 非致命 —— 隔离副本写失败
+        // 不再作废整次备份（见 writeQuarantineCopies 的说明）。
+        writeQuarantineCopies(to: destination)
     }
 
     /// ID-BACKUP-0006 (2026-10-23): 把隔离副本（`<key>.corrupt-<时间戳>`）
@@ -437,7 +474,7 @@ final class BackupService {
     ///
     /// 没有隔离副本时**不创建** `Quarantine/` 目录 —— 备份产物与改动前
     /// 完全一致。
-    private func writeQuarantineCopies(to destination: URL) throws {
+    private func writeQuarantineCopies(to destination: URL) {
         let keys = BackupBlobRegistry.quarantineKeys(in: defaults)
         guard !keys.isEmpty else { return }
         let quarantineDirectory = destination.appendingPathComponent(
@@ -451,12 +488,17 @@ final class BackupService {
                 attributes: [.posixPermissions: 0o700]
             )
         } catch {
-            logger.error("Backup failed (create \(BackupBlobRegistry.quarantineDirectoryName) dir): \(error.localizedDescription)")
-            throw BackupError.writeFailed(
-                filename: BackupBlobRegistry.quarantineDirectoryName,
-                underlying: error
-            )
+            // ID-REVIEW-1024 follow-up (2026-10-24): the Quarantine/
+            // subdirectory is supplementary — the main blobs are already
+            // written at this point. Failing the whole run here used to
+            // delete the finished backup (performBackupUnlocked's defer)
+            // and, because the quarantine keys never expire, repeat that
+            // every day. Record it and let the backup stand.
+            logger.error("Backup incomplete (create \(BackupBlobRegistry.quarantineDirectoryName) dir): \(error.localizedDescription)")
+            recordQuarantineError(message: error.localizedDescription)
+            return
         }
+        var failures: [String] = []
         for key in keys {
             guard let data = defaults.data(forKey: key) else { continue }
             let fileURL = quarantineDirectory.appendingPathComponent(key)
@@ -465,9 +507,20 @@ final class BackupService {
                 try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
             } catch {
                 // 只记 key 名，不记内容 —— 隔离副本是用户数据。
-                logger.error("Backup failed (write quarantine copy \(key)): \(error.localizedDescription)")
-                throw BackupError.writeFailed(filename: key, underlying: error)
+                logger.error("Backup incomplete (write quarantine copy \(key)): \(error.localizedDescription)")
+                failures.append(key)
             }
+        }
+        if failures.isEmpty {
+            // A complete run clears the previous record — same contract
+            // as the backup-error pair, so a healed disk stops showing
+            // a stale warning.
+            defaults.removeObject(forKey: Self.lastQuarantineErrorDateKey)
+            defaults.removeObject(forKey: Self.lastQuarantineErrorMessageKey)
+        } else {
+            recordQuarantineError(
+                message: "\(failures.count) of \(keys.count) quarantine copies could not be written"
+            )
         }
     }
 

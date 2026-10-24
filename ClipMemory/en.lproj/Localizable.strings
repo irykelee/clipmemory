@@ -169,6 +169,7 @@
 "batch.selected.one" = "1 selected";
 "app.send.feedback" = "Feedback";
 "alert.encrypt.failed" = "Failed to encrypt sensitive data. Item was not saved.";
+"alert.encrypt.keychain.recoverable" = "The keychain is temporarily unavailable; retrying. Existing data is unaffected.";
 "alert.encrypt.failed.count" = "Failed to encrypt sensitive data. %d items were not saved.";
 
 /* Welcome View */
@@ -344,6 +345,7 @@
 "settings.tab.update" = "Update & About";
 "settings.backup.error.last" = "Last backup failed: %@";
 "settings.backup.pruneError.last" = "Last prune failed: %@";
+"settings.backup.quarantineError.last" = "Quarantine copies missing from backup: %@";
 "item.ocrProcessing" = "OCR processing…";
 "item.ocrUnreadable" = "OCR text unreadable";
 "settings.historyCapture.ocrPreview" = "Show OCR text in image search results";
@@ -419,6 +421,7 @@
 "restore.result.imageFailed" = "Some images failed to restore. Check storage permissions.";
 "restore.result.close" = "Close";
 "restore.error.corrupted" = "Backup file is corrupted or externally modified";
+"restore.error.quarantineRefused" = "Refused to restore the quarantine copy (the package itself is intact)";
 "restore.error.unsupportedVersion" = "Backup from incompatible version";
 "restore.error.unsupportedKDF" = "Backup key derivation version incompatible";
 "restore.error.archiveFailed" = "Cannot extract backup file";

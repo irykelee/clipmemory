@@ -166,6 +166,7 @@
 "batch.selected" = "已选择 %d 项";
 "app.send.feedback" = "反馈";
 "alert.encrypt.failed" = "敏感数据加密失败，内容未保存。";
+"alert.encrypt.keychain.recoverable" = "钥匙串暂时不可用，正在重试。已有数据未受影响。";
 "alert.encrypt.failed.count" = "敏感数据加密失败，%d 条内容未保存。";
 
 /* Welcome View */
@@ -338,6 +339,7 @@
 "settings.tab.update" = "更新与关于";
 "settings.backup.error.last" = "上次备份失败：%@";
 "settings.backup.pruneError.last" = "上次清理失败：%@";
+"settings.backup.quarantineError.last" = "隔离副本未写入备份：%@";
 "item.ocrProcessing" = "OCR 处理中…";
 "item.ocrUnreadable" = "OCR 文本损坏";
 "settings.historyCapture.ocrPreview" = "图片搜索结果显示 OCR 文本";
@@ -418,6 +420,7 @@
 "restore.result.imageFailed" = "部分图片恢复失败，请检查存储权限。";
 "restore.result.close" = "关闭";
 "restore.error.corrupted" = "备份文件已损坏或被外部修改";
+"restore.error.quarantineRefused" = "隔离副本被拒绝恢复（备份包本身未损坏）";
 "restore.error.unsupportedVersion" = "备份来自不兼容的版本";
 "restore.error.unsupportedKDF" = "备份密钥派生版本不兼容";
 "restore.error.archiveFailed" = "无法解压备份文件";
