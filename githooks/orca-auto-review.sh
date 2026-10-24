@@ -60,12 +60,18 @@ OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 #   space-bunny-free / big-pickle 三个全部一样), 审核门禁整条链死掉一整天,
 #   pre-push 每次都走到 "所有候选模型均未产出有效报告" 然后 exit 1 阻断 push。
 #   openrouter/nvidia/nemotron-3-ultra-550b-a55b:free 是同一族模型(NVIDIA 550B)
-#   的 OpenRouter 免费档, 2026-10-24 实测可用(2-token 探针即返回 PONG)——
-#   放进链首, 原来的三个保留在后面(额度恢复后自动用回)。
+#   的 OpenRouter 免费档, 2026-10-24 实测可用(2-token 探针即返回 PONG)。
+#
+# 链首放 **本地** ollama/qwen3.5:9b(本机 127.0.0.1, 不出网): 推代码这件事
+# 本身要把 diff 送出机器, 审核再送一份给第三方就更没必要了 —— 本地模型能力
+# 弱(9B), 但**它真的读了代码**(见下面的 diff 构造修复), 而外部模型一旦
+# 额度恢复就能接管(链是按顺序试的, 本地失败才轮下一个)。把外部模型放在
+# 后面, 意味着额度恢复后需要把 ollama 挪回链尾才会优先用它们 —— 这一点
+# 写在注释里, 改链顺序时请连同这段一起看。
 if [[ -n "${REVIEW_MODEL:-}" ]]; then
   MODEL_CHAIN=("$REVIEW_MODEL")
 else
-  MODEL_CHAIN=("openrouter/nvidia/nemotron-3-ultra-550b-a55b:free" "opencode/nemotron-3-ultra-free" "opencode/space-bunny-free" "opencode/big-pickle")
+  MODEL_CHAIN=("ollama/qwen3.5:9b" "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free" "opencode/nemotron-3-ultra-free" "opencode/space-bunny-free" "opencode/big-pickle")
 fi
 
 # 运行时标记与失败台账落在脚本所在目录（githooks/）, 由 .gitignore 排除
