@@ -446,3 +446,5 @@
 "safeMode.action.disable" = "Desativar modo de segurança";
 "safeMode.degraded.title" = "Detecção de falhas indisponível";
 "safeMode.degraded.body" = "Não foi possível escrever o arquivo sentinela. A detecção de falhas está offline. Por favor, reporte via Ajuda → Reportar problema.";
+"alert.already.running.title" = "O ClipMemory já está em execução";
+"alert.already.running.message" = "Já está em execução — esta inicialização não alterou seu histórico da área de transferência. O ícone na barra de menus é a porta de entrada.";

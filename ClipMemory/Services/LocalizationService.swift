@@ -511,6 +511,15 @@ struct L10n {
         String(format: pluralTemplate("alert.trash.purge.pending.badge", count), count)
     }
     static var alertTrashPurgePendingConfirm: String { string("alert.trash.purge.pending.confirm") }
+    // ID-CRASH-0032 (2026-10-24, independent review P1): a second copy of
+    // the app was launched while the first one was running. The second copy
+    // exits WITHOUT touching the data (that is the whole point of the
+    // instance lock), but a silent exit looked like "double-clicking does
+    // nothing" — the app has no Dock icon, so `activate` on the incumbent
+    // shows no window either. These two strings are the only thing the user
+    // gets, so they have to say what happened.
+    static var alertAlreadyRunningTitle: String { string("alert.already.running.title") }
+    static var alertAlreadyRunningMessage: String { string("alert.already.running.message") }
     // ID-CRASH-0022 (2026-10-20): the items-side twin of
     // `alertTrashLoadFailed` — the clipboard history blob was
     // unreadable and got quarantined. The user has to learn that their

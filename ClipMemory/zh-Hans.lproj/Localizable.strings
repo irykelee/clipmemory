@@ -445,3 +445,5 @@
 "safeMode.action.disable" = "退出安全模式";
 "safeMode.degraded.title" = "崩溃检测暂不可用";
 "safeMode.degraded.body" = "无法写入启动哨兵文件。崩溃检测已下线,请通过帮助 → 反馈问题上报。";
+"alert.already.running.title" = "剪忆已经在运行了";
+"alert.already.running.message" = "已经在运行了——这次启动没有改动你的剪贴板历史。菜单栏图标就是它的入口。";

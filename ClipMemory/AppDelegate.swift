@@ -562,7 +562,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // a modal confirmation is acceptable: it can never pop up on its
         // own.
         if pendingTrashPurgeCount > 0 {
-            presentTrashPurgeConfirmation()
+            // ID-REVIEW-1026 (2026-10-24, independent review P1): the
+            // badge can be STALE. The user may have restored or deleted
+            // those entries themselves, which resolves the pending set in
+            // the store while the badge is still up — the live count is
+            // then 0 and there is nothing left to ask about. The badge
+            // GATES the QuickBar, so a click that ended in "nothing
+            // happened" left the user with an app that looked stuck.
+            // Falling through to the QuickBar is the answer.
+            if presentTrashPurgeConfirmation() { return }
+            windowManager?.showQuickBar()
             return
         }
         // H-1: windowManager is optional — quietly fail if setup didn't complete
@@ -1057,7 +1066,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Best effort: bring the running instance forward so the user sees
         // that the app is already open.
         other?.activate(options: [])
+        // ID-CRASH-0032 follow-up (2026-10-24, independent review P1): the
+        // silent exit read as "double-clicking does nothing". The app is an
+        // accessory (no Dock icon), so `activate` on the incumbent shows no
+        // window, and this process vanished without a word. Say it out loud
+        // BEFORE leaving — the user gets an answer instead of silence.
+        presentAlreadyRunningAlert()
         exit(EXIT_SUCCESS)
+    }
+
+    /// Tells the user that ClipMemory is already running.
+    ///
+    /// The alert touches no data: `NSAlert` is pure AppKit and no store is
+    /// instantiated on this path — which is exactly why this function may
+    /// run at all (the whole point of the instance lock is that the
+    /// duplicate must not touch the blob).
+    ///
+    /// The activation policy is temporarily raised to `.regular` so the
+    /// alert can take focus and be dismissed — the app has no Dock icon of
+    /// its own (LSUIElement), and a panel that cannot be focused is a
+    /// panel the user never sees. Same pattern as
+    /// `presentKeyFailureAlert`.
+    private func presentAlreadyRunningAlert() {
+        // XCTest guard: the guard itself never fires in a test host (the
+        // lock is skipped under tests), but a modal alert in CI would hang
+        // the run forever if that ever changed.
+        guard !TestIsolation.isRunningTests else { return }
+        NSApp.setActivationPolicy(.regular)
+        defer { NSApp.setActivationPolicy(.accessory) }
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = L10n.alertAlreadyRunningTitle
+        alert.informativeText = L10n.alertAlreadyRunningMessage
+        alert.addButton(withTitle: L10n.buttonDone)
+        alert.runModal()
     }
 
     /// The other live instance of this app, if any.
@@ -1450,7 +1492,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// asks again (the batch is still there, so the question comes back
     /// as a fresh badge, not as a trap).
     @MainActor
-    private func presentTrashPurgeConfirmation() {
+    @discardableResult
+    private func presentTrashPurgeConfirmation() -> Bool {
         // ID-REVIEW-1025 (2026-10-24, independent review P3): the
         // dialog must state the number that will ACTUALLY be deleted.
         // The badge's cached count can be up to one cleanup tick stale
@@ -1458,7 +1501,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // live value is read from the store.
         let count = ClipboardStore.shared.pendingExpiredPurgeCount
         let retentionDays = pendingTrashPurgeRetentionDays
-        guard count > 0 else { return }
+        guard count > 0 else {
+            // ID-REVIEW-1026 (2026-10-24, independent review P1): the
+            // badge is stale — the pending set has already been resolved
+            // (the user restored or deleted those entries). There is
+            // nothing to ask about, so the badge goes away and the caller
+            // opens the QuickBar instead of swallowing the click.
+            clearPendingPurgeBadge(lastResultText: nil)
+            return false
+        }
         // The app is a menu bar app: without this the alert can open
         // behind whatever is in front.
         NSApp.activate(ignoringOtherApps: true)
@@ -1473,9 +1524,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // "取消" — the entries stay, the badge goes away, and the
             // next tick asks again.
             ClipboardStore.shared.declineExpiredPurge()
-            return
+            return true
         }
         ClipboardStore.shared.confirmExpiredPurge()
+        return true
     }
 
     /// ID-CRASH-0035 (2026-10-21): renders the menu bar icon with a red

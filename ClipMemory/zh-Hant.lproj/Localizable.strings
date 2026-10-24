@@ -449,3 +449,5 @@
 "safeMode.action.disable" = "退出安全模式";
 "safeMode.degraded.title" = "當機偵測暫時無法使用";
 "safeMode.degraded.body" = "無法寫入啟動哨兵檔案。當機偵測已離線,請透過說明 → 回報問題告知我們。";
+"alert.already.running.title" = "剪憶已經在執行了";
+"alert.already.running.message" = "已經在執行了——這次啟動沒有改動你的剪貼簿歷史。選單列圖示就是它的入口。";

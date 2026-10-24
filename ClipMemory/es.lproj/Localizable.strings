@@ -446,3 +446,5 @@
 "safeMode.action.disable" = "Desactivar modo seguro";
 "safeMode.degraded.title" = "Detección de fallos no disponible";
 "safeMode.degraded.body" = "No se pudo escribir el archivo centinela. La detección de fallos está inactiva. Por favor, informe vía Ayuda → Informar de un problema.";
+"alert.already.running.title" = "ClipMemory ya está en ejecución";
+"alert.already.running.message" = "Ya está en ejecución: este inicio no modificó tu historial del portapapeles. El icono de la barra de menús es la puerta de entrada.";

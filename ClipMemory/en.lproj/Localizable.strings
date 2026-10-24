@@ -446,3 +446,5 @@
 "safeMode.action.disable" = "Disable Safe Mode";
 "safeMode.degraded.title" = "Crash detection unavailable";
 "safeMode.degraded.body" = "Could not write the launch sentinel file. Crash detection is offline until this is resolved — please report via Help → Report Issue.";
+"alert.already.running.title" = "ClipMemory is already running";
+"alert.already.running.message" = "It is already running — this launch did not change your clipboard history. The menu bar icon is the way in.";
