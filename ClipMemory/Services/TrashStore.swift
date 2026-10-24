@@ -211,6 +211,44 @@ final class TrashStore: ObservableObject {
     @discardableResult
     private func purgeTrashWithFallback(_ itemIDs: Set<UUID>) -> Bool {
         guard !itemIDs.isEmpty else { return true }
+        // ID-REVIEW-1025 (2026-10-24): the backend's purge is a
+        // read-modify-write on the PERSISTED blob
+        // (`FileStorageBackend.purgeTrash` loads the stored array, drops
+        // the given ids, writes the rest back). If the persisted blob is
+        // STALE relative to `trashedItems`, that rewrite resurrects
+        // whatever the stale blob still holds:
+        //
+        //   * the user restores an entry → it leaves `trashedItems`, but
+        //     the 500 ms debounce has not flushed yet → the blob still
+        //     has it → the purge writes it back → the entry is in the
+        //     bin AGAIN on the next launch, and also in the history;
+        //   * the user trashes an entry → it is in `trashedItems` but not
+        //     yet in the blob → the purge rewrites the blob without it
+        //     → the entry is missing from the bin on the next launch.
+        //
+        // Both are silent, and both are fixed by making the blob
+        // CURRENT before the read-modify-write. `flushPendingSave()`
+        // writes `trashedItems` — which every caller has already
+        // updated to the post-purge state (see `deletePermanently`,
+        // `emptyTrash`, `deleteExpiredEntries`) — and is a no-op when
+        // nothing is pending, so the common path pays nothing.
+        //
+        // The flush keeps the three-leg contract intact: a failed write
+        // re-sets `needsSave`, schedules the retry, and posts
+        // `.clipboardSaveFailed` (see `saveTrashedItems`).
+        flushPendingSave()
+        if needsSave || (lastLoadFailed && trashedItems.isEmpty) {
+            // The authoritative write did not happen: either it FAILED
+            // (the catch in `saveTrashedItems` re-set the flag and
+            // posted the alert) or it was REFUSED (the load-failed
+            // guard — the store's content is unknown, so an empty
+            // collection must not replace it). Running the backend's
+            // read-modify-write now would rewrite the STALE blob and
+            // resurrect what it still holds — so the purge is refused
+            // instead. `false` also means the image files are NOT
+            // deleted (the ordering contract on `deletePermanently`).
+            return false
+        }
         do {
             try backend.purgeTrash(deleting: itemIDs)
             return true
