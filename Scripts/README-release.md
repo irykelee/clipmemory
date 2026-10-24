@@ -138,7 +138,7 @@ release.sh 的 34 项断言覆盖纯函数：`version_gt`（数值比较，2.10.
 | `Scripts/README-release.md` | 已入库（REL-27 `e491372` 实体化） | 本文档 |
 | `Scripts/rollback-release.sh` | 已入库（REL-27 `d6d3fc2` 实体化） | 发布回滚工具（93 行） |
 | `Scripts/cask-template.rb` | 已入库（REL-28 `e6a8c2b`） | tap Cask 模板（rubocop-clean） |
-| `Scripts/sync_readme.py` | 已入库 | 8 README 标题 + changelog 7 语种同步（LLM 翻译，内存构建成功后统一落盘） |
+| `Scripts/sync_readme.py` | 已入库 | 7 README 标题 + changelog 7 语种同步（LLM 翻译，内存构建成功后统一落盘） |
 | `Scripts/test/test_sync_readme{,_dedupe}.py` | 已入库 | sync_readme 测试 |
 | `Scripts/package.sh` | 已入库 | CI 打包（含 `verify_package()` 自检） |
 | `Scripts/update_appcast.sh` | 已入库 | appcast 插入 `<item>`（幂等，REL-4） |

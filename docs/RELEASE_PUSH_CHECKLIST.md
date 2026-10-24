@@ -40,7 +40,7 @@ For each of: `README.md` (zh-Hans), `docs/lang/README_{EN,ZH-HANT,JA,KO,ES,PT}.m
 
 - [ ] Live Cask check: `curl -s https://raw.githubusercontent.com/irykelee/homebrew-clipmemory/main/Casks/clipmemory.rb | grep version` shows new version (this is the source of truth)
 - [ ] Tap Cask sha256 == release tarball sha256 (cross-check via `gh release download vX.Y.Z` → `shasum -a 256`)
-- [ ] Local `Casks/clipmemory.rb` (reference template only): Ruby 语法有效即可（`ruby -c Casks/clipmemory.rb`）；版本/sha 不再要求本地同步（per P0-4 in `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md`）
+- [ ] Local `Casks/clipmemory.rb` (reference template only): Ruby 语法有效即可（`ruby -c Casks/clipmemory.rb`）；版本/sha 不再要求本地同步（per P0-4 in the removed `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md`; 结论已内联本行）
 
 ### A5. Pre-flight (per `docs/RELEASE.md` B1.3)
 
@@ -93,7 +93,7 @@ For each of: `README.md` (zh-Hans), `docs/lang/README_{EN,ZH-HANT,JA,KO,ES,PT}.m
 
 ## F. One-time Setup — Branch Protection on `main`
 
-> **Why**: `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md` §1 P0-15 (no branch protection) → 2026-07-22 v2.5.10 release required user-explicit force-push to main to recover. Branch protection would have blocked that path and forced the fix to flow through a PR.
+> **Why**: 原 `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md` §1 P0-15（该审计文件已从仓库删除；结论内联于此）(no branch protection) → 2026-07-22 v2.5.10 release required user-explicit force-push to main to recover. Branch protection would have blocked that path and forced the fix to flow through a PR.
 > **When**: One-time per repo (or after GH Settings reset). **Not** per-release.
 > **Status (verified 2026-08-04)**: configured — required check `build-and-test`, required approvals `0`, `enforce_admins: false`, force pushes/deletions disabled. Re-run the F2 verification commands after any GitHub branch-protection reset.
 
