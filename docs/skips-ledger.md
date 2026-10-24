@@ -7,7 +7,8 @@
 - **详细 commit 序列**：见 `git log --oneline 803393b..HEAD -- docs/skips-ledger.md`（22 次修订）
 - **根因追踪**：issue #93（ID-CRASH-0037，GH Actions runner 环境调查）+ ID-CRASH-0038（**主因已修复**）
 - **恢复目标**：v2.9.6（接近完成）
-- **计数口径**：4 处语句 / 4 个测试（2026-10-03 实测，本地 1025 / 4 skipped / 0 failures；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002）
+- **计数口径**：**7 处语句 / 7 个测试（2026-10-24 重盘实测，锚定 grep；见下）**
+- **2026-10-24 重盘勘误**：上一行曾记「4 处（2026-10-03 实测）」、台账表曾列 21 处——两者都与代码不符且互相矛盾。锚定 grep 实测当前 = 7 处（snapshot 4 + HotKey 3）；IntegrationTests 9 处 / WindowManager 1 处 / MemoryWarning 1 处 / AppDelegate terminate 3 处的 `XCTSkip` 语句已在此前的恢复批次中**从代码删除**（例如 IntegrationTests.swift:621 现在只剩注释提及），但对应表行当时未删（违反本文件「恢复即删行」规则），本次一并清理。台账表现在与代码一致。
 
 ## 背景
 
@@ -17,19 +18,17 @@ GH Actions macOS runner 环境（macOS 27 / 新 Xcode 镜像）下，下列测�
 
 ⚠️ xcodebuild 的 `Executed N tests` 把 skipped 计入总数，因此 ci.yml 的最小计数门（ID-CRASH-0014 blind-spot-6）对 mass-skip 不敏感——**本台账是 skip 的唯一强制记录**。恢复任何条目时，必须同时删除对应 `XCTSkip` 语句并删除本表行；全部恢复后删除本文件并在 release notes 记录。
 
-## 台账（2026-10-02 snapshot re-skip 后，21 处 / 21 个测试）
+## 台账（2026-10-24 重盘后，7 处 / 7 个测试）
 
 | # | 测试文件 | XCTSkip 处 | 备注 |
 |---|---|---|---|
-| 1 | IntegrationTests.swift | 9 | restart-recovery / backend 等核心集成路径 |
-| 2 | WindowManagerTests.swift | 1 | 仅保留 `testUnregisteringClosedSecondaryAllowsAccessorySink`（其他 4 已恢复） |
-| 3 | MemoryWarningTests.swift | 1 | 仅保留 `testFlushAllClearsCaches`（其他 3 已恢复） |
-| 4 | HotKeyRetainFailurePathTests.swift | 3 | 热键保留环：测试前提（"registration MUST fail"）在 CI 干净 macOS 上不成立，需要重构测试本身 |
-| 5 | AppDelegateShouldTerminateTests.swift | 3 | terminate 路径。**CI 崩溃机制已确认并已修复（ID-CRASH-0057，见下方勘误）**：真因是 `ClipboardStore.shared` 的 dispatch_once 临界区内 pump RunLoop 重入 XCTest（tearDown 首触 `.shared` 同样致命；"类级 setUpWithError XCTSkip 必杀"是误归因——它只是共现现象）。skip 暂留至 CI 实测确认修复生效后再评估恢复；恢复时仍遵守 skip 置于测试体首行、tearDown 避免首触单例的保守模式 |
-| 6 | ClipboardItemRowSnapshotTests.swift | 2 | snapshot golden 不匹配（store .shared 调查 + 漂移并存），2026-10-02 CI run 36978148927 后重新 skip，见下方新段 |
-| 7 | WelcomeViewSnapshotTests.swift | 1 | 同上 |
-| 8 | SettingsTabSnapshotTests.swift | 1 | tab 归因排除（渲染对 key 不变）；CI 失配机制未定位（双假设并存，见诊断条）；恢复前置=机制定位（CI actual.png 产物核查 / 探针重录——重录 gated on record path，见工具守卫条） |
-| | **合计** | **21** | **本地 1025 / 21 skipped / 0 failures**（2026-10-02） |
+| 1 | HotKeyRetainFailurePathTests.swift | 3 | 热键保留环：测试前提（"registration MUST fail"）在 CI 干净 macOS 上不成立，需要重构测试本身 |
+| 2 | ClipboardItemRowSnapshotTests.swift | 2 | snapshot golden 不匹配（store .shared 调查 + 漂移并存），2026-10-02 CI run 36978148927 后重新 skip，见下方新段 |
+| 3 | WelcomeViewSnapshotTests.swift | 1 | 同上 |
+| 4 | SettingsTabSnapshotTests.swift | 1 | tab 归因排除（渲染对 key 不变）；CI 失配机制未定位（双假设并存，见诊断条）；恢复前置=机制定位（CI actual.png 产物核查 / 探针重录——重录 gated on record path，见工具守卫条） |
+| | **合计** | **7** | 锚定 grep `^[[:space:]]*throw XCTSkip` 实测（2026-10-24）；测试总数以 `Scripts/test-count.sh` 为准，ID-TEST-0002 |
+
+（2026-10-24 勘误：原表 21 处中的 IntegrationTests ×9 / WindowManagerTests ×1 / MemoryWarningTests ×1 / AppDelegateShouldTerminateTests ×3 共 14 处，其 XCTSkip 语句已在此前批次从代码删除，表行未同步删除；本次删行。另：`SingleInstanceGuardTests` 的 `XCTSkipUnless`（/usr/bin/python3 探测）与 `ZZZSuiteTeardownTests` 的 `XCTSkipUnless`（focused-run 守卫）是**环境条件 skip**，不属 ID-CRASH-0038 台账口径，不列行。）
 
 ## ✅ ZZZ canary re-enabled（ID-REVIEW-1013 → 2026-10-02 收紧）
 
@@ -84,14 +83,13 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 - **覆盖率（164609 P2 + 173240/184342/190433 记录）**：SettingsTab 5 个 golden 断言≈零视觉内容（4 个 sibling 100% 空白、root 仅退化内容带+发丝线，Form 内容区空白）——套件实质只是「渲染不崩 + 字节稳定」canary；SettingsRootView / ClipboardItemRow 快照 / WelcomeView 快照活跃覆盖归零。masking 像素级哨兵仅剩 ClipboardItemRowTests.swift:88（isSensitive equatable 差异）+ SensitiveDetectorTests（检测层）弱替代。
 - **P2 决议（161942/163026/164609/184342 汇总）**：skip 文案统一 `ID-CRASH-0038 skip:` 前缀。统计口径（三种 grep 勿混）：① 锚定 `^[[:space:]]*throw XCTSkip` = **21**（= 台账）；② 未锚定 `throw XCTSkip` 朴素 grep = **22**，虚增 1 = IntegrationTests.swift:626 注释文本 "Always throw XCTSkip"；③ `ID-CRASH-0038 skip:` 字面 = **20** = 4 新 throw + 15 既有 throw + 1 注释（AppDelegateShouldTerminateTests.swift:24）；2 处既有 throw 用变体前缀（IntegrationTests.swift:629 `v2.9.5 skip:`、HotKeyRetainFailurePathTests.swift:39 `ID-CRASH-0038;`）。`testSettingsRootViewGeneralTab` 保持测试体首行 skip（类级门会连坐同套件其余测试）。
 
-## v2.9.6 仍开放（21 处 skip 的根因）
+## v2.9.6 仍开放（7 处 skip 的根因；2026-10-24 重盘）
 
-1. issue #93 根因**已修复并经 CI 实测确认**（ID-CRASH-0057，run 36978148927 宿主 0 重启）——主因关闭；issue 本体待 CI 全绿后关闭（该 run 尚有 4 snapshot 失败未达全绿，与本节 #2 一致）
+1. issue #93 根因**已修复并经 CI 实测确认**（ID-CRASH-0057，run 36978148927 宿主 0 重启）——主因关闭；issue 本体待 CI 全绿后关闭
 2. snapshot golden 不匹配 4 处：tab 归因已排除（渲染对 key 不变）；CI 失配位置未证实（仓内无 actual.png 产物核查）；CI 失配机制**未定位**——双假设并存（AppKit-backed `Form` 栅格化缺失 / settle 竞态；root 内容带为退化渲染 → settle 未被排除；环境无关属性不解释 CI-only 失配，见诊断条）——恢复前置 = 机制定位（CI actual.png 产物 / 探针重录——重录 gated on record path，见工具守卫条）+ CI 重验；ClipboardItemRow/WelcomeView 另有 store .shared 调查线；masking 哨兵必须恢复
 3. 3 处 HotKeyRetainFailure 测试前提在 CI 不成立，需重构测试
-4. 9 处 IntegrationTests 后端集成 CI flake（与 #93 重叠；宿主崩已修，恢复后重测是否仍 flake）
-5. 1 处 MemoryWarning 缓存状态依赖 + 1 处 WindowManager unregister 测试前提
-6. AppDelegate terminate 3 处——崩溃机制已修复且 CI 实证，**下轮优先恢复验证**
+
+（勘误 2026-10-24：原第 4-6 条——IntegrationTests 9 处、MemoryWarning 1 处 + WindowManager 1 处、AppDelegate terminate 3 处——对应 XCTSkip 已在此前批次从代码删除，不再是开放项。）
 
 ## v2.9.6 可选 cleanup（不阻塞 ship）
 
@@ -175,13 +173,13 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
 
 ### Next-batch 顺手做（建议随下批 ID-REVIEW-1022/Task D 一起）
 
-1. **【测试缺口·P2】** `BackupServiceTests.swift:testBackupNowCleansUpPartialDirOnImageCopyFailure` 改 NoThrow 后，**1.2 "throw mid-flight → partial-dir cleanup" 路径失去直接覆盖**。原 chmod-0 触发器对 hard-link 不再触发（`linkItem` 不读 source）。可改用 chmod-0 *destination* (`imagesDestination`) 强制 link 失败 → 断言 throw + 目录清理，单测即可恢复覆盖。回归风险：跨卷 EXDEV / 目标目录 EACCES / `imagesDestination` 已是文件 等真实失败路径目前无测试覆盖。
+1. **【测试缺口·P2】** ~~`BackupServiceTests.swift:testBackupNowCleansUpPartialDirOnImageCopyFailure` 改 NoThrow 后，**1.2 "throw mid-flight → partial-dir cleanup" 路径失去直接覆盖**~~ **已完成（2026-10-24）**：新增 `testBackupNowCleansUpPartialDirOnLinkFailure`（`LinkStubFileManager` 注入 link 失败 → 断言 throw + partial dir 清理）——hard-link 路径下这是唯一可靠的 mid-flight 失败注入方式（link(2) 不读源文件，权限把戏不再触发）。
 
-2. **【文档】** `BackupServiceTests.swift:149` 仍写 `"chmod-0 file throws .imageCopyFailed"`，与改 NoThrow 后的新行为矛盾。同步注释指向 ID-REVIEW-1018 hard-link 章节 + 描述 `linkItem` 不读 source 的语义事实。
+2. **【文档】** ~~`BackupServiceTests.swift:149` 仍写 `"chmod-0 file throws .imageCopyFailed"`，与改 NoThrow 后的新行为矛盾~~ **已完成（2026-10-24）**：注释重写为 hard-link 语义（link 不读 source），mid-flight 覆盖改指向新测试。回归风险备注保留：跨卷 EXDEV 已修复（见下条），目标目录 EACCES / `imagesDestination` 已是文件等失败路径由 `LinkStubFileManager` 注入测试覆盖（EACCES 注入）。
 
 ### Defer（默认安装不受影响，下下批或下下下批处理）
 
-3. **【P3·健壮性】跨卷 EXDEV 回归** —— 若用户把 `Images/` 符号链接到其他卷（省空间），`linkItem` 报 `EXDEV` → 每日备份全失败（旧 `copyItem` 跨卷正常）。3 行修复：`catch` 中识别 `EXDEV` 时降级 `copyItem`。force-EXDEV-only path，所以默认安装（单卷 APFS）不受影响。
+3. **【P3·健壮性】跨卷 EXDEV 回归** ~~若用户把 `Images/` 符号链接到其他卷（省空间），`linkItem` 报 `EXDEV` → 每日备份全失败~~ **已完成（2026-10-24，提前于原计划）**：`copyImagesIfPresent` 的 link 失败现在按 `isCrossDeviceLinkFailure`（裸 POSIX / Cocoa 包装两种形态都查）识别 EXDEV 并降级 `copyItem`；测试 `testBackupNowFallsBackToCopyWhenLinkCrossesDevices` + 分类测试钉住。非 EXDEV 失败仍照旧 abort backup（imageCopyFailed）。
 
 4. **【边界记档】chmod-0 文件进备份** —— hard link 对 `0o000` source 也成功（实测），所以未来 exportPackage 时 `ditto` 读不了该文件导致导出失败。低概率（正常图片恒 `0o600`），仅记档不修：导出包 v3 + ImageStorage 的写入纪律已默认 0o600。
 
