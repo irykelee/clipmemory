@@ -200,6 +200,11 @@ final class SingleInstanceLock {
                 return true
             }
             let code = errno
+            // 与 `probeDecision(forErrno:)` 的关系（ID-REVIEW-1032）：这里
+            // **故意**把 EWOULDBLOCK 与 EINTR 当同义 —— 两者对「拿不到锁」
+            // 的含义一样（都得重试），区别只在探针那边：探针要回答的是
+            // 「**是不是有人在持锁**」，EINTR 回答不了这个问题，所以探针必须
+            // 把 EINTR 与 EWOULDBLOCK 区分开，而 acquire 不需要区分。
             if code != EWOULDBLOCK && code != EINTR {
                 Self.logger.error("""
                 ID-CRASH-0032: flock failed with errno \(code); continuing \
