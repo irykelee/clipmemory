@@ -1,0 +1,20 @@
+# 审核门人工核验台账 / review adjudication ledger
+#
+# 每行一条 JSON（`#` 开头为注释，坏行会被跳过并告警，不会让门禁失效）。
+# 由 `python3 githooks/review-adjudicate.py add ...` 追加 —— 手写也可以。
+#
+# 字段：
+#   match       命中 finding 文本的正则（编译失败则退化为字面子串）
+#   verdict     confirmed（真问题 ⇒ 阻断 push，直到该文件被改动）
+#               | false-positive（误报 ⇒ 不具备阻断力）
+#   file        相关文件（相对仓库根）。填了则该文件内容一改，这条结论自动失效
+#   fileSha256  记录时该文件内容的 sha256（由工具自动填）
+#   severity    可选：P0/P1/P2/P3，缺省表示不限严重度
+#   note        为什么这么判（必填 —— 这是给下一个人的解释）
+#   adjudicatedAt / expiresAt  ISO8601 时间戳
+#
+# 判定细则见 githooks/review-adjudicate.py 顶部 docstring。
+# 门禁模式见 REVIEW_GATE_MODE（默认 advisory：模型 findings 不单独阻断 push）。
+#
+# --- 示例（真的一条，别删）---
+# {"match": "granularSave.*空 Tag", "file": "ClipMemory/Services/ClipboardStore+Persistence.swift", "fileSha256": "<sha256>", "severity": "P1", "verdict": "false-positive", "note": "已按目录解析真实 tag；该路径在占位后端下不可达", "adjudicatedAt": "2026-10-25T10:00:00Z", "expiresAt": "2027-10-25T10:00:00Z"}

@@ -467,6 +467,20 @@ jobs:
           chmod +x Scripts/lint-appcast-coverage.sh
           ./Scripts/lint-appcast-coverage.sh
 
+      # ID-REVIEW-1029 (2026-10-25): the review gate's OWN gate — the
+      # adjudication layer that decides whether a model-reported P0/P1
+      # blocks a push. It is the only thing standing between the 9B
+      # model's unreliable severity labels and a blocked push, and it was
+      # previously unguarded (Scripts/test/*.sh are not run by any other
+      # CI job). The test covers all six decision directions plus the
+      # wiring check (the gate must block on the EFFECTIVE verdict, not
+      # on the model's raw conclusion line) — a regression there would
+      # silently re-enable either "never blocks" or "always blocks".
+      - name: Review gate adjudication test (ID-REVIEW-1029)
+        run: |
+          set -euo pipefail
+          bash Scripts/test/test_review_adjudicate.sh
+
   # P2-17 (2026-09-22 audit): minimum line coverage gate. Parses the
   # xcresult bundle emitted by build-and-test and fails the job if
   # coverage falls below COVERAGE_THRESHOLD (default 30% in script,

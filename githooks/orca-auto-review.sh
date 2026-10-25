@@ -515,14 +515,64 @@ if [[ -z "$VERDICT" ]]; then
   exit 1
 fi
 
-if [[ "$VERDICT" == "FAIL" ]]; then
+# ---------------------------------------------------------------- 人工核验层
+# ID-REVIEW-1029 (2026-10-25): 本地小模型（ollama/qwen3.5:9b）**能抓真 bug，
+# 但严重度标注不可信** —— v2.9.6 发版期间实测 3 份报告共 5 条 P1，人工逐条核验
+# **全部误报**；还有一份出现「正文列了 2 条 [P1]、结论行却写 PASS」的自相矛盾。
+# ⇒ 让它当放行裁决者 = 每次 push 都要人工绕过 hook 且不留痕；让它没声音 = 浪费
+# 一个真能抓 bug 的独立信源。
+#
+# 本层做的事：findings 永远进报告（可审计），**要不要阻断由人的核验结论决定**。
+# 台账 githooks/review-adjudication.jsonl（入库）每条结论带 file + fileSha256
+# ⇒ 代码一改，结论自动失效，必须重新核验。
+#
+# 模式（REVIEW_GATE_MODE）：
+#   advisory（默认）模型 findings 不单独阻断 push；只有人工记为 `confirmed`
+#             的 finding 才阻断（直到该文件被改动）。
+#   strict            保留旧行为：模型结论 FAIL 即阻断（大模型在链上时用）。
+# 两种模式下人工 `confirmed` 都阻断。
+GATE_MODE="${REVIEW_GATE_MODE:-advisory}"
+ADJ_LEDGER="$HOOKS_DIR/review-adjudication.jsonl"
+ADJ_OUT=""
+if [[ -n "$PYTHON_BIN" && -f "$ADJ_LEDGER" ]]; then
+  ADJ_OUT=$("$PYTHON_BIN" "$HOOKS_DIR/review-adjudicate.py" apply \
+      --report "$REPORT" --ledger "$ADJ_LEDGER" --repo-root "$ROOT" \
+      --mode "$GATE_MODE" --model-verdict "$VERDICT" || true)
+fi
+EFFECTIVE_VERDICT="$VERDICT"
+ADJ_BLOCKING=0
+ADJ_ADVISORY=0
+if [[ -n "$ADJ_OUT" ]]; then
+  while IFS='=' read -r key value; do
+    case "$key" in
+      EFFECTIVE_VERDICT) EFFECTIVE_VERDICT="$value" ;;
+      BLOCKING_COUNT)    ADJ_BLOCKING="$value" ;;
+      ADVISORY_COUNT)    ADJ_ADVISORY="$value" ;;
+    esac
+  done <<< "$ADJ_OUT"
+  if [[ "$EFFECTIVE_VERDICT" != "$VERDICT" ]]; then
+    echo "[auto-review] ⚖️ 人工核验层生效：模型结论 ${VERDICT} → 生效结论 ${EFFECTIVE_VERDICT}（模式 ${GATE_MODE}）" >&2
+  fi
+  if [[ "${ADJ_ADVISORY:-0}" -gt 0 ]]; then
+    echo "[auto-review] ℹ️ ${ADJ_ADVISORY} 条 P0/P1 未经人工核验 —— advisory 模式下不阻断 push。" >&2
+    echo "[auto-review]    核验: python3 githooks/review-adjudicate.py list --report $REPORT" >&2
+  fi
+else
+  echo "[auto-review] ⚠️ 人工核验层不可用（缺 python3 或台账）—— 按模型结论 ${VERDICT} 处理。" >&2
+fi
+
+if [[ "$EFFECTIVE_VERDICT" == "FAIL" ]]; then
   # opencode 独立审核纪律: 存在 P0/P1 (VERDICT=FAIL) 时必须修复后重新提交再审,
   # 不能带病收工。审核点照常推进 —— 它标记的是「这段已审过」, 不是「这段已通过」。
-  echo "[auto-review] ⚠️ VERDICT=FAIL —— 报告存在 P0/P1, 按审核纪律必须修复后重审。" >&2
+  echo "[auto-review] ⚠️ 生效结论=FAIL —— 报告存在未解决的 P0/P1, 按审核纪律必须修复后重审。" >&2
   # pre-push 门禁模式(REVIEW_BLOCK_ON_FAIL=1, 由 githooks/pre-push 设置): FAIL 阻断 push。
   # 显式绕过: git push --no-verify（审核点不推进, 下次 push 会重审同一段）。
   if [[ -n "${REVIEW_BLOCK_ON_FAIL:-}" ]]; then
-    echo "[auto-review] ⛔ pre-push 门禁: VERDICT=FAIL, 阻断本次 push。修复后重试, 或 git push --no-verify 显式越过。" >&2
+    if [[ "${ADJ_BLOCKING:-0}" -gt 0 ]]; then
+      echo "[auto-review] ⛔ pre-push 门禁: ${ADJ_BLOCKING} 条 finding 被人工记为 confirmed（真问题, 尚未修复）, 阻断本次 push。" >&2
+    else
+      echo "[auto-review] ⛔ pre-push 门禁: 生效结论=FAIL, 阻断本次 push。修复后重试, 或 git push --no-verify 显式越过。" >&2
+    fi
     exit 1
   fi
 fi

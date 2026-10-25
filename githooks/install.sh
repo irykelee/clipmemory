@@ -59,7 +59,7 @@ else
     cp "$HOOK_PUSH_SRC" "$HOOK_PUSH_DST"
     chmod +x "$HOOK_PUSH_DST"
     echo "✅ Installed pre-push hook to $HOOK_PUSH_DST"
-    echo "   Gate: reviews all unreviewed commits (any branch); VERDICT=FAIL blocks push"
+    echo "   Gate: reviews all unreviewed commits (any branch); 生效结论=FAIL blocks push"
 fi
 
 # Don't overwrite an existing local hook unless --force
