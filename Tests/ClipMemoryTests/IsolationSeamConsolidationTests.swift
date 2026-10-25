@@ -161,6 +161,30 @@ final class IsolationSeamConsolidationTests: XCTestCase {
 
     /// Writing a language through `LanguageManager.shared` must land in
     /// the injected suite and leave the production domain byte-identical.
+    ///
+    /// ID-REVIEW-1028 (2026-10-25): the `AppleLanguages` read here must go
+    /// through `persistentDomain(forName:)` — NOT `suite.stringArray(forKey:)`.
+    ///
+    /// Why: `UserDefaults`' read path is a **search list**, and the
+    /// **argument domain** sits at the top of it. `xcodebuild -testLanguage
+    /// zh-Hans` (what CI's "Test (zh-Hans locale)" step passes) puts
+    /// `AppleLanguages = ["zh-Hans"]` into that argument domain, so
+    /// `suite.stringArray(forKey: "AppleLanguages")` answers "zh-Hans" no
+    /// matter what the suite itself holds. The write had landed correctly
+    /// all along — the *read* was looking at a different domain than the
+    /// one the test is asserting about.
+    ///
+    /// Measured 2026-10-25 on the v2.9.6 CI run (the only failure in
+    /// 1240 tests): the suite's own persistent domain held `["ko"]` while
+    /// the search-list read answered `["zh-Hans"]`. `persistentDomain(forName:)`
+    /// is the only read that bypasses the search list and reports what the
+    /// suite itself holds — which is exactly what "the write landed in the
+    /// injected suite" means.
+    ///
+    /// The `appLanguage` key above is read the ordinary way on purpose: it
+    /// is not a system key, so no argument domain shadows it — and keeping
+    /// one ordinary read proves the suite's normal accessor still resolves
+    /// to the injected domain.
     @MainActor
     func testLanguageManagerWritesOnlyIntoTheInjectedSuite() throws {
         let suite = try makeSuite(SuiteName.first)
@@ -174,7 +198,11 @@ final class IsolationSeamConsolidationTests: XCTestCase {
         manager.selectedLanguage = "ko"
 
         XCTAssertEqual(suite.string(forKey: UserDefaultsKey.appLanguage.rawValue), "ko")
-        XCTAssertEqual(suite.stringArray(forKey: UserDefaultsKey.appleLanguages.rawValue)?.first, "ko")
+        // Read the suite's OWN domain (search-list-free) — see the doc comment.
+        let suiteOwnLanguages = suite.persistentDomain(forName: SuiteName.first)?[
+            UserDefaultsKey.appleLanguages.rawValue
+        ] as? [String]
+        XCTAssertEqual(suiteOwnLanguages?.first, "ko")
         XCTAssertEqual(
             UserDefaults.standard.string(forKey: UserDefaultsKey.appLanguage.rawValue),
             productionBefore

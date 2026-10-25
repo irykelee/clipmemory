@@ -1154,8 +1154,22 @@ EOF
     # grab the stale (failed) run and watch the wrong pipeline (ID-BACKUP-0006
     # incident). Mismatch → discard and keep polling; `^{commit}` dereferences
     # the annotated tag to its commit.
+    # ID-REVIEW-1027 (2026-10-25): the wait window was 12×5s = 60s, which is
+    # shorter than GitHub's *run registration* latency. Measured on the
+    # v2.9.6 ship: the tag was pushed at 01:29:00Z, the run was created at
+    # 01:29:29Z, yet the loop gave up at 01:30:29Z having seen nothing — the
+    # run WAS listable a minute later. The script then died with
+    # "60s 内未找到 ... Release workflow run" while the release was in fact
+    # building and about to succeed — a false "release failed" for a
+    # perfectly healthy release.
+    #
+    # Two changes:
+    #   1. window 60s → 300s (60 × 5s) — registration latency is seconds to
+    #      a couple of minutes depending on queue depth;
+    #   2. on give-up, print what IS visible so the operator can act on the
+    #      real state instead of guessing.
     RUN_ID=""
-    for _ in $(seq 1 12); do
+    for _ in $(seq 1 60); do
         RUN_ID=$(gh run list --workflow=release.yml --branch "v${VERSION}" \
                  --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)
         if [[ -n "$RUN_ID" ]]; then
@@ -1169,7 +1183,11 @@ EOF
         [[ -n "$RUN_ID" ]] && break
         sleep 5
     done
-    [[ -n "$RUN_ID" ]] || die "60s 内未找到 v${VERSION} 的 Release workflow run（若 tag 被删过重推，--branch 列表里的旧 run 会被 headSha 校验过滤，确认新 run 是否注册）— 用 gh run list --workflow=release.yml 手动确认"
+    if [[ -z "$RUN_ID" ]]; then
+        echo "--- 当前可见的 release.yml runs（用于人工判断）---" >&2
+        gh run list --workflow=release.yml --limit 5 2>&1 | sed 's/^/    /' >&2 || true
+        die "300s 内未找到 v${VERSION} 的 Release workflow run（若 tag 被删过重推，--branch 列表里的旧 run 会被 headSha 校验过滤，确认新 run 是否注册）— release 可能仍在跑，用 gh run list --workflow=release.yml 手动确认后再决定是否重跑本脚本"
+    fi
 
     log "watch Release workflow run ${RUN_ID}（构建/测试/打包/签名/发布/tap，约 10-20 min）..."
     gh run watch "$RUN_ID" --exit-status --interval 30 \
