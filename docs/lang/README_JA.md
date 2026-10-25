@@ -70,7 +70,7 @@
 
 - **🛠 v2.9.5 GH Actions runner flake 緩和（ID-CRASH-0038）** — 14 ファイル計 46 箇所の env 依存 `XCTSkip`（46 テスト、台帳は `docs/skips-ledger.md`）が CI 環境で；v2.9.6 以降 `release.yml` の `Run tests` step は tag path で **54-test smoke サブセット** を実行（ID-REL-2 `8ae0db5`：IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests、SUBSET_EXPECTED アンカー；class rename で自動 fail-closed）、4 つの snapshot テストは runner レンダリングドリフトにより v2.9.7 へ defer（サブセット外なので SUBSET_EXPECTED は安定）。ローカル `Scripts/release.sh vX.Y.Z --yes` の `run_preflight --tests` は引き続き authoritative gate。runner env の根本原因修正は v2.9.6 を目標。
 
-- ローカル `./Scripts/test-count.sh` 静的推定（CLAUDE.md ID-TEST-0002 に従う；実際の数は CI `xcodebuild test` 出力を参照）；`xcodebuild test` はローカルで全件 PASS
+- ローカル `./Scripts/test-count.sh` 静的推定（単一の出所；実際の数は CI `xcodebuild test` 出力を参照）；`xcodebuild test` はローカルで全件 PASS
 - 完全な changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
 
 ### v2.9.4 (2026-09-27) — v2.9.3 binary 再公開 + CI Test Workaround
@@ -80,7 +80,7 @@
 - **🖱️ 縦向きディスプレイのプレビュー位置修正 (ID-VIEW-0048)** — 修正コード `flipped: false → flipped: true` は既に v2.9.3 commit `a1cd997` で ship 済み（v2.9.3 binary は実際には未公開）。縦向きで大画像を長押しすると panel が画面左下 (0, 0) に現れ、マウスホイールでスクロールできませんでした — 根本原因と修正方法は同上。縦向きユーザー**v2.9.4 をインストールすれば修正を受け取れます**。
 - **🛠️ v2.9.3 GH Actions Test substep 互換リリースパス (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.4 tag `149906d` は一時的に `release.yml` の `Run tests` step に `|| true` を workaround として追加（Test substep は引き続き走るが、失敗は飲み込まれる；GH macOS default shell には `pipefail` が無いため、tee の exit 0 で `|| true` は決して発火しない——fail-open は tee's accident であって `|| true` の機能ではない）。`main` 上では `da3cc6a` がこの workaround を revert、`ID-CI-0011` linter が再導入を禁止している。v2.9.3 の Test substep が CI 環境で失敗 → v2.9.3 binary 未公開 → ユーザーは v2.9.3 release を見られないまま。**ユーザーはローカルで build + test 実行で検証すべき**（`Scripts/release.sh vX.Y.Z --yes` はデフォルトで `run_preflight --tests` を内部呼び出し — `release.sh:1055` 参照；`--skip-tests` は test をスキップするが他の gate は保持する；v2.9.4 tag の CI test は当時 advisory smoke だったが、main (`da3cc6a`) で fail-closed に復元され、CI test は再び authoritative gate である）。
 
-- ローカル `./Scripts/test-count.sh` 静的推定（単一の source of truth、CLAUDE.md ID-TEST-0002 に従う；実際の CI 数は run 出力を参照）；`xcodebuild test` ローカル全件 PASS
+- ローカル `./Scripts/test-count.sh` 静的推定（単一の source of truth；実際の CI 数は run 出力を参照）；`xcodebuild test` ローカル全件 PASS
 - 完全な変更履歴: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
 ### v2.9.3 (2026-09-27) — 持続的な安定性修正とプレビューのスクロール（**未公開 — superseded by v2.9.4**）
@@ -471,8 +471,8 @@
 | 画像 | サムネイル 80px | 原寸大フローティングパネル（画面を超える場合はスクロール）|
 
 - AES-256-GCM暗号化（v2）、旧式AES-CBC+HMAC-SHA256互換
-- 35ルールの自動機密検出（パスワード/APIキー/Slack/Discord/OpenAIトークン/身分証明書番号など）
-- パスワードマネージャーが前台にある時自動一時停止、App内からのコピーを防止
+- 46ルールの自動機密検出（キーワード/正規表現 40 ルール + キー/値正規表現 6 ルール、ほかにクレジットカードの Luhn 検証）
+- 主なパスワード管理アプリは「除外アプリ」に初期登録済みで、そのコピーは記録されません（旧バージョンの環境では設定で追加してください）
 - 暗号化失敗時は内容を保存せず，平文保存を拒否
 
 ---
@@ -483,9 +483,14 @@
 - ⭐ 大切なアイテムをピン留め、自动削除されない
 - 💾 画像は暗号化ファイルとして保存、1枚あたり最大50MB
 - 🔍 リアルタイム検索、全言語ハイライト対応（中日韓等多バイト文字）
+- 🖼️ 画像内テキスト認識 OCR（端末内で実行、送信なし。認識テキストの表示も可）
 - ⚡ スマート重複排除、相同内容はタイムスタンプのみ更新
 - 🔄 コピーサイクル防止、App内からのコピーを自動スキップ
 - 🧹 孤立ファイルクリーンアップ、起動時に参照されていない画像を削除
+- 🗑️ ごみ箱（削除は先にごみ箱へ。復元・一括復元が可能。保持期限の大量削除時は確認されます）
+- 📤 共有と書き出し（システムの共有パネル / 画像フォルダへの書き出し）
+- 🗂 バックアップ復元ウィザード（毎日の自動バックアップまたは .clipmemory パッケージから復元）
+- 🔒 単一インスタンスガード（2 つ目を起動すると即座に終了し、データには一切触れません）
 - 🌍 7言語対応（简体中文/繁體中文/English/日本語/한국어/Español/Português）
 - ☑️ 複数選択で一括ピン留め/削除
 - ✅ コピー成功時の緑のフラッシュフィードバック
@@ -511,7 +516,7 @@
 | 削除 | 🗑 をクリック、または右クリックメニュー |
 | 全文/機密/画像プレビュー | 0.4s長押し、離すと元に戻る |
 | 複数選択モード | チェックボックスをクリック |
-| 履歴をクリア | 上部ツールバーの 🗑（ピン留めは保持）|
+| 履歴をクリア | 上部ツールバーの 🗑 →「履歴をクリア」（ごみ箱へ移動し、復元できます。ピン留めは保持）|
 | 条件で削除 | ツールバー 🗑 →「条件で削除」（タイプ × 期間）。タイプタブの右クリックでそのタイプを全削除 |
 | タイプフィルター切替 | サイドバーで「テキスト/画像/リンク/Rich Text」をクリック |
 
@@ -522,7 +527,7 @@
 ## セキュリティ
 
 - **AES-256-GCM (v2) + 旧式 AES-CBC+HMAC-SHA256** — すべてのテキストと画像をディスク保存前に自動暗号化
-- **スマート検出** — 35ルール（キーワード + 正規表現）でパスワード、APIキー、Slack/Discord/OpenAIトークン、秘密鍵、身分証明書番号などを自動識別
+- **スマート検出** — 46ルール（キーワード/正規表現 40 + キー/値正規表現 6）でパスワード、APIキー、Slack/Discord/OpenAIトークン、秘密鍵、身分証明書番号などを自動識別
 - **自動クリア** — 機密コンテンツを1時間/24時間/48時間/7日後に自動削除、または削除しない設定も可能
 
 ---
@@ -538,9 +543,11 @@
 - Rich Text キャプチャ トグル
 - フォントサイズ（小 / 中 / 大）
 - ログイン時に起動
-- ごみ箱の保持期間（3 / 7 / 14 / 30 日）
-- バックアップ（毎日自動 / 保持数 / 書き出し / 読み込み）
+- ごみ箱の保持期間（3 / 7 / 14 / 30 日。ハード上限ではなく、大量の削除時は確認されます）
+- バックアップ（毎日自動 / 保持数 / 今すぐバックアップ / バックアップフォルダを開く / 書き出し / バックアップから復元ウィザード）
 - 自動アップデート（自動確認 / 今すぐ確認）
+- アップデートソース（自動 / 主ソース / 予備ソース / Gitee ミラー）
+- 画像内テキスト認識 OCR（スイッチ + 認識テキストの表示）
 
 ---
 
@@ -552,9 +559,10 @@
 
 ## データ移行
 
-履歴（暗号化キーを含む）は `~/Library/Application Support/ClipMemory/` に保存されています。
-移行は 設定 → バックアップ → バックアップを書き出す で .clipmemory 暗号化パッケージを作成し、新しいMacで読み込むのがおすすめです。このディレクトリをそのままバックアップする手動移行も可能です。
-アプリを削除する前に、上部ツールバーの 🗑 ボタンで履歴をクリアできます。
+履歴データは `~/Library/Preferences/com.clipmemory.app.plist`（UserDefaults）に、画像は `~/Library/Application Support/ClipMemory/Images/` に、毎日のバックアップは `~/Library/Application Support/ClipMemory/Backups/` に保存されています。
+暗号化キーは v2.5.6 から macOS キーチェーン（サービス名 `com.clipmemory.app`）に保存されます。ファイルごとコピーしても移行できず、iCloud にも同期されません。
+別 Mac へ移すには 設定 → バックアップ → バックアップを書き出す で .clipmemory 暗号化パッケージを作り、新しい Mac で 設定 → バックアップ → バックアップから復元 を使って読み込んでください。
+アプリを削除する前にデータを完全に消したい場合は、「ごみ箱」タブの「ごみ箱を空にする」（完全削除）を実行し、バックアップフォルダの毎日のバックアップが不要かも確認してください。
 
 ---
 
@@ -586,7 +594,7 @@ brew install --cask clipmemory
 2. 本プロジェクトをフォークし `project.yml` の `CODE_SIGN_IDENTITY` を変更、`release.yml` に `notarytool submit` → `stapler staple` → `spctl --assess` の 3 ステップを追加
 3. 個人/組織が自発的に配布コストを負担、本プロジェクトはそれを提供する義務はない
 
-これはメンテナ (2026-07-19 commit `307818e`) が下した **ロック済み決定** です — Personal Team 経路で配布を無料 + シンプルに保ち、有料の Developer ID 登録を行わない。`CLAUDE.md` 「已锁决策」を参照。
+これはメンテナ (2026-07-19 commit `307818e`) が下した **ロック済み決定** です — Personal Team 経路で配布を無料 + シンプルに保ち、有料の Developer ID 登録を行わない。
 
 ---
 

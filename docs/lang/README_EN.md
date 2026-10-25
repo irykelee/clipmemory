@@ -70,7 +70,7 @@
 
 - **🛠 v2.9.5 GH Actions runner flake mitigation (ID-CRASH-0038)** — 46 env-sensitive `XCTSkip` sites across 14 test files (~48 tests; ledger in `docs/skips-ledger.md`) in the CI environment; as of v2.9.6 the `Run tests` step in `release.yml` runs a **54-test smoke subset on the tag path** (ID-REL-2 `8ae0db5`: IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests, anchored on SUBSET_EXPECTED; class rename auto fail-closed), with 4 snapshot tests deferred to v2.9.7 due to runner rendering drift (not in the subset so SUBSET_EXPECTED stays stable). The local `Scripts/release.sh vX.Y.Z --yes` `run_preflight --tests` remains the authoritative gate. Root-cause fix for runner env is targeted for v2.9.6.
 
-- Local `./Scripts/test-count.sh` static estimate (per CLAUDE.md ID-TEST-0002; actual count in CI `xcodebuild test` output); `xcodebuild test` locally all-pass
+- Local `./Scripts/test-count.sh` static estimate (single source of truth; actual count in CI `xcodebuild test` output); `xcodebuild test` locally all-pass
 - Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
 
 ### v2.9.4 (2026-09-27) — v2.9.3 binary re-publish + CI Test Workaround
@@ -81,7 +81,7 @@
 
 - **🛠 v2.9.3 GH Actions Test substep compatible release path (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — the v2.9.4 tag (`149906d`) temporarily added `|| true` to `release.yml` `Run tests` step as a workaround (the test step still runs, but failures are swallowed; GH macOS default shell has no `pipefail`, so tee's exit 0 means `|| true` never fires — fail-open is tee's accident, not `|| true`'s function). `main` reverted this in `da3cc6a`; `ID-CI-0011` linter forbids re-introduction. v2.9.3's Test substep failed in the CI environment → v2.9.3 binary was not published → users never saw the v2.9.3 release. **User should locally build + run tests to verify** (`Scripts/release.sh vX.Y.Z --yes` calls `run_preflight --tests` internally by default — see `release.sh:1055`; `--skip-tests` skips tests but keeps the other gates; the v2.9.4 tag's CI test was advisory smoke, but `main` (`da3cc6a`) restored fail-closed, so CI test is once again an authoritative gate).
 
-- Local `./Scripts/test-count.sh` static estimate (single source of truth, per CLAUDE.md ID-TEST-0002; actual CI count in the run output); `xcodebuild test` locally all-pass
+- Local `./Scripts/test-count.sh` static estimate (single source of truth; actual CI count in the run output); `xcodebuild test` locally all-pass
 - Full changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
 ### v2.9.3 (2026-09-27) — Stability Fixes & Preview Scrolling (**NOT PUBLISHED — superseded by v2.9.4**)
@@ -472,8 +472,8 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 | Image | Thumbnail 80px | Native-size floating panel (scrollable if larger than screen) |
 
 - AES-256-GCM encryption (v2), compatible with legacy AES-CBC+HMAC-SHA256
-- 35 rules auto-detect sensitive data (credentials / API keys / Slack/Discord/OpenAI tokens / ID numbers / etc.)
-- Auto-pauses when password manager is in foreground, no copying from the app itself
+- 46 rules auto-detect sensitive data (40 keyword/regex rules + 6 key=value regexes, plus a separate bank-card Luhn check)
+- Common password managers are pre-seeded in the excluded-apps list, so what they copy is never recorded (older installs: confirm or add them under Settings)
 - Content never saved as plaintext if encryption fails
 
 ---
@@ -484,9 +484,14 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 - ⭐ Pin important items, never auto-deleted
 - 💾 Encrypted image storage, up to 50MB per image
 - 🔍 Real-time search, all languages highlighted (CJK multibyte supported)
+- 🖼️ Image text recognition (OCR, on-device, never uploaded), with an optional OCR text preview
 - ⚡ Smart deduplication, identical content updates timestamp only
 - 🔄 Copy loop prevention, auto-skips copying from the app itself
 - 🧹 Orphan file cleanup, auto-cleans unreferenced images on launch
+- 🗑️ Trash (deletes land in the Trash first and can be restored / restored in bulk; a large retention purge asks you first)
+- 📤 Share and export (system share sheet / export images to a folder)
+- 🗂 Backup restore wizard (recover from a daily automatic backup or a .clipmemory package)
+- 🔒 Single-instance guard (a second copy launches, exits immediately and never touches your data)
 - 🌍 7 languages (简体中文 / 繁體中文 / English / 日本語 / 한국어 / Español / Português)
 - ☑️ Multi-select batch pin / delete
 - ✅ Green flash feedback on successful copy
@@ -512,7 +517,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 | Delete | Click 🗑 or right-click menu |
 | Preview full / sensitive / image | Hold 0.4s, release to hide |
 | Multi-select mode | Click checkbox |
-| Clear history | Top bar 🗑 (pinned items preserved) |
+| Clear history | Top bar 🗑 → "Clear History" (moves to the Trash, where it can be restored; pinned items are preserved) |
 | Clear by condition | Top bar 🗑 → "Clear by Condition" (type × time range); right-click a type tab to delete all of that type |
 | Switch type filter | Click "Text/Image/Link/Rich Text" in sidebar |
 
@@ -523,7 +528,7 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 ## Security
 
 - **AES-256-GCM (v2) + legacy AES-CBC+HMAC-SHA256** — All text and images encrypted before disk storage
-- **Smart detection** — 35 rules (keywords + regex) auto-identify credentials, API keys, Slack/Discord/OpenAI tokens, private keys, ID numbers, bank card numbers, etc.
+- **Smart detection** — 46 rules (40 keyword/regex + 6 key=value regexes) auto-identify credentials, API keys, Slack/Discord/OpenAI tokens, private keys, ID numbers, bank card numbers, etc.
 - **Auto-clear** — Sensitive content configurable to auto-delete after 1h / 24h / 48h / 7 days, or never
 
 ---
@@ -539,9 +544,11 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 - Rich text capture toggle
 - Font size (Small / Medium / Large)
 - Launch at login
-- Trash retention (3 / 7 / 14 / 30 days)
-- Backup (daily auto-backup / retention / export / import)
+- Trash retention (3 / 7 / 14 / 30 days — not a hard limit; a large purge asks you first)
+- Backup (daily auto-backup / retention / back up now / open backup folder / export backup / restore-from-backup wizard)
 - Updates (automatic checks / check now)
+- Update source (Automatic / Primary / Fallback / Gitee mirror)
+- Image text recognition OCR (toggle + OCR text preview)
 
 ---
 
@@ -553,9 +560,10 @@ Click menu bar icon → NSPopover shows 8 recent items → click to copy / searc
 
 ## Data Migration
 
-History (including the encryption key) is stored at `~/Library/Application Support/ClipMemory/`.
-The recommended way to migrate is Settings → Backup → Export Backup, which creates a passphrase-protected .clipmemory package you can import on the new Mac; backing up this directory manually also works.
-Before removing the app, click the 🗑 button in the top toolbar to clear history.
+History data lives in `~/Library/Preferences/com.clipmemory.app.plist` (the UserDefaults domain), images in `~/Library/Application Support/ClipMemory/Images/`, and the daily backups in `~/Library/Application Support/ClipMemory/Backups/`.
+Since v2.5.6 the encryption key lives in the macOS Keychain (service `com.clipmemory.app`) — it does not travel with a file copy and is not synced through iCloud.
+To move to another Mac, use Settings → Backup → Export Backup to produce a passphrase-protected .clipmemory package, then import it on the new Mac with Settings → Backup → Restore from Backup.
+Before removing the app, if you want the data gone for good, empty the Trash tab ("Empty Trash" deletes permanently) and check that the daily backups in the backup folder are no longer needed.
 
 ---
 
@@ -587,7 +595,7 @@ Or download `.tar.gz` from [GitHub Releases](https://github.com/irykelee/clipmem
 2. Fork this project, change `CODE_SIGN_IDENTITY` in `project.yml` and add the 3 steps `notarytool submit` → `stapler staple` → `spctl --assess` to release.yml
 3. Costs are borne voluntarily by the individual/organization; this project is not obligated to provide them
 
-This is a **locked decision** made by the maintainer (2026-07-19 commit `307818e`) — the Personal Team path keeps distribution free and simple, without paying for Developer ID. See `CLAUDE.md` "已锁决策" section.
+This is a **locked decision** made by the maintainer (2026-07-19 commit `307818e`) — the Personal Team path keeps distribution free and simple, without paying for Developer ID.
 
 ---
 

@@ -70,7 +70,7 @@
 
 - **🛠 v2.9.5 GH Actions runner flake 缓解（ID-CRASH-0038）** — 14 个测试文件共 46 处 env 敏感型 `XCTSkip`（46 个测试，台账见 `docs/skips-ledger.md`）在 CI 环境；`release.yml` 的 `Run tests` step 自 v2.9.6 起在 tag path 跑 **54-test smoke 子集**（ID-REL-2 `8ae0db5`：IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests，SUBSET_EXPECTED 锚定；class rename 自动 fail-closed），4 snapshot 测试因 runner 渲染漂移仍 defer v2.9.7（不在子集内所以 SUBSET_EXPECTED 稳定）。本地 `Scripts/release.sh vX.Y.Z --yes` 的 `run_preflight --tests` 仍是 authoritative gate。runner env 根因修复目标 v2.9.6。
 
-- 本地 `./Scripts/test-count.sh` 静态估计（per CLAUDE.md ID-TEST-0002；实际数见 CI `xcodebuild test` 输出）；`xcodebuild test` 本地全过
+- 本地 `./Scripts/test-count.sh` 静态估计（唯一口径；实际数见 CI `xcodebuild test` 输出）；`xcodebuild test` 本地全过
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
 
 ### v2.9.4 (2026-09-27) — v2.9.3 binary 重新发布 + CI Test Workaround
@@ -81,7 +81,7 @@
 
 - **🛠 v2.9.3 GH Actions Test substep 兼容 release 路径 (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.4 tag `149906d` 临时在 `release.yml` `Run tests` step 加 `|| true` 作为 workaround（Test substep 仍跑，但失败被吞；GH macOS default shell 无 `pipefail`，teed exit 0 让 `|| true` 永不触发——fail-open 是 tee's accident 而非 `|| true` 的功能）。`main` 上 `da3cc6a` 已 revert 该 workaround，`ID-CI-0011` linter 禁止再出现。v2.9.3 的 Test substep 在 CI 环境失败 → v2.9.3 binary 未发布 → 用户看不到 v2.9.3 release。**user 应本地 build + 跑 test 验证**（`Scripts/release.sh vX.Y.Z --yes` 默认含 `run_preflight --tests` 内部调用，见 `release.sh:1055`；`--skip-tests` flag 跳过 test 但保留其他 gate；v2.9.4 tag 的 CI test 当时是 advisory smoke，main `da3cc6a` 已恢复 fail-closed，CI test 又是 authoritative gate）。
 
-- 本地 `./Scripts/test-count.sh` 静态估计（单 source of truth，per CLAUDE.md ID-TEST-0002；实际 CI 数见 run 输出）；`xcodebuild test` 本地全过
+- 本地 `./Scripts/test-count.sh` 静态估计（单 source of truth；实际 CI 数见 run 输出）；`xcodebuild test` 本地全过
 - 完整 changelog: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
 ### v2.9.3 (2026-09-27) — 持续稳定性修复与预览滚动（**未发布 — superseded by v2.9.4**）
@@ -458,8 +458,8 @@
 ### 智能安全 — 加密 + 敏感检测
 
 - AES-256-GCM 加密（v2），兼容旧版 AES-CBC+HMAC-SHA256
-- 35 条规则自动识别敏感内容（密码 / API 密钥 / Slack/Discord/OpenAI 等 token / 身份证号等）
-- 密码管理器在前台时自动暂停，不从 App 内复制
+- 46 条规则自动识别敏感内容（40 条关键词/正则 + 6 条键值正则，另加独立的银行卡 Luhn 校验）
+- 常见密码管理器已预置在「排除应用」列表中，其复制内容不会被记录（老版本安装请到设置里确认或补充）
 - 加密失败时内容不落地，拒绝明文存储
 
 ---
@@ -470,9 +470,14 @@
 - ⭐ 收藏重要条目，不自动清理
 - 💾 图片加密存储，单张上限 50MB
 - 🔍 实时搜索，所有语言高亮（含中日韩等多字节字符）
+- 🖼️ 图片文字识别 OCR（本机识别不联网，可显示识别文本）
 - ⚡ 智能去重，相同内容只更新时间戳
 - 🔄 复制循环拦截，从 App 内复制自动跳过
 - 🧹 孤立文件清理，启动时自动清理无引用图片
+- 🗑️ 回收站（删除先入回收站，可恢复 / 批量恢复；保留期到期大批量清理前先问你）
+- 📤 分享与导出（系统分享面板 / 导出图片到文件夹）
+- 🗂 备份还原向导（从每日自动备份或 .clipmemory 加密包恢复）
+- 🔒 单实例护栏（第二个实例启动即退出，不读写任何数据）
 - 🌍 7 种语言（简体中文 / 繁體中文 / English / 日本語 / 한국어 / Español / Português）
 - ☑️ 多选批量收藏 / 删除
 - ✅ 复制成功绿色闪烁反馈
@@ -498,7 +503,7 @@
 | 删除 | 点击 🗑 或右键菜单 |
 | 预览全文 / 敏感内容 / 图片 | 按住 0.4s，松开恢复 |
 | 多选批量操作 | 单击复选框进入多选模式 |
-| 清空历史 | 顶栏 🗑（保留收藏条目） |
+| 清空历史 | 顶栏 🗑 →「清空历史」（移入回收站，可恢复；收藏条目保留） |
 | 按条件删除 | 顶栏 🗑 →「按条件删除」，类型 × 时间组合；类型 tab 右键删全部该类型 |
 | 切换类型筛选 | 侧边栏点击「文本/图片/链接/富文本」 |
 
@@ -509,7 +514,7 @@
 ## 安全特性
 
 - **AES-256-GCM（v2）+ 兼容旧版 AES-CBC+HMAC-SHA256** — 所有文本和图片存入磁盘前自动加密
-- **智能检测** — 35 条规则（关键词 + 正则），自动识别密码、API 密钥、Slack/Discord/OpenAI 等 token、私钥、身份证号、银行卡号等
+- **智能检测** — 46 条规则（40 条关键词/正则 + 6 条键值正则），自动识别密码、API 密钥、Slack/Discord/OpenAI 等 token、私钥、身份证号、银行卡号等
 - **自动清理** — 敏感内容可设置 1 小时 / 24 小时 / 48 小时 / 7 天后自动清除，或不自动清除
 
 ---
@@ -525,9 +530,11 @@
 - 富文本捕获开关
 - 字体缩放（小 / 中 / 大）
 - 开机自启
-- 回收站保留期（3 / 7 / 14 / 30 天）
-- 备份（每天自动备份 / 保留份数 / 导出 / 导入）
+- 回收站保留期（3 / 7 / 14 / 30 天；不是硬上限，大批量清理前会先问你）
+- 备份（每天自动备份 / 保留份数 / 立即备份 / 打开备份目录 / 导出备份 / 从备份还原向导）
 - 自动更新（自动检查 / 立即检查）
+- 更新源（自动 / 主源 / 备用源 / Gitee 镜像）
+- 图片文字识别 OCR（开关 + 显示识别文本）
 
 ---
 
@@ -539,9 +546,10 @@
 
 ## 数据迁移
 
-历史记录（含加密密钥）位于 ~/Library/Application Support/ClipMemory/。
-推荐通过 设置 → 备份 → 导出备份 生成 .clipmemory 加密备份包，在新 Mac 上导入即可迁移；也可以直接备份此目录手动迁移。
-删除 App 前，可点击主窗口顶栏 🗑 按钮清除历史记录。
+历史记录数据存于 `~/Library/Preferences/com.clipmemory.app.plist`（系统偏好设置里的 UserDefaults），图片存于 `~/Library/Application Support/ClipMemory/Images/`，每日备份存于 `~/Library/Application Support/ClipMemory/Backups/`。
+加密密钥自 v2.5.6 起存于 macOS 钥匙串（服务名 `com.clipmemory.app`），既不随文件拷贝迁移，也不随 iCloud 同步。
+跨机迁移请用 设置 → 备份 → 导出备份 生成 .clipmemory 加密备份包，在新 Mac 上用 设置 → 备份 → 从备份还原向导 导入。
+删除 App 前，如需彻底清空数据，请到「回收站」标签页点「清空回收站」（永久删除），并确认备份目录里的每日备份已不需要。
 
 ---
 

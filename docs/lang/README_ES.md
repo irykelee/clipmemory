@@ -65,7 +65,7 @@
 
 - **🛠 Mitigación de fallos intermitentes del runner de GH Actions en v2.9.5 (ID-CRASH-0038)** — `XCTSkip` de forma incondicional en CI sobre 46 puntos de 14 archivos de prueba (46 pruebas; registro en `docs/skips-ledger.md`); desde v2.9.6 el step `Run tests` de `release.yml` ejecuta un **subconjunto smoke de 54 tests en la ruta de tag** (ID-REL-2 `8ae0db5`: IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests, anclado en SUBSET_EXPECTED; class rename auto fail-closed), con 4 pruebas snapshot diferidas a v2.9.7 por deriva de renderizado del runner (no están en el subconjunto, así que SUBSET_EXPECTED permanece estable). El `run_preflight --tests` del `Scripts/release.sh vX.Y.Z --yes` local sigue siendo la puerta autoritativa. La corrección de la causa raíz del entorno del runner está prevista para v2.9.6.
 
-- Estimación estática local de `./Scripts/test-count.sh` (según CLAUDE.md ID-TEST-0002; el número real se ve en la salida de `xcodebuild test` de CI); `xcodebuild test` local pasa por completo
+- Estimación estática local de `./Scripts/test-count.sh` (fuente única de verdad; el número real se ve en la salida de `xcodebuild test` de CI); `xcodebuild test` local pasa por completo
 - Changelog completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
 
 ### v2.9.4 (2026-09-27) — Re-publicación del binary v2.9.3 + Workaround CI Test
@@ -76,7 +76,7 @@
 
 - **🛠 Ruta de release compatible con v2.9.3 GH Actions Test substep (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — el tag de v2.9.4 (`149906d`) añadió temporalmente `|| true` al step `Run tests` de `release.yml` como workaround (el step de test sigue corriendo pero los fallos se tragan; el shell default de GH macOS no tiene `pipefail`, por lo que el exit 0 de tee hace que `|| true` nunca se active — fail-open es un accidente de tee, no una función de `|| true`). `main` revirtió esto en `da3cc6a`; el linter `ID-CI-0011` prohíbe la reintroducción. El Test substep de v2.9.3 falló en el entorno CI → el binary v2.9.3 no se publicó → los usuarios nunca vieron el release v2.9.3. **El usuario debería hacer build local + ejecutar tests para verificar** (`Scripts/release.sh vX.Y.Z --yes` llama internamente a `run_preflight --tests` por defecto — vea `release.sh:1055`; `--skip-tests` omite los tests pero conserva las otras verificaciones; el CI test del tag v2.9.4 era smoke advisory, pero `main` (`da3cc6a`) restauró fail-closed, así que el test de CI vuelve a ser una veridicación autoritativa).
 
-- Local `./Scripts/test-count.sh` estimación estática (fuente única de verdad, según CLAUDE.md ID-TEST-0002; el conteo CI real está en la salida del run); `xcodebuild test` local pasa todos
+- Local `./Scripts/test-count.sh` estimación estática (fuente única de verdad; el conteo CI real está en la salida del run); `xcodebuild test` local pasa todos
 - Registro de cambios completo: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
 ### v2.9.3 (2026-09-27) — Correcciones de estabilidad y desplazamiento en previsualización (**NO PUBLICADO — superseded by v2.9.4**)
@@ -467,8 +467,8 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 | Imagen | Miniatura 80px | Panel flotante a tamaño nativo (con scroll si excede la pantalla) |
 
 - Cifrado AES-256-GCM (v2), compatible con AES-CBC+HMAC-SHA256 heredado
-- 35 reglas de detección automática de datos sensibles (contraseñas / claves API / tokens Slack/Discord/OpenAI / números de identificación etc.)
-- Pausa automática cuando el gestor de contraseñas está en primer plano, sin copiar desde la App
+- 46 reglas de detección automática de datos sensibles (40 de palabras clave y expresiones regulares + 6 de clave=valor, más una comprobación Luhn independiente para tarjetas)
+- Los gestores de contraseñas habituales vienen preconfigurados en la lista de apps excluidas, así que lo que copian no se registra (en instalaciones antiguas: confírmalos o añádelos en Ajustes)
 - Contenido nunca guardado en texto plano si falla el cifrado
 
 ---
@@ -479,9 +479,14 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 - ⭐ Fijar elementos importantes, no se eliminan automáticamente
 - 💾 Imágenes almacenadas cifradas, hasta 50MB por imagen
 - 🔍 Búsqueda en tiempo real con resalte multilingüe (incluidos caracteres CJK)
+- 🖼️ Reconocimiento de texto en imágenes (OCR, en el equipo, sin subir nada; con vista previa opcional del texto reconocido)
 - ⚡ Deduplicación inteligente, contenido idéntico solo actualiza marca de tiempo
 - 🔄 Prevención de bucle de copia, salta automáticamente la captura desde la App
 - 🧹 Limpieza de huérfanos, elimina imágenes no referenciadas al iniciar
+- 🗑️ Papelera (las eliminaciones van primero a la papelera y se pueden restaurar o restaurar en lote; una purga grande te pregunta antes)
+- 📤 Compartir y exportar (panel de compartir del sistema / exportar imágenes a una carpeta)
+- 🗂 Asistente de restauración de copias (recupera desde una copia diaria o un paquete .clipmemory)
+- 🔒 Guardia de instancia única (una segunda copia se cierra al iniciarse y nunca toca tus datos)
 - 🌍 7 idiomas (简体中文 / 繁體中文 / English / 日本語 / 한국어 / Español / Português)
 - ☑️ Selección múltiple para fijar / eliminar en lote
 - ✅ Retroalimentación visual verde al copiar
@@ -507,7 +512,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 | Eliminar | Clic 🗑 o menú contextual |
 | Vista previa completa / sensible / imagen | Mantener 0.4s, soltar para ocultar |
 | Modo de selección múltiple | Clic en casilla |
-| Limpiar historial | Barra superior 🗑 (fijados se conservan) |
+| Limpiar historial | Barra superior 🗑 → «Limpiar historial» (se mueve a la Papelera, donde se puede restaurar; los fijados se conservan) |
 | Eliminar por condición | Barra superior 🗑 → «Eliminar por condición» (tipo × periodo); clic derecho en la pestaña de tipo para eliminar todo ese tipo |
 | Cambiar filtro de tipo | Clic en "Texto/Imagen/Enlace/Rich Text" en barra lateral |
 
@@ -518,7 +523,7 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 ## Seguridad
 
 - **AES-256-GCM (v2) + compatibilidad heredada AES-CBC+HMAC-SHA256** — Todo texto e imagen se cifra automáticamente antes de guardar en disco
-- **Detección inteligente** — 35 reglas (palabras clave + expresiones regulares) para contraseñas, claves API, tokens Slack/Discord/OpenAI, claves privadas, números de identificación, etc.
+- **Detección inteligente** — 46 reglas (40 de palabras clave y expresiones regulares + 6 de clave=valor) para contraseñas, claves API, tokens Slack/Discord/OpenAI, claves privadas, números de identificación, etc.
 - **Borrado automático** — Contenido sensible configurable para borrar tras 1h / 24h / 48h / 7d, o nunca
 
 ---
@@ -534,9 +539,11 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 - Alternancia de captura Rich Text
 - Tamaño de fuente (Pequeño / Mediano / Grande)
 - Iniciar al arrancar
-- Retención de la papelera (3 / 7 / 14 / 30 días)
-- Copia de seguridad (diaria automática / cantidad / exportar / importar)
+- Retención de la papelera (3 / 7 / 14 / 30 días; no es un límite estricto, una purga grande te pregunta antes)
+- Copia de seguridad (diaria automática / cantidad / copiar ahora / abrir carpeta / exportar copia / asistente «Restaurar desde copia de seguridad»)
 - Actualizaciones (comprobación automática / comprobar ahora)
+- Fuente de actualizaciones (automática / principal / de respaldo / espejo Gitee)
+- Reconocimiento de texto en imágenes con OCR (interruptor + vista previa del texto reconocido)
 
 ---
 
@@ -548,9 +555,10 @@ Clic en icono de menú → NSPopover con 8 elementos recientes → clic para cop
 
 ## Migración de datos
 
-El historial (incluida la clave de cifrado) se almacena en `~/Library/Application Support/ClipMemory/`.
-La forma recomendada de migrar es Ajustes → Copia de seguridad → Exportar copia, que crea un paquete .clipmemory cifrado listo para importar en el nuevo Mac; copiar este directorio manualmente también funciona.
-Antes de eliminar la app, haz clic en el botón 🗑 de la barra de herramientas superior para borrar el historial.
+Los datos del historial están en `~/Library/Preferences/com.clipmemory.app.plist` (UserDefaults), las imágenes en `~/Library/Application Support/ClipMemory/Images/` y las copias diarias en `~/Library/Application Support/ClipMemory/Backups/`.
+Desde la v2.5.6 la clave de cifrado vive en el llavero de macOS (servicio `com.clipmemory.app`): no viaja con una copia de los archivos ni se sincroniza con iCloud.
+Para cambiar de Mac, usa Ajustes → Copia de seguridad → Exportar copia para generar un paquete .clipmemory cifrado e impórtalo en el nuevo Mac con Ajustes → Copia de seguridad → Restaurar desde copia de seguridad.
+Antes de eliminar la app, si quieres borrar los datos por completo, vacía la papelera («Vaciar papelera» elimina de forma permanente) y comprueba que las copias diarias de la carpeta de copias ya no hacen falta.
 
 ---
 
@@ -582,7 +590,7 @@ O descargue `.tar.gz` desde [GitHub Releases](https://github.com/irykelee/clipme
 2. Haz fork de este proyecto, cambia `CODE_SIGN_IDENTITY` en `project.yml` y añade los 3 pasos `notarytool submit` → `stapler staple` → `spctl --assess` a release.yml
 3. Los costos los asume voluntariamente el individuo/organización; este proyecto no está obligado a proporcionarlos
 
-Esta es una **decisión bloqueada** tomada por el mantenedor (2026-07-19 commit `307818e`) — la ruta Personal Team mantiene la distribución gratuita y simple, sin pagar Developer ID. Ver `CLAUDE.md` sección "已锁决策".
+Esta es una **decisión bloqueada** tomada por el mantenedor (2026-07-19 commit `307818e`) — la ruta Personal Team mantiene la distribución gratuita y simple, sin pagar Developer ID.
 
 ---
 

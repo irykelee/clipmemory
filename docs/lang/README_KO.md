@@ -70,7 +70,7 @@
 
 - **🛠 v2.9.5 GH Actions runner flake 완화(ID-CRASH-0038)** — 14개 테스트 파일 총 46곳의 env 민감형 `XCTSkip`(46개 테스트,台账는 `docs/skips-ledger.md`)이 CI 환경에서; v2.9.6부터 `release.yml`의 `Run tests` step은 tag path에서 **54-test smoke 서브셋**을 실행함 (ID-REL-2 `8ae0db5`: IntegrationTests + ClipboardStoreCryptoKeyThreadTests + UserDefaultsKeyTests, SUBSET_EXPECTED 앵커; class rename 자동 fail-closed), 4개의 snapshot 테스트는 runner 렌더링 드리프트로 인해 v2.9.7로 defer (서브셋 외이므로 SUBSET_EXPECTED는 안정). 로컬 `Scripts/release.sh vX.Y.Z --yes`의 `run_preflight --tests`는 여전히 authoritative gate. runner env 근본 원인 수정 목표 v2.9.6.
 
-- 로컬 `./Scripts/test-count.sh` 정적 추정 (per CLAUDE.md ID-TEST-0002; 실제 수는 CI `xcodebuild test` 출력 참조); `xcodebuild test` 로컬 전부 PASS
+- 로컬 `./Scripts/test-count.sh` 정적 추정 (단일 기준; 실제 수는 CI `xcodebuild test` 출력 참조); `xcodebuild test` 로컬 전부 PASS
 - 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.9.5
 
 ### v2.9.4 (2026-09-27) — v2.9.3 binary 재게시 + CI Test Workaround
@@ -80,7 +80,7 @@
 - **🖱️ 세로 디스플레이 미리보기 위치 수정 (ID-VIEW-0048)** — 수정 코드 `flipped: false → flipped: true`는 이미 v2.9.3 commit `a1cd997`에서 ship됨 (v2.9.3 binary는 실제로는 미게시). 세로 디스플레이에서 큰 이미지를 길게 누르면 panel이 화면 좌하단 (0, 0)에 나타나고, 마우스 휠이 스크롤되지 않았습니다 — 근본 원인과 수정 방법은 동일. 세로 디스플레이 사용자 **v2.9.4 설치 시 수정 받음**.
 - **🛠️ v2.9.3 GH Actions Test substep 호환 release 경로 (ID-RELEASE-0003 / ID-CI-0011 / ID-CI-0012)** — v2.9.4 tag `149906d`는 임시로 `release.yml`의 `Run tests` step에 workaround로 `|| true` 추가 (Test substep은 계속 실행되지만 실패는 삼켜짐; GH macOS default shell에는 `pipefail`이 없어서 tee의 exit 0이 `|| true`를 절대 발화시키지 않음 — fail-open은 tee's accident이지 `|| true`의 기능이 아님). `main`에서는 `da3cc6a`가 이 workaround를 revert, `ID-CI-0011` linter가 재도입을 금지. v2.9.3의 Test substep이 CI 환경에서 실패 → v2.9.3 binary 미게시 → 사용자가 v2.9.3 release를 보지 못함. **사용자가 로컬에서 build + test 실행으로 검증해야 함** (`Scripts/release.sh vX.Y.Z --yes`는 기본적으로 `run_preflight --tests`를 내부 호출 — `release.sh:1055` 참조; `--skip-tests`는 test를 건너뛰지만 다른 gate는 유지; v2.9.4 tag의 CI test는 당시 advisory smoke이었지만, main (`da3cc6a`)에서 fail-closed로 복원되어 CI test는 다시 authoritative gate임).
 
-- 로컬 `./Scripts/test-count.sh` 정적 추정 (단일 source of truth, CLAUDE.md ID-TEST-0002에 따름; 실제 CI 수는 run 출력 참조); `xcodebuild test` 로컬 전부 PASS
+- 로컬 `./Scripts/test-count.sh` 정적 추정 (단일 source of truth; 실제 CI 수는 run 출력 참조); `xcodebuild test` 로컬 전부 PASS
 - 전체 변경 로그: https://github.com/irykelee/clipmemory/releases/tag/v2.9.4
 
 ### v2.9.3 (2026-09-27) — 지속적 안정성 수정 및 미리보기 스크롤 (**미게시 — superseded by v2.9.4**)
@@ -471,8 +471,8 @@
 | 이미지 | 썸네일 80px | 원본 크기 플로팅 패널(화면 초과 시 스크롤) |
 
 - AES-256-GCM 암호화 (v2), 레거시 AES-CBC+HMAC-SHA256 호환
-- 35 규칙의 자동 민감 정보 감지 (비밀번호/API 키/Slack/Discord/OpenAI 토큰/신분증 번호 등)
-- 비밀번호 관리자가前台에 있으면 자동 일시 중지, App 내 복사 방지
+- 46 규칙의 자동 민감 정보 감지 (키워드/정규식 40개 + 키/값 정규식 6개, 그 밖에 은행 카드 Luhn 검증 별도 수행)
+- 주요 암호 관리자는 '제외 앱' 목록에 기본 등록되어 있어 복사한 내용이 기록되지 않습니다 (이전 버전 환경에서는 설정에서 확인해 추가하세요)
 - 암호화 실패 시 내용 저장 거부, 평문 저장 차단
 
 ---
@@ -483,9 +483,14 @@
 - ⭐ 중요한 항목 고정, 자동 삭제 방지
 - 💾 이미지 암호화 파일 저장, 이미지당 최대 50MB
 - 🔍 실시간 검색, 전체 언어 하이라이트 지원 (중한일等多바이트 문자)
+- 🖼️ 이미지 텍스트 인식 OCR (기기에서만 수행, 전송 없음. 인식 텍스트 표시 지원)
 - ⚡ 스마트 중복 제거, 같은 내용은 타임스탬프만 업데이트
 - 🔄 복사 루프 방지, App 내에서 복사 시 자동 건너뛰기
 - 🧹 고아 파일 정리, App 실행 시 참조되지 않는 이미지 자동 삭제
+- 🗑️ 휴지통 (삭제 항목은 먼저 휴지통으로 이동하며 복원·일괄 복원이 가능합니다. 보관 기간이 지난 대량 정리는 먼저 묻습니다)
+- 📤 공유 및 내보내기 (시스템 공유 시트 / 이미지를 폴더로 내보내기)
+- 🗂 백업 복원 마법사 (매일 자동 백업 또는 .clipmemory 패키지에서 복원)
+- 🔒 단일 인스턴스 가드 (두 번째 인스턴스는 즉시 종료하며 어떤 데이터도 읽거나 쓰지 않습니다)
 - 🌍 7개 언어 (简体中文/繁體中文/English/日本語/한국어/Español/Português)
 - ☑️ 다중 선택 일괄 고정/삭제
 - ✅ 복사 시 녹색 플래시 피드백
@@ -511,7 +516,7 @@
 | 삭제 | 🗑 클릭 또는 우클릭 메뉴 |
 | 전체/민감/이미지 미리보기 | 0.4s 길게 누르기, 놓으면 원복 |
 | 다중 선택 모드 | 체크박스 클릭 |
-| 기록 지우기 | 상단 도구 모음 🗑 (고정 항목 유지) |
+| 기록 지우기 | 상단 도구 모음 🗑 →「기록 지우기」(휴지통으로 옮겨 복원 가능, 고정 항목 유지) |
 | 조건별 삭제 | 상단 도구 모음 🗑 →「조건별 삭제」(유형 × 기간). 유형 탭 우클릭으로 해당 유형 전체 삭제 |
 | 유형 필터 전환 | 사이드바에서 "텍스트/이미지/링크/Rich Text" 클릭 |
 
@@ -522,7 +527,7 @@
 ## 보안
 
 - **AES-256-GCM (v2) + 레거시 AES-CBC+HMAC-SHA256** — 모든 텍스트와 이미지를 디스크 저장 전 자동 암호화
-- **스마트 감지** — 35 규칙 (키워드 + 정규식)으로 비밀번호, API 키, Slack/Discord/OpenAI 토큰, 개인키, 신분증 번호, 은행카드 번호 등 자동 식별
+- **스마트 감지** — 46 규칙 (키워드/정규식 40개 + 키/값 정규식 6개)으로 비밀번호, API 키, Slack/Discord/OpenAI 토큰, 개인키, 신분증 번호, 은행카드 번호 등 자동 식별
 - **자동 삭제** — 민감 콘텐츠를 1시간/24시간/48시간/7일 후 자동 삭제 또는 삭제 안 함
 
 ---
@@ -538,9 +543,11 @@
 - Rich Text 캡처 토글
 - 글꼴 크기 (소 / 중 / 대)
 - 로그인 시 실행
-- 휴지통 보관 기간 (3 / 7 / 14 / 30일)
-- 백업 (매일 자동 / 보관 수 / 내보내기 / 가져오기)
+- 휴지통 보관 기간 (3 / 7 / 14 / 30일. 하드 상한이 아니며 대량 정리 시 먼저 묻습니다)
+- 백업 (매일 자동 / 보관 수 / 지금 백업 / 백업 폴더 열기 / 내보내기 / 백업에서 복원 마법사)
 - 자동 업데이트 (자동 확인 / 지금 확인)
+- 업데이트 소스 (자동 / 기본 / 예비 / Gitee 미러)
+- 이미지 텍스트 인식 OCR (스위치 + 인식 텍스트 표시)
 
 ---
 
@@ -552,9 +559,10 @@
 
 ## 데이터 마이그레이션
 
-암호화 키를 포함한 기록은 `~/Library/Application Support/ClipMemory/`에 저장되어 있습니다.
-설정 → 백업 → 백업 내보내기로 .clipmemory 암호화 패키지를 만들어 새 Mac에서 가져오는 방법을 권장합니다. 이 디렉토리를 직접 백업해 수동으로 옮길 수도 있습니다.
-앱을 삭제하기 전에 상단 도구 모음의 🗑 버튼으로 기록을 지울 수 있습니다.
+기록 데이터는 `~/Library/Preferences/com.clipmemory.app.plist`(UserDefaults)에, 이미지는 `~/Library/Application Support/ClipMemory/Images/`에, 매일의 백업은 `~/Library/Application Support/ClipMemory/Backups/`에 저장됩니다.
+암호화 키는 v2.5.6부터 macOS 키체인(서비스 이름 `com.clipmemory.app`)에 보관됩니다. 파일을 그대로 복사해 옮길 수 없고 iCloud로도 동기화되지 않습니다.
+다른 Mac으로 옮길 때는 설정 → 백업 → 백업 내보내기로 .clipmemory 암호화 패키지를 만든 뒤, 새 Mac에서 설정 → 백업 → 백업에서 복원을 사용하세요.
+앱을 삭제하기 전에 데이터를 완전히 지우려면 「휴지통」 탭의 「휴지통 비우기」(영구 삭제)를 실행하고 백업 폴더의 매일의 백업이 더 이상 필요 없는지 확인하세요.
 
 ---
 
@@ -586,7 +594,7 @@ brew install --cask clipmemory
 2. 이 프로젝트를 포크하여 `project.yml`의 `CODE_SIGN_IDENTITY` 변경 및 release.yml에 `notarytool submit` → `stapler staple` → `spctl --assess` 3단계 추가
 3. 개인/조직이 자발적으로 배포 비용을 부담; 본 프로젝트는 이를 제공할 의무 없음
 
-이는 유지보수자 (2026-07-19 commit `307818e`)가 내린 **잠긴 결정**입니다 — Personal Team 경로는 배포를 무료 + 단순하게 유지하며 유료 Developer ID 등록을 하지 않음. `CLAUDE.md` 「已锁决策」 섹션 참조.
+이는 유지보수자 (2026-07-19 commit `307818e`)가 내린 **잠긴 결정**입니다 — Personal Team 경로는 배포를 무료 + 단순하게 유지하며 유료 Developer ID 등록을 하지 않음.
 
 ---
 
