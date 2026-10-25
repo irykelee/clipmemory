@@ -76,16 +76,18 @@ OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 #
 # ⚠️ **端口不能写死**(ID-REVIEW-1033, 2026-10-25 实测踩坑):
 #   本机同时跑着**两个** ollama 服务端 —— `.app` 自带的 0.24.0 占标准端口
-#   11434, 但**跑不了任何新模型架构**(gemma4 的 mlx 架构直接报
-#   "unsupported architecture: Gemma4UnifiedForConditionalGeneration");
-#   Homebrew 的 0.40.11 跑在 11435 上一切正常。
+#   11434, Homebrew 的 0.40.11 跑在 11435 上。
+#   差别在 **runner**: 0.24.0 跑不了 gemma4 的 mlx 架构(直接报
+#   "unsupported architecture: Gemma4UnifiedForConditionalGeneration"),
+#   0.40.11 一切正常。
 #   ⇒ 写死 11434 ⇒ 链首**静默失效**(模型叫不动却不报错)⇒ 门禁退到外部
 #     free 额度 ⇒ 额度耗尽时整条链死。
 #   ⇒ 现在由 githooks/ollama-endpoints.sh 做**端点发现**: 显式 env 优先,
 #     内置端口按 `sort -r -V` **版本降序**(新版在前), 探不到版本的排最后;
 #     然后**逐个端点真调一次**, 直到某一个真的产出报告。
-#   ⇒ 判据是「有没有产出」而不是「模型在不在清单」—— 旧服务端**也**认得
-#     磁盘上的模型清单, 只是 runner 跑不动, 按清单判会误选。
+#   ⇒ 判据是「有没有产出」而不是「模型在不在清单」—— 两个服务端**共用同一个
+#     模型库**(`~/.ollama/models`)⇒ 两边 `/api/tags` 返回**完全相同**的清单
+#     ⇒ 清单**根本无法区分**端点, 只能靠「真调一次」分辨。
 #
 # 📊 **同一份 ID-REVIEW-1032 diff 的三方实测对照**(2026-10-25):
 #   | 模型 | 耗时 | 报告 | 判定 |
@@ -336,15 +338,16 @@ REVIEW_VERDICT: PASS
       # ---------------------------------------------------------------- 端点发现
       # ID-REVIEW-1033 (2026-10-25)：本机可能**同时**跑着多个 ollama 服务端
       # （不同版本、不同端口）。实测踩到的坑：
-      #   - `.app` 自带的 0.24.0 占着标准端口 11434，但**跑不了任何新模型架构**
-      #     （gemma4 的 mlx 架构直接报 "unsupported architecture"）；
-      #   - Homebrew 的 0.40.11 跑在另一个端口上，能跑一切。
+      #   - `.app` 自带的 0.24.0 占着标准端口 11434（Homebrew 的 0.40.11 在 11435）；
+      #   - 差别在 **runner**：0.24.0 跑不了 gemma4 的 mlx 架构（直接报
+      #     "unsupported architecture"），0.40.11 一切正常。
       # ⇒ 旧实现只连 `OLLAMA_HOST`（默认 11434）⇒ 链首**静默失效**（模型叫不动
       # 但不报错），门禁退到外部 free 额度上 ⇒ 额度耗尽时整条链死。
       #
       # ⇒ 这里逐个探测本地端点，**按版本号从新到旧**排序，逐个真调一次，
       # 直到某一个**真的产出报告**。判据是「产出非空输出」而不是「有没有这个
-      # 模型」—— 旧服务端**也**认得磁盘上的模型清单，只是 runner 跑不动。
+      # 模型」—— 两个服务端**共用同一个模型库**（`~/.ollama/models`）⇒ 两边
+      # `/api/tags` 返回**完全相同**的清单 ⇒ 清单根本区分不了端点。
       OLLAMA_MODEL_NAME="${MODEL#ollama/}"
       OLLAMA_EP=""
       while IFS= read -r ep_candidate; do
