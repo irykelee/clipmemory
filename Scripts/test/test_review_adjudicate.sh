@@ -338,6 +338,27 @@ grep -q 'review_gate_adjudicate' "$GATE" \
   && pass "门禁调用了判定单元的函数" || fail "门禁没有调用判定单元的函数"
 
 # ===================================================================
+echo "--- 断言 15: 不传 REVIEW_ADJUDICATE_SCRIPT / REVIEW_REPO_ROOT 也不能崩 ---"
+# ID-REVIEW-1033：外部审核（qwen3.5:9b）指出判定单元的默认路径指向
+# `$HOME/.local/bin/review-adjudicate.py` —— **那个文件根本不存在**。
+# 调用方一旦漏传 env，python 调用必然失败 ⇒ status=crashed ⇒ fail-closed
+# ⇒ **每次 push 都被挡**，且报错与真实故障无关。
+# ⇒ 默认值必须从**单元自身位置**推导，调用方不传也能跑。
+R15="$TEST_DIR/r15.md"; make_report "$R15"
+OUT15=$(env -u REVIEW_ADJUDICATE_SCRIPT -u REVIEW_REPO_ROOT \
+  bash -c '
+    source "$1"
+    review_gate_adjudicate "$2" "$3" advisory PASS "$(command -v python3)"
+  ' _ "$ADJ_UNIT" "$R15" "$L13")
+[ "$(field "$OUT15" STATUS)" = "ok" ] \
+  && pass "不传 env 也能正常跑（STATUS=ok，不是 crashed）" \
+  || fail "不传 env 就崩了：STATUS=$(field "$OUT15" STATUS)"
+# 默认推导出来的脚本路径必须**真的存在**
+ADJ_SELF="$(cd "$(dirname "$ADJ_UNIT")" && pwd)/review-adjudicate.py"
+[ -f "$ADJ_SELF" ] \
+  && pass "默认脚本路径指向真实文件" || fail "默认脚本路径不存在：$ADJ_SELF"
+
+# ===================================================================
 echo
 if [[ $FAILURES -eq 0 ]]; then
   echo "✅ review-adjudicate 全部断言通过"

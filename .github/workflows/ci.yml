@@ -481,6 +481,27 @@ jobs:
           set -euo pipefail
           bash Scripts/test/test_review_adjudicate.sh
 
+      # ID-REVIEW-1033 (2026-10-25): the review gate's LOCAL ollama path —
+      # endpoint discovery (githooks/ollama-endpoints.sh). The gate used to
+      # only ever talk to OLLAMA_HOST (default 11434). On this machine that
+      # port is served by Ollama.app's 0.24.0, which CANNOT run any modern
+      # model architecture (gemma4's mlx arch → "unsupported architecture"),
+      # while Homebrew's 0.40.11 on 11435 runs everything. Hard-coding the
+      # port made the chain head fail SILENTLY (no error, just no output),
+      # so the whole gate degraded onto the external free tier — which dies
+      # once the quota is gone. The discovery unit sorts local endpoints by
+      # version descending (sort -r -V; plain -V is ASCENDING and would
+      # have picked the broken one first) and the gate tries each until one
+      # actually produces a report. This test pins that ordering, the
+      # de-duplication, and the env-overrides precedence.
+      #
+      # The test is hermetic: it stubs `curl` on PATH with a fixture table,
+      # so it needs no ollama server on the runner (the CI runner has none).
+      - name: Local ollama endpoint discovery test (ID-REVIEW-1033)
+        run: |
+          set -euo pipefail
+          bash Scripts/test/test_ollama_endpoints.sh
+
   # P2-17 (2026-09-22 audit): minimum line coverage gate. Parses the
   # xcresult bundle emitted by build-and-test and fails the job if
   # coverage falls below COVERAGE_THRESHOLD (default 30% in script,

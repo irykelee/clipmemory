@@ -73,6 +73,30 @@ OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 #   此前"装不下"是 **opencode 驱动路径**的病: 它关不掉 thinking, 模型把
 #   预算全烧在思考链上, 正文被 step_finish reason=length 截断成一句
 #   "请告诉我下一步的具体目标" —— 换直连即可, 不必换模型、不必挪链尾。
+#
+# ⚠️ **端口不能写死**(ID-REVIEW-1033, 2026-10-25 实测踩坑):
+#   本机同时跑着**两个** ollama 服务端 —— `.app` 自带的 0.24.0 占标准端口
+#   11434, 但**跑不了任何新模型架构**(gemma4 的 mlx 架构直接报
+#   "unsupported architecture: Gemma4UnifiedForConditionalGeneration");
+#   Homebrew 的 0.40.11 跑在 11435 上一切正常。
+#   ⇒ 写死 11434 ⇒ 链首**静默失效**(模型叫不动却不报错)⇒ 门禁退到外部
+#     free 额度 ⇒ 额度耗尽时整条链死。
+#   ⇒ 现在由 githooks/ollama-endpoints.sh 做**端点发现**: 显式 env 优先,
+#     内置端口按 `sort -r -V` **版本降序**(新版在前), 探不到版本的排最后;
+#     然后**逐个端点真调一次**, 直到某一个真的产出报告。
+#   ⇒ 判据是「有没有产出」而不是「模型在不在清单」—— 旧服务端**也**认得
+#     磁盘上的模型清单, 只是 runner 跑不动, 按清单判会误选。
+#
+# 📊 **同一份 ID-REVIEW-1032 diff 的三方实测对照**(2026-10-25):
+#   | 模型 | 耗时 | 报告 | 判定 |
+#   |---|---|---|---|
+#   | qwen3.5:9b (本地 11435) | **22s** | 941 字符 / eval 465 | 5 findings, **1 条真问题** |
+#   | gemma4:12b (本地 11435) | 151s | 998 字符 / eval 501 | 4 findings, **0 条真问题** |
+#   | nemotron-3-ultra-550b:free (openrouter) | 129s | 12 findings | **4 条真问题** |
+#   ⇒ 本地 9B **快 6-7 倍**, 但**严重度标注完全不可信**(它把已修好的 EINTR
+#     逻辑报成 P0)⇒ 结论仍需**人工核验**, 不可直接当阻断依据(见
+#     ID-REVIEW-1029 的 advisory/confirmed 双层机制)。
+#   ⇒ 链首选 qwen3.5:9b 是为了**速度 + 不出网**, 不是为了"审得更准"。
 if [[ -n "${REVIEW_MODEL:-}" ]]; then
   MODEL_CHAIN=("$REVIEW_MODEL")
 else
@@ -257,6 +281,17 @@ USED_MODEL=""
 # 理论上的 PID 复用窗口被压缩到纳秒级且加活性检查兜底。
 FIRST_EVENT_DEADLINE="${REVIEW_FIRST_EVENT_DEADLINE:-180}"
 REVIEW_MODEL_TIMEOUT="${REVIEW_MODEL_TIMEOUT:-900}"
+
+# 本地 ollama 端点发现单元（ID-REVIEW-1033）：抽成独立文件是为了能 source 出来
+# 做行为级测试（断言「优先版本号新的」「去重」「env 优先」）。
+if [[ -f "$HOOKS_DIR/ollama-endpoints.sh" ]]; then
+  # shellcheck source=githooks/ollama-endpoints.sh
+  source "$HOOKS_DIR/ollama-endpoints.sh"
+else
+  ollama_discover_endpoints() { printf '%s\n' "${OLLAMA_HOST:-http://127.0.0.1:11434}"; }
+  echo "[auto-review] ⚠️ 找不到 ollama-endpoints.sh —— 端点发现退化为只连 ${OLLAMA_HOST:-http://127.0.0.1:11434}" >&2
+fi
+
 for MODEL in "${MODEL_CHAIN[@]}"; do
 RAWOUT="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.jsonl"
 RAWERR="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.err"
@@ -298,14 +333,40 @@ RAWERR="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.err"
 REVIEW_VERDICT: PASS
 （若上面列出了 [P0] 或 [P1] 的发现，这一行写 FAIL）
 这一行之后不要再输出任何内容。发现最多列 5 条，每条一行。"
-      printf '%s' "$OLLAMA_PROMPT" | "$PYTHON_BIN" "$HOOKS_DIR/ollama-review-chat.py" \
-        --model "${MODEL#ollama/}" \
-        --out "$RAWOUT" \
-        --timeout "${REVIEW_OLLAMA_TIMEOUT:-900}" \
-        --num-predict "${REVIEW_OLLAMA_NUM_PREDICT:-1600}" \
-        > /dev/null 2> "$RAWERR" || true
-      if [[ ! -s "$RAWOUT" ]]; then
-        echo "[auto-review] ⚠️ ollama 直连未产出报告（$MODEL）" >&2
+      # ---------------------------------------------------------------- 端点发现
+      # ID-REVIEW-1033 (2026-10-25)：本机可能**同时**跑着多个 ollama 服务端
+      # （不同版本、不同端口）。实测踩到的坑：
+      #   - `.app` 自带的 0.24.0 占着标准端口 11434，但**跑不了任何新模型架构**
+      #     （gemma4 的 mlx 架构直接报 "unsupported architecture"）；
+      #   - Homebrew 的 0.40.11 跑在另一个端口上，能跑一切。
+      # ⇒ 旧实现只连 `OLLAMA_HOST`（默认 11434）⇒ 链首**静默失效**（模型叫不动
+      # 但不报错），门禁退到外部 free 额度上 ⇒ 额度耗尽时整条链死。
+      #
+      # ⇒ 这里逐个探测本地端点，**按版本号从新到旧**排序，逐个真调一次，
+      # 直到某一个**真的产出报告**。判据是「产出非空输出」而不是「有没有这个
+      # 模型」—— 旧服务端**也**认得磁盘上的模型清单，只是 runner 跑不动。
+      OLLAMA_MODEL_NAME="${MODEL#ollama/}"
+      OLLAMA_EP=""
+      while IFS= read -r ep_candidate; do
+        [[ -z "$ep_candidate" ]] && continue
+        printf '%s' "$OLLAMA_PROMPT" | "$PYTHON_BIN" "$HOOKS_DIR/ollama-review-chat.py" \
+          --model "$OLLAMA_MODEL_NAME" \
+          --endpoint "$ep_candidate" \
+          --out "$RAWOUT" \
+          --timeout "${REVIEW_OLLAMA_TIMEOUT:-900}" \
+          --num-predict "${REVIEW_OLLAMA_NUM_PREDICT:-1600}" \
+          > /dev/null 2> "$RAWERR" || true
+        if [[ -s "$RAWOUT" ]]; then
+          OLLAMA_EP="$ep_candidate"
+          break
+        fi
+        echo "[auto-review]    端点 $ep_candidate 未能产出报告，换下一个" >&2
+        : > "$RAWOUT"
+      done < <(ollama_discover_endpoints)
+      if [[ -z "$OLLAMA_EP" ]]; then
+        echo "[auto-review] ⚠️ ollama 直连未产出报告（$MODEL，所有本地端点都试过了）" >&2
+      else
+        echo "[auto-review]    本地 ollama 端点：$OLLAMA_EP" >&2
       fi
     fi
   else

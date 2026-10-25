@@ -33,6 +33,25 @@ review_gate_adjudicate() {
   local report="$1" ledger="$2" mode="$3" model_verdict="$4" python_bin="${5:-}"
   local status="ok" out="" err="" err_file=""
 
+  # 默认路径从**本单元自身位置**推导（它与 review-adjudicate.py 同目录），
+  # 不依赖调用方传 env。ID-REVIEW-1033：外部审核（qwen3.5:9b）指出原来的默认值
+  # `$HOME/.local/bin/review-adjudicate.py` **根本不存在** —— 调用方一旦漏传
+  # `REVIEW_ADJUDICATE_SCRIPT`，python 调用必然失败 ⇒ status=crashed
+  # ⇒ fail-closed ⇒ **每次 push 都被挡**，且原因与真实故障无关。
+  # ⇒ 默认值必须指向**真实存在**的文件，且推导方式不依赖调用方。
+  local unit_dir
+  unit_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+  local adj_script="${REVIEW_ADJUDICATE_SCRIPT:-}"
+  local repo_root="${REVIEW_REPO_ROOT:-}"
+  if [[ -z "$adj_script" && -n "$unit_dir" ]]; then
+    adj_script="$unit_dir/review-adjudicate.py"
+  fi
+  if [[ -z "$repo_root" && -n "$unit_dir" ]]; then
+    repo_root="$(cd "$unit_dir/.." 2>/dev/null && pwd || echo "")"
+  fi
+  [[ -z "$adj_script" ]] && adj_script="review-adjudicate.py"
+  [[ -z "$repo_root" ]] && repo_root="$PWD"
+
   if [[ -z "$python_bin" ]]; then
     status="no-python"
   elif [[ ! -f "$ledger" ]]; then
@@ -40,16 +59,16 @@ review_gate_adjudicate() {
   else
     err_file="$(mktemp "${TMPDIR:-/tmp}/cm-adjudicate-err.XXXXXX" 2>/dev/null || echo "")"
     if [[ -n "$err_file" ]]; then
-      if ! out="$("$python_bin" "${REVIEW_ADJUDICATE_SCRIPT:-$HOME/.local/bin/review-adjudicate.py}" \
-          apply --report "$report" --ledger "$ledger" --repo-root "${REVIEW_REPO_ROOT:-$PWD}" \
+      if ! out="$("$python_bin" "$adj_script" \
+          apply --report "$report" --ledger "$ledger" --repo-root "$repo_root" \
           --mode "$mode" --model-verdict "$model_verdict" 2>"$err_file")"; then
         status="crashed"
         err="$(head -c 800 "$err_file" 2>/dev/null || true)"
       fi
       rm -f "$err_file"
     else
-      if ! out="$("$python_bin" "${REVIEW_ADJUDICATE_SCRIPT:-$HOME/.local/bin/review-adjudicate.py}" \
-          apply --report "$report" --ledger "$ledger" --repo-root "${REVIEW_REPO_ROOT:-$PWD}" \
+      if ! out="$("$python_bin" "$adj_script" \
+          apply --report "$report" --ledger "$ledger" --repo-root "$repo_root" \
           --mode "$mode" --model-verdict "$model_verdict" 2>/dev/null)"; then
         status="crashed"
       fi
