@@ -286,6 +286,37 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         )
     }
 
+    /// ID-REVIEW-1030 (2026-10-25): the production-domain **content** comparison
+    /// can only be trusted when no other ClipMemory instance is running.
+    ///
+    /// The comparison is "before vs after the whole suite" — it sees *that* the
+    /// production domain changed, never *who* changed it. When the real app is
+    /// running it rewrites its own `ClipboardItems` blob on every save, and
+    /// because AES-GCM uses a fresh nonce per save, even an identical-item
+    /// re-save changes the bytes while keeping the length. The guard then
+    /// reports "the production data blob was rewritten" for a test run that
+    /// never touched production.
+    ///
+    /// Measured 2026-10-25 on this machine: the real app's CoreSpotlight
+    /// re-index bursts line up exactly with the blob's byte change during the
+    /// suite; the suite is green on CI (no app runs there) and green locally
+    /// while the app is closed.
+    ///
+    /// The test host deliberately never takes the single-instance lock (see
+    /// `SingleInstanceLock`), so a held lock means a real instance is running
+    /// ⇒ the comparison is unattributable ⇒ skip it **visibly** instead of
+    /// failing on somebody else's write. The seam guards
+    /// (`TestIsolation.mustRefuseProductionDataMutation`) and the byte-level
+    /// comparison still apply whenever the lock is free — which is the case
+    /// on CI.
+    private func skipIfAnotherInstanceIsRunning() throws {
+        try XCTSkipIf(
+            SingleInstanceLock.isHeldByAnotherProcess(),
+            "另一个 ClipMemory 实例正在运行（.instance.lock 被占用）—— 它会合法地改写自己的"
+            + "生产数据，本进程无法归因；跳过生产域内容比对（CI 上没有实例在跑，这条检查照常执行）"
+        )
+    }
+
     /// Runs LAST in the suite (alphabetically after every other class).
     /// Compares the production persistent domain against the AAA snapshot.
     /// Fails on keys NOT in `toleratedPollution` (allowlist). The
@@ -298,6 +329,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// `xcodebuild` to exit non-zero, but a future CI tool that swallows
     /// `XCTFail` would still see the explicit `XCTAssert` as a hard stop.
     func testNoProductionPollution() throws {
+        try skipIfAnotherInstanceIsRunning()
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
         let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
@@ -393,6 +425,9 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// still a write to the user's data, and it is still the thing that
     /// hid the incident, so it must not pass silently.
     func testProductionDataBlobsAreUnchanged() throws {
+        // ID-REVIEW-1030: the content comparison can only be trusted when no
+        // other ClipMemory instance is running — see the helper's doc comment.
+        try skipIfAnotherInstanceIsRunning()
         // ID-CRASH-0031: without the AAA baseline there is nothing to
         // compare against — a focused run that skips the suite bootstrap.
         // Skip explicitly (visible in the report) instead of failing with

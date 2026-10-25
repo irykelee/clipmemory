@@ -248,4 +248,94 @@ final class SingleInstanceGuardTests: XCTestCase {
             AppDelegate.hasOtherLiveInstance(candidateProcessIDs: [], myProcessID: 42)
         )
     }
+
+    // MARK: - The "is the lock held by somebody else" probe (ID-REVIEW-1030)
+    //
+    // This probe is what the ZZZ production-pollution guard uses to decide
+    // whether its content comparison is *attributable*. It therefore needs
+    // BOTH directions proven deterministically — not just "it returned
+    // something":
+    //
+    //   - free lock  → false ⇒ the comparison runs (this is the CI path,
+    //                   and the path where the guard has teeth)
+    //   - held lock  → true  ⇒ the comparison is skipped (the path that
+    //                   keeps a running app's own writes from being blamed
+    //                   on the test suite)
+
+    /// Nobody holds the lock ⇒ the probe says "no other instance".
+    ///
+    /// This is the CI path: with no app running, the ZZZ production-pollution
+    /// comparison must actually execute, not be skipped away.
+    func testLockProbeReportsFreeWhenNobodyHoldsTheLock() {
+        XCTAssertFalse(
+            SingleInstanceLock.isHeldByAnotherProcess(fileURL: lockURL),
+            "a lock nobody holds must not be reported as held"
+        )
+    }
+
+    /// Somebody holds the lock ⇒ the probe says "another instance".
+    ///
+    /// `flock` is held per *open file description*, so a second descriptor
+    /// conflicts even inside the same process — which is why this can be
+    /// proven without spawning a second process.
+    func testLockProbeReportsHeldWhileALockIsHeld() {
+        let holder = SingleInstanceLock(fileURL: lockURL)
+        XCTAssertTrue(holder.acquire(timeout: 0))
+        defer { holder.release() }
+        XCTAssertTrue(
+            SingleInstanceLock.isHeldByAnotherProcess(fileURL: lockURL),
+            "a held lock must be detected"
+        )
+    }
+
+    /// The holder lets go ⇒ the probe says "no other instance" again.
+    /// Without this the probe would latch "held" forever and the ZZZ
+    /// comparison would be permanently skipped even after the app quits.
+    func testLockProbeReportsFreeAfterTheHolderReleases() {
+        let holder = SingleInstanceLock(fileURL: lockURL)
+        XCTAssertTrue(holder.acquire(timeout: 0))
+        holder.release()
+        XCTAssertFalse(
+            SingleInstanceLock.isHeldByAnotherProcess(fileURL: lockURL),
+            "a released lock must not keep reporting 'held'"
+        )
+    }
+
+    /// The real scenario is a *foreign process* holding the lock — that is
+    /// what "another ClipMemory instance is running" actually means.
+    func testLockProbeSeesAForeignProcessHolder() throws {
+        let python = URL(fileURLWithPath: "/usr/bin/python3")
+        try XCTSkipUnless(
+            FileManager.default.isExecutableFile(atPath: python.path),
+            "/usr/bin/python3 is required to run the foreign lock holder"
+        )
+        let script = """
+        import fcntl, os, sys, time
+        fd = os.open(sys.argv[1], os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        sys.stdout.write("locked\\n")
+        sys.stdout.flush()
+        time.sleep(30)
+        """
+        let scriptURL = lockDirectory.appendingPathComponent("probe-holder.py")
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = python
+        process.arguments = [scriptURL.path, lockURL.path]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        defer { process.terminate() }
+
+        let announced = readLine(from: output.fileHandleForReading, timeout: 20)
+        XCTAssertEqual(
+            announced, "locked",
+            "the foreign holder never took the lock — the test proves nothing"
+        )
+        XCTAssertTrue(
+            SingleInstanceLock.isHeldByAnotherProcess(fileURL: lockURL),
+            "a foreign process holding the lock must be detected"
+        )
+    }
 }

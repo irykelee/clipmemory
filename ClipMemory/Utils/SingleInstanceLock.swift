@@ -58,6 +58,56 @@ final class SingleInstanceLock {
         self.fileURL = fileURL
     }
 
+    /// True when **another holder** currently owns the instance lock — i.e. a
+    /// real ClipMemory instance is running.
+    ///
+    /// ID-REVIEW-1030 (2026-10-25): why this exists. The ZZZ production-pollution
+    /// guard compares the production domain's content before/after the test
+    /// suite. That comparison **cannot attribute** a change: when the real app
+    /// is running it legitimately rewrites its own `ClipboardItems` blob, and
+    /// because AES-GCM uses a fresh nonce per save, even an identical-item
+    /// re-save changes the bytes while keeping the length. The guard then
+    /// false-positives ("the production blob was rewritten") on a test run
+    /// that never touched production. Measured on this machine: the real app's
+    /// CoreSpotlight re-index bursts line up exactly with the blob's byte
+    /// change during the suite, and the suite is green on CI (where no app
+    /// runs) and green locally while the app is closed.
+    ///
+    /// The test host deliberately never takes the lock (see the class
+    /// docstring), so a held lock unambiguously means "the real app is
+    /// running" — which is exactly the condition under which a content
+    /// comparison of the production domain becomes unattributable.
+    ///
+    /// Implementation: open a **fresh** descriptor for the same file and try a
+    /// non-blocking exclusive lock. BSD `flock` is held per *open file
+    /// description*, so this conflicts with any other holder — including a
+    /// same-process holder that used a different descriptor (verified in
+    /// `SingleInstanceGuardTests`).
+    static func isHeldByAnotherProcess(
+        fileURL: URL = SingleInstanceLock.defaultFileURL
+    ) -> Bool {
+        let directory = fileURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        let fd = open(fileURL.path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+            // Nobody held it — we just took it, so hand it straight back.
+            flock(fd, LOCK_UN)
+            return false
+        }
+        let code = errno
+        if code == EWOULDBLOCK || code == EINTR { return true }
+        // Any other errno (e.g. the file system refuses the lock) means we
+        // cannot tell. Report "not held" rather than guessing — the caller
+        // treats a false negative as "the comparison is meaningful", and the
+        // guard's own content comparison remains the backstop.
+        return false
+    }
+
     /// True while this process holds the lock.
     var isHeld: Bool { descriptor >= 0 }
 
