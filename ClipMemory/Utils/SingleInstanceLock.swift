@@ -58,6 +58,42 @@ final class SingleInstanceLock {
         self.fileURL = fileURL
     }
 
+    /// What a failed `flock` means for the probe.
+    ///
+    /// ID-REVIEW-1031 (2026-10-25): `EINTR` is **not** "somebody holds the
+    /// lock" — it means the call was interrupted by a signal. Reporting it
+    /// as "held" made the probe claim an instance was running when none
+    /// was, so the ZZZ comparison was skipped for no reason.
+    ///
+    /// Split out as a pure function so the distinction is **testable**:
+    /// `flock` returning EINTR cannot be provoked deterministically from a
+    /// test, but the decision table can be asserted directly.
+    enum ProbeDecision {
+        /// Nobody holds it (we took it, or we cannot tell).
+        case notHeld
+        /// Another holder exists.
+        case held
+        /// The call was interrupted — try again.
+        case retry
+    }
+
+    /// Maps a `flock` errno to the probe's decision.
+    ///
+    /// - `EWOULDBLOCK` ⇒ somebody holds the lock ⇒ **held** (the only errno
+    ///   that proves it).
+    /// - `EINTR` ⇒ the call was interrupted by a signal ⇒ **retry**; it says
+    ///   nothing about who holds the lock.
+    /// - anything else ⇒ **cannot tell** ⇒ `notHeld`. The caller treats that
+    ///   as "the comparison is meaningful", and the guard's own content
+    ///   comparison remains the backstop. (A false "not held" costs a
+    ///   visible, rerunnable failure; a false "held" would silently skip the
+    ///   check.)
+    static func probeDecision(forErrno code: Int32) -> ProbeDecision {
+        if code == EWOULDBLOCK { return .held }
+        if code == EINTR { return .retry }
+        return .notHeld
+    }
+
     /// True when **another holder** currently owns the instance lock — i.e. a
     /// real ClipMemory instance is running.
     ///
@@ -96,18 +132,29 @@ final class SingleInstanceLock {
         let fd = open(fileURL.path, O_RDONLY | O_CLOEXEC)
         guard fd >= 0 else { return false }
         defer { close(fd) }
-        if flock(fd, LOCK_EX | LOCK_NB) == 0 {
-            // Nobody held it — we just took it, so hand it straight back.
-            flock(fd, LOCK_UN)
-            return false
+        var interruptedAttempts = 0
+        while true {
+            if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+                // Nobody held it — we just took it, so hand it straight back.
+                flock(fd, LOCK_UN)
+                return false
+            }
+            switch probeDecision(forErrno: errno) {
+            case .held:
+                return true
+            case .retry:
+                // 被信号打断 —— 不是「有人在持锁」。重试几次；仍失败则按
+                // 「无法判定」处理（与其它 errno 同一条路径）。
+                interruptedAttempts += 1
+                if interruptedAttempts < 3 { continue }
+                return false
+            case .notHeld:
+                // 无法判定 ⇒ 报「没人在持锁」。调用方据此认为内容比对有意义，
+                // 而哨兵自身的内容比对仍是后盾（假阴性只会带来一次可见、
+                // 可重跑的失败；假「有人持锁」会**静默**跳过检查，更糟）。
+                return false
+            }
         }
-        let code = errno
-        if code == EWOULDBLOCK || code == EINTR { return true }
-        // Any other errno (e.g. the file system refuses the lock) means we
-        // cannot tell. Report "not held" rather than guessing — the caller
-        // treats a false negative as "the comparison is meaningful", and the
-        // guard's own content comparison remains the backstop.
-        return false
     }
 
     /// True while this process holds the lock.

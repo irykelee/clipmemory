@@ -348,4 +348,46 @@ final class SingleInstanceGuardTests: XCTestCase {
             "a foreign process holding the lock must be detected"
         )
     }
+
+    // MARK: - The errno decision table (ID-REVIEW-1031)
+    //
+    // `flock` returning EINTR cannot be provoked deterministically from a
+    // test, so the decision table is a pure function and gets asserted
+    // directly. The bug this pins: EINTR ("the call was interrupted by a
+    // signal") used to be reported as "somebody holds the lock", which made
+    // the ZZZ guard skip its production comparison for no reason.
+
+    /// `EWOULDBLOCK` is the only errno that *proves* another holder exists.
+    func testErrnoEwouldblockMeansSomebodyHoldsTheLock() {
+        XCTAssertEqual(
+            SingleInstanceLock.probeDecision(forErrno: EWOULDBLOCK),
+            .held,
+            "EWOULDBLOCK is the lock being busy — that is a real holder"
+        )
+    }
+
+    /// `EINTR` means "interrupted", **not** "busy" — it must be retried, and
+    /// it must never be reported as "somebody holds the lock".
+    func testErrnoIntrMeansInterruptedNotHeld() {
+        XCTAssertEqual(
+            SingleInstanceLock.probeDecision(forErrno: EINTR),
+            .retry,
+            "EINTR is a signal interrupt, not proof that another holder exists"
+        )
+    }
+
+    /// Any other errno means "cannot tell" ⇒ not held (the caller then runs
+    /// the content comparison, which is the real backstop).
+    func testErrnoOtherMeansCannotTell() {
+        XCTAssertEqual(
+            SingleInstanceLock.probeDecision(forErrno: ENOTSUP),
+            .notHeld,
+            "an unknown errno must not be guessed as 'held'"
+        )
+        XCTAssertEqual(
+            SingleInstanceLock.probeDecision(forErrno: EACCES),
+            .notHeld,
+            "an unknown errno must not be guessed as 'held'"
+        )
+    }
 }

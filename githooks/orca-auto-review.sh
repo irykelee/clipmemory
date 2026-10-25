@@ -533,39 +533,65 @@ fi
 # 两种模式下人工 `confirmed` 都阻断。
 GATE_MODE="${REVIEW_GATE_MODE:-advisory}"
 ADJ_LEDGER="$HOOKS_DIR/review-adjudication.jsonl"
-ADJ_OUT=""
-if [[ -n "$PYTHON_BIN" && -f "$ADJ_LEDGER" ]]; then
-  ADJ_OUT=$("$PYTHON_BIN" "$HOOKS_DIR/review-adjudicate.py" apply \
-      --report "$REPORT" --ledger "$ADJ_LEDGER" --repo-root "$ROOT" \
-      --mode "$GATE_MODE" --model-verdict "$VERDICT" || true)
+# ID-REVIEW-1031 (2026-10-25)：判定逻辑抽到 githooks/review-gate-adjudication.sh，
+# 因为其中两条性质（崩溃 ⇒ fail-closed；台账为空 ⇒ 退回模型结论）必须被
+# **行为级**测试覆盖 —— 此前只以「源码里有没有某句话」的形式断言过，
+# 那种断言抓不住「逻辑被改坏但那句话还在」。
+ADJ_STATUS="ok"
+ADJ_ERR=""
+if [[ -f "$HOOKS_DIR/review-gate-adjudication.sh" ]]; then
+  # shellcheck source=githooks/review-gate-adjudication.sh
+  source "$HOOKS_DIR/review-gate-adjudication.sh"
+  REVIEW_ADJUDICATE_SCRIPT="$HOOKS_DIR/review-adjudicate.py"
+  REVIEW_REPO_ROOT="$ROOT"
+  ADJ_OUT=$(review_gate_adjudicate "$REPORT" "$ADJ_LEDGER" "$GATE_MODE" "$VERDICT" "${PYTHON_BIN:-}")
+else
+  echo "[auto-review] ⚠️ 找不到 review-gate-adjudication.sh —— 人工核验层不可用，按模型结论 ${VERDICT} 处理。" >&2
+  ADJ_OUT=$(printf 'STATUS=missing\nEFFECTIVE_VERDICT=%s\nBLOCKING_COUNT=0\nADVISORY_COUNT=0\n' "$VERDICT")
 fi
 EFFECTIVE_VERDICT="$VERDICT"
 ADJ_BLOCKING=0
 ADJ_ADVISORY=0
-if [[ -n "$ADJ_OUT" ]]; then
-  while IFS='=' read -r key value; do
-    case "$key" in
-      EFFECTIVE_VERDICT) EFFECTIVE_VERDICT="$value" ;;
-      BLOCKING_COUNT)    ADJ_BLOCKING="$value" ;;
-      ADVISORY_COUNT)    ADJ_ADVISORY="$value" ;;
-    esac
-  done <<< "$ADJ_OUT"
-  if [[ "$EFFECTIVE_VERDICT" != "$VERDICT" ]]; then
-    echo "[auto-review] ⚖️ 人工核验层生效：模型结论 ${VERDICT} → 生效结论 ${EFFECTIVE_VERDICT}（模式 ${GATE_MODE}）" >&2
-  fi
-  if [[ "${ADJ_ADVISORY:-0}" -gt 0 ]]; then
-    echo "[auto-review] ℹ️ ${ADJ_ADVISORY} 条 P0/P1 未经人工核验 —— advisory 模式下不阻断 push。" >&2
-    echo "[auto-review]    核验: python3 githooks/review-adjudicate.py list --report $REPORT" >&2
-  fi
-else
-  # 说清楚**缺的是哪一个** —— 「缺 python3 或台账」把两种原因合成一句，
-  # 排查时要靠猜（ID-REVIEW-1029 审核 finding）。
-  if [[ -z "${PYTHON_BIN:-}" ]]; then
+while IFS='=' read -r key value; do
+  case "$key" in
+    STATUS)            ADJ_STATUS="$value" ;;
+    EFFECTIVE_VERDICT) EFFECTIVE_VERDICT="$value" ;;
+    BLOCKING_COUNT)    ADJ_BLOCKING="$value" ;;
+    ADVISORY_COUNT)    ADJ_ADVISORY="$value" ;;
+    ERROR)             ADJ_ERR="$value" ;;
+  esac
+done <<< "$ADJ_OUT"
+
+case "$ADJ_STATUS" in
+  crashed)
+    # fail closed：核验层不可信时不能放行。
+    echo "[auto-review] ⛔ 人工核验层崩溃（apply 执行失败）—— 无法判断人工核验结论，按 fail-closed 阻断。" >&2
+    echo "[auto-review]    这通常是工具本身的 bug，要修；修好前可 git push --no-verify 显式越过。" >&2
+    if [[ -n "$ADJ_ERR" ]]; then
+      echo "[auto-review]    错误输出：${ADJ_ERR:0:800}" >&2
+    fi
+    ;;
+  no-python)
     echo "[auto-review] ⚠️ 人工核验层不可用：找不到 python3 —— 按模型结论 ${VERDICT} 处理。" >&2
-  else
-    echo "[auto-review] ⚠️ 人工核验层不可用：台账文件不存在（$ADJ_LEDGER）—— 按模型结论 ${VERDICT} 处理。" >&2
-  fi
-fi
+    ;;
+  no-ledger)
+    echo "[auto-review] ℹ️ 没有人工核验台账（$ADJ_LEDGER）—— 按模型结论 ${VERDICT} 处理。" >&2
+    ;;
+  missing)
+    echo "[auto-review] ⚠️ 人工核验层不可用：缺少判定单元 —— 按模型结论 ${VERDICT} 处理。" >&2
+    ;;
+  *)
+    if [[ "$EFFECTIVE_VERDICT" != "$VERDICT" ]]; then
+      echo "[auto-review] ⚖️ 人工核验层生效：模型结论 ${VERDICT} → 生效结论 ${EFFECTIVE_VERDICT}（模式 ${GATE_MODE}）" >&2
+    fi
+    if [[ "${ADJ_ADVISORY:-0}" -gt 0 ]]; then
+      echo "[auto-review] ℹ️ ${ADJ_ADVISORY} 条 P0/P1 未经人工核验 —— advisory 模式下不阻断 push。" >&2
+      echo "[auto-review]    核验: python3 githooks/review-adjudicate.py list --report $REPORT" >&2
+    fi
+    # 说明：模型结论 PASS 时**照样**跑这一层 —— 人工记为 confirmed 的结论
+    # 必须能把结论翻成 FAIL，否则「台账里明明记了真问题」却放行。
+    ;;
+esac
 
 if [[ "$EFFECTIVE_VERDICT" == "FAIL" ]]; then
   # opencode 独立审核纪律: 存在 P0/P1 (VERDICT=FAIL) 时必须修复后重新提交再审,
@@ -574,7 +600,9 @@ if [[ "$EFFECTIVE_VERDICT" == "FAIL" ]]; then
   # pre-push 门禁模式(REVIEW_BLOCK_ON_FAIL=1, 由 githooks/pre-push 设置): FAIL 阻断 push。
   # 显式绕过: git push --no-verify（审核点不推进, 下次 push 会重审同一段）。
   if [[ -n "${REVIEW_BLOCK_ON_FAIL:-}" ]]; then
-    if [[ "${ADJ_BLOCKING:-0}" -gt 0 ]]; then
+    if [[ "$ADJ_STATUS" == "crashed" ]]; then
+      echo "[auto-review] ⛔ pre-push 门禁: 人工核验层崩溃, 无法确认人工核验结论 —— fail-closed 阻断本次 push。修好 review-adjudicate.py 后重试, 或 git push --no-verify 显式越过。" >&2
+    elif [[ "${ADJ_BLOCKING:-0}" -gt 0 ]]; then
       echo "[auto-review] ⛔ pre-push 门禁: ${ADJ_BLOCKING} 条 finding 被人工记为 confirmed（真问题, 尚未修复）, 阻断本次 push。" >&2
     else
       echo "[auto-review] ⛔ pre-push 门禁: 生效结论=FAIL, 阻断本次 push。修复后重试, 或 git push --no-verify 显式越过。" >&2

@@ -20,11 +20,16 @@
      "adjudicatedAt": "2026-10-25T10:00:00Z", "expiresAt": "2026-10-25T10:00:00Z"}
 
 判定规则（一条 finding 要被「人工结论」接管，需同时满足）：
-  1. `match` 正则命中该 finding 文本（正则编译失败则退化为字面子串）；
+  1. `match` 正则命中该 finding 文本（正则编译失败 ⇒ **不匹配 + 响亮告警**，
+     不退化为字面子串 —— 那样等于这条结论永远不生效）；
   2. `severity` 缺省或与该 finding 的严重度一致；
   3. 未过期（`expiresAt` 在未来）；
   4. 若填了 `file`：该文件当前内容的 sha256 必须仍等于 `fileSha256`
      ⇒ **代码一改，这条结论自动失效**，必须重新核验。
+
+`file` 字段必须落在仓库内 —— 台账是**入库文件**，恶意条目可以用 `../` 或
+绝对路径把工具引到仓库外。解析后若不在仓库根之内，一律当作「不适用」
+（`add` 直接报错拒绝写入）。
 
 两条 verdict 的语义：
   - `confirmed`    真问题 ⇒ **阻断 push**，直到该文件被改动（自动失效）；
@@ -81,6 +86,33 @@ def sha256_file(path):
         for chunk in iter(lambda: handle.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def resolve_in_repo(repo_root, target):
+    """把台账里的 `file` 解析成**仓库内**的绝对路径；越界返回 None。
+
+    ID-REVIEW-1031（2026-10-25）：台账 `githooks/review-adjudication.jsonl` 是
+    **入库文件**，而 `file` 字段的内容来自它 ⇒ 仓库里的任何人都能往里写
+    `file: "../../../etc/passwd"` 或 `file: "/etc/passwd"`。
+    `os.path.join(repo_root, target)` 对绝对路径会**整段丢弃 repo_root**
+    （join 的语义），对 `../` 则会正常上跳 —— 两种都能让工具读到仓库外的文件
+    （`entry_applies` 会去算它的 sha256，`cmd_add` 也会）。
+
+    ⇒ 解析后必须确认它**真的在仓库根之下**才允许使用：
+      - 用 `realpath` 归一化（含符号链接），避免 `仓库内/软链 -> /etc/passwd`；
+      - 要求结果等于仓库根，或以 `仓库根 + os.sep` 开头；
+      - 任何越界一律当作「不适用」，不读不写。
+    """
+    if not target or not isinstance(target, str):
+        return None
+    root_abs = os.path.realpath(repo_root)
+    # join 对绝对路径会丢掉 root，所以先自己判一次。
+    candidate = os.path.realpath(os.path.join(root_abs, target))
+    if candidate == root_abs:
+        return candidate
+    if not candidate.startswith(root_abs + os.sep):
+        return None
+    return candidate
 
 
 def utc_now():
@@ -167,7 +199,11 @@ def entry_applies(entry, finding, repo_root):
         return False
     target = entry.get("file")
     if target:
-        path = os.path.join(repo_root, target)
+        # ID-REVIEW-1031：台账是入库文件，`file` 字段不可信 ⇒ 必须确认它
+        # 落在仓库内才允许读。越界 = 该结论不适用（且绝不去读那个路径）。
+        path = resolve_in_repo(repo_root, target)
+        if path is None:
+            return False
         if not os.path.isfile(path):
             return False
         recorded = entry.get("fileSha256")
@@ -203,18 +239,33 @@ def parse_findings(report_text):
     return findings
 
 
+# 本模块写进报告的核验段的**块头**。带哨兵行是必须的（ID-REVIEW-1031）：
+# 旧实现只找标题串「## 人工核验 / Adjudication」，而这个工具**审自己**时，
+# 模型的报告正文里必然会引用到这行字 —— 剥离逻辑于是把「标题串」当成本模块
+# 写的块，从**第一个 "\n---"** 起把后面全砍掉：实测一次真实审核里，12 条
+# findings 被整段抹掉，而门禁照样报 PASS（审计痕迹被静默销毁）。
+#
+# ⇒ 规则改成：只认**最后一份**带哨兵行的块（我们写的块永远在文件末尾），
+# 且必须整块四行连着出现。正文里引用标题不再有破坏力。
+BLOCK_HEADER = (
+    "\n---\n\n"
+    "## 人工核验 / Adjudication\n"
+    "<!-- cm-adjudication:v1 -->\n"
+)
+
+
 def strip_previous_adjudication(report_text):
-    """幂等：重跑 apply 时先把上一轮写的核验段剥掉，避免叠加两遍。"""
-    marker = "## 人工核验 / Adjudication"
-    index = report_text.find(marker)
+    """幂等：重跑 apply 时先把上一轮写的核验段剥掉，避免叠加两遍。
+
+    ID-REVIEW-1031：只认**最后一份**带哨兵行的块（`BLOCK_HEADER`）。
+    - 用 `rfind` 而不是 `find`：我们写的块永远在文件末尾，正文里引用标题/
+      引用哨兵都排在它前面 ⇒ 取最后一份不会误伤正文。
+    - 找不到完整块头就**原样返回**（宁可留着旧块，也不要误删正文）。
+    """
+    index = report_text.rfind(BLOCK_HEADER)
     if index < 0:
         return report_text
-    head = report_text[:index]
-    # 剥到该段之前最近的 "---" 分隔线为止（那段是本模块自己写的）
-    divider = head.rfind("\n---")
-    if divider >= 0:
-        head = head[:divider]
-    return head.rstrip("\n") + "\n"
+    return report_text[:index].rstrip("\n") + "\n"
 
 
 def annotate_report(report_path, findings, entries, repo_root, mode, effective):
@@ -232,7 +283,8 @@ def annotate_report(report_path, findings, entries, repo_root, mode, effective):
         else:
             cleared.append((finding, entry))
 
-    lines = ["", "---", "", "## 人工核验 / Adjudication", ""]
+    # 块头带哨兵行（ID-REVIEW-1031）—— 剥离逻辑靠它认「这段是本模块写的」。
+    lines = ["", "---", "", "## 人工核验 / Adjudication", "<!-- cm-adjudication:v1 -->", ""]
     counts = {}
     for finding in findings:
         counts[finding["severity"]] = counts.get(finding["severity"], 0) + 1
@@ -371,7 +423,15 @@ def cmd_add(args):
         "adjudicatedAt": iso(utc_now()),
     }
     if args.file:
-        path = os.path.join(args.repo_root, args.file)
+        # ID-REVIEW-1031：拒绝仓库外的路径（绝对路径 / `../` 上跳 / 软链外指），
+        # 也不接受不存在的文件 —— 台账是入库文件，这个字段必须当作**不可信输入**。
+        path = resolve_in_repo(args.repo_root, args.file)
+        if path is None:
+            print(
+                f"[review-adjudicate] 拒绝：file 必须落在仓库内 —— {args.file}",
+                file=sys.stderr,
+            )
+            return 2
         if not os.path.isfile(path):
             print(f"[review-adjudicate] 文件不存在：{args.file}", file=sys.stderr)
             return 2

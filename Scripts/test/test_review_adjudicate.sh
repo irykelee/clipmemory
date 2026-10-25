@@ -20,6 +20,9 @@
 #      正是最容易让人误以为「已经核验过了」的状态）
 #  10. apply 幂等：重跑不叠加两遍核验段
 #  11. 门禁接线：orca-auto-review.sh 的阻断判据用的是**生效结论**而不是模型结论
+#  12. 台账的 file 字段不得越出仓库（路径穿越：相对上跳 + 绝对路径）
+#  13. 报告正文里出现标记串 ⇒ findings 不得被抹掉（审自己时的自指陷阱）
+#  14. apply 崩溃 ⇒ fail-closed（不能静默退回「模型结论说了算」）
 #
 # Run: bash Scripts/test/test_review_adjudicate.sh
 # Exit 0 = PASS, non-zero = FAIL
@@ -185,14 +188,154 @@ COUNT=$(grep -c "## 人工核验 / Adjudication" "$R" || true)
 # ===================================================================
 echo "--- 断言 11: 门禁接线用的是生效结论，不是模型结论 ---"
 GATE="$SCRIPT_DIR/githooks/orca-auto-review.sh"
-grep -q 'review-adjudicate.py" apply' "$GATE" \
-  && pass "门禁调用了 review-adjudicate.py apply" || fail "门禁未调用 review-adjudicate.py apply"
+# `apply` 的实际调用在判定单元里（ID-REVIEW-1031：判定逻辑抽成可 source 的
+# 单元，才能做行为级测试），门禁本体负责调用它并按生效结论阻断。
+ADJ_UNIT="$SCRIPT_DIR/githooks/review-gate-adjudication.sh"
+grep -q 'review-adjudicate.py' "$ADJ_UNIT" \
+  && pass "判定单元引用了 review-adjudicate.py" || fail "判定单元未引用 review-adjudicate.py"
+grep -q 'apply --report' "$ADJ_UNIT" \
+  && pass "判定单元调用了 apply --report" || fail "判定单元未调用 apply --report"
+grep -q 'review_gate_adjudicate' "$GATE" \
+  && pass "门禁调用了判定单元" || fail "门禁未调用判定单元"
 grep -q 'if \[\[ "\$EFFECTIVE_VERDICT" == "FAIL" \]\]' "$GATE" \
   && pass "阻断判据用 EFFECTIVE_VERDICT" || fail "阻断判据未用 EFFECTIVE_VERDICT"
 grep -q 'REVIEW_GATE_MODE' "$GATE" \
   && pass "门禁支持 REVIEW_GATE_MODE" || fail "门禁未支持 REVIEW_GATE_MODE"
 grep -q 'if \[\[ "\$VERDICT" == "FAIL" \]\]' "$GATE" \
   && fail "门禁仍直接用模型结论 \$VERDICT 判定阻断" || pass "门禁不再直接用模型结论判阻断"
+
+# ===================================================================
+echo "--- 断言 12: 台账的 file 字段不得越出仓库（路径穿越）---"
+# 背景（ID-REVIEW-1031, 2026-10-25）：台账是**入库文件**，`file` 字段的内容
+# 来自仓库里 ⇒ 任何人往台账里写一行 `file: "../../secret.txt"` 就能让工具
+# 去读仓库外的文件（os.path.join 遇绝对路径会整段丢掉 repo_root）。
+#
+# 用一个**真的存在**的仓库外文件做靶子 —— 否则「文件不存在」会先一步挡住，
+# 断言就变成「因错得对」（实测：第一次写这条断言时，相对上跳那支根本没红）。
+mkdir -p "$TEST_DIR/outside"
+printf 'secret\n' > "$TEST_DIR/outside/secret.txt"
+L12="$TEST_DIR/l12.jsonl"; : > "$L12"
+set +e
+python3 "$ADJ" add --ledger "$L12" --repo-root "$REPO" \
+  --match 'x' --file '../outside/secret.txt' --verdict confirmed --note '越界路径' \
+  > "$TEST_DIR/a12.out" 2> "$TEST_DIR/a12.err"
+RC12=$?
+set -e
+[ "$RC12" != "0" ] \
+  && pass "add 拒绝仓库外的 file（相对上跳，退出码 $RC12）" || fail "add 接受了仓库外的 file（相对上跳）"
+[ ! -s "$L12" ] \
+  && pass "越界的 file 没有写进台账" || fail "越界的 file 被写进了台账"
+grep -q "仓库内" "$TEST_DIR/a12.err" \
+  && pass "拒绝时说明了原因" || fail "拒绝时没有说明原因"
+# 绝对路径同样越界
+set +e
+python3 "$ADJ" add --ledger "$L12" --repo-root "$REPO" \
+  --match 'x' --file '/etc/passwd' --verdict confirmed --note '绝对路径' \
+  > /dev/null 2>&1
+RC12B=$?
+set -e
+[ "$RC12B" != "0" ] \
+  && pass "add 拒绝绝对路径（退出码 $RC12B）" || fail "add 接受了绝对路径"
+# 台账里已经躺着一行越界条目时，apply 也不能用它（不读那个文件）
+L12C="$TEST_DIR/l12c.jsonl"
+cat > "$L12C" <<EOF
+{"match": "轮询超时", "verdict": "confirmed", "note": "越界条目", "file": "/etc/passwd", "fileSha256": "deadbeef", "severity": "P1", "adjudicatedAt": "2026-10-25T10:00:00Z", "expiresAt": "2099-10-25T10:00:00Z"}
+EOF
+R12="$TEST_DIR/r12.md"; make_report "$R12"
+OUT=$(apply_ledger "$R12" "$L12C" advisory FAIL 2>"$TEST_DIR/r12.err")
+[ "$(field "$OUT" BLOCKING_COUNT)" = "0" ] \
+  && pass "越界条目不产生阻断（不读仓库外的文件）" || fail "越界条目产生了阻断：$(field "$OUT" BLOCKING_COUNT)"
+[ "$(field "$OUT" ADVISORY_COUNT)" = "1" ] \
+  && pass "越界条目等于「未核验」" || fail "越界条目不应算已核验"
+
+# ===================================================================
+echo "--- 断言 13: 报告正文里出现标记串，不得把 findings 抹掉 ---"
+# 背景（ID-REVIEW-1031, 2026-10-25）：这个工具**审自己**时，模型的报告正文里
+# 必然引用到「## 人工核验 / Adjudication」这行字。旧实现只按标题串剥离，
+# 于是从第一个 "\n---" 起把后面全砍掉 —— 实测一次真实审核里 12 条 findings
+# 被整段抹掉，而门禁照样报 PASS（审计痕迹被静默销毁）。
+R13="$TEST_DIR/r13.md"; L13="$TEST_DIR/l13.jsonl"; : > "$L13"
+cat > "$R13" <<'EOF'
+Some prose from the model.
+
+---
+
+FINDINGS: [P1] review-adjudicate.py::strip_previous_adjudication finds "## 人工核验 / Adjudication" and strips back
+FINDINGS: [P2] 另一条 finding
+REVIEW_VERDICT: FAIL
+EOF
+BEFORE13=$(grep -c '^FINDINGS' "$R13" || true)
+OUT=$(apply_ledger "$R13" "$L13" advisory FAIL)
+AFTER13=$(grep -c '^FINDINGS' "$R13" || true)
+[ "$BEFORE13" = "$AFTER13" ] \
+  && pass "apply 前后 findings 条数不变（$AFTER13）" || fail "apply 把 findings 从 $BEFORE13 条变成 $AFTER13 条"
+grep -q 'strip_previous_adjudication finds' "$R13" \
+  && pass "正文里引用的标题行仍在" || fail "正文被误删"
+# 幂等：跑两次只留一份核验段（用哨兵计数，标题行在正文里也有）
+apply_ledger "$R13" "$L13" advisory FAIL > /dev/null
+apply_ledger "$R13" "$L13" advisory FAIL > /dev/null
+SENT13=$(grep -c 'cm-adjudication:v1' "$R13" || true)
+[ "$SENT13" = "1" ] \
+  && pass "重复 apply 后核验段只留一份（哨兵计数 $SENT13）" || fail "核验段叠加了 $SENT13 份"
+
+# ===================================================================
+echo "--- 断言 14: apply 崩溃 ⇒ fail-closed（行为级，不是 grep 源码）---"
+# 背景（ID-REVIEW-1031, 2026-10-25）：旧实现把「输出为空」一律当成「缺
+# python3 或台账」，在 apply **崩溃**时真实原因被掩盖，更糟的是静默退回
+# 「模型结论说了算」= 安全层失效时 fail-open。
+#
+# 实测教训：这一条最初写成「grep 源码里有没有 fail-closed 字样」——
+# 把逻辑改成 fail-open 后**断言照样全绿**（字样还在，只是行为变了）。
+# ⇒ 必须**真的调用**判定单元，用一个「假装崩溃的 python」看它到底判什么。
+ADJ_UNIT="$SCRIPT_DIR/githooks/review-gate-adjudication.sh"
+[ -f "$ADJ_UNIT" ] && pass "判定单元存在" || fail "缺少判定单元 $ADJ_UNIT"
+# shellcheck source=/dev/null
+source "$ADJ_UNIT"
+
+# 假装崩溃的 python：任何参数都退出 1
+CRASH_PY="$TEST_DIR/crash-python.sh"
+cat > "$CRASH_PY" <<'EOF'
+#!/bin/bash
+echo "boom: simulated crash" >&2
+exit 1
+EOF
+chmod +x "$CRASH_PY"
+
+# 崩溃用例必须传 model_verdict=**PASS** 才能分辨 fail-closed 与 fail-open：
+# 传 FAIL 时两条路径的结果都是 FAIL，断言就变成同义反复（实测：这么写时，
+# 把 fail-closed 改成 fail-open 的变异**没被抓住**）。
+R14="$TEST_DIR/r14.md"; make_report "$R14"
+OUT14=$(REVIEW_ADJUDICATE_SCRIPT="$ADJ" REVIEW_REPO_ROOT="$REPO" \
+  review_gate_adjudicate "$R14" "$L13" advisory PASS "$CRASH_PY")
+[ "$(field "$OUT14" STATUS)" = "crashed" ] \
+  && pass "apply 崩溃被识别为 crashed" || fail "崩溃未被识别：STATUS=$(field "$OUT14" STATUS)"
+[ "$(field "$OUT14" EFFECTIVE_VERDICT)" = "FAIL" ] \
+  && pass "崩溃时 fail-closed（模型说 PASS 也判 FAIL）" || fail "崩溃时没有 fail-closed：$(field "$OUT14" EFFECTIVE_VERDICT)"
+grep -q "boom: simulated crash" <<< "$OUT14" \
+  && pass "崩溃原因被带出来" || fail "崩溃原因没有带出来"
+
+# 正常 python（真的跑一遍）⇒ 不崩，且结论由台账决定
+OUT14B=$(REVIEW_ADJUDICATE_SCRIPT="$ADJ" REVIEW_REPO_ROOT="$REPO" \
+  review_gate_adjudicate "$R14" "$L13" advisory FAIL "$(command -v python3)")
+[ "$(field "$OUT14B" STATUS)" = "ok" ] \
+  && pass "正常路径 STATUS=ok" || fail "正常路径 STATUS=$(field "$OUT14B" STATUS)"
+[ "$(field "$OUT14B" EFFECTIVE_VERDICT)" = "PASS" ] \
+  && pass "正常路径按台账给出结论（无人工结论 ⇒ advisory 下 PASS）" || fail "正常路径结论异常"
+
+# 没有台账 ⇒ 退回模型结论（不是崩溃，也不是阻断）
+# 同样传 model_verdict=PASS，才能与「崩溃 ⇒ FAIL」区分开。
+OUT14C=$(REVIEW_ADJUDICATE_SCRIPT="$ADJ" REVIEW_REPO_ROOT="$REPO" \
+  review_gate_adjudicate "$R14" "$TEST_DIR/nonexistent-ledger.jsonl" advisory PASS "$(command -v python3)")
+[ "$(field "$OUT14C" STATUS)" = "no-ledger" ] \
+  && pass "没有台账 ⇒ STATUS=no-ledger" || fail "没有台账时 STATUS=$(field "$OUT14C" STATUS)"
+[ "$(field "$OUT14C" EFFECTIVE_VERDICT)" = "PASS" ] \
+  && pass "没有台账 ⇒ 退回模型结论（模型 PASS ⇒ PASS，不是崩溃的 FAIL）" || fail "没有台账时没有退回模型结论"
+
+# 门禁必须真的用这个单元
+grep -q 'review-gate-adjudication.sh' "$GATE" \
+  && pass "门禁引用了判定单元" || fail "门禁没有引用判定单元"
+grep -q 'review_gate_adjudicate' "$GATE" \
+  && pass "门禁调用了判定单元的函数" || fail "门禁没有调用判定单元的函数"
 
 # ===================================================================
 echo
