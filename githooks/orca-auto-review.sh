@@ -126,6 +126,14 @@ fi
 # 改法: ① 跳过生成物与无关文件（pbxproj / workflows / CHANGELOG）,
 # ② 改成**按文件**给预算（每文件 N 行, 最多 M 个文件）, 让有限的行数
 # 覆盖尽量多的文件, 而不是被前 4 个文件吃光。
+#
+# ID-REVIEW-1026 (2026-10-24): 预算必须**按文件**重置 —— 原来 `lines` 是全局
+# 计数器且从不重置，90 行预算被**第一个**文件吃光，后面的 38 个文件只剩
+# `diff --git` 头、一行内容都没有。实测：那一次审核的"diff"= ci.yml 的开头
+# 90 行 + 39 个文件名，**一行 Swift 代码都没有**，模型照样就 tsan.yml 报了
+# P1、并对"提交摘要里提到但 diff 里看不到"的 Swift 改动连报 3 条 P2。
+# 这正是 ID-REVIEW-1025 修过的同一个洞的另一半：那次把"全局 400 行"改成
+# "每文件 N 行"的**意图**写进了注释，但 awk 并没有实现它。
 DIFF=$(
   {
     git diff "$RANGE" -- \
@@ -134,6 +142,7 @@ DIFF=$(
           /^diff --git / {
             file_no++
             if (file_no > max_files) { exit }
+            lines = 0
             print
             next
           }
@@ -141,6 +150,10 @@ DIFF=$(
         ' || true
   } | head -1200 || true
 )
+# 审核覆盖度留痕：模型到底看到了几个文件的多少行 —— 报告里写清楚，
+# 下一个人读报告时才知道"没提到的文件"是没看到还是真没问题。
+DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git ' || true)
+DIFF_LINES=$(printf '%s\n' "$DIFF" | grep -vc '^diff --git ' || true)
 [[ -z "$DIFF" ]] && DIFF="(无 diff, 可能只有提交信息变更)"
 LOG=$(git log --oneline "$RANGE" 2>/dev/null | head -20 || true)
 
@@ -157,6 +170,7 @@ $LOG
 改动:
 $DIFF
 
+（本次审核看到的是**抽样窗口**：$DIFF_FILES 个文件、约 $DIFF_LINES 行 diff —— 文件外的改动本次没有出现在窗口里，看不到不等于没问题）
 请检查: 逻辑正确性 / 边界条件 / 并发安全（actor / MainActor / 数据竞争）/ 内存与保留环 /
 安全（Keychain / 文件权限 / 加密）/ 与仓库既有风格及 CLAUDE.md 约定一致性 / 测试覆盖。
 文档与 SPEC（提交含 .md / SPEC / 账本 / 计划类文件时必须审, 纯文档提交同样全量审）:
@@ -253,34 +267,75 @@ RAWERR="/tmp/orca-auto-review-$STAMP-${MODEL//\//_}.err"
   # root is taken from the working directory, and this script already
   # `cd "$ROOT"` at the top, so the flag was redundant as well as
   # invalid.
-  "$OPENCODE" run --format json -m "$MODEL" "$PROMPT" \
-  > "$RAWOUT" 2> "$RAWERR" &
-OC_PID=$!
-(
-  sleep "$FIRST_EVENT_DEADLINE"
-  if ! [ -s "$RAWOUT" ] && kill -0 "$OC_PID" 2>/dev/null; then
-    kill "$OC_PID" 2>/dev/null || true
-    sleep 5
-    kill -9 "$OC_PID" 2>/dev/null || true
+  #
+  # ID-REVIEW-1026 (2026-10-24): the ollama candidate goes **straight to
+  # HTTP**, not through opencode. opencode v2 driving ollama cannot turn
+  # thinking off (providers.ollama.options.think=false does not take effect)
+  # — the model keeps emitting its chain of thought until the watchdog kills
+  # it, the product is an empty report, and the review chain calls that a
+  # failure. Measured 2026-10-24: all 5 candidate models (ollama/qwen3.5:9b
+  # + 4 opencode free-tier ones) came up empty and the pre-push review gate
+  # died with them — that is not the review failing, it is the gate itself
+  # being broken. Talking to /api/chat directly with think=false +
+  # options.num_predict really does turn thinking off, and it is bounded in
+  # both time and size (measured: 35–47s for the same prompt).
+  # The output is written in opencode's text-event shape, so **the downstream
+  # extraction and validation need not change by a single line**.
+  if [[ "$MODEL" == ollama/* ]]; then
+    if [[ -z "${PYTHON_BIN:-}" ]]; then
+      echo "[auto-review] ⚠️ ollama 直连需要 python3，未找到 — 跳过该候选" >&2
+      : > "$RAWOUT"
+    else
+      # 小模型对长提示词的格式遵从度不稳：实测 9B 模型把 FINDINGS 写对了却
+      # 没写结尾的 REVIEW_VERDICT 行 → 判定提取失败 → hook exit 1 → push 被挡。
+      # 提示词的**末尾**再补一次格式要求（近因效应），并把发现条数封顶，
+      # 让模型先写结论。
+      OLLAMA_PROMPT="$PROMPT
+
+[输出格式提醒 — 必须照做] 你的回复**必须**以单独一行结尾：
+REVIEW_VERDICT: PASS
+（若上面列出了 [P0] 或 [P1] 的发现，这一行写 FAIL）
+这一行之后不要再输出任何内容。发现最多列 5 条，每条一行。"
+      printf '%s' "$OLLAMA_PROMPT" | "$PYTHON_BIN" "$HOOKS_DIR/ollama-review-chat.py" \
+        --model "${MODEL#ollama/}" \
+        --out "$RAWOUT" \
+        --timeout "${REVIEW_OLLAMA_TIMEOUT:-300}" \
+        --num-predict "${REVIEW_OLLAMA_NUM_PREDICT:-1600}" \
+        > /dev/null 2> "$RAWERR" || true
+      if [[ ! -s "$RAWOUT" ]]; then
+        echo "[auto-review] ⚠️ ollama 直连未产出报告（$MODEL）" >&2
+      fi
+    fi
+  else
+    "$OPENCODE" run --format json -m "$MODEL" "$PROMPT" \
+      > "$RAWOUT" 2> "$RAWERR" &
+    OC_PID=$!
+    (
+      sleep "$FIRST_EVENT_DEADLINE"
+      if ! [ -s "$RAWOUT" ] && kill -0 "$OC_PID" 2>/dev/null; then
+        kill "$OC_PID" 2>/dev/null || true
+        sleep 5
+        kill -9 "$OC_PID" 2>/dev/null || true
+      fi
+    ) &
+    WATCHDOG_A=$!
+    (
+      sleep "$REVIEW_MODEL_TIMEOUT"
+      if kill -0 "$OC_PID" 2>/dev/null; then
+        kill "$OC_PID" 2>/dev/null || true
+        sleep 5
+        kill -9 "$OC_PID" 2>/dev/null || true
+      fi
+    ) &
+    WATCHDOG_B=$!
+    wait "$OC_PID" 2>/dev/null || true
+    # watchdog 已自发杀掉 opencode 时它们往往还在 sleep 5 的 KILL 升级
+    # 尾巴里——wait 返回后立即回收；set -e 下 kill 的非零返回会静默终止
+    # 整个 hook(ID-REVIEW-1016 首测实证: nemotron 永远轮不到)，全部 || true。
+    kill "$WATCHDOG_A" "$WATCHDOG_B" 2>/dev/null || true
+    wait "$WATCHDOG_A" 2>/dev/null || true
+    wait "$WATCHDOG_B" 2>/dev/null || true
   fi
-) &
-WATCHDOG_A=$!
-(
-  sleep "$REVIEW_MODEL_TIMEOUT"
-  if kill -0 "$OC_PID" 2>/dev/null; then
-    kill "$OC_PID" 2>/dev/null || true
-    sleep 5
-    kill -9 "$OC_PID" 2>/dev/null || true
-  fi
-) &
-WATCHDOG_B=$!
-wait "$OC_PID" 2>/dev/null || true
-# watchdog 已自发杀掉 opencode 时它们往往还在 sleep 5 的 KILL 升级
-# 尾巴里——wait 返回后立即回收；set -e 下 kill 的非零返回会静默终止
-# 整个 hook(ID-REVIEW-1016 首测实证: nemotron 永远轮不到)，全部 || true。
-kill "$WATCHDOG_A" "$WATCHDOG_B" 2>/dev/null || true
-wait "$WATCHDOG_A" 2>/dev/null || true
-wait "$WATCHDOG_B" 2>/dev/null || true
 
 # 抽取模型自己的文本块（type=="text"）拼成报告。三层降级，每层都留痕：
 #   L1 python3 —— 系统 python3（ClipMemory 无 runtime venv）
