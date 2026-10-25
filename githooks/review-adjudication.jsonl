@@ -4,7 +4,8 @@
 # 由 `python3 githooks/review-adjudicate.py add ...` 追加 —— 手写也可以。
 #
 # 字段：
-#   match       命中 finding 文本的正则（编译失败则退化为字面子串）
+#   match       命中 finding 文本的正则（**匹配期**编译失败 ⇒ 不匹配 + 告警；
+#               不退化为字面子串 —— 那样等于这条结论永远不生效）
 #   verdict     confirmed（真问题 ⇒ 阻断 push，直到该文件被改动）
 #               | false-positive（误报 ⇒ 不具备阻断力）
 #   file        相关文件（相对仓库根）。填了则该文件内容一改，这条结论自动失效
@@ -18,3 +19,8 @@
 #
 # --- 示例（真的一条，别删）---
 # {"match": "granularSave.*空 Tag", "file": "ClipMemory/Services/ClipboardStore+Persistence.swift", "fileSha256": "<sha256>", "severity": "P1", "verdict": "false-positive", "note": "已按目录解析真实 tag；该路径在占位后端下不可达", "adjudicatedAt": "2026-10-25T10:00:00Z", "expiresAt": "2027-10-25T10:00:00Z"}
+{"match": "test_review_adjudicate\\.sh", "verdict": "confirmed", "note": "真问题：文件头注释写「正则编译失败 ⇒ 退化为字面子串」，与实现（不匹配 + 告警）及断言 9 矛盾。已订正注释。", "adjudicatedAt": "2026-10-25T06:34:59Z", "file": "Scripts/test/test_review_adjudicate.sh", "fileSha256": "4d484fdf5d18a8fa9f5ca2b755d85766c1275c0b1c1f80ffc86143c7e58edd11", "severity": "P2", "expiresAt": "2027-10-25T06:34:59Z"}
+{"match": "test_review_adjudicate\\.sh", "verdict": "confirmed", "note": "同一处错误说法的第二个副本：CLI --match 帮助文本写「编译失败则按字面子串」，实际是原样入库、匹配期不退化。已订正。", "adjudicatedAt": "2026-10-25T06:34:59Z", "file": "githooks/review-adjudicate.py", "fileSha256": "a41c91b7f2c49a749438b9b575ebc72d4fc7c705ffd4b06a57d01113d40da000", "severity": "P2", "expiresAt": "2027-10-25T06:34:59Z"}
+{"match": "人工核验层不可用", "verdict": "confirmed", "note": "真问题：告警把「缺 python3」与「缺台账」两种不同原因合成一句，排查时要靠猜。已改为分别说明缺哪个。", "adjudicatedAt": "2026-10-25T06:34:59Z", "file": "githooks/orca-auto-review.sh", "fileSha256": "ebd15d5e20ecac5318d2a8edd7282bce630b3b6bc56a8d104b69cdc971450085", "severity": "P3", "expiresAt": "2027-10-25T06:34:59Z"}
+{"match": "creates the lock directory if missing", "verdict": "confirmed", "note": "真问题：只读探针会顺手建目录（副作用）。已改为不建目录 —— 目录不存在 ⇒ 没人持锁 ⇒ false。", "adjudicatedAt": "2026-10-25T06:34:59Z", "file": "ClipMemory/Utils/SingleInstanceLock.swift", "fileSha256": "262135c5e20eae66d73b9d902c0a025af256fa05a53f871efa68545acd674cef", "severity": "P3", "expiresAt": "2027-10-25T06:34:59Z"}
+{"match": "Skip message in Chinese", "verdict": "confirmed", "note": "真问题：同一文件里另一条 skip 消息是英文，这条是中文，CI 日志风格不一致。已改为英文。", "adjudicatedAt": "2026-10-25T06:34:59Z", "file": "Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift", "fileSha256": "3e06509a27aa04d2d4a038d178e2ef3facc333cc61da828a92e01fc88741e725", "severity": "P3", "expiresAt": "2027-10-25T06:34:59Z"}

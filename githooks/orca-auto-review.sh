@@ -558,7 +558,13 @@ if [[ -n "$ADJ_OUT" ]]; then
     echo "[auto-review]    核验: python3 githooks/review-adjudicate.py list --report $REPORT" >&2
   fi
 else
-  echo "[auto-review] ⚠️ 人工核验层不可用（缺 python3 或台账）—— 按模型结论 ${VERDICT} 处理。" >&2
+  # 说清楚**缺的是哪一个** —— 「缺 python3 或台账」把两种原因合成一句，
+  # 排查时要靠猜（ID-REVIEW-1029 审核 finding）。
+  if [[ -z "${PYTHON_BIN:-}" ]]; then
+    echo "[auto-review] ⚠️ 人工核验层不可用：找不到 python3 —— 按模型结论 ${VERDICT} 处理。" >&2
+  else
+    echo "[auto-review] ⚠️ 人工核验层不可用：台账文件不存在（$ADJ_LEDGER）—— 按模型结论 ${VERDICT} 处理。" >&2
+  fi
 fi
 
 if [[ "$EFFECTIVE_VERDICT" == "FAIL" ]]; then

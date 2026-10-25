@@ -266,7 +266,17 @@ final class SingleInstanceGuardTests: XCTestCase {
     ///
     /// This is the CI path: with no app running, the ZZZ production-pollution
     /// comparison must actually execute, not be skipped away.
+    ///
+    /// The lock file does **not** exist yet in this test, so this pins the
+    /// `open` failure branch (ENOENT ⇒ "not held"). The sibling test
+    /// `testLockProbeReportsFreeAfterTheHolderReleases` pins the other
+    /// "not held" branch (the file exists, nobody holds it).
     func testLockProbeReportsFreeWhenNobodyHoldsTheLock() {
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: lockURL.path),
+            "precondition: the lock file must not exist yet — this test pins the "
+            + "ENOENT branch, not the 'file exists but free' branch"
+        )
         XCTAssertFalse(
             SingleInstanceLock.isHeldByAnotherProcess(fileURL: lockURL),
             "a lock nobody holds must not be reported as held"

@@ -405,7 +405,7 @@ def main(argv=None):
     p_list.set_defaults(func=cmd_list)
 
     p_add = sub.add_parser("add", parents=[common], help="记一条人工核验结论")
-    p_add.add_argument("--match", required=True, help="命中 finding 正则（编译失败则按字面子串）")
+    p_add.add_argument("--match", required=True, help="命中 finding 文本的正则（原样入库；编译失败时在**匹配期**不匹配 + 告警，不退化为字面子串）")
     p_add.add_argument("--file", help="相关文件（填了则该文件一改，这条结论自动失效）")
     p_add.add_argument("--severity", choices=["P0", "P1", "P2", "P3"])
     p_add.add_argument("--verdict", required=True, choices=["confirmed", "false-positive"])

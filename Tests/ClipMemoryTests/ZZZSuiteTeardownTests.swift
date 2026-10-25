@@ -312,8 +312,10 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     private func skipIfAnotherInstanceIsRunning() throws {
         try XCTSkipIf(
             SingleInstanceLock.isHeldByAnotherProcess(),
-            "另一个 ClipMemory 实例正在运行（.instance.lock 被占用）—— 它会合法地改写自己的"
-            + "生产数据，本进程无法归因；跳过生产域内容比对（CI 上没有实例在跑，这条检查照常执行）"
+            "another ClipMemory instance is running (.instance.lock is held) — it "
+            + "legitimately rewrites its own production data, which this process "
+            + "cannot attribute; skipping the production-domain content "
+            + "comparison (on CI no instance runs, so the check still executes)"
         )
     }
 

@@ -83,15 +83,17 @@ final class SingleInstanceLock {
     /// description*, so this conflicts with any other holder — including a
     /// same-process holder that used a different descriptor (verified in
     /// `SingleInstanceGuardTests`).
+    ///
+    /// The probe is **read-only**: it opens `O_RDONLY` and never creates the
+    /// directory or the lock file. A missing file means nobody ever took the
+    /// lock ⇒ "not held" (and `open` fails with ENOENT before we get there).
+    /// Measured on macOS: an `O_RDONLY` descriptor can take `LOCK_EX` and
+    /// does observe another descriptor's exclusive lock as EWOULDBLOCK, so
+    /// the read-only mode costs no detection power.
     static func isHeldByAnotherProcess(
         fileURL: URL = SingleInstanceLock.defaultFileURL
     ) -> Bool {
-        let directory = fileURL.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true
-        )
-        let fd = open(fileURL.path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        let fd = open(fileURL.path, O_RDONLY | O_CLOEXEC)
         guard fd >= 0 else { return false }
         defer { close(fd) }
         if flock(fd, LOCK_EX | LOCK_NB) == 0 {
