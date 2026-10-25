@@ -10,7 +10,9 @@ opencode v2 驱动 ollama 时**关不掉 thinking**：
 全部空转，pre-push 审核门整条链死掉，push 被"基础设施故障"挡住。
 
 直连 `/api/chat` 传 `think=false` + `options.num_predict` 可以真正关掉
-thinking，并且能限时限量地产出报告（实测同一提示词 35–47s）。
+thinking，并且能限时限量地产出报告。小提示词实测 35–47s；带完整审核 diff
+的实测（2026-10-24，19934 prompt tokens + num_ctx=32768）约 250s，其中
+prompt 处理 165s、生成 ~85s —— 默认超时按最坏情形给到 900s。
 
 输出格式
 --------
@@ -34,7 +36,7 @@ import urllib.error
 import urllib.request
 
 DEFAULT_ENDPOINT = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
-DEFAULT_TIMEOUT = 300.0
+DEFAULT_TIMEOUT = 900.0
 DEFAULT_NUM_PREDICT = 1600
 DEFAULT_NUM_CTX = 32768
 

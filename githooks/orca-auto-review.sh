@@ -66,11 +66,13 @@ OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 # 本身要把 diff 送出机器, 审核再送一份给第三方就更没必要 —— 本地能审就本地审,
 # 审不动才落到外部端点。
 #
-# ⚠️ 本机的 9B **装不下这份 diff**(step_finish reason=length, 2046 output
-# tokens 就被截断, 只吐出一段"请告诉我下一步的具体目标"), 所以今天它每次
-# 都会白跑一轮再落到 openrouter(约 3 分钟)。这是本机模型上下文不够, 不是链的
-# 设计问题 —— 换个上下文更大的本地模型就自动生效, 而且**审核全程不出网**。
-# 想立刻省掉这 3 分钟: 把 ollama 挪到链尾, 或删掉它。
+# ✅ 本机的 9B **能审下这份 diff 了**(ID-REVIEW-1026, 2026-10-24 实测):
+#   走 ollama-review-chat.py 直连 /api/chat(think=false + num_predict +
+#   num_ctx=32768)后, 实测 **19934 prompt tokens 正常处理**、产出 504 token
+#   的完整报告(FINDINGS + REVIEW_VERDICT), 耗时约 250s。
+#   此前"装不下"是 **opencode 驱动路径**的病: 它关不掉 thinking, 模型把
+#   预算全烧在思考链上, 正文被 step_finish reason=length 截断成一句
+#   "请告诉我下一步的具体目标" —— 换直连即可, 不必换模型、不必挪链尾。
 if [[ -n "${REVIEW_MODEL:-}" ]]; then
   MODEL_CHAIN=("$REVIEW_MODEL")
 else
@@ -299,7 +301,7 @@ REVIEW_VERDICT: PASS
       printf '%s' "$OLLAMA_PROMPT" | "$PYTHON_BIN" "$HOOKS_DIR/ollama-review-chat.py" \
         --model "${MODEL#ollama/}" \
         --out "$RAWOUT" \
-        --timeout "${REVIEW_OLLAMA_TIMEOUT:-300}" \
+        --timeout "${REVIEW_OLLAMA_TIMEOUT:-900}" \
         --num-predict "${REVIEW_OLLAMA_NUM_PREDICT:-1600}" \
         > /dev/null 2> "$RAWERR" || true
       if [[ ! -s "$RAWOUT" ]]; then
