@@ -55,6 +55,30 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
     /// store settings from that suite.
     static let guardedSharedSuiteKey = "maxClipboardItems"
 
+    /// The settings the write guard watches, per shared suite.
+    ///
+    /// ID-REVIEW-1035 (2026-10-26): the guard used to watch ONE key in ONE
+    /// suite, so every other write was invisible. The independent review
+    /// found `HotKeyManagerTests` publishing `HotKeyKeyCode` /
+    /// `HotKeyModifiers` into the shared `HotKeyManager-XCTest-isolation`
+    /// suite — a `maxClipboardItems`-only guard could not see it.
+    ///
+    /// ⚠ A KEY LIST is required; "any residual key" does not work. On a
+    /// suite-based `UserDefaults`, `dictionaryRepresentation()` returns the
+    /// WHOLE global defaults dictionary (NSGlobalDomain keys such as
+    /// `AppleLanguages`, `com.apple.finder.*`, …), not the suite's own keys.
+    /// Measured 2026-10-26: a brand-new suite already reported ~90 such
+    /// system keys, so a generic guard would fire on EVERY test. Probing each
+    /// key with `object(forKey:)` is what actually works.
+    ///
+    /// The `BackupService-XCTest-isolation` suite is cleared per test but not
+    /// watched: every BackupService test injects its own suite, so no known
+    /// key is ever published there.
+    static let guardedSharedSuiteKeys: [String: [String]] = [
+        clipboardStoreSuiteName: ["maxClipboardItems", "excludedBundleIds"],
+        "HotKeyManager-XCTest-isolation": ["HotKeyKeyCode", "HotKeyModifiers"]
+    ]
+
     /// Tests that left `guardedSharedSuiteKey` behind in the shared suite.
     ///
     /// Process-local on purpose: a violation is only meaningful for the run
@@ -83,15 +107,22 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
         }
     }
 
-    /// Records a violation if the shared suite still carries
-    /// `guardedSharedSuiteKey` — i.e. the test that just ran left a setting
-    /// behind for every later test to read.
+    /// Records a violation if a watched shared suite still carries a watched
+    /// key — i.e. the test that just ran published a setting for every later
+    /// test to read.
+    ///
+    /// ID-REVIEW-1035 (2026-10-26): widened from "one key in one suite" to
+    /// the `guardedSharedSuiteKeys` table, after the independent review found
+    /// a write into the HotKey suite that the old guard could not see.
     static func recordSharedSuiteViolationIfPresent(testCase: String) {
-        let suite = UserDefaults(suiteName: clipboardStoreSuiteName)
-        guard suite?.object(forKey: guardedSharedSuiteKey) != nil else { return }
-        let entry = "\(testCase) left \(guardedSharedSuiteKey) in \(clipboardStoreSuiteName)"
-        guard !recordedViolations.contains(entry) else { return }
-        recordedViolations.append(entry)
+        for (suiteName, keys) in guardedSharedSuiteKeys {
+            guard let suite = UserDefaults(suiteName: suiteName) else { continue }
+            let residual = keys.filter { suite.object(forKey: $0) != nil }
+            guard !residual.isEmpty else { continue }
+            let entry = "\(testCase) left \(residual.joined(separator: ",")) in \(suiteName)"
+            guard !recordedViolations.contains(entry) else { continue }
+            recordedViolations.append(entry)
+        }
     }
 
     /// Drops the violations recorded for one test case. Used by the test
