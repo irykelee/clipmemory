@@ -59,32 +59,32 @@ final class AAASuiteBootstrapTests: XCTestCase {
         // ID-STORE-0014 (2026-08-10): per-test cleanup of the
         // `ClipboardStore-XCTest-isolation` UserDefaults suite. Without this,
         // any test that mutates state via `ClipboardStore.xcTestDefaults`
-        // (e.g. `store.maxItems = 3` in `IntegrationTests:178`) leaks the
+        // (e.g. `store.maxItems = 3` in `IntegrationTests`) leaks the
         // value to subsequent tests within the same process — which were
         // silently relying on `.standard` having user-pollution values like
         // `maxClipboardItems = 3`. Clearing before each test gives every
         // test a fresh isolated suite, so reads default to `nil → 100` (the
         // init fallback) regardless of what earlier tests in the suite
-        // happened to write. The observer is registered once here
-        // (`class func setUp` runs once per class); the XCTestObservation
-        // center keeps it active for the rest of the process.
-        XCTestObservationCenter.shared.addTestObserver(XCTestIsolationSuiteObserver())
-    }
-
-    /// XCTestObservation observer (ID-STORE-0014 part 2). Fires before
-    /// each test case in the suite; clears the per-service XCTest
-    /// isolation persistent domains so per-test mutations don't leak
-    /// across tests (or across runs — the suite plists persist).
-    /// Covers every production `xcTestDefaults` suite that no-arg
-    /// singletons route to under XCTest.
-    private final class XCTestIsolationSuiteObserver: NSObject, XCTestObservation {
-        func testCaseWillStart(_ testCase: XCTestCase) {
-            for suiteName in ["ClipboardStore-XCTest-isolation",
-                              "HotKeyManager-XCTest-isolation",
-                              "BackupService-XCTest-isolation"] {
-                UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
-            }
-        }
+        // happened to write.
+        //
+        // ID-REVIEW-1034 (2026-10-26): the cleanup observer now lives in
+        // `XCTestIsolationSuiteBootstrap` (it also guards against writes into
+        // the shared suites). It is still registered HERE, so it still
+        // depends on this class running — Swift forbids overriding `+load`.
+        //
+        // That dependence is what turned a host crash into a failure
+        // hundreds of lines away: in CI run 40186263416 the host died inside
+        // `DecryptionFailedLoopTests.testPreFailedItemReturnsNilImmediately`,
+        // xcodebuild relaunched it and continued with the REMAINING classes,
+        // so THIS class never re-ran ⇒ no observer ⇒ the shared suite kept
+        // the `maxClipboardItems = 3` that `IntegrationTests` had written
+        // ⇒ `QuickBarViewTests` failed with `("3") is not equal to ("8")`.
+        //
+        // The incident is now prevented structurally rather than by making
+        // the observer survive a restart: no test writes into the shared
+        // suites any more, and the tests that depend on store settings
+        // inject their own suite. The observer is the belt-and-braces layer.
+        XCTestIsolationSuiteBootstrap.registerObserver()
     }
 
     // MARK: Canary discovery marker

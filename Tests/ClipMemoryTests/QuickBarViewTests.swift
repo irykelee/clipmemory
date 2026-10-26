@@ -13,14 +13,32 @@ import XCTest
 @MainActor final class QuickBarViewTests: XCTestCase {
 
     private var store: ClipboardStore!
+    /// ID-REVIEW-1034 (2026-10-26): per-test defaults suite.
+    ///
+    /// Without it this class read store settings from the process-shared
+    /// `ClipboardStore-XCTest-isolation` suite, whose `maxClipboardItems`
+    /// any earlier test could have written. In CI run 40186263416 a stale
+    /// `maxClipboardItems = 3` (written by
+    /// `IntegrationTests.testTrimToMaxItemsRemovesOldest`, whose "restore"
+    /// targeted `UserDefaults.standard` — the wrong domain, so a no-op)
+    /// reached this class and trimmed the 10-item fixture down to 3, failing
+    /// `testComputeDisplayedItemsEmptySearchReturnsPrefix` with
+    /// `("3") is not equal to ("8")`.
+    ///
+    /// With its own suite the test is hermetic: the cap comes from the
+    /// injected suite, never from whatever else the process left behind.
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        store = ClipboardStore(backend: MemoryStorageBackend())
+        testDefaults = makeTestDefaults()
+        store = ClipboardStore(backend: MemoryStorageBackend(), defaults: testDefaults)
     }
 
     override func tearDown() {
         store = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 

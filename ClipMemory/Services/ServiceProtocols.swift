@@ -48,21 +48,58 @@ enum ServiceContainer {
     /// encryption keys. It is not converted to a recoverable error because
     /// there is no safe recovery path once two code paths hold different
     /// `CryptoService` instances.
-    static private(set) var crypto: CryptoServiceProtocol = CryptoService.shared {
-        didSet {
-            let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-            if !inTest {
-                preconditionFailure(
-                    "ServiceContainer.crypto reassigned outside XCTest — race risk."
-                )
-            }
-        }
+    ///
+    /// ⚠️ ID-REVIEW-1034 (2026-10-26) changed WHERE that guard lives: the
+    /// `preconditionFailure` used to sit in the property's `didSet`. The
+    /// property no longer has a setter at all — the only writer is
+    /// `setCryptoForTesting(_:)`, which carries its own
+    /// `precondition(inTest, …)`. A production swap is therefore a
+    /// **compile error** now, which is strictly stronger than the runtime
+    /// trap it replaces. The prose above describes the guard's INTENT
+    /// (fail fast, never silently split-brain); the mechanism moved.
+    ///
+    /// ID-REVIEW-1034 (2026-10-26): the crypto seam is READ from background
+    /// queues (the contentHash backfill, `ImageStorage`'s encrypt/decrypt)
+    /// and SWAPPED by tests on the main thread. As a plain `static var` the
+    /// read-modify-write of the existential box was not atomic: a background
+    /// reader could retain the box after the writer had already released it
+    /// ⇒ over-release ⇒ the Swift runtime aborts the process with
+    /// "Object ... of class CryptoService deallocated with non-zero retain
+    /// count 2".
+    ///
+    /// That abort is what made CI run 40186263416 red. The host died inside
+    /// `DecryptionFailedLoopTests.testPreFailedItemReturnsNilImmediately`;
+    /// xcodebuild relaunched it ("Restarting after unexpected exit, crash, or
+    /// test timeout"); the relaunched process skipped the alphabetically-first
+    /// `AAASuiteBootstrapTests` (so the shared-suite cleanup observer was
+    /// never registered — see `XCTestIsolationSuiteBootstrap`); a stale
+    /// `maxClipboardItems = 3` left in the shared suite by
+    /// `IntegrationTests.testTrimToMaxItemsRemovesOldest` then broke
+    /// `QuickBarViewTests` hundreds of lines later.
+    ///
+    /// Fix: the storage is lock-guarded, so the box is never read and
+    /// written concurrently. The lock is NOT held while the caller uses the
+    /// returned service — `CryptoService` is internally thread-safe.
+    ///
+    /// The setter is gone entirely (it was `private(set)` anyway, so only
+    /// `setCryptoForTesting` could reach it): a production swap is now a
+    /// compile error instead of a runtime trap, which is strictly stronger
+    /// than the previous `preconditionFailure` guard.
+    private static let cryptoLock = NSLock()
+    private static var cryptoStorage: CryptoServiceProtocol = CryptoService.shared
+
+    static var crypto: CryptoServiceProtocol {
+        cryptoLock.lock()
+        defer { cryptoLock.unlock() }
+        return cryptoStorage
     }
 
     static func setCryptoForTesting(_ service: CryptoServiceProtocol) {
         let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         precondition(inTest, "setCryptoForTesting called outside XCTest")
-        crypto = service
+        cryptoLock.lock()
+        defer { cryptoLock.unlock() }
+        cryptoStorage = service
     }
 
     // MARK: - First Launch (P1-AUDIT-2026-09-22 P1-5)

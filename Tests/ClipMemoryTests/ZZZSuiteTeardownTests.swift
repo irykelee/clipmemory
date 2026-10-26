@@ -556,6 +556,39 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         }
     }
 
+    // MARK: Shared-suite write canary (ID-REVIEW-1034)
+
+    /// ID-REVIEW-1034 (2026-10-26): no test may leave a ClipboardStore
+    /// setting in the process-shared `ClipboardStore-XCTest-isolation`
+    /// suite.
+    ///
+    /// The shared suite is what every no-arg `ClipboardStore` resolves to
+    /// under XCTest, so a value written there changes the behaviour of
+    /// every LATER test in the run. That is how CI run 40186263416 failed:
+    /// `IntegrationTests.testTrimToMaxItemsRemovesOldest` published
+    /// `maxClipboardItems = 3` there (its "restore" targeted
+    /// `UserDefaults.standard` — the wrong domain, hence a no-op), and after
+    /// a host crash had disabled the per-test cleanup, `QuickBarViewTests`
+    /// inherited the stale cap and failed with `("3") is not equal to ("8")`.
+    ///
+    /// This canary runs in the alphabetically LAST class, so it sees every
+    /// violation recorded in this process. The observer records them at
+    /// `testCaseDidFinish`, i.e. AFTER the offending test's tearDown — so a
+    /// test that cleans up after itself does not trip it.
+    func testNoTestWroteIntoTheSharedIsolationSuite() {
+        let violations = XCTestIsolationSuiteBootstrap.sharedSuiteViolations
+        XCTAssertTrue(
+            violations.isEmpty,
+            """
+            ID-REVIEW-1034: a test wrote into the process-shared \
+            \(XCTestIsolationSuiteBootstrap.clipboardStoreSuiteName) suite. \
+            Every later test that reads store settings from that suite \
+            inherits the value. Offenders:
+            \(violations.joined(separator: "\n"))
+            """
+        )
+    }
+
     // MARK: Canary discovery marker
 
     /// XCTest discovers test classes by their `testXxx()` methods; a class

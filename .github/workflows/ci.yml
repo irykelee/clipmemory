@@ -288,6 +288,34 @@ jobs:
             exit 1
           fi
 
+      - name: Collect zh-Hans test log for triage
+        # ID-REVIEW-1034 (2026-10-26): the "Collect test log for triage" step
+        # above runs BEFORE this zh-Hans test step, so the zh-Hans run's log
+        # was never uploaded — and that is exactly the log you need when the
+        # zh-Hans step is the one that fails. In CI run 40186263416 the only
+        # artifact was the PRIMARY run's log, and the failing step's own
+        # output had to be pulled from the job log by hand.
+        #
+        # This step collects it AFTER the zh-Hans run and uploads it as its
+        # own artifact, so the failing step's output is always recoverable.
+        if: always()
+        run: |
+          mkdir -p results-zh
+          if [[ -f /tmp/xcb-test-zh.log ]]; then
+            cp /tmp/xcb-test-zh.log results-zh/xcb-test-zh.log
+          else
+            echo "zh-Hans test step did not run or log missing" > results-zh/xcb-test-zh.log.missing
+          fi
+
+      - name: Upload zh-Hans test log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: clipmemory-zh-test-log
+          path: results-zh
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload snapshot mismatch artifacts (085151 P2)
         # SnapshotTestHelpers writes <test>.actual.png next to the golden
         # on byte mismatch — into the source tree (gitignored), never into

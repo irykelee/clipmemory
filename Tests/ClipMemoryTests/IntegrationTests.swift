@@ -12,16 +12,29 @@ import XCTest
 
     private var backend: MemoryStorageBackend!
     private var store: ClipboardStore!
+    /// ID-REVIEW-1034 (2026-10-26): per-test defaults suite.
+    ///
+    /// Without it every store in this class resolved its settings through
+    /// the PROCESS-SHARED `ClipboardStore-XCTest-isolation` suite. This
+    /// class is also the one that published `maxClipboardItems = 3` there
+    /// (see `testTrimToMaxItemsRemovesOldest`), so the suite was not a
+    /// neutral bystander: it carried this class's own mutation to every
+    /// later test in the run. In CI run 40186263416 a stale `3` reached
+    /// `QuickBarViewTests` and failed it with `("3") is not equal to ("8")`.
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
+        testDefaults = makeTestDefaults()
         backend = MemoryStorageBackend()
-        store = ClipboardStore(backend: backend)
+        store = ClipboardStore(backend: backend, defaults: testDefaults)
     }
 
     override func tearDown() {
         store = nil
         backend = nil
+        removeTestDefaults(testDefaults)
+        testDefaults = nil
         super.tearDown()
     }
 
@@ -81,7 +94,7 @@ import XCTest
         XCTAssertEqual(store.items.count, 2)
 
         // Simulate restart: new store with same backend
-        let store2 = ClipboardStore(backend: backend)
+        let store2 = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: init no longer auto-waits for the background load.
         // Required before the items[0]/items[1] indexing below — without it,
         // re-enabling this XCTSkip'd test would restore the empty-array
@@ -110,7 +123,7 @@ import XCTest
         store.flushPendingSaves()
 
         // Simulate restart
-        let store2 = ClipboardStore(backend: backend)
+        let store2 = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: init no longer auto-waits for the background load;
         // restart-simulation tests must await it explicitly.
         XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
@@ -145,7 +158,7 @@ import XCTest
         store.deleteItem(store.items[0])
         store.flushPendingSaves()
 
-        let store2 = ClipboardStore(backend: backend)
+        let store2 = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: init no longer auto-waits for the background load;
         // restart-simulation tests must await it explicitly. Without the wait
         // this assertion passes vacuously (items is always [] pre-load).
@@ -171,7 +184,7 @@ import XCTest
         XCTAssertEqual(store.pinnedItems.count, 1)
 
         // Restart and verify
-        let store2 = ClipboardStore(backend: backend)
+        let store2 = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: init no longer auto-waits for the background load.
         // Accessing store2.items[0] pre-load is an out-of-bounds trap (SIGTRAP,
         // host relaunch, ZZZ/QuickBar cascade) — CI runs 2026-10-02 11:02 +
@@ -202,22 +215,22 @@ import XCTest
 
     func testTrimToMaxItemsRemovesOldest() {
         let customBackend = MemoryStorageBackend()
-        let customStore = ClipboardStore(backend: customBackend)
-        // maxItems persists to UserDefaults via didSet — restore it so
-        // later tests (and the host app's own defaults domain) are unaffected.
-        // NEW-1 (2026-08-03 audit): absence-aware restore — on a fresh CI
-        // sandbox `maxClipboardItems` may not exist; reading `customStore.maxItems`
-        // returns the parsed default 100, and `customStore.maxItems = 100`
-        // would fire didSet and plant a brand-new key, tripping ZZZ's
-        // `key ADDED` canary. Mirror TestHostIsolationTests.swift :95-101.
-        let maxItemsBefore = UserDefaults.standard.object(forKey: "maxClipboardItems")
-        defer {
-            if let maxItemsBefore {
-                UserDefaults.standard.set(maxItemsBefore, forKey: "maxClipboardItems")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
-            }
-        }
+        // ID-REVIEW-1034 (2026-10-26): `store.maxItems`'s didSet writes to
+        // the STORE's own `defaults` — which, without an injected suite, is
+        // the process-shared `ClipboardStore-XCTest-isolation` suite. This
+        // test therefore published `maxClipboardItems = 3` there for the rest
+        // of the process.
+        //
+        // The "restore" block that used to sit here operated on
+        // `UserDefaults.standard` — the wrong domain, since the store never
+        // wrote there — so it was a NO-OP that only LOOKED protective. That
+        // is what let the leak stay invisible until it broke an unrelated
+        // class 400 lines later (CI run 40186263416).
+        //
+        // A per-test suite removes the write from the shared domain
+        // outright; no restore is needed because the suite is dropped in
+        // tearDown.
+        let customStore = ClipboardStore(backend: customBackend, defaults: testDefaults)
         customStore.maxItems = 3
 
         for i in 1...5 {
@@ -240,7 +253,7 @@ import XCTest
         XCTAssertEqual(store.items.count, 1)
         XCTAssertTrue(store.items[0].isExpired)
 
-        let store2 = ClipboardStore(backend: backend)
+        let store2 = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: init no longer auto-waits for the background load;
         // without the wait this assertion passes vacuously (items is always
         // [] pre-load, so the expiry filter is never actually exercised).
@@ -356,7 +369,7 @@ import XCTest
         XCTAssertEqual(store.items.count, 1)
 
         // Restart
-        let store2 = ClipboardStore(backend: backend)
+        let store2 = ClipboardStore(backend: backend, defaults: testDefaults)
         XCTAssertTrue(store2.waitForFirstLoadSync(timeout: 15.0),
                       "restart load must complete before assertions")
         XCTAssertEqual(store2.items.count, 1)
@@ -667,7 +680,7 @@ import XCTest
             isEncrypted: true
         )
         let backendWithCorrupt = MemoryStorageBackend(items: [corrupt])
-        let storeWithCorrupt = ClipboardStore(backend: backendWithCorrupt)
+        let storeWithCorrupt = ClipboardStore(backend: backendWithCorrupt, defaults: testDefaults)
         // ID-CRASH-0057: init no longer auto-waits for the background load.
         // Over a PRE-POPULATED backend a late firstLoadTask applyLoadResult
         // would rebuild items from the backend's pristine copy and clobber
@@ -740,7 +753,7 @@ import XCTest
             isEncrypted: true
         )
         let backend = MemoryStorageBackend(items: [corrupt])
-        let dedupStore = ClipboardStore(backend: backend)
+        let dedupStore = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: await the background load — pre-populated backend;
         // a late applyLoadResult would clobber in-memory flag state below.
         XCTAssertTrue(dedupStore.waitForFirstLoadSync(timeout: 15.0),
@@ -784,7 +797,7 @@ import XCTest
     /// which previously rebuilt the ClipboardItem without tagIds. The moved
     /// item must retain its tags (and the decryptionFailed flag).
     func testCopyToClipboardPreservesTagIds() {
-        let store = ClipboardStore(backend: MemoryStorageBackend())
+        let store = ClipboardStore(backend: MemoryStorageBackend(), defaults: testDefaults)
         let tag = Tag(name: "工作", colorHex: "#4ECDC4")
         store.addTag(tag)
         store.addItem(ClipboardItem(content: "copy me", type: .text))
@@ -860,7 +873,7 @@ import XCTest
             isEncrypted: true  // legacy migration incorrectly set this
         )
         let backend = MemoryStorageBackend(items: [imageItem])
-        let imageStore = ClipboardStore(backend: backend)
+        let imageStore = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: await the background load so a late applyLoadResult
         // cannot clobber the in-memory flag repair asserted below (pre-populated
         // backend — same id replaces the mutated in-memory copy).
@@ -893,7 +906,7 @@ import XCTest
         let tagBackend = MemoryStorageBackend()
         try? tagBackend.saveTags([corruptTag])
 
-        let store = ClipboardStore(backend: MemoryStorageBackend(), tagBackend: tagBackend)
+        let store = ClipboardStore(backend: MemoryStorageBackend(), tagBackend: tagBackend, defaults: testDefaults)
         store.loadTags()
 
         // Sanity: decryption failed, placeholder is shown
@@ -923,7 +936,7 @@ import XCTest
             contentHash: nil
         )
         let backend = MemoryStorageBackend(items: [legacy])
-        let legacyStore = ClipboardStore(backend: backend)
+        let legacyStore = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057: await the background load so a late applyLoadResult
         // cannot reset contentHash to the backend's nil after the backfill
         // poll below observes the backfilled value (pre-populated backend).

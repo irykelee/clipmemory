@@ -111,12 +111,22 @@ final class TestHostIsolationTests: XCTestCase {
         // Restore is absence-aware: on a fresh CI sandbox these keys may not
         // exist, and blindly writing back the read value would make the key
         // "appear" and trip the canary.
-        let maxItemsBefore = UserDefaults.standard.object(forKey: "maxClipboardItems")
+        // ID-REVIEW-1034 (2026-10-26): the store's `defaults` under XCTest is
+        // the SHARED `ClipboardStore-XCTest-isolation` suite (see
+        // `ClipboardStore.xcTestDefaults`) — NOT `UserDefaults.standard`.
+        // `maxItems`'s didSet writes to the store's own `defaults`, so the
+        // restore has to target THAT domain. The previous restore touched
+        // `UserDefaults.standard`, which the store never wrote, i.e. it was
+        // a NO-OP that only looked protective — and it left
+        // `maxClipboardItems = 10000` (12345 clamped) in the process-shared
+        // suite, where every later test could read it.
+        let sharedSuite = ClipboardStore.xcTestDefaults
+        let maxItemsBefore = sharedSuite.object(forKey: "maxClipboardItems")
         store.maxItems = 12345
         if let maxItemsBefore {
-            UserDefaults.standard.set(maxItemsBefore, forKey: "maxClipboardItems")
+            sharedSuite.set(maxItemsBefore, forKey: "maxClipboardItems")
         } else {
-            UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
+            sharedSuite.removeObject(forKey: "maxClipboardItems")
         }
         let hotKeyCodeBefore = UserDefaults.standard.object(forKey: "HotKeyKeyCode")
         let hotKeyModifiersBefore = UserDefaults.standard.object(forKey: "HotKeyModifiers")
