@@ -17,16 +17,19 @@ import CryptoKit
     private var originalCrypto: CryptoServiceProtocol?
     private var store: ClipboardStore!
 
-    /// Snapshot of production `maxClipboardItems` taken in setUp.
-    /// `maxItems` didSet writes to `UserDefaults.standard` unconditionally
-    /// (NOT the injected `defaults` suite), so absent a restore the
-    /// ZZZ `testNoProductionPollution` teardown sees a NEW key and
-    /// fails the build. NEW-1 (2026-08-03) absence-aware pattern:
-    /// if the key didn't exist before, remove it; else restore the
-    /// snapshot. M-2 (2026-08-08): introduced because 3 new tests
-    /// set `store.maxItems` to trigger the overflow path.
-    private var maxItemsSnapshot: Any?
-
+    /// ID-REVIEW-1035 (2026-10-26): the snapshot/restore of the PRODUCTION
+    /// `maxClipboardItems` is gone — it was dead code.
+    ///
+    /// It existed because `maxItems`'s didSet used to write to
+    /// `UserDefaults.standard` unconditionally. ID-STORE-0014 (2026-08-10)
+    /// changed the didSet to write to the store's INJECTED `defaults` suite
+    /// (`ClipboardStore.swift`, `defaults.set(maxItems, ...)`), so the
+    /// `.standard` restore targeted a domain the store never wrote — a
+    /// no-op dressed up as protection. Worse, its "absent before ⇒ remove"
+    /// branch could DELETE the user's real `maxClipboardItems` if the host
+    /// died before tearDown ran (exactly the failure mode of CI run
+    /// 40186263416). The 3 overflow tests below set `store.maxItems`; those
+    /// writes land in the per-test suite created in `setUp`.
     override func setUp() {
         super.setUp()
         tempRoot = FileManager.default.temporaryDirectory
@@ -41,16 +44,9 @@ import CryptoKit
         originalCrypto = ServiceContainer.crypto
         ServiceContainer.setCryptoForTesting(localCrypto)
         store = ClipboardStore(backend: MemoryStorageBackend(), defaults: defaults)
-        maxItemsSnapshot = UserDefaults.standard.object(forKey: "maxClipboardItems")
     }
 
     override func tearDown() {
-        if let snapshot = maxItemsSnapshot {
-            UserDefaults.standard.set(snapshot, forKey: "maxClipboardItems")
-        } else {
-            UserDefaults.standard.removeObject(forKey: "maxClipboardItems")
-        }
-        maxItemsSnapshot = nil
         if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         try? FileManager.default.removeItem(at: tempRoot)

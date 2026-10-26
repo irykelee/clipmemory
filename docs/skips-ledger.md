@@ -36,7 +36,7 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 
 **Production code 完全干净**（`grep -rn 'UserDefaults\.standard\.set' ClipMemory/` → 0 处实际代码调用，1 处为 ClipboardStore.swift 内注释）；canary 检出的污染全部来自测试 helper 自身写 `.standard` 没 cleanup。架构意图（让 production 代码用注入 defaults）在 ID-REVIEW-1009/1010/1011/1012 都 ship 了。
 
-**2026-10-02 勘误（auto-review-20261002-083606 FAIL，ID-REVIEW-1012 rework）**：xcTestDefaults env-var 检测**可靠**——`XCTestConfigurationFilePath` 即使被设为空字符串，`== nil` 仍返回 false（`Optional("") == nil` 恒为 false），XCTest 分支正确路由到 isolated suite。2009a5e 的 "static let eager module-load" 根因叙事有误（Swift `static let` 本来就是 lazy `swift_once` 首触初始化，不存在 module-load 抢跑窗口），其引入的 `MainActor.assumeIsolated` trap（后台线程访问即 fatalError）+ 无锁 dead setter 已 revert 回 `static let shared`（known-good，行为与生产路径均不变），并由 `TestHostIsolationTests.testSharedSingletonRoutesToIsolatedDefaultsUnderXCTest` 钉住契约。HotKeyManager 的 xcTestDefaults 已于同日恢复 isolated suite（ID-REVIEW-1010 原始实现，d659a0b），`HotKeyManager-XCTest-isolation` suite 纳入 AAA bootstrap 每-test 清理（`XCTestIsolationSuiteObserver`；**2026-10-26 起该 observer 迁至 `XCTestIsolationSuiteBootstrap`，改为 `+load` 注册**，见下节 ID-REVIEW-1034），H.3.1 tautology 测试改为 UUID suite 真断言。
+**2026-10-02 勘误（auto-review-20261002-083606 FAIL，ID-REVIEW-1012 rework）**：xcTestDefaults env-var 检测**可靠**——`XCTestConfigurationFilePath` 即使被设为空字符串，`== nil` 仍返回 false（`Optional("") == nil` 恒为 false），XCTest 分支正确路由到 isolated suite。2009a5e 的 "static let eager module-load" 根因叙事有误（Swift `static let` 本来就是 lazy `swift_once` 首触初始化，不存在 module-load 抢跑窗口），其引入的 `MainActor.assumeIsolated` trap（后台线程访问即 fatalError）+ 无锁 dead setter 已 revert 回 `static let shared`（known-good，行为与生产路径均不变），并由 `TestHostIsolationTests.testSharedSingletonRoutesToIsolatedDefaultsUnderXCTest` 钉住契约。HotKeyManager 的 xcTestDefaults 已于同日恢复 isolated suite（ID-REVIEW-1010 原始实现，d659a0b），`HotKeyManager-XCTest-isolation` suite 纳入 AAA bootstrap 每-test 清理（`XCTestIsolationSuiteObserver`；**2026-10-26 起该 observer 迁至 `XCTestIsolationSuiteBootstrap`，仍由 `AAASuiteBootstrapTests.setUp()` 注册**（Swift 禁止覆写 `+load`），见下节 ID-REVIEW-1034），H.3.1 tautology 测试改为 UUID suite 真断言。
 
 ## ID-CRASH-0057（2026-10-02）：issue #93 宿主连环崩根因勘误 + 修复
 
@@ -72,6 +72,35 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 - **④ CI**：新增步骤在 zh-Hans 测试**之后**上传 `xcb-test-zh.log`（此前「Collect test log for triage」排在 zh 测试之前 ⇒ **失败步骤自己的日志根本没被收集**，本次调查只能手工翻 job log）。
 
 **回归测试**：`Tests/ClipMemoryTests/Review1034RegressionTests.swift` 4 条不变量（crypto seam 并发换入 + 读存活 / 注入 suite 解析 `maxItems` 且写入不外泄 / 脏共享 suite 下 10 条不被裁 / 共享 suite 写入可被检测）。本地复现：脏 suite + `-only-testing:ClipMemoryTests/QuickBarViewTests` ⇒ 修复前 `("3") is not equal to ("8")`（与 CI 逐字一致），修复后绿。
+
+## ID-REVIEW-1035（2026-10-26）：ID-REVIEW-1034 的**独立复核**又挖出同模式的 3 处泄漏
+
+> 起因：对 ID-REVIEW-1034 那 6 个 commit 做**独立核验**（不复用主 agent 的自查结论），结论 `VERDICT: PASS` / **0 阻断**，但抛出 **6 条非阻断观察**。其中 3 条是**同一个结构性缺口的不同实例** ⇒ 按「修一个，看 33 个」的纪律一并收口。
+
+**发现（全部经独立复核实测确认，非读代码推断）**：
+
+1. **`HotKeyManagerTests` 把共享 suite 当垃圾桶**：`HotKeyManager()` 无参构造在 XCTest 下解析到**进程级共享**的 `HotKeyManager-XCTest-isolation` suite ⇒ `updateHotKey` → `config.save(to: defaults)` 把 `HotKeyKeyCode` / `HotKeyModifiers` **写进共享 suite**；而该类的恢复块打的是 `UserDefaults.standard` = **错的域** ⇒ 共享 suite 的写入**从未被撤销**。
+2. **同一类还直接写生产域**：H.2.2 与 RS-3.4 四条用例把热键配置**直接 seed/load 进 `UserDefaults.standard`** ⇒ 每个用例执行期间都在**覆盖用户真实的热键偏好**，且只在宿主存活时才恢复 —— 宿主一崩就留在那儿。
+3. **`ImportExportTests` 的恢复块是死代码**：`maxItems` 的 didSet 自 ID-STORE-0014（2026-08-10）起写的是**注入的 suite**（`ClipboardStore.swift`：`defaults.set(maxItems, ...)`），而该类仍按「didSet 写 `.standard`」的旧认知 snapshot/restore 生产域 `maxClipboardItems` ⇒ 打在**没被写过的域**上；更糟的是它的「原本不存在 ⇒ remove」分支在宿主中途崩溃时会把**用户真实的 `maxClipboardItems` 删掉**。
+4. **写入守卫只看得见 1 个 key × 1 个 suite** ⇒ 上面第 1 条的 HotKey suite 写入对守卫**完全不可见**。
+
+**修复**：
+
+- `HotKeyManagerTests` 整类改用 **per-test suite**（`makeTestDefaults()`）：`updateHotKey` 的两个用例注入该 suite，H.2.2 / RS-3.4 四条用例的 seed/load 也改走该 suite ⇒ 该类**既不碰生产域、也不碰共享 suite**。
+- `ImportExportTests` 的死恢复块与过时注释删除（写根本不在 `.standard`）。
+- 写入守卫扩成 `guardedSharedSuiteKeys` 表（`maxClipboardItems` / `excludedBundleIds` / `HotKeyKeyCode` / `HotKeyModifiers`），并新增 `Review1035RegressionTests` 3 条不变量。
+
+⚠️ **守卫为什么必须逐 key 探测、不能用「有没有残留 key」**：实测 2026-10-26 —— `UserDefaults(suiteName:)` 的 `dictionaryRepresentation()` 返回的是**整个全局 defaults 字典**（`AppleLanguages`、`com.apple.finder.*` 等 **~90 个 NSGlobalDomain 系统键**），**不是** suite 自己的键 ⇒ 「任何残留 key 即违规」的通用守卫会在**每个**测试上都误报。逐 key `object(forKey:)` 才是可行的探测方式。
+
+**变异验证 2/2 全被抓住**：
+
+| 变异 | 结果 |
+|---|---|
+| 撤回 `HotKeyManagerTests` 的注入（改回 `HotKeyManager()`） | 全量 **1260 tests / 1 failure**；ZZZ canary **指名道姓**：`HotKeyManagerTests.testUpdateHotKeyUpdatesConfigAndPersists left HotKeyKeyCode,HotKeyModifiers in HotKeyManager-XCTest-isolation`（连同 `testUpdateHotKeyRejectsZeroModifiersDoesNotPersist`） |
+| 把守卫缩回「1 个 key × 1 个 suite」 | `Review1035RegressionTests` **2 条检测用例双双变红** |
+
+**已知残留（本轮不扩大改动面，单独记录）**：`ServiceContainer.firstLaunch` 与 `TestIsolation.defaults` / `LanguageManager.injectedForTest` / `UpdateService.injectedForTest` 仍是**无锁的 static 类引用**（与 crypto 崩溃同形），但当前读点全在 main actor ⇒ **潜伏而非活缺陷**；另有多处测试仍以 no-arg 构造读取共享 suite（写侧已闭 ⇒ 只影响受害面，不影响正确性）。这两项属生产代码形态问题，应作为独立变更评估，不与本轮测试侧收口混做。
+
 
 ## 已恢复（25 个测试，截至 2026-10-02 snapshot re-skip 后）
 

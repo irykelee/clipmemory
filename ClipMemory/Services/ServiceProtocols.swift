@@ -82,9 +82,15 @@ enum ServiceContainer {
     /// returned service — `CryptoService` is internally thread-safe.
     ///
     /// The setter is gone entirely (it was `private(set)` anyway, so only
-    /// `setCryptoForTesting` could reach it): a production swap is now a
-    /// compile error instead of a runtime trap, which is strictly stronger
-    /// than the previous `preconditionFailure` guard.
+    /// `setCryptoForTesting` could reach it): assigning
+    /// `ServiceContainer.crypto` is now a COMPILE error (the property is
+    /// get-only) instead of a runtime trap, which is strictly stronger than
+    /// the previous `preconditionFailure` guard.
+    ///
+    /// ID-REVIEW-1035 (2026-10-26): that compile-time guarantee covers
+    /// DIRECT ASSIGNMENT only. The remaining writer, `setCryptoForTesting`,
+    /// is `internal` (not `fileprivate`), so a production call site would
+    /// still compile and would only trip the runtime `precondition` below.
     private static let cryptoLock = NSLock()
     private static var cryptoStorage: CryptoServiceProtocol = CryptoService.shared
 

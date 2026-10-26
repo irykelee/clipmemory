@@ -10,38 +10,37 @@ import Carbon.HIToolbox
 /// - Carbon-backed `register`/`unregister` lifecycle (H.4) is partially testable:
 ///   `hotKeyRef` is public, so we can verify the post-unregister state and
 ///   that no-crash invariants hold; we do NOT trigger hotkey events.
-/// - UserDefaults pollution guarded via setUp/tearDown backup-and-restore.
+/// - ID-REVIEW-1035 (2026-10-26): UserDefaults isolation — every suite this
+///   class touches is a PER-TEST suite (`makeTestDefaults()`), never
+///   `UserDefaults.standard` and never the process-shared
+///   `HotKeyManager-XCTest-isolation` suite.
 final class HotKeyManagerTests: XCTestCase {
 
     private let keyCodeKey = "HotKeyKeyCode"
     private let modifiersKey = "HotKeyModifiers"
-    private var savedKeyCode: Any?
-    private var savedModifiers: Any?
+
+    /// Per-test UserDefaults suite (ID-REVIEW-1035).
+    ///
+    /// Before: the class seeded and loaded `UserDefaults.standard` — i.e. it
+    /// overwrote the USER'S REAL hotkey preference for the duration of every
+    /// test and restored it only if the host survived; and `updateHotKey`
+    /// wrote through `HotKeyManager()`'s default `defaults`, which under
+    /// XCTest is the process-shared `HotKeyManager-XCTest-isolation` suite,
+    /// while the class' restore targeted `.standard` ⇒ the shared-suite write
+    /// was never undone. That is the same "restore targets the wrong domain"
+    /// defect that `TestHostIsolationTests` and `ImportExportTests` had.
+    private var testDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        // Back up real values so we can restore them in tearDown — these are
-        // the same UserDefaults keys the production app uses, so pollution
-        // between tests would corrupt the user's actual hotkey preference.
-        savedKeyCode = UserDefaults.standard.object(forKey: keyCodeKey)
-        savedModifiers = UserDefaults.standard.object(forKey: modifiersKey)
-        // Clean slate for this test
-        UserDefaults.standard.removeObject(forKey: keyCodeKey)
-        UserDefaults.standard.removeObject(forKey: modifiersKey)
+        testDefaults = makeTestDefaults()
     }
 
     override func tearDown() {
-        // Restore the original UserDefaults state
-        if let saved = savedKeyCode {
-            UserDefaults.standard.set(saved, forKey: keyCodeKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: keyCodeKey)
+        if let testDefaults {
+            removeTestDefaults(testDefaults)
         }
-        if let saved = savedModifiers {
-            UserDefaults.standard.set(saved, forKey: modifiersKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: modifiersKey)
-        }
+        testDefaults = nil
         super.tearDown()
     }
 
@@ -115,18 +114,21 @@ final class HotKeyManagerTests: XCTestCase {
 
     func testLoadReturnsDefaultWhenNotSet() {
         // H.2.1: First launch (no saved config) → default config
-        let loaded = HotKeyConfig.load(from: .standard)
+        let loaded = HotKeyConfig.load(from: testDefaults)
         XCTAssertEqual(loaded, .defaultConfig)
     }
 
     func testSaveThenLoadRoundTrip() {
         // H.2.2: Custom config persists across load() calls
+        // ID-REVIEW-1035: round-trip through the per-test suite. The old
+        // `.standard` round-trip overwrote the user's real hotkey preference
+        // for the duration of the test.
         let original = HotKeyConfig(
             keyCode: UInt32(kVK_ANSI_B),
             modifiers: UInt32(cmdKey | shiftKey)
         )
-        original.save(to: .standard)
-        let loaded = HotKeyConfig.load(from: .standard)
+        original.save(to: testDefaults)
+        let loaded = HotKeyConfig.load(from: testDefaults)
         XCTAssertEqual(loaded, original)
         XCTAssertEqual(loaded.keyCode, UInt32(kVK_ANSI_B))
         XCTAssertEqual(loaded.modifiers, UInt32(cmdKey | shiftKey))
@@ -164,7 +166,12 @@ final class HotKeyManagerTests: XCTestCase {
     func testUpdateHotKeyUpdatesConfigAndPersists() {
         // H.3.2: updateHotKey must (1) update in-memory config,
         // (2) save to UserDefaults, (3) re-register with Carbon
-        let manager = HotKeyManager()
+        // ID-REVIEW-1035: inject the per-test suite. The no-arg
+        // `HotKeyManager()` resolves to the process-shared
+        // `HotKeyManager-XCTest-isolation` suite under XCTest, so
+        // `updateHotKey` used to publish into it — and the class' restore
+        // targeted `.standard`, so that write was never undone.
+        let manager = HotKeyManager(defaults: testDefaults)
         let newKeyCode = UInt32(kVK_ANSI_C)
         let newModifiers = UInt32(cmdKey | optionKey)
 
@@ -260,7 +267,9 @@ final class HotKeyManagerTests: XCTestCase {
 
     func testUpdateHotKeyRejectsZeroModifiersDoesNotPersist() {
         // RS-3.4 follow-up: rejection must not corrupt UserDefaults either.
-        let manager = HotKeyManager()
+        // ID-REVIEW-1035: per-test suite — see the note on
+        // `testUpdateHotKeyUpdatesConfigAndPersists`.
+        let manager = HotKeyManager(defaults: testDefaults)
         // Re-seed UserDefaults with a known good value first
         manager.updateHotKey(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(cmdKey | shiftKey))
         XCTAssertEqual(manager.config.modifiers, UInt32(cmdKey | shiftKey))
@@ -283,9 +292,9 @@ final class HotKeyManagerTests: XCTestCase {
         // load() must fall back to defaultConfig in this case — same
         // defense as updateHotKey's modifiers!=0 guard, but on the
         // read path so legacy/corrupted UserDefaults can't bypass it.
-        UserDefaults.standard.set(Int(kVK_ANSI_V), forKey: keyCodeKey)
-        UserDefaults.standard.set(0, forKey: modifiersKey)
-        let loaded = HotKeyConfig.load(from: .standard)
+        testDefaults.set(Int(kVK_ANSI_V), forKey: keyCodeKey)
+        testDefaults.set(0, forKey: modifiersKey)
+        let loaded = HotKeyConfig.load(from: testDefaults)
         XCTAssertEqual(loaded, .defaultConfig,
                        "load() must reject modifiers=0 and return defaultConfig")
     }
@@ -294,9 +303,9 @@ final class HotKeyManagerTests: XCTestCase {
         // RS-3.4 hardening: partial save (keyCodeKey set, modifiersKey
         // missing → modifiers defaults to 0 via UserDefaults.integer)
         // is also invalid. Falls back to defaultConfig.
-        UserDefaults.standard.set(Int(kVK_ANSI_X), forKey: keyCodeKey)
+        testDefaults.set(Int(kVK_ANSI_X), forKey: keyCodeKey)
         // modifiersKey intentionally not set
-        let loaded = HotKeyConfig.load(from: .standard)
+        let loaded = HotKeyConfig.load(from: testDefaults)
         XCTAssertEqual(loaded, .defaultConfig,
                        "Partial save with missing modifiers must fall back to defaultConfig")
     }
@@ -304,18 +313,18 @@ final class HotKeyManagerTests: XCTestCase {
     /// Corrupted UserDefaults (negative integers saved via raw plist edits)
     /// must not trap on UInt32 conversion.
     func testLoadReturnsDefaultWhenPersistedValuesAreNegative() {
-        UserDefaults.standard.set(-1, forKey: keyCodeKey)
-        UserDefaults.standard.set(-1, forKey: modifiersKey)
-        let loaded = HotKeyConfig.load(from: .standard)
+        testDefaults.set(-1, forKey: keyCodeKey)
+        testDefaults.set(-1, forKey: modifiersKey)
+        let loaded = HotKeyConfig.load(from: testDefaults)
         XCTAssertEqual(loaded, .defaultConfig,
                        "Negative persisted values must fall back to defaultConfig")
     }
 
     /// Persisted keyCode outside the Carbon virtual-key range is invalid.
     func testLoadReturnsDefaultWhenKeyCodeIsOutOfRange() {
-        UserDefaults.standard.set(999, forKey: keyCodeKey)
-        UserDefaults.standard.set(Int(cmdKey | controlKey), forKey: modifiersKey)
-        let loaded = HotKeyConfig.load(from: .standard)
+        testDefaults.set(999, forKey: keyCodeKey)
+        testDefaults.set(Int(cmdKey | controlKey), forKey: modifiersKey)
+        let loaded = HotKeyConfig.load(from: testDefaults)
         XCTAssertEqual(loaded, .defaultConfig,
                        "Out-of-range keyCode must fall back to defaultConfig")
     }
