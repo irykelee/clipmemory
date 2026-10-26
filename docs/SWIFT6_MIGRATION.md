@@ -183,7 +183,7 @@ Reproduce with (run from the repo root):
 rg -n --no-heading -g '*.swift' '^[^/]*nonisolated\(unsafe\)' ClipMemory/
 ```
 
-Raw output on 2026-10-24 — 18 lines, i.e. 18 declarations:
+Raw output on 2026-10-26 — 18 lines, i.e. 18 declarations:
 
 ```
 Services/ClipboardStore.swift:928:    nonisolated(unsafe) let contentCache: NSCache<NSString, NSString> = {
@@ -197,13 +197,13 @@ Services/ClipboardStore.swift:2446:    nonisolated(unsafe) var prewarmInFlight =
 Services/ClipboardStore.swift:2447:    nonisolated(unsafe) var prewarmPendingItems: [ClipboardItem]?
 Services/ClipboardStore.swift:2448:    nonisolated(unsafe) var prewarmPendingCompletions: [() -> Void] = []
 Services/ClipboardStore.swift:2457:    nonisolated(unsafe) var pendingPrewarmWorkItem: DispatchWorkItem?
-Services/LanguageManager.swift:20:    nonisolated(unsafe) static var injectedForTest: LanguageManager?
-Services/LanguageManager.swift:65:    nonisolated(unsafe) static var defaults: UserDefaults {
-Services/LanguageManager.swift:93:    nonisolated(unsafe) private static var codeStorage: String = "en"
+Services/LanguageManager.swift:29:    nonisolated(unsafe) static var injectedForTest: LanguageManager?
+Services/LanguageManager.swift:74:    nonisolated(unsafe) static var defaults: UserDefaults {
+Services/LanguageManager.swift:102:    nonisolated(unsafe) private static var codeStorage: String = "en"
 Services/UpdateService.swift:202:    nonisolated(unsafe) static var defaults: UserDefaults {
-Services/UpdateService.swift:226:    nonisolated(unsafe) static var injectedForTest: UpdateService?
+Services/UpdateService.swift:235:    nonisolated(unsafe) static var injectedForTest: UpdateService?
 Services/WindowManager.swift:113:    nonisolated(unsafe) static var defaults: UserDefaults {
-Utils/TestIsolation.swift:84:    nonisolated(unsafe) static var defaults: UserDefaults = baselineDefaults
+Utils/TestIsolation.swift:87:    nonisolated(unsafe) static var defaultsStorage: UserDefaults = baselineDefaults
 ```
 
 The COUNT is enforced by a test — see "Drift protection" below. The LINE
@@ -233,13 +233,13 @@ just copied from the declaration comments.
 | `Services/ClipboardStore.swift` | 2447 | `prewarmPendingItems: [ClipboardItem]?` | guarded by `prewarmStateLock` | actor-isolated state |
 | `Services/ClipboardStore.swift` | 2448 | `prewarmPendingCompletions: [() -> Void]` | guarded by `prewarmStateLock` | actor-isolated state |
 | `Services/ClipboardStore.swift` | 2457 | `pendingPrewarmWorkItem: DispatchWorkItem?` | ⚠ **NOT lock-guarded.** Main-thread-only: the work item is scheduled on `DispatchQueue.main` and its body runs there (`ClipboardStore+Prewarm.swift:59,60,70,74,78` — none of those take `prewarmStateLock`). The previous roster claimed "guarded by prewarmStateLock"; the code does not do that | actor-isolated state |
-| `Services/LanguageManager.swift` | 20 | `injectedForTest: LanguageManager?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
-| `Services/LanguageManager.swift` | 65 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
-| `Services/LanguageManager.swift` | 93 | `codeStorage: String` | guarded by `codeLock` at every access (`LanguageManager.swift:90`, `currentLanguageCode` at `:94`). The previous roster cited ":86", which is the computed property, not the lock | eliminate with actor |
+| `Services/LanguageManager.swift` | 29 | `injectedForTest: LanguageManager?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
+| `Services/LanguageManager.swift` | 74 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
+| `Services/LanguageManager.swift` | 102 | `codeStorage: String` | guarded by `codeLock` at every access (`LanguageManager.swift:99`, `currentLanguageCode` at `:103`). The previous roster cited ":86", which is the computed property, not the lock | eliminate with actor |
 | `Services/UpdateService.swift` | 202 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
-| `Services/UpdateService.swift` | 226 | `injectedForTest: UpdateService?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
+| `Services/UpdateService.swift` | 235 | `injectedForTest: UpdateService?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
 | `Services/WindowManager.swift` | 113 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage). Dormant since WINDOW-0001 — frame persistence moved to AppKit's `setFrameAutosaveName` | actor-isolate the canonical seam |
-| `Utils/TestIsolation.swift` | 84 | `defaults: UserDefaults` | **canonical** storage for the whole test seam (ID-CRASH-0029). Read/written from test `setUp`/`tearDown` on the main thread. ID-CRASH-0066 changed its INITIALIZER from `.standard` to the immutable `baselineDefaults` (an isolated suite under XCTest, `.standard` in production) — the declaration moved from line 50 to line 84, and the earlier roster row still pointed at the old line | migrate to actor in Phase 3 |
+| `Utils/TestIsolation.swift` | 87 | `defaultsStorage: UserDefaults` | **canonical** storage for the whole test seam (ID-CRASH-0029). ID-REVIEW-1036 (2026-10-26): the declaration moved from `defaults` to `defaultsStorage` because `defaults` became a lock-guarded computed accessor (`defaultsLock`) — the read-modify-write of a class reference without a lock is the shape that aborted the test host in CI run 40186263416. The three service forwarders read it through the accessor, so they inherit the lock. ID-CRASH-0066 changed its INITIALIZER from `.standard` to the immutable `baselineDefaults` (an isolated suite under XCTest, `.standard` in production) | migrate to actor in Phase 3 |
 
 **18 declarations** = 12 production cache/state vars (11 in
 `ClipboardStore` + `LanguageManager.codeStorage`) + 6 test-seam statics
@@ -279,4 +279,4 @@ commit — the alternative is a row that points at the wrong line.
 
 ---
 
-*Last updated: 2026-10-24 (ID-REVIEW-1026: §8's `ClipboardStore` rows refreshed again — the ID-REVIEW-1026 sentinel rework moved the declarations to 928–2457; the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1025: §8's `ClipboardStore` rows refreshed twice — the declarations moved from 2329–2341 to 2347–2359 (the `pendingKeyItems` overflow notification) and then to 2397–2409 (the items-load-failed sentinel check); the COUNT is unchanged). Previous: 2026-10-23 (ID-REVIEW-1024 review: §8's `TestIsolation` row refreshed — the declaration moved from line 50 to line 84 in ID-CRASH-0066 — and the line numbers are now enforced by a test, like the count). Previous: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
+*Last updated: 2026-10-26 (ID-REVIEW-1036: §8's `LanguageManager` / `UpdateService` / `TestIsolation` rows refreshed — the ID-REVIEW-1036 seam hardening moved `TestIsolation.defaults` from a stored property to a lock-guarded computed accessor over `defaultsStorage` (declaration now at :87), which shifted the `LanguageManager` rows (20→29, 65→74, 93→102) and `UpdateService.injectedForTest` (226→235); the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1026: §8's `ClipboardStore` rows refreshed again — the ID-REVIEW-1026 sentinel rework moved the declarations to 928–2457; the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1025: §8's `ClipboardStore` rows refreshed twice — the declarations moved from 2329–2341 to 2347–2359 (the `pendingKeyItems` overflow notification) and then to 2397–2409 (the items-load-failed sentinel check); the COUNT is unchanged). Previous: 2026-10-23 (ID-REVIEW-1024 review: §8's `TestIsolation` row refreshed — the declaration moved from line 50 to line 84 in ID-CRASH-0066 — and the line numbers are now enforced by a test, like the count). Previous: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*

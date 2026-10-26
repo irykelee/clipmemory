@@ -125,20 +125,37 @@ enum ServiceContainer {
     /// `static private(set) var` with the same XCTest-only `preconditionFailure`
     /// guard as `crypto` above; `setFirstLaunchForTesting(_:)` mirrors
     /// `setCryptoForTesting(_:)` for tests that need to swap the store.
-    static private(set) var firstLaunch: FirstLaunchService = FirstLaunchService() {
-        didSet {
-            let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-            if !inTest {
-                preconditionFailure(
-                    "ServiceContainer.firstLaunch reassigned outside XCTest — race risk."
-                )
-            }
-        }
+    /// ID-REVIEW-1036 (2026-10-26): lock-protected, mirroring `crypto`
+    /// above.
+    ///
+    /// The readers (`WelcomeView.FirstLaunchManager.isFirstLaunch` /
+    /// `markLaunched`) are plain `static` helpers on a **view-layer** type —
+    /// NOT actor-isolated, so they are callable from any thread — while the
+    /// only writer (`setFirstLaunchForTesting`) runs on the test thread.
+    /// That is the same read-modify-write of a class box that aborted the
+    /// test host in CI run 40186263416 (see `crypto` above): the moment a
+    /// background caller appears, an unsynchronized swap would over-release
+    /// the box.
+    ///
+    /// The "only under XCTest" contract is unchanged and now *stronger*: the
+    /// stored property's `didSet` precondition is replaced by a get-only
+    /// computed accessor, so a direct assignment is a COMPILE error; the only
+    /// writer left is `setFirstLaunchForTesting`, which keeps its own
+    /// runtime precondition.
+    private static let firstLaunchLock = NSLock()
+    private static var firstLaunchStorage: FirstLaunchService = FirstLaunchService()
+
+    static var firstLaunch: FirstLaunchService {
+        firstLaunchLock.lock()
+        defer { firstLaunchLock.unlock() }
+        return firstLaunchStorage
     }
 
     static func setFirstLaunchForTesting(_ service: FirstLaunchService) {
         let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         precondition(inTest, "setFirstLaunchForTesting called outside XCTest")
-        firstLaunch = service
+        firstLaunchLock.lock()
+        defer { firstLaunchLock.unlock() }
+        firstLaunchStorage = service
     }
 }

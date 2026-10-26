@@ -56,6 +56,36 @@ enum TestIsolation {
     /// deterministically.
     nonisolated static let baselineDefaults: UserDefaults = defaultsFor(isTestProcess: isRunningTests)
 
+    /// ID-REVIEW-1036 (2026-10-26): lock-protected for the same reason as
+    /// `ServiceContainer.crypto` (ID-REVIEW-1034) — the read-modify-write of
+    /// a class reference without a lock is the exact shape that aborted the
+    /// test host in CI run 40186263416.
+    ///
+    /// The three forwarders (`LanguageManager.defaults` /
+    /// `UpdateService.defaults` / `WindowManager.defaults`) are
+    /// `nonisolated(unsafe)` — **NOT actor-isolated** — so any of them can
+    /// be read from a background thread, while tests write the seam from
+    /// `setUp`. Today's call sites happen to be `@MainActor`
+    /// (`LanguageManager.shared`, `UpdateService._sharedDefault`), but the
+    /// seam itself offers no such guarantee: it is the canonical storage
+    /// every service reaches for.
+    ///
+    /// The lock is NOT held while the caller uses the returned
+    /// `UserDefaults` — `UserDefaults` is internally thread-safe.
+    ///
+    /// ⚠️ Measured 2026-10-26: for a `UserDefaults` reference the
+    /// over-release is **not observable** — Foundation keeps a per-suite
+    /// cache alive, so the instance's refcount never reaches zero. A
+    /// mirror probe survived 5 s of continuous swapping, while the same
+    /// probe against a plain `final class` crashed within 0.5 s. The lock
+    /// here is therefore correct-by-construction insurance (the
+    /// read-modify-write is non-atomic either way, and the forwarders are
+    /// `nonisolated(unsafe)`), NOT a fix for an observed crash.
+    /// The sibling seam that DID crash with the identical signature is
+    /// `ServiceContainer.firstLaunch` — see `ServiceProtocols.swift`.
+    private static let defaultsLock = NSLock()
+    nonisolated(unsafe) static var defaultsStorage: UserDefaults = baselineDefaults
+
     /// The single `UserDefaults` instance shared by all services in
     /// production. Tests reassign this in `setUp` and restore in
     /// `tearDown`; reading services pick up the test value transparently.
@@ -81,7 +111,18 @@ enum TestIsolation {
     ///
     /// The production branch is unchanged and is asserted as such by
     /// `Tests/ClipMemoryTests/SeamBaselineIsolationTests.swift`.
-    nonisolated(unsafe) static var defaults: UserDefaults = baselineDefaults
+    static var defaults: UserDefaults {
+        get {
+            defaultsLock.lock()
+            defer { defaultsLock.unlock() }
+            return defaultsStorage
+        }
+        set {
+            defaultsLock.lock()
+            defer { defaultsLock.unlock() }
+            defaultsStorage = newValue
+        }
+    }
 
     /// The suite name for the XCTest-isolated baseline. Same naming shape
     /// as the suite used by `ClipboardStore.xcTestDefaults`.

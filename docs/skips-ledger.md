@@ -102,6 +102,66 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 **已知残留（本轮不扩大改动面，单独记录）**：`ServiceContainer.firstLaunch` 与 `TestIsolation.defaults` / `LanguageManager.injectedForTest` / `UpdateService.injectedForTest` 仍是**无锁的 static 类引用**（与 crypto 崩溃同形），但当前读点全在 main actor ⇒ **潜伏而非活缺陷**；另有多处测试仍以 no-arg 构造读取共享 suite（写侧已闭 ⇒ 只影响受害面，不影响正确性）。这两项属生产代码形态问题，应作为独立变更评估，不与本轮测试侧收口混做。
 
 
+## ID-REVIEW-1036（2026-10-26）：「无锁 static 类引用」全仓审计 —— 把 crypto 崩溃那一类关掉
+
+> 起因：ID-REVIEW-1035 的独立核验留下最后一条观察（OBS-1）：`ServiceContainer.firstLaunch` 与
+> `TestIsolation.defaults` 等 4 处仍是**无锁的 static 类引用**，与 crypto 崩溃**同形**。
+
+### 36.1 判据：形状相同 ≠ 缺陷
+
+审计的关键不是「形状像」，而是**「有没有人写它、读点是否受 actor 隔离」**。逐处实测结论：
+
+| 位置 | 写方 | 读点 | 判定 |
+|---|---|---|---|
+| `ServiceContainer.crypto` | 测试 `setCryptoForTesting` | **后台队列**（contentHash backfill / ImageStorage） | ❌ **活缺陷** → ID-REVIEW-1034 已上锁 |
+| `ServiceContainer.firstLaunch` | 测试 `setFirstLaunchForTesting` | `WelcomeView.FirstLaunchManager` 的 static helper —— **未 actor 隔离**（视图层 plain static） | ❌ **活缺陷**（本轮上锁） |
+| `TestIsolation.defaults` | 测试 `setDefaults` | 3 个转发器是 `nonisolated(unsafe)` ⇒ **未 actor 隔离** | ⚠️ 同形，本轮上锁（见 36.3） |
+| `LanguageManager.injectedForTest` / `UpdateService.injectedForTest` | 测试 `setUp`/`tearDown` | **只在 `@MainActor static var shared` 内** ⇒ 读取受 actor 隔离 | ✅ 安全 ⇒ 不动，只补审计注释 |
+| `LanguageManager._sharedDefault` / `_sharedDefaultDefaults` | **只有 `LanguageManager.shared` 写**（`@MainActor`） | 同上，`@MainActor` | ✅ actor 隔离 ⇒ 安全（类引用 box，但读写都锁在 main actor 内） |
+| `UpdateService._sharedDefault` | 无（`static let`） | `UpdateService.shared`（`@MainActor`） | ✅ 不可变 + actor 隔离 |
+| `CryptoService.keyFailureAlertPresenter` | AppDelegate 启动时**主线程一次** | 两处读点**都在主线程**（直调 + `DispatchQueue.main.async`） | ✅ 串行 ⇒ 不动，补审计注释 |
+| `CryptoService.keyFailureHandler` / `appTerminator` | **全仓零写入**（测试早已改用显式 `failureHandler:` 参数） | `keyFailureHandler` 的**默认参数在后台 `Task.detached` 里求值** | ✅ 等价 immutable ⇒ 改 `static let`，让编译器守住 |
+| `HangDetector.state` / 3 个 timer / `isStarted` | — | — | ✅ 早已加锁（`stateLock` + `lifecycleLock`，ID-LIFE-0025） |
+| `CryptoService.negativeCache` / `LocalizationService.cached*` / `OCRService.cachedSupportedLanguages` / `ImageStorage.corruptionCount` / `LanguageManager.codeStorage` | — | — | ✅ 早已加锁 |
+
+⇒ 本轮**真正改了 3 处**：`firstLaunch` 上锁、`TestIsolation.defaults` 上锁、
+`keyFailureHandler` / `appTerminator` 改 `static let`（编译器级不可变）+ 3 处过时注释订正。
+
+### 36.2 修法
+
+- `ServiceContainer.firstLaunch`：与 `crypto` **完全同款**的 `NSLock` 模板。附带把「只能在 XCTest 下替换」的契约**加强**：原 `didSet` 的 `preconditionFailure` 换成 get-only computed accessor ⇒ 直接赋值从**运行时 trap 变编译期错误**。
+- `TestIsolation.defaults`：`NSLock` 保护的 computed accessor（锁**不**持有到调用方用完 —— `UserDefaults` 自身线程安全）。
+- `CryptoService.keyFailureHandler` / `appTerminator`：`static var` → `static let`。**原注释是错的**：写着「Tests replace this…」/「Tests can replace with a no-op spy」，但全仓 **零赋值**（测试早改用显式 `failureHandler:` 参数）⇒ 注释订正为实现，且 `let` 让「无人能写」变成编译器保证。
+
+### 36.3 ⚠️ 关键实测：**可触发性取决于被引用类型的生命周期语义，不只是形状**
+
+镜像探针（独立进程，与生产代码同形状，同一时长驱动）：
+
+| 被引用类型 | 强度 | 结果 |
+|---|---|---|
+| plain `final class`（= `FirstLaunchService` 形状） | 0.5 s | ❌ **崩**：`Object … deallocated with non-zero retain count 2` |
+| `UserDefaults`（= `TestIsolation.defaults` 形状） | **5 s** | ✅ **存活** |
+
+⇒ 原因：Foundation 按 suite 名缓存 `UserDefaults` 实例 ⇒ 引用计数**永远不归零** ⇒ over-release 没有 dealloc 可踩。
+
+⇒ **所以**：
+- `firstLaunch` 的锁是**已实证的真修复**：变异撤锁 ⇒ 宿主 abort，签名与 CI run 40186263416 **一字不差**（`FirstLaunchService deallocated with non-zero retain count 2` + `Restarting after unexpected exit`）。
+- `TestIsolation.defaults` 的锁是**构造正确但未实证可观测**的保险（读-改-写同样非原子，转发器确实 `nonisolated(unsafe)`）。**这一点写进了代码注释与测试注释，不假装有证据。**
+
+### 36.4 测试设计上的两个坑（自己踩的，记下来）
+
+1. **写读不重叠 ⇒ 测试不可能失败**：第一版把写方放在**主线程**、读方在后台队列 —— 300 次换入在微秒级跑完，读方还没被调度起来 ⇒ 撤锁后测试**照样绿**（变异 D 没被抓住）。修法：写方也上全局队列 + 用屏障强制重叠。
+2. **计数式强度是脆的**：固定「50k 读 / 300 换入」时，plain class 形状**存活**而 existential 形状崩溃 —— 后者的读-改-写拷贝的是**多字缓冲区**，窗口宽得多。修法：改成**时长驱动**（读写各转同样长的墙钟窗口），强度不再依赖单次操作成本。
+
+⇒ 最终回归测试 `Tests/ClipMemoryTests/Review1036RegressionTests.swift` 4 条不变量（2 条并发换入+读存活、2 条 seam 原样往返），**时长驱动**。
+
+### 36.5 变异验证
+
+| 变异 | 结果 |
+|---|---|
+| 撤 `firstLaunch` 的锁 | ✅ **被抓住**：宿主 abort（`retain count 2` + `Restarting after unexpected exit`） |
+| 撤 `TestIsolation.defaults` 的锁 | ⚠️ **抓不住** —— 该类型的 over-release 不可观测（36.3）。已在代码与测试注释里写明，未假装有证据 |
+
 ## 已恢复（25 个测试，截至 2026-10-02 snapshot re-skip 后）
 
 | 文件 | 恢复数 | 备注 |

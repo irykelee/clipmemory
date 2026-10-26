@@ -223,6 +223,15 @@ final class UpdateService {
     /// for a runtime-cast failure mode. The `UserDefaults` seam IS
     /// single-source (`TestIsolation.defaults`); see
     /// Utils/TestIsolation.swift for the full scope.
+    /// ID-REVIEW-1036 (2026-10-26): audited in the "unsynchronized static
+    /// class reference" sweep. The ONLY reader is `UpdateService.shared`,
+    /// which is `@MainActor` ⇒ every read is main-actor-isolated; the only
+    /// writer is a test's `setUp`/`tearDown`, also on the main thread ⇒
+    /// read and write never overlap ⇒ no lock needed. If a reader is ever
+    /// added OUTSIDE that `@MainActor` accessor, this seam needs the same
+    /// `NSLock` treatment as `ServiceContainer.crypto` — a class-reference
+    /// read-modify-write without a lock is the shape that aborted the test
+    /// host in CI run 40186263416.
     nonisolated(unsafe) static var injectedForTest: UpdateService?
 
     private let feedProvider = FeedURLProvider()

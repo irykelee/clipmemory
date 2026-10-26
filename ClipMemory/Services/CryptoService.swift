@@ -378,6 +378,19 @@ class CryptoService: CryptoServiceProtocol {
     /// implementation moved out so this file no longer needs
     /// `import AppKit`). AppDelegate's `applicationDidFinishLaunching`
     /// override + tests still substitute this seam.
+    ///
+    /// ID-REVIEW-1036 (2026-10-26): audited as part of the
+    /// "unsynchronized static class/closure reference" sweep. The ONLY
+    /// writer is `AppDelegate.applicationDidFinishLaunching` (main thread,
+    /// once at launch) and BOTH readers are on the main thread (the direct
+    /// call at the top of `defaultKeyFailureHandler`, and the
+    /// `DispatchQueue.main.async` hop right below it) ⇒ write and read are
+    /// serialized ⇒ no race. It stays a `var` because AppDelegate must
+    /// override it.
+    /// ⚠️ If a writer is ever added off the main thread, this needs the
+    /// same `NSLock` treatment as `ServiceContainer.crypto` — a
+    /// read-modify-write of a closure box without a lock is the exact shape
+    /// that aborted the test host in CI run 40186263416.
     static var keyFailureAlertPresenter: (CryptoKeyFailure) -> KeyFailureAction = {
         presentKeyFailureAlert($0)
     }
@@ -385,8 +398,18 @@ class CryptoService: CryptoServiceProtocol {
     /// H-2 / C-2 (2026-07-25 audit): test-injectable handler for key
     /// preparation failures. Defaults to calling `defaultKeyFailureHandler`
     /// which blocks the caller until the user chooses an action (or 5s timeout).
-    /// Tests replace this to return .quit or .regenerate without showing UI.
-    static var keyFailureHandler: (CryptoKeyFailure) -> KeyFailureAction = { failure in
+    ///
+    /// ID-REVIEW-1036 (2026-10-26): **immutable** (`let`), because NOBODY
+    /// writes it any more — the previous comment claimed "Tests replace this
+    /// to return .quit or .regenerate without showing UI", but the tests
+    /// switched to per-call injection (`prepareKey(..., failureHandler:)`)
+    /// years ago in practice. `let` makes the invariant compiler-enforced
+    /// instead of a convention: an unsynchronized `static var` of a closure
+    /// box is the shape that aborted the test host in CI run 40186263416,
+    /// and this one IS read from a background thread (the default argument
+    /// is evaluated at the `prepareKey` call site, which `init` reaches via
+    /// `Task.detached { prepareKey() }`).
+    static let keyFailureHandler: (CryptoKeyFailure) -> KeyFailureAction = { failure in
         CryptoService.defaultKeyFailureHandler(failure)
     }
 
@@ -840,8 +863,16 @@ class CryptoService: CryptoServiceProtocol {
     /// ID-CRASH-0034: appTerminator seam for the quit-app path. Default
     /// posts the `cryptoServiceRequestTerminateApp` notification (defined
     /// in `Services/EncryptionFailureAlert.swift`) so AppDelegate can call
-    /// `NSApp.terminate(nil)`. Tests can replace with a no-op spy.
-    static var appTerminator: () -> Void = postRequestTerminateAppNotification
+    /// `NSApp.terminate(nil)`.
+    ///
+    /// ID-REVIEW-1036 (2026-10-26): **immutable** (`let`) — the previous
+    /// comment claimed "Tests can replace with a no-op spy", but no caller
+    /// does any more (grep over the whole repo: zero assignments). The
+    /// read happens on whichever thread hit the key failure — a background
+    /// thread when `prepareKey` fails inside `Task.detached` — so an
+    /// unsynchronized `var` here would carry the same over-release shape
+    /// that aborted the test host in CI run 40186263416.
+    static let appTerminator: () -> Void = postRequestTerminateAppNotification
 
     private func getKey() -> SymmetricKey? {
         if let customKey { return customKey }
