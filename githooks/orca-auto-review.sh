@@ -62,7 +62,7 @@ OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 #   openrouter/nvidia/nemotron-3-ultra-550b-a55b:free 是同一族模型(NVIDIA 550B)
 #   的 OpenRouter 免费档, 2026-10-24 实测可用(2-token 探针即返回 PONG)。
 #
-# 链首放 **本地** ollama/qwen3.5:9b(本机 127.0.0.1, 不出网): 推代码这件事
+# 链首放 **本地** ollama/gemma4:12b(本机 127.0.0.1, 不出网): 推代码这件事
 # 本身要把 diff 送出机器, 审核再送一份给第三方就更没必要 —— 本地能审就本地审,
 # 审不动才落到外部端点。
 #
@@ -75,11 +75,14 @@ OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 #   "请告诉我下一步的具体目标" —— 换直连即可, 不必换模型、不必挪链尾。
 #
 # ⚠️ **端口不能写死**(ID-REVIEW-1033, 2026-10-25 实测踩坑):
-#   本机同时跑着**两个** ollama 服务端 —— `.app` 自带的 0.24.0 占标准端口
-#   11434, Homebrew 的 0.40.11 跑在 11435 上。
-#   差别在 **runner**: 0.24.0 跑不了 gemma4 的 mlx 架构(直接报
-#   "unsupported architecture: Gemma4UnifiedForConditionalGeneration"),
-#   0.40.11 一切正常。
+#   本机**曾经**同时跑着两个 ollama 服务端 —— `.app` 自带的 0.24.0 与
+#   Homebrew 的 0.40.11，端口不同。差别在 **runner**: 0.24.0 跑不了 gemma4
+#   的 mlx 架构(直接报 "unsupported architecture:
+#   Gemma4UnifiedForConditionalGeneration"), 0.40.11 一切正常。
+#   ⚠️ **拓扑会变**（2026-10-25 下午起 0.40.11 已接管标准端口 11434，
+#      Ollama.app 的 LaunchAgent 被 disable ⇒ 现在 11434 = 0.40.11、11435 已空）。
+#   ⇒ 正因为拓扑会变，**才不能把端口写死**：端点发现每次按版本降序**重新探**，
+#      换端口/换版本都不用改代码。
 #   ⇒ 写死 11434 ⇒ 链首**静默失效**(模型叫不动却不报错)⇒ 门禁退到外部
 #     free 额度 ⇒ 额度耗尽时整条链死。
 #   ⇒ 现在由 githooks/ollama-endpoints.sh 做**端点发现**: 显式 env 优先,
@@ -89,20 +92,29 @@ OPENCODE="${OPENCODE:-$HOME/.opencode/bin/opencode}"
 #     模型库**(`~/.ollama/models`)⇒ 两边 `/api/tags` 返回**完全相同**的清单
 #     ⇒ 清单**根本无法区分**端点, 只能靠「真调一次」分辨。
 #
-# 📊 **同一份 ID-REVIEW-1032 diff 的三方实测对照**(2026-10-25):
-#   | 模型 | 耗时 | 报告 | 判定 |
-#   |---|---|---|---|
-#   | qwen3.5:9b (本地 11435) | **22s** | 941 字符 / eval 465 | 5 findings, **1 条真问题** |
-#   | gemma4:12b (本地 11435) | 151s | 998 字符 / eval 501 | 4 findings, **0 条真问题** |
-#   | nemotron-3-ultra-550b:free (openrouter) | 129s | 12 findings | **4 条真问题** |
-#   ⇒ 本地 9B **快 6-7 倍**, 但**严重度标注完全不可信**(它把已修好的 EINTR
-#     逻辑报成 P0)⇒ 结论仍需**人工核验**, 不可直接当阻断依据(见
-#     ID-REVIEW-1029 的 advisory/confirmed 双层机制)。
-#   ⇒ 链首选 qwen3.5:9b 是为了**速度 + 不出网**, 不是为了"审得更准"。
+# 📊 **模型实测对照**(同一份 diff, 逐项实测, 别改口径时凭印象改):
+#   ① ID-REVIEW-1032 diff（2026-10-25）:
+#      | 模型 | 耗时 | findings | 真问题 |
+#      |---|---|---|---|
+#      | qwen3.5:9b | 22s | 5 | **1** |
+#      | gemma4:12b | 151s | 4 | 0 |
+#      | nemotron-3-ultra-550b:free (openrouter) | 129s | 12 | **4** |
+#   ② ID-REVIEW-1033 diff（2026-10-26，485 行）—— **决定链首的那一轮**:
+#      | 模型 | 耗时 | findings | 真问题 |
+#      |---|---|---|---|
+#      | qwen3.5:9b | 140s | 4 | **0**（含 2 条把**修复前**代码当现状） |
+#      | gemma4:12b | 166s | 3 | **1**（`IFS` 逗号切分遇空格 ⇒ 前导空格端点） |
+#   ⇒ **链首选 gemma4:12b**（实测依据：它抓到了 qwen3.5 漏掉的真问题）。
+#   ⇒ 另一个更硬的理由：**只有 0.40.11 跑得了 gemma4**（0.24.0 认不得该架构）
+#     ⇒ 端点发现从此**真正承重**；选 qwen3.5 时两个服务端都能跑，机制形同摆设。
+#   ⇒ 代价：gemma4 比 9B 慢约 1.2-7 倍（取决于 diff 大小）。
+#   ⇒ **所有本地模型的严重度标注都不可信**（9B 把已修好的 EINTR 逻辑报成 P0）
+#     ⇒ 结论仍需**人工核验**，不可直接当阻断依据（见 ID-REVIEW-1029 的
+#     advisory/confirmed 双层机制）。
 if [[ -n "${REVIEW_MODEL:-}" ]]; then
   MODEL_CHAIN=("$REVIEW_MODEL")
 else
-  MODEL_CHAIN=("ollama/qwen3.5:9b" "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free" "opencode/nemotron-3-ultra-free" "opencode/space-bunny-free" "opencode/big-pickle")
+  MODEL_CHAIN=("ollama/gemma4:12b" "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free" "opencode/nemotron-3-ultra-free" "opencode/space-bunny-free" "opencode/big-pickle")
 fi
 
 # 运行时标记与失败台账落在脚本所在目录（githooks/）, 由 .gitignore 排除
@@ -338,7 +350,10 @@ REVIEW_VERDICT: PASS
       # ---------------------------------------------------------------- 端点发现
       # ID-REVIEW-1033 (2026-10-25)：本机可能**同时**跑着多个 ollama 服务端
       # （不同版本、不同端口）。实测踩到的坑：
-      #   - `.app` 自带的 0.24.0 占着标准端口 11434（Homebrew 的 0.40.11 在 11435）；
+      #   - 旧状态(2026-10-25 上午): `.app` 自带的 0.24.0 占 11434, Homebrew 0.40.11 在 11435;
+      #     当日下午已让 0.40.11 接管 11434 并 `launchctl disable com.ollama.ollama`
+      #     (Ollama.app 自启已关) ⇒ 现在 11434 = 0.40.11 唯一存活, 11435 已空。
+      #     端点发现仍按版本降序探两个端口, 选中 11434/0.40.11; 下方口径不变。
       #   - 差别在 **runner**：0.24.0 跑不了 gemma4 的 mlx 架构（直接报
       #     "unsupported architecture"），0.40.11 一切正常。
       # ⇒ 旧实现只连 `OLLAMA_HOST`（默认 11434）⇒ 链首**静默失效**（模型叫不动

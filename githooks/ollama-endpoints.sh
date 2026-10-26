@@ -4,8 +4,10 @@
 # 为什么需要它（ID-REVIEW-1033, 2026-10-25）：
 # 本机可能**同时**跑着多个 ollama 服务端（不同安装来源、不同版本、不同端口）。
 # 实测踩到的坑：
-#   - `/Applications/Ollama.app` 自带的 **0.24.0** 占标准端口 11434；
-#   - Homebrew 的 **0.40.11** 跑在另一个端口（11435）上。
+#   - `/Applications/Ollama.app` 自带的 **0.24.0** 认不得 Gemma4 架构(HTTP 500);
+#   - Homebrew 的 **0.40.11** 能跑 Gemma4。2026-10-25 下午起 0.40.11 接管标准端口
+#     11434(并 disable 了 Ollama.app 的 LaunchAgent) ⇒ 现在 11434 = 0.40.11 唯一存活。
+#     (历史备注: 当天上午 0.40.11 曾在 11435, 现已归位 11434。)
 #
 # ⇒ 写死端口 ⇒ 链首**静默失效**（模型叫不动却不报错）⇒ 门禁退到外部 free
 #   额度 ⇒ 额度耗尽时整条链死。
@@ -61,6 +63,14 @@ ollama_discover_endpoints() {
   #   端点**重复尝试**，白等一个完整超时（实测 REVIEW_OLLAMA_TIMEOUT 默认
   #   900s）。
   for ep in "${explicit[@]+"${explicit[@]}"}"; do
+    # ⚠️ **去首尾空白**（外部审核 gemma4:12b 抓到的真问题）：用户写
+    #   `REVIEW_OLLAMA_ENDPOINTS=a, b`（逗号后带空格，很自然）时，
+    #   `IFS=','` 只按逗号切 ⇒ 第二项会**带上前导空格** ⇒ curl 拿到
+    #   `" http://host:port/api/version"` 这种**非法 URL** ⇒ 该端点被静默跳过。
+    #   实测复现：输出第二行是 " http://127.0.0.1:19998"（带空格）。
+    #   ⇒ 显式候选一律 trim；trim 后为空的一律丢弃。
+    ep="${ep#"${ep%%[![:space:]]*}"}"
+    ep="${ep%"${ep##*[![:space:]]}"}"
     [[ -z "$ep" ]] && continue
     dup=0
     for s in "${seen[@]+"${seen[@]}"}"; do

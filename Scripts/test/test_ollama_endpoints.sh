@@ -210,6 +210,30 @@ else
   echo "⏭️  跳过：/bin/bash 不是 3.x（当前：$(/bin/bash --version 2>/dev/null | head -1)）"
 fi
 
+echo "--- 断言 10: 显式候选必须去首尾空白 ---"
+# 外部审核 gemma4:12b 抓到的真问题（ID-REVIEW-1033 补二）：用户写
+# `REVIEW_OLLAMA_ENDPOINTS=a, b`（逗号后带空格）时，`IFS=','` 只按逗号切
+# ⇒ 第二项带**前导空格** ⇒ curl 拿到非法 URL ⇒ 该端点被静默跳过。
+# 实测复现：输出第二行是 " http://127.0.0.1:19998"（带空格）。
+OUT=$(discover "$F" bash env -u OLLAMA_HOST \
+        REVIEW_OLLAMA_ENDPOINTS='http://127.0.0.1:19999, http://127.0.0.1:19998')
+if printf '%s\n' "$OUT" | grep -q '^ '; then
+  fail "显式候选没有去首尾空白：$(printf '%s\n' "$OUT" | grep '^ ' | head -1)"
+else
+  pass "逗号后的空格被去掉了"
+fi
+printf '%s\n' "$OUT" | grep -qx 'http://127.0.0.1:19998' \
+  && pass "第二个显式端点完整可用" \
+  || fail "第二个显式端点不完整：$(printf '%s\n' "$OUT" | tr '\n' ' ')"
+# 只含空白的项应被丢弃，而不是变成一个空白端点
+OUT2=$(discover "$F" bash env -u OLLAMA_HOST \
+        REVIEW_OLLAMA_ENDPOINTS='http://127.0.0.1:19999,   ')
+if printf '%s\n' "$OUT2" | grep -q '^[[:space:]]*$'; then
+  fail "只含空白的项没有被丢弃"
+else
+  pass "只含空白的项被丢弃了"
+fi
+
 echo
 if [[ $FAILURES -eq 0 ]]; then
   echo "✅ ollama-endpoints 全部断言通过"
