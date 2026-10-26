@@ -15,6 +15,28 @@ on:
   pull_request:
     branches: [main]
 
+# ID-CI-0023 (2026-10-26): concurrency group. Every push to main fans out
+# into SEVERAL macOS-hosted workflows (CI here, TSan advisory, Release PR
+# dry-runs from dependabot, Sync Gitee mirror), and GitHub-hosted macOS
+# runner concurrency is limited — so N commits pushed in a row stack N CI
+# runs and the branch-protection gate (`build-and-test`, the only required
+# check) on HEAD ends up behind the whole queue.
+# Measured 2026-10-26 (the ID-REVIEW-1034 fix push, 4 commits in ~7 min):
+# CI queue depth 4 AND TSan queue depth 4. Only 2 CI `build-and-test` jobs
+# ever ran concurrently while the 3rd and 4th waited >10 min for a slot,
+# and the required check on HEAD was still `queued` long after the fix was
+# already verified locally (1257 tests / 0 failures / 0 host restarts).
+# `cancel-in-progress: true`: a newer commit supersedes an older one —
+# only HEAD's check gates the branch (branch protection requires
+# `build-and-test` on HEAD). Older runs are pure queue ballast.
+# Group is per-ref so a `v*` tag run lands in its own group and never
+# cancels an in-flight main run — the release path keeps its own CI.
+# This also brings ci.yml in line with release.yml / sync-gitee.yml, which
+# already declare groups (repo convention; ci.yml was the outlier).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: macos-latest

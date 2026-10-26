@@ -10,6 +10,18 @@ on:
     - cron: '0 4 * * *'
   workflow_dispatch:
 
+# ID-CI-0023 (2026-10-26): concurrency group — see the measurement in
+# .github/workflows/ci.yml for the same ID. TSan shares the macOS-hosted
+# runner fleet with CI, so without a group every push to main stacks
+# another 4.5-8.8 min advisory run behind the previous one and steals
+# the very slots the required `build-and-test` check is waiting for.
+# `github.event_name` is part of the group so the daily 04:00 UTC
+# scheduled run gets its own group and is never cancelled by a push
+# (schedule events carry the default-branch ref, same as main pushes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write  # github-script PR comment 需要
