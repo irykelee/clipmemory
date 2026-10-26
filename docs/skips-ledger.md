@@ -245,6 +245,11 @@ fresh-suite object(forKey: maxClipboardItems) -> nil                    ← 非�
 （它之前"恰好"没事，只因为它监视的 4 个键都不是全局键）。
 ⇒ 正解是 `persistentDomain(forName:)`：只返回 suite **自己拥有**的键（实测：新 suite → `[:]`）。
 
+⚠️ **在 CI 上这个误报会更严重**：CI 的 `Test (zh-Hans locale)` 步骤带 `-testLanguage zh-Hans`
+⇒ **argument domain** 里就有 `AppleLanguages = ["zh-Hans"]` ⇒ 旧探测器在**每个** suite 上都能答出它
+⇒ 若不是本轮实测发现，这道守卫一扩表就会把 CI 的 zh-Hans 步骤**整条打红**（本地实测已有 1260 条误报）。
+（这正是 ID-REVIEW-1028 当年栽在同一个机制上的那一步 —— argument domain 坐在 search list 顶部。）
+
 ⚠️ **同一个陷阱本仓已经踩过一次并写在注释里**：`IsolationSeamConsolidationTests.swift:165-187`
 （ID-REVIEW-1028, 2026-10-25）明确写着「`AppleLanguages` 的读必须走 `persistentDomain(forName:)`，
 不能用 `suite.stringArray(forKey:)`」，并解释了 search list + argument domain 的机制

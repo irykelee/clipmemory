@@ -37,26 +37,43 @@ import XCTest
     // MARK: - 1. The probe must not see global-domain keys
 
     /// The trap, stated as an executable precondition: a brand-new, empty
-    /// suite answers `object(forKey: "AppleLanguages")` with the machine's
-    /// GLOBAL value. That is why the guard cannot probe with `object(forKey:)`.
+    /// suite answers `object(forKey:)` for a key it never owned.
     ///
-    /// Skipped on a machine that has no global `AppleLanguages` — the trap
-    /// cannot be reproduced there, and the invariant below still holds.
+    /// Which key that is depends on the machine (a global system key, or —
+    /// on CI's `-testLanguage zh-Hans` step — the **argument domain**'s
+    /// `AppleLanguages`). So the test does not hard-code a key name: it
+    /// discovers any key the machine exposes through a suite's search list.
+    ///
+    /// Skipped only if the machine exposes NO such key at all (a suite whose
+    /// search list is empty) — the trap then cannot be reproduced here.
+    /// The invariant that actually guards the fix is
+    /// `testGuardProbeSeesOnlySuiteOwnedKeys`, which never skips.
     func testSuiteLookupFallsThroughToTheGlobalDomain() throws {
-        let global = UserDefaults.standard.object(forKey: "AppleLanguages")
-        try XCTSkipIf(global == nil,
-                       "this machine has no global AppleLanguages — the fall-through cannot be shown here")
-
         let suiteName = "Review1037-\(UUID().uuidString)"
         let suite = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { suite.removePersistentDomain(forName: suiteName) }
 
+        // Any key the global domain carries will do — the trap is about the
+        // search list, not about a particular key name.
+        var trapKey: String?
+        for key in UserDefaults.standard.dictionaryRepresentation().keys.sorted() {
+            guard suite.object(forKey: key) != nil else { continue }
+            guard suite.persistentDomain(forName: suiteName)?[key] == nil else { continue }
+            trapKey = key
+            break
+        }
+
+        guard let trapKey else {
+            throw XCTSkip("this machine exposes no global key through a suite's search list — "
+                          + "the fall-through cannot be shown here")
+        }
+
         XCTAssertNil(
-            suite.persistentDomain(forName: suiteName)?["AppleLanguages"],
-            "precondition: the fresh suite must not OWN AppleLanguages"
+            suite.persistentDomain(forName: suiteName)?[trapKey],
+            "precondition: the fresh suite must not OWN \(trapKey)"
         )
         XCTAssertNotNil(
-            suite.object(forKey: "AppleLanguages"),
+            suite.object(forKey: trapKey),
             "precondition: the LOOKUP must fall through to the global domain — this is the trap"
         )
     }
@@ -65,6 +82,11 @@ import XCTest
     /// domain. If it ever regresses to `object(forKey:)`, the write guard
     /// fires on **every** test (measured: 1260 false offenders) and the ZZZ
     /// canary stops being usable.
+    ///
+    /// ⚠️ `suiteOwnedKeys` returns `[String: Any]` (never `nil`): the
+    /// implementation maps a missing persistent domain to `[:]`, so a `nil`
+    /// domain is indistinguishable from an empty one — which is the correct
+    /// reading for a leak check ("the suite owns nothing").
     func testGuardProbeSeesOnlySuiteOwnedKeys() {
         let suiteName = "Review1037-\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: suiteName)!
