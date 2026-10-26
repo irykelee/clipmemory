@@ -73,18 +73,28 @@ enum TestIsolation {
     /// The lock is NOT held while the caller uses the returned
     /// `UserDefaults` — `UserDefaults` is internally thread-safe.
     ///
-    /// ⚠️ Measured 2026-10-26: for a `UserDefaults` reference the
-    /// over-release is **not observable** — Foundation keeps a per-suite
-    /// cache alive, so the instance's refcount never reaches zero. A
-    /// mirror probe survived 5 s of continuous swapping, while the same
-    /// probe against a plain `final class` crashed within 0.5 s. The lock
-    /// here is therefore correct-by-construction insurance (the
-    /// read-modify-write is non-atomic either way, and the forwarders are
-    /// `nonisolated(unsafe)`), NOT a fix for an observed crash.
-    /// The sibling seam that DID crash with the identical signature is
-    /// `ServiceContainer.firstLaunch` — see `ServiceProtocols.swift`.
+    /// ⚠️ Measured 2026-10-26 (independent review + controlled mirror
+    /// probe): the over-release IS observable here. The earlier note in
+    /// this file claimed the opposite ("Foundation keeps a per-suite cache
+    /// alive, so the refcount never reaches zero") — that claim was
+    /// **measured false**: `UserDefaults(suiteName: "x") === UserDefaults
+    /// (suiteName: "x")` is `false` (no per-name instance cache) and a
+    /// `UserDefaults` subclass's `deinit` DOES run.
+    ///
+    /// What actually decides observability is the **strong-reference
+    /// structure of the swap**, not the referenced type: when the writer
+    /// hands over a FRESH instance and retains none of the swapped-out
+    /// ones, the swapped-out instance's only strong reference is this
+    /// storage slot ⇒ the writer's release drops it to zero ⇒ its
+    /// `dealloc` runs ⇒ a reader holding a stale pointer faults
+    /// (measured 3/3 within 0.5 s: `EXC_BAD_ACCESS` inside
+    /// `-[NSUserDefaults objectForKey:]`).
+    ///
+    /// ⇒ The lock here is a **proven** fix, not insurance. The regression
+    /// test `Tests/ClipMemoryTests/Review1036RegressionTests.swift` uses
+    /// exactly that shape, so removing the lock makes it fail.
     private static let defaultsLock = NSLock()
-    nonisolated(unsafe) static var defaultsStorage: UserDefaults = baselineDefaults
+    private nonisolated(unsafe) static var defaultsStorage: UserDefaults = baselineDefaults
 
     /// The single `UserDefaults` instance shared by all services in
     /// production. Tests reassign this in `setUp` and restore in

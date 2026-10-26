@@ -99,7 +99,7 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 | 撤回 `HotKeyManagerTests` 的注入（改回 `HotKeyManager()`） | 全量 **1260 tests / 1 failure**；ZZZ canary **指名道姓**：`HotKeyManagerTests.testUpdateHotKeyUpdatesConfigAndPersists left HotKeyKeyCode,HotKeyModifiers in HotKeyManager-XCTest-isolation`（连同 `testUpdateHotKeyRejectsZeroModifiersDoesNotPersist`） |
 | 把守卫缩回「1 个 key × 1 个 suite」 | `Review1035RegressionTests` **2 条检测用例双双变红** |
 
-**已知残留（本轮不扩大改动面，单独记录）**：`ServiceContainer.firstLaunch` 与 `TestIsolation.defaults` / `LanguageManager.injectedForTest` / `UpdateService.injectedForTest` 仍是**无锁的 static 类引用**（与 crypto 崩溃同形），但当前读点全在 main actor ⇒ **潜伏而非活缺陷**；另有多处测试仍以 no-arg 构造读取共享 suite（写侧已闭 ⇒ 只影响受害面，不影响正确性）。这两项属生产代码形态问题，应作为独立变更评估，不与本轮测试侧收口混做。
+**已知残留（本轮不扩大改动面，单独记录）**：`ServiceContainer.firstLaunch` 与 `TestIsolation.defaults` / `LanguageManager.injectedForTest` / `UpdateService.injectedForTest` 仍是**无锁的 static 类引用**（与 crypto 崩溃同形），但当前读点全在 main actor ⇒ **潜伏而非活缺陷**；⚠️ **勘误（2026-10-26，ID-REVIEW-1036）**：这句话**只对 `injectedForTest` 成立** —— `ServiceContainer.firstLaunch` 的读点是**视图层 plain `static` helper**，**不受 actor 隔离** ⇒ 在测试宿主内是**活缺陷**（撤锁即宿主 abort），生产侧才是潜伏（零写入）；`TestIsolation.defaults` 同理（转发器是 `nonisolated(unsafe)`）。本轮已全部收口，见 ID-REVIEW-1036 段；另有多处测试仍以 no-arg 构造读取共享 suite（写侧已闭 ⇒ 只影响受害面，不影响正确性）。这两项属生产代码形态问题，应作为独立变更评估，不与本轮测试侧收口混做。
 
 
 ## ID-REVIEW-1036（2026-10-26）：「无锁 static 类引用」全仓审计 —— 把 crypto 崩溃那一类关掉
@@ -114,8 +114,8 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 | 位置 | 写方 | 读点 | 判定 |
 |---|---|---|---|
 | `ServiceContainer.crypto` | 测试 `setCryptoForTesting` | **后台队列**（contentHash backfill / ImageStorage） | ❌ **活缺陷** → ID-REVIEW-1034 已上锁 |
-| `ServiceContainer.firstLaunch` | 测试 `setFirstLaunchForTesting` | `WelcomeView.FirstLaunchManager` 的 static helper —— **未 actor 隔离**（视图层 plain static） | ❌ **活缺陷**（本轮上锁） |
-| `TestIsolation.defaults` | 测试 `setDefaults` | 3 个转发器是 `nonisolated(unsafe)` ⇒ **未 actor 隔离** | ⚠️ 同形，本轮上锁（见 36.3） |
+| `ServiceContainer.firstLaunch` | 测试 `setFirstLaunchForTesting`（**生产零写入**） | `WelcomeView.FirstLaunchManager` 的 static helper —— **未 actor 隔离**（视图层 plain static） | ❌ **测试宿主内活缺陷**（撤锁即宿主 abort）/ 生产潜伏 —— 本轮上锁 |
+| `TestIsolation.defaults` | 测试 `setDefaults` | 3 个转发器是 `nonisolated(unsafe)` ⇒ **未 actor 隔离** | ❌ 同形 ⇒ 本轮上锁（**已实证可触发**，见 36.3） |
 | `LanguageManager.injectedForTest` / `UpdateService.injectedForTest` | 测试 `setUp`/`tearDown` | **只在 `@MainActor static var shared` 内** ⇒ 读取受 actor 隔离 | ✅ 安全 ⇒ 不动，只补审计注释 |
 | `LanguageManager._sharedDefault` / `_sharedDefaultDefaults` | **只有 `LanguageManager.shared` 写**（`@MainActor`） | 同上，`@MainActor` | ✅ actor 隔离 ⇒ 安全（类引用 box，但读写都锁在 main actor 内） |
 | `UpdateService._sharedDefault` | 无（`static let`） | `UpdateService.shared`（`@MainActor`） | ✅ 不可变 + actor 隔离 |
@@ -133,34 +133,78 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 - `TestIsolation.defaults`：`NSLock` 保护的 computed accessor（锁**不**持有到调用方用完 —— `UserDefaults` 自身线程安全）。
 - `CryptoService.keyFailureHandler` / `appTerminator`：`static var` → `static let`。**原注释是错的**：写着「Tests replace this…」/「Tests can replace with a no-op spy」，但全仓 **零赋值**（测试早改用显式 `failureHandler:` 参数）⇒ 注释订正为实现，且 `let` 让「无人能写」变成编译器保证。
 
-### 36.3 ⚠️ 关键实测：**可触发性取决于被引用类型的生命周期语义，不只是形状**
+### 36.3 ⚠️ 关键实测（**已订正**）：决定可触发性的是**换出的实例还有没有别的强引用**，与**类型无关**
 
-镜像探针（独立进程，与生产代码同形状，同一时长驱动）：
+> **订正声明（2026-10-26，独立核验后）**：本节初版写的是「可触发性取决于被引用类型的**生命周期语义** ——
+> plain final class 0.5 s 崩 / `UserDefaults` 5 s 存活」，并据此把 `TestIsolation.defaults` 的锁定性为
+> 「构造正确但**未实证可观测**的保险」。**这个结论是错的**，错因在**探针本身**：初版探针的两个分支
+> **强引用结构不同** ——
+> ① `UserDefaults` 侧：写方在 `alts` 数组里**长期持有** 4 个被换出的实例 ⇒ 它们的引用计数**永远不归零**
+> ⇒ `dealloc` 永不执行 ⇒ 没有 use-after-free 可踩；
+> ② plain class 侧：**每次换入都新建**、写方不留任何额外引用 ⇒ 被换出的实例**可以**归零。
+> ⇒ 两组对比的不是「类型」，是「被换出的实例还有没有别的强引用」。
+>
+> **独立核验**进一步指出「Foundation 按 suite 名缓存实例」这一说法可证伪，实测：
+> - `UserDefaults(suiteName: "x") === UserDefaults(suiteName: "x")` ⇒ **false**（**没有**按名缓存实例）；
+> - `UserDefaults` 子类的 `deinit` ⇒ **会执行**（引用计数确实能归零）。
+> ⇒ 「Foundation 缓存 ⇒ 计数永不归零」**实测为假**。
 
-| 被引用类型 | 强度 | 结果 |
-|---|---|---|
-| plain `final class`（= `FirstLaunchService` 形状） | 0.5 s | ❌ **崩**：`Object … deallocated with non-zero retain count 2` |
-| `UserDefaults`（= `TestIsolation.defaults` 形状） | **5 s** | ✅ **存活** |
+**受控对照实验**（独立进程、同形状、时长驱动，**只改强引用结构**）：
 
-⇒ 原因：Foundation 按 suite 名缓存 `UserDefaults` 实例 ⇒ 引用计数**永远不归零** ⇒ over-release 没有 dealloc 可踩。
+| 变体 | 写方换入方式 | 0.5 s | 1 s | 2 s |
+|---|---|---|---|---|
+| `ud-fresh` | 每次**新建** `UserDefaults`（唯一 suite 名）、**不留引用** | **3/3 崩** | 3/3 | 3/3 |
+| `ud-same` | 每次**新建**（同一 suite 名）、不留引用 | **3/3 崩** | 3/3 | 3/3 |
+| `ud-held` | 写方**长期持有** 4 个实例（= 初版探针的形状） | 0/3 | 0/3 | 0/3 |
+| `proto-fresh` | 每次新建 existential（= `crypto` 形状） | **3/3 崩** | 3/3 | 3/3 |
+| `plain-fresh` | 每次新建 plain final class | 0/3 | 0/3 | 0/3 |
 
-⇒ **所以**：
-- `firstLaunch` 的锁是**已实证的真修复**：变异撤锁 ⇒ 宿主 abort，签名与 CI run 40186263416 **一字不差**（`FirstLaunchService deallocated with non-zero retain count 2` + `Restarting after unexpected exit`）。
-- `TestIsolation.defaults` 的锁是**构造正确但未实证可观测**的保险（读-改-写同样非原子，转发器确实 `nonisolated(unsafe)`）。**这一点写进了代码注释与测试注释，不假装有证据。**
+⇒ **结论**：可触发性由**被换出的实例能否归零**决定（⇒ `dealloc` 能否执行），**与被引用的类型无关** ——
+`UserDefaults` 形状同样可触发。（`plain-fresh` 0/3 说明：plain class 形状在本探针里**反而**不崩 ——
+初版「plain 0.5 s 崩」是**混合进程下的时序巧合**，不是稳定现象；`firstLaunch` 的实证证据来自**真实代码撤锁**，
+不是来自这个探针。）
 
-### 36.4 测试设计上的两个坑（自己踩的，记下来）
+受控探针的崩溃签名：`EXC_BAD_ACCESS` at `0x0`，栈顶 `-[NSUserDefaults objectForKey:]` → `_CFPreferences`
+⇒ 读方在**已释放**的实例上取值。
+
+⇒ **所以（订正后）**：
+- `firstLaunch` 的锁：**已实证的真修复** —— 撤锁变异 ⇒ 测试宿主 abort，签名
+  `FirstLaunchService deallocated with non-zero retain count 2` + `Restarting after unexpected exit`。
+- `TestIsolation.defaults` 的锁：**同样是已实证的真修复**（初版误判为「保险」）。把回归测试的换入形状从
+  「实例池」改成「每次新建、不留引用」后，撤锁变异 ⇒ 宿主 abort，崩溃报告直指
+  **`objc_retain` ← `static TestIsolation.defaults.getter`** ⇒ 读方 retain 了**已 dealloc** 的实例
+  （= over-release，与 CI 事故**同机制**；差别只在 `UserDefaults` 是 ObjC 对象，故障落在 `objc_retain`
+  而不是 Swift runtime 的 `retain count 2` 提示）。
+
+### 36.4 测试设计上的三个坑（自己踩的，记下来）
 
 1. **写读不重叠 ⇒ 测试不可能失败**：第一版把写方放在**主线程**、读方在后台队列 —— 300 次换入在微秒级跑完，读方还没被调度起来 ⇒ 撤锁后测试**照样绿**（变异 D 没被抓住）。修法：写方也上全局队列 + 用屏障强制重叠。
 2. **计数式强度是脆的**：固定「50k 读 / 300 换入」时，plain class 形状**存活**而 existential 形状崩溃 —— 后者的读-改-写拷贝的是**多字缓冲区**，窗口宽得多。修法：改成**时长驱动**（读写各转同样长的墙钟窗口），强度不再依赖单次操作成本。
+3. **⚠️ 探针的对照组必须结构对称，否则结论会**反向**（本轮最贵的一个坑）**：初版把「`UserDefaults` + 写方持有实例池」与「plain class + 写方每次新建」放进同一张表 ⇒ 得出「类型决定可触发性」的**反向**结论，进而把一条**真缺陷**降级成「未实证的保险」，并让配套的回归测试**失去判别力**（见 36.3）。判据两条：① 对比两个变量时，**除被测变量外其余结构必须逐字相同**；② 探针写完必须做**自检**：把被测变量换掉复跑一次，确认结论**跟着换**（本例把「新建不留引用」换成「实例池」后，结论从「崩」变成「不崩」—— 若当时做了这个自检，初版就会当场暴露）。
 
-⇒ 最终回归测试 `Tests/ClipMemoryTests/Review1036RegressionTests.swift` 4 条不变量（2 条并发换入+读存活、2 条 seam 原样往返），**时长驱动**。
+⇒ 最终回归测试 `Tests/ClipMemoryTests/Review1036RegressionTests.swift` 4 条不变量（2 条并发换入+读存活、2 条 seam 原样往返），**时长驱动**；两条并发用例的写方都用**「每次新建、不留引用」**的换入形状（这正是它们有判别力的前提）。
 
 ### 36.5 变异验证
 
 | 变异 | 结果 |
 |---|---|
 | 撤 `firstLaunch` 的锁 | ✅ **被抓住**：宿主 abort（`retain count 2` + `Restarting after unexpected exit`） |
-| 撤 `TestIsolation.defaults` 的锁 | ⚠️ **抓不住** —— 该类型的 over-release 不可观测（36.3）。已在代码与测试注释里写明，未假装有证据 |
+| 撤 `TestIsolation.defaults` 的锁 | ✅ **被抓住**（**订正后**）：宿主 abort，崩溃报告 `EXC_BAD_ACCESS` in `objc_retain` ← `static TestIsolation.defaults.getter`（前提：回归测试的换入形状改为「每次新建、不留引用」，见 36.4 第 3 条；初版形状下**抓不住**，测试无判别力） |
+
+### 36.6 独立核验的 findings 与处置
+
+对 `e3ccc9a` 做**独立核验**（不复用主 agent 自查）⇒ `VERDICT: PASS-WITH-NOTES`，5 条 P2，**全部实测复现后处置**：
+
+| # | finding | 判定 | 处置 |
+|---|---|---|---|
+| 1 | 「Foundation 按 suite 名缓存 ⇒ over-release 不可观测」这一**因果解释**是错的 | ✅ **确认**（实测 `===` 为 false、子类 `deinit` 会执行） | 订正 3 处解释（台账本节 / `TestIsolation.swift` 注释 / 测试注释）；**并连带把回归测试改成有判别力的形状** ⇒ 撤锁变异现在**被抓住**（见 36.3 / 36.5） |
+| 2 | 台账对 `firstLaunch` 的定性自相矛盾（`:117` 活缺陷 vs `:102` 潜伏） | ✅ **确认** | 两处都订正：明确区分「测试宿主内活 / 生产潜伏（零写入）」 |
+| 3 | `docs/SWIFT6_MIGRATION.md` §8 散文仍写「Re-measured on 2026-10-24」 | ✅ **确认**（我这次只改了原始输出块的日期） | 散文同步为 2026-10-26 |
+| 4 | `ServiceProtocols.swift` 注释仍称该 seam 是「`static private(set) var` + 同款 `preconditionFailure`」 | ✅ **确认**（注释与实现不一致） | 订正为「已改为 get-only computed accessor」 |
+| 5 | `TestIsolation.defaultsStorage` 是 `internal` ⇒ 锁可被绕过 | ✅ **确认**（同批的 `cryptoStorage` / `firstLaunchStorage` 都是 `private`） | 改为 `private` |
+
+⇒ **元教训**：这条链上真正贵的一处不是「漏改一个锁」，而是**用一个结构不对称的探针得出了一个错误的因果结论**，
+并用它给一条**真缺陷**降级 —— 探针必须做「换掉被测变量复跑」的自检（36.4 第 3 条）。
 
 ## 已恢复（25 个测试，截至 2026-10-02 snapshot re-skip 后）
 

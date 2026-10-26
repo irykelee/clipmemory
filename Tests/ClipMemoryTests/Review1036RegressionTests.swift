@@ -26,6 +26,15 @@ import XCTest
 /// Both are now lock-protected, mirroring the `crypto` fix. The invariants
 /// below pin the two directions: the swap must survive concurrent readers,
 /// and the seam must still round-trip exactly what was written into it.
+///
+/// ⚠️ Both concurrency tests must use the **fresh-instance, no-retention**
+/// swap shape (see `assertSeamSurvivesConcurrentSwapAndRead`). Swapping
+/// among a POOL of pre-created instances keeps every swapped-out instance
+/// alive ⇒ its refcount never reaches zero ⇒ its `dealloc` never runs ⇒ a
+/// stale reader pointer cannot fault ⇒ **the mutation would go unnoticed**
+/// and the test would have no discriminating power. Measured 2026-10-26:
+/// the pool shape survives 5 s of hammering, the fresh-instance shape
+/// faults within 0.5 s.
 @MainActor final class Review1036RegressionTests: XCTestCase {
 
     /// How long the readers and the swapper run, in seconds.
@@ -38,6 +47,9 @@ import XCTest
     /// per-operation cost of the seam under test. A DURATION-based one is
     /// not: both sides spin for the same wall-clock window, so the swap
     /// burst genuinely overlaps the readers' hot loop whatever the costs.
+    ///
+    /// The window is also long enough for the fault to land: measured 3/3
+    /// crashes at 0.5 s for the fresh-instance shape.
     private static let window: TimeInterval = 0.5
 
     /// Runs `read` on four background queues and `swap` on a fifth for the
@@ -91,54 +103,58 @@ import XCTest
         )
 
         // The seam must still hand back a usable service.
-        XCTAssertNotNil(ServiceContainer.firstLaunch)
+        let current = ServiceContainer.firstLaunch
+        XCTAssertTrue(current === ServiceContainer.firstLaunch,
+                      "the seam must hand back the same instance on repeated reads")
     }
 
     // MARK: - 2. TestIsolation.defaults under concurrent swap + read
 
     /// Same SHAPE as the case above, on the canonical `UserDefaults` seam.
     ///
-    /// ⚠️ This test is deliberately NOT presented as the proof that the
-    /// `defaults` lock works — for THAT type the over-release is **not
-    /// observable**, and the mutation cannot be caught. Measured
-    /// 2026-10-26 with a standalone mirror probe, same process, same
-    /// duration-based hammering:
+    /// The swapper creates a **fresh instance for the same suite name** on
+    /// every swap and retains **none** of them. That is what makes this
+    /// test discriminating:
     ///
-    /// * a plain `final class` reference → crashes within 0.5 s with
-    ///   "deallocated with non-zero retain count 2";
-    /// * a `UserDefaults` reference → **survives 5 s** of continuous
-    ///   swapping, because Foundation keeps a per-suite cache alive, so the
-    ///   instance's refcount never reaches zero and the over-release has no
-    ///   dealloc to trip over.
+    /// * the swapped-out instance's only strong reference is the seam's
+    ///   storage slot ⇒ the writer's release drops it to **zero** ⇒ its
+    ///   `dealloc` runs;
+    /// * a reader that retained a stale pointer then uses freed memory.
     ///
-    /// ⇒ **Exploitability depends on the lifetime semantics of the
-    /// referenced type, not only on the shape of the static.** The lock on
-    /// `TestIsolation.defaults` is still correct (the read-modify-write is
-    /// non-atomic either way, and the three forwarders are
-    /// `nonisolated(unsafe)`), but this test only pins that the seam stays
-    /// usable under concurrency — it does NOT falsify the lock.
+    /// Measured 2026-10-26 with a standalone mirror probe of this exact
+    /// shape (removing the lock ⇒ crash): **3/3 crashes within 0.5 s**,
+    /// signature `EXC_BAD_ACCESS` inside
+    /// `-[NSUserDefaults objectForKey:]` → `_CFPreferences` — i.e. the
+    /// reader operated on a deallocated instance.
     ///
-    /// The lock's real proof is the `firstLaunch` case above, whose type
-    /// (`FirstLaunchService`) has no such cache and whose crash signature
-    /// is byte-identical to the CI incident.
+    /// ⚠️ The earlier version of this test swapped among 4 instances held
+    /// in an array. That array kept every swapped-out instance **alive** ⇒
+    /// refcount never reached zero ⇒ no `dealloc` ⇒ the mutation was
+    /// **not catchable** ⇒ the test had no discriminating power. The
+    /// conclusion "this type's over-release is unobservable" was **wrong**:
+    /// the real variable is the **strong-reference structure of the swap**,
+    /// not the referenced type. (Earlier note claiming Foundation caches
+    /// `UserDefaults` per suite name was **measured false**:
+    /// `UserDefaults(suiteName: "x") === UserDefaults(suiteName: "x")` is
+    /// `false`, and a `UserDefaults` subclass's `deinit` does run.)
+    ///
+    /// One suite name for every instance ⇒ the test does not create
+    /// thousands of preference domains on disk.
     func testTestIsolationDefaultsSurvivesConcurrentSwapAndRead() {
         let original = TestIsolation.defaults
         defer { TestIsolation.setDefaults(original) }
 
-        let alternatives = (0..<4).map { _ in makeTestDefaults() }
-        defer { alternatives.forEach { removeTestDefaults($0) } }
-        var index = 0
+        let suiteName = "Review1036-\(UUID().uuidString)"
 
         assertSeamSurvivesConcurrentSwapAndRead(
             read: { _ = TestIsolation.defaults.object(forKey: "maxClipboardItems") },
-            swap: {
-                TestIsolation.setDefaults(alternatives[index % alternatives.count])
-                index += 1
-            }
+            swap: { TestIsolation.setDefaults(UserDefaults(suiteName: suiteName)!) }
         )
 
         // The seam must still hand back a usable store.
-        XCTAssertNotNil(TestIsolation.defaults)
+        let current = TestIsolation.defaults
+        XCTAssertTrue(current === TestIsolation.defaults,
+                      "the seam must hand back the same instance on repeated reads")
     }
 
     // MARK: - 3. The seam must still round-trip exactly what was written

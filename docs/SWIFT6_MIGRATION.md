@@ -166,7 +166,7 @@ If TSan infrastructure reveals an unexpectedly high number of races, or if Swift
 > vars + 6 test-seam statics = 17") silently dropped
 > `LanguageManager.codeStorage`, a production state var that the very
 > same table listed. Every line number had drifted as well.
-> Re-measured on 2026-10-24 (count unchanged since 2026-10-23): **18 declarations** — 12 production
+> Re-measured on 2026-10-26 (count unchanged since 2026-10-23): **18 declarations** — 12 production
 > cache/state vars + 6 test-seam statics.
 >
 > <!-- nonisolated-unsafe-declaration-count: 18 -->
@@ -203,7 +203,7 @@ Services/LanguageManager.swift:102:    nonisolated(unsafe) private static var co
 Services/UpdateService.swift:202:    nonisolated(unsafe) static var defaults: UserDefaults {
 Services/UpdateService.swift:235:    nonisolated(unsafe) static var injectedForTest: UpdateService?
 Services/WindowManager.swift:113:    nonisolated(unsafe) static var defaults: UserDefaults {
-Utils/TestIsolation.swift:87:    nonisolated(unsafe) static var defaultsStorage: UserDefaults = baselineDefaults
+Utils/TestIsolation.swift:97:    private nonisolated(unsafe) static var defaultsStorage: UserDefaults = baselineDefaults
 ```
 
 The COUNT is enforced by a test — see "Drift protection" below. The LINE
@@ -239,7 +239,7 @@ just copied from the declaration comments.
 | `Services/UpdateService.swift` | 202 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
 | `Services/UpdateService.swift` | 235 | `injectedForTest: UpdateService?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
 | `Services/WindowManager.swift` | 113 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage). Dormant since WINDOW-0001 — frame persistence moved to AppKit's `setFrameAutosaveName` | actor-isolate the canonical seam |
-| `Utils/TestIsolation.swift` | 87 | `defaultsStorage: UserDefaults` | **canonical** storage for the whole test seam (ID-CRASH-0029). ID-REVIEW-1036 (2026-10-26): the declaration moved from `defaults` to `defaultsStorage` because `defaults` became a lock-guarded computed accessor (`defaultsLock`) — the read-modify-write of a class reference without a lock is the shape that aborted the test host in CI run 40186263416. The three service forwarders read it through the accessor, so they inherit the lock. ID-CRASH-0066 changed its INITIALIZER from `.standard` to the immutable `baselineDefaults` (an isolated suite under XCTest, `.standard` in production) | migrate to actor in Phase 3 |
+| `Utils/TestIsolation.swift` | 97 | `defaultsStorage: UserDefaults` | **canonical** storage for the whole test seam (ID-CRASH-0029). ID-REVIEW-1036 (2026-10-26): the declaration moved from `defaults` to `defaultsStorage` because `defaults` became a lock-guarded computed accessor (`defaultsLock`) — the read-modify-write of a class reference without a lock is the shape that aborted the test host in CI run 40186263416. The storage is `private` so the lock cannot be bypassed by writing the slot directly. The three service forwarders read it through the accessor, so they inherit the lock. ID-CRASH-0066 changed its INITIALIZER from `.standard` to the immutable `baselineDefaults` (an isolated suite under XCTest, `.standard` in production) | migrate to actor in Phase 3 |
 
 **18 declarations** = 12 production cache/state vars (11 in
 `ClipboardStore` + `LanguageManager.codeStorage`) + 6 test-seam statics
@@ -279,4 +279,4 @@ commit — the alternative is a row that points at the wrong line.
 
 ---
 
-*Last updated: 2026-10-26 (ID-REVIEW-1036: §8's `LanguageManager` / `UpdateService` / `TestIsolation` rows refreshed — the ID-REVIEW-1036 seam hardening moved `TestIsolation.defaults` from a stored property to a lock-guarded computed accessor over `defaultsStorage` (declaration now at :87), which shifted the `LanguageManager` rows (20→29, 65→74, 93→102) and `UpdateService.injectedForTest` (226→235); the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1026: §8's `ClipboardStore` rows refreshed again — the ID-REVIEW-1026 sentinel rework moved the declarations to 928–2457; the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1025: §8's `ClipboardStore` rows refreshed twice — the declarations moved from 2329–2341 to 2347–2359 (the `pendingKeyItems` overflow notification) and then to 2397–2409 (the items-load-failed sentinel check); the COUNT is unchanged). Previous: 2026-10-23 (ID-REVIEW-1024 review: §8's `TestIsolation` row refreshed — the declaration moved from line 50 to line 84 in ID-CRASH-0066 — and the line numbers are now enforced by a test, like the count). Previous: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
+*Last updated: 2026-10-26 (ID-REVIEW-1036: §8's `LanguageManager` / `UpdateService` / `TestIsolation` rows refreshed — the ID-REVIEW-1036 seam hardening moved `TestIsolation.defaults` from a stored property to a lock-guarded computed accessor over `defaultsStorage` (declaration now at :97), which shifted the `LanguageManager` rows (20→29, 65→74, 93→102) and `UpdateService.injectedForTest` (226→235); the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1026: §8's `ClipboardStore` rows refreshed again — the ID-REVIEW-1026 sentinel rework moved the declarations to 928–2457; the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1025: §8's `ClipboardStore` rows refreshed twice — the declarations moved from 2329–2341 to 2347–2359 (the `pendingKeyItems` overflow notification) and then to 2397–2409 (the items-load-failed sentinel check); the COUNT is unchanged). Previous: 2026-10-23 (ID-REVIEW-1024 review: §8's `TestIsolation` row refreshed — the declaration moved from line 50 to line 84 in ID-CRASH-0066 — and the line numbers are now enforced by a test, like the count). Previous: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*

@@ -121,10 +121,11 @@ enum ServiceContainer {
     ///
     /// Post-OpenCode-auto-review P2 fix (2026-09-22): the previous `static let`
     /// made the seam declared in `FirstLaunchService.init(store:)` unreachable
-    /// from production callers (no setter, no DI path). Promoted to
-    /// `static private(set) var` with the same XCTest-only `preconditionFailure`
-    /// guard as `crypto` above; `setFirstLaunchForTesting(_:)` mirrors
-    /// `setCryptoForTesting(_:)` for tests that need to swap the store.
+    /// from production callers (no setter, no DI path). It was therefore
+    /// promoted to a mutable seam with an XCTest-only guard, and
+    /// `setFirstLaunchForTesting(_:)` mirrors `setCryptoForTesting(_:)`
+    /// for tests that need to swap the store.
+    ///
     /// ID-REVIEW-1036 (2026-10-26): lock-protected, mirroring `crypto`
     /// above.
     ///
@@ -133,9 +134,16 @@ enum ServiceContainer {
     /// NOT actor-isolated, so they are callable from any thread — while the
     /// only writer (`setFirstLaunchForTesting`) runs on the test thread.
     /// That is the same read-modify-write of a class box that aborted the
-    /// test host in CI run 40186263416 (see `crypto` above): the moment a
-    /// background caller appears, an unsynchronized swap would over-release
-    /// the box.
+    /// test host in CI run 40186263416 (see `crypto` above).
+    ///
+    /// ⚠️ Scope of the hazard, stated precisely (corrected after the
+    /// independent review): the writer exists **only under XCTest** — there
+    /// is NO production write path. So the seam is **live inside the test
+    /// host** (a test swapping it while another thread reads ⇒ host abort;
+    /// reproduced by removing this lock) and **latent in production** (no
+    /// writer ⇒ nothing can race). The lock is still the right thing: it
+    /// removes the test-host abort, and it makes the invariant hold for any
+    /// future writer.
     ///
     /// The "only under XCTest" contract is unchanged and now *stronger*: the
     /// stored property's `didSet` precondition is replaced by a get-only
