@@ -30,20 +30,25 @@ import XCTest
 /// an invisible state change into a named, failing canary.
 final class XCTestIsolationSuiteBootstrap: NSObject {
 
+    /// The suite whose setting leaked in CI run 40186263416.
+    static let clipboardStoreSuiteName = "ClipboardStore-XCTest-isolation"
+
     /// Suites that every no-arg service under XCTest resolves to. They are
     /// cleared before every test case so one test's mutation cannot leak
     /// into the next.
     ///
     /// Kept in sync with the `xcTestDefaults` seams in
     /// `ClipboardStore` / `HotKeyManager` / `BackupService`.
+    ///
+    /// The ClipboardStore suite is referenced through
+    /// `clipboardStoreSuiteName` (single source of truth): if the two ever
+    /// diverge, the write guard would silently watch the WRONG suite and the
+    /// ZZZ canary would pass vacuously.
     static let sharedSuiteNames = [
-        "ClipboardStore-XCTest-isolation",
+        clipboardStoreSuiteName,
         "HotKeyManager-XCTest-isolation",
         "BackupService-XCTest-isolation"
     ]
-
-    /// The suite whose setting leaked in CI run 40186263416.
-    static let clipboardStoreSuiteName = "ClipboardStore-XCTest-isolation"
 
     /// The setting whose leakage caused it. A test that leaves it in the
     /// shared suite changes the behaviour of every later test that reads
