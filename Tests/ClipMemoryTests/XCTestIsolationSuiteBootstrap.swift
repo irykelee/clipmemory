@@ -39,7 +39,7 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
     static let sharedSuiteNames = [
         "ClipboardStore-XCTest-isolation",
         "HotKeyManager-XCTest-isolation",
-        "BackupService-XCTest-isolation",
+        "BackupService-XCTest-isolation"
     ]
 
     /// The suite whose setting leaked in CI run 40186263416.
