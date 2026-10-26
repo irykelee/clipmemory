@@ -206,6 +206,108 @@ ZZZ canary 不再 skip。ID-REVIEW-1013 曾临时把 `toleratedPollution` 扩到
 ⇒ **元教训**：这条链上真正贵的一处不是「漏改一个锁」，而是**用一个结构不对称的探针得出了一个错误的因果结论**，
 并用它给一条**真缺陷**降级 —— 探针必须做「换掉被测变量复跑」的自检（36.4 第 3 条）。
 
+## ID-REVIEW-1037（2026-10-26）：共享 suite 的覆盖面 + 守卫的**探测器** —— 把「已知残留」关掉
+
+> 起因：ID-REVIEW-1035 段留下的「已知残留」——「另有多处测试仍以 no-arg 构造读取共享 suite
+> （写侧已闭 ⇒ 只影响受害面，不影响正确性）」。本轮按「修一个，看 33 个」把它系统化：
+> **先枚举全部共享 suite 与它们的写面，再逐处判定**。
+
+### 37.1 先枚举：全仓有 **5** 个共享 suite，清理只覆盖 **3** 个
+
+生产代码里的 XCTest 隔离 seam（`xcTestDefaults` 族）：
+
+| suite | owner | 清理覆盖 | 守卫覆盖 |
+|---|---|---|---|
+| `ClipboardStore-XCTest-isolation` | `ClipboardStore.xcTestDefaults` | ✅ | 4 key → 本轮 8 key |
+| `HotKeyManager-XCTest-isolation` | `HotKeyManager.xcTestDefaults` | ✅ | 2 key |
+| `BackupService-XCTest-isolation` | `BackupService` | ✅ | **0** → 本轮 9 key |
+| `TestIsolation-XCTest-isolation` | `TestIsolation.baselineDefaults`（canonical seam） | ❌ → **本轮补** | **0** → 本轮 5 key |
+| `SafeModeService-XCTest-isolation` | `SafeModeService.xcTestDefaults` | ❌ → **本轮补** | **0** → 本轮 3 key |
+
+**实测残留**（本地全量跑完后直接读磁盘 plist）：canonical suite 里还留着
+`appLanguage = "zh-Hans"` + `AppleLanguages = [zh-Hans, en, zh-Hans-CN]`（**累积**链），
+SafeMode suite 里还留着 `safeMode.active = true` + `safeMode.crashCount = 5`
+—— 正是没被清理覆盖的那两个。⇒ 跨测试状态泄漏**有实证**。
+
+### 37.2 ⚠️ 真缺陷：守卫的**探测器**是错的（`object(forKey:)` 穿透全局域）
+
+把守卫的键表按生产写面扩开后，**实测 1260 条误报**（每个测试都报 `left AppleLanguages in
+TestIsolation-XCTest-isolation`）。根因：**suite 的查找是一条 search list，会落到全局域** ——
+实测一个**全新的空 suite** 就已经能答出：
+
+```
+fresh-suite object(forKey: AppleLanguages) -> PRESENT: ("zh-Hans-CN")   ← 机器全局值
+fresh-suite object(forKey: AppleLocale)   -> PRESENT: zh_CN
+fresh-suite object(forKey: maxClipboardItems) -> nil                    ← 非全局键才看得见真值
+```
+
+⇒ 守卫原来用 `object(forKey:)` 探残留 ⇒ **只要监视表里出现一个系统全局键，守卫就在每个测试上误报**
+（它之前"恰好"没事，只因为它监视的 4 个键都不是全局键）。
+⇒ 正解是 `persistentDomain(forName:)`：只返回 suite **自己拥有**的键（实测：新 suite → `[:]`）。
+
+⚠️ **同一个陷阱本仓已经踩过一次并写在注释里**：`IsolationSeamConsolidationTests.swift:165-187`
+（ID-REVIEW-1028, 2026-10-25）明确写着「`AppleLanguages` 的读必须走 `persistentDomain(forName:)`，
+不能用 `suite.stringArray(forKey:)`」，并解释了 search list + argument domain 的机制
+（实测那次 CI 失败：suite 自己持有 `["ko"]`，search-list 读却答 `["zh-Hans"]`）。
+⇒ **一天之后，另一个守卫又用 `object(forKey:)` 踩了同一个坑**。教训见 37.5。
+
+### 37.3 修法
+
+- **探测器**：`suiteOwnedKeys(in:)` 用 `persistentDomain(forName:)`；守卫改用它。
+  效果：1260 条误报 → 5 条**真**肇事者。
+- **清理**：`sharedSuiteNames` 3 → **5**（补 canonical + SafeMode）。
+  效果：37.1 的两处实测残留消失（跑完后 5 个 suite 的 plist **全空**）。
+- **守卫键表**：按**生产写面**重建（逐服务扫 `defaults.set/removeObject` 调用点），
+  从 2 suite / 4 key → 5 suite / **27 key**。
+- **3 个测试类注入 per-test suite**：`ClipboardStore(backend:)` 的 `defaults` **默认值就是共享 suite**
+  （`ClipboardStore.xcTestDefaults`），所以 `ClipboardStoreDiagnosticsTests` /
+  `ClipboardStorePrewarmTests` / `ClipboardStoreMainActorPhase3Tests` 的 store 一直在往共享 suite 写设置
+  ⇒ 改为 `ClipboardStore(backend:defaults: makeTestDefaults())`。
+
+### 37.4 ⚠️ 异步写入的归因是**冤案** ⇒ 该键不监视
+
+扩表后剩下的 2 条是 `ImageIntegrity.scannedMtimes`。逐层实测：
+
+1. 该键由 `runImageIntegrityScan` → `persistIntegrityMtimes` 写入，而扫描**派发到后台队列**
+   ⇒ 写入可以落在**任意后续测试**里。
+2. 实测（写后立刻读共享域）：24 次写入里 **22 次落在 per-test suite、2 次落在共享 suite**；
+   守卫也正好报 **2 条** ⇒ 数量对得上，但**归因是巧合**：
+   守卫点名的两个测试（`ClipboardCaptureLimitTests.testAddItemPersistsViaSaveBlobWithValidEncodedData`、
+   `ClipboardStorePrewarmTests.testPrewarmCoalescedFollowUpRoundDecryptsNewerItems`）
+   **根本没造图片条目** —— 真正的起因在更早的测试。⇒ 守卫在**冤枉无辜者**。
+3. ⇒ 该键**不监视**：归因对异步写入没有意义；它可能造成的危害
+   （陈旧的 mtime 缓存让图片完整性检查跳过文件）已由**每测试清理**兜住
+   （清理表含 ClipboardStore suite ⇒ 每个测试前都擦干净）。
+
+### 37.5 自己踩的三个坑（探针篇）
+
+1. **探针 A：探测器的同款陷阱** —— 第一版探针用 `object(forKey:)` 判断"写进共享 suite 没有" ⇒
+   对**系统全局键**永远得到"写进去了"的假象。⇒ 与 37.2 同源。
+2. **探针 B：用实例身份（`===`）判断 suite 身份是错的** —— 实测
+   `UserDefaults(suiteName: "x") === UserDefaults(suiteName: "x")` = **false**
+   （同名同域、**不同对象**，每次调用都新建）。⇒ 第一版探针因此得出「没有写进共享 suite」的
+   **错误结论**（我据此差点改错方向）。⇒ **suite 的身份是「域名」，不是「对象」**。
+3. **探针 C：读在写之前 ⇒ 探针无效** —— 第一版把共享域检查放在 `set` **之前**，只能报告写之前的状态
+   ⇒ 三版才拿到真数据（写后读：22 false / 2 true）。
+
+⇒ **元教训**：同一个「搜索链穿透」陷阱在本仓出现了**三次**（`dictionaryRepresentation()`、
+`object(forKey:)`、以及早前的 `stringArray(forKey:)`）—— **写新探针前先搜仓库里有没有已经写好的结论**。
+
+### 37.6 回归测试与变异验证
+
+`Tests/ClipMemoryTests/Review1037RegressionTests.swift` 5 条不变量：
+① 空 suite 的 `object(forKey:)` 会穿透（陷阱的可执行前置条件）② 守卫探测器只看 suite 自有键
+③ 守卫能看见**旧表覆盖不到**的 suite 里的自有键（SafeMode）④ 同上（canonical）
+⑤ 清理覆盖**全部** 5 个 suite。
+
+| 变异 | 结果 |
+|---|---|
+| 探测器回退成 `object(forKey:)` | ✅ **被抓住**：4 条回归测试变红 |
+| 清理表退回 3 个 suite | ✅ **被抓住**：4 条回归测试变红 |
+
+**验证**：全量 **1269 tests / 6 skipped / 0 failures / 0 条泄漏**（本地）；跑完后 5 个共享 suite 的
+plist **全空**（本轮之前实测有 4 个键残留）。
+
 ## 已恢复（25 个测试，截至 2026-10-02 snapshot re-skip 后）
 
 | 文件 | 恢复数 | 备注 |

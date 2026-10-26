@@ -38,17 +38,41 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
     /// into the next.
     ///
     /// Kept in sync with the `xcTestDefaults` seams in
-    /// `ClipboardStore` / `HotKeyManager` / `BackupService`.
+    /// `ClipboardStore` / `HotKeyManager` / `BackupService` /
+    /// `SafeModeService` / `TestIsolation`.
     ///
     /// The ClipboardStore suite is referenced through
     /// `clipboardStoreSuiteName` (single source of truth): if the two ever
     /// diverge, the write guard would silently watch the WRONG suite and the
     /// ZZZ canary would pass vacuously.
+    ///
+    /// ID-REVIEW-1037 (2026-10-26): this list was **3 of 5** — the
+    /// `TestIsolation-XCTest-isolation` (the canonical seam's baseline) and
+    /// `SafeModeService-XCTest-isolation` suites were never cleared, and
+    /// **measured** leftovers proved it: after a full local run the baseline
+    /// suite still carried `appLanguage` + `AppleLanguages` (written by
+    /// `LanguageManager.init` → `applyLanguage`) and the SafeMode suite
+    /// still carried `safeMode.active = true` + `safeMode.crashCount = 5`.
+    /// Both are cross-test state that a later test can read.
     static let sharedSuiteNames = [
         clipboardStoreSuiteName,
         "HotKeyManager-XCTest-isolation",
-        "BackupService-XCTest-isolation"
+        "BackupService-XCTest-isolation",
+        testIsolationSuiteName,
+        safeModeServiceSuiteName
     ]
+
+    /// The canonical seam's baseline suite (`TestIsolation.baselineDefaults`).
+    ///
+    /// ⚠️ Clearing this suite's CONTENT is safe: `SeamBaselineIsolationTests`
+    /// asserts the baseline's *identity* (`addressesProductionDomain`), not
+    /// its contents. The suite object itself is untouched — only its
+    /// persistent domain is removed, so `TestIsolation.defaults` keeps
+    /// pointing at the same instance.
+    static let testIsolationSuiteName = "TestIsolation-XCTest-isolation"
+
+    /// The suite `SafeModeService.xcTestDefaults` resolves to under XCTest.
+    static let safeModeServiceSuiteName = "SafeModeService-XCTest-isolation"
 
     /// The setting whose leakage caused it. A test that leaves it in the
     /// shared suite changes the behaviour of every later test that reads
@@ -71,12 +95,74 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
     /// system keys, so a generic guard would fire on EVERY test. Probing each
     /// key with `object(forKey:)` is what actually works.
     ///
-    /// The `BackupService-XCTest-isolation` suite is cleared per test but not
-    /// watched: every BackupService test injects its own suite, so no known
-    /// key is ever published there.
+    /// ID-REVIEW-1037 (2026-10-26): widened from 2 suites / 4 keys to
+    /// **all 5 shared suites** and their **full production write surface**.
+    /// The previous table was derived from the ONE incident (`maxClipboardItems`)
+    /// plus the ONE review finding (the HotKey keys) — it was not derived
+    /// from what the code actually writes, so most of the surface was
+    /// invisible. The lists below mirror the `defaults.set(...)` /
+    /// `defaults.removeObject(...)` call sites of the owning service:
+    ///
+    /// | suite | owner | keys |
+    /// |---|---|---|
+    /// | `ClipboardStore-XCTest-isolation` | `ClipboardStore` | `maxClipboardItems`, `sensitiveClearHours`, `captureRichText`, `excludedBundleIds`, `excludedUpdateDismissedIds`, `ClipboardItems.loadFailed`, `ClipboardTrashedItems.loadFailed`, `ClipboardTrashedItems.retentionDays` |
+    /// | `HotKeyManager-XCTest-isolation` | `HotKeyManager` | `HotKeyKeyCode`, `HotKeyModifiers` |
+    /// | `BackupService-XCTest-isolation` | `BackupService` | `backupEnabled`, `backupKeepCount`, `lastBackupDate`, `lastBackupErrorDate`, `lastBackupErrorMessage`, `lastPruneErrorDate`, `lastPruneErrorMessage`, `lastQuarantineErrorDate`, `lastQuarantineErrorMessage` |
+    /// | `TestIsolation-XCTest-isolation` | `TestIsolation` (canonical seam) | `UpdateFallbackFeedConsent`, `UpdateFeedPolicy`, `LastPrimaryAppcastItemDate` (via `UpdateService`), `appLanguage`, `AppleLanguages` (via `LanguageManager`) |
+    /// | `SafeModeService-XCTest-isolation` | `SafeModeService` | `safeMode.crashCount`, `safeMode.active`, `safeMode.sentinelHealthy` |
+    ///
+    /// The store's BLOB keys (`ClipboardItems` / `ClipMemoryTags` /
+    /// `ClipboardTrashedItems`) are deliberately NOT listed: under XCTest the
+    /// convenience-init store is **memory-backed** (ID-STORE-0005), so the
+    /// blobs never reach the suite — only the settings above do.
+    ///
+    /// `ImageIntegrity.scannedMtimes` is deliberately NOT watched either,
+    /// even though the store persists it into this suite: it is written by an
+    /// **asynchronous** background scan (`runImageIntegrityScan` →
+    /// `persistIntegrityMtimes`, dispatched to a utility queue), so a write
+    /// can land in whatever test happens to be running at that moment.
+    /// Measured 2026-10-26: the guard named two tests that never created an
+    /// image item — innocent bystanders — while the scan that caused the
+    /// write belonged to an earlier test. Attribution is meaningless for an
+    /// async writer, and a guard that blames bystanders is worse than no
+    /// guard. The harm a stale mtime cache could do (masking an
+    /// image-integrity check) is already neutralized by the per-test cleanup,
+    /// which wipes this suite before every test.
     static let guardedSharedSuiteKeys: [String: [String]] = [
-        clipboardStoreSuiteName: ["maxClipboardItems", "excludedBundleIds"],
-        "HotKeyManager-XCTest-isolation": ["HotKeyKeyCode", "HotKeyModifiers"]
+        clipboardStoreSuiteName: [
+            "maxClipboardItems",
+            "sensitiveClearHours",
+            "captureRichText",
+            "excludedBundleIds",
+            "excludedUpdateDismissedIds",
+            "ClipboardItems.loadFailed",
+            "ClipboardTrashedItems.loadFailed",
+            "ClipboardTrashedItems.retentionDays"
+        ],
+        "HotKeyManager-XCTest-isolation": ["HotKeyKeyCode", "HotKeyModifiers"],
+        "BackupService-XCTest-isolation": [
+            "backupEnabled",
+            "backupKeepCount",
+            "lastBackupDate",
+            "lastBackupErrorDate",
+            "lastBackupErrorMessage",
+            "lastPruneErrorDate",
+            "lastPruneErrorMessage",
+            "lastQuarantineErrorDate",
+            "lastQuarantineErrorMessage"
+        ],
+        testIsolationSuiteName: [
+            "UpdateFallbackFeedConsent",
+            "UpdateFeedPolicy",
+            "LastPrimaryAppcastItemDate",
+            "appLanguage",
+            "AppleLanguages"
+        ],
+        safeModeServiceSuiteName: [
+            "safeMode.crashCount",
+            "safeMode.active",
+            "safeMode.sentinelHealthy"
+        ]
     ]
 
     /// Tests that left `guardedSharedSuiteKey` behind in the shared suite.
@@ -107,6 +193,28 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
         }
     }
 
+    /// The keys the given suite **owns** — its own persistent domain, and
+    /// nothing else.
+    ///
+    /// ID-REVIEW-1037 (2026-10-26): the guard used to probe with
+    /// `object(forKey:)`, which is **not** the same thing. A suite's lookup
+    /// falls through to the GLOBAL domain, so `object(forKey:)` answers with
+    /// the machine's global value for any system key — whether or not the
+    /// suite ever owned it. Measured: a brand-new, empty suite already
+    /// answers `object(forKey: "AppleLanguages")` with the machine's global
+    /// chain (`zh-Hans-CN`), and `AppleLocale` likewise.
+    ///
+    /// The consequence was a guard that fires on **every** test as soon as a
+    /// globally-known key enters the watch list (measured: 1260 false
+    /// offenders for `AppleLanguages` alone).
+    ///
+    /// `persistentDomain(forName:)` is the correct probe: a fresh suite
+    /// answers `[:]`, and global keys are absent from it.
+    static func suiteOwnedKeys(in suiteName: String) -> [String: Any] {
+        guard let suite = UserDefaults(suiteName: suiteName) else { return [:] }
+        return suite.persistentDomain(forName: suiteName) ?? [:]
+    }
+
     /// Records a violation if a watched shared suite still carries a watched
     /// key — i.e. the test that just ran published a setting for every later
     /// test to read.
@@ -116,8 +224,8 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
     /// a write into the HotKey suite that the old guard could not see.
     static func recordSharedSuiteViolationIfPresent(testCase: String) {
         for (suiteName, keys) in guardedSharedSuiteKeys {
-            guard let suite = UserDefaults(suiteName: suiteName) else { continue }
-            let residual = keys.filter { suite.object(forKey: $0) != nil }
+            let owned = suiteOwnedKeys(in: suiteName)
+            let residual = keys.filter { owned[$0] != nil }
             guard !residual.isEmpty else { continue }
             let entry = "\(testCase) left \(residual.joined(separator: ",")) in \(suiteName)"
             guard !recordedViolations.contains(entry) else { continue }

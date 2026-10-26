@@ -20,13 +20,30 @@ final class ClipboardStoreMainActorPhase3Tests: XCTestCase {
     // the @MainActor contract these tests exercise is per-instance.
     private var store: ClipboardStore!
 
+    /// ID-REVIEW-1037 (2026-10-26): the per-test settings suite.
+    ///
+    /// `ClipboardStore(backend:)` leaves `defaults` at its default value —
+    /// `ClipboardStore.xcTestDefaults`, i.e. the PROCESS-SHARED
+    /// `ClipboardStore-XCTest-isolation` suite. The memory backend keeps the
+    /// BLOBS out of it, but the store's SETTINGS still go there — e.g. the
+    /// image-integrity scan persists its mtime cache
+    /// (`ImageIntegrity.scannedMtimes`), which the write guard named in
+    /// five tests here. Injecting a per-test suite keeps the settings
+    /// out of the shared suite.
+    private var testDefaults: UserDefaults!
+
     override func setUp() {
         super.setUp()
-        store = ClipboardStore(backend: MemoryStorageBackend())
+        testDefaults = makeTestDefaults()
+        store = ClipboardStore(backend: MemoryStorageBackend(), defaults: testDefaults)
     }
 
     override func tearDown() {
         store = nil
+        if let suite = testDefaults {
+            removeTestDefaults(suite)
+            testDefaults = nil
+        }
         super.tearDown()
     }
 
