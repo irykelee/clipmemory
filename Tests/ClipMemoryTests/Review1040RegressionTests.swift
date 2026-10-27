@@ -287,7 +287,7 @@ final class Review1040RegressionTests: XCTestCase {
         var helperSites = 0
         for url in try Self.testSourceFiles() {
             let source = try String(contentsOf: url, encoding: .utf8)
-            let relative = Self.relativePath(of: url)
+            let relative = TestSourceScanner.relativePath(of: url)
             let sites = Self.suiteCreationSites(in: source)
             scanned += sites.count
             helperSites += Self.helperCreationCount(in: source)
@@ -335,7 +335,7 @@ final class Review1040RegressionTests: XCTestCase {
     func testTheAllowlistIsNotStale() throws {
         var stale: [String] = []
         for (file, allowedCount) in Self.allowedSuiteCreations {
-            let url = try Self.testSourceFiles().first { Self.relativePath(of: $0) == file }
+            let url = try Self.testSourceFiles().first { TestSourceScanner.relativePath(of: $0) == file }
             guard let url else {
                 stale.append("\(file): the file no longer exists")
                 continue
@@ -442,20 +442,10 @@ final class Review1040RegressionTests: XCTestCase {
     /// looks for (the allowlist above spells them out); the helper is
     /// excluded because it is the one place that may call the API.
     private static func testSourceFiles() throws -> [URL] {
-        let directory = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-        let enumerator = try XCTUnwrap(FileManager.default.enumerator(
-            at: directory,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ))
-        var files: [URL] = []
-        for case let url as URL in enumerator where url.pathExtension == "swift" {
-            if url.lastPathComponent == "Review1040RegressionTests.swift" { continue }
-            if url.lastPathComponent == "TestSuiteCleanup.swift" { continue }
-            files.append(url)
-        }
-        return files.sorted { $0.path < $1.path }
+        try TestSourceScanner.testSourceFiles(excluding: [
+            "Review1040RegressionTests.swift",
+            "TestSuiteCleanup.swift"
+        ])
     }
 
     /// Every suite-creation site in `source`, one entry per OCCURRENCE.
@@ -475,7 +465,7 @@ final class Review1040RegressionTests: XCTestCase {
     ///
     /// Blanking preserves line structure, so a hit still knows its line.
     private static func suiteCreationSites(in source: String) -> [(line: Int, content: String)] {
-        let blanked = blankingCommentsAndStrings(source)
+        let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
         let nsBlanked = blanked as NSString
         let nsSource = source as NSString
         let fullRange = NSRange(location: 0, length: nsBlanked.length)
@@ -519,81 +509,6 @@ final class Review1040RegressionTests: XCTestCase {
     /// .enumerator` resolves symlinks while `appendingPathComponent` does
     /// not, so a prefix replacement silently degrades in a symlinked
     /// checkout (measured 2026-10-27, ID-REVIEW-1039).
-    private static func blankingCommentsAndStrings(_ source: String) -> String {
-        var out = ""
-        out.reserveCapacity(source.count)
-        let chars = Array(source)
-        var i = 0
-        func isNewline(_ c: Character) -> Bool { c == "\n" }
-        while i < chars.count {
-            let c = chars[i]
-            if c == "/" && i + 1 < chars.count && chars[i + 1] == "/" {
-                while i < chars.count && !isNewline(chars[i]) {
-                    out.append(" ")
-                    i += 1
-                }
-                continue
-            }
-            if c == "/" && i + 1 < chars.count && chars[i + 1] == "*" {
-                while i < chars.count {
-                    if chars[i] == "*" && i + 1 < chars.count && chars[i + 1] == "/" {
-                        out.append("  ")
-                        i += 2
-                        break
-                    }
-                    out.append(isNewline(chars[i]) ? "\n" : " ")
-                    i += 1
-                }
-                continue
-            }
-            if c == "\"" {
-                // A string literal. Swift also has raw strings;
-                // the naive scan is good enough for a test-tree guard and
-                // errs on the side of blanking.
-                out.append(" ")
-                i += 1
-                while i < chars.count {
-                    if chars[i] == "\\" && i + 1 < chars.count {
-                        out.append(" ")
-                        out.append(isNewline(chars[i + 1]) ? "\n" : " ")
-                        i += 2
-                        continue
-                    }
-                    if chars[i] == "\"" {
-                        out.append(" ")
-                        i += 1
-                        break
-                    }
-                    out.append(isNewline(chars[i]) ? "\n" : " ")
-                    i += 1
-                }
-                continue
-            }
-            out.append(c)
-            i += 1
-        }
-        return out
-    }
-
-    /// The path of `url` relative to the test directory.
-    ///
-    /// Computed by path COMPONENT, not by string prefix: `FileManager
-    /// .enumerator` resolves symlinks while `appendingPathComponent` does
-    /// not, so a prefix replacement silently degrades in a symlinked
-    /// checkout (measured 2026-10-27, ID-REVIEW-1039).
-    private static func relativePath(of url: URL) -> String {
-        let file = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents
-        let base = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .standardizedFileURL
-            .resolvingSymlinksInPath()
-            .pathComponents
-        guard file.count > base.count, Array(file.prefix(base.count)) == base else {
-            return url.lastPathComponent
-        }
-        return file.dropFirst(base.count).joined(separator: "/")
-    }
-
     /// The name of the suite `defaults` was created under, if it is known.
     private static func suiteName(of defaults: UserDefaults) -> String? {
         TestSuiteCleanup.registeredName(for: defaults)

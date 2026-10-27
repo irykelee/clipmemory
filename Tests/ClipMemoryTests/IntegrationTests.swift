@@ -797,6 +797,10 @@ import XCTest
     /// which previously rebuilt the ClipboardItem without tagIds. The moved
     /// item must retain its tags (and the decryptionFailed flag).
     func testCopyToClipboardPreservesTagIds() {
+        // ID-REVIEW-1041: this test copies to the user's REAL clipboard
+        // ("copy me"). Guard it so the user's data is restored.
+        TestPasteboardGuard.begin()
+        defer { TestPasteboardGuard.end() }
         let store = ClipboardStore(backend: MemoryStorageBackend(), defaults: testDefaults)
         let tag = Tag(name: "工作", colorHex: "#4ECDC4")
         store.addTag(tag)

@@ -1137,3 +1137,111 @@ observer 确实安装并在跑（scope 计数随用例 1/0 交替、无漂移）
   （实测样本：`Audit20260720-fontScale-*`、`AppleLangProbe-*`）⇒ 默认**保留**，要删必须显式加 `--also-suspects`。
   ⇒ **默认模式宁可漏删也不误删**；`com.*` 与 586 个真实 App 域在任何模式下都不动。
 
+## 41. ID-REVIEW-1041（2026-10-27）：测试**覆写并清空**用户的真实系统剪贴板
+
+> 本条是 ID-REVIEW-1040 的**同族第三例**，由 1040 的验收过程顺手撞出来：
+> ⑬（1039）测试往**生产域**写、⑭（1040）测试往**用户磁盘**写垃圾、⑮（1041）测试**毁用户剪贴板**。
+> 三条同族 ⇒ 「修一个，看 33 个」的纪律在**跨 ID** 层面同样成立。
+
+### 41.1 现象（实测轨迹，不是推断）
+
+在维护者机器上（**ClipMemory app 正在运行**，PID 112），一边跑测试一边以 150 ms 轮询系统剪贴板：
+
+```
++0.01s  'copy me'            ← 上一轮跑残留（IntegrationTests）
++1.54s  'clipmemory own write'   ← ClipboardMonitorSkipWindowTests
++1.89s  'external paste'         ← ClipboardMonitorSkipWindowTests
++2.24s  'clipmemory own write'   ← ClipboardMonitorSkipWindowTests
++3.16s  ''                      ← **用户的剪贴板被清空**
+```
+
+⇒ 两种危害：
+1. **测试夹具文本进入用户剪贴板**，并被**用户单独在跑的 App** 捕获进**真实历史**；
+2. 收尾的 `clearContents()` **直接销毁**用户当时复制的内容。
+
+### 41.2 因果链（对照实验闭合，不是推测）
+
+`ClipboardStore.insertOrDeduplicate` → `adoptExistingWithNewContent`（`ClipboardStore.swift:2282`）：
+
+```swift
+var adopted = existing.with(createdAt: Date(), contentHash: existing.contentHash ?? newHash)
+```
+
+⇒ 去重命中时**保留原 id、刷新 `createdAt`**（把条目顶到最前）。
+
+**对照实验**（生产域 `com.clipmemory.app.plist` 每 100 s 连拍，测试间歇停/开）：
+
+| 快照 | 时刻 | `createdAt` 变化的条目 |
+|---|---|---|
+| snap1 | 12:34:15 | —（基线） |
+| snap2 | 12:35:55 | **2**（测试正在跑） |
+| snap3 | 12:37:35 | 0（测试已停） |
+| snap4 | 12:39:15 | 0（测试已停） |
+
+⇒ **测试在跑就变、测试停就不变** ⇒ 因果闭合。
+另：两次采纳时刻相隔 **20.999786 s**，与原条目的创建间隔一致 ⇒ 同一批夹具文本被反复捕获。
+
+⚠️ 仓库其实**早就知道**这一族危险：`SettingsWindowTests.swift:136-140` 写着
+「the test bundle is injected into the real app — a live monitor in the test host captures real
+pasteboard writes (including writes from other tests) into the production UserDefaults store」。
+但那个修复只关掉了**测试宿主自己**的 monitor（XCTest 下跳过）；
+**用户另开的 App 实例**有自己的 monitor，照样看得见系统级剪贴板 ⇒ 那个洞没被堵上。
+
+### 41.3 范围（实测全量扫描）
+
+测试树里碰 `NSPasteboard.general` 的**真实**站点 **21 处 / 5 个文件**
+（另有 4 处只在注释里）：
+
+| 文件 | 真实站点 | 危害 |
+|---|---|---|
+| `CopyOcrTextOwnWriteTests` | 8 | setUp/tearDown `clearContents()` + 4× 写 OCR 文本 |
+| `ClipboardMonitorSkipWindowTests` | 5 | setUp/tearDown `clearContents()` + 3× `setString` |
+| `ClipboardStoreTests` | 4 | tearDown `clearContents()` + 3× `copyToClipboard`（图片） |
+| `ClipboardStoreRTFCacheTests` | 4 | setUp/tearDown `clearContents()` + 2× 读 |
+| `IntegrationTests` | 1（隐式） | `store.copyToClipboard(item)` ⇒ 用户剪贴板里当时正是 `"copy me"` |
+
+### 41.4 修法（**零生产代码改动**）
+
+新增 `Tests/ClipMemoryTests/TestPasteboardGuard.swift`：
+`begin()` = **快照 + 清空**；`end()` = **还原**（含「无 `begin()` 的 `end()` 是 no-op」这条安全性质）。
+5 个文件全部改走 guard ⇒ **用户剪贴板内容不再被销毁**。
+
+配套静态守卫（`Review1041RegressionTests`，8 个测试）：
+1. `NSPasteboard.general` **只能**出现在 guard 文件里（allowlist 用**每文件精确计数**）；
+2. 任何碰剪贴板的文件**必须**成对出现 `begin()` / `end()`；
+3. 控制组：正控制（多行上下文里植入的调用必须被抓到）+ 负控制（注释、字符串字面量不算）。
+
+### 41.5 ⚠️ 已知未修 / 有意保留
+
+- **测试期间夹具文本仍会短暂出现在系统剪贴板上**（monitor 读 `NSPasteboard.general`，
+  生产代码**没有** pasteboard 注入 seam）⇒ 用户另开的 App 在那个窗口内仍可能捕获到。
+  彻底堵住需要**生产代码**加 seam（`ClipboardStore.copyToClipboard` / `ClipboardMonitor.checkClipboard`
+  / `ClipboardItemRow.writeOcrTextToPasteboard` 三处）⇒ **本轮刻意不做**（生产代码改动属于另一个 ID 的爆炸半径）。
+  ⇒ 这是**已知未修的余量**，不是「已解决」。
+- **静态守卫按文件粒度**：同一文件里**新加**一个写剪贴板的测试方法而**不**配对 begin/end，
+  第 2 条规则**抓不到**（它只看文件是否出现过 `begin(`/`end(`）⇒ 已知盲区。
+- **还原是无条件的**：若用户恰好在测试窗口内复制了新内容，还原会把它换回旧内容
+  （窗口只有几秒；且**严格优于**旧行为「直接清空」）。
+
+### 41.6 本轮被自己的守卫抓出来的两个真 bug（记录在此，别重走）
+
+1. **盲化器不认多行字符串定界符**：正控制样例写在多行字符串块里，
+   旧盲化器只处理单引号字符串 ⇒ 把定界符的前两个引号吃掉后**继续把内容当代码扫**
+   ⇒ 守卫把**自己文件里的样例**判成真实调用 ⇒ S1 规则红了。
+   ⇒ **共享扫描器（`TestSourceScanner`）已补多行字符串分支**；ID-REVIEW-1040 的守卫也吃这条修复（它俩共用扫描器）。
+2. **`NSPasteboardItem` 不能跨 `clearContents()` 写回**：`end()` 还原时抛
+   `NSInvalidArgumentException: Cannot write pasteboard item … It is already associated with another pasteboard`
+   ⇒ 第一版实现把 `NSPasteboardItem` **对象**存下来再写回是错的
+   ⇒ 改为**快照「类型 + 数据」**（`Data` 副本），还原时**新建** `NSPasteboardItem`。
+   ⇒ **两个 bug 都是新写的回归测试自己抓出来的**，不是靠自查发现的。
+### 41.7 验收（实测）
+
+| 项 | 结果 |
+|---|---|
+| 全量 | **1305 tests / 6 skipped / 0 failures**（1297 + 1041 新增 8） |
+| plist 净增长（1040 修复仍然成立） | **+18**（落在 §40.5 的 0 ~ +18 区间内） |
+| **哨兵对照（本条的核心断言）** | 跑前把 `USER-CLIPBOARD-SENTINEL-1041` 放进系统剪贴板，跑完 5 个会碰剪贴板的类（**65 tests / 0 failures**）⇒ **跑后哨兵原样还在** ⇒ 用户剪贴板**不再被销毁**（修复前同一批测试的轨迹终点是 `''`） |
+| 生产域 | **28 键 → 28 键，零新增零消失** |
+| lint | exit 0，告警数与 HEAD 基线**逐条一致（10 条全属既有）**，3 个新文件**零告警** |
+| 变异 | **N1–N8 共 8 / 8 全被抓住**（含 N7 = 摘掉扫描器的多行字符串盲化分支 ⇒ 红；N8 = 拿掉某个文件的 `begin()`/`end()` 配对 ⇒ 红） |
+| 1040 的变异**重跑** | 因共享扫描器被改动，M1–M7 + E2 **8 / 8 仍全红**，E3 仍绿（已知未测项） |

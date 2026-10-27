@@ -68,14 +68,11 @@ final class ClipboardStoreTests: XCTestCase {
     }
 
     override func tearDown() {
-        // ID-CRASH-0018 (2026-09-28 code-review P2-1): clear
-        // NSPasteboard.general so the last test's image / RTF /
-        // plain-text payload doesn't linger in the user's clipboard
-        // after the suite ends. Sibling pasteboard-touching test
-        // files (ClipboardMonitorSkipWindowTests /
-        // ClipboardStoreRTFCacheTests / CopyOcrTextOwnWriteTests)
-        // already do this; this file was the gap.
-        NSPasteboard.general.clearContents()
+        // ID-REVIEW-1041 (2026-10-27): this used to CLEAR the general
+        // pasteboard here — which destroyed whatever the user had copied.
+        // The three tests below that actually write to the pasteboard now
+        // bracket themselves with TestPasteboardGuard (snapshot in, restore
+        // out), so the user's clipboard survives the run.
         // Clean up any image files we staged via ImageStorage.shared
         for filename in stagedImageFilenames {
             ImageStorage.shared.deleteImage(filename: filename)
@@ -147,6 +144,9 @@ final class ClipboardStoreTests: XCTestCase {
     /// 100 KB threshold is comfortably above the thumbnail upper bound
     /// (well below any plausible full-size pasteboard write).
     func testCopyToClipboardUsesFullSizeNotThumbnail() throws {
+        // ID-REVIEW-1041: guard the user's real clipboard around this test.
+        TestPasteboardGuard.begin()
+        defer { TestPasteboardGuard.end() }
         let uuid = UUID()
         let filename = try stageSizedImage(
             filename: "\(uuid.uuidString).png",
@@ -158,7 +158,7 @@ final class ClipboardStoreTests: XCTestCase {
         // renders before the user clicks copy).
         _ = ImageStorage.shared.loadImageObject(filename: filename)
 
-        let pasteboard = NSPasteboard.general
+        let pasteboard = TestPasteboardGuard.pasteboard
         pasteboard.clearContents()
         store.copyToClipboard(item)
 
@@ -192,6 +192,9 @@ final class ClipboardStoreTests: XCTestCase {
     /// completes after the second, the first is dropped because its token
     /// no longer matches pendingCopyToken.
     func testRapidCopyKeepsLastCopiedImage() throws {
+        // ID-REVIEW-1041: guard the user's real clipboard around this test.
+        TestPasteboardGuard.begin()
+        defer { TestPasteboardGuard.end() }
         let filenameA = try stageSizedImage(
             filename: "\(UUID().uuidString).png",
             width: 1000, height: 1000
@@ -203,7 +206,7 @@ final class ClipboardStoreTests: XCTestCase {
         let itemA = ClipboardItem(content: filenameA, type: .image)
         let itemB = ClipboardItem(content: filenameB, type: .image)
 
-        let pasteboard = NSPasteboard.general
+        let pasteboard = TestPasteboardGuard.pasteboard
         pasteboard.clearContents()
         store.copyToClipboard(itemA)
         store.copyToClipboard(itemB)
@@ -233,6 +236,9 @@ final class ClipboardStoreTests: XCTestCase {
     /// async path. Asserts the warm-path code branch is actually used
     /// when fullSizeCache is warm.
     func testCopyToClipboardWarmPathIsSynchronous() throws {
+        // ID-REVIEW-1041: guard the user's real clipboard around this test.
+        TestPasteboardGuard.begin()
+        defer { TestPasteboardGuard.end() }
         let filename = try stageSizedImage(
             filename: "\(UUID().uuidString).png",
             width: 800, height: 600
@@ -247,7 +253,7 @@ final class ClipboardStoreTests: XCTestCase {
         XCTAssertNotNil(ImageStorage.shared.cachedFullSizeImageObject(filename: filename),
                         "Test fixture: fullSizeCache must be warm before copyToClipboard")
 
-        let pasteboard = NSPasteboard.general
+        let pasteboard = TestPasteboardGuard.pasteboard
         pasteboard.clearContents()
         let item = ClipboardItem(content: filename, type: .image)
         store.copyToClipboard(item)

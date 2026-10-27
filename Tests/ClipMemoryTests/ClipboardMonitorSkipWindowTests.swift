@@ -30,11 +30,13 @@ final class ClipboardMonitorSkipWindowTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        NSPasteboard.general.clearContents()
+        // ID-REVIEW-1041: snapshot + clear the user's real clipboard; the
+        // tearDown restores whatever they had.
+        TestPasteboardGuard.begin()
     }
 
     override func tearDown() {
-        NSPasteboard.general.clearContents()
+        TestPasteboardGuard.end()
         super.tearDown()
     }
 
@@ -48,7 +50,7 @@ final class ClipboardMonitorSkipWindowTests: XCTestCase {
     /// EXTERNAL write inside the same skip window. The external change must
     /// be captured, not swallowed.
     func testExternalChangeDuringSkipWindowIsCaptured() {
-        let pasteboard = NSPasteboard.general
+        let pasteboard = TestPasteboardGuard.pasteboard
         let monitor = ClipboardMonitor()
         let delegate = SkipWindowStubDelegate()
         monitor.delegate = delegate
@@ -76,7 +78,7 @@ final class ClipboardMonitorSkipWindowTests: XCTestCase {
     /// Control: a change whose payload matches our own write must still be
     /// skipped — the anti-recapture loop stays intact.
     func testOwnWriteMatchingFingerprintIsStillSkipped() {
-        let pasteboard = NSPasteboard.general
+        let pasteboard = TestPasteboardGuard.pasteboard
         let monitor = ClipboardMonitor()
         let delegate = SkipWindowStubDelegate()
         monitor.delegate = delegate
@@ -101,7 +103,7 @@ final class ClipboardMonitorSkipWindowTests: XCTestCase {
     /// yet (main queue busy): the tick must keep the flag and capture nothing
     /// — deciding without the fingerprint would reintroduce the blind skip.
     func testFingerprintPendingKeepsFlagAndCapturesNothing() {
-        let pasteboard = NSPasteboard.general
+        let pasteboard = TestPasteboardGuard.pasteboard
         let monitor = ClipboardMonitor()
         let delegate = SkipWindowStubDelegate()
         monitor.delegate = delegate

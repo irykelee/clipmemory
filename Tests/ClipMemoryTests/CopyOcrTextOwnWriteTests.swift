@@ -14,11 +14,13 @@ import AppKit
 
     override func setUp() {
         super.setUp()
-        NSPasteboard.general.clearContents()
+        // ID-REVIEW-1041: snapshot + clear the user's real clipboard; the
+        // tearDown restores whatever they had.
+        TestPasteboardGuard.begin()
     }
 
     override func tearDown() {
-        NSPasteboard.general.clearContents()
+        TestPasteboardGuard.end()
         super.tearDown()
     }
 
@@ -32,7 +34,7 @@ import AppKit
 
         XCTAssertTrue(monitor.skipNextCapture,
                       "OCR copy must call recordOwnWrite() before writing the pasteboard (CLIP-2)")
-        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "识别出的文字",
+        XCTAssertEqual(TestPasteboardGuard.pasteboard.string(forType: .string), "识别出的文字",
                        "OCR text must still land on the pasteboard")
     }
 
@@ -43,7 +45,7 @@ import AppKit
 
         ClipboardItemRow.writeOcrTextToPasteboard("ocr result", store: store)
 
-        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "ocr result")
+        XCTAssertEqual(TestPasteboardGuard.pasteboard.string(forType: .string), "ocr result")
     }
 
     /// No monitor wired (onRecordOwnWrite == nil): must not crash and must
@@ -54,7 +56,7 @@ import AppKit
 
         ClipboardItemRow.writeOcrTextToPasteboard("no monitor text", store: store)
 
-        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "no monitor text")
+        XCTAssertEqual(TestPasteboardGuard.pasteboard.string(forType: .string), "no monitor text")
     }
 
     /// ID-SECURITY-0003 (2026-07-31 audit): OCR plaintext of a SENSITIVE item
@@ -66,9 +68,9 @@ import AppKit
 
         ClipboardItemRow.writeOcrTextToPasteboard("sensitive ocr text", store: store, isSensitive: true)
 
-        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "sensitive ocr text")
+        XCTAssertEqual(TestPasteboardGuard.pasteboard.string(forType: .string), "sensitive ocr text")
         XCTAssertNotNil(
-            NSPasteboard.general.data(forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")),
+            TestPasteboardGuard.pasteboard.data(forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")),
             "sensitive OCR copy must stamp org.nspasteboard.ConcealedType (ID-SECURITY-0003)")
     }
 
@@ -81,7 +83,7 @@ import AppKit
         ClipboardItemRow.writeOcrTextToPasteboard("plain ocr text", store: store)
 
         XCTAssertNil(
-            NSPasteboard.general.data(forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")),
+            TestPasteboardGuard.pasteboard.data(forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")),
             "non-sensitive OCR copy must not carry the concealed marker")
     }
 }

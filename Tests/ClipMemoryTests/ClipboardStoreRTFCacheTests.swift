@@ -27,11 +27,13 @@ import AppKit
         originalCrypto = ServiceContainer.crypto
         ServiceContainer.setCryptoForTesting(localCrypto)
         store = ClipboardStore(backend: MemoryStorageBackend())
-        NSPasteboard.general.clearContents()
+        // ID-REVIEW-1041: snapshot + clear the user's real clipboard; the
+        // tearDown restores whatever they had.
+        TestPasteboardGuard.begin()
     }
 
     override func tearDown() {
-        NSPasteboard.general.clearContents()
+        TestPasteboardGuard.end()
         if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         try? FileManager.default.removeItem(at: tempRoot)
@@ -80,7 +82,7 @@ import AppKit
         // Copy to clipboard
         store.copyToClipboard(item)
         // Verify pasteboard has the cached plaintext, not the parsed RTF one
-        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "cached-plain-from-bridge",
+        XCTAssertEqual(TestPasteboardGuard.pasteboard.string(forType: .string), "cached-plain-from-bridge",
                        "copyToClipboard RTF branch must use getRTFPlaintext (cache-aware)")
     }
 
@@ -89,7 +91,7 @@ import AppKit
         let item = try makeRichTextItem(rtfBase64: validRTFBase64, crypto: localCrypto)
         // Do NOT pre-populate cache
         store.copyToClipboard(item)
-        let result = NSPasteboard.general.string(forType: .string) ?? ""
+        let result = TestPasteboardGuard.pasteboard.string(forType: .string) ?? ""
         // Either parsed "Hello" or fallback — both are valid miss paths
         XCTAssertTrue(result.contains("Hello") || result.contains("Rich Text"),
                       "miss path must either parse to plaintext or fall back to L10n.itemRichText; got: \(result)")
