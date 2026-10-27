@@ -1550,5 +1550,6 @@ ID-REVIEW-1042 的独立核验（verifier 子 agent，**非自查**）给出
 | app 树 `NSPasteboard.general` 硬编码 | **4 处 → 0 处**（全部改走 seam；`AppPasteboard.swift` 里的 2 处是 seam 本身） |
 | 测试树 `NSPasteboard.general` 出现次数 | **3 → 0** |
 | 用户剪贴板 | 变异跑完仍是**跑前状态** ⇒ 变异 harness 的快照/还原**被这轮变异本身证明有效** |
+| **哨兵对照（本条的核心断言）** | 跑前把 `USER-CLIPBOARD-SENTINEL-1042` 放进系统剪贴板，跑完全量 **1326 tests / 0 failures** ⇒ **跑后哨兵原样还在** ⇒ 测试进程**完全不碰**用户的剪贴板（核验员独立复现过同一条：66 次心跳、**0** 次 change 事件、`.general` 的 changeCount 恒为 64） |
 | 连带 | `docs/SWIFT6_MIGRATION.md` §8 名册 **19 → 20**（仓库自己的漂移守卫在同一个 commit 要求刷新；补二时行号 **76 → 81**，又被它抓了一次） |
 
