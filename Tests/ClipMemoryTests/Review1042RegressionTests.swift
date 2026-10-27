@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import Combine
 @testable import ClipMemory
 
 /// ID-REVIEW-1042 (2026-10-27): the test tree wrote to the user's REAL
@@ -125,10 +126,115 @@ final class Review1042RegressionTests: XCTestCase {
         )
     }
 
+    // MARK: - The resolution itself (the pure function the seam delegates to)
+
+    /// The PRODUCTION branch must resolve to the system-wide general board.
+    ///
+    /// This is the property that could not be observed at all before the
+    /// resolution was extracted into a pure function: a test process is
+    /// always a test process, so the live `shared` never takes the
+    /// production branch here.
+    ///
+    /// ⚠️ It used to be checked STATICALLY (the source must contain
+    /// `return NSPasteboard.general` exactly once) — and that check could
+    /// pass **vacuously**: an earlier `return` inside `shared` could shadow
+    /// it while the substring count stayed at 1 (the independent verifier's
+    /// mutation MX2b left all 13 guards green).
+    func testTheProductionBranchResolvesToTheSystemGeneralPasteboard() {
+        let resolved = AppPasteboard.resolve(override: nil, testBoard: nil)
+        XCTAssertTrue(
+            AppPasteboard.isSystemGeneralPasteboard(resolved),
+            "with no override and no test board the seam must resolve to the "
+            + "system-wide general pasteboard — that IS the production behaviour"
+        )
+    }
+
+    /// With a test board present, the seam must resolve to THAT board.
+    func testTheTestBoardWinsOverTheSystemGeneralPasteboard() {
+        let privateBoard = NSPasteboard.withUniqueName()
+        let resolved = AppPasteboard.resolve(override: nil, testBoard: privateBoard)
+        XCTAssertTrue(resolved === privateBoard, "the test board must win over the general board")
+        XCTAssertFalse(
+            AppPasteboard.isSystemGeneralPasteboard(resolved),
+            "the resolved board must not be the user's clipboard"
+        )
+    }
+
+    /// An explicit override must beat the test board.
+    func testTheOverrideWinsOverTheTestBoard() {
+        let privateBoard = NSPasteboard.withUniqueName()
+        let overrideBoard = NSPasteboard.withUniqueName()
+        let resolved = AppPasteboard.resolve(override: overrideBoard, testBoard: privateBoard)
+        XCTAssertTrue(resolved === overrideBoard, "an explicit override must win over the test board")
+    }
+
+    /// The live `shared` must go through that resolution: an override set
+    /// through `setShared` must be what `shared` hands out.
+    func testTheLiveSeamHonoursTheOverride() {
+        let overrideBoard = NSPasteboard.withUniqueName()
+        AppPasteboard.setShared(overrideBoard)
+        defer { AppPasteboard.setShared(nil) }
+
+        XCTAssertTrue(
+            AppPasteboard.shared === overrideBoard,
+            "`shared` must resolve through the seam's own resolution, not around it"
+        )
+        XCTAssertFalse(
+            AppPasteboard.isSystemGeneral,
+            "with an override in place the app must not be on the user's clipboard"
+        )
+    }
+
+    // MARK: - Behaviour: the monitor polls the SEAM's board
+
+    /// The clipboard monitor must poll the seam's board.
+    ///
+    /// The static rule forbids naming the general pasteboard anywhere in the
+    /// app tree, but the monitor's READ path deserves its own behavioural
+    /// proof: whatever the monitor polls IS the board the rest of the app
+    /// writes to. (The independent verifier found that the by-NAME route to
+    /// the general board used in `ClipboardMonitor` left every guard green
+    /// before the static token list learned about it.)
+    func testTheMonitorPollsTheSeamBoard() {
+        let board = NSPasteboard.withUniqueName()
+        AppPasteboard.setShared(board)
+        defer { AppPasteboard.setShared(nil) }
+
+        let delegate = MonitorStubDelegate()
+        let monitor = ClipboardMonitor()
+        monitor.delegate = delegate
+
+        board.clearContents()
+        board.setString("monitor seam probe 42", forType: .string)
+        monitor.checkClipboard()
+        // The capture is handed to the delegate on the main queue.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+
+        XCTAssertEqual(
+            delegate.captured.map(\.content), ["monitor seam probe 42"],
+            "the monitor must poll the seam's board — a monitor on the user's "
+            + "clipboard would read the user's real clipboard during every test"
+        )
+    }
+
+    /// A minimal `ClipboardMonitorDelegate` that only records what it is
+    /// handed.
+    private final class MonitorStubDelegate: ClipboardMonitorDelegate {
+        var captured: [ClipboardItem] = []
+        func sensitiveClearHoursForMonitor() -> Int { 0 }
+        func captureRichTextSettingForMonitor() -> Bool { true }
+        var captureRichTextPublisher: AnyPublisher<Bool, Never> {
+            Empty().eraseToAnyPublisher()
+        }
+        func monitorDidCaptureItem(_ item: ClipboardItem) { captured.append(item) }
+        func ocrEnabledForMonitor() -> Bool { false }
+        func monitorDidRecognizeText(_ text: String, forImageItemId id: UUID, contentHash: String?) {}
+    }
+
     // MARK: - Static guard: only the seam may name the general pasteboard
 
-    /// Tokens that reach the SYSTEM-WIDE general pasteboard — or the spelling
-    /// that traps.
+    /// Tokens that reach the SYSTEM-WIDE general pasteboard — or the spellings
+    /// that must never appear in production code.
     ///
     /// ⚠️ `NSPasteboard()` is **NOT** a deprecated spelling of
     /// `NSPasteboard.general` (an earlier version of this note claimed that
@@ -146,9 +252,19 @@ final class Review1042RegressionTests: XCTestCase {
     /// ⇒ It is watched here for a STRONGER reason than the clipboard: a
     /// production path using it would **crash the app**, not merely reach
     /// the user's clipboard.
+    ///
+    /// ⚠️ `NSPasteboard(name:` is the **by-name route to the SAME board**:
+    /// measured 2026-10-27, `NSPasteboard(name: NSPasteboard.Name("Apple
+    /// CFPasteboard general"))` `===` `NSPasteboard.general` → **true**, and
+    /// writing to it lands on the user's clipboard. The NAME is a string
+    /// literal ⇒ blanking hides it ⇒ the token watches the CALL SHAPE, not
+    /// the name. (The independent verifier's mutation MX7 used exactly this
+    /// spelling in `ClipboardMonitor` and left every guard green before this
+    /// token existed.)
     private static let generalPasteboardTokens = [
         "NSPasteboard.general",
-        "NSPasteboard()"
+        "NSPasteboard()",
+        "NSPasteboard(name:"
     ]
 
     /// How many times each APP file may name the general pasteboard.
@@ -293,10 +409,16 @@ final class Review1042RegressionTests: XCTestCase {
         let source = try String(contentsOf: url, encoding: .utf8)
         let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
         XCTAssertEqual(
-            TestSourceScanner.occurrenceCount(of: "shared === NSPasteboard.general", in: blanked), 1,
+            TestSourceScanner.occurrenceCount(of: "=== NSPasteboard.general", in: blanked), 1,
             "the seam's general-pasteboard probe must compare the resolved board by "
             + "identity with NSPasteboard.general — a hard-coded answer would make "
             + "the behavioural guard vacuous"
+        )
+        XCTAssertEqual(
+            TestSourceScanner.occurrenceCount(of: "resolve(", in: blanked), 2,
+            "the seam's live resolution must go through the pure `resolve(…)` "
+            + "function — exactly one definition and exactly one call site, so "
+            + "the production branch cannot be shadowed by an earlier return"
         )
     }
 
@@ -353,6 +475,31 @@ final class Review1042RegressionTests: XCTestCase {
         XCTAssertEqual(
             Self.generalPasteboardUses(in: planted), 1,
             "the class-cluster NSPasteboard() spelling must be caught too — it traps at runtime"
+        )
+    }
+
+    /// POSITIVE control for the BY-NAME route.
+    ///
+    /// `NSPasteboard(name: NSPasteboard.Name("Apple CFPasteboard general"))`
+    /// is the **same object** as `NSPasteboard.general` (measured 2026-10-27:
+    /// `byName === general` → true, and writing to it lands on the user's
+    /// clipboard). The NAME is a string literal ⇒ blanking hides it ⇒ the
+    /// guard watches the CALL SHAPE instead.
+    ///
+    /// Without this control, dropping the `NSPasteboard(name:` token from
+    /// the list would go unnoticed — the independent verifier's mutation
+    /// MX7 did exactly that and every guard stayed green.
+    func testTheScannerAlsoCatchesTheByNameRoute() {
+        let planted = """
+        func demo() {
+            let board = NSPasteboard(name: NSPasteboard.Name("Apple CFPasteboard general"))
+            board.clearContents()
+        }
+        """
+        XCTAssertEqual(
+            Self.generalPasteboardUses(in: planted), 1,
+            "the by-name route to the general pasteboard must be caught — it is "
+            + "the SAME OBJECT as NSPasteboard.general"
         )
     }
 }

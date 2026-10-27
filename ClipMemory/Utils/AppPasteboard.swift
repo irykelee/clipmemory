@@ -63,10 +63,15 @@ enum AppPasteboard {
     ///
     /// The read points are NOT all on the main actor: `ClipboardMonitor`
     /// polls from its own timer queue (`com.clipmemory.clipboardmonitor`),
-    /// and the cold-image copy completion in `ClipboardStore` runs off the
-    /// main queue too. A bare `static var` would be a data race — the same
-    /// shape that aborted the test host in CI run 40186263416 (see
-    /// `AppStorageDefaults` for the same reasoning on the storage seam).
+    /// so the seam is read off the main thread every 0.5 s tick. A bare
+    /// `static var` would be a data race — the same shape that aborted the
+    /// test host in CI run 40186263416 (see `AppStorageDefaults` for the
+    /// same reasoning on the storage seam).
+    ///
+    /// ⚠️ The cold-image copy completion in `ClipboardStore` is **not** an
+    /// off-main read point: `ImageStorage.loadFullSizeImageAsync` hands its
+    /// completion back via `DispatchQueue.main.async` (measured 2026-10-27),
+    /// so that path reads the seam on the main thread.
     ///
     /// The lock is NOT held while the caller uses the returned
     /// `NSPasteboard` — `NSPasteboard` is internally thread-safe.
@@ -89,8 +94,34 @@ enum AppPasteboard {
     static var shared: NSPasteboard {
         lock.lock()
         defer { lock.unlock() }
-        if let override = overrideBoard { return override }
-        if let testBoard = xcTestPasteboard { return testBoard }
+        return resolve(
+            override: overrideBoard,
+            testBoard: xcTestPasteboard
+        )
+    }
+
+    /// Resolves the board from its inputs.
+    ///
+    /// PURE, and `internal` on purpose: it is the only way to observe the
+    /// PRODUCTION branch from inside a test process — a test process is
+    /// always a test process, so the live `shared` can never take the
+    /// production branch here.
+    ///
+    /// ⚠️ Why this exists (ID-REVIEW-1042's independent verifier, measured):
+    /// the first version of the guard checked the production branch
+    /// STATICALLY (the blanked source must contain `return NSPasteboard.general`
+    /// exactly once) — and that check could pass **vacuously**: an earlier
+    /// `return` inside `shared` could shadow the general board while the
+    /// substring count stayed at 1 (the verifier's mutation MX2b left all
+    /// 13 guards green). With the resolution extracted into a pure function,
+    /// the same property is checkable **behaviourally**: call `resolve` with
+    /// no test board and ask whether the answer is the system-wide board.
+    ///
+    /// The precedence is fixed and load-bearing: an explicit override beats
+    /// the test board, and the test board beats the system-wide board.
+    static func resolve(override: NSPasteboard?, testBoard: NSPasteboard?) -> NSPasteboard {
+        if let override { return override }
+        if let testBoard { return testBoard }
         return NSPasteboard.general
     }
 
@@ -102,6 +133,20 @@ enum AppPasteboard {
         lock.lock()
         defer { lock.unlock() }
         overrideBoard = board
+    }
+
+    /// True when `board` is the SYSTEM-WIDE general pasteboard — i.e. the
+    /// user's real clipboard.
+    ///
+    /// ⚠️ `NSPasteboard.general` is reachable by NAME too, and the name
+    /// resolves to the SAME object (measured 2026-10-27:
+    /// `NSPasteboard(name: NSPasteboard.Name("Apple CFPasteboard general"))`
+    /// === `NSPasteboard.general` → `true`; writing to it writes to the
+    /// user's clipboard). That spelling is why this lives here and not in
+    /// the test tree: the test tree must never name the general pasteboard
+    /// at all (`Review1041RegressionTests` forbids it).
+    static func isSystemGeneralPasteboard(_ board: NSPasteboard) -> Bool {
+        board === NSPasteboard.general
     }
 
     /// True when the app is bound to the SYSTEM-WIDE general pasteboard —
@@ -117,6 +162,6 @@ enum AppPasteboard {
     /// question through the seam keeps that name in exactly one place in
     /// the whole repository.
     static var isSystemGeneral: Bool {
-        shared === NSPasteboard.general
+        isSystemGeneralPasteboard(shared)
     }
 }
