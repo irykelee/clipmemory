@@ -273,7 +273,16 @@ class CryptoService: CryptoServiceProtocol {
     /// migration is skipped (test-never-touch-prod-data) and key reads stay
     /// on the legacy file — the test runner is a different binary, so
     /// querying the production Keychain item could trigger an ACL prompt.
-    private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    /// ID-REVIEW-1043: use the SAME 3-signal probe as
+    /// `TestIsolation.isRunningTests` (ID-CRASH-0031, 2026-10-20) instead of
+    /// the single env-var signal.
+    ///
+    /// The 1-signal version was a latent hole: if `XCTestConfigurationFilePath`
+    /// were ever missing in the app-hosted test process, `init` would take
+    /// the PRODUCTION branch ⇒ `prepareKey()` ⇒ the test process would
+    /// **write** the user's production keychain item. The 3-signal probe is
+    /// the repo's established answer to exactly that failure mode.
+    private static let isRunningTests = TestIsolation.isRunningTests
 
     private init() {
         customKey = nil
@@ -469,6 +478,32 @@ class CryptoService: CryptoServiceProtocol {
         return negativeCache.count
     }
 
+    /// ID-REVIEW-1043: should this key store be **refused**?
+    ///
+    /// The production Keychain is a USER-GLOBAL resource: the item
+    /// `com.clipmemory.app` / `root-encryption-key` holds the user's REAL
+    /// root encryption key.
+    ///
+    /// - **Production** ⇒ never refuse. The Keychain IS the canonical
+    ///   root-key store; refusing it would break the real app.
+    /// - **XCTest** ⇒ refuse **only the production identity**. Injected
+    ///   fakes and test-scoped services keep exercising the real branches —
+    ///   the migration tests depend on them.
+    ///
+    /// Extracted as a **pure function** so BOTH sides are testable: the
+    /// "XCTest ⇒ refuse" half AND the "production ⇒ never refuse" half.
+    /// (ID-REVIEW-1042's lesson: a static text check can be vacuous; a
+    /// decision function can be called directly with both inputs.)
+    static func shouldRefuseKeychainStore(
+        isRunningTests: Bool,
+        keyStore: KeyStoring
+    ) -> Bool {
+        guard isRunningTests else { return false }
+        // 按**身份**判定，不按**类型**判定：任何 conformer 只要报出生产
+        // service 就该被拒（包装生产 store 的装饰器也算）。
+        return keyStore.keychainService == KeychainKeyStore.defaultService
+    }
+
     /// Prepares the app key: Keychain first, then one-time migration of the
     /// pre-C1 key file, then fresh generation into the Keychain (C1).
     /// A corrupt key file is never silently overwritten (H6): the failure
@@ -483,6 +518,22 @@ class CryptoService: CryptoServiceProtocol {
         keyStore: KeyStoring = KeychainKeyStore(),
         failureHandler: (CryptoKeyFailure) -> KeyFailureAction = CryptoService.keyFailureHandler
     ) -> SymmetricKey? {
+        // ID-REVIEW-1043: the production Keychain is a USER-GLOBAL resource.
+        // Under XCTest the root key comes from the file
+        // (`prepareLegacyFileKeyForTests`), so the production item must never
+        // be queried from the test process: it would read the user's REAL root
+        // key and wipe the test key file (`secureRemoveKeyFile` deletes the
+        // `Keys-Tests` file on the `.published` branch).
+        //
+        // Measured (2026-10-27): `AppDelegate.setupKeychainUnlockObserver()`
+        // is registered in the test host too, and its wake / unlock retry
+        // called `retryPrepareKeyIfLocked()` → `prepareKey()` with the
+        // default PRODUCTION store ⇒ the test process queried the user's
+        // keychain item (read-only: item mtime + key bytes unchanged).
+        if Self.shouldRefuseKeychainStore(isRunningTests: Self.isRunningTests, keyStore: keyStore) {
+            logger.error("prepareKey: refusing the production Keychain under XCTest")
+            return nil
+        }
         // 1. Keychain is the canonical store. C-2 (2026-07-24 audit):
         // distinguish locked Keychain from "not found" — collapsing every
         // non-success status to nil + falling through to generateAndStoreKey

@@ -1553,3 +1553,205 @@ ID-REVIEW-1042 的独立核验（verifier 子 agent，**非自查**）给出
 | **哨兵对照（本条的核心断言）** | 跑前把 `USER-CLIPBOARD-SENTINEL-1042` 放进系统剪贴板，跑完全量 **1326 tests / 0 failures** ⇒ **跑后哨兵原样还在** ⇒ 测试进程**完全不碰**用户的剪贴板（核验员独立复现过同一条：66 次心跳、**0** 次 change 事件、`.general` 的 changeCount 恒为 64） |
 | 连带 | `docs/SWIFT6_MIGRATION.md` §8 名册 **19 → 20**（仓库自己的漂移守卫在同一个 commit 要求刷新；补二时行号 **76 → 81**，又被它抓了一次） |
 
+---
+
+## 43. ID-REVIEW-1043（2026-10-27）：测试进程读**用户的生产钥匙串** ⇒ 同族第 5 例
+
+### 43.1 家族位置：⑯ 关的是**剪贴板**，本条是**钥匙串**
+
+⑬（ID-REVIEW-1039）测试往**生产域**写 → ⑭（ID-REVIEW-1040）测试往**用户磁盘**写 20 万 plist
+→ ⑮（ID-REVIEW-1041）测试**毁**用户剪贴板 → ⑯（ID-REVIEW-1042）测试把**夹具文本写进**用户剪贴板
+→ **⑰（本条）测试读用户的生产根密钥**。
+
+⑯ 收口的是**剪贴板**这一类用户全局资源；**钥匙串**是另一类，
+**这一族此前从未扫过它** ⇒ 这就是「修一个，看 33 个」的产出。
+
+### 43.2 根因（实测全量扫 app 树）：6 个访问点，**3 个没有闸门**
+
+生产钥匙串（`com.clipmemory.app` / `root-encryption-key` = 用户真实根加密密钥）共有 **6** 个访问点：
+
+| # | 位置 | XCTest 闸门 |
+|---|---|---|
+| 1 | `CryptoService.loadKeyData()` | ✅ `!isRunningTests` |
+| 2 | `CryptoService` 的 regenerate 路径 | ✅ `!Self.isRunningTests` |
+| 3 | `CryptoService.prepareKey(...)` 的**默认参数** `keyStore: KeyStoring = KeychainKeyStore()` | ❌ **无** |
+| 4 | `CryptoService.retryPrepareKeyIfLocked(...)` 的**默认参数** | ❌ **无** |
+| 5 | `StartupHealth.snapshot(...)` 的**默认参数** | ⚠️ 当前不可达（唯一调用点 `AppDelegate:227` 已被 `!TestIsolation.isRunningTests` 挡住，其余是注入 Fake 的测试） |
+| 6 | `StartupHealth.logSnapshot(...)` 的**默认参数** | ⚠️ 同上 |
+
+⚠️ **最讽刺的一条**：`CryptoService.swift` 从 2026-07-25 起就写着注释
+「**Tests never touch the real Keychain**: prepareKey's migration is skipped
+(test-never-touch-prod-data) and key reads stay on the legacy file」
+—— **这句话当时是假的**（注释不是强制）。
+**`init` 有闸门 ≠ 全部路径有闸门**；**默认参数常常就是生产身份**。
+
+### 43.3 可达路径（实测，不是推断）
+
+`AppDelegate.setupKeychainUnlockObserver()` 位于 `guard !TestIsolation.isRunningTests else { return }`
+那一行**之前** ⇒ **测试宿主里也会注册**唤醒 / 会话变活跃 observer
+（源码里那段注释还写着「Observer setup above is read-only or test-inert and stays unguarded」
+—— **不成立**：`retry()` 回调走的是生产 `KeychainKeyStore()`）。
+
+链路：
+`sessionDidBecomeActiveNotification` / `didWakeNotification`
+→ `retry()` → `CryptoService.retryPrepareKeyIfLocked()`（默认 = 生产 store）
+→ `prepareKey()` → `attemptKeychainLoad` → 生产项存在且 32 字节 ⇒ `.published`
+→ **`secureRemoveKeyFile(at: keyURL)`**（把 XCTest 的 `Keys-Tests/.encryption_key` 删掉）
+→ 把**用户的真实根密钥**发布进共享缓存。
+
+### 43.4 实测证据（哨兵判据，可证伪）
+
+判据：写一个 32 字节**哨兵**到 XCTest 的 key 文件
+（`CryptoService.keyFileURL` = `~/Library/Application Support/ClipMemory/Keys-Tests/.encryption_key`）
+→ 清掉 `CryptoService.shared` 的内存 key（否则幂等检查会直接返回，路径走不到）
+→ 触发路径 → **哨兵还在不在** = 「生产钥匙串有没有被查」。
+
+修之前的实测（探针，2 条全红）：
+
+| 触发方式 | 结果 |
+|---|---|
+| 直接调 `CryptoService.retryPrepareKeyIfLocked()` | `returned=true`、**哨兵被删** ⇒ 生产路径被进入 |
+| 发 `NSWorkspace.sessionDidBecomeActiveNotification` + 转主 run loop | **哨兵被删** ⇒ 通知路径被进入 |
+
+⚠️ **本机实测的伤害等级（不要夸大）**：生产项的 `cdat` / `mdat` 与密钥字节 sha256
+**全程未变**（`mdat` 停在 2026-07-19）⇒ 当前这台机器上是**只读**，不是写。
+但**在没有**生产项的机器上，同一条路径会走 `generateAndStoreKey`
+⇒ **创建**生产项（写）⇒ 那才是灾难性的。
+
+⚠️⚠️ **补测出来的、比「静默读」更严重的伤害：钥匙串 ACL 授权弹窗**（2026-10-27 晚）
+
+修完之后的**变异 M1**（把 `prepareKey` 的闸门拆掉 = 回到修前行为）第一次跑就暴露了它：
+
+* 测试宿主 **卡在 `SecItemCopyMatching` → `SecKeychainItemCopyContent`** 里
+  （`sample` 抓的调用栈），旁边多出一个 `SecurityAgent` 进程
+  ⇒ macOS 弹了**钥匙串访问授权框**（生产项是**正规签名**的 ClipMemory 建的，
+  而测试宿主是 `CODE_SIGN_IDENTITY=-` 的 **ad-hoc** 签名 ⇒ 身份不同 ⇒ 触发 ACL 询问）；
+* 那一条测试**耗时 97.5 秒**（等授权框超时/落空），随后读**还是成功**了
+  ⇒ 哨兵被删 ⇒ ① ② 两条**如期变红**（`12 tests, 2 failures`）；
+* ⚠️ `loadStatus()` 里那个 `kSecUseAuthenticationUI = kSecUseAuthenticationUIFail`
+  **拦不住 ACL 弹窗**（它拦的是「用户认证 UI」，不是「钥匙串项 ACL 询问」）；
+* ⚠️ 那个 `SecurityAgent` **留在后台不退出** ⇒ 它会**阻塞后续所有钥匙串操作**
+  ⇒ 下一轮变异直接挂死（本轮实测挂了两轮才发现）。
+
+⇒ **结论（要写清楚，别只说「读了用户的密钥」）**：修前行为不只是「读」，
+它会在**用户屏幕上弹一个钥匙串授权模态框**并让测试宿主**阻塞约 97 秒**。
+⇒ 这也是本轮变异 harness 必须自带 `kill SecurityAgent` 的原因。
+
+### 43.5 修法（两处，缺一不可）
+
+**(a) `CryptoService.prepareKey` 加收敛点判定**（不是逐个调用点加）：
+
+```swift
+static func shouldRefuseKeychainStore(isRunningTests: Bool, keyStore: KeyStoring) -> Bool {
+    guard isRunningTests else { return false }
+    guard let real = keyStore as? KeychainKeyStore else { return false }
+    return real.service == KeychainKeyStore.defaultService
+}
+```
+
+三条设计要点：
+1. **收敛点**：`prepareKey` 是所有生产路径的漏斗 ⇒ 判定挂在这里，**任何**调用方都被覆盖
+   （照 ⑯ 的「全局 seam，别逐点注入」教训）。
+2. **按身份判定，不按类型判定**：判 `service == defaultService`。
+   若按类型（`keyStore is KeychainKeyStore`）就会**连注入的 mock 和测试专用 service 一起拒掉**
+   ⇒ 迁移分支的测试全挂。
+3. **纯函数化**：判定抽成纯函数 ⇒ 「生产 ⇒ 绝不拒」那半边**也可测**。
+   否则「把 `isRunningTests` 条件去掉」这条变异**在测试里测不出来**，
+   而它会让**真机上的 app 永远拿不到根密钥**（历史全部解不开）。
+   ⇒ 这正是 ⑯ 的教训（「静态守卫可以空转 ⇒ 把不变量下沉成纯函数」）在新场景的复现。
+
+**(b) `AppDelegate.setupKeychainUnlockObserver()` 在测试宿主里根本不注册** ——
+它带着 `prewarmIfNeeded` 的副作用，本来也不该在测试里跑。
+
+### 43.7 ⚠️ 已知未覆盖 / 有意保留
+
+1. **`StartupHealth` 的默认 store 是「潜在」缺口**：当前不可达（§43.2 #5/#6），
+   但只要有人加一个**没被 `!TestIsolation.isRunningTests` 挡住**的调用点，就会复活。
+   ⇒ 记在此处，**别当它已被覆盖**。
+2. **`prepareKey` 的拒绝路径只 `logger.error` + `return nil`**，不 post `.encryptionFailed`。
+   理由：该路径**只在 XCTest 下可达**（生产 `isRunningTests == false`）⇒ 不构成
+   AGENTS.md 三环节标准适用的「生产错误路径」。
+3. **判定只看 `service` 不看 `account`**：生产项的 account 是 `root-encryption-key`，
+   但若将来出现「同 service、不同 account」的**另一个生产项**，它也会被拒（偏保守，可接受）。
+4. **`Mirror` 反射 observer token 的守卫依赖 `NSApp.delegate` 是 `AppDelegate` 实例**
+   —— 在 TEST_HOST 宿主里成立（实测通过），但它读的是**实现细节的属性名**；
+   若将来重命名属性，守卫会**红**（不是空绿）⇒ 可接受。
+5. **钥匙串里的 `com.clipmemory.clipboard.key`** 是 v1.2.x 遗留的**死项**
+   （`e8248b8` 已移除引用，当前代码零引用）⇒ 本轮**不删**（不可逆外部动作，且它不含用户数据风险）。
+
+### 43.8 「看 33 个」再扫（**测量的负结果**，不是「没看」）
+
+除钥匙串外，把 app 树里其余**系统级共享资源**逐个过了一遍：
+
+| 资源 | 结论 |
+|---|---|
+| `StartupHealth` 默认钥匙串 store | **当前不可达**（见 §43.2） |
+| `BackupService` | 所有测试站点都**注入**了隔离目录 + 隔离 defaults；`shared` 在 XCTest 下走隔离实例 |
+| `ImageStorage` | XCTest 下重定向到 `Images-Tests`（ID-REVIEW-1009 已做） |
+| 根 key 文件 | XCTest 下重定向到 `ClipMemory/Keys-Tests`（ID-REVIEW-1009 已做） |
+| `NSWorkspace.shared.open` / `frontmostApplication` | 只读或用户动作触发，测试不达 |
+| 分布式通知 / AppleScript / CGEvent | 0 处 |
+| 外部进程（`Process()`） | 全部写 `temporaryDirectory` |
+| 网络（`URLSession`） | `UpdateService` 已有 hermetic 隔离 |
+
+⇒ **没有第 6 例**。
+
+### 43.6 变异验证：**7 条类级 + 1 条全量，8 条全红**
+
+harness：`/tmp/cm-1043-mutate.py`（回滚**逐字还原** + 每轮 **sha256 漂移检查** +
+自带**剪贴板快照/还原**）。⚠️ 它还必须自带 **kill `SecurityAgent`** ——
+见 §43.4 的 ACL 弹窗：残留的授权框会阻塞后续所有钥匙串操作。
+
+| 变异 | 改什么 | 结果 | 变红的测试 | 它证明了什么 |
+|---|---|---|---|---|
+| **BASE** | — | **绿** | — | 变异前基线全绿 |
+| **M1** | 拆掉 `prepareKey` 的闸门（= 回到修前行为） | **红** | ① `testPrepareKeyWithDefaultStoreDoesNotQueryProductionKeychain`、② `testRetryPrepareKeyIfLockedDoesNotQueryProductionKeychain` | **哨兵判据有牙**：生产钥匙串一可达，哨兵就被删 ⇒ 两条哨兵测试如期变红 |
+| **M2** | 闸门变成「拒绝一切 store」（过宽） | **红** | ⑤ `testInjectedStoreIsStillConsulted`、⑥ `testNonProductionKeychainServiceIsStillConsulted`、⑩、⑪ | 闸门**不是一刀切**：注入的 mock / 非生产 service 仍要被 consulted |
+| **M3** | 闸门去掉 `isRunningTests` 条件（生产也被拒） | **红** | ⑨ `testDecisionFunctionNeverRefusesInProduction` | **生产 ⇒ 绝不拒**那半边有牙（否则真机上 app 永远拿不到根密钥） |
+| **M5** | 拆掉 `AppDelegate` 的 observer 闸门 | **红** | ④ `testKeychainUnlockObserverIsNotRegisteredInTestHost` | 测试宿主里**确实**不注册唤醒/解锁 observer |
+| **M6** | 身份判据从 `service` 改成 `account` | **红** | ⑧ `testDecisionFunctionRefusesProductionIdentityUnderXCTest`、⑫ `testDecisionFunctionRefusesWholeProductionServiceNamespace` | 判据**按 service** 这件事被钉住（不是「service 还是 account 都行」） |
+| **M7** | `KeychainKeyStore` 不再报身份（退回协议默认 `nil`） | **红** | ⑧、⑫ | 生产 store **必须**报出自己的身份才会被拒 |
+| **M8** | 协议默认身份改成生产 service（所有 conformer 都被当成生产） | **红** | ⑤、⑪ | 协议默认值**不是**「生产」——否则注入的 fake 会被误拒 |
+
+**文件漂移：NONE**（每轮还原后逐文件 sha256 一致）。
+
+⚠️ **M6 / M7 必须用**窄选择器**只跑纯函数测试**：这两条让生产 store **不再被识别**
+⇒ 若同时跑哨兵测试，测试宿主就会真的去够生产钥匙串 ⇒ 触发 §43.4 的 ACL 弹窗 + 97 秒阻塞。
+⇒ 「危险」变异与「安全」变异**必须分开跑**，这是本轮 harness 的一条硬约束。
+
+⚠️ **测试 ③（真实通知路径）是「合取探测器」**（独立核验员独立指出的，我复核后确认）：
+它**只在两个闸门都拆**时才红 —— 因为哨兵只会被「真正查到生产钥匙串」删掉，
+而任一闸门在位都能挡住那次查询。
+⇒ 单闸门的判别力由 ①/②（`prepareKey` 闸门）与 ④（observer 闸门）承担
+（M1/M5 实测：M1 红①②、M5 红④，**③ 在两条里都保持绿** ⇒ 证实了它是合取探测器）。
+⇒ **记下来，别把它当成「独立有牙」的测试**。
+
+### 43.9 验收（实测）
+
+| 项 | 结果 |
+|---|---|
+| 全量 | **1338 tests / 4 skipped / 0 failures**（1042 的 1326 + 本轮 12） |
+| lint | **10 条 = HEAD 基线**，**无一条**落在本轮改动的 4 个文件上 |
+| 变异 | **8 条：8 红**（M1 M2 M3 M5 M6 M7 M8 类级 + M9 全量）；**M9+M1 组合亦红**（①② 仍红） |
+| 文件漂移 | **NONE**（每轮还原后逐文件 sha256 一致） |
+| 生产钥匙串项 | **逐字节未变**：`cdat`/`mdat` 停在 **2026-07-19**，密钥 sha256 `b19d8593…4b68d` 前后一致 ⇒ **只读、未写** |
+| 测试专用钥匙串项残留 | **0**（`com.clipmemory.tests` 查无此项） |
+| `StartupHealth` 默认 store | **当前不可达**（唯一调用点 `AppDelegate:227` 已被 `!TestIsolation.isRunningTests` 挡住） |
+
+### 43.10 独立核验（verifier 子 agent，**非自查**）
+
+verifier 子 agent 跑了约 1 小时（**全量套件 + 代码审计 + 变异设计**），
+产出 **3 条可执行发现 + 若干 P3**，本轮**全部落地**：
+
+| # | 发现 | 处置 |
+|---|---|---|
+| **P1** | 判定用的是 `keyStore as? KeychainKeyStore` —— **类型判定**：任何**包装**生产 store 的别的 conformer 会绕过它 | 改为**按能力/身份**判定：协议新增 `var keychainService: String? { get }`（协议扩展给默认 `nil`），`KeychainKeyStore` 报出自己的 service ⇒ 装饰器也会被拒 |
+| **P2** | `CryptoService.isRunningTests` 只看 env var（**1 个信号**），而仓库标准 `TestIsolation.isRunningTests` 看 **3 个信号**（ID-CRASH-0031 定） ⇒ env var 一旦缺失，测试宿主会走**生产分支** ⇒ **写**用户的生产钥匙串项 | 统一成 `TestIsolation.isRunningTests`（一行） |
+| **P3** | 「service 判据 vs account 判据」**没有被任何测试钉住**（改判据仍全绿） | 补测试 ⑫「生产 service 命名空间一律拒」⇒ M6（改按 account）**变红** |
+| **P3** | 测试 ③（真实通知路径）**只在两个闸门都拆**时才红 ⇒ 是「合取探测器」，被 ①/④ 覆盖 | **保留但如实标注**（§43.6），并在 M1/M5 的实测里印证（两条各自变红时 ③ 都保持绿） |
+
+⚠️ **核验报告未取回（如实记录）**：核验员跑满时间预算后仍未产出结构化最终报告，
+我要求它收尾并还原工作树（已核验：三个文件的 sha256 与交给它时**完全一致**），
+随后**中止**该任务。⇒ 上面 4 条来自它的**会话内记录**（已逐条**回原文核对**后落地），
+**不是**它签发的最终报告；本轮的自验由**主 agent 的 8 条变异 + 全量 + Release 编译**承担。
+

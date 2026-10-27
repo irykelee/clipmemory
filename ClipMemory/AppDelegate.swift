@@ -829,6 +829,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // nil, covering the race where the notification fires before the user
     // enters their password (Keychain still locked at notification time).
     private func setupKeychainUnlockObserver() {
+        // ID-REVIEW-1043: this observer's retry path reaches
+        // `CryptoService.retryPrepareKeyIfLocked()` → `prepareKey()` with the
+        // PRODUCTION Keychain store. The observer is registered in the test
+        // host as well (it is set up BEFORE the `!TestIsolation.isRunningTests`
+        // guard further down), so a wake / session-becomes-active event
+        // during a test run queried the USER's real keychain item.
+        //
+        // Under XCTest the root key comes from the file, so there is nothing
+        // to re-prepare — skip the whole observer (it also carries the
+        // `prewarmIfNeeded` side effect, which has no business in a test).
+        guard !TestIsolation.isRunningTests else { return }
         let nc = NSWorkspace.shared.notificationCenter
         let retry: () -> Void = {
             if CryptoService.retryPrepareKeyIfLocked() == nil {

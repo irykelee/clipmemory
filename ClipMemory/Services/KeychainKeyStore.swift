@@ -78,9 +78,24 @@ protocol KeyStoring {
     @discardableResult
     func store(_ keyData: Data) throws
     func delete()
+    /// ID-REVIEW-1043: the Keychain **service** this store talks to, if any.
+    ///
+    /// A conformer that resolves to the PRODUCTION service must be
+    /// identifiable **without** the caller knowing its concrete type: the
+    /// earlier `keyStore as? KeychainKeyStore` check was a *type* check, so a
+    /// decorator / another conformer wrapping the production store would slip
+    /// past it and query the user's real keychain item.
+    ///
+    /// Default (`nil`) = "not a Keychain store" ⇒ never the production one.
+    var keychainService: String? { get }
 }
 
 extension KeyStoring {
+    /// ID-REVIEW-1043: default = "not a Keychain store".
+    ///
+    /// Only a store that actually talks to a Keychain service overrides this.
+    var keychainService: String? { nil }
+
     /// Default for stores that cannot distinguish locked from not-found
     /// (in-memory test fakes, encrypted-file fallbacks). Real Keychain
     /// conformers (`KeychainKeyStore`) MUST override to surface
@@ -105,6 +120,10 @@ struct KeychainKeyStore: KeyStoring {
 
     let service: String
     let account: String
+
+    /// ID-REVIEW-1043: expose the identity so callers can refuse the
+    /// PRODUCTION service **by identity**, not by concrete type.
+    var keychainService: String? { service }
 
     init(service: String = KeychainKeyStore.defaultService,
          account: String = KeychainKeyStore.defaultAccount) {
