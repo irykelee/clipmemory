@@ -35,7 +35,7 @@ final class LegacyImageMigrationTests: XCTestCase {
         try? FileManager.default.createDirectory(at: legacyDir, withIntermediateDirectories: true)
 
         suiteName = "STOR3Tests.\(UUID().uuidString)"
-        suite = UserDefaults(suiteName: suiteName)
+        suite = TestSuiteCleanup.makeSuite(named: suiteName)
     }
 
     override func tearDown() {
@@ -43,7 +43,7 @@ final class LegacyImageMigrationTests: XCTestCase {
             storage.deleteImage(filename: "\(uuid.uuidString).png")
         }
         migratedUUIDs.removeAll()
-        if let suiteName { suite?.removePersistentDomain(forName: suiteName) }
+        if let suite { TestSuiteCleanup.destroy(suite) }
         suite = nil
         suiteName = nil
         try? FileManager.default.removeItem(at: legacyDir)

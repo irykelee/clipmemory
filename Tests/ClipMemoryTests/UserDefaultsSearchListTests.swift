@@ -24,9 +24,9 @@ final class UserDefaultsSearchListTests: XCTestCase {
     /// 唯一套件名 + 清理。固定名会让「域本体里有残留」变成跨次运行的假象。
     private func makeFreshSuite() -> (name: String, suite: UserDefaults) {
         let name = "UserDefaultsSearchList-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: name)
-        suite?.removePersistentDomain(forName: name)
-        return (name, suite!)
+        let suite = TestSuiteCleanup.makeSuite(named: name)
+        suite.removePersistentDomain(forName: name)
+        return (name, suite)
     }
 
     /// 搜索链读法会回答**不属于这个套件**的内容。

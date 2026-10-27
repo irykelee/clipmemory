@@ -18,7 +18,7 @@ final class BackupServiceTests: XCTestCase {
         backupsDir = tempRoot.appendingPathComponent("Backups", isDirectory: true)
         imagesDir = tempRoot.appendingPathComponent("Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-        defaults = UserDefaults(suiteName: "BackupServiceTests-\(UUID().uuidString)")
+        defaults = TestSuiteCleanup.makeSuite(named: "BackupServiceTests-\(UUID().uuidString)")
         service = BackupService(backupsDirectory: backupsDir, imagesDirectory: imagesDir, defaults: defaults)
     }
 
@@ -252,7 +252,7 @@ final class BackupServiceTests: XCTestCase {
         let isolatedBackups = tempRoot.appendingPathComponent("Backups-Isolated", isDirectory: true)
         let isolatedImages = tempRoot.appendingPathComponent("Images-Isolated", isDirectory: true)
         try? FileManager.default.createDirectory(at: isolatedImages, withIntermediateDirectories: true)
-        let isolatedDefaults = UserDefaults(suiteName: "BackupServiceTests-Isolated-\(UUID().uuidString)")!
+        let isolatedDefaults = TestSuiteCleanup.makeSuite(named: "BackupServiceTests-Isolated-\(UUID().uuidString)")
         let isolated = BackupService(
             backupsDirectory: isolatedBackups,
             imagesDirectory: isolatedImages,

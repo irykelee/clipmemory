@@ -30,7 +30,7 @@ final class StorageBackendTests: XCTestCase {
     override func setUp() {
         super.setUp()
         let uid = UUID().uuidString
-        suite = UserDefaults(suiteName: "StorageBackendTests-\(uid)")!
+        suite = TestSuiteCleanup.makeSuite(named: "StorageBackendTests-\(uid)")
         suite.removePersistentDomain(forName: "StorageBackendTests-\(uid)")
     }
 
@@ -63,7 +63,12 @@ final class StorageBackendTests: XCTestCase {
         // failure (sandbox-blocked cfprefsd at process init).
         // saveBlob must throw on read-back mismatch, not silently
         // report success.
-        let failingSuite = FailingUserDefaults(suiteName: "p2-2-fail-\(UUID().uuidString)")!
+        // ID-REVIEW-1040 (2026-10-27): the subclass creates a real suite
+        // behind the helper's back, so it is registered explicitly — the
+        // process-end sweep must be able to take its file away too.
+        let failingSuiteName = "p2-2-fail-\(UUID().uuidString)"
+        let failingSuite = FailingUserDefaults(suiteName: failingSuiteName)!
+        TestSuiteCleanup.register(failingSuite, suiteName: failingSuiteName)
         let failingBackend = FileStorageBackend(
             storageKey: "p2-2-fail-key",
             defaults: failingSuite

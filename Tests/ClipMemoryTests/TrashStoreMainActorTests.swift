@@ -276,8 +276,8 @@ final class TrashStoreMainActorTests: XCTestCase {
     /// removed items and the window that was applied.
     func testRetentionPurgeAnnouncesHowManyItemsItRemoved() throws {
         let suiteName = "purge-notice-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         let expired = ClipboardItem(
             content: "expired",
@@ -367,8 +367,8 @@ extension TrashStoreMainActorTests {
     /// Regression test for the cross-launch permanent suppress.
     func testSentinelClearsOnRecoveryAcrossLaunches() throws {
         let suiteName = "p1-sentinel-clear-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         // Simulate "Launch N-1 left the sentinel set after a quarantine":
         // write the persistent-failure flag directly. We don't go through
@@ -415,8 +415,8 @@ extension TrashStoreMainActorTests {
     /// 6s later must persist the recovered items.
     func testRetryActuallyReschedulesAfterSaveFailure() throws {
         let suiteName = "p1-retry-actually-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         // Backend that fails on first save, then succeeds.
         let flakyBackend = FlakyStorageBackend(failFirstN: 1)

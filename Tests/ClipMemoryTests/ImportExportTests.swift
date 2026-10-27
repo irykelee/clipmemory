@@ -36,7 +36,7 @@ import CryptoKit
             .appendingPathComponent("ImportExportTests-\(UUID().uuidString)", isDirectory: true)
         imagesDir = tempRoot.appendingPathComponent("Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-        defaults = UserDefaults(suiteName: "ImportExportTests-\(UUID().uuidString)")
+        defaults = TestSuiteCleanup.makeSuite(named: "ImportExportTests-\(UUID().uuidString)")
         localKeyData = Data((0..<32).map { UInt8($0 & 0xFF) })
         localCrypto = CryptoService(customKeyData: localKeyData)
         // Route the store's decrypt path through the test key so imported items

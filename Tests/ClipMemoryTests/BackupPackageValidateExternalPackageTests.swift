@@ -16,7 +16,7 @@ final class BackupPackageExtValidationTests: XCTestCase {
             .appendingPathComponent("ValidateExt-\(uid)", isDirectory: true)
         imagesDir = tempRoot.appendingPathComponent("Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-        defaults = UserDefaults(suiteName: "ValidateExt-\(uid)")
+        defaults = TestSuiteCleanup.makeSuite(named: "ValidateExt-\(uid)")
         // Deterministic 32-byte test key — no Keychain required.
         localKeyData = Data((0..<32).map { UInt8($0 & 0xFF) })
         localCrypto = CryptoService(customKeyData: localKeyData)

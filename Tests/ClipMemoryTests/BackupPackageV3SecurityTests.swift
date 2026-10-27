@@ -36,7 +36,7 @@ import CryptoKit
             .appendingPathComponent("BackupPackageV3SecurityTests-\(uid)", isDirectory: true)
         imagesDir = tempRoot.appendingPathComponent("Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-        defaults = UserDefaults(suiteName: "BackupPackageV3SecurityTests-\(uid)")
+        defaults = TestSuiteCleanup.makeSuite(named: "BackupPackageV3SecurityTests-\(uid)")
         defaults.removePersistentDomain(forName: "BackupPackageV3SecurityTests-\(uid)")
         localCrypto = CryptoService(customKeyData: localKeyBytes)
         rootCrypto = CryptoService(customKeyData: rootKeyBytes)
@@ -48,7 +48,7 @@ import CryptoKit
     override func tearDown() {
         if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
-        defaults?.removePersistentDomain(forName: defaults.dictionaryRepresentation().keys.first ?? "")
+        if let defaults { TestSuiteCleanup.destroy(defaults) }
         defaults = nil
         try? FileManager.default.removeItem(at: tempRoot)
         tempRoot = nil

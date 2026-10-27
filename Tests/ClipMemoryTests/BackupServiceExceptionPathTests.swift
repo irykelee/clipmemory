@@ -31,7 +31,7 @@ final class BackupServiceExceptionPathTests: XCTestCase {
         backupsDir = tempRoot.appendingPathComponent("Backups", isDirectory: true)
         imagesDir = tempRoot.appendingPathComponent("Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-        defaults = UserDefaults(suiteName: "BackupServiceExceptionPathTests-\(UUID().uuidString)")
+        defaults = TestSuiteCleanup.makeSuite(named: "BackupServiceExceptionPathTests-\(UUID().uuidString)")
         service = BackupService(backupsDirectory: backupsDir, imagesDirectory: imagesDir, defaults: defaults)
     }
 

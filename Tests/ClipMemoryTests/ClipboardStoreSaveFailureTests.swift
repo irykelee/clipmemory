@@ -303,11 +303,15 @@ final class ClipboardStoreSaveFailureTests: XCTestCase {
     func testFlushTagSaveFailureRunsTheWholeThreeLegGate() {
         let tagBackend = CountingBackend()
         tagBackend.failNextSaveTags = true
+        // ID-REVIEW-1040 (2026-10-27): the suite used to be created inline
+        // and never destroyed ⇒ one leaked plist file per run of this test.
+        let suite = makeTestDefaults()
+        defer { removeTestDefaults(suite) }
         let localStore = ClipboardStore(
             backend: MemoryStorageBackend(),
             tagBackend: tagBackend,
             trashBackend: MemoryStorageBackend(),
-            defaults: makeTestDefaults()
+            defaults: suite
         )
 
         var postCount = 0
@@ -347,11 +351,15 @@ final class ClipboardStoreSaveFailureTests: XCTestCase {
     /// alert.
     func testFlushTagSaveSuccessDoesNotPostNotification() {
         let tagBackend = CountingBackend()
+        // ID-REVIEW-1040 (2026-10-27): see the sibling test — the suite has
+        // to be destroyed, not just created.
+        let suite = makeTestDefaults()
+        defer { removeTestDefaults(suite) }
         let localStore = ClipboardStore(
             backend: MemoryStorageBackend(),
             tagBackend: tagBackend,
             trashBackend: MemoryStorageBackend(),
-            defaults: makeTestDefaults()
+            defaults: suite
         )
 
         var postCount = 0

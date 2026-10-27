@@ -219,8 +219,8 @@ import AppKit
     /// rule with nothing to catch it.
     private func makeFontScaleStore() -> UserDefaults {
         let name = "Audit20260720-fontScale-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: name)!
-        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        let suite = TestSuiteCleanup.makeSuite(named: name)
+        addTeardownBlock { TestSuiteCleanup.destroy(suite) }
         return suite
     }
 

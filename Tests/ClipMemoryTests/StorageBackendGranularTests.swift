@@ -58,9 +58,9 @@ import XCTest
     /// through this helper (isolated key + isolated suite + teardown).
     private func makeIsolatedFileBackend(_ label: String) -> FileStorageBackend {
         let suiteName = "StorageBackendGranularTests-\(label)-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        let defaults = TestSuiteCleanup.makeSuite(named: suiteName)
         addTeardownBlock {
-            defaults.removePersistentDomain(forName: suiteName)
+            TestSuiteCleanup.destroy(defaults)
         }
         return FileStorageBackend(storageKey: "test.items.\(label)", defaults: defaults)
     }
@@ -383,7 +383,7 @@ import XCTest
             ServiceContainer.setCryptoForTesting(originalCrypto)
         }
 
-        let testDefaults = UserDefaults(suiteName: "FallbackTest-\(UUID().uuidString)")!
+        let testDefaults = TestSuiteCleanup.makeSuite(named: "FallbackTest-\(UUID().uuidString)")
         let backend = FileStorageBackend(defaults: testDefaults)
         let store = ClipboardStore(backend: backend, defaults: testDefaults)
         store.addItem(ClipboardItem(content: "fallback test", type: .text))

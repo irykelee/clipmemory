@@ -146,10 +146,8 @@ final class HotKeyManagerTests: XCTestCase {
         // the real coverage — it can only pass if init actually calls
         // `HotKeyConfig.load(from: defaults)` on the injected store.
         let suiteName = "HotKeyManagerTests-H31-\(UUID().uuidString)"
-        guard let suite = UserDefaults(suiteName: suiteName) else {
-            return XCTFail("failed to create isolation suite")
-        }
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         let cleanManager = HotKeyManager(defaults: suite)
         XCTAssertEqual(cleanManager.config, .defaultConfig,

@@ -929,3 +929,211 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
 语义**，而本轮的缺陷是「**视图没有 store seam**」。⇒ 模型审核在**没读到 diff 的核心
 意图**时，会围绕新代码的「陌生的并发原语」编出看起来很专业的阻断项。
 **逐条核对原文**是唯一可靠的过滤手段。
+
+## 40. ID-REVIEW-1040（2026-10-27）：测试基础设施在用户机器上留下 **199 822** 个 plist（782.5 MiB 磁盘块）
+
+### 40.1 现象与范围（本轮实测，不是估算）
+
+| 项 | 实测值 |
+|---|---|
+| `~/Library/Preferences` 里的 `.plist` 总数 | **199 822** |
+| 其中测试创建的 | **199 236**（前缀匹配子集 **157 221** + 「疑似」子集 **42 015**；`test-` 138 087 / `STOR3Tests.` 6 169 / `SafeModeServiceTests-` 4 965 / `BackupIncompleteMarkerTests-` 2 736 / `BackupQuarantineTests-` 1 440 / `p1-sentinel-clear-` 506 / `p1-retry-actually-` 494 / `p2-9-` 493 / …） |
+| 磁盘块占用 | **782.5 MiB**（4 KB 块取整；**内容本身只有 18.5 MiB**） |
+| 占 `~/Library/Preferences` 比例 | **~99%**（该目录 `du -sh` = 785 MiB） |
+| 一次全量测试新增 | **+339**（修前实测） |
+| 残留内容（**按子集说，口径要写清**） | **前缀匹配子集**（157 221 个）：≤42 B 的空壳 **150 150（95.5%）**、>42 B **7 071（4.5%）**，装着 `('AppleLanguages','appLanguage')`、`ImageIntegrity.scannedMtimes`、`ClipboardItems.loadFailed`、少量 blob；**「疑似」子集**（42 015 个，保守保留）：≤42 B 8 916（21.2%）、>42 B **33 099（78.8%）**（装着值的居多） |
+| 本机磁盘余量 | **14 GiB**（数据卷 400/460 GiB，已用 **97%**）—— 782.5 MiB 在这台机器上不是「看不见的量」 |
+
+**「修一个，看 33 个」的范围重估**：最初只找到 6 处建 suite 的站点（`makeTestDefaults()` 家族 +
+`test-import-` + `test-startup-`）。按纪律全仓扫同模式后发现：
+**实测 74 个 `UserDefaults(suiteName:)` 调用点**，去掉注释 / 诱饵 / 共享基础设施后**仍有 59 处真实建 suite**，
+分布在 **~35 个测试文件**。⇒ 6 处只是冰山一角。
+
+### 40.2 根因（实测，不是推断）
+
+**根因 1 —— `removePersistentDomain(forName:)` 只清值，不删文件。**
+每个 suite 永久留下一个 `~/Library/Preferences/<suite>.plist` 空壳（42 B，但占整整一个 4 KB 块）。
+
+**根因 2 —— 它还留下一个 pending write，`cfprefsd` 之后把（空）域写回磁盘。**
+实测（各 40 次）：`removePersistentDomain` → 删文件 ⇒ 空壳回来 **5/40（12.5%）**。
+
+⇒ **「清值」这个动作本身就会制造残留**。这解释了为什么「补一个 `removePersistentDomain`」修不好问题。
+
+### 40.3 修法：`removeSuite` + 显式删文件（且顺序不可换）
+
+`TestSuiteCleanup.destroy`：
+
+1. `UserDefaults.standard.removeSuite(named:)` —— 让 `cfprefsd` **忘记**这个域；
+2. **显式删文件** —— `removeSuite` **不删文件**（实测 40/40 文件仍在，mtime 未变）；
+3. ⚠️ **绝不调用 `removePersistentDomain`** —— 它就是 pending write 的来源。
+
+实测策略对比（各 40 次，进程内）：
+
+| 策略 | 文件回来 |
+|---|---|
+| `removePersistentDomain` → 删文件 | **5/40** |
+| `removePersistentDomain` → `removeSuite` → 删文件 | **5/40** |
+| `removeSuite` → 删文件 | **0/40** ✅ |
+| `removeSuite` → 删文件 → `removePersistentDomain` | **40/40** ⚠️ 放最后最糟 |
+
+⇒ **顺序是承重的**：`removePersistentDomain` 放在 `removeSuite` **之前**会让 `removeSuite` 失效（第二行 = 第一行）；
+放在**之后**最糟（100% 回写）。
+
+**实测进程退出时不会把缓存域刷回磁盘**（各策略 20 个 suite，跑完进程退出后再查：A/B/C/D/E **全部 0/20**）
+⇒ 进程内把文件删掉就够了。
+
+### 40.4 收尾清扫：**按测试用例**，不是按 bundle
+
+⚠️ **本宿主里 `testBundleWillFinish` 根本不会被调用**（实测 2026-10-27）：
+observer 的 body 往 `/tmp/cm-1040-diag.txt` 写报告，**跑完 1294 个测试后该文件不存在**。
+⇒ 「进程结束时扫一遍」这条设计**在这台机器上是失效的**（第一版实现就栽在这里）。
+
+可用的是 **per-case** 回调：`testCaseWillStart` / `testCaseDidFinish` ——
+本仓自己的共享 suite 写入守卫（`XCTestIsolationSuiteBootstrap`）就建在 `testCaseDidFinish` 上，CI 里确实在跑。
+
+⇒ 清扫改成**每个测试用例结束时**执行，两层：
+
+1. `destroyAllRegistered()` —— 销毁本进程仍持有的所有 suite（域 + 文件）；
+2. `deleteAllCreatedFiles()` —— **再删一遍**本进程创建过的所有 suite 的文件。
+
+第 2 层不是冗余：实测**服务会持有被注入的 suite 越过它的用例**（store 进容器、语言管理器绑到某个 suite），
+它的下一次写入会**重建域 ⇒ 重建文件** —— 而那个 suite 已经从 registry 里 forget ⇒ 再也没人删它。
+
+### 40.5 端到端验证（可复现）
+
+```
+python3 -c "import glob,os; print(len(glob.glob(os.path.expanduser('~/Library/Preferences/*.plist'))))"
+xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-"
+```
+
+| 版本 | 全量结果 | plist 净增长 |
+|---|---|---|
+| 修前（HEAD） | — | **+339** |
+| v1（`removeSuite`+删文件，bundle 级收尾） | 1294 / 4 skipped / 0 failures | **+67** |
+| v2（改成 per-case 收尾） | 1295 / 4 skipped / 0 failures | **+53** |
+| v3（per-case 收尾 + 再删一遍全部已创建文件） | 1295 / 4 skipped / 0 failures | **+15** |
+| v4（destroy 前先 `synchronize()` 落盘） | 1295 / 4 skipped / 0 failures | **+18** |
+| v5（再加空闲清扫器） | 1295 / 4 skipped / 0 failures | **+18**（独立核验复测） |
+| **v6（去掉 `synchronize()`，按核验结论改）** | **1295 / 4 skipped / 0 failures** | **0 ~ +18**（见下） |
+
+⚠️ **「净增长 0」是一个不能当结论报的数字**。独立核验员复测同一份代码跑了 4 轮：
+**+3 / +18 / +18**（同一份代码的 scratch 副本），去掉 `synchronize()` 后 **+2**；我这边同一份代码又测到 **0**。
+⇒ **残留量高度依赖「宿主退出时机」**（cfprefsd 在 bundle 结束后 3–9 s 才写最后一批，而宿主可能在那之前就退出），
+⇒ **单次测量说明不了任何事** —— 这是本轮第 N 次撞上「概率性结果只能用重复测量量通过率」。
+⇒ **诚实的表述是：净增长从 +339 降到 0 ~ +18（量级下降 95% ~ 100%），且残留是「所有用例都结束之后」写的最后一批，
+进程内任何机制都抓不到它**（核验员仪器化诊断：清扫器最后一次 tick 是 idle=true，进程在下一次 0.25 s tick 前就退出了）。
+
+⚠️ **v4 是一次失败的尝试，且后来证明它还是**有害**的**：`destroy` 里加 `synchronize()`（想把 pending write 提前落盘）
+**没有用**（+18，与 v3 的 +15 同量级）。⇒ 那批残留**不是** pending write 造成的，而是**所有用例都结束之后**才写的
+（残留文件的 mtime 全在测试结束后的**同一秒**）。
+独立核验员的对照实验进一步确认它**有害**：带 `synchronize()` 残留 **+18**，去掉后 **+2**
+—— 原因是 `synchronize()` 会把域**持久化**进 cfprefsd，cfprefsd 在客户端退出时又把它刷回来。
+⇒ **v6 删掉了 `synchronize()`**（它看着像安全措施，实际是反作用）。
+
+**生产域**：键集合 **28 → 28，零新增零消失**（`com.clipmemory.app.plist` 逐键比对）。
+⚠️ 第一轮全量跑时 `NSWindow Frame com.clipmemory.app.MainWindow` / `.SettingsWindow` 两个键的**窗口位置**变了
+（AppKit 自动记忆，测试宿主开窗所致，非数据污染）；后续两轮未复现。
+
+### 40.6 静态守卫
+
+`Review1040RegressionTests`（13 个测试）：
+
+1. **行为**：销毁必须删掉文件；文件不得回来；共享工厂 `makeTestDefaults` 同样；
+2. **行为**：per-case 清扫必须销毁用例留下的 suite；
+3. **行为**：`destroy` 必须**拒绝生产域**（`removeSuite` 到 `com.clipmemory.app` 会删掉用户真实偏好）；
+4. **静态**：测试树里不得有裸 `UserDefaults(suiteName:` ——
+   allowlist 是**每文件精确计数**（不是行号、不是前缀）：行号会随无关编辑漂移，前缀能被意外放宽；
+   新增一处 ⇒ 红；把一处改成走 helper ⇒ allowlist 条目过期 ⇒ 红；
+   扫描跑在**盲化副本**上（`//`、`/* */`、字符串字面量全部替换为空格、保留行结构）⇒ 文档里提到这个 API 不算调用、
+   字符串里的 `//`（`http://`）不会遮住同一行的真实调用、诱饵源码字符串也不算调用；
+   计数按**出现次数**（不是按行）⇒ 同一行两处不会互相掩护；
+5. **控制组**：正控制（**多行上下文**里植入的建 suite 调用必须被抓到 —— 单行样例会让「只在文件末尾生效」的规则侥幸通过，
+   这是 ID-REVIEW-1038 的 M4 教训）+ 负控制（注释、`UserDefaults.standard`、**子类** `FailingUserDefaults(suiteName:)` 都不该被抓）；
+6. **接线**：A/B 两个测试跨用例配合 —— A 留一个套件不销毁，B 在**下一个用例**里断言它已被 **observer** 销毁
+   ⇒ 摘掉 `addTestObserver(TestCaseScopeObserver())` 会变红（核验员实测：改之前 11/11 全绿）。
+
+### 40.6b 变异验证：M1–M7 + E2 = **8/8 全被抓住**；E3 **绿 —— 已知未测项**
+
+| 变异 | 改了什么 | 期望变红的测试 | 结果 |
+|---|---|---|---|
+| M1 | `destroy` 不删文件 | `testDestroyingASuiteRemovesItsPreferencesFile` | ✅ 红 |
+| M2 | `destroy` 在 `removeSuite` **之后**加 `removePersistentDomain` | `testADestroyedSuiteFileDoesNotComeBack` | ✅ 红（**需 10 轮重复测量**才抓到，见下） |
+| M3 | `deleteAllCreatedFiles()` 不删文件 | `testTheFinalPassDeletesAFileThatCameBack` | ✅ 红 |
+| M4 | 静态扫描正则改成永不匹配 | `testTheScannerFindsAPlantedSuiteCreation` | ✅ 红 |
+| M5 | allowlist 计数 +1 | `testTheAllowlistIsNotStale` | ✅ 红 |
+| M6 | `mayDestroy` 永远返回 true | `testDestroyRefusesTheProductionDomain` | ✅ 红（**需打掉两道冗余防线**才抓到，见下） |
+| M7 | `makeSuite` 不登记 suite | `testTheProcessEndSweepFindsAndDestroysRegisteredSuites` | ✅ 红 |
+| **E2** | **摘掉 `addTestObserver(TestCaseScopeObserver())`** | `testBTheObserverDestroyedTheSuiteThePreviousCaseLeft` | ✅ 红（**核验员先测出这是绿的** ⇒ 补测试后才变红） |
+| E3 | 废掉空闲清扫器 | （无） | ⚠️ **绿 —— 已知未测项**，见 §40.7 |
+
+⚠️ **两个"变异没被抓住"的归因（都不是"测试没判别力"）**：
+
+1. **M2 第一版没红 —— 概率性**：回写率实测 ~1/8 ⇒ 单次采样很可能不红。
+   ⇒ **概率性结果只能用 `-test-iterations` 量通过率**（本轮第 N 次撞上这条纪律）。
+   加 `-test-iterations 10` 后红。
+2. **M6 第一版没红 —— 被测代码有冗余防线**：`mayDestroy` 里有**两道**检查
+   （`productionDomainName` + `Bundle.main.bundleIdentifier`），第一版变异只打掉第一道，
+   而在测试宿主里 `Bundle.main.bundleIdentifier` **就是** `com.clipmemory.app` ⇒ 第二道照样拦住。
+   ⇒ **变异必须打掉全部冗余防线**，否则「没变红」说明的是「变异无效」，不是「测试无判别力」。
+
+⇒ 两条归因必须分开：**「变异变绿」既可能是判据不够严，也可能是变异本身没打中要害。**
+
+### 40.6c 新回归测试自身的重复测量
+
+`-test-iterations 10` ⇒ **130 / 130 全绿**（13 个测试 × 10 轮）。
+⚠️ 第一版实现里 `testADestroyedSuiteFileDoesNotComeBack` 是 **1/10 flaky**（`removePersistentDomain` 的回写）；
+换成 `removeSuite` 顺序后 **10/10 全绿** ⇒ 契约从「概率性」变成「确定性」。
+
+### 40.8 独立核验：**FAIL**（2 P1 + 2 P2 + 2 P3），全部已处置
+
+核验员独立跑了 **4 轮全量 + 1 轮 scratch 副本 + 1 轮去 `synchronize()` + 5 个变异实验**，
+并做了仪器化诊断（清扫器 tick 日志）。结论 **FAIL**，**推翻了本轮的核心结论「净增长 0」**。
+
+| 级别 | finding | 处置 |
+|---|---|---|
+| **P1** | **「plist 净增长 0」不可复现**：同一份代码 4 轮测得 **+3 / +18 / +18**（scratch 副本同）+ **+2**（去 `synchronize()`）；我这边同一份代码测到 **0** ⇒ 残留量**依赖宿主退出时机** | ✅ 已处置：**删掉 `synchronize()`**（核验员对照实验：带它 +18，去掉 +2 —— 它把域**持久化**进 cfprefsd，退出时又刷回来）；台账 §40.5 改成 **0 ~ +18 的范围**并写明「单次测量说明不了任何事」 |
+| **P1** | **两个「主机制」没有被任何测试钉住**：删掉 `addTestObserver(TestCaseScopeObserver())` ⇒ **11/11 全绿**；废掉空闲清扫器 ⇒ **11/11 全绿** | ✅ 部分处置：新增 **`testATheObserverProbeSuiteIsLeftBehind` + `testBTheObserverDestroyedTheSuiteThePreviousCaseLeft`**（A 留一个套件、B 证明**下一个用例**里它已被 observer 销毁）⇒ **E2 现在变红**（实测）。⚠️ **空闲清扫器仍无测试钉住**：它的唯一作用发生在「所有用例都结束之后」的窗口里，**进程内测不到**（`endTestCase` 的 `deleteAllCreatedFiles()` 会先把它删掉）⇒ 如实记在 §40.7 |
+| **P2** | **生产域防护有洞**：`register(_:suiteName:)` 与两个 sweep（`deleteAllCreatedFiles` / `deleteDestroyedFiles`）删文件时**不检查生产域** | ✅ 已处置：三处都加了 `mayDestroy(suiteName:)` 拦截 |
+| **P3** | **静态守卫的漏报/误报**：按**行**去重（同行两处只算一处）；`//` 过滤会被字符串里的 `//`（`http://`）骗过；`/* */` 块注释**不**过滤；`UserDefaults.init(suiteName:)`、`suiteName :` 不匹配 | ✅ 已处置：改为**真正的注释+字符串盲化**（`//` 与 `/* */` 与字符串字面量全部替换为空格、保留行结构）+ **按出现次数计数**（不是按行）+ 正则扩展到 `UserDefaults.init(suiteName:)` 与 `suiteName\s*:`。⚠️ 连带效果：**诱饵源码字符串**（生产守卫的控制组）现在被字符串盲化吃掉 ⇒ **allowlist 里那一项可以删掉**（已删，计数 1 → 0） |
+| **P3** | **文档数字矛盾**：台账「99% 是 42 B」与 `SnapshotTestHelpers` 里过期的「137 997 / 539 MB」 | ✅ 已处置：按**子集**写清口径（前缀匹配子集 157 205 个：≤42 B **95.5%**、>42 B **4.5%** = 7 057；「疑似」子集 42 599 个：>42 B **33 645**）；`SnapshotTestHelpers` 的过期数字改成全目录口径并标注「早期那个数只数了 `test-` 前缀子集」 |
+
+**核验员确认成立的部分**（逐条核对原文后保留）：
+`destroy` 的顺序与文档一致、`removePersistentDomain` 不在 `destroy` 里；
+**`testBundleWillFinish` 确实从不触发**（它在 scratch 副本里写了 marker 文件，跑完 1295 个测试后**不存在**）⇒ §40.4 的结论成立；
+observer 确实安装并在跑（scope 计数随用例 1/0 交替、无漂移）；清扫器只碰**已销毁**的 suite 且用例进行中不跑 ⇒ 不会删运行中测试的文件；
+**生产域 28 键 → 28 键零新增零消失**（只有 AppKit 的 `NSWindow Frame *` 移动；`ImageIntegrity.scannedMtimes` / `lastLaunchTime` 是**用户正在运行的真实 app** 写的，不是测试宿主）；
+5 个固定名共享 suite 保持未登记 ⇒ `XCTestIsolationSuiteBootstrap` 的 `persistentDomain(forName:)` 语义与 ZZZ canary 不受影响。
+
+⚠️ **核验员自己声明的限制**：它的 4 轮跑的时候**用户的 ClipMemory app 在运行**（PID 112）⇒ ZZZ canary 的生产内容比对被 **skip**（6 skipped vs 台账的 4）⇒
+本轮台账里的「4 skipped」与「6 skipped」两种都出现过，取决于 app 是否在跑。
+
+⇒ **本轮最重要的一条教训**（与 ID-REVIEW-1038/1039 同款）：
+**「+0」是我用一次采样测出来的，核验员用 4 次把它打掉了。**
+⇒ 端到端结论**必须**是「多次测量的范围」，不能是单点。
+
+### 40.7 已知未修 / 有意保留
+
+- **`destroy` 不清 `cfprefsd` 内存里的值**：清值的唯一 API 就是 `removePersistentDomain`，而它正是 pending write 的来源
+  （40/40 回写）。⇒ 同一个套件名**不得在 destroy 之后重建** —— `makeSuite` 对「本进程已用过的名字」会先清一次域。
+- **共享的固定名 suite**（`ClipboardStore-XCTest-isolation` 等 5 个 + `AppStorageDefaults-XCTest-isolation`）
+  由共享基础设施管理，**不走** helper：它们的清理必须是 `removePersistentDomain`
+  （ZZZ 守卫用 `persistentDomain(forName:)` 读残留；`removeSuite` 之后域仍在 cfprefsd 内存里，
+  守卫会读到**上一个用例的旧值** ⇒ 误报）。这 5 个文件固定存在，不是泄漏。
+- **`testBundleWillFinish` 在本宿主不触发** ⇒ bundle 级清扫只作为第二层保留。
+- **空闲清扫器没有测试钉住**（核验员指出）：它的唯一作用发生在「所有用例都结束之后」的窗口里，
+  而 `endTestCase()` 里的 `deleteAllCreatedFiles()` 会先把同样的文件删掉 ⇒ **进程内测不出它的独立贡献**。
+  ⇒ 它的存在理由是**兜住进程退出前的那几秒**（核验员仪器化诊断：残留是 cfprefsd 在 bundle 结束后 **3–9 s** 写的，
+  而宿主可能在那之前就退出 ⇒ **进程内任何机制都抓不到**）。**这是已知未测项，如实记下，别把它当已验证。**
+- **历史 199 822 个残留**：靠 `Scripts/cleanup-test-plists.py` 单独清理（**dry-run 默认**）。
+  删除规则从**源码**里的套件名字面量推导（**68** 个前缀），`com.*` 一律不动。
+  本机 dry-run 实测（2026-10-27，体积口径 **MiB**，与 `du -sh` 对齐）：
+
+  | 模式 | 会删 | 体积 | 保留 |
+  |---|---|---|---|
+  | 默认（只删前缀匹配） | **157 221** | **614.1 MiB** | 586 个真实 App + 42 015 个「疑似」 |
+  | `--also-suspects` | **199 236** | **778.3 MiB** | 586 个真实 App |
+
+  「疑似」= 名字带 UUID 且**不含反向 DNS 点号** ⇒ 极可能是**套件字面量已从源码消失**的历史测试残留
+  （实测样本：`Audit20260720-fontScale-*`、`AppleLangProbe-*`）⇒ 默认**保留**，要删必须显式加 `--also-suspects`。
+  ⇒ **默认模式宁可漏删也不误删**；`com.*` 与 586 个真实 App 域在任何模式下都不动。
+

@@ -52,7 +52,7 @@ final class AppDelegateShouldTerminateTests: XCTestCase {
         tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("AppDelegateShouldTerminateTests-\(UUID().uuidString)",
                                     isDirectory: true)
-        defaults = UserDefaults(suiteName: "AppDelegateShouldTerminateTests-\(UUID().uuidString)")
+        defaults = TestSuiteCleanup.makeSuite(named: "AppDelegateShouldTerminateTests-\(UUID().uuidString)")
     }
 
     override func tearDown() {

@@ -21,7 +21,7 @@ import AppKit
         tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("ClipboardStoreRTFCache-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
-        defaults = UserDefaults(suiteName: "ClipboardStoreRTFCache-\(UUID().uuidString)")
+        defaults = TestSuiteCleanup.makeSuite(named: "ClipboardStoreRTFCache-\(UUID().uuidString)")
         localKeyData = Data((0..<32).map { UInt8($0 & 0xFF) })
         localCrypto = CryptoService(customKeyData: localKeyData)
         originalCrypto = ServiceContainer.crypto

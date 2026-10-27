@@ -16,13 +16,19 @@ import XCTest
         imagesDir = tmpDir.appendingPathComponent("images", isDirectory: true)
         try? FileManager.default.createDirectory(at: backupDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
-        defaults = UserDefaults(suiteName: "test-import-\(uid)")!
-        defaults.removePersistentDomain(forName: "test-import-\(uid)")
+        // ID-REVIEW-1040 (2026-10-27): the old code cleared the domain right
+        // after creating it. A suite whose name carries a fresh UUID cannot have
+        // a domain yet, and a never-written suite creates no plist file at all
+        // (measured) — so the clear is gone, and the suite is REGISTERED so the
+        // process-end sweep can destroy it (file included).
+        defaults = TestSuiteCleanup.makeSuite(named: "test-import-\(uid)")
         store = ClipboardStore(backend: MemoryStorageBackend(), defaults: defaults)
     }
 
     override func tearDown() {
         try? FileManager.default.removeItem(at: tmpDir)
+        // ID-REVIEW-1040 (2026-10-27): destroy the suite AND its file.
+        TestSuiteCleanup.destroy(defaults)
         super.tearDown()
     }
 

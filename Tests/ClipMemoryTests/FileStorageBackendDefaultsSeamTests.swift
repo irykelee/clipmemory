@@ -22,8 +22,8 @@ final class FileStorageBackendDefaultsSeamTests: XCTestCase {
     override func setUp() {
         super.setUp()
         let uid = UUID().uuidString
-        suite1 = UserDefaults(suiteName: "FSB-seam-1-\(uid)")!
-        suite2 = UserDefaults(suiteName: "FSB-seam-2-\(uid)")!
+        suite1 = TestSuiteCleanup.makeSuite(named: "FSB-seam-1-\(uid)")
+        suite2 = TestSuiteCleanup.makeSuite(named: "FSB-seam-2-\(uid)")
         suite1.removePersistentDomain(forName: "FSB-seam-1-\(uid)")
         suite2.removePersistentDomain(forName: "FSB-seam-2-\(uid)")
     }
@@ -69,8 +69,8 @@ final class FileStorageBackendDefaultsSeamTests: XCTestCase {
         // real settings, and without a restore that a host abort would
         // skip.
         let decoySuiteName = "FSB-seam-decoy-\(UUID().uuidString)"
-        let decoySuite = UserDefaults(suiteName: decoySuiteName)!
-        defer { decoySuite.removePersistentDomain(forName: decoySuiteName) }
+        let decoySuite = TestSuiteCleanup.makeSuite(named: decoySuiteName)
+        defer { TestSuiteCleanup.destroy(decoySuite) }
         decoySuite.set(Data("decoy".utf8), forKey: "test.items")
 
         let backend = FileStorageBackend(storageKey: "test.items", defaults: suite1)

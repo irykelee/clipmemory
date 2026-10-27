@@ -143,8 +143,8 @@ final class TestHostIsolationTests: XCTestCase {
         // which is the contract that actually matters, and it is now
         // proven by ABSENCE rather than by a write-then-restore dance.
         let hotKeySuiteName = "TestHostIsolation-hotkey-\(UUID().uuidString)"
-        let hotKeySuite = UserDefaults(suiteName: hotKeySuiteName)!
-        addTeardownBlock { hotKeySuite.removePersistentDomain(forName: hotKeySuiteName) }
+        let hotKeySuite = TestSuiteCleanup.makeSuite(named: hotKeySuiteName)
+        addTeardownBlock { TestSuiteCleanup.destroy(hotKeySuite) }
         HotKeyConfig(keyCode: 0, modifiers: 256).save(to: hotKeySuite)
         XCTAssertEqual(
             hotKeySuite.object(forKey: "HotKeyKeyCode") as? Int, 0,
@@ -205,8 +205,8 @@ final class TestHostIsolationTests: XCTestCase {
         }
 
         let suiteName = "Regression-MaxItems-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         let store = ClipboardStore(backend: MemoryStorageBackend(), defaults: suite)
         // 250 is deliberately outside the settings picker's [50, 100, 200, 500]

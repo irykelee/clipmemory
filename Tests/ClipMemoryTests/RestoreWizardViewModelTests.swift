@@ -7,6 +7,10 @@ final class RestoreWizardViewModelTests: XCTestCase {
     var backupDir: URL!
     var imagesDir: URL!
     var vm: RestoreWizardViewModel!
+    // ID-REVIEW-1040 (2026-10-27): the two suites the view model and its
+    // backup service use, kept so tearDown can destroy them (file included).
+    var serviceDefaults: UserDefaults!
+    var vmDefaults: UserDefaults!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -22,14 +26,19 @@ final class RestoreWizardViewModelTests: XCTestCase {
         try Data("[]".utf8).write(to: dir.appendingPathComponent("items.json"))
         try Data("[]".utf8).write(to: dir.appendingPathComponent("tags.json"))
 
+        serviceDefaults = TestSuiteCleanup.makeSuite(named: "test-vm-\(uid)")
+        vmDefaults = TestSuiteCleanup.makeSuite(named: "test-vm-defaults-\(uid)")
         let service = BackupService(backupsDirectory: backupDir, imagesDirectory: imagesDir,
-                                    defaults: UserDefaults(suiteName: "test-vm-\(uid)")!,
+                                    defaults: serviceDefaults,
                                     fileManager: FileManager.default)
-        vm = RestoreWizardViewModel(backupService: service, imagesDirectory: imagesDir, defaults: .init(suiteName: "test-vm-defaults-\(uid)")!)
+        vm = RestoreWizardViewModel(backupService: service, imagesDirectory: imagesDir, defaults: vmDefaults)
     }
 
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: tmpDir)
+        // ID-REVIEW-1040 (2026-10-27): destroy both suites AND their files.
+        TestSuiteCleanup.destroy(serviceDefaults)
+        TestSuiteCleanup.destroy(vmDefaults)
         try await super.tearDown()
     }
 

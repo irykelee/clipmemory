@@ -829,8 +829,8 @@ import XCTest
     /// independent of which persistent domain receives the bytes.
     func testFileStorageBackendSaveIsSynchronous() throws {
         let suiteName = "IntegrationTests.sync.\(UUID().uuidString)"
-        let suite = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
         let key = "ClipboardItems.sync.test.\(UUID().uuidString)"
         let backend = FileStorageBackend(storageKey: key, defaults: suite)
         let item = ClipboardItem(content: "sync test", type: .text)
@@ -846,8 +846,8 @@ import XCTest
     func testFileStorageBackendSaveTagsIsSynchronous() throws {
         // Same isolation as testFileStorageBackendSaveIsSynchronous (ID-TEST-1024).
         let suiteName = "IntegrationTests.sync.\(UUID().uuidString)"
-        let suite = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
         let key = "ClipboardTags.sync.test.\(UUID().uuidString)"
         let backend = FileStorageBackend(storageKey: key, defaults: suite)
         let tag = Tag(name: "sync", colorHex: "#FF6B6B")

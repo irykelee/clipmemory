@@ -283,8 +283,8 @@ final class TagTests: XCTestCase {
     /// safe" — and it also removes the cleanup-after-assertions hazard.
     private func makeTagStore() -> UserDefaults {
         let name = "TagTests-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: name)!
-        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        let suite = TestSuiteCleanup.makeSuite(named: name)
+        addTeardownBlock { TestSuiteCleanup.destroy(suite) }
         return suite
     }
 

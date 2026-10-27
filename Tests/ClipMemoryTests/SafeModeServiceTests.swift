@@ -16,7 +16,7 @@ final class SafeModeServiceTests: XCTestCase {
 
     override func setUp() async throws {
         suiteName = "SafeModeServiceTests-\(UUID().uuidString)"
-        defaultsSuite = UserDefaults(suiteName: suiteName)!
+        defaultsSuite = TestSuiteCleanup.makeSuite(named: suiteName)
         // Each test gets a fresh sentinel dir so cross-test pollution
         // is impossible even if tearDown is skipped on a test failure.
         tmpDir = FileManager.default.temporaryDirectory
@@ -25,7 +25,7 @@ final class SafeModeServiceTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        defaultsSuite.removePersistentDomain(forName: suiteName)
+        TestSuiteCleanup.destroy(defaultsSuite)
         try? FileManager.default.removeItem(at: tmpDir)
         tmpDir = nil
         defaultsSuite = nil

@@ -30,8 +30,8 @@ import XCTest
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        sourceDefaults = UserDefaults(suiteName: "SourceMigration-\(UUID().uuidString)")!
-        targetDefaults = UserDefaults(suiteName: "TargetMigration-\(UUID().uuidString)")!
+        sourceDefaults = TestSuiteCleanup.makeSuite(named: "SourceMigration-\(UUID().uuidString)")
+        targetDefaults = TestSuiteCleanup.makeSuite(named: "TargetMigration-\(UUID().uuidString)")
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("StoreMigrationTests-\(UUID().uuidString)",
                                    isDirectory: true)
@@ -52,8 +52,8 @@ import XCTest
         if let dir = tempDir {
             try? FileManager.default.removeItem(at: dir)
         }
-        sourceDefaults?.removePersistentDomain(forName: sourceDefaults?.dictionaryRepresentation().first?.key ?? "")
-        targetDefaults?.removePersistentDomain(forName: targetDefaults?.dictionaryRepresentation().first?.key ?? "")
+        if let sourceDefaults { TestSuiteCleanup.destroy(sourceDefaults) }
+        if let targetDefaults { TestSuiteCleanup.destroy(targetDefaults) }
         sourceDefaults = nil
         targetDefaults = nil
         tempDir = nil

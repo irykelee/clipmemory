@@ -43,12 +43,12 @@ final class BackupIncompleteMarkerTests: XCTestCase {
         imagesDir = tempRoot.appendingPathComponent("Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
         suiteName = "BackupIncompleteMarkerTests-\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
+        defaults = TestSuiteCleanup.makeSuite(named: suiteName)
     }
 
     override func tearDown() {
-        if let suiteName = suiteName {
-            defaults?.removePersistentDomain(forName: suiteName)
+        if let defaults {
+            TestSuiteCleanup.destroy(defaults)
         }
         try? FileManager.default.removeItem(at: tempRoot)
         tempRoot = nil

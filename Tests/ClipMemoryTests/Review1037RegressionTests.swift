@@ -50,8 +50,8 @@ import XCTest
     /// `testGuardProbeSeesOnlySuiteOwnedKeys`, which never skips.
     func testSuiteLookupFallsThroughToTheGlobalDomain() throws {
         let suiteName = "Review1037-\(UUID().uuidString)"
-        let suite = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         // Any key the global domain carries will do — the trap is about the
         // search list, not about a particular key name.
@@ -89,8 +89,8 @@ import XCTest
     /// reading for a leak check ("the suite owns nothing").
     func testGuardProbeSeesOnlySuiteOwnedKeys() {
         let suiteName = "Review1037-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         // A suite-owned key IS visible to the probe …
         suite.set("zh-Hans", forKey: "appLanguage")

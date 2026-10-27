@@ -17,7 +17,9 @@ final class StartupHealthTests: XCTestCase {
     override func setUp() {
         super.setUp()
         suiteName = "test-startup-\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
+        // ID-REVIEW-1040 (2026-10-27): created through the helper so the
+        // suite is REGISTERED and its plist FILE is destroyed with it.
+        defaults = TestSuiteCleanup.makeSuite(named: suiteName)
         fakeKeyStore = FakeKeyStore(hasKey: true)
         tempImagesDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("startup-test-\(UUID().uuidString)", isDirectory: true)
@@ -25,7 +27,9 @@ final class StartupHealthTests: XCTestCase {
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
+        // Removes the domain AND the plist file (measured: removing the
+        // domain alone leaves an empty shell behind — 137 997 of them).
+        TestSuiteCleanup.destroy(suiteName: suiteName)
         try? FileManager.default.removeItem(at: tempImagesDir)
         super.tearDown()
     }

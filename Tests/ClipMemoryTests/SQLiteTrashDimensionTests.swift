@@ -51,9 +51,9 @@ final class SQLiteTrashDimensionTests: XCTestCase {
     /// production domain.
     private func makeIsolatedDefaults() -> UserDefaults {
         let suiteName = "SQLiteTrashDimension-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = TestSuiteCleanup.makeSuite(named: suiteName)
         addTeardownBlock {
-            defaults.removePersistentDomain(forName: suiteName)
+            TestSuiteCleanup.destroy(defaults)
         }
         return defaults
     }
@@ -354,8 +354,8 @@ final class SQLiteTrashDimensionTests: XCTestCase {
     /// and it is closed here: the write is refused, loudly.
     func testTheFileBackendKeepsTheTrashInItsOwnKey() throws {
         let suiteName = "SQLiteTrashDimension-File-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = TestSuiteCleanup.makeSuite(named: suiteName)
+        addTeardownBlock { TestSuiteCleanup.destroy(defaults) }
 
         let itemsBackend = FileStorageBackend(
             storageKey: "items-\(suiteName)",

@@ -33,14 +33,11 @@ final class UserDefaultsKeyTests: XCTestCase {
     /// stays green.
     func testRoundTripAcrossSuite() {
         let suiteName = "p2-9-\(UUID().uuidString)"
-        guard let suite = UserDefaults(suiteName: suiteName) else {
-            XCTFail("UserDefaults suite \(suiteName) unavailable")
-            return
-        }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
         defer {
             // Clean up the suite so a long-running test process doesn't
             // accumulate stale preferences on disk.
-            suite.removePersistentDomain(forName: suiteName)
+            TestSuiteCleanup.destroy(suite)
         }
         for key in UserDefaultsKey.allCases {
             // `AppleLanguages` is a system-managed key (LanguageManager

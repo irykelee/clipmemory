@@ -5,7 +5,9 @@ final class BackupServiceListAvailableBackupsTests: XCTestCase {
     var tmpDir: URL!
     var imagesDir: URL!
     var service: BackupService!
-    let defaults = UserDefaults(suiteName: "test-list-available-\(UUID().uuidString)")!
+    // ID-REVIEW-1040 (2026-10-27): registered so the process-end sweep can
+    // destroy it, and so `destroy` can find its name.
+    let defaults = TestSuiteCleanup.makeSuite(named: "test-list-available-\(UUID().uuidString)")
 
     override func setUp() {
         super.setUp()
@@ -18,6 +20,8 @@ final class BackupServiceListAvailableBackupsTests: XCTestCase {
 
     override func tearDown() {
         try? FileManager.default.removeItem(at: tmpDir)
+        // ID-REVIEW-1040 (2026-10-27): destroy the suite AND its file.
+        TestSuiteCleanup.destroy(defaults)
         super.tearDown()
     }
 

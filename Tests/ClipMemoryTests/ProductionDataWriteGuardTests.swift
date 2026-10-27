@@ -114,8 +114,8 @@ final class ProductionDataWriteGuardTests: XCTestCase {
     /// isolated suite is a fixture, not the user's data.
     func testIsolatedSuiteWithOwnKeyIsNotBlocked() throws {
         let suiteName = "ProductionDataWriteGuardTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(defaults) }
 
         let backend = FileStorageBackend(storageKey: "test.guard.probe", defaults: defaults)
         let probe = ClipboardItem(content: "allowed", type: .text)
@@ -128,8 +128,8 @@ final class ProductionDataWriteGuardTests: XCTestCase {
     /// fixture — the gate keys on the production domain, not the name.
     func testIsolatedSuiteWithProductionKeyNameIsNotBlocked() throws {
         let suiteName = "ProductionDataWriteGuardTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(defaults) }
 
         let backend = FileStorageBackend(
             storageKey: UserDefaultsKey.clipboardItems.rawValue,
@@ -185,8 +185,8 @@ final class ProductionDataWriteGuardTests: XCTestCase {
     /// VALUE, not the name.
     func testUnrelatedSuiteWithAProductionKeyNameIsNotTheProductionDomain() throws {
         let suiteName = "ProductionDataWriteGuardTests-\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
-        defer { isolated.removePersistentDomain(forName: suiteName) }
+        let isolated = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(isolated) }
 
         let fixture = try JSONEncoder().encode(
             [ClipboardItem(content: "fixture-not-production", type: .text)]
@@ -219,8 +219,8 @@ final class ProductionDataWriteGuardTests: XCTestCase {
         )
 
         let suiteName = "ProductionDataWriteGuardTests-\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
-        defer { isolated.removePersistentDomain(forName: suiteName) }
+        let isolated = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(isolated) }
         XCTAssertFalse(
             TestIsolation.mustRefuseProductionDataMutation(isolated),
             "an isolated suite is a fixture, not the user's data"

@@ -127,8 +127,8 @@ final class Review1025RegressionTests: XCTestCase {
     /// exists twice.
     func testPurgeDoesNotResurrectARestoredEntry() {
         let suiteName = "review-1025-purge-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         let key = "Review1025.Trash"
         let backend = FileStorageBackend(storageKey: key, scope: .trash, defaults: suite)
@@ -168,8 +168,8 @@ final class Review1025RegressionTests: XCTestCase {
     /// has not landed yet must not be LOST by the purge's rewrite.
     func testPurgeDoesNotDropANewlyTrashedEntry() {
         let suiteName = "review-1025-purge-new-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         let key = "Review1025.TrashNew"
         let backend = FileStorageBackend(storageKey: key, scope: .trash, defaults: suite)
@@ -204,8 +204,8 @@ final class Review1025RegressionTests: XCTestCase {
     /// the quarantined keys are gone.
     func testQuarantineErrorRecordIsClearedWhenTheKeysDisappear() {
         let suiteName = "review-1025-quarantine-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        defer { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        defer { TestSuiteCleanup.destroy(suite) }
 
         // Simulate a previous run's failure record.
         suite.set(Date(), forKey: UserDefaultsKey.lastQuarantineErrorDate.rawValue)

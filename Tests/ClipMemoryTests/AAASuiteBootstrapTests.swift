@@ -54,7 +54,7 @@ final class AAASuiteBootstrapTests: XCTestCase {
         // the suite finishes. Restoring to `.standard` mid-suite
         // would invalidate the cached singleton mid-run and cause
         // subsequent tests to write to the production domain again.
-        LanguageManager.defaults = UserDefaults(suiteName: "LanguageManager-test-isolation") ?? .standard
+        LanguageManager.defaults = TestSuiteCleanup.makeSuite(named: "LanguageManager-test-isolation")
 
         // ID-STORE-0014 (2026-08-10): per-test cleanup of the
         // `ClipboardStore-XCTest-isolation` UserDefaults suite. Without this,

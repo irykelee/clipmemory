@@ -561,8 +561,8 @@ final class Review1039RegressionTests: XCTestCase {
     @MainActor
     func testADeclarationThatNamesTheSeamReadsTheSeam() {
         let suiteName = "Review1039-seam-\(UUID().uuidString)"
-        let suite = UserDefaults(suiteName: suiteName)!
-        addTeardownBlock { suite.removePersistentDomain(forName: suiteName) }
+        let suite = TestSuiteCleanup.makeSuite(named: suiteName)
+        addTeardownBlock { TestSuiteCleanup.destroy(suite) }
         suite.set("from-the-seam", forKey: Review1039RegressionTests.probeKey)
 
         AppStorageDefaults.setShared(suite)

@@ -148,7 +148,7 @@ import XCTest
 
         assertSeamSurvivesConcurrentSwapAndRead(
             read: { _ = TestIsolation.defaults.object(forKey: "maxClipboardItems") },
-            swap: { TestIsolation.setDefaults(UserDefaults(suiteName: suiteName)!) }
+            swap: { TestIsolation.setDefaults(TestSuiteCleanup.makeSuite(named: suiteName)) }
         )
 
         // The seam must still hand back a usable store.

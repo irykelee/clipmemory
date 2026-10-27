@@ -217,6 +217,7 @@ func assertImageSnapshot(
     // keys directly; they route through `LanguageManager.shared`, which is
     // stubbed here.
     let stubDefaults = makeTestDefaults()
+    snapshotStubDefaults = stubDefaults
     stubDefaults.set("en", forKey: "appLanguage")
     stubDefaults.set(["en"] as [String], forKey: "AppleLanguages")
     let stub = LanguageManager(defaults: stubDefaults)
@@ -235,6 +236,15 @@ func assertImageSnapshot(
     }
     snapshotTestDefaults = nil
 
+    // ID-REVIEW-1040 (2026-10-27): the stub's suite was created here and
+    // was never destroyed — it leaked one plist file per snapshot test.
+    // The process-end sweep would have caught it, but a per-test cleanup
+    // keeps the footprint bounded even if the sweep never runs.
+    if let stubDefaults = snapshotStubDefaults {
+        removeTestDefaults(stubDefaults)
+    }
+    snapshotStubDefaults = nil
+
     // NEW-2 follow-up (2026-08-06): detach the stub so subsequent tests see
     // the production `LanguageManager.shared` again. The stub's side
     // effects (applyLanguage writes to its own test suite, not the
@@ -245,6 +255,10 @@ func assertImageSnapshot(
 /// The per-test suite the snapshot baseline lives in, if a snapshot test is
 /// running. `nil` outside a snapshot test.
 private var snapshotTestDefaults: UserDefaults?
+
+/// The per-test suite the `LanguageManager` stub is bound to, if a snapshot
+/// test is running. `nil` outside a snapshot test.
+private var snapshotStubDefaults: UserDefaults?
 
 // MARK: - M13 Test Infrastructure
 
@@ -260,19 +274,32 @@ private var snapshotTestDefaults: UserDefaults?
 /// // use defaults in test
 /// removeTestDefaults(defaults)
 /// ```
-private var _testDefaultsSuiteNames: [Int: String] = [:]
-
+/// M13: isolated UserDefaults suite factory.
+///
+/// ID-REVIEW-1040 (2026-10-27): the suite is created through
+/// `TestSuiteCleanup` so that it is **REGISTERED** — and destroying it
+/// removes the plist **FILE**, not just its values.
+///
+/// The old code called `removePersistentDomain` only, which leaves an empty
+/// shell file behind on every single call — AND leaves a pending write that
+/// cfprefsd later flushes back to disk (measured: the shell comes back in
+/// ~1 of 8 runs).
+///
+/// Census on the developer's machine (2026-10-27, the day this was fixed):
+/// **199 804** leftover `*.plist` files in `~/Library/Preferences`,
+/// **820 MB** of 4 KB blocks (the bytes themselves are only **21.8 MB**),
+/// and **+339 per full test run** before the fix.
+/// ⚠️ The earlier figure of "137 997 files / 539 MB" was measured before the
+/// census was taken over the WHOLE directory — it counted only the
+/// `test-`-prefixed subset. The number above is the whole directory.
 func makeTestDefaults() -> UserDefaults {
-    let suiteName = "test-\(UUID().uuidString)"
-    let defaults = UserDefaults(suiteName: suiteName)!
-    _testDefaultsSuiteNames[ObjectIdentifier(defaults).hashValue] = suiteName
-    return defaults
+    TestSuiteCleanup.makeSuite(named: "test-\(UUID().uuidString)")
 }
 
+/// Destroys a suite created by `makeTestDefaults()`.
+///
+/// ID-REVIEW-1040: the domain AND its file go away — see
+/// `TestSuiteCleanup` for the measured reason and the load-bearing order.
 func removeTestDefaults(_ defaults: UserDefaults) {
-    let key = ObjectIdentifier(defaults).hashValue
-    if let suiteName = _testDefaultsSuiteNames[key] {
-        defaults.removePersistentDomain(forName: suiteName)
-        _testDefaultsSuiteNames[key] = nil
-    }
+    _ = TestSuiteCleanup.destroy(defaults)
 }

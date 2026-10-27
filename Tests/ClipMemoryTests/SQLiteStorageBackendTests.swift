@@ -572,8 +572,8 @@ final class SQLiteStorageBackendTests: XCTestCase {
             databaseURL: dir.appendingPathComponent("store.sqlite3")
         )
         let suite = "GranularTags-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = TestSuiteCleanup.makeSuite(named: suite)
+        addTeardownBlock { TestSuiteCleanup.destroy(defaults) }
 
         let tag = Tag(id: UUID(), name: "work", colorHex: "#FF0000")
         // The catalog row already exists — this is exactly what the
