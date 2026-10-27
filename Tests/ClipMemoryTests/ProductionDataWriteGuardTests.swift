@@ -36,6 +36,16 @@ final class ProductionDataWriteGuardTests: XCTestCase {
     }
 
     private func restoreProductionBlob(_ key: String, _ original: Data?) {
+        // The restore of a PRODUCTION BLOB is the safety net for a
+        // BROKEN gate. If the gate stops refusing the write, the blob in
+        // the user's real domain has already been replaced by a one-item
+        // probe — this puts the original bytes back. The write is
+        // value-neutral in the healthy case (the gate refused, so the
+        // bytes never changed) and cannot be made crash-safe (a `defer`
+        // does not survive a host abort), so the window is kept as short
+        // as possible: the restore sits immediately after the assertion
+        // that proves the write was refused.
+        // ALLOW-PRODUCTION-WRITE: value-neutral restore of a production blob.
         if let original {
             UserDefaults.standard.set(original, forKey: key)
         } else {
@@ -59,6 +69,9 @@ final class ProductionDataWriteGuardTests: XCTestCase {
         let original = snapshotProductionBlob(key)
         defer { restoreProductionBlob(key, original) }
 
+        // ALLOW-PRODUCTION-WRITE: deliberate — the backend must be bound to the
+        // production domain, because the thing under test is the gate that refuses
+        // production mutations in a test process.
         let backend = FileStorageBackend(storageKey: key, defaults: .standard)
         let probe = ClipboardItem(content: "id-crash-0031-guard-probe", type: .text)
 
@@ -82,6 +95,9 @@ final class ProductionDataWriteGuardTests: XCTestCase {
         let original = snapshotProductionBlob(key)
         defer { restoreProductionBlob(key, original) }
 
+        // ALLOW-PRODUCTION-WRITE: deliberate — the backend must be bound to the
+        // production domain, because the thing under test is the gate that refuses
+        // production mutations in a test process.
         let backend = FileStorageBackend(storageKey: key, defaults: .standard)
         let payload = try JSONEncoder().encode([ClipboardItem(content: "blob-probe", type: .text)])
 

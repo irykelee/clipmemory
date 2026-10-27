@@ -18,7 +18,6 @@ final class FileStorageBackendDefaultsSeamTests: XCTestCase {
 
     private var suite1: UserDefaults!
     private var suite2: UserDefaults!
-    private var standardSnapshot: [String: Any]!
 
     override func setUp() {
         super.setUp()
@@ -27,21 +26,17 @@ final class FileStorageBackendDefaultsSeamTests: XCTestCase {
         suite2 = UserDefaults(suiteName: "FSB-seam-2-\(uid)")!
         suite1.removePersistentDomain(forName: "FSB-seam-1-\(uid)")
         suite2.removePersistentDomain(forName: "FSB-seam-2-\(uid)")
-        // Snapshot production so a forgotten .standard access doesn't
-        // pollute the host's user plist.
-        standardSnapshot = UserDefaults.standard.dictionaryRepresentation()
     }
 
-    override func tearDown() {
-        // Belt-and-suspenders: even though seam tests don't touch
-        // .standard, sweep any leaked keys so a future regression gets
-        // caught by ZZZ canary on the next full run.
-        for key in UserDefaults.standard.dictionaryRepresentation().keys
-        where !standardSnapshot.keys.contains(key) {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
-        super.tearDown()
-    }
+    // ID-REVIEW-1038 (2026-10-26): the `tearDown` sweep is GONE.
+    //
+    // It removed every key that appeared in `UserDefaults.standard` since
+    // `setUp` — INCLUDING keys the RUNNING app wrote in that window. The
+    // user's real settings could be deleted by a test. The suite now
+    // writes nothing to the production domain at all, so there is nothing
+    // to sweep, and a future regression is caught by
+    // `ProductionDomainWriteGuardTests` (which NAMES the offender) and by
+    // the ZZZ production-domain canary.
 
     /// save() writes to the injected suite, NOT UserDefaults.standard.
     func testSaveWritesToInjectedDefaultsNotStandard() throws {
@@ -63,19 +58,26 @@ final class FileStorageBackendDefaultsSeamTests: XCTestCase {
     /// load() reads from the injected suite. A .standard write to the same
     /// key must be invisible to an instance that was given suite1.
     func testLoadReadsFromInjectedDefaultsIgnoringStandard() throws {
-        // Plant data in .standard under the same storageKey the instance
-        // will use, then prove the instance ignores it.
-        UserDefaults.standard.set(
-            Data("decoy".utf8),
-            forKey: "test.items"
-        )
-        defer { UserDefaults.standard.removeObject(forKey: "test.items") }
+        // Plant a decoy under the SAME key name in ANOTHER domain, then
+        // prove the instance ignores it.
+        //
+        // ID-REVIEW-1038 (2026-10-26): the decoy used to be planted in
+        // `UserDefaults.standard` — the PRODUCTION domain, because the
+        // test host runs inside the app process. A decoy in a DIFFERENT
+        // per-test suite proves the same property (a same-key value in
+        // another domain must be invisible) without touching the user's
+        // real settings, and without a restore that a host abort would
+        // skip.
+        let decoySuiteName = "FSB-seam-decoy-\(UUID().uuidString)"
+        let decoySuite = UserDefaults(suiteName: decoySuiteName)!
+        defer { decoySuite.removePersistentDomain(forName: decoySuiteName) }
+        decoySuite.set(Data("decoy".utf8), forKey: "test.items")
 
         let backend = FileStorageBackend(storageKey: "test.items", defaults: suite1)
         let items = try backend.load()
 
         XCTAssertTrue(items.isEmpty,
-                      "load must return [] when injected suite is empty (ignoring .standard decoy)")
+                      "load must return [] when injected suite is empty (ignoring the decoy domain)")
     }
 
     /// saveTags / loadTags also go through the injected seam.
@@ -121,14 +123,18 @@ final class FileStorageBackendDefaultsSeamTests: XCTestCase {
     /// keeps existing callers working (no call-site change in the convenience
     /// init paths).
     func testDefaultsParameterDefaultsToStandard() throws {
-        // Create with the default 0-arg init — must still hit .standard.
+        // Create with the default 0-arg init — must still be bound to
+        // .standard.
+        //
+        // ID-REVIEW-1038 (2026-10-26): this used to SAVE through the
+        // 0-arg init and then assert that `.standard` had received the
+        // bytes — i.e. it wrote the user's production domain to prove
+        // where the backend points. The binding is now asserted by
+        // IDENTITY, which is the same contract without the write.
         let backend = FileStorageBackend(storageKey: "prod.default.items")
-        let items = [ClipboardItem(content: "prod", type: .text,
-                                   isEncrypted: false, contentHash: "p")]
-        try backend.save(items)
-
-        XCTAssertNotNil(UserDefaults.standard.data(forKey: "prod.default.items"),
-                        "default init must write to .standard for production callers")
-        defer { UserDefaults.standard.removeObject(forKey: "prod.default.items") }
+        XCTAssertTrue(
+            backend.testDefaults === UserDefaults.standard,
+            "default init must stay bound to .standard for production callers"
+        )
     }
 }

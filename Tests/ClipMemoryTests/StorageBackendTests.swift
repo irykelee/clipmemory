@@ -26,25 +26,24 @@ import XCTest
 final class StorageBackendTests: XCTestCase {
 
     private var suite: UserDefaults!
-    private var standardSnapshot: [String: Any]!
 
     override func setUp() {
         super.setUp()
         let uid = UUID().uuidString
         suite = UserDefaults(suiteName: "StorageBackendTests-\(uid)")!
         suite.removePersistentDomain(forName: "StorageBackendTests-\(uid)")
-        // Snapshot production UserDefaults so a forgotten .standard
-        // access doesn't pollute the host plist (ZZZ canary guard).
-        standardSnapshot = UserDefaults.standard.dictionaryRepresentation()
     }
 
     override func tearDown() {
-        for key in UserDefaults.standard.dictionaryRepresentation().keys
-        where !standardSnapshot.keys.contains(key) {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        // ID-REVIEW-1038 (2026-10-26): the production sweep that used to
+        // sit here is GONE. It deleted every key that appeared in
+        // `UserDefaults.standard` since `setUp` — including keys the
+        // RUNNING app wrote in that window, i.e. it could delete the
+        // user's real settings. Nothing in this file writes to the
+        // production domain any more, so there is nothing to sweep, and
+        // a future regression is caught (and NAMED) by
+        // `ProductionDomainWriteGuardTests` plus the ZZZ canary.
         suite = nil
-        standardSnapshot = nil
         super.tearDown()
     }
 

@@ -812,3 +812,23 @@ final class MemoryStorageBackend: StorageBackend {
 //   Services/SQLiteStorageBackend.swift
 // The placeholder class body was removed with PR-B; nothing in
 // this file needs to change again for the SQLite backend.
+
+#if DEBUG
+// ID-REVIEW-1038 (2026-10-26): test seam for the storage backend's
+// defaults injection.
+//
+// The seam tests used to answer "which store is this backend bound to?"
+// by WRITING to `UserDefaults.standard` and checking whether the write
+// turned up somewhere else. That put the production domain inside the
+// test suite for no reason: the test host runs inside the app process, so
+// `UserDefaults.standard` IS the user's real `com.clipmemory.app` domain,
+// and a write-then-restore dance does not survive a host abort (measured
+// 2026-10-26: a trap left a key behind in the user's plist).
+//
+// The extension is in this file because `defaults` is `private` and
+// Swift's `private` is file-scoped.
+extension FileStorageBackend {
+    /// The store this backend reads from and writes to.
+    var testDefaults: UserDefaults { defaults }
+}
+#endif

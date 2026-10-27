@@ -12,9 +12,31 @@ import SwiftUI
 /// `scale < 4` upper bound below is wider than any user-facing step. The
 /// difference is intentional — see the long-form note at the clamp.
 func sz(_ base: CGFloat) -> CGFloat {
+    sz(base, defaults: .standard)
+}
+
+/// The clamp, reading the scale from an injectable store.
+///
+/// ID-REVIEW-1038 (2026-10-26): the scale used to be read inline from
+/// `UserDefaults.standard` and the clamp was inlined with it, so the ONLY
+/// way to exercise the clamp was to write a bad value into
+/// `UserDefaults.standard` — the PRODUCTION domain. The test host runs
+/// INSIDE the app process (`TEST_HOST` = the app binary, and
+/// `Bundle.main.bundleIdentifier` measures as `com.clipmemory.app` inside
+/// the test host), so `UserDefaults.standard` in a test IS the user's real
+/// `com.clipmemory.app` domain. The write was undone by a `defer`, and a
+/// `defer` does NOT run when the test host aborts — and this repo has
+/// already proven the host aborts (CI run 40186263416, ID-REVIEW-1034).
+/// Measured on 2026-10-26: a trap between the write and the restore left
+/// `fontScale = 3.7` in the user's production plist, permanently.
+///
+/// Taking the store as a parameter lets the tests pin the whole
+/// read-then-clamp path against a per-test suite: the write side of the
+/// risk disappears instead of being made "usually safe".
+func sz(_ base: CGFloat, defaults: UserDefaults) -> CGFloat {
     // P1-AUDIT-2026-09-22 (P2-9): central `UserDefaultsKey` rawValue —
     // `"fontScale"` was an inline literal here.
-    let scale = UserDefaults.standard.double(forKey: UserDefaultsKey.fontScale.rawValue)
+    let scale = defaults.double(forKey: UserDefaultsKey.fontScale.rawValue)
     // M-5 fix (2026-07-20 audit): UserDefaults can store any IEEE-754 bit
     // pattern including `.infinity` / `NaN` (decimal plist round-trip
     // preserves them). The previous guard only checked `scale > 0`, which

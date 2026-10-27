@@ -128,19 +128,28 @@ final class TestHostIsolationTests: XCTestCase {
         } else {
             sharedSuite.removeObject(forKey: "maxClipboardItems")
         }
-        let hotKeyCodeBefore = UserDefaults.standard.object(forKey: "HotKeyKeyCode")
-        let hotKeyModifiersBefore = UserDefaults.standard.object(forKey: "HotKeyModifiers")
-        HotKeyConfig(keyCode: 0, modifiers: 256).save(to: .standard)
-        if let hotKeyCodeBefore {
-            UserDefaults.standard.set(hotKeyCodeBefore, forKey: "HotKeyKeyCode")
-        } else {
-            UserDefaults.standard.removeObject(forKey: "HotKeyKeyCode")
-        }
-        if let hotKeyModifiersBefore {
-            UserDefaults.standard.set(hotKeyModifiersBefore, forKey: "HotKeyModifiers")
-        } else {
-            UserDefaults.standard.removeObject(forKey: "HotKeyModifiers")
-        }
+        // ID-REVIEW-1038 (2026-10-26): the hotkey write used to go to
+        // `.standard` — which inside the test host IS the production
+        // `com.clipmemory.app` domain (the test bundle is injected into
+        // the app binary via `TEST_HOST`). It was restored immediately
+        // after, but a restore that runs "immediately after" is a
+        // `defer`, and a `defer` does NOT run when the test host aborts
+        // — and this repo has already proven the host aborts (CI run
+        // 40186263416, ID-REVIEW-1034). A crashed host would leave the
+        // user's global hotkey rewritten to keyCode 0 / modifier 256.
+        //
+        // The save path is exercised against a per-test suite instead.
+        // The canary below then proves `.standard` was NOT touched —
+        // which is the contract that actually matters, and it is now
+        // proven by ABSENCE rather than by a write-then-restore dance.
+        let hotKeySuiteName = "TestHostIsolation-hotkey-\(UUID().uuidString)"
+        let hotKeySuite = UserDefaults(suiteName: hotKeySuiteName)!
+        addTeardownBlock { hotKeySuite.removePersistentDomain(forName: hotKeySuiteName) }
+        HotKeyConfig(keyCode: 0, modifiers: 256).save(to: hotKeySuite)
+        XCTAssertEqual(
+            hotKeySuite.object(forKey: "HotKeyKeyCode") as? Int, 0,
+            "the HotKeyConfig save path must reach the store it was given"
+        )
 
         for key in canaryKeys {
             let after = UserDefaults.standard.object(forKey: key)
@@ -179,6 +188,14 @@ final class TestHostIsolationTests: XCTestCase {
     func testMaxItemsDidSetUsesInjectedDefaultsNotStandard() {
         let key = "maxClipboardItems"
         let standardBefore = UserDefaults.standard.object(forKey: key)
+        // A VALUE-NEUTRAL restore of a production setting — it writes
+        // back the exact value it just read, so it cannot change what the
+        // user sees. It exists for the FAILURE case: if `maxItems`'
+        // didSet ever regressed to writing `UserDefaults.standard`, the
+        // test below would fail AND this restore would put the user's own
+        // value back. It cannot cause the crash-time damage this round is
+        // about, because the value was never changed in the first place.
+        // ALLOW-PRODUCTION-WRITE: value-neutral restore of a production setting.
         defer {
             if let standardBefore {
                 UserDefaults.standard.set(standardBefore, forKey: key)
@@ -232,6 +249,14 @@ final class TestHostIsolationTests: XCTestCase {
         let standardBefore = UserDefaults.standard.object(forKey: key)
         let isolatedSuite = ClipboardStore.xcTestDefaults
         let isolatedBefore = isolatedSuite.object(forKey: key)
+        // A VALUE-NEUTRAL restore of a production setting — it writes
+        // back the exact value it just read, so it cannot change what the
+        // user sees. It exists for the FAILURE case: if `maxItems`'
+        // didSet ever regressed to writing `UserDefaults.standard`, the
+        // test below would fail AND this restore would put the user's own
+        // value back. It cannot cause the crash-time damage this round is
+        // about, because the value was never changed in the first place.
+        // ALLOW-PRODUCTION-WRITE: value-neutral restore of a production setting.
         defer {
             if let standardBefore {
                 UserDefaults.standard.set(standardBefore, forKey: key)

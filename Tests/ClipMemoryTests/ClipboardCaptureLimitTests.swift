@@ -140,10 +140,17 @@ import XCTest
     func testFileBackendSaveBlobPersistsToUserDefaults() throws {
         // Unique key so the test never touches the production "ClipboardItems"
         // blob in the shared UserDefaults domain.
+        //
+        // ID-REVIEW-1038 (2026-10-26): the blob used to be written into
+        // `UserDefaults.standard` — the PRODUCTION domain, because the
+        // test host runs inside the app process — and removed again in a
+        // `defer`. A `defer` does NOT run when the host aborts, so a
+        // crashed host left the blob behind in the user's real domain.
+        // The backend now writes to the per-test suite instead, so the
+        // production domain is never touched at all.
         let key = "CLIP2Test.ClipboardItems.\(UUID().uuidString)"
-        defer { UserDefaults.standard.removeObject(forKey: key) }
 
-        let backend = FileStorageBackend(storageKey: key)
+        let backend = FileStorageBackend(storageKey: key, defaults: testDefaults)
         let store = ClipboardStore(backend: backend, defaults: testDefaults)
         // ID-CRASH-0057 rework 3 (124153 P2): await first load before
         // touching in-memory state (store.items[0] below).
@@ -154,7 +161,7 @@ import XCTest
         // verify the encoded Data lands in UserDefaults synchronously.
         store.flushPendingSaves()
 
-        guard let data = UserDefaults.standard.data(forKey: key) else {
+        guard let data = testDefaults.data(forKey: key) else {
             XCTFail("saveBlob must write the encoded blob to UserDefaults synchronously")
             return
         }

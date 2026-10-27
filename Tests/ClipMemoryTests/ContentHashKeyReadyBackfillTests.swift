@@ -21,10 +21,11 @@ import XCTest
     private var testUUIDs: [UUID] = []
     private var testDefaults: UserDefaults!
 
-    private let migrationKey = "ImageStorageMigrationComplete"
-    private let startupCleanupKey = "ImageStorageStartupCleanupRan"
-    private var savedMigrationValue: Any?
-    private var savedStartupCleanupValue: Any?
+    // ID-REVIEW-1038 (2026-10-26): the `migrationKey` / `startupCleanupKey`
+    // constants that used to live here are gone with the production-domain
+    // pin they served. The invariant that made the pin removable — both
+    // writers are inert under XCTest — is pinned by
+    // `ProductionDomainWriteGuardTests`.
 
     override func setUp() {
         super.setUp()
@@ -32,13 +33,26 @@ import XCTest
         originalCrypto = ServiceContainer.crypto
         ServiceContainer.setCryptoForTesting(testCrypto)
 
-        // ClipboardStore init → loadItems → cleanupOrphanedImages and the
-        // ImageStorage singleton both touch these UserDefaults keys. Pin them
-        // and restore the previous values afterwards (ImageDedupTests pattern).
-        savedMigrationValue = UserDefaults.standard.object(forKey: migrationKey)
-        savedStartupCleanupValue = UserDefaults.standard.object(forKey: startupCleanupKey)
-        UserDefaults.standard.set(true, forKey: migrationKey)
-        UserDefaults.standard.set(true, forKey: startupCleanupKey)
+        // ID-REVIEW-1038 (2026-10-26): this used to PIN both keys in
+        // `UserDefaults.standard` (the production domain — the test host
+        // runs inside the app process) and restore them in `tearDown`.
+        // The pin was unnecessary: BOTH writers are already inert under
+        // XCTest —
+        //   * `ImageStorage.init` returns early when `isRunningTests`
+        //     (ImageStorage.swift:165), so the legacy migration never
+        //     runs and never writes `migrationCompleteKey`;
+        //   * `cleanupOrphanedImages` returns early when `isRunningTests`
+        //     (ImageStorage.swift:1243), so `startupCleanupKey` is never
+        //     written either.
+        // What the pin DID do was plant two production latches — and a
+        // `tearDown` restore does not survive a host abort (ID-REVIEW-1034
+        // proved the host aborts; measured 2026-10-26: a trap left
+        // `fontScale = 3.7` in the user's plist). If the host died
+        // between the pin and the restore, the user's next launch would
+        // have believed the image-storage migration had already run.
+        // The pin is removed rather than made "usually safe"; the
+        // regression test below pins the invariant that made it
+        // removable.
 
         backend = MemoryStorageBackend()
         // ID-CRASH-0057 rework 3 follow-up (2026-10-02): inject per-test
@@ -68,10 +82,6 @@ import XCTest
             ImageStorage.shared.deleteImage(filename: Self.filename(uuid))
         }
         testUUIDs.removeAll()
-        restore(migrationKey, savedMigrationValue)
-        restore(startupCleanupKey, savedStartupCleanupValue)
-        savedMigrationValue = nil
-        savedStartupCleanupValue = nil
         if let originalCrypto { ServiceContainer.setCryptoForTesting(originalCrypto) }
         originalCrypto = nil
         testCrypto = nil
@@ -83,14 +93,6 @@ import XCTest
     }
 
     // MARK: - Helpers
-
-    private func restore(_ key: String, _ value: Any?) {
-        if let value {
-            UserDefaults.standard.set(value, forKey: key)
-        } else {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
-    }
 
     private static func filename(_ id: UUID) -> String {
         "\(id.uuidString).png"

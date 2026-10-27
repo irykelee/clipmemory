@@ -460,6 +460,9 @@ import CryptoKit
                 store: store,
                 localCrypto: localCrypto,
                 imagesDirectory: imagesDir,
+                // ALLOW-PRODUCTION-WRITE: deliberate — the restore must be aimed at the
+                // production domain, because the thing under test is the guard that
+                // refuses production mutations in a test process.
                 defaults: .standard
             ),
             "the production-data guard must refuse the restore in a test process"

@@ -267,14 +267,35 @@ final class TagTests: XCTestCase {
     /// Save tags via the store, then read the raw UserDefaults blob and verify
     /// tag names are encrypted at rest (v2 prefix) while a fresh store load
     /// decrypts them back to plaintext.
+    /// A per-test store for the tag blob.
+    ///
+    /// ID-REVIEW-1038 (2026-10-26): these tests used to write the tag blob
+    /// into `UserDefaults.standard` — the PRODUCTION domain, because the
+    /// test host runs INSIDE the app process (`TEST_HOST` = the app
+    /// binary, and `Bundle.main.bundleIdentifier` measures as
+    /// `com.clipmemory.app` there). The write was undone by a `defer`, and
+    /// a `defer` does NOT run when the test host aborts — this repo has
+    /// already proven the host aborts (CI run 40186263416, ID-REVIEW-1034).
+    /// Measured 2026-10-26: a trap between a production write and its
+    /// restore left the value in the user's plist, permanently.
+    ///
+    /// A per-test suite removes the write instead of making it "usually
+    /// safe" — and it also removes the cleanup-after-assertions hazard.
+    private func makeTagStore() -> UserDefaults {
+        let name = "TagTests-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        return suite
+    }
+
     func testSaveTagsPersistsEncryptedNamesToUserDefaults() throws {
         // Use a real FileStorageBackend but isolate tag storage to a dedicated key
         // via a fresh FileStorageBackend(storageKey:) — proves the key parameter works.
         // UUID-suffix the key so re-runs (or parallel runs against the same
         // UserDefaults) can't accumulate data; cleanup happens unconditionally.
         let key = "ClipMemoryTagsTest_SaveTags-\(UUID().uuidString)"
-        defer { UserDefaults.standard.removeObject(forKey: key) }
-        let tagBackend = FileStorageBackend(storageKey: key)
+        let suite = makeTagStore()
+        let tagBackend = FileStorageBackend(storageKey: key, defaults: suite)
         let store = ClipboardStore(backend: MemoryStorageBackend(),
                                    tagBackend: tagBackend)
         let tag = Tag(name: "工作", colorHex: "#4ECDC4")
@@ -286,8 +307,8 @@ final class TagTests: XCTestCase {
         DispatchQueue.main.async { exp.fulfill() }
         wait(for: [exp], timeout: 1.0)
 
-        let raw = UserDefaults.standard.data(forKey: key)
-        XCTAssertNotNil(raw, "saveTags should write to UserDefaults")
+        let raw = suite.data(forKey: key)
+        XCTAssertNotNil(raw, "saveTags should write to the injected store")
         let decoded = try JSONDecoder().decode([Tag].self, from: raw!)
         XCTAssertEqual(decoded.count, 1)
         XCTAssertEqual(decoded[0].id, tag.id)
@@ -297,7 +318,7 @@ final class TagTests: XCTestCase {
 
         // Fresh store with the same backend decrypts the name back to plaintext.
         let freshStore = ClipboardStore(backend: MemoryStorageBackend(),
-                                        tagBackend: FileStorageBackend(storageKey: key))
+                                        tagBackend: FileStorageBackend(storageKey: key, defaults: suite))
         XCTAssertEqual(freshStore.tags[tag.id]?.name, "工作")
         // Cleanup runs via `defer` at the top of the test to handle the
         // failed-assertion path (XCTAssertEqual bails out before reaching
@@ -310,9 +331,8 @@ final class TagTests: XCTestCase {
     /// ciphertext and replaced with the [locked] placeholder.
     func testTagNameStartingWithEncryptionPrefixSurvivesRoundTrip() throws {
         let key = "ClipMemoryTagsTest_V2PrefixRoundTrip"
-        UserDefaults.standard.removeObject(forKey: key)
-        defer { UserDefaults.standard.removeObject(forKey: key) }
-        let tagBackend = FileStorageBackend(storageKey: key)
+        let suite = makeTagStore()
+        let tagBackend = FileStorageBackend(storageKey: key, defaults: suite)
         let store = ClipboardStore(backend: MemoryStorageBackend(),
                                    tagBackend: tagBackend)
         let tag = Tag(name: "v2:work", colorHex: "#4ECDC4")
@@ -324,7 +344,7 @@ final class TagTests: XCTestCase {
         wait(for: [exp], timeout: 1.0)
 
         let freshStore = ClipboardStore(backend: MemoryStorageBackend(),
-                                        tagBackend: FileStorageBackend(storageKey: key))
+                                        tagBackend: FileStorageBackend(storageKey: key, defaults: suite))
         XCTAssertEqual(freshStore.tags[tag.id]?.name, "v2:work",
                        "Names that look encrypted but are plaintext must not become locked")
     }
@@ -335,16 +355,16 @@ final class TagTests: XCTestCase {
         let key = "ClipMemoryTagsTest_LoadTags"
         let tag = Tag(name: "学习", colorHex: "#FF6B6B")
         let data = try JSONEncoder().encode([tag])
-        UserDefaults.standard.set(data, forKey: key)
+        let suite = makeTagStore()
+        suite.set(data, forKey: key)
 
         let store = ClipboardStore(backend: MemoryStorageBackend(),
-                                   tagBackend: FileStorageBackend(storageKey: key))
+                                   tagBackend: FileStorageBackend(storageKey: key, defaults: suite))
         XCTAssertEqual(store.tags.count, 1)
         XCTAssertEqual(store.tags[tag.id]?.name, "学习")
         XCTAssertEqual(store.tags[tag.id]?.colorHex, "#FF6B6B")
-
-        // Cleanup
-        UserDefaults.standard.removeObject(forKey: key)
+        // Cleanup is handled by the per-test suite's teardown block, so it
+        // also runs when an assertion above fails.
     }
 
     // MARK: - Item tag attachment persistence

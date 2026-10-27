@@ -313,6 +313,157 @@ fresh-suite object(forKey: maxClipboardItems) -> nil                    ← 非�
 **验证**：全量 **1269 tests / 6 skipped / 0 failures / 0 条泄漏**（本地）；跑完后 5 个共享 suite 的
 plist **全空**（本轮之前实测有 4 个键残留）。
 
+## ID-REVIEW-1038（2026-10-27）：测试往**生产域**写 —— `defer` 还原扛不住宿主崩溃
+
+> 起因：ID-REVIEW-1035 / 1036 / 1037 三轮都在查「共享 suite」与「无锁 static」，
+> 却没人问过**最外层的那一格**：测试进程里 `UserDefaults.standard` 到底是哪个域？
+> 答案是**用户的生产域** —— 于是「测试写生产设置」一直存在，只是平时被 `defer` 盖住了。
+
+### 38.1 前提（实测，不是推断）：测试宿主**就是 App**
+
+| 证据 | 值 |
+|---|---|
+| `ClipMemory.xcodeproj/project.pbxproj` | `TEST_HOST = $(BUILT_PRODUCTS_DIR)/ClipMemory.app/Contents/MacOS/ClipMemory`；`BUNDLE_LOADER = $(TEST_HOST)` |
+| 测试宿主内 `Bundle.main.bundleIdentifier`（实测打印） | `com.clipmemory.app` |
+| ⇒ 结论 | 测试里的 `UserDefaults.standard` **就是**生产域 `com.clipmemory.app` |
+
+⚠️ 旧注释说法不准：`ImageStorage.swift:157` 写的是「XCTest runs in a separate binary but
+shares the bundle-id UserDefaults domain」—— 不是「另一个 binary」，是**同一个 App 进程**
+（测试 bundle 被注入进 App 可执行文件）。
+
+### 38.2 真缺陷：保护是 `defer`，而 `defer` 扛不住宿主崩溃
+
+**正常路径实测**：6 个肇事测试类跑完，生产域 plist **零变化** ⇒ 现有 `defer` 在不崩时是有效的。
+⇒ 缺陷**只在崩溃路径**上 —— 而 ID-REVIEW-1034 已经证明宿主会崩（CI run 40186263416，
+「Restarting after unexpected exit, crash, or test timeout」）。
+
+**崩溃探针（2026-10-26 实测）**：trap 前写入 `fontScale = 3.7` + `cmCrashProbe`，
+trap 后读生产 plist：
+
+```
+fontScale      -> 3.7            <- 真实用户设置键，残留
+cmCrashProbe   -> 'left-behind'
+```
+
+⇒ `defer` 还原**没有执行**。（探针用完已把两个键从生产域删除，plist 回到 28 键基线。）
+
+⚠️ 顺带测掉一条「看起来更好」的路：`UserDefaults.setVolatileDomain(_:forName:)`（内存态、不落盘）
+在 app 测试宿主内**不生效** —— 用 bundle id / `kCFPreferencesAnyHost` / `kCFPreferencesCurrentHost` /
+`localhost` 四种 host 名都试过，`object(forKey:)` / `double(forKey:)` 全部答 nil
+⇒ **「只改内存、不改用户盘」这条路不存在**。
+
+### 38.3 全量枚举：10 处生产域写入
+
+| # | 文件 | 键 | 性质 | 本轮处置 |
+|---|---|---|---|---|
+| 1-4 | `Audit20260720RegressionTests`（4 个用例） | `fontScale` | 植入（`.infinity` / `NaN` / `-2` / `5` / `0` …） | ✅ 加 `sz(_:defaults:)` seam，改用 per-test suite |
+| 5 | `TestHostIsolationTests` | `HotKeyKeyCode` / `HotKeyModifiers` | 植入 | ✅ 改 per-test suite |
+| 6 | `ClipboardStoreTrashTests` | `maxClipboardItems` | **死代码还原**（store 用的是 `testDefaults`） | ✅ 删掉 + 订正注释 |
+| 7 | `ContentHashKeyReadyBackfillTests` | `ImageStorageMigrationComplete` / `ImageStorageStartupCleanupRan` | 植入 latch | ✅ 删掉（两个写入方在 XCTest 下都是 no-op） |
+| 8 | `TagTests` ×3 | `ClipMemoryTagsTest_*` | 植入 blob（其中 1 处清理写在断言**之后**） | ✅ per-test suite + 清理移进 teardown |
+| 9 | `ClipboardCaptureLimitTests` | `CLIP2Test.ClipboardItems.<UUID>` | 植入 blob | ✅ 注入 per-test defaults |
+| 10 | `StorageBackendTests` / `FileStorageBackendDefaultsSeamTests` | 任意新键 | **清理式扫描** | ✅ 删除（见 38.4） |
+
+### 38.4 附带修掉一个更危险的：清理式扫描会**删用户的设置**
+
+`StorageBackendTests.tearDown` / `FileStorageBackendDefaultsSeamTests.tearDown` 原来做的是
+「把 `setUp` 之后出现在 `UserDefaults.standard` 里的**每一个键**删掉」。
+⇒ **用户正在运行的 App 在测试窗口里写的任何新设置，都会被测试删掉。**
+⇒ 本轮删除（这两个文件已不再写生产域）；防护改由「静态守卫 + ZZZ 生产域 canary」承担 ——
+ZZZ 只会**报告**，不会**删用户的键**。
+
+### 38.5 新守卫：`ProductionDomainWriteGuardTests`（静态源码扫描）
+
+**为什么必须是静态**：运行时守卫在崩溃场景全部失效 ——
+`ZZZSuiteTeardownTests.testNoProductionPollution` 在宿主崩溃后**根本不运行**；
+而且它在**本机直接 `XCTSkip`**（另一个实例持有 `.instance.lock` 时）⇒
+「用户自己机器上的日常开发」恰好是**零检测**的场景。
+源码扫描是**代码的属性**，宿主死了也在。
+
+**规则**：测试源码里任何生产域写入（直接调用 / `save(to:)` / **别名绑定** / **作为实参传值**），
+除非所在行上方 6 行内有 `// ALLOW-PRODUCTION-WRITE: <理由 ≥ 40 字，且不是占位符>`，否则报错。
+⚠️ 实测「作为实参传值」这条规则**无法静态区分读与写**（`sz(16, defaults: UserDefaults.standard)`
+是**读**也被报出来）⇒ 语义因此是「测试树里**每一次提到生产域**都要有标记，并说明是读还是写」——
+**比只管写更严**，已在守卫文件里写明。
+
+**豁免 10 处**（每处都写明理由）：
+
+| 位置 | 理由 |
+|---|---|
+| `ProductionDataWriteGuardTests`（3） | 生产 blob 的还原 = 守卫失效时的安全网（值中性）；另 2 处是**故意**把 backend 绑到生产域，以证明守卫会拒绝 |
+| `TestHostIsolationTests`（2） | `maxClipboardItems` 的值中性还原（只用于「守卫失效」这条失败路径） |
+| `ZZZSuiteTeardownTests`（1） | canary 自己的**正控制组**，不写生产域就测不到断言 |
+| `SnapshotTestHelpers`（2） | **架构性必需**：视图的 `@AppStorage`（**14 个视图文件 / 17 个声明站点**，`store:` 0 处）没有可注入 store，渲染确定性只能靠往生产域种基线 |
+| `BackupQuarantineTests`（1） | **故意**把 restore 指向生产域 —— 被测对象就是「测试进程里拒绝改生产数据」的守卫 |
+| `Audit20260720RegressionTests`（1） | **只读**：把生产 store 传给 `sz(_:defaults:)` 仅为了两种写法对拍，不写 |
+
+守卫自带控制组：正控制（12 种写法必须被抓，且**嵌在多行上下文里**）、负控制（读 / 注释 /
+无关代码不得被抓）、「标记必须在场」、「标记必须带理由」四条独立断言。
+
+### 38.6 实测结果
+
+| 项目 | 结果 |
+|---|---|
+| 全量本地 | **1276 tests / 4 skipped / 0 failures**（改前 1269 ⇒ +7） |
+| 全量跑完的生产域 plist diff | **NO CHANGE**（收紧 canary 后重跑；更早一轮只有 `NSWindow Frame com.clipmemory.app.SettingsWindow` —— AppKit 自己的 frame autosave，`NS` 前缀）⇒ **测试对生产域零写入** |
+| 崩溃探针 | trap 后 `fontScale = 3.7` 残留（缺陷实证）；探针用完已清理，生产域回到 28 键基线 |
+| 变异验证 | **7/7 全被抓住**（M1 无标记写入 / M2 删标记 / M3 标记无理由 / M4 别名写入 / M5 实参传值 / M6 占位符理由 / M7 `guard let` 别名）—— 首轮 M4 变绿，抓到守卫自身的缺陷，见 38.7 |
+
+### 38.7 ⚠️ 变异验证抓到了**守卫自己**的一个缺陷（已修）
+
+第一轮变异跑出来 **M4 变绿**（别名写入没被抓住）⇒ 别名规则当时**从未生效**：
+ICU 的 `$` 在不开 MULTILINE 时**只匹配整个输入的末尾** ⇒ `\s*$` 只能匹配文件**最后一行**的赋值。
+
+⇒ 修法：别名正则加 `(?m)`。
+⇒ **同时发现正控制组也有同一个洞**：样例是**单行**的 ⇒ 整条规则「因为样例就是全部输入」而侥幸匹配上
+⇒ 控制组当时**抓不到**这个 bug。⇒ 已把样例**嵌进多行上下文**（`func demo() { … }`），
+这样「只在文件末尾生效」的规则会当场失败。
+
+⇒ 教训（与 ID-REVIEW-1036 同源）：**控制组自己也可能没有判别力** ——
+「单行样例 + 末尾锚点」是一个**互相掩护**的组合。
+
+### 38.9 独立核验（`verifier` 子 agent）：**PASS-WITH-NOTES**，5 条 P2 全部处置
+
+核验员是**独立**跑的（不复用我的结论）。它自己重建了一份 ICU 正则副本扫全测试树、自己跑了
+volatile-domain 探针、自己快照了生产 plist。结论：`VERDICT: PASS-WITH-NOTES`，**0 个阻断**。
+
+| P2 | 内容 | 处置 |
+|---|---|---|
+| 1 | `SnapshotTestHelpers` 里写的「17 sites across 15 views」**文件数错了** | ✅ 改为「**17 个声明站点 / 14 个视图文件**」（实测：app target 里 `@AppStorage(` 共 18 处命中，第 18 处是 `FontScaling.swift` 的**文档注释**，不是声明；`store:` 参数 **0** 处） |
+| 2 | 我新加的 `testProductionEntryPointReadsTheScaleFromTheProductionDomain` **在默认安装上结构性空转**（用户 plist 里没有 `fontScale` ⇒ 两边都 clamp 到 base ⇒ 怎么改都相等；它只抓得到「读错域」，抓不到「读错键」，而我的注释声称能抓后者） | ✅ 拆成**三条独立契约**：① **读哪个键**（用 per-test suite 往**另一个键**写值 ⇒ 确定性可判）② **键常量本身**（`UserDefaultsKey.fontScale.rawValue == "fontScale"`）③ **生产入口读哪个域**（值相等，**注释明说它在默认安装上抓不到键**）。原文案已按实现订正 |
+| 3 | 守卫有**两个未记录的盲区**：(i) `defaults: .standard` **作为实参**传出去（不是调用生产域上的写方法）⇒ 旧规则看不见；(ii) `guard let d = UserDefaults.standard else` 不被别名规则匹配（别名规则要求值在行尾） | ✅ 补 **Rule D**（生产域作为实参）+ 放宽别名规则的行尾（允许 `else`、允许行尾注释、允许 `guard let`）。⚠️ 实测 Rule D **无法静态区分读与写**（`sz(16, defaults: UserDefaults.standard)` 是**读**也被报出来）⇒ 语义因此变成「测试树里**每一次提到生产域**都要有标记并说明是读还是写」—— 这比原来更严，且已在守卫文件里写明 |
+| 4 | 标记规则偏松：**一个标记覆盖其下 6 行内的所有写入**，且 20 字的门槛低到「TODO fix later ok」都能过 | ✅ 门槛提到 **40 字** + 新增**占位符黑名单**（`todo`/`fixme`/`fix later`/`tbd`/`xxx`/`wip`/`later`）；「6 行窗口会覆盖多条写入」这条**已知宽松**已写进守卫文件（核验员原话：不能默默留着） |
+| 5 | 删掉两个 `tearDown` 清理扫描后，ZZZ canary 现在会看到那两个类泄漏的一切 ⇒ 需要一次全量 CI 确认没有新红 | ✅ 本地全量已过（见 38.10），CI 见本轮 commit |
+
+**核验员提的一条「未验证」也已用证据关闭**：C 级 `CFPreferencesSetAppVolatileDomain`
+（`dlsym` 在本机**找不到**该符号，而 `CFPreferencesSetAppValue` 找得到）⇒ **「只改内存、不改用户盘」
+这条路在本机确实不存在** ⇒ `SnapshotTestHelpers` 的 2 处豁免**不是**过早豁免。
+
+**核验员自己抓到的、和我一致的一点**：它独立复现了守卫的**同一个 P0 级缺陷**（`$` 不开 MULTILINE
+⇒ 别名规则只会在文件最后一行生效 ⇒ 规则**完全失效**），并指出我的**正控制组也是空转**（单行样例
+⇒ 「因为样例就是全部输入」而侥幸匹配）。⇒ 两处都已修（见 38.7）。
+
+### 38.10 收紧 canary：`appLifecycleKeys` 少了 2 条
+
+`ImageStorageMigrationComplete` 与 `ImageStorageStartupCleanupRan` 之所以在 `appLifecycleKeys` 里，
+是因为当年有个测试**往生产域 pin 它们**（`ContentHashKeyReadyBackfillTests`）。pin 已删，且 XCTest 下
+**没有任何东西**会写这两个键（`ImageStorage.init` 与 `cleanupOrphanedImages` 都有 `isRunningTests`
+早退；`cleanupOrphanedImagesForTesting` 的全部调用点都注入了 suite）⇒ **两条 allowlist 条目已删除**，
+canary 因此**变严**：今后任何测试往生产域种这两个键，都会让 suite 失败，而不是被容忍。
+
+### 38.8 留下的、**本轮没做**的（明确记账，不含糊）
+
+1. **`@AppStorage` 无 store seam** ⇒ 快照测试必须写生产域（`SnapshotTestHelpers` 的 2 处豁免）。
+   正确解法是给 15 个视图 17 处 `@AppStorage` 加 `store:`（大改），或把快照测试挪出 App 的
+   bundle-id 域。⇒ 崩溃爆炸半径：**3 个外观类偏好**（字号回 1.0 / 设置页 tab 回默认 / 主题回 system），
+   **不涉及剪贴板历史、标签、设置数据**。
+2. **静态扫描看不见「经由参数 / 属性流过来」的生产域**（只能看见字面与直接别名）——
+   已在守卫文件里写明为已知限制。
+3. **`UserDefaults(suiteName:)` 打不开 App 自己的域**（实测在 App 进程内返回 nil）⇒ 不用扫。
+   但若将来测试 target 改成**非 hosted**，`.standard` 就不再是生产域 ⇒ 6 处豁免可以退休
+   （`ProductionDomainWriteGuardTests.testStandardAddressesTheProductionDomainInThisProcess`
+   钉住了这个前提）。
+
 ## 已恢复（25 个测试，截至 2026-10-02 snapshot re-skip 后）
 
 | 文件 | 恢复数 | 备注 |

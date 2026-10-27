@@ -165,6 +165,34 @@ func assertImageSnapshot(
 /// Call from `setUp()` of any test class that calls `assertImageSnapshot`.
 /// Stores the original values and restores them in `tearDown()`.
 @MainActor func snapshotTestSetUp() {
+    // The snapshot tests render VIEWS, and the views read `fontScale` /
+    // `settings.selectedTab` / `themeAppearance` through `@AppStorage`,
+    // which has NO injectable store — measured 2026-10-27: **17
+    // declaration sites across 14 view files**, every one of them
+    // `@AppStorage("…")` without a `store:` argument. (A grep of the app
+    // target reports 18 hits; the 18th is the doc comment in
+    // `FontScaling.swift`, not a declaration.) The test host
+    // runs inside the app process, so `UserDefaults.standard` IS the
+    // user's real `com.clipmemory.app` domain and the render can only
+    // be made deterministic by planting the baseline there.
+    //
+    // The in-memory-only alternative was measured and does NOT exist:
+    // `UserDefaults.setVolatileDomain(_:forName:)` never became visible
+    // to `object(forKey:)` / `double(forKey:)` on `.standard` (measured
+    // 2026-10-26 inside the app test host, with the bundle id, with
+    // `kCFPreferencesAnyHost`, with `kCFPreferencesCurrentHost` and with
+    // `localhost` as the host name — all four answered nil).
+    //
+    // Blast radius if the host aborts between setUp and tearDown: three
+    // COSMETIC preferences (font scale back to 1.0, selected settings tab
+    // back to default, theme back to system). No clipboard history, no
+    // tags, no settings data.
+    //
+    // The proper fix is an `@AppStorage(store:)` seam across the views
+    // (or running the snapshot tests outside the app's bundle-id
+    // domain). That is a separate, larger change and is recorded as such
+    // in docs/skips-ledger.md.
+    // ALLOW-PRODUCTION-WRITE: snapshot baseline must live in the production domain.
     let defaults = UserDefaults.standard
     // ID-STORE-0007 (2026-08-01): object(forKey:) not double(forKey:) —
     // double() returns 0 for an ABSENT key, which tearDown would then
@@ -236,6 +264,34 @@ func assertImageSnapshot(
 }
 
 @MainActor func snapshotTestTearDown() {
+    // The snapshot tests render VIEWS, and the views read `fontScale` /
+    // `settings.selectedTab` / `themeAppearance` through `@AppStorage`,
+    // which has NO injectable store — measured 2026-10-27: **17
+    // declaration sites across 14 view files**, every one of them
+    // `@AppStorage("…")` without a `store:` argument. (A grep of the app
+    // target reports 18 hits; the 18th is the doc comment in
+    // `FontScaling.swift`, not a declaration.) The test host
+    // runs inside the app process, so `UserDefaults.standard` IS the
+    // user's real `com.clipmemory.app` domain and the render can only
+    // be made deterministic by planting the baseline there.
+    //
+    // The in-memory-only alternative was measured and does NOT exist:
+    // `UserDefaults.setVolatileDomain(_:forName:)` never became visible
+    // to `object(forKey:)` / `double(forKey:)` on `.standard` (measured
+    // 2026-10-26 inside the app test host, with the bundle id, with
+    // `kCFPreferencesAnyHost`, with `kCFPreferencesCurrentHost` and with
+    // `localhost` as the host name — all four answered nil).
+    //
+    // Blast radius if the host aborts between setUp and tearDown: three
+    // COSMETIC preferences (font scale back to 1.0, selected settings tab
+    // back to default, theme back to system). No clipboard history, no
+    // tags, no settings data.
+    //
+    // The proper fix is an `@AppStorage(store:)` seam across the views
+    // (or running the snapshot tests outside the app's bundle-id
+    // domain). That is a separate, larger change and is recorded as such
+    // in docs/skips-ledger.md.
+    // ALLOW-PRODUCTION-WRITE: snapshot baseline must live in the production domain.
     let defaults = UserDefaults.standard
     if snapshotTestSavedFontScale != nil {
         defaults.set(snapshotTestSavedFontScale, forKey: "fontScale")

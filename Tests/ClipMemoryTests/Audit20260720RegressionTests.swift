@@ -11,8 +11,13 @@ import AppKit
 /// - XCTest + `@testable import ClipMemory`.
 /// - Per-test isolation: fresh `MemoryStorageBackend`; never touch production
 ///   `UserDefaults` keys (matches `test-never-touch-prod-data` rule).
-/// - fontScale user-default key is set then restored in each test that
-///   touches it; no permanent user-visible state mutation.
+/// - The fontScale clamp is pinned against a PER-TEST suite
+///   (`makeFontScaleStore()`), never against `UserDefaults.standard`.
+///   ID-REVIEW-1038 (2026-10-27): this file used to set the production
+///   `fontScale` key and restore it in a `defer` — which broke the rule
+///   above, and a `defer` does not survive a host abort (measured: the
+///   user's plist was left with `fontScale = 3.7`). The suite-based
+///   approach is also deterministic, which the old one was not.
 @MainActor final class Audit20260720RegressionTests: XCTestCase {
 
     // MARK: - Setup / teardown
@@ -202,35 +207,46 @@ import AppKit
 
     // MARK: - M-5: FontScaling.sz must clamp Inf / NaN / oversized scale
 
+    /// A per-test store that holds the `fontScale` value the clamp reads.
+    ///
+    /// ID-REVIEW-1038 (2026-10-26): these tests used to write `fontScale`
+    /// into `UserDefaults.standard` and restore it in a `defer`. The test
+    /// host runs INSIDE the app process, so `.standard` is the user's real
+    /// `com.clipmemory.app` domain — and a `defer` does NOT run when the
+    /// host aborts (measured 2026-10-26: `fontScale = 3.7` left behind in
+    /// the user's plist). This file's own header already said "never touch
+    /// production `UserDefaults` keys"; the code below was breaking that
+    /// rule with nothing to catch it.
+    private func makeFontScaleStore() -> UserDefaults {
+        let name = "Audit20260720-fontScale-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        return suite
+    }
+
     /// Audit M-5: `sz(_:)` only checked `scale > 0`, which passes for
     /// `.infinity` and produces `base * .infinity = .infinity`, then
     /// `Text().font(.system(size: .infinity))` collapses the SwiftUI layout.
     /// The fix clamps with `isFinite && scale > 0 && scale < 4`.
     func testFontScalingClampsBadValuesToBase() {
-        let key = "fontScale"
-        // ID-STORE-0007 (2026-08-01): object(forKey:) not double(forKey:) —
-        // double() returns 0 for an ABSENT key and the defer would write a
-        // real 0 back into production defaults (blank settings picker).
-        let original = UserDefaults.standard.object(forKey: key) as? Double
-        defer {
-            if let original { UserDefaults.standard.set(original, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
-        }
+        let store = makeFontScaleStore()
+        let key = UserDefaultsKey.fontScale.rawValue
 
-        UserDefaults.standard.set(Double.infinity, forKey: key)
-        XCTAssertEqual(sz(16), 16, ".infinity must clamp to base (regression of M-5)")
+        store.set(Double.infinity, forKey: key)
+        XCTAssertEqual(sz(16, defaults: store), 16, ".infinity must clamp to base (regression of the 2026-07-20 font-scale clamp)")
 
-        UserDefaults.standard.set(Double.nan, forKey: key)
-        XCTAssertEqual(sz(16), 16, "NaN must clamp to base (regression of M-5)")
+        store.set(Double.nan, forKey: key)
+        XCTAssertEqual(sz(16, defaults: store), 16, "NaN must clamp to base (regression of the 2026-07-20 font-scale clamp)")
 
-        UserDefaults.standard.set(-2.0, forKey: key)
-        XCTAssertEqual(sz(16), 16, "Negative must clamp to base (regression of M-5)")
+        store.set(-2.0, forKey: key)
+        XCTAssertEqual(sz(16, defaults: store), 16, "Negative must clamp to base (regression of the 2026-07-20 font-scale clamp)")
 
-        UserDefaults.standard.set(5.0, forKey: key)
-        XCTAssertEqual(sz(16), 16, "scale >= 4 must clamp to base (regression of M-5)")
+        store.set(5.0, forKey: key)
+        XCTAssertEqual(sz(16, defaults: store), 16, "scale >= 4 must clamp to base (regression of the 2026-07-20 font-scale clamp)")
 
         // Valid range: 2x must actually multiply.
-        UserDefaults.standard.set(2.0, forKey: key)
-        XCTAssertEqual(sz(16), 32, "scale == 2.0 within bounds must multiply")
+        store.set(2.0, forKey: key)
+        XCTAssertEqual(sz(16, defaults: store), 32, "scale == 2.0 within bounds must multiply")
     }
 
     // MARK: - FontScaling: Settings-picker 3-step regression (FONT-0001)
@@ -244,29 +260,26 @@ import AppKit
     /// (e.g. changing `< 4` to `<= 4`) cannot silently break the visible
     /// picker output.
     func testFontScalingThreeStepPickerMultiplies() {
-        let key = "fontScale"
-        let original = UserDefaults.standard.object(forKey: key) as? Double
-        defer {
-            if let original { UserDefaults.standard.set(original, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
-        }
+        let store = makeFontScaleStore()
+        let key = UserDefaultsKey.fontScale.rawValue
 
         // scale == 1.0 (small) — identity, no scaling.
-        UserDefaults.standard.set(1.0, forKey: key)
-        XCTAssertEqual(sz(10), 10, "scale == 1.0 (small) must be identity")
-        XCTAssertEqual(sz(16), 16)
+        store.set(1.0, forKey: key)
+        XCTAssertEqual(sz(10, defaults: store), 10, "scale == 1.0 (small) must be identity")
+        XCTAssertEqual(sz(16, defaults: store), 16)
 
         // scale == 1.2 (medium) — Settings design team tuned this value.
         // Pin the exact multiplicative result so a future drift (e.g.
         // someone "rounds" 1.2 to 1.25 in the Picker) is caught by the
         // picker-preview test, not by a user complaint.
-        UserDefaults.standard.set(1.2, forKey: key)
-        XCTAssertEqual(sz(10), 12, accuracy: 0.001, "scale == 1.2 (medium) multiplies exactly")
-        XCTAssertEqual(sz(16), 19.2, accuracy: 0.001)
+        store.set(1.2, forKey: key)
+        XCTAssertEqual(sz(10, defaults: store), 12, accuracy: 0.001, "scale == 1.2 (medium) multiplies exactly")
+        XCTAssertEqual(sz(16, defaults: store), 19.2, accuracy: 0.001)
 
         // scale == 1.4 (large) — same rationale as medium.
-        UserDefaults.standard.set(1.4, forKey: key)
-        XCTAssertEqual(sz(10), 14, accuracy: 0.001, "scale == 1.4 (large) multiplies exactly")
-        XCTAssertEqual(sz(16), 22.4, accuracy: 0.001)
+        store.set(1.4, forKey: key)
+        XCTAssertEqual(sz(10, defaults: store), 14, accuracy: 0.001, "scale == 1.4 (large) multiplies exactly")
+        XCTAssertEqual(sz(16, defaults: store), 22.4, accuracy: 0.001)
     }
 
     /// FONT-0001 (2026-08-10): the clamp upper bound is `scale < 4` (strict
@@ -276,19 +289,16 @@ import AppKit
     /// pass the M-5 test (5.0 still clamped) while silently changing behavior
     /// at the boundary.
     func testFontScalingClampBoundaryExactlyFourIsBase() {
-        let key = "fontScale"
-        let original = UserDefaults.standard.object(forKey: key) as? Double
-        defer {
-            if let original { UserDefaults.standard.set(original, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
-        }
+        let store = makeFontScaleStore()
+        let key = UserDefaultsKey.fontScale.rawValue
 
         // scale == 4.0 — strict `<` must clamp to base.
-        UserDefaults.standard.set(4.0, forKey: key)
-        XCTAssertEqual(sz(16), 16, "scale == 4.0 must clamp to base (strict < boundary)")
+        store.set(4.0, forKey: key)
+        XCTAssertEqual(sz(16, defaults: store), 16, "scale == 4.0 must clamp to base (strict < boundary)")
 
         // scale == 3.999 — just below boundary, must multiply.
-        UserDefaults.standard.set(3.999, forKey: key)
-        XCTAssertEqual(sz(16), 63.984, accuracy: 0.001, "scale == 3.999 (just below boundary) must multiply")
+        store.set(3.999, forKey: key)
+        XCTAssertEqual(sz(16, defaults: store), 63.984, accuracy: 0.001, "scale == 3.999 (just below boundary) must multiply")
     }
 
     /// FONT-0001 (2026-08-10): M-5's negative-input check tests `-2.0`,
@@ -297,13 +307,62 @@ import AppKit
     /// just like `.infinity` did before the fix. The guard `scale > 0`
     /// must reject exactly zero.
     func testFontScalingScaleZeroClampsToBase() {
-        let key = "fontScale"
-        let original = UserDefaults.standard.object(forKey: key) as? Double
-        defer {
-            if let original { UserDefaults.standard.set(original, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
-        }
+        let store = makeFontScaleStore()
 
-        UserDefaults.standard.set(0.0, forKey: key)
-        XCTAssertEqual(sz(16), 16, "scale == 0.0 must clamp to base (0 * base = 0 collapses SwiftUI layout)")
+        store.set(0.0, forKey: UserDefaultsKey.fontScale.rawValue)
+        XCTAssertEqual(sz(16, defaults: store), 16, "scale == 0.0 must clamp to base (0 * base = 0 collapses SwiftUI layout)")
+    }
+
+    /// ID-REVIEW-1038: the clamp tests above no longer touch the
+    /// production domain, so the PRODUCTION entry point — `sz(_:)`, which
+    /// reads `UserDefaults.standard` — needs its own coverage.
+    ///
+    /// Three contracts, pinned separately, because one assertion cannot
+    /// carry them all:
+    ///
+    /// 1. **Which KEY** `sz` reads. Deterministic: a value stored under a
+    ///    DIFFERENT key must be ignored.
+    /// 2. **The key constant itself** — a rename of
+    ///    `UserDefaultsKey.fontScale` must not silently change what the
+    ///    app reads.
+    /// 3. **Which STORE** the production entry reads. Compared against
+    ///    the same store read explicitly.
+    ///
+    /// ⚠️ Contract 3 is the weakest one and is honest about it: on a host
+    /// that has NO `fontScale` set (every default install — this machine
+    /// included) both sides clamp to base and compare EQUAL whatever
+    /// `sz(_:)` does. It catches a regression where the production entry
+    /// stops reading `UserDefaults.standard`; it does NOT, on such a
+    /// host, catch a regression in WHICH KEY is read — contract 1 above
+    /// carries that, deterministically. (The first version of this test
+    /// claimed to pin the key; the independent review showed it could
+    /// not, and this is the correction.)
+    func testProductionEntryPointReadsTheScaleFromTheProductionDomain() {
+        // 1. The key `sz` reads.
+        let store = makeFontScaleStore()
+        store.set(2.0, forKey: "notTheFontScaleKey")
+        XCTAssertEqual(
+            sz(16, defaults: store), 16,
+            "ID-REVIEW-1038: sz must read the fontScale key — a value stored under "
+            + "another key must not scale the text"
+        )
+
+        // 2. The key constant.
+        XCTAssertEqual(
+            UserDefaultsKey.fontScale.rawValue, "fontScale",
+            "ID-REVIEW-1038: the font-scale key constant must stay `fontScale` — it is "
+            + "the key the production domain carries for the user's preference"
+        )
+
+        // 3. The store the production entry reads.
+        XCTAssertEqual(
+            sz(16),
+            // ALLOW-PRODUCTION-WRITE: READ ONLY — the production store is passed to
+            // sz(_:defaults:) purely so the two forms can be compared; nothing writes
+            // through it.
+            sz(16, defaults: UserDefaults.standard),
+            "ID-REVIEW-1038: sz(_:) must read the font scale from UserDefaults.standard "
+            + "— the app has to honour the user's font-scale preference"
+        )
     }
 }

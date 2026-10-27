@@ -211,8 +211,27 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // UserDefaults.standard AND a real fix is on the way.
         "settings.selectedTab",      // SettingsRootView.swift:31 — @AppStorage, written by the selectedTabBinding setter (:37) on tab click
         // ImageStorage startup migration + cleanup:
-        "ImageStorageMigrationComplete", // ImageStorage.swift:78, 159, 290 — init-time migration latch
-        "ImageStorageStartupCleanupRan"  // ImageStorage.swift:889, 891 — init-time orphan cleanup latch
+        //
+        // ID-REVIEW-1038 (2026-10-27): "ImageStorageMigrationComplete" and
+        // "ImageStorageStartupCleanupRan" were REMOVED from this
+        // allowlist. They were here because a test PINNED them in the
+        // production domain (`ContentHashKeyReadyBackfillTests`), and the
+        // pin showed up as a new key in the production diff.
+        //
+        // The pin is gone, and under XCTest NOTHING writes these two
+        // keys any more:
+        //   * `ImageStorage.init` returns early when `isRunningTests`
+        //     (ImageStorage.swift:165) ⇒ the legacy migration never runs
+        //     ⇒ `migrationCompleteKey` is never written;
+        //   * `cleanupOrphanedImages` returns early when `isRunningTests`
+        //     (ImageStorage.swift:1243) ⇒ `startupCleanupKey` is never
+        //     written;
+        //   * `cleanupOrphanedImagesForTesting` (the only other writer)
+        //     is called exclusively with an injected suite.
+        //
+        // ⇒ Removing them makes the canary STRICTER: a test that plants
+        // either key in the production domain now fails the suite instead
+        // of being tolerated.
     ]
 
     // P1-AUDIT-2026-09-22 v2.9.2 follow-up (2026-09-25): reverted fontScale
@@ -620,6 +639,14 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// real framework key prefixes the production domain may grow.
     func testForwardAssertionCatchesNewPollution() {
         let bundleId = Bundle.main.bundleIdentifier ?? ""
+        // This is the canary's own POSITIVE CONTROL — it has to plant a
+        // key in the production domain to prove the forward assertion
+        // catches new pollution. Writing it anywhere else would not
+        // exercise the assertion at all. The bogus key is removed
+        // immediately afterwards, and it is named `zzz_` so it cannot
+        // collide with a real key.
+        // ALLOW-PRODUCTION-WRITE: the canary's own positive control — it must plant a
+        // key in the production domain to be able to test the forward assertion.
         let defaults = UserDefaults.standard
         // Inject a known-bogus key AFTER the AAA snapshot (so this
         // method introduces the diff itself). This simulates a test
