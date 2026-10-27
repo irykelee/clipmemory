@@ -1036,7 +1036,7 @@ xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-"
 
 ### 40.6 静态守卫
 
-`Review1040RegressionTests`（13 个测试）：
+`Review1040RegressionTests`（15 个测试）：
 
 1. **行为**：销毁必须删掉文件；文件不得回来；共享工厂 `makeTestDefaults` 同样；
 2. **行为**：per-case 清扫必须销毁用例留下的 suite；
@@ -1080,7 +1080,7 @@ xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-"
 
 ### 40.6c 新回归测试自身的重复测量
 
-`-test-iterations 10` ⇒ **130 / 130 全绿**（13 个测试 × 10 轮）。
+`-test-iterations 10` ⇒ **230 / 230 全绿**（1040 的 15 个 + 1041 的 8 个 = 23 个测试 × 10 轮）。
 ⚠️ 第一版实现里 `testADestroyedSuiteFileDoesNotComeBack` 是 **1/10 flaky**（`removePersistentDomain` 的回写）；
 换成 `removeSuite` 顺序后 **10/10 全绿** ⇒ 契约从「概率性」变成「确定性」。
 
@@ -1136,6 +1136,44 @@ observer 确实安装并在跑（scope 计数随用例 1/0 交替、无漂移）
   「疑似」= 名字带 UUID 且**不含反向 DNS 点号** ⇒ 极可能是**套件字面量已从源码消失**的历史测试残留
   （实测样本：`Audit20260720-fontScale-*`、`AppleLangProbe-*`）⇒ 默认**保留**，要删必须显式加 `--also-suspects`。
   ⇒ **默认模式宁可漏删也不误删**；`com.*` 与 586 个真实 App 域在任何模式下都不动。
+
+### 40.9 审核门 follow-up（2026-10-27）：2 条 P0/P1 的核验 + 它牵出的**真残留**
+
+审核门报告 `docs/reviews/auto-review-20261027-130203-76159.md`（覆盖 `3167aad..c1a33df`）⇒
+模型 **VERDICT=PASS**，但留了 **2 条 P0/P1 未经人工核验**。逐条**回原文核对**后的结论
+（台账 `githooks/review-adjudication.jsonl`，各带 `file` + `fileSha256`）：
+
+| 级别 | finding | 核验结论 |
+|---|---|---|
+| **P0** | `BackupPackageV3SecurityTests`：tearDown 的 `if let` 可能没做 | ❌ **误报** —— ① `if let defaults { destroy(defaults) }` **本来就在**（finding 自己也写了「逻辑正确」）；② finding 以为那个 `removePersistentDomain` 在 tearDown，实际在 **setUp**。**但它牵出了一个真残留**（见下） |
+| **P1** | `BackupPackageImportFromLocalBackupTests`：文件删除异步 ⇒ 竞态 ⇒ 残留 | ❌ **误报（机制判错）** —— ① `destroy` = `removeSuite` + **同步** `FileManager.removeItem`，删除本身没有异步窗口；② 让文件「回来」的机制**不是**删除时序，而是 cfprefsd 的 **pending write** —— 而 `destroy` **完全不调** `removePersistentDomain` ⇒ 没有 pending write ⇒ 复现率 **0/40**（对照：`rPD`→删 **5/40**） |
+
+生效结论：**EFFECTIVE_VERDICT=PASS / BLOCKING_COUNT=0 / ADVISORY_COUNT=0**。
+
+#### ⚠️ P0 牵出的真残留（本轮已修）
+
+全树扫 `removePersistentDomain` ⇒ **6 处**「刚建好一个 **fresh-UUID** suite 就立刻清域」的调用
+（`BackupPackageV3SecurityTests` / `BackupQuarantineTests` / `StorageBackendTests` /
+`UserDefaultsSearchListTests` / `FileStorageBackendDefaultsSeamTests` ×2）。
+
+- 它们**无意义**：全新 UUID 的套件根本不可能已有域 ⇒ 清的是一个**不存在的域**。
+  ⚠️ 实测补充：`removePersistentDomain` 在**从未写入过**的 fresh suite 上**不会**造出 plist 文件
+  （对照组各 **0/20**，6 s 后仍是 0/20）⇒ 这 6 处**不直接**制造垃圾。
+- **但它们仍排了一个 pending write** —— 而 pending write 正是「空壳被 cfprefsd 写回磁盘」的机制
+  （实测 **5/40**）⇒ 把回写概率挂在了本不该有的地方。
+- ⇒ **6 处全删**（行为不变：清一个空域是 no-op）。
+- ⇒ 新增静态守卫 `testOnlyTheSharedSuiteFilesMayClearADomain` +
+  `testTheDomainClearAllowlistIsNotStale`：allowlist = **4 个固定名共享 suite 的文件**
+  （`IsolationSeamConsolidationTests` / `TestHostIsolationTests` / `TestSuiteCleanup` /
+  `XCTestIsolationSuiteBootstrap`，各 1 处，**每文件精确计数**）——
+  共享套件**必须**用 `rPD`（ZZZ 守卫用 `persistentDomain(forName:)` 读回，`removeSuite` 之后
+  旧值仍在内存里 ⇒ 守卫会读到上一个用例的旧值 ⇒ 误报），所以它们是**有意保留**。
+- ⇒ 变异 **M8（在一处不允许的文件里植入真实的 `removePersistentDomain` 调用）** 与
+  **M9（allowlist 计数漂移）** 均**变红** ⇒ 新规则**有牙齿**（不是「看着像有」）。
+
+本轮验收：全量 **1307 tests / 6 skipped / 0 failures**（1305 + 2 个新守卫）；
+plist 净增长 **0**（落在 §40.5 的 0 ~ +18 区间内；⚠️ **单次采样不构成因果**，
+上一轮同一份代码测到 +18）；swiftlint exit 0、告警与 HEAD 基线逐条一致（10 条全属既有）。
 
 ## 41. ID-REVIEW-1041（2026-10-27）：测试**覆写并清空**用户的真实系统剪贴板
 
@@ -1238,7 +1276,7 @@ pasteboard writes (including writes from other tests) into the production UserDe
 
 | 项 | 结果 |
 |---|---|
-| 全量 | **1305 tests / 6 skipped / 0 failures**（1297 + 1041 新增 8） |
+| 全量 | **1305 tests / 6 skipped / 0 failures**（1297 + 1041 新增 8）；**审核门 follow-up 后为 1307**（§40.9 又加 2 个守卫） |
 | plist 净增长（1040 修复仍然成立） | **+18**（落在 §40.5 的 0 ~ +18 区间内） |
 | **哨兵对照（本条的核心断言）** | 跑前把 `USER-CLIPBOARD-SENTINEL-1041` 放进系统剪贴板，跑完 5 个会碰剪贴板的类（**65 tests / 0 failures**）⇒ **跑后哨兵原样还在** ⇒ 用户剪贴板**不再被销毁**（修复前同一批测试的轨迹终点是 `''`） |
 | 生产域 | **28 键 → 28 键，零新增零消失** |

@@ -31,7 +31,10 @@ final class StorageBackendTests: XCTestCase {
         super.setUp()
         let uid = UUID().uuidString
         suite = TestSuiteCleanup.makeSuite(named: "StorageBackendTests-\(uid)")
-        suite.removePersistentDomain(forName: "StorageBackendTests-\(uid)")
+        // ID-REVIEW-1040 follow-up: this clear was a NO-OP — a suite whose
+        // name carries a fresh UUID cannot have a domain yet — and it queued
+        // a **pending write** in cfprefsd, which is exactly the mechanism
+        // that writes an empty shell back to disk (measured 5/40).
     }
 
     override func tearDown() {

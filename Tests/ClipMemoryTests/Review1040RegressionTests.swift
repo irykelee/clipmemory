@@ -353,6 +353,92 @@ final class Review1040RegressionTests: XCTestCase {
         )
     }
 
+    // MARK: - Static guard: only the shared-suite files may clear a domain
+
+    /// Files allowed to call `removePersistentDomain`, and how many times.
+    ///
+    /// `removePersistentDomain` is the ONLY API that clears a suite's values
+    /// in cfprefsd's memory — and it is exactly what queues the **pending
+    /// write** that makes an empty shell land on disk (measured 5/40). So it
+    /// is allowed only where it is genuinely needed:
+    ///
+    /// * `IsolationSeamConsolidationTests` (1) and `XCTestIsolationSuiteBootstrap` (1)
+    ///   — the FIXED-NAME shared suites; the ZZZ guard reads them back with
+    ///   `persistentDomain(forName:)`, so `removeSuite` would leave the old
+    ///   values visible and the guard would misfire.
+    /// * `TestHostIsolationTests` (1) — restores the shared
+    ///   `ClipboardStore-XCTest-isolation` suite for the same reason.
+    /// * `TestSuiteCleanup` (1) — `makeSuite` clears a name this process
+    ///   already used, because `destroy` deliberately does not.
+    ///
+    /// ⚠️ A clear on a **fresh-UUID** suite is a no-op (such a suite cannot
+    /// have a domain yet) and still queues a pending write ⇒ five such
+    /// leftovers were removed 2026-10-27 (see ID-REVIEW-1040 follow-up).
+    private static let allowedDomainClears: [String: Int] = [
+        "IsolationSeamConsolidationTests.swift": 1,
+        "TestHostIsolationTests.swift": 1,
+        "TestSuiteCleanup.swift": 1,
+        "XCTestIsolationSuiteBootstrap.swift": 1
+    ]
+
+    /// How many times `removePersistentDomain` is called in `source`.
+    ///
+    /// Counted on the BLANKED copy ⇒ a doc comment or a string literal
+    /// mentioning the API is not a call.
+    private static func domainClearSites(in source: String) -> Int {
+        let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
+        return TestSourceScanner.occurrenceCount(of: "removePersistentDomain", in: blanked)
+    }
+
+    /// Every Swift file in the test tree **including** the helper.
+    ///
+    /// The helper itself clears a domain (`makeSuite` re-using a name), so
+    /// this rule needs to see it — unlike the bare-creation rule, which
+    /// excludes the one file allowed to create a suite.
+    private static func filesIncludingHelper() throws -> [URL] {
+        try TestSourceScanner.testSourceFiles(excluding: ["Review1040RegressionTests.swift"])
+    }
+
+    func testOnlyTheSharedSuiteFilesMayClearADomain() throws {
+        var offenders: [String] = []
+        for url in try Self.filesIncludingHelper() {
+            let relative = TestSourceScanner.relativePath(of: url)
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let found = Self.domainClearSites(in: source)
+            let allowed = Self.allowedDomainClears[relative] ?? 0
+            if found != allowed {
+                offenders.append("\(relative): \(found) domain clear(s), allowed \(allowed)")
+            }
+        }
+        XCTAssertTrue(
+            offenders.isEmpty,
+            "ID-REVIEW-1040: `removePersistentDomain` queues the pending write that "
+            + "makes an empty shell land on disk; it is allowed only in the "
+            + "shared-suite files. Offending files: \(offenders.joined(separator: "; "))"
+        )
+    }
+
+    func testTheDomainClearAllowlistIsNotStale() throws {
+        var stale: [String] = []
+        for (file, allowedCount) in Self.allowedDomainClears {
+            let url = try Self.filesIncludingHelper().first { TestSourceScanner.relativePath(of: $0) == file }
+            guard let url else {
+                stale.append("\(file): the file no longer exists")
+                continue
+            }
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let found = Self.domainClearSites(in: source)
+            if found != allowedCount {
+                stale.append("\(file): expected \(allowedCount) domain clear(s), found \(found)")
+            }
+        }
+        XCTAssertTrue(
+            stale.isEmpty,
+            "ID-REVIEW-1040: the domain-clear allowlist no longer matches the code. "
+            + "Stale: \(stale.joined(separator: "; "))"
+        )
+    }
+
     /// The scanner must have teeth: a planted suite creation must be found.
     ///
     /// The sample is embedded in a MULTI-LINE context on purpose. A

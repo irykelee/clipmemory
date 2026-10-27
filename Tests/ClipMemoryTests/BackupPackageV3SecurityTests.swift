@@ -37,7 +37,10 @@ import CryptoKit
         imagesDir = tempRoot.appendingPathComponent("Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
         defaults = TestSuiteCleanup.makeSuite(named: "BackupPackageV3SecurityTests-\(uid)")
-        defaults.removePersistentDomain(forName: "BackupPackageV3SecurityTests-\(uid)")
+        // ID-REVIEW-1040 follow-up: this clear was a NO-OP — a suite whose
+        // name carries a fresh UUID cannot have a domain yet — and it queued
+        // a **pending write** in cfprefsd, which is exactly the mechanism
+        // that writes an empty shell back to disk (measured 5/40).
         localCrypto = CryptoService(customKeyData: localKeyBytes)
         rootCrypto = CryptoService(customKeyData: rootKeyBytes)
         originalCrypto = ServiceContainer.crypto

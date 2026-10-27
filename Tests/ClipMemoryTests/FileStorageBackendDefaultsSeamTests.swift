@@ -24,8 +24,10 @@ final class FileStorageBackendDefaultsSeamTests: XCTestCase {
         let uid = UUID().uuidString
         suite1 = TestSuiteCleanup.makeSuite(named: "FSB-seam-1-\(uid)")
         suite2 = TestSuiteCleanup.makeSuite(named: "FSB-seam-2-\(uid)")
-        suite1.removePersistentDomain(forName: "FSB-seam-1-\(uid)")
-        suite2.removePersistentDomain(forName: "FSB-seam-2-\(uid)")
+        // ID-REVIEW-1040 follow-up: both clears were NO-OPs (a fresh-UUID
+        // suite cannot have a domain yet) and each queued a **pending
+        // write** in cfprefsd — the very mechanism that writes an empty
+        // shell back to disk (measured 5/40).
     }
 
     // ID-REVIEW-1038 (2026-10-26): the `tearDown` sweep is GONE.

@@ -25,7 +25,10 @@ final class UserDefaultsSearchListTests: XCTestCase {
     private func makeFreshSuite() -> (name: String, suite: UserDefaults) {
         let name = "UserDefaultsSearchList-\(UUID().uuidString)"
         let suite = TestSuiteCleanup.makeSuite(named: name)
-        suite.removePersistentDomain(forName: name)
+        // ID-REVIEW-1040 follow-up: this clear was a NO-OP — a suite whose
+        // name carries a fresh UUID cannot have a domain yet — and it queued
+        // a **pending write** in cfprefsd, which is exactly the mechanism
+        // that writes an empty shell back to disk (measured 5/40).
         return (name, suite)
     }
 
