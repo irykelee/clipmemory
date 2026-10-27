@@ -911,3 +911,21 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
 修法：**按路径分量算**（两侧都先 standardize + resolve symlinks，再逐段前缀比对），
 并加了 symlink 控制组。`Review1039RegressionTests` 里的相对路径算法与
 `IsolationSeamConsolidationTests` 的现在**形状一致**（同一份心智模型，两处实现）。
+
+#### 39.13 审核门（opencode 自动审核）4 条 finding —— 全部**误报**
+
+报告 `docs/reviews/auto-review-20261027-101536-70595.md`：模型结论 `FAIL`，
+人工核验层生效 ⇒ **生效结论 PASS**（阻断 0 / 待核验 0）。台账
+`githooks/review-adjudication.jsonl` 72 → **76** 条。
+
+| 级别 | finding | 判读 |
+|---|---|---|
+| P0 | 「`overrideStorage` 的赋值**未在锁保护内**完成初始化；`shared` 初始化完成前被并发访问 ⇒ 可能崩溃」 | ❌ 误报：`overrideStorage` 的**唯一**写点 `setShared(_:)`（`:124-129`）在锁内，唯一读点 `shared`（`:112-119`）也在锁内；`shared` 是**计算属性**（无初始化阶段），`xcTestAppearanceDefaults`（`:106`）是 `let`（`static let` 的惰性初始化线程安全）⇒ 没有可崩溃的窗口 |
+| P1 | 「锁只保护了 `overrideStorage`，`UserDefaults` 的读写并非原子性 ⇒ 极端竞态下数据一致性受影响」 | ❌ 误报：锁保护的是「**用哪个 store**」这个**引用**，不是 store 内部操作 —— 刻意为之（文件里写明「The lock is NOT held while the caller uses the returned `UserDefaults`」）；`UserDefaults` 按 Apple 文档线程安全。finding 自己就写了「虽然 `UserDefaults` 在 macOS 上通常是线程安全的」⇒ 用自己都承认不成立的场景当阻断项 |
+| P2 | 「View 在 `snapshotTestSetUp` 之前创建 ⇒ 仍指向旧的 `UserDefaults.standard`」 | ❌ 误报：**事实前提已过时** —— 测试进程里 `AppStorageDefaults.shared` 的默认值是本 seam **自己的隔离 suite**，**不是** `.standard` ⇒ 即便如此也只会读到隔离 suite，**绝不会**是生产域 |
+| P2 | 「`overrideStorage` 标了 `private` ⇒ 某些扫描工具可能过滤掉，19 条计数会失真」 | ❌ 误报：**说反了** —— 计数按 `nonisolated(unsafe)` 出现次数统计，**不看**访问修饰符，`private` 是**被计入**的；§8 原始输出块里那一行就带 `private` 前缀，且行号守卫会在漂移时立刻变红 |
+
+⚠️ **这 4 条与本轮真正修掉的东西毫无关系** —— 它们讨论的都是**并发与 `UserDefaults`
+语义**，而本轮的缺陷是「**视图没有 store seam**」。⇒ 模型审核在**没读到 diff 的核心
+意图**时，会围绕新代码的「陌生的并发原语」编出看起来很专业的阻断项。
+**逐条核对原文**是唯一可靠的过滤手段。
