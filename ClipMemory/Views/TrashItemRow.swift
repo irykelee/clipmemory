@@ -44,7 +44,7 @@ struct TrashItemRow: View, Equatable {
     @State private var previewPressToken: UUID?
     // CLIP-3 (2026-07-24 review): same guard as ClipboardItemRow — fontScale
     // is only the invalidation trigger; all sizing goes through sz().
-    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("fontScale", store: AppStorageDefaults.shared) private var fontScale: Double = 1.0
 
     static func == (lhs: TrashItemRow, rhs: TrashItemRow) -> Bool {
         lhs.item.id == rhs.item.id && lhs.isSelected == rhs.isSelected

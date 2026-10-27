@@ -355,14 +355,29 @@ import AppKit
         )
 
         // 3. The store the production entry reads.
+        //
+        // ID-REVIEW-1039 (2026-10-27): this contract used to compare
+        // `sz(_:)` with `sz(_:defaults: UserDefaults.standard)`, which on a
+        // host with NO `fontScale` compared "absent" with "absent" — it
+        // could not tell the two apart, and the independent review had
+        // already flagged it as structurally vacuous.
+        //
+        // The entry point now resolves against the app's dedicated appearance
+        // seam (`AppStorageDefaults.shared`), so the contract becomes
+        // DETERMINISTIC: pin a value in that seam and the entry must honour it.
+        //
+        // Production equivalence is asserted separately by
+        // `SeamBaselineIsolationTests.testProductionBranchStillUsesTheStandardDefaults`
+        // (`TestIsolation.defaultsFor(isTestProcess: false) === UserDefaults.standard`),
+        // which pins the SERVICE seam's production branch.
+        let seamStore = makeFontScaleStore()
+        seamStore.set(2.0, forKey: "fontScale")
+        AppStorageDefaults.setShared(seamStore)
+        defer { AppStorageDefaults.setShared(nil) }
         XCTAssertEqual(
-            sz(16),
-            // ALLOW-PRODUCTION-WRITE: READ ONLY — the production store is passed to
-            // sz(_:defaults:) purely so the two forms can be compared; nothing writes
-            // through it.
-            sz(16, defaults: UserDefaults.standard),
-            "ID-REVIEW-1038: sz(_:) must read the font scale from UserDefaults.standard "
-            + "— the app has to honour the user's font-scale preference"
+            sz(16), 32,
+            "ID-REVIEW-1039: sz(_:) must read the font scale from the app's UserDefaults "
+            + "seam — the app has to honour the user's font-scale preference"
         )
     }
 }

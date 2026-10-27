@@ -16,7 +16,7 @@ struct ExcludedAppRow: View {
     let onRemove: () -> Void
 
     // 2026-07-25: invalidation trigger only — see TagChip / ClipboardItemRow.
-    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("fontScale", store: AppStorageDefaults.shared) private var fontScale: Double = 1.0
     @State private var resolvedIcon: NSImage?
     @State private var isHovered = false
 

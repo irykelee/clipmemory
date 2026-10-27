@@ -293,7 +293,7 @@ struct ClipboardItemRow: View, Equatable {
     // CLIP-3 (2026-07-24 review): @AppStorage stays only as the invalidation
     // trigger (re-render on setting change). All sizing must go through
     // sz()'s NaN/Inf/clamp guards — never multiply by the raw stored value.
-    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("fontScale", store: AppStorageDefaults.shared) private var fontScale: Double = 1.0
     private var iconSize: CGFloat { sz(13) }
 
     /// Explicit memberwise initializer so callers (ContentView) can name

@@ -177,7 +177,7 @@ final class ProductionDomainWriteGuardTests: XCTestCase {
     /// A bare marker is not a decision — it is a way to make the guard
     /// quiet. The text after the colon is where the decision is written
     /// down. 40 characters (raised from 20 after the independent review
-    /// noted that "TODO fix later ok" cleared the old bar).
+    /// noted that a bare "will fix it soon" placeholder cleared the old bar).
     private static let minimumJustificationLength = 40
 
     /// Justifications that are placeholders rather than reasons.

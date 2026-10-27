@@ -3,16 +3,47 @@ import SwiftUI
 
 /// Font scaling utility that reads font scale factor from UserDefaults.
 ///
-/// Each View retains its own `@AppStorage("fontScale")` to trigger SwiftUI
-/// re-renders when the user changes the setting. This function reads the
-/// current value at render time to keep the actual scaling in sync.
+/// Each View retains its own `@AppStorage("fontScale", store: AppStorageDefaults.shared)`
+/// to trigger SwiftUI re-renders when the user changes the setting. This
+/// function reads the current value at render time to keep the actual scaling
+/// in sync.
+///
+/// ID-REVIEW-1039 (2026-10-27): the store both the `@AppStorage` wrapper and
+/// this function resolve against is now `AppStorageDefaults.shared` — a
+/// dedicated appearance seam — instead of `UserDefaults.standard` spelled
+/// out twice.
+///
+/// Why that matters: the test bundle is injected into the APP binary
+/// (`TEST_HOST`), so inside a test process `UserDefaults.standard` IS the
+/// user's real `com.clipmemory.app` domain. The snapshot tests therefore had
+/// to plant their baseline (`fontScale = 1.0`) into the production domain to
+/// make the render deterministic, and a host abort between the write and the
+/// restore left the user's real font scale permanently changed (the same
+/// failure mode as ID-REVIEW-1038, on the read side of the same key).
+///
+/// With the seam, production behaviour is byte-identical
+/// (`AppStorageDefaults.shared` IS `UserDefaults.standard` outside XCTest),
+/// and a test can point the appearance reads at an isolated store without
+/// touching the app's service seam — so the baseline becomes deterministic
+/// **without writing anything**.
+///
+/// ⚠️ The seam is deliberately NOT `TestIsolation.defaults` and owns its own
+/// storage. Swapping the canonical service seam invalidates
+/// `LanguageManager.shared`'s **instance-identity** cache, so the next read
+/// of `shared` re-creates the manager and binds it to whatever the service
+/// seam holds at that moment; the next `selectedLanguage` assignment then
+/// writes `appLanguage` + `AppleLanguages` into THAT store — which, when it
+/// is the baseline suite, made the ZZZ canary go red and blame four
+/// unrelated test classes. (`LanguageManager.init` itself writes nothing:
+/// `didSet` does not fire during `init`.) See `AppStorageDefaults.swift`
+/// for the full, measured account.
 ///
 /// FONT-0001 (2026-08-10): the Settings UI exposes three explicit font-size
 /// steps (1.0 / 1.2 / 1.4 in `GeneralSettingsView.swift:80-84`), but the
 /// `scale < 4` upper bound below is wider than any user-facing step. The
 /// difference is intentional — see the long-form note at the clamp.
 func sz(_ base: CGFloat) -> CGFloat {
-    sz(base, defaults: .standard)
+    sz(base, defaults: AppStorageDefaults.shared)
 }
 
 /// The clamp, reading the scale from an injectable store.

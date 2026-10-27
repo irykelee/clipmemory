@@ -405,6 +405,15 @@ final class IsolationSeamConsolidationTests: XCTestCase {
 
     /// Every `nonisolated(unsafe)` declaration under `root`, with the
     /// path relative to `root` (the shape §8's raw output uses).
+    ///
+    /// The relative path is computed COMPONENT-WISE, not by a string prefix
+    /// replacement: `FileManager.enumerator(at:)` RESOLVES symlinks in the
+    /// URLs it yields, while a root built with `appendingPathComponent` does
+    /// NOT. In a checkout under a symlinked path (`/tmp` → `/private/tmp` on
+    /// macOS) the two disagree on the prefix, so the replacement left an
+    /// absolute path and this guard FAILED — measured 2026-10-27 in a
+    /// symlinked checkout, where the documented paths are relative and the
+    /// measured ones were absolute.
     private static func measuredDeclarations(
         inProductionSources root: URL
     ) throws -> [(path: String, line: Int)] {
@@ -416,11 +425,30 @@ final class IsolationSeamConsolidationTests: XCTestCase {
         var entries: [(path: String, line: Int)] = []
         for case let url as URL in enumerator where url.pathExtension == "swift" {
             let source = try String(contentsOf: url, encoding: .utf8)
-            let relative = url.path.replacingOccurrences(of: root.path + "/", with: "")
+            let relative = relativePath(of: url, under: root)
             for line in codeLines(containing: "nonisolated(unsafe)", in: source) {
                 entries.append((relative, line))
             }
         }
         return entries
+    }
+
+    /// The path of `url` relative to `root`, computed component-wise.
+    ///
+    /// Both sides are standardized and symlink-resolved through the SAME
+    /// function, so a symlinked checkout root cannot make the two disagree.
+    private static func relativePath(of url: URL, under root: URL) -> String {
+        let fileComponents = normalizedComponents(url)
+        let rootComponents = normalizedComponents(root)
+        guard fileComponents.count > rootComponents.count,
+              Array(fileComponents.prefix(rootComponents.count)) == rootComponents else {
+            return url.path
+        }
+        return fileComponents.dropFirst(rootComponents.count).joined(separator: "/")
+    }
+
+    /// Path components with the path standardized and symlinks resolved.
+    private static func normalizedComponents(_ url: URL) -> [String] {
+        url.standardizedFileURL.resolvingSymlinksInPath().pathComponents
     }
 }

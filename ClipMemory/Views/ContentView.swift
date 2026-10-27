@@ -160,7 +160,7 @@ struct ContentView: View {
     // exposes a `Binding<Set<TimeGroup>>` so callers like `ItemListView`
     // (which takes `@Binding var collapsedGroups: Set<TimeGroup>`) keep
     // working unchanged.
-    @AppStorage("collapsedGroups") private var collapsedGroupsRaw: String = ""
+    @AppStorage("collapsedGroups", store: AppStorageDefaults.shared) private var collapsedGroupsRaw: String = ""
     /// Anchor used for "today"/"yesterday" grouping.  Updated by a timer so
     /// items move to the correct section if the app stays open across midnight.
     @State private var currentDate = Date()
@@ -168,11 +168,11 @@ struct ContentView: View {
     @State private var selectedTagIds: Set<UUID> = []
     @State private var showNewTagSheet: Bool = false
     @State private var tagPendingDelete: Tag?
-    @AppStorage("themeAppearance") private var themeAppearance = "system"
+    @AppStorage("themeAppearance", store: AppStorageDefaults.shared) private var themeAppearance = "system"
     // 2026-07-25: font-scale invalidation trigger. MUST be read in body —
     // an unread @AppStorage creates no SwiftUI dependency, so font-size
     // changes never re-rendered views that size via sz().
-    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("fontScale", store: AppStorageDefaults.shared) private var fontScale: Double = 1.0
 
     // MARK: - Cached Date Calculations
     private var startOfToday: Date {

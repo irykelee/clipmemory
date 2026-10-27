@@ -14,7 +14,7 @@ struct AppPickerRow: View {
     let icon: NSImage?
     let isExcluded: Bool
     let onToggle: () -> Void
-    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("fontScale", store: AppStorageDefaults.shared) private var fontScale: Double = 1.0
     @State private var isHovered = false
     @State private var resolvedIcon: NSImage?
 

@@ -660,3 +660,254 @@ grep -rnE '^[[:space:]]*throw XCTSkip' Tests/ClipMemoryTests/ \
 
 5. **【P3·健壮性】`identifier as! NSObject` 强转** —— 实践安全（NSURL 内部实现必为 NSObject），但 `as?` + 默认值更稳：`let key = (identifier as? NSObject).map(AnyHashable.init) ?? AnyHashable(<URLResourceKey>)`（或用 URLResourceKey 作 fallback key，因 hard link 同 path 的 identifier 不同）。3 行替换，无行为变化。
 
+### 39 ID-REVIEW-1039 — 视图树没有 store seam ⇒ 快照测试被迫往**生产域**写
+
+#### 39.1 前提：视图的 `@AppStorage` 没有可注入的 store
+
+- 实测（2026-10-27）：app target 里 **17 个 `@AppStorage` 声明站点 / 14 个视图文件**，
+  全部是 `@AppStorage("key")`，**一个 `store:` 参数都没有** ⇒ 隐式解析到
+  `UserDefaults.standard`。而测试宿主里 `UserDefaults.standard` **就是生产域**
+  （ID-REVIEW-1038 已实测：`Bundle.main.bundleIdentifier == com.clipmemory.app`）。
+- `sz(_:)` 也**显式**读 `.standard`（而且它才是真正决定字号的那个 —— 视图里的
+  `@AppStorage("fontScale")` 只是重绘触发器，代码注释里写得很清楚）。
+- ⇒ `SnapshotTestHelpers` 只能往生产域种基线（`fontScale = 1.0`）、删掉两个键、
+  再在 tearDown 还原 —— 而 **`tearDown` 扛不住宿主崩溃**（ID-REVIEW-1038 已实测：
+  trap 后 `fontScale = 3.7` 留在用户 plist 里）。
+- 本机用户的真实 `settings.selectedTab = 'backup'` 正是被删的那两个键之一。
+
+#### 39.2 方案选型：三种写法都**实测**过，不是猜
+
+| 写法 | 结果 |
+|---|---|
+| A `@AppStorage("k", store: defaults)`（属性包装器里引用 init 参数） | ❌ 编译失败：`cannot use instance member 'defaults' within property initializer` |
+| B 自定义 init 里手动给包装器 backing storage 赋值 | ❌ 编译失败：`AppStorage.init(_:)` 没有 `Double` 重载（只有 `Bool?` / `Int?`） |
+| D 属性包装器里读一个**全局 seam** | ✅ 编译通过 + 运行时实测：wrapper 在**视图构造时**捕获 store；换 store 后**旧**视图仍读旧 store、**新**视图读新 store |
+
+（探针：`probe-a.swift` / `probe-b.swift` / `probe-d2.swift`；D 的关键结论是
+「wrapper 捕获的是构造时的那一份」⇒ 测试只要**先换 store 再建视图**即可。）
+
+#### 39.3 ⚠ 关键设计决定：外观读取**不能**挂在服务 seam 上
+
+直觉上应该复用现成的服务 seam（ID-CRASH-0029 刚把三个服务收敛到一个 seam）。
+**先这么做了，ZZZ canary 直接变红。**
+
+⚠️ **本节在独立核验后被订正过一次**：初版把机制写成「manager 的 init 会调
+`applyLanguage()` ⇒ 往**当时当前的** store 写」——**两处都实测为假**。真机制：
+
+1. `LanguageManager.shared` 缓存单例，缓存失效判据是 `_sharedDefaultDefaults === defaults`
+   —— **按实例身份**比（`LanguageManager.swift:45`）。
+2. `UserDefaults(suiteName:)` **每次调用都返回新实例**（实测 `===` 为 false）。
+3. ⇒ 任何一次 seam 换绑都会让那个缓存失效；**下一次**访问 `LanguageManager.shared`
+   会**重建** manager，并把 manager **绑定到那一刻 seam 持有的那个 store**
+   （`LanguageManager.swift:48`）。
+4. `LanguageManager.init` **不写任何东西** —— `didSet` 在 init 期间不触发（实测：
+   新建的 manager 不往 suite 里加任何键）。初版说 init 会调 `applyLanguage()`，**假**。
+5. 两个键是**后来**才写的：`selectedLanguage` 的 `didSet`（`LanguageManager.swift:124`
+   写 `appLanguage`；`applyLanguage()`（`:191`）写 `AppleLanguages`）—— 而它们落进的是
+   **manager 创建时绑定的那个 store**，**不是**写入那一刻「当前」的 store（实测）。
+   初版说「写进当时当前的 store」，**假**。
+6. ⇒ 若 manager 绑定的是**基线 suite**（`TestIsolation-XCTest-isolation`），那么**之后
+   任何**测试里的**任何一次** `selectedLanguage` 赋值，都会把这两个键写进基线 suite
+   —— 而 ZZZ canary 盯的正是这两个键。
+
+实测对照：
+
+| 配置 | 全量结果 |
+|---|---|
+| HEAD（`bad7bc9`） | 1276 tests / 0 failures —— **绿** |
+| 复用 `TestIsolation.defaults` + 换绑 | **红**；offenders 点名 4 个**无关**测试类（`IntegrationTests` / `LanguageManagerMainActorTests` ×2 / `LocalizationKeysTests` ×3 / `LocalizationServiceBehaviorTests`），全部是「留下 `appLanguage,AppleLanguages` 在 `TestIsolation-XCTest-isolation`」 |
+
+⇒ **外观读取必须有自己的 seam**：测试换它，就不会碰服务 seam，canary 也就不会平白变红。
+
+#### 39.4 修法：专用 `AppStorageDefaults`（**自有** suite，不别名服务 seam）
+
+- 新文件 `ClipMemory/Utils/AppStorageDefaults.swift`。
+- **生产** → `UserDefaults.standard`：与改动前**逐字节等价**（`@AppStorage` 不带
+  `store:` 时解析到的就是它）。
+- **测试进程** → **本 seam 自己的 suite**（`AppStorageDefaults-XCTest-isolation`）。
+  ⚠️ 初版这里写的是「`TestIsolation.defaults`（服务 seam 的基线）」——两处不准：
+  ① `TestIsolation.defaults` 是**可变槽位**，基线是 `TestIsolation.baselineDefaults`；
+  ② 别名服务 seam 会让「换外观 seam」与「换服务 seam」重新耦合（独立核验指出）。
+  改成自有 suite 后：外观 seam **永不**是服务 seam、**永不**是 canary 盯的基线 suite。
+- 测试可用 `setShared(_:)` 覆盖；带 `NSLock`（理由同 `TestIsolation` / ID-REVIEW-1036：
+  无锁的「读-改-写类引用」正是当年崩掉测试宿主的形状）。
+- **17 个 `@AppStorage` 站点 + `sz(_:)` 全部改走它。**
+- **Swift6 迁移花名册同步**（`docs/SWIFT6_MIGRATION.md` §8）：新文件带来第 19 条
+  `nonisolated(unsafe)` 声明（`AppStorageDefaults.overrideStorage`）⇒ 计数
+  18 → **19**，且**原始输出块与行号一并刷新**（花名册的守卫会卡住过期行号，
+  不只是卡计数）。§8 的 roster 表也补了这一行，并写明「为什么不能并进
+  `TestIsolation.defaults`」。
+
+#### 39.5 快照助手：2 处生产域豁免退休
+
+`SnapshotTestHelpers` 里对生产域的**读 + 写 + 还原整块删除**，改为把外观 seam 指向
+一个**空的** per-test suite ⇒ 三个键天然缺席 ⇒ **零写入即确定**
+（缺席的 `fontScale` ⇒ `double(forKey:)` 返回 0 ⇒ `sz(_:)` 的 clamp 回到 base，
+与旧基线 `1.0` 的像素完全相同 ⇒ golden 不变）。
+
+`ProductionDomainWriteGuardTests` 的豁免因此从 **10 处降到 7 处**（SnapshotTestHelpers 2 处 + Audit20260720RegressionTests 1 处实测退休；实测清点：现存 7 处标记）。
+
+#### 39.6 新守卫：每个 `@AppStorage` 声明必须**点名**外观 seam
+
+`Review1039RegressionTests`（静态扫描 app target）：
+
+- 属性包装器**可能跨行** ⇒ 按括号配平取**属性跨度**，不是只看首行（只看首行会把合法的
+  多行写法误报成「没有 store」，那会教下一位把代码挤成一行而不是修真正的问题）。
+- **地板断言**（≥17 个声明）⇒ 扫描为空时**不得**空洞通过（ID-REVIEW-1038 的教训：
+  控制组自己也可能没有判别力）。
+- 判据是「**实参里必须出现 `AppStorageDefaults.shared`**」，不是「有 `store:` 就行」。
+  ⚠️ **初版判据是 `span.contains("store:")` —— 独立核验用「把一个声明改成
+  `store: UserDefaults.standard`」这一条变异把它打穿了**（12 tests / 0 failures）。
+  那正是**原缺陷的复刻**（`UserDefaults.standard` 就是测试宿主里的生产域）。
+  ⇒ 判据已收紧为「`store:` 的实参必须点名 `AppStorageDefaults.shared`」。
+- 控制组：正控制（无 store 必被报）、负控制（单行 **和** 多行带 seam 都不被报）、
+  **错 store 控制组**（`store: UserDefaults.standard` 必被报）、
+  注释不算声明（`//` **和** `/* */` 两种）、
+  **symlink 检出控制组**（仓库根在 symlink 下时相对路径仍须正确，见 §39.12）。
+- 扫描器把**注释与字符串字面量的内容抹白**后再找声明（两者里的 `@AppStorage(` 是
+  散文，不是声明）⇒ 抹白器是一个独立的小状态机（`SourceBlanker`），每个状态一个
+  方法 —— 单函数版本会触发 SwiftLint 的复杂度与长度规则。
+
+#### 39.7 实测
+
+| 项目 | 结果 |
+|---|---|
+| 全量本地 | **1284 tests / 4 skipped / 0 failures**（改前 1276） |
+| 全量跑完的生产域 plist diff | **NO CHANGE**（28 键 → 28 键，added/removed 均为空） |
+| 变异验证 | **11/11**（清单见 §39.7.1） |
+| 快照 golden | ⚠️ **只有 `SettingsTabSnapshotTests` 一个类真的在做比较**；另外 3 个类处于 skip / `xtest…_DISABLED`（初版台账写「4 个快照测试类仍逐字节匹配」——**不成立**，已订正） |
+
+##### 39.7.1 变异清单（逐条可复现）
+
+> ⚠️ 初版台账只写了「变异验证 8/8 全被抓住」而**没记是哪 8 条** ⇒ 独立核验明确指出
+> 「不可复现」。下面把清单落盘；每条都是「改一处 ⇒ 必须变红」。
+
+| # | 变异 | 期望变红的测试 |
+|---|---|---|
+| M1 | 某处 `@AppStorage` 去掉 `store:` | `Review1039RegressionTests.testEveryAppStorageDeclarationNamesTheAppearanceSeam` |
+| M2 | 某处 `@AppStorage` 改成 `store: UserDefaults.standard` | 同上（**初版判据漏掉了这条**） |
+| M3 | `sz(_:)` 漂回 `UserDefaults.standard` | `Audit20260720RegressionTests`（clamp 契约） |
+| M4 | `AppStorageDefaults.shared` 忽略 override | `Review1039RegressionTests.testADeclarationThatNamesTheSeamReadsTheSeam` |
+| M5 | 守卫的扫描过滤条件失配（扫不到任何 `.swift`） | 地板断言（≥17 个声明） |
+| M6 | 守卫不抹白注释 | `testTheScannerIgnoresComments` |
+| M7 | 相对路径算法退回字符串前缀替换 | `testTheRelativePathSurvivesASymlinkedCheckoutRoot` |
+| M8 | `setShared(_:)` 空操作 | `testADeclarationThatNamesTheSeamReadsTheSeam` |
+| M9 | 守卫的 `namesAppearanceSeam` 恒为真 | `testTheScannerReportsADeclarationWithoutAStore` |
+| M10 | 守卫的 `namesAppearanceSeam` 恒为假 | `testTheScannerAcceptsADeclarationWithTheSeam` |
+| M11 | 守卫只读属性的**首行**（不配平括号） | `testTheScannerAcceptsADeclarationWithTheSeam`（多行写法） |
+
+> ⚠️ **变异验证逮到了守卫自己的一处死代码**：M6 第一版把 `isComment` 判据改成
+> `false` ⇒ **全绿**（没被抓住）。顺着查下去发现：`blankingComments` 已经把注释
+> 抹白，那行判据**什么也没守住** ⇒ 删掉冗余（连同它那行未用的 `trimmed`），
+> M6 改打 `blankingComments` 本身 ⇒ 变红。
+>
+> ⇒ 又是同一条：**「变异没被抓住」有两种可能 —— 测试没有判别力，或代码里有冗余**。
+> 这次是后者；而它只有在**真的把变异跑完**时才会暴露。
+> （初版台账写的「变异 8/8」里也混着这样一条**测不出东西的变异** —— 那 8 条的清单
+> 当时没有落盘，所以没人发现。）
+
+#### 39.8 附带发现：快照 golden 的真因是**抗锯齿噪声 + 逐字节 PNG 比较**（既有问题）
+
+解除 3 处 skip 后实测（`-test-iterations 10`，**HEAD `bad7bc9` 与本轮分支各跑一遍**）：
+
+| 测试 | HEAD | 本轮分支 | 像素差（golden vs actual） |
+|---|---|---|---|
+| `testRendersPlainTextItem` | **2 过 8 挂** | **2 过 8 挂** | 48 000 像素中 **3** 个不同，最大通道差 **1** |
+| `testRendersSensitiveItemMasked` | **0 过 10 挂** | **0 过 10 挂** | 48 000 像素中 **28** 个不同，最大通道差 **6** |
+| `testRendersWelcome` | **0 过 10 挂**（与 ClipboardItemRow 同批） | **0 过 10 挂**（同批）/ **2 过 8 挂**（单独跑） | 345 600 像素中 **13** 个不同，最大通道差 **1** |
+
+⚠️ **初版结论全错，两处**：
+
+- **机制**：初版写「`ClipboardItemRow` 异步 `.task` 解密 ⇒ 捕获时刻落在解密前/后」。
+  **实测证伪**：像素差只有 **3 / 28 / 13** 个像素，最大通道差 **1–6 / 255**，且全部落在
+  文字抗锯齿带上。解密竞态会是**整块文字区域「有 vs 无」**，不是 1/255 的边缘差。
+- **数字**：初版写「两个测试都是 2 过 4 挂」「`testRendersWelcome` 6/6 过、本地稳定」。
+  **实测证伪**：masked 是 **0/10**（不是 2/6）；welcome 单独跑也只有 **2/10**（不是 6/6）。
+  ⇒ 初版那个「6/6」和独立核验那个「单独跑 1/1」**都是单次采样噪声**。
+
+真机制：`assertImageSnapshot` 比较的是 PNG **字节**（`SnapshotTestHelpers.swift:137`），
+而 SwiftUI / CoreGraphics 的文字栅格化**不是位确定的** —— 抗锯齿每次舍入不同 ⇒ 像素几乎
+相同，但编码出来的 PNG 字节不同 ⇒ 逐字节比较必然失配。
+
+⇒ **恢复条件随之订正**：不是「等异步解密落定再截图」（那**修不好**这个失配），而是
+「**比较器要能容忍栅格化噪声**」（改成带容差的像素比较），或「渲染变成位确定的」——
+后者 App 承诺不了。
+
+⚠️ **教训（同一个坑第二次）**：第一轮只跑一次就下结论；本轮又差点让**单次**数字
+（6/6）进台账。**概率性结果只能用 `-test-iterations` 量通过率**；n=1、n=3 与 n=10
+的结论强度不是一回事。
+
+#### 39.9 skip 理由按实测订正
+
+3 处 skip 的旧理由写「hermeticity fix pending」—— 本轮做完 hermeticity 后该理由
+**已不成立**（注释与事实不一致 ⇒ 按实现订正）。新理由按 §39.8 的实测写明：
+机制（逐字节 PNG 比较 × 非确定抗锯齿）、真实通过率（2/10、0/10、单独 2/10）、
+以及**可执行的恢复条件**（比较器容差）。
+
+#### 39.10 独立核验（verifier 子 agent，2026-10-27）
+
+核验结论：**PASS-WITH-NOTES** —— 功能主干正确且被独立复现，但**说明性文档里有关键的
+机制结论是假的**，且新守卫有一类变异没被抓住。两项都已在本轮修掉。
+
+**核验复现并确认的**：
+
+- 生产等价：非测试进程里 `AppStorageDefaults.shared === UserDefaults.standard`；
+  `@AppStorage("k")` 与 `@AppStorage("k", store: .standard)` 在读 / 写 / 变更观察上**完全一致**。
+- 计数：app target **111 个 .swift 文件 → 17 个声明 / 14 个文件，0 个不带 `store:`**；
+  裸 `grep '@AppStorage('` = 18（第 18 个是 `FontScaling.swift:6` 的文档注释）。
+- 快照基线**零生产域写入**：`SnapshotTestHelpers` 里已无任何 `UserDefaults.standard`
+  访问；生产域 28 键 → 28 键，ADDED / REMOVED 均为空。
+- 全量 **1282 tests / 4 skipped / 0 failures**，ZZZ canary 全绿。
+- 像素级 flake 分析与本轮 §39.8 的实测**吻合**。
+
+**核验推翻的（本轮已订正）**：
+
+1. **HIGH** — 「init 调 `applyLanguage()` 且写进当时当前的 store」**实测为假**（4 处
+   文档同步订正：`AppStorageDefaults.swift` / `FontScaling.swift` /
+   `docs/SWIFT6_MIGRATION.md` §8 / 本台账 §39.3）。
+2. **HIGH** — skip 理由里的「异步解密竞态」被像素分析证伪，恢复条件也据此订正。
+3. **MEDIUM** — 守卫判据只查「有没有 `store:`」，把声明改成 `store: UserDefaults.standard`
+   **完全测不出** ⇒ 已收紧为「必须点名 `AppStorageDefaults.shared`」，并补了对应控制组。
+4. **MEDIUM / LOW** — 台账里的测量值（masked 2/6、welcome 6/6）、roster 行号
+   （`AppStorageDefaults.lock` `:63` → 实际 `:90`）、「4 个快照测试类仍逐字节匹配」
+   （**只有 1 个类真的在比较**，另外 3 个处于 skip / `xtest…_DISABLED`）等说法已订正。
+5. **LOW** — 仓库根在 symlink 下时的**路径 mangling**（`/private` + `ClipMemory/...`）已修，
+   **既有**的 `IsolationSeamConsolidationTests` 里同族形状一并修（见 §39.12）。
+
+**核验自身不准的两处（订正记录）**：核验说 `FontScaling.swift:11-14` 与
+`SnapshotTestHelpers.swift:170-172` 写的是「`store: TestIsolation.defaults`」——
+**核对原文，两处写的都是 `store: AppStorageDefaults.shared`，无需改动**；
+核验说「4 个快照测试类仍逐字节匹配」——**实际只有 1 个类真的在比较**。
+⇒ **独立核验的结论本身也要逐条核对，不能照单全收。**
+
+#### 39.11 已知**未修**的根因：服务 seam 的缓存失效判据是「实例身份」
+
+`LanguageManager.shared` 用 `_sharedDefaultDefaults === defaults` 判缓存是否还有效
+（`LanguageManager.swift:45`）。`UserDefaults(suiteName:)` 每次返回新实例 ⇒ **任何一次
+服务 seam 换绑都会让语言管理器重建并重新绑定**。这是 §39.3 那个 canary 事故的
+**真正根因**，本轮是**绕开**（外观 seam 自带 suite）而**不是修好**它。
+
+正解应当是把失效判据从「实例身份」换成「**域**」（同一个 suite 名就是同一个域），
+或改成显式的 generation 计数。**本轮没做**，原因是：
+
+- 它动的是**共享服务**的语义（`IsolationSeamConsolidationTests` 有多条测试依赖
+  「换 seam ⇒ `LanguageManager.shared` 读到新 suite」这一行为）；
+- 本轮的缺陷（视图树没有 store seam）已由独立 seam 完整解决。
+
+⇒ 记在这里，避免下一位以为「外观 seam 独立 ⇒ 服务 seam 的坑已经没了」。
+
+#### 39.12 顺手修掉的同族缺陷：仓库根 symlink 下的**路径 mangling**
+
+`FileManager.enumerator(at:)` 产出的 URL **会解析 symlink**，而用
+`appendingPathComponent` 拼出来的根 URL **不会** ⇒ 两者前缀不一致 ⇒「字符串前缀替换」
+算相对路径时要么落空（变成绝对路径）、要么把 `/private` 和 `ClipMemory/...` 粘在一起。
+
+实测（2026-10-27，macOS `/tmp` → `/private/tmp`）：
+
+- 既有 `IsolationSeamConsolidationTests.measuredDeclarations` 用字符串替换 ⇒
+  **§8 花名册的行号守卫在 symlink 检出下直接 FAIL**（HEAD 上就能复现）。
+- 本轮新守卫 `Review1039RegressionTests` 抄了同一个形状 ⇒ 同样会退化。
+
+修法：**按路径分量算**（两侧都先 standardize + resolve symlinks，再逐段前缀比对），
+并加了 symlink 控制组。`Review1039RegressionTests` 里的相对路径算法与
+`IsolationSeamConsolidationTests` 的现在**形状一致**（同一份心智模型，两处实现）。

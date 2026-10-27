@@ -158,92 +158,42 @@ func assertImageSnapshot(
 
 /// Isolates snapshot tests from global state pollution by other tests in
 /// the suite. Without this, prior tests mutating `fontScale`
-/// (UserDefaults key read by `@AppStorage("fontScale")`) or
+/// (the UserDefaults key read by
+/// `@AppStorage("fontScale", store: AppStorageDefaults.shared)`) or
 /// `LanguageManager.shared.selectedLanguage` produce different render
 /// output under full-suite vs focused test runs.
 ///
 /// Call from `setUp()` of any test class that calls `assertImageSnapshot`.
-/// Stores the original values and restores them in `tearDown()`.
+/// Points the **appearance** seam (`AppStorageDefaults`) at an isolated
+/// per-test suite and restores it in `tearDown()`.
 @MainActor func snapshotTestSetUp() {
-    // The snapshot tests render VIEWS, and the views read `fontScale` /
-    // `settings.selectedTab` / `themeAppearance` through `@AppStorage`,
-    // which has NO injectable store — measured 2026-10-27: **17
-    // declaration sites across 14 view files**, every one of them
-    // `@AppStorage("…")` without a `store:` argument. (A grep of the app
-    // target reports 18 hits; the 18th is the doc comment in
-    // `FontScaling.swift`, not a declaration.) The test host
-    // runs inside the app process, so `UserDefaults.standard` IS the
-    // user's real `com.clipmemory.app` domain and the render can only
-    // be made deterministic by planting the baseline there.
+    // ID-REVIEW-1039 (2026-10-27): the appearance preferences the views
+    // read (`fontScale` / `settings.selectedTab` / `themeAppearance`) now
+    // resolve against `AppStorageDefaults.shared` — the dedicated appearance
+    // seam — because every `@AppStorage` declaration in the view tree carries
+    // `store: AppStorageDefaults.shared` (17 sites across 14 view files) and
+    // `sz(_:)` reads the same seam.
     //
-    // The in-memory-only alternative was measured and does NOT exist:
-    // `UserDefaults.setVolatileDomain(_:forName:)` never became visible
-    // to `object(forKey:)` / `double(forKey:)` on `.standard` (measured
-    // 2026-10-26 inside the app test host, with the bundle id, with
-    // `kCFPreferencesAnyHost`, with `kCFPreferencesCurrentHost` and with
-    // `localhost` as the host name — all four answered nil).
+    // Why the change was needed: the test bundle is injected INTO the app
+    // binary (`TEST_HOST`), so `UserDefaults.standard` inside a test
+    // process IS the user's real `com.clipmemory.app` domain. The old code
+    // therefore had to plant a baseline there (`fontScale = 1.0`) and REMOVE
+    // two keys, restoring all three in tearDown — and a restore does not
+    // survive a host abort (ID-REVIEW-1038 measured `fontScale = 3.7` left
+    // in the user's plist after a trap). On this machine the user's real
+    // `settings.selectedTab` was one of the keys the old code deleted around
+    // every snapshot test.
     //
-    // Blast radius if the host aborts between setUp and tearDown: three
-    // COSMETIC preferences (font scale back to 1.0, selected settings tab
-    // back to default, theme back to system). No clipboard history, no
-    // tags, no settings data.
-    //
-    // The proper fix is an `@AppStorage(store:)` seam across the views
-    // (or running the snapshot tests outside the app's bundle-id
-    // domain). That is a separate, larger change and is recorded as such
-    // in docs/skips-ledger.md.
-    // ALLOW-PRODUCTION-WRITE: snapshot baseline must live in the production domain.
-    let defaults = UserDefaults.standard
-    // ID-STORE-0007 (2026-08-01): object(forKey:) not double(forKey:) —
-    // double() returns 0 for an ABSENT key, which tearDown would then
-    // write back as a real 0, polluting production defaults (fontScale=0
-    // matches no picker tag and renders the settings row blank).
-    snapshotTestSavedFontScale = defaults.object(forKey: "fontScale") as? Double
-    // ID-CRASH-0038 (2026-10-02): same missing-aware pattern for the two
-    // remaining production-`.standard` `@AppStorage` reads:
-    // `SettingsRootView` reads `@AppStorage("settings.selectedTab")`
-    // (SettingsRootView.swift:31) and `GeneralSettingsView` reads
-    // `@AppStorage("themeAppearance")` (GeneralSettingsView.swift:13).
-    // Hygiene only: auto-review-164609's theory that a polluted
-    // `settings.selectedTab = update` mis-recorded the root-view golden was
-    // falsified locally — byte-compare passes with the key isolated, so the
-    // render is invariant to the key and the key cannot explain the CI
-    // mismatch (see skips-ledger.md). For the blank-golden family TWO
-    // candidate hypotheses remain open (AppKit-backed `Form` rasterization
-    // gap vs capture-too-early/settle): the blank region matches the Form
-    // subtree and the 4 sibling goldens (single-Form views) are 100% blank,
-    // but the picker band is a degenerate render (uniform fill + one glyph
-    // cluster, not 4 labels) — that does NOT exclude a settle race. The
-    // golden is byte-stable and byte-matches locally, so no
-    // environment-independent rendering property explains the CI-only
-    // mismatch yet. `themeAppearance` isolation is reasoned-inert, not
-    // measured: the only golden it could affect
-    // (testSettingsRootViewGeneralTab) is currently skipped. We still remove
-    // both keys for the render window so future goldens can never depend on
-    // host defaults; tearDown restores the prior value or absence.
-    snapshotTestSavedSelectedTab = defaults.object(forKey: "settings.selectedTab") as? String
-    snapshotTestSavedThemeAppearance = defaults.object(forKey: "themeAppearance") as? String
-    defaults.removeObject(forKey: "settings.selectedTab")
-    defaults.removeObject(forKey: "themeAppearance")
-    // NEW-4 (2026-08-06 review): missing-aware save for language, mirroring
-    // the fontScale pattern. The previous code read
-    // `LanguageManager.shared.selectedLanguage` which returned "en" for an
-    // ABSENT key (LanguageManager:46 fallback), so tearDown would write
-    // "en" back unconditionally — pinning appLanguage to "en" on any host
-    // that never had it set.
-    // NEW-2 follow-up (2026-08-06): no `appLanguage`/`AppleLanguages`
-    // save/restore here. Audit (2026-08-06) confirmed no view reads these
-    // directly from `UserDefaults.standard`; they route through
-    // `LanguageManager.shared`, which is stubbed below. Saving/restore
-    // these would be dead code — and worse, missing-aware restore would
-    // pretend the key existed and write back "en" on a host that never
-    // had `appLanguage`, pinning the user's prefs. Removed.
-    // Force defaults used by our rendered views to a deterministic baseline.
-    // Only `fontScale` is read directly via `@AppStorage` by Views
-    // (QuickBarView, WelcomeView, NewTagSheet, TagPickerSheet). The
-    // language-related keys are routed through `LanguageManager.shared`,
-    // which is stubbed below.
-    defaults.set(1.0, forKey: "fontScale")
+    // Now the seam points at a per-test suite, which is EMPTY by
+    // construction ⇒ the three keys are absent ⇒ the render is
+    // deterministic with **no write at all** — not to the production
+    // domain, not to a shared suite. (An absent `fontScale` makes
+    // `double(forKey:)` return 0, which the clamp in `sz(_:)` turns back
+    // into the base size — the same pixels the old 1.0 baseline produced.)
+    let snapshotDefaults = makeTestDefaults()
+    snapshotTestDefaults = snapshotDefaults
+    AppStorageDefaults.setShared(snapshotDefaults)
+
     // NEW-2 follow-up (2026-08-06): install a stub LanguageManager so
     // view bodies that read `LanguageManager.shared.selectedLanguage` see
     // "en" regardless of the host's real preference. Without this, the
@@ -256,6 +206,16 @@ func assertImageSnapshot(
     // `applyLanguage()` write to `AppleLanguages` doesn't escape into the
     // production domain. The `injectedForTest` seam (NEW-2 follow-up)
     // is reset by `snapshotTestTearDown` below.
+    //
+    // NEW-4 (2026-08-06 review) + NEW-2 follow-up (2026-08-06): the stub
+    // needs NO save/restore of `appLanguage` / `AppleLanguages` in the
+    // production domain. The previous code read
+    // `LanguageManager.shared.selectedLanguage`, which returned "en" for an
+    // ABSENT key (LanguageManager:46 fallback), so tearDown wrote "en"
+    // back unconditionally — pinning appLanguage to "en" on any host that
+    // never had it set. Audit (2026-08-06) confirmed no view reads these
+    // keys directly; they route through `LanguageManager.shared`, which is
+    // stubbed here.
     let stubDefaults = makeTestDefaults()
     stubDefaults.set("en", forKey: "appLanguage")
     stubDefaults.set(["en"] as [String], forKey: "AppleLanguages")
@@ -264,67 +224,27 @@ func assertImageSnapshot(
 }
 
 @MainActor func snapshotTestTearDown() {
-    // The snapshot tests render VIEWS, and the views read `fontScale` /
-    // `settings.selectedTab` / `themeAppearance` through `@AppStorage`,
-    // which has NO injectable store — measured 2026-10-27: **17
-    // declaration sites across 14 view files**, every one of them
-    // `@AppStorage("…")` without a `store:` argument. (A grep of the app
-    // target reports 18 hits; the 18th is the doc comment in
-    // `FontScaling.swift`, not a declaration.) The test host
-    // runs inside the app process, so `UserDefaults.standard` IS the
-    // user's real `com.clipmemory.app` domain and the render can only
-    // be made deterministic by planting the baseline there.
-    //
-    // The in-memory-only alternative was measured and does NOT exist:
-    // `UserDefaults.setVolatileDomain(_:forName:)` never became visible
-    // to `object(forKey:)` / `double(forKey:)` on `.standard` (measured
-    // 2026-10-26 inside the app test host, with the bundle id, with
-    // `kCFPreferencesAnyHost`, with `kCFPreferencesCurrentHost` and with
-    // `localhost` as the host name — all four answered nil).
-    //
-    // Blast radius if the host aborts between setUp and tearDown: three
-    // COSMETIC preferences (font scale back to 1.0, selected settings tab
-    // back to default, theme back to system). No clipboard history, no
-    // tags, no settings data.
-    //
-    // The proper fix is an `@AppStorage(store:)` seam across the views
-    // (or running the snapshot tests outside the app's bundle-id
-    // domain). That is a separate, larger change and is recorded as such
-    // in docs/skips-ledger.md.
-    // ALLOW-PRODUCTION-WRITE: snapshot baseline must live in the production domain.
-    let defaults = UserDefaults.standard
-    if snapshotTestSavedFontScale != nil {
-        defaults.set(snapshotTestSavedFontScale, forKey: "fontScale")
-    } else {
-        defaults.removeObject(forKey: "fontScale")
+    // ID-REVIEW-1039 (2026-10-27): there is nothing to restore in the
+    // production domain any more — the snapshot baseline never left the
+    // per-test suite (see `snapshotTestSetUp`). What is restored is the
+    // seam itself, so the rest of the test process sees the canonical
+    // baseline again.
+    AppStorageDefaults.setShared(nil)
+    if let snapshotDefaults = snapshotTestDefaults {
+        removeTestDefaults(snapshotDefaults)
     }
-    // ID-CRASH-0038 (2026-10-02): missing-aware restore mirrors the setUp
-    // save — never pin a key the host never had (same rationale as the
-    // fontScale/ID-STORE-0007 note above).
-    if snapshotTestSavedSelectedTab != nil {
-        defaults.set(snapshotTestSavedSelectedTab, forKey: "settings.selectedTab")
-    } else {
-        defaults.removeObject(forKey: "settings.selectedTab")
-    }
-    if snapshotTestSavedThemeAppearance != nil {
-        defaults.set(snapshotTestSavedThemeAppearance, forKey: "themeAppearance")
-    } else {
-        defaults.removeObject(forKey: "themeAppearance")
-    }
-    // NEW-2 follow-up (2026-08-06): no `appLanguage`/`AppleLanguages`
-    // restore here. See the matching note in setUp — language baseline
-    // is set, not restored, and the stub instance is the only
-    // observation point.
-    // NEW-2 follow-up: detach the stub so subsequent tests see the
-    // production `LanguageManager.shared` again. The stub's side
-    // effects (applyLanguage writes to testDefaults, not the production
-    // domain, so this is a clean detach).
+    snapshotTestDefaults = nil
+
+    // NEW-2 follow-up (2026-08-06): detach the stub so subsequent tests see
+    // the production `LanguageManager.shared` again. The stub's side
+    // effects (applyLanguage writes to its own test suite, not the
+    // production domain, so this is a clean detach).
     LanguageManager.injectedForTest = nil
 }
 
-private var snapshotTestSavedFontScale: Double?
-private var snapshotTestSavedSelectedTab: String?
-private var snapshotTestSavedThemeAppearance: String?
+/// The per-test suite the snapshot baseline lives in, if a snapshot test is
+/// running. `nil` outside a snapshot test.
+private var snapshotTestDefaults: UserDefaults?
 
 // MARK: - M13 Test Infrastructure
 

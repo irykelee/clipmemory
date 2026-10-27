@@ -11,7 +11,7 @@ struct TagChip: View {
     // dependency SwiftUI may skip recomputing body, leaving the chip at
     // the stale size. The actual scaling still goes through sz()'s
     // NaN/Inf/clamp guards; this value is never read directly.
-    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("fontScale", store: AppStorageDefaults.shared) private var fontScale: Double = 1.0
 
     var body: some View {
         // 2026-07-25: reading fontScale subscribes this view to @AppStorage

@@ -20,7 +20,7 @@ struct QuickBarView: View {
     // (H-10). The getter below stays side-effect-free (BUG-039).
     @State private var cachedDisplayedItems: [ClipboardItem] = []
     @FocusState private var isSearchFocused: Bool
-    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("fontScale", store: AppStorageDefaults.shared) private var fontScale: Double = 1.0
 
     let onDismiss: () -> Void
 

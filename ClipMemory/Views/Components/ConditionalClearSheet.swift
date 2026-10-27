@@ -9,7 +9,7 @@ struct ConditionalClearSheet: View {
     // 2026-07-25: font-scale invalidation trigger. MUST be read in body —
     // an unread @AppStorage creates no SwiftUI dependency, so font-size
     // changes never re-rendered views that size via sz().
-    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("fontScale", store: AppStorageDefaults.shared) private var fontScale: Double = 1.0
 
     @State private var selectedType: ClipboardItemType?
     @State private var selectedRange: ClipboardStore.ClearRange = .all

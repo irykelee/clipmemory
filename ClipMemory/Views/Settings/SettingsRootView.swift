@@ -28,7 +28,7 @@ struct SettingsRootView: View {
     // `.id(languageManager.selectedLanguage)` (which forces a view-tree rekey
     // to refresh localized labels) doesn't drop the user's selected tab on
     // every language switch.
-    @AppStorage("settings.selectedTab") private var selectedTabRaw: String = SettingsTab.general.rawValue
+    @AppStorage("settings.selectedTab", store: AppStorageDefaults.shared) private var selectedTabRaw: String = SettingsTab.general.rawValue
     @ObservedObject private var languageManager = LanguageManager.shared
 
     private var selectedTabBinding: Binding<SettingsTab> {

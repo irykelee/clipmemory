@@ -10,8 +10,8 @@ import Carbon.HIToolbox
 struct GeneralSettingsView: View {
     let hotKeyManager: HotKeyManager?
 
-    @AppStorage("themeAppearance") private var themeAppearance = "system"
-    @AppStorage("fontScale") private var fontScale: Double = 1.0
+    @AppStorage("themeAppearance", store: AppStorageDefaults.shared) private var themeAppearance = "system"
+    @AppStorage("fontScale", store: AppStorageDefaults.shared) private var fontScale: Double = 1.0
     @ObservedObject private var languageManager = LanguageManager.shared
 
     @State private var hotkeyRefresh = false

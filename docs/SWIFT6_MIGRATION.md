@@ -166,10 +166,13 @@ If TSan infrastructure reveals an unexpectedly high number of races, or if Swift
 > vars + 6 test-seam statics = 17") silently dropped
 > `LanguageManager.codeStorage`, a production state var that the very
 > same table listed. Every line number had drifted as well.
-> Re-measured on 2026-10-26 (count unchanged since 2026-10-23): **18 declarations** — 12 production
-> cache/state vars + 6 test-seam statics.
+> Re-measured on 2026-10-27: **19 declarations** — 12 production cache/state vars
+> + 7 test-seam statics. The 19th is `AppStorageDefaults.overrideStorage`
+> (ID-REVIEW-1039, 2026-10-27): the appearance seam the view tree's `@AppStorage`
+> declarations and `sz(_:)` resolve against. It is deliberately NOT folded into
+> `TestIsolation.defaults` — see the roster row for the measured reason.
 >
-> <!-- nonisolated-unsafe-declaration-count: 18 -->
+> <!-- nonisolated-unsafe-declaration-count: 19 -->
 
 ### How this was measured
 
@@ -183,7 +186,7 @@ Reproduce with (run from the repo root):
 rg -n --no-heading -g '*.swift' '^[^/]*nonisolated\(unsafe\)' ClipMemory/
 ```
 
-Raw output on 2026-10-26 — 18 lines, i.e. 18 declarations:
+Raw output on 2026-10-27 — 19 lines, i.e. 19 declarations:
 
 ```
 Services/ClipboardStore.swift:928:    nonisolated(unsafe) let contentCache: NSCache<NSString, NSString> = {
@@ -203,6 +206,7 @@ Services/LanguageManager.swift:102:    nonisolated(unsafe) private static var co
 Services/UpdateService.swift:202:    nonisolated(unsafe) static var defaults: UserDefaults {
 Services/UpdateService.swift:235:    nonisolated(unsafe) static var injectedForTest: UpdateService?
 Services/WindowManager.swift:113:    nonisolated(unsafe) static var defaults: UserDefaults {
+Utils/AppStorageDefaults.swift:93:    private nonisolated(unsafe) static var overrideStorage: UserDefaults?
 Utils/TestIsolation.swift:97:    private nonisolated(unsafe) static var defaultsStorage: UserDefaults = baselineDefaults
 ```
 
@@ -240,10 +244,12 @@ just copied from the declaration comments.
 | `Services/UpdateService.swift` | 235 | `injectedForTest: UpdateService?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
 | `Services/WindowManager.swift` | 113 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage). Dormant since WINDOW-0001 — frame persistence moved to AppKit's `setFrameAutosaveName` | actor-isolate the canonical seam |
 | `Utils/TestIsolation.swift` | 97 | `defaultsStorage: UserDefaults` | **canonical** storage for the whole test seam (ID-CRASH-0029). ID-REVIEW-1036 (2026-10-26): the declaration moved from `defaults` to `defaultsStorage` because `defaults` became a lock-guarded computed accessor (`defaultsLock`) — the read-modify-write of a class reference without a lock is the shape that aborted the test host in CI run 40186263416. The storage is `private` so the lock cannot be bypassed by writing the slot directly. The three service forwarders read it through the accessor, so they inherit the lock. ID-CRASH-0066 changed its INITIALIZER from `.standard` to the immutable `baselineDefaults` (an isolated suite under XCTest, `.standard` in production) | migrate to actor in Phase 3 |
+| `Utils/AppStorageDefaults.swift` | 93 | `overrideStorage: UserDefaults?` | test seam — the appearance store the view tree's `@AppStorage` declarations and `sz(_:)` resolve against. ID-REVIEW-1039 (2026-10-27): deliberately NOT `TestIsolation.defaults`, and it owns its own suite in a test process. Reason (measured): swapping the canonical service seam invalidates `LanguageManager.shared`'s **instance-identity** cache (`_sharedDefaultDefaults === defaults`), so the next read of `shared` re-creates the manager and binds it to whatever the service seam holds at that moment — and the next `selectedLanguage` assignment writes `appLanguage` + `AppleLanguages` into THAT store. When that store is the baseline suite, the ZZZ canary goes red naming four unrelated test classes. (`LanguageManager.init` itself writes nothing — `didSet` does not fire during `init`.) Guarded by `AppStorageDefaults.lock` (`:90`) | actor-isolate the canonical seam |
 
-**18 declarations** = 12 production cache/state vars (11 in
-`ClipboardStore` + `LanguageManager.codeStorage`) + 6 test-seam statics
-(3 service forwarders + 2 `injectedForTest` + 1 canonical storage).
+**19 declarations** = 12 production cache/state vars (11 in
+`ClipboardStore` + `LanguageManager.codeStorage`) + 7 test-seam statics
+(3 service forwarders + 2 `injectedForTest` + 1 canonical storage
++ 1 appearance-seam override).
 
 ### Not in this roster (but adjacent)
 
