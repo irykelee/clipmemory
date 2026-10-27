@@ -451,6 +451,22 @@ volatile-domain 探针、自己快照了生产 plist。结论：`VERDICT: PASS-W
 早退；`cleanupOrphanedImagesForTesting` 的全部调用点都注入了 suite）⇒ **两条 allowlist 条目已删除**，
 canary 因此**变严**：今后任何测试往生产域种这两个键，都会让 suite 失败，而不是被容忍。
 
+### 38.8b 审核门（opencode 自动审核）5 条 P2 —— 全部 false-positive，台账 66 → 72
+
+审核报告 `docs/reviews/auto-review-20261027-080955-63635.md`（审核模型**实际跑了仓库测试**后产出）：
+5 条 P2 + 摘要里的简写变体，**生效结论 PASS / 阻断 0**。逐条实测核验入账（`githooks/review-adjudication.jsonl`）：
+
+| finding | 判定 | 依据 |
+|---|---|---|
+| Rule D 分不清读写 | false-positive | 实测 `sz(16, defaults: .standard)` 是**读**也被报出；该取舍已写进守卫文件与 §38.5（「每次提到生产域都要有标记并说明读还是写」），读的那处也带 `READ ONLY` 标记 |
+| 6 行标记窗口可覆盖多条写入 | false-positive | 刻意取舍（收紧到一标记对一写入会打断合法的 `if`/`else` 成对写入），且已**明写进守卫文件** |
+| 经由参数/属性流过来的生产域看不见 | false-positive | 静态扫描的固有边界，守卫文件与 §38.8 均写明 |
+| 快照测试仍写生产域（3 个外观类键） | false-positive | 本轮未引入的架构债；`setVolatileDomain` 与 C 级 `CFPreferencesSetAppVolatileDomain`（`dlsym` 找不到该符号）两条「只改内存」的路都**不存在** ⇒ 无法绕开；爆炸半径仅 3 个外观类偏好 |
+| 「生产入口读 `.standard`」断言在默认安装上空转 | false-positive | **本轮已修**：拆成 3 条确定性契约并订正文案（核验模型自己也确认已修） |
+
+台账：`githooks/review-adjudication.jsonl` 66 → **72**（14 confirmed / 58 false-positive）。
+commit：`a997ee3`（修复本体 + 台账 §38）+ `d222f45`（审核门 findings 入账 jsonl）+ 本 commit（台账文字版 §38.8b）。
+
 ### 38.8 留下的、**本轮没做**的（明确记账，不含糊）
 
 1. **`@AppStorage` 无 store seam** ⇒ 快照测试必须写生产域（`SnapshotTestHelpers` 的 2 处豁免）。
