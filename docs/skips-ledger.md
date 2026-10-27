@@ -1136,6 +1136,8 @@ observer 确实安装并在跑（scope 计数随用例 1/0 交替、无漂移）
   「疑似」= 名字带 UUID 且**不含反向 DNS 点号** ⇒ 极可能是**套件字面量已从源码消失**的历史测试残留
   （实测样本：`Audit20260720-fontScale-*`、`AppleLangProbe-*`）⇒ 默认**保留**，要删必须显式加 `--also-suspects`。
   ⇒ **默认模式宁可漏删也不误删**；`com.*` 与 586 个真实 App 域在任何模式下都不动。
+  ⚠️ **已于 2026-10-27 经用户确认后实际执行**（`--also-suspects --apply`，删 199 436 个 / 779.0 MiB）
+  ⇒ 结果与验证见 **§40.10**。
 
 ### 40.9 审核门 follow-up（2026-10-27）：2 条 P0/P1 的核验 + 它牵出的**真残留**
 
@@ -1174,6 +1176,64 @@ observer 确实安装并在跑（scope 计数随用例 1/0 交替、无漂移）
 本轮验收：全量 **1307 tests / 6 skipped / 0 failures**（1305 + 2 个新守卫）；
 plist 净增长 **0**（落在 §40.5 的 0 ~ +18 区间内；⚠️ **单次采样不构成因果**，
 上一轮同一份代码测到 +18）；swiftlint exit 0、告警与 HEAD 基线逐条一致（10 条全属既有）。
+
+### 40.10 历史残留的**实际清理**（2026-10-27，用户确认后执行）
+
+用户确认后执行 `Scripts/cleanup-test-plists.py --also-suspects --apply`（**不可逆**：`unlink`，不进回收站）。
+执行前 app **未在运行** ⇒ 执行期间没有并发写入。
+
+**执行前 → 执行后**
+
+| 项 | 执行前 | 执行后 |
+|---|---|---|
+| `~/Library/Preferences` 的 `.plist` 总数 | **200 023** | **579 ~ 587**（其间有系统 App 新建/删除自己的域，数字随时间浮动） |
+| 占磁盘块 | **779.0 MiB**（内容仅 18.6 MiB，全是 4K 块取整） | **4.2 MiB** |
+| 目录总量（`du -sh`） | 785 MiB | **6.9 MiB** |
+| 数据卷可用空间 | 15 GiB（已用 **97%**） | **32 GiB**（已用 **93%**） |
+| 脚本报告 | — | **DELETED 199 436 files**（与 dry-run 的 199 436 **完全一致**） |
+
+**事后验证（向量化独立复核，结论 PASS）**：
+
+| 断言 | 结果 |
+|---|---|
+| 每个被删的名字**都能证明是测试产物**（命中源码推导的 68 个前缀，或「带 UUID + 无点号」的疑似规则） | **0 例外** ✅ |
+| 生产域 `com.clipmemory.app.plist` **逐字节未变**（sha256 比对） | ✅ |
+| 删除前存在的 **579 个非测试域全部仍在** | **579 / 579** ✅ |
+| 清理后**仍残留的测试产物** | **0** ✅ |
+| 生产域键数 / `ClipboardItems` | **28 键** / 155 405 字节 / **100 条**真实历史 ✅ |
+| 用户的 `Images`（23 个文件）与 `Backups`（7 份） | ✅ 完好 |
+
+⚠️ **诚实记录**：复核发现 **6 个既有域的内容变了**
+（`com.apple.spotlightknowledged.pipeline` / `com.tencent.workbuddy.mac` /
+`com.apple.xpc.activity2` / `com.apple.AccessibilityHearingNearby` /
+`com.apple.DuetExpertCenter.AppPredictionExpert` …）——
+**不是本次清理造成的**：脚本全程只调用 `os.remove(path)`，**从不写任何文件**；
+这 6 个是 Apple 守护进程与其它 App 在清理窗口内自己改写的。
+
+#### 「疑似」子集为什么可以一起删（实测，不是推断）
+
+按前缀拆开 **42 018 个疑似文件 → 73 种前缀，没有一个像真实 App**：
+
+| 数量 | 前缀 | 是什么 |
+|---|---|---|
+| 16 623 | `BackupServiceTests-` | 测试类名 |
+| 16 382 | `ImportExportTests-` | 测试类名 |
+| 2 176 | `FSB-seam-1-` | 测试 seam |
+| 1 709 | `SourceMigration-` | 测试 |
+| 1 645 | `BackupServiceExceptionPathTests-` | 测试类名 |
+| 1 131 | `BackupPackageV3SecurityTests-` | 测试类名 |
+| 1 016 | `BackupServiceTests-Isolated-` | 测试 |
+| 481 | `StorageBackendTests-` | 测试类名 |
+| 213 | `Audit20260720-fontScale-` | 早期测试残留 |
+| 35 / 19 / 5 / 4 | `ProbeJ-` / `ProbeF4-` / `VerifierProbe-` / `VerifierProbe4-` | 本轮探针残留 |
+
+⚠️ **反证也要做**：保留集 586 个里有 **40 个无点号**的真实域
+（`CLExporter` / `CLThumbnailer` / `localizationswitcherd` / `node` …）
+⇒ **「无点号 ⇒ 一定是测试」这条规则本身不成立**（Apple 的系统 App 就这么命名）。
+真正生效的判据是**双条件**：**带 UUID** **且** 无点号 —— 那 40 个真实域**都不带 UUID**
+⇒ 全部落在 KEEP，一个都没被碰。
+⇒ 且疑似子集的**套件字面量已从源码消失** ⇒ 前缀规则**永远找不到它们**
+（只跑默认模式的话，这 42 018 个 / 164 MiB 就是**永久残留**，没有任何后续路径能清掉）。
 
 ## 41. ID-REVIEW-1041（2026-10-27）：测试**覆写并清空**用户的真实系统剪贴板
 
