@@ -1663,6 +1663,36 @@ static func shouldRefuseKeychainStore(isRunningTests: Bool, keyStore: KeyStoring
 **(b) `AppDelegate.setupKeychainUnlockObserver()` 在测试宿主里根本不注册** ——
 它带着 `prewarmIfNeeded` 的副作用，本来也不该在测试里跑。
 
+### 43.6 变异验证：**7 条类级 + 1 条全量，8 条全红**
+
+harness：`/tmp/cm-1043-mutate.py`（回滚**逐字还原** + 每轮 **sha256 漂移检查** +
+自带**剪贴板快照/还原**）。⚠️ 它还必须自带 **kill `SecurityAgent`** ——
+见 §43.4 的 ACL 弹窗：残留的授权框会阻塞后续所有钥匙串操作。
+
+| 变异 | 改什么 | 结果 | 变红的测试 | 它证明了什么 |
+|---|---|---|---|---|
+| **BASE** | — | **绿** | — | 变异前基线全绿 |
+| **M1** | 拆掉 `prepareKey` 的闸门（= 回到修前行为） | **红** | ① `testPrepareKeyWithDefaultStoreDoesNotQueryProductionKeychain`、② `testRetryPrepareKeyIfLockedDoesNotQueryProductionKeychain` | **哨兵判据有牙**：生产钥匙串一可达，哨兵就被删 ⇒ 两条哨兵测试如期变红 |
+| **M2** | 闸门变成「拒绝一切 store」（过宽） | **红** | ⑤ `testInjectedStoreIsStillConsulted`、⑥ `testNonProductionKeychainServiceIsStillConsulted`、⑩、⑪ | 闸门**不是一刀切**：注入的 mock / 非生产 service 仍要被 consulted |
+| **M3** | 闸门去掉 `isRunningTests` 条件（生产也被拒） | **红** | ⑨ `testDecisionFunctionNeverRefusesInProduction` | **生产 ⇒ 绝不拒**那半边有牙（否则真机上 app 永远拿不到根密钥） |
+| **M5** | 拆掉 `AppDelegate` 的 observer 闸门 | **红** | ④ `testKeychainUnlockObserverIsNotRegisteredInTestHost` | 测试宿主里**确实**不注册唤醒/解锁 observer |
+| **M6** | 身份判据从 `service` 改成 `account` | **红** | ⑧ `testDecisionFunctionRefusesProductionIdentityUnderXCTest`、⑫ `testDecisionFunctionRefusesWholeProductionServiceNamespace` | 判据**按 service** 这件事被钉住（不是「service 还是 account 都行」） |
+| **M7** | `KeychainKeyStore` 不再报身份（退回协议默认 `nil`） | **红** | ⑧、⑫ | 生产 store **必须**报出自己的身份才会被拒 |
+| **M8** | 协议默认身份改成生产 service（所有 conformer 都被当成生产） | **红** | ⑤、⑪ | 协议默认值**不是**「生产」——否则注入的 fake 会被误拒 |
+
+**文件漂移：NONE**（每轮还原后逐文件 sha256 一致）。
+
+⚠️ **M6 / M7 必须用**窄选择器**只跑纯函数测试**：这两条让生产 store **不再被识别**
+⇒ 若同时跑哨兵测试，测试宿主就会真的去够生产钥匙串 ⇒ 触发 §43.4 的 ACL 弹窗 + 97 秒阻塞。
+⇒ 「危险」变异与「安全」变异**必须分开跑**，这是本轮 harness 的一条硬约束。
+
+⚠️ **测试 ③（真实通知路径）是「合取探测器」**（独立核验员独立指出的，我复核后确认）：
+它**只在两个闸门都拆**时才红 —— 因为哨兵只会被「真正查到生产钥匙串」删掉，
+而任一闸门在位都能挡住那次查询。
+⇒ 单闸门的判别力由 ①/②（`prepareKey` 闸门）与 ④（observer 闸门）承担
+（M1/M5 实测：M1 红①②、M5 红④，**③ 在两条里都保持绿** ⇒ 证实了它是合取探测器）。
+⇒ **记下来，别把它当成「独立有牙」的测试**。
+
 ### 43.7 ⚠️ 已知未覆盖 / 有意保留
 
 1. **`StartupHealth` 的默认 store 是「潜在」缺口**：当前不可达（§43.2 #5/#6），
@@ -1695,36 +1725,6 @@ static func shouldRefuseKeychainStore(isRunningTests: Bool, keyStore: KeyStoring
 | 网络（`URLSession`） | `UpdateService` 已有 hermetic 隔离 |
 
 ⇒ **没有第 6 例**。
-
-### 43.6 变异验证：**7 条类级 + 1 条全量，8 条全红**
-
-harness：`/tmp/cm-1043-mutate.py`（回滚**逐字还原** + 每轮 **sha256 漂移检查** +
-自带**剪贴板快照/还原**）。⚠️ 它还必须自带 **kill `SecurityAgent`** ——
-见 §43.4 的 ACL 弹窗：残留的授权框会阻塞后续所有钥匙串操作。
-
-| 变异 | 改什么 | 结果 | 变红的测试 | 它证明了什么 |
-|---|---|---|---|---|
-| **BASE** | — | **绿** | — | 变异前基线全绿 |
-| **M1** | 拆掉 `prepareKey` 的闸门（= 回到修前行为） | **红** | ① `testPrepareKeyWithDefaultStoreDoesNotQueryProductionKeychain`、② `testRetryPrepareKeyIfLockedDoesNotQueryProductionKeychain` | **哨兵判据有牙**：生产钥匙串一可达，哨兵就被删 ⇒ 两条哨兵测试如期变红 |
-| **M2** | 闸门变成「拒绝一切 store」（过宽） | **红** | ⑤ `testInjectedStoreIsStillConsulted`、⑥ `testNonProductionKeychainServiceIsStillConsulted`、⑩、⑪ | 闸门**不是一刀切**：注入的 mock / 非生产 service 仍要被 consulted |
-| **M3** | 闸门去掉 `isRunningTests` 条件（生产也被拒） | **红** | ⑨ `testDecisionFunctionNeverRefusesInProduction` | **生产 ⇒ 绝不拒**那半边有牙（否则真机上 app 永远拿不到根密钥） |
-| **M5** | 拆掉 `AppDelegate` 的 observer 闸门 | **红** | ④ `testKeychainUnlockObserverIsNotRegisteredInTestHost` | 测试宿主里**确实**不注册唤醒/解锁 observer |
-| **M6** | 身份判据从 `service` 改成 `account` | **红** | ⑧ `testDecisionFunctionRefusesProductionIdentityUnderXCTest`、⑫ `testDecisionFunctionRefusesWholeProductionServiceNamespace` | 判据**按 service** 这件事被钉住（不是「service 还是 account 都行」） |
-| **M7** | `KeychainKeyStore` 不再报身份（退回协议默认 `nil`） | **红** | ⑧、⑫ | 生产 store **必须**报出自己的身份才会被拒 |
-| **M8** | 协议默认身份改成生产 service（所有 conformer 都被当成生产） | **红** | ⑤、⑪ | 协议默认值**不是**「生产」——否则注入的 fake 会被误拒 |
-
-**文件漂移：NONE**（每轮还原后逐文件 sha256 一致）。
-
-⚠️ **M6 / M7 必须用**窄选择器**只跑纯函数测试**：这两条让生产 store **不再被识别**
-⇒ 若同时跑哨兵测试，测试宿主就会真的去够生产钥匙串 ⇒ 触发 §43.4 的 ACL 弹窗 + 97 秒阻塞。
-⇒ 「危险」变异与「安全」变异**必须分开跑**，这是本轮 harness 的一条硬约束。
-
-⚠️ **测试 ③（真实通知路径）是「合取探测器」**（独立核验员独立指出的，我复核后确认）：
-它**只在两个闸门都拆**时才红 —— 因为哨兵只会被「真正查到生产钥匙串」删掉，
-而任一闸门在位都能挡住那次查询。
-⇒ 单闸门的判别力由 ①/②（`prepareKey` 闸门）与 ④（observer 闸门）承担
-（M1/M5 实测：M1 红①②、M5 红④，**③ 在两条里都保持绿** ⇒ 证实了它是合取探测器）。
-⇒ **记下来，别把它当成「独立有牙」的测试**。
 
 ### 43.9 验收（实测）
 
