@@ -1,4 +1,5 @@
 import AppKit
+@testable import ClipMemory
 
 /// ID-REVIEW-1041 (2026-10-27): the test tree wrote to — and finally
 /// **emptied** — the user's REAL system clipboard (`NSPasteboard.general`).
@@ -20,21 +21,32 @@ import AppKit
 ///    *inside the test host*, see `SettingsWindowTests` / ID-MON-0002);
 /// 2. the final `clearContents()` **destroys** whatever the user had copied.
 ///
-/// This guard snapshots the real pasteboard before the test and restores it
+/// This guard snapshots the pasteboard before the test and restores it
 /// afterwards, so the user's data survives the run.
 ///
-/// ⚠️ **Scope, stated honestly** — this is a TEST-side guard, deliberately
-/// **zero production change**. The suite still writes fixture content to the
-/// general pasteboard *for the duration of the affected tests* (the monitor
-/// reads `NSPasteboard.general` with no injection seam), so a separately
-/// running app can still capture that content in that window. Removing that
-/// residual needs a pasteboard seam in production code — recorded in
-/// `docs/skips-ledger.md` §41 as a known, unfixed remainder.
+/// ## ID-REVIEW-1042 (2026-10-27): what this guard does NOW
 ///
-/// This file is the **only** place in the test tree allowed to name
-/// `NSPasteboard.general`. `Review1041RegressionTests` enforces that
-/// statically, and also enforces that every file using the pasteboard pairs
-/// `begin()` with `end()`.
+/// ID-REVIEW-1042 added a production seam (`AppPasteboard`) that binds the
+/// app to a PRIVATE pasteboard in a test process. Two consequences:
+///
+/// * The guard now operates on **the board the app actually uses** — which
+///   in a test process is that private board, not the user's clipboard. So
+///   the guard no longer needs to name `NSPasteboard.general` at all, and
+///   the user's clipboard is never emptied, not even for the duration of a
+///   test.
+/// * The guard's remaining job is **test isolation**: it clears the app's
+///   pasteboard at `begin()` and puts back whatever was there at `end()`, so
+///   one test's fixture cannot leak into the next.
+///
+/// The guard therefore KEEPS its snapshot/restore mechanics (they are still
+/// what isolates tests from each other) but REDIRECTS them through the seam.
+/// The old "protect the user's clipboard" job is now done upstream, at the
+/// seam, where it no longer has a window.
+///
+/// This file is the sanctioned accessor for the app's pasteboard in the test
+/// tree. `Review1041RegressionTests` enforces statically that NO test file
+/// names `NSPasteboard.general`, and `Review1042RegressionTests` enforces
+/// that the app tree names it only in `AppPasteboard.swift`.
 enum TestPasteboardGuard {
 
     /// Guards the mutable state below.
@@ -60,59 +72,55 @@ enum TestPasteboardGuard {
     private static var savedItems: [[ItemSnapshot]] = []
 
     /// Whether a snapshot is currently held. Nested `begin()` calls keep the
-    /// **original** snapshot, so `end()` restores what the user actually had
+    /// **original** snapshot, so `end()` restores what was actually there
     /// rather than an intermediate state.
     private static var isActive = false
 
-    /// A pasteboard to operate on instead of the general one.
+    /// The one sanctioned accessor for the app's pasteboard.
     ///
-    /// Used by this guard's own regression test so that verifying the
-    /// restore path does not itself disturb the user's clipboard.
-    private static var overrideBoard: NSPasteboard?
-
-    /// The one sanctioned accessor for the general pasteboard.
-    ///
-    /// Reads and writes are allowed here; the *cleanup* is what this guard
-    /// exists for, so pair every use with `begin()` / `end()`.
+    /// ID-REVIEW-1042: resolves through the production seam, so it is the
+    /// SAME board the app writes to — the private one under XCTest, the
+    /// system-wide general one in production.
     static var pasteboard: NSPasteboard {
         lock.lock()
         defer { lock.unlock() }
-        return overrideBoard ?? NSPasteboard.general
+        return AppPasteboard.shared
     }
 
-    /// Point the guard at another pasteboard. `nil` restores the general one.
+    /// Point the app's pasteboard at another board. `nil` restores the
+    /// default resolution.
+    ///
+    /// Used by this guard's own regression test so that verifying the
+    /// restore path does not itself disturb the shared test pasteboard.
     static func usePasteboardForTesting(_ board: NSPasteboard?) {
-        lock.lock()
-        defer { lock.unlock() }
-        overrideBoard = board
+        AppPasteboard.setShared(board)
     }
 
-    /// Snapshot the user's pasteboard and clear it. Call from `setUp()`.
+    /// Snapshot the pasteboard and clear it. Call from `setUp()`.
     static func begin() {
         lock.lock()
         defer { lock.unlock() }
         guard !isActive else { return }
-        let board = overrideBoard ?? NSPasteboard.general
+        let board = AppPasteboard.shared
         savedItems = snapshot(of: board)
         isActive = true
         board.clearContents()
     }
 
-    /// Restore what the user had. Call from `tearDown()`.
+    /// Restore what was there. Call from `tearDown()`.
     ///
-    /// Unconditional restore: even if the user copied something *new* during
-    /// the test window, this puts the pre-test content back. That is still
-    /// strictly better than the previous behaviour (emptying the clipboard),
-    /// and the window is a few seconds wide.
+    /// Unconditional restore: even if the test wrote something *new*, this
+    /// puts the pre-test content back, so one test's fixture cannot leak
+    /// into the next.
     ///
     /// A `tearDown()` that runs **without** a matching `begin()` is a no-op
-    /// on purpose: a stray `end()` must never empty the user's clipboard.
+    /// on purpose: a stray `end()` must never empty the board.
     static func end() {
         lock.lock()
         defer { lock.unlock() }
         guard isActive else { return }
         isActive = false
-        let board = overrideBoard ?? NSPasteboard.general
+        let board = AppPasteboard.shared
         board.clearContents()
         let objects = savedItems.map { entry -> NSPasteboardItem in
             let item = NSPasteboardItem()
@@ -143,13 +151,13 @@ enum TestPasteboardGuard {
     }
 
     /// Test-only: forget any pending snapshot without touching the
-    /// pasteboard. Used by the guard's own regression test to avoid leaking
-    /// state into the rest of the suite.
+    /// pasteboard, and drop any board override. Used by the guard's own
+    /// regression test to avoid leaking state into the rest of the suite.
     static func resetForTesting() {
         lock.lock()
         defer { lock.unlock() }
         savedItems = []
         isActive = false
-        overrideBoard = nil
+        AppPasteboard.setShared(nil)
     }
 }

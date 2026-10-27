@@ -16,6 +16,33 @@ enum TestSourceScanner {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     }
 
+    /// The directory that holds the APP sources.
+    ///
+    /// Two levels up from the test directory (`…/Tests/ClipMemoryTests`) is
+    /// the repository root; the app target lives in `ClipMemory/` beside it.
+    static var appDirectory: URL {
+        testDirectory
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ClipMemory")
+    }
+
+    /// Raised when the scanner cannot find a tree it was told to scan.
+    ///
+    /// ⚠️ It THROWS rather than returning an empty list on purpose: a guard
+    /// that scans zero files passes vacuously, and a vacuous guard is
+    /// indistinguishable from a working one (the ID-REVIEW-1038 M4 lesson).
+    enum ScannerError: Error, CustomStringConvertible {
+        case directoryMissing(String)
+
+        var description: String {
+            switch self {
+            case .directoryMissing(let path):
+                return "the scanner was pointed at a directory that does not exist: \(path)"
+            }
+        }
+    }
+
     /// Every Swift file in the test tree, sorted by path.
     ///
     /// `excluded` holds FILE NAMES (not paths). The guards exclude the files
@@ -35,19 +62,71 @@ enum TestSourceScanner {
         return files.sorted { $0.path < $1.path }
     }
 
+    /// Every Swift file in the APP tree, sorted by path.
+    ///
+    /// ID-REVIEW-1042 (2026-10-27): the app tree needed its own scan — the
+    /// 1041 guard watches the TEST tree, and only the app tree can prove
+    /// that no PRODUCTION path reaches the user's clipboard.
+    ///
+    /// Throws when the directory is missing, so a moved app tree makes the
+    /// guard RED instead of vacuously green.
+    static func appSourceFiles(excluding excluded: Set<String> = []) throws -> [URL] {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: appDirectory.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            throw ScannerError.directoryMissing(appDirectory.path)
+        }
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(
+            at: appDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ))
+        var files: [URL] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            if excluded.contains(url.lastPathComponent) { continue }
+            files.append(url)
+        }
+        return files.sorted { $0.path < $1.path }
+    }
+
     /// The path of `url` relative to the test directory.
+    static func relativePath(of url: URL) -> String {
+        relativePath(of: url, relativeTo: testDirectory)
+    }
+
+    /// The path of `url` relative to the APP directory.
+    static func appRelativePath(of url: URL) -> String {
+        relativePath(of: url, relativeTo: appDirectory)
+    }
+
+    /// The path of `url` relative to `base`.
     ///
     /// Computed by path COMPONENT, not by string prefix: `FileManager
     /// .enumerator` resolves symlinks while `appendingPathComponent` does
     /// not, so a prefix replacement silently degrades in a symlinked
     /// checkout (measured 2026-10-27, ID-REVIEW-1039).
-    static func relativePath(of url: URL) -> String {
+    static func relativePath(of url: URL, relativeTo base: URL) -> String {
         let file = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents
-        let base = testDirectory.standardizedFileURL.resolvingSymlinksInPath().pathComponents
-        guard file.count > base.count, Array(file.prefix(base.count)) == base else {
+        let baseComponents = base.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        guard file.count > baseComponents.count,
+              Array(file.prefix(baseComponents.count)) == baseComponents else {
             return url.lastPathComponent
         }
-        return file.dropFirst(base.count).joined(separator: "/")
+        return file.dropFirst(baseComponents.count).joined(separator: "/")
+    }
+
+    /// How many times the source names the SYSTEM-WIDE general pasteboard.
+    ///
+    /// The scan runs on a BLANKED copy (comments and string literals replaced
+    /// by spaces) ⇒ a doc comment mentioning the API is not a use, and a
+    /// sample inside a string literal is not a use either.
+    ///
+    /// ⚠️ ONE definition, shared by the 1041 guard (TEST tree) and the 1042
+    /// guard (APP tree). Two guards that disagree about what counts as a
+    /// "site" would each be able to hide the other's hole — the exact shape
+    /// of defect ID-REVIEW-1038's M4 lesson.
+    static func generalPasteboardUses(in source: String) -> Int {
+        occurrenceCount(of: "NSPasteboard.general", in: blankingCommentsAndStrings(source))
     }
 
     /// How many times `needle` occurs in `source`.

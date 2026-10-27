@@ -2781,7 +2781,11 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
     private var pendingCopyToken: UInt64?
 
     func copyToClipboard(_ item: ClipboardItem) {
-        let pasteboard = NSPasteboard.general
+        // ID-REVIEW-1042 (2026-10-27): resolve through the seam so a TEST
+        // process writes to a private board instead of the user's real
+        // clipboard. In production this is `NSPasteboard.general`, exactly
+        // as before.
+        let pasteboard = AppPasteboard.shared
 
         // Prepare content first, then clear + write (prevents data loss if prepare fails)
         var preparedImage: NSImage?
@@ -2930,7 +2934,10 @@ let saveDebounceInterval: DispatchTimeInterval = .milliseconds(500)
             }
             self.pendingCopyToken = nil
             self.onRecordOwnWrite?()
-            let pasteboard = NSPasteboard.general
+            // ID-REVIEW-1042 (2026-10-27): same seam as the warm path above —
+            // a TEST process must write to the private board, never to the
+            // user's real clipboard.
+            let pasteboard = AppPasteboard.shared
             pasteboard.clearContents()
             // ID-SECURITY-0003 (2026-07-30 audit): mirror the warm-path
             // marker in copyToClipboard — stamp ConcealedType when the

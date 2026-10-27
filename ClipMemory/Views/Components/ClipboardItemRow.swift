@@ -1106,7 +1106,11 @@ struct ClipboardItemRow: View, Equatable {
     /// MemoryStorageBackend store without touching ClipboardStore.shared.
     static func writeOcrTextToPasteboard(_ text: String, store: ClipboardStore, isSensitive: Bool = false) {
         store.onRecordOwnWrite?()
-        let pasteboard = NSPasteboard.general
+        // ID-REVIEW-1042 (2026-10-27): resolve through the seam so a TEST
+        // process writes to a private board instead of the user's real
+        // clipboard. In production this is `NSPasteboard.general`, exactly
+        // as before.
+        let pasteboard = AppPasteboard.shared
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         // ID-SECURITY-0003 (2026-07-31 audit): OCR plaintext of a sensitive

@@ -22,9 +22,13 @@ import AppKit
 ///
 /// 1. **Behaviour** — `TestPasteboardGuard` restores what it snapshotted, and
 ///    a stray `end()` without a `begin()` does nothing at all.
-/// 2. **Static** — `NSPasteboard.general` may be named in exactly ONE file
-///    (the guard), and every file that touches the pasteboard must pair
-///    `begin()` with `end()`.
+/// 2. **Static** — `NSPasteboard.general` may be named in NO test file, and
+///    every file that touches the pasteboard must pair `begin()` with `end()`.
+///    (ID-REVIEW-1042, 2026-10-27: this rule used to be "exactly ONE file —
+///    the guard". The app now binds to a private pasteboard in a test process
+///    via the `AppPasteboard` seam, so the rule was strengthened to "none";
+///    the APP tree's counterpart — only `AppPasteboard.swift` may name it —
+///    is enforced by `Review1042RegressionTests`.)
 /// 3. **Control group** — the scanner finds a planted call and ignores
 ///    comments and string literals.
 ///
@@ -103,59 +107,71 @@ final class Review1041RegressionTests: XCTestCase {
                        "end() without a matching begin() must not touch the pasteboard")
     }
 
-    // MARK: - Static guard: only the guard may name the general pasteboard
+    // MARK: - Static guard: no test file may name the general pasteboard
 
     /// How many times `NSPasteboard.general` occurs in `source`.
     ///
     /// The scan runs on a BLANKED copy (comments and string literals replaced
     /// by spaces) ⇒ a doc comment mentioning the API is not a use, and the
     /// control-group sample inside a string literal is not a use either.
+    ///
+    /// The definition lives in `TestSourceScanner` so that this guard and
+    /// the ID-REVIEW-1042 app-tree guard cannot disagree about what counts
+    /// as a use.
     private static func generalPasteboardUses(in source: String) -> Int {
-        let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
-        return TestSourceScanner.occurrenceCount(of: "NSPasteboard.general", in: blanked)
+        TestSourceScanner.generalPasteboardUses(in: source)
     }
 
-    /// Files allowed to name `NSPasteboard.general`, and how many times.
+    /// How many times each test file may name `NSPasteboard.general`.
     ///
     /// An exact COUNT, not a line number and not a prefix: line numbers drift
     /// with unrelated edits, and a prefix can be widened by accident. A new
     /// use ⇒ red; a removed use ⇒ the stale entry ⇒ red.
-    private static let allowedGeneralPasteboardUses: [String: Int] = [
-        "TestPasteboardGuard.swift": 3
+    ///
+    /// ⚠️ ID-REVIEW-1042 (2026-10-27): every budget is now **0**. The app
+    /// binds to a private pasteboard in a test process (`AppPasteboard`), so
+    /// no test file needs the system-wide one any more — and the old
+    /// "only the guard may name it" rule has become "NOBODY may name it".
+    /// The entry for the guard file is kept (with a budget of 0) so the
+    /// staleness test below still has something concrete to assert: that the
+    /// guard has not regressed to reaching for the user's clipboard.
+    private static let generalPasteboardUseBudget: [String: Int] = [
+        "TestPasteboardGuard.swift": 0
     ]
 
-    func testOnlyTheGuardFileMayNameTheGeneralPasteboard() throws {
+    func testNoTestFileMayNameTheGeneralPasteboard() throws {
         let files = try TestSourceScanner.testSourceFiles()
         var offenders: [String] = []
         for url in files {
             let relative = TestSourceScanner.relativePath(of: url)
             let source = try String(contentsOf: url, encoding: .utf8)
             let uses = Self.generalPasteboardUses(in: source)
-            let allowed = Self.allowedGeneralPasteboardUses[relative] ?? 0
+            let allowed = Self.generalPasteboardUseBudget[relative] ?? 0
             if uses != allowed {
                 offenders.append("\(relative): \(uses) use(s), allowed \(allowed)")
             }
         }
         XCTAssertTrue(
             offenders.isEmpty,
-            "only TestPasteboardGuard.swift may name NSPasteboard.general; offenders: \(offenders)"
+            "no test file may name NSPasteboard.general (the app binds to a private "
+            + "pasteboard under XCTest); offenders: \(offenders)"
         )
     }
 
-    /// The allowlist must not go stale: a use that was removed (or a count
-    /// that drifted) has to be red, not silently accepted.
-    func testTheGeneralPasteboardAllowlistIsNotStale() throws {
+    /// The budget must not go stale: a use that was added (or a count that
+    /// drifted) has to be red, not silently accepted.
+    func testTheGeneralPasteboardBudgetIsNotStale() throws {
         let files = try TestSourceScanner.testSourceFiles()
-        for (file, allowedCount) in Self.allowedGeneralPasteboardUses {
+        for (file, allowedCount) in Self.generalPasteboardUseBudget {
             let url = try XCTUnwrap(
                 files.first { TestSourceScanner.relativePath(of: $0) == file },
-                "allowlist names a file that does not exist: \(file)"
+                "budget names a file that does not exist: \(file)"
             )
             let source = try String(contentsOf: url, encoding: .utf8)
             XCTAssertEqual(
                 Self.generalPasteboardUses(in: source),
                 allowedCount,
-                "allowlist entry for \(file) is stale — update the exact count"
+                "budget entry for \(file) is stale — update the exact count"
             )
         }
     }

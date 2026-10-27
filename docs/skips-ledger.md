@@ -1343,3 +1343,166 @@ pasteboard writes (including writes from other tests) into the production UserDe
 | lint | exit 0，告警数与 HEAD 基线**逐条一致（10 条全属既有）**，3 个新文件**零告警** |
 | 变异 | **N1–N8 共 8 / 8 全被抓住**（含 N7 = 摘掉扫描器的多行字符串盲化分支 ⇒ 红；N8 = 拿掉某个文件的 `begin()`/`end()` 配对 ⇒ 红） |
 | 1040 的变异**重跑** | 因共享扫描器被改动，M1–M7 + E2 **8 / 8 仍全红**，E3 仍绿（已知未测项） |
+
+---
+
+## 42. ID-REVIEW-1042（2026-10-27）：给生产代码加**剪贴板注入 seam** ⇒ 测试进程**完全不碰**用户的剪贴板
+
+> 本条是 §41.5 明确留白的**最后一格余量**的收口。ID-REVIEW-1041 修好了「**破坏**」
+> （用户复制的内容不再被销毁），但没修好「**窗口**」：测试期间夹具文本仍会**短暂**
+> 出现在系统剪贴板上 ⇒ 用户**另开**的 ClipMemory app 在那个窗口里仍可能捕获到，
+> 并写进用户的**真实历史**。§41.5 的原话是「彻底堵住需要**生产代码**加 seam」
+> ⇒ 本条就是那个 seam。
+
+### 42.1 前提（实测，不是推断）
+
+全量扫描 **app 树**（`ClipMemory/**.swift`）里所有 `pasteboard` 命中，真正的
+`NSPasteboard.general` 硬编码**只有 4 处**（其余命中全是 `NSPasteboard.PasteboardType`
+常量与注释）：
+
+| 站点 | 作用 |
+|---|---|
+| `Services/ClipboardMonitor.swift:19` | monitor 轮询的板（`private let pasteboard = NSPasteboard.general`） |
+| `Services/ClipboardStore.swift:2784` | `copyToClipboard`（同步路径） |
+| `Services/ClipboardStore.swift:2933` | `copyFullSizeImageToClipboardAsync` 的**异步完成回调** |
+| `Views/Components/ClipboardItemRow.swift:1109` | `writeOcrTextToPasteboard`（OCR 复制） |
+
+⇒ 1041 实测轨迹里的 `'clipmemory own write'` 正是前两处写进去的。
+
+### 42.2 决定设计的三条实测（2026-10-27）
+
+用一段独立脚本直接问 `NSPasteboard`（不是靠记忆）：
+
+1. **`NSPasteboard.general === NSPasteboard.general` → `true`** ⇒ 系统通用板是**真单例**，
+   **身份比较可靠** ⇒ seam 可以用它回答「我现在是不是在用户的剪贴板上」。
+2. **`NSPasteboard.withUniqueName()` 每次调用返回**新**对象**（`u1 !== u2`）⇒ seam
+   **必须缓存**它：否则 monitor 每个 0.5 s tick 会轮询一块**不同的**板，
+   永远看不见自己造成的 changeCount 变化。
+3. **写私有板完全不碰 `.general`**（读回 `<nil>`，且 `.general` 的 `changeCount` 不变）
+   ⇒ 私有板这一手是可行的隔离手段。
+
+### 42.3 修法：全局 seam（照 ID-REVIEW-1039 的 `AppStorageDefaults` 模式）
+
+新增 `ClipMemory/Utils/AppPasteboard.swift`：
+
+* `NSLock` + `nonisolated(unsafe) static var overrideBoard` —— **读点不全在 main actor**：
+  `ClipboardMonitor` 在自己的 timer 队列（`com.clipmemory.clipboardmonitor`）上轮询，
+  冷加载图片的完成回调也不在 main ⇒ 裸 `static var` 是数据竞争
+  （与 CI run 40186263416 那次 abort 同形，见 `AppStorageDefaults` 的同类论证）。
+* `nonisolated static let xcTestPasteboard`：靠 `TestIsolation.isRunningTests`
+  **在 XCTest 下自动激活** ⇒ **测试侧零配置**；生产恒为 `nil` ⇒ 生产**不会**创建私有板。
+* 生产默认分支 `return NSPasteboard.general` ⇒ 与改动前**逐字节等价**。
+
+**为什么是全局 seam 而不是逐点注入**：逐点注入会留下「漏掉的站点」这种洞
+（正是 ID-REVIEW-1038 M4 教训的形状）；全局 seam 没有那张清单可漏，
+且测试进程**自动**激活。
+
+**测试侧**：`TestPasteboardGuard` 改指 seam（`pasteboard` → `AppPasteboard.shared`；
+`usePasteboardForTesting` → `AppPasteboard.setShared`）⇒ 它的职责从
+「保护用户剪贴板」变成「**隔离测试之间**」（用户剪贴板从头到尾没被碰过）。
+**1041 的规则被加强**：从「只有 guard 文件能命名 `NSPasteboard.general`」
+⇒「**没有任何测试文件能命名它**」（测试树里该名字的出现次数 **3 → 0**）。
+
+### 42.4 新守卫（`Review1042RegressionTests`，11 个测试）
+
+* **行为**：XCTest 下 seam **不是**系统通用板；seam 解析到**稳定**的板（`===`）；
+  两个 copy 路径（`copyToClipboard` / `writeOcrTextToPasteboard`）都写进 seam。
+* **静态（app 树）**：`NSPasteboard.general` **和**废弃写法 `NSPasteboard()`
+  **只能**出现在 `Utils/AppPasteboard.swift`（每文件**精确计数** allowlist）；
+  seam 的生产分支必须 `return NSPasteboard.general`；私有板必须由
+  `TestIsolation.isRunningTests` 把关（且**只**创建一次）；
+  seam 的「是不是用户剪贴板」探针必须是**身份比较**（写死 `false` 会让行为守卫变空绿）。
+* **控制组**：正控制（多行上下文里植入的调用必须被抓到）+ 负控制（注释、字符串字面量不算）
+  + 废弃写法 `NSPasteboard()` 也要被抓到。
+
+### 42.5 ⚠️ 已知未覆盖（写清楚，别当已验证）
+
+* **「生产 ⇒ `.general`」这半边在进程内测不了**：`isRunningTests` 在测试进程里恒为真
+  ⇒ 只能**静态**钉住（§42.4 的三条静态断言）。它依赖 1039 已经依赖的**同一条假设**
+  （生产进程里 `isRunningTests` 为假）。
+* **守护范围是「源码」**：守卫管的是**本仓库**的 app 树与测试树；
+  第三方二进制若自行写 `.general`，静态守卫看不见（但那不是本仓库的责任）。
+* **1041 静态守卫仍是文件粒度**：同文件内新加的测试方法漏配对 `begin()`/`end()` 仍抓不到
+  （§41.5 已记，本条未改）。
+
+### 42.6 连带改动（同一 commit 内必须一起动）
+
+* **`docs/SWIFT6_MIGRATION.md` §8 的名册**：新的 seam 带来第 **20** 个
+  `nonisolated(unsafe)` 声明（`Utils/AppPasteboard.swift:76`，`overrideBoard`）
+  ⇒ 仓库自己的漂移守卫（`IsolationSeamConsolidationTests`）在**同一个 commit**
+  要求刷新计数标记 + 行号 + 表格行。**这不是我加的检查，是仓库既有的纪律。**
+* **共享扫描器 `TestSourceScanner` 被改动**（新增 app 树扫描、抽出
+  `relativePath(of:relativeTo:)`、统一 `generalPasteboardUses` 定义）
+  ⇒ **必须重跑 1040 / 1041 的变异**（见 §42.7）。
+
+### 42.7 变异验证：**24 条，23 红**（R5 的绿是**正确**的）
+
+变异脚本 `/tmp/cm-1042-mutate.py`：逐条改源码 → 跑指定测试类 → **必须变红** → 还原。
+
+| 变异 | 含义 | 结果 |
+|---|---|---|
+| M1 | seam 去掉 `isRunningTests` 闸门（生产也用私有板） | **红**（静态：私有板必须由测试探针把关） |
+| M2 | seam 反转 `isRunningTests` | **红**（行为：seam 不再是系统通用板） |
+| M3 | seam 不缓存私有板（每次访问新建） | **红**（行为：seam 必须解析到**稳定**的板） |
+| M4 | `copyToClipboard` 绕过 seam | **红**（静态 + 行为） |
+| M5 | `writeOcrTextToPasteboard` 绕过 seam | **红**（静态 + 行为） |
+| M6 | `ClipboardMonitor` 绕过 seam | **红**（静态） |
+| M7 | `copyToClipboard` 写到另一块板 | **红**（行为） |
+| M8 | app 树扫描指向错目录 | **红**（4 个守卫同时红） |
+| M9 | 共享扫描器不盲化（注释被当真使用） | **红**（1041 + 1042 同时红） |
+| M10 | 用 `NSPasteboard()` 绕过 seam | **红**（静态；**且运行时 trap**） |
+| M11 | `isSystemGeneral` 写死 `false` | **红**（静态：探针必须是身份比较） |
+| M12 | `setShared` 变成 no-op | **红**（1041 的行为守卫） |
+| M13 | `shared` 忽略 override | **红**（1041 的行为守卫） |
+| M14 | 守卫 token 列表丢掉 `NSPasteboard()` | **红**（控制组） |
+| R1 | `relativePath` 退化成只返回文件名 | **红**（1042 的名册查找失效） |
+| R2 | `testSourceFiles` 只返回 1 个文件 | **红**（1040 的 helper 计数塌陷） |
+| R3 | 1040 `destroy` 不删 plist 文件 | **红**（4 个守卫） |
+| R4 | 1040 per-case observer 不安装 | **红**（wiring 守卫） |
+| **R5** | 1040 生产域名常量失配（**只拆一道**拒绝） | **绿 —— 这是正确结果** |
+| R5b | 1040 拒绝生产域的**两道闸都拆掉** | **红**（`testDestroyRefusesTheProductionDomain`） |
+| R6 | guard `end()` 不还原 | **红** |
+| R7 | guard 孤立 `end()` 会清空板 | **红** |
+| R8 | guard 嵌套 `begin()` 覆盖原快照 | **红** |
+| R9 | guard `begin()` 不清空板 | **红** |
+
+**R5 为什么绿是对的**：拒绝生产域有**两道独立闸**（`productionDomainName` 常量 +
+`Bundle.main.bundleIdentifier`）。R5 只拆掉**其中一道** ⇒ 另一道仍在 ⇒
+**不变量没被破坏** ⇒ 守卫生效是**正确**的。R5b（两道都拆）⇒ **红**
+⇒ 证明守卫确实有牙。**把「冗余防御」误报成「守卫没抓到」是本轮刻意避免的误判。**
+
+⚠️ **变异 harness 自己抓出自己的 bug（记录在此，别重走）**：
+第一版 harness 的回滚用**字符串反替换**（`cur.replace(new, old, 1)`），
+而 R1 的变异文本 `return url.lastPathComponent` 在文件里**本来就存在**（`relativePath`
+的 fallback 分支）⇒ 回滚命中了**错误的那一处** ⇒ 把两个 `return` **对调**，
+工作树被**静默改坏**。是 harness 自带的「**文件漂移检查**」（还原后逐文件比 sha256）
+抓到的 ⇒ **改回滚为「逐字还原保存的原文」**后重跑 ⇒ 漂移 **NONE**。
+⇒ **元模式**：*回滚一个改动时，「反向字符串替换」不是还原；「还原」= 写回原文。*
+
+### 42.8 「看 33 个」全局扫描（**测量的负结果**，不是「没看」）
+
+本轮不只修了剪贴板这一处；把测试树里**所有会碰用户全局资源**的模式扫了一遍：
+
+| 资源 | 扫描结果 |
+|---|---|
+| 系统剪贴板 | **本条修掉**（见 §42.1–42.3） |
+| `UserDefaults.standard` | 1039 已修（§39） |
+| **钥匙串** | `KeychainKeyStoreTests` 用 `service: "com.clipmemory.tests"` + **UUID account**，`tearDown` 删除 ⇒ **实测用户机器上 `com.clipmemory.tests` 钥匙串项 = 0**（`security find-generic-password` + `security dump-keychain` 双向确认）⇒ **干净**，但**残留风险仍在**（宿主崩溃时 tearDown 不跑 ⇒ 见 §42.5） |
+| **合成键盘/鼠标事件** | `ImagePreviewPanelTests` 只**构造** `CGEvent` 并交给 `ImagePreviewPanel.dispatchScroll` ⇒ **从不 `post`** ⇒ 不会注入用户会话 ⇒ 干净 |
+| 分布式通知 / AppleScript | **0 处** |
+| 外部进程（`ditto`/`unzip`） | 8 个文件全部写到 `FileManager.default.temporaryDirectory` ⇒ 不进用户目录 ⇒ 干净 |
+
+⇒ **没有发现第 5 例**。这一轮的结论是「**这一族到此为止**」，不是「只看了这一处」。
+
+### 42.9 验收（实测）
+
+| 项 | 结果 |
+|---|---|
+| 全量 | **1320 tests / 4 skipped / 0 failures** |
+| lint | 告警数与 HEAD 基线**逐条一致（10 条全属既有）**，2 个新文件**零告警** |
+| 变异 | **24 条：23 红**；R5 绿是**正确**结果（冗余防御），R5b 红证明有牙 |
+| 文件漂移 | **NONE**（变异还原后逐文件 sha256 一致） |
+| app 树 `NSPasteboard.general` 硬编码 | **4 处 → 0 处**（全部改走 seam；`AppPasteboard.swift` 里的 2 处是 seam 本身） |
+| 测试树 `NSPasteboard.general` 出现次数 | **3 → 0** |
+| 连带 | `docs/SWIFT6_MIGRATION.md` §8 名册 **19 → 20**（仓库自己的漂移守卫在同一个 commit 要求刷新） |
+

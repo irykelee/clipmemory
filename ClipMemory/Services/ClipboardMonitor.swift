@@ -16,7 +16,21 @@ import Combine
 // `detectSensitive(_:)` requirement is still satisfied by the method below).
 class ClipboardMonitor {
     private var timer: DispatchSourceTimer?
-    private let pasteboard = NSPasteboard.general
+
+    /// The pasteboard the monitor polls.
+    ///
+    /// ID-REVIEW-1042 (2026-10-27): resolves through `AppPasteboard` so a
+    /// TEST process polls a private board instead of the user's real
+    /// clipboard. In production this resolves to `NSPasteboard.general`,
+    /// exactly as before.
+    ///
+    /// Resolved on EVERY access rather than captured at init, so a test that
+    /// swaps the seam after this monitor was constructed still sees the same
+    /// board the rest of the app uses. The cost is an uncontended lock per
+    /// read (~5 reads per 0.5 s poll tick) — negligible next to the
+    /// pasteboard-server round trip the tick already pays.
+    private var pasteboard: NSPasteboard { AppPasteboard.shared }
+
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "ClipboardMonitor")
 
     /// H9: Protects all mutable shared state from data races between main thread and timer queue.
