@@ -1847,7 +1847,11 @@ XCTest 闸门之前**（`AppDelegate.swift:229` vs 闸门 `:265`）⇒ 测试宿
 ⇒ **测试进程真的注册成功、真的占着用户的快捷键**（不是推断）。
 修之后，同一条日志变成 `Hotkey registration skipped in test host — …`，
 且哨兵探针（在测试宿主里用生产 signature/id 试注册 ⌘⇧V）拿到 **`noErr`**
-⇒ **系统级证明：那个组合是空的。**
+⇒ **进程级证明：这个进程没有占着那个组合。**
+> ⚠️ **订正（ID-REVIEW-1045 独立核验实测）**：这条早先写的是
+> 「**系统级**证明」—— 但 Carbon 的键位组合只在**同一进程内**独占
+> （跨进程实测：两个进程可**同时**持有同一个组合，10/10 注册成功）⇒
+> 这里证明的是「**本进程**有没有占着它」，不是「系统里有没有别人占着」。
 
 ### 44.4 修法（两道闸门，都在**收敛点**上）
 
@@ -1884,7 +1888,7 @@ XCTest 闸门之前**（`AppDelegate.swift:229` vs 闸门 `:265`）⇒ 测试宿
 | ④ | 测试宿主不得创建菜单栏状态项 | 行为 |
 | ⑤ | 纯函数**生产侧**：`shouldRegisterSystemHotKey(false) == true` | 纯函数 |
 | ⑥ | 纯函数**测试侧**：`shouldRegisterSystemHotKey(true) == false` | 纯函数 |
-| ⑦ | **系统级哨兵**：用生产 signature/id 试注册 ⌘⇧V ⇒ 必须 `noErr` | 系统级 |
+| ⑦ | **进程级哨兵**：用生产 signature/id 试注册 ⌘⇧V ⇒ 必须 `noErr`（**本进程**有没有占着它；跨进程实测**不**独占 ⇒ 不存在「别的进程占着 ⇒ skip」这一说） | 进程级 |
 | ⑧ | `RegisterEventHotKey` 调用点**只有一处**且在 `HotKeyManager` | 静态（结构） |
 | ⑨ | 状态项的**来源** `NSStatusBar.system` **只有一处**且在 `AppDelegate`（**资源身份**，不是调用写法 —— 核验实测的 P2-1 已修） | 静态（结构） |
 | ⑩ | 三个**探针锚点**（`environment[` / `NSClassFromString(` / `Bundle.allBundles`）都**只**出现在 `Utils/TestIsolation.swift`（核验实测的 P2-2 已修） | 静态（结构） |
@@ -1939,8 +1943,12 @@ XCTest 闸门之前**（`AppDelegate.swift:229` vs 闸门 `:265`）⇒ 测试宿
    这个模式的**固有**限制（1043 同款）—— 调用点的实参只能静态钉。
    M11 证明它**不是充数**：那条变异在行为上**完全抓不到**（测试宿主里都跳过），
    只有 ⑪ 抓住它。
-4. **用户真 app 在跑时，哨兵 ⑦ 会 skip**：此时组合被**别的进程**占着 ⇒
-   探针不可判定 ⇒ 如实 skip 并说明（不是缺陷，不是本条能管的）。
+4. ~~**用户真 app 在跑时，哨兵 ⑦ 会 skip**：此时组合被**别的进程**占着 ⇒
+   探针不可判定 ⇒ 如实 skip 并说明（不是缺陷，不是本条能管的）。~~
+   ⚠️ **订正（ID-REVIEW-1045 独立核验实测）**：跨进程**不**独占 ⇒「别的进程
+   占着 ⌘⇧V」在本进程里**看不到**（探针仍注册成功）⇒ 这个 skip 分支
+   **实际不可达**。独立核验员实测：去掉 1044 闸门 ⇒ 守卫 ⑦ **失败**（不是
+   skip）⇒ 守卫的真实语义是「**本进程**有没有持有」，且**依然有牙**。
 5. ⚠️ **订正（独立核验实测推翻我自己的说法）**：
    ① `registerAttempted` 的语义**没有变** —— 它在 HEAD 里就设在 Carbon 调用
    **之前**（`HotKeyManager.swift:173` vs Carbon `:213`）⇒ 本条只是**文档澄清**
@@ -2228,9 +2236,309 @@ M6 的变异改写成合法 Swift 后**红**。
 
 | 项 | 结果 |
 |---|---|
-| 全量 | **1374 tests / 4 skipped / 0 failures**（1044 轮的 1355 + 本轮 19） |
+| 全量 | **1374 tests / 4 skipped / 0 failures**（1044 轮的 1355 + 本轮 19）　⚠️ **但「全量全绿」不是稳定属性**（同 §44.9）：独立核验员的 2 轮HEAD 全量各跑出 **2** 与 **3** 个失败（**既有**的顺序相关 flake，在 parent commit 上**同样复现** ⇒ 不是本轮引入）⇒ 本行是**某一次**运行的快照，不是可复现的稳定属性 |
 | 新测试 | `Review1045RegressionTests.swift`，**19 个** |
 | lint | **10 条 = 基线**（本轮一度引入 2 条：1 条 trailing_comma + 1 条标识符超 40 字符，已修） |
 | Release + 跨进程哨兵 | **绿**（干净 Release）/ **红**（M13 变异，红在正确理由上） |
 | 用户环境 | 生产钥匙串项 `cdat`/`mdat` 仍是 2026-07-19（**逐字节未变**）；用户崩溃哨兵 inode/mtime **不再变化**；**零残留进程**（app / `SecurityAgent` / `log stream`）；**`~/Library/Preferences` 的 plist 端到端 delta = 0**（跑一次 `Review1045RegressionTests` 前后逐文件比对：1040 → 1040，新增清单为空） |
 | 台账 | 本节 §45（+ §44 订正） |
+### 45.11 独立核验（verifier 子 agent，**非自查**）：**VERDICT = FAIL**
+
+核验员跑约 **2 小时 30 分**，交出完整结构化报告 ⇒ **VERDICT = FAIL**。
+⚠️ **FAIL 不是空泛的失败**：报出 **2 × P1 + 3 × P2 + 2 × P3**，每一条都有
+**实测复现**，且每一条都**恰好打穿它所属的那一层**。
+
+#### 45.11.1 核验员**独立证实**的部分（本轮结论的关键支撑）
+
+| 项 | 核验员的**独立**测量 |
+|---|---|
+| **1044 的订正是对的** | 自写探针：进程内 `A=0, B=-9878(换 sig), C=-9878(同 sig), D=0`；**跨进程 10/10 注册成功**（5/5 换 signature + 5/5 **生产 signature** `0x434C5050`/id 1）⇒ 0/10 跨进程被拒 vs 4/4 进程内被拒 |
+| **1044 的修法仍必要** | 去掉 1044 闸门 ⇒ `Review1044RegressionTests` **5 failures / 0 skips**（守卫 ⑦ **失败**而非 skip）⇒ 剩下的后果（测试宿主也响应 ⌘⇧V → 假窗口）与独占性无关 |
+| **`SafeModeService` 修复 A/B 成立** | HEAD：用户 sentinel inode **130447830 → 130447830**（mtime 不变）；parent（同套件、仅提交不同）：inode → **130531035**（变了）⇒ 修前确实删+重建 |
+| **探针重构行为等价** | 同样三个信号、同样 OR 语义、同样求值时机（`swift_once`）；`isRunningTests` 仍是 `nonisolated static let` |
+| **守卫 ⑦ 的 skip 分支不可达** | 去掉闸门 ⇒ 守卫 ⑦ **failed**（不是 skipped），全类 **0 skips** |
+| **用户环境零影响** | `~/Library/Preferences` 生产域 **delta = 0**（sha256 前后一致）；生产钥匙串项 `cdat`/`mdat` 仍 `20260719035159Z`（**从未被写**）；`ClipboardItems` 155405 B / `ClipboardTrashedItems` 236344 B 不变；`.instance.lock` mtime 未动 |
+| **核验员自己的卫生** | 全部变异都在 `/tmp/verify1045/mut`（仓库副本）里做，每步 `sha256 -c` 还原 ⇒ **仓库工作树全程未被改动** |
+
+#### 45.11.2 核验员报出的缺陷
+
+| ID | 级别 | 要点 |
+|---|---|---|
+| **P1-1** | P1 | 哨兵的**成功判据与 Carbon 结果解耦**：只 grep 成功串 ⇒ 把成功日志上移 + 探针恒真 ⇒ **三层全绿**而生产 app 其实没注册热键 |
+| **P1-2** | P1 | 结构层钉了「**资源来源**」与「**实参**」，**没钉「创建动作」** ⇒ 状态项被创建却不赋值（别名写法）⇒ **36/36 全绿 + 哨兵绿**，而测试宿主**真的**在用户菜单栏占位（1044 的缺陷重开） |
+| **P2-1** | P2 | 哨兵的 skip 路径 **exit 0** ⇒ 对只查 `$?` 的包装器与 PASS 不可区分 |
+| **P2-2** | P2 | 哨兵声称「注册了 ⌘⇧V」，但 os_log 把插值值脱敏成 `<private>` ⇒ **组合不可验证**（且用户的快捷键可改） |
+| **P2-3** | P2 | 哨兵用 SIGTERM 杀 app ⇒ `applicationWillTerminate` 不跑 ⇒ **崩溃哨兵残留** ⇒ 用户下次启动多计一次崩溃（其 `safeMode.crashCount` 已 8） |
+| **P3-1** | P3 | 被推翻的后果②仍残留在**用户真会读到的**地方：1044 测试的**断言消息**（`:64` / `:192`）+ 台账 3 处（`:1850` / `:1887` / `:1942`） |
+| **P3-2** | P3 | §45.10 重复了「1374 / 4 / 0」，而 §44.9 已写明「全量全绿不是稳定属性」 |
+| **PE-1** | 既有 | ZZZ canary 顺序相关（`ProductionDataWriteGuardTests` 往 `.standard` 写过探针值 ⇒ canary 报 `ClipboardItems ADDED`）⇒ **parent commit 同样复现** ⇒ 非本轮引入 |
+| **PE-2** | 既有 | 钥匙串类 flake（`errSecInteractionNotAllowed` 家族）⇒ 单独跑绿 ⇒ 已在 §44.9 记录 |
+
+#### 45.11.3 核验员**没能**验证的（它自己如实列出）
+
+1. `TrashPurgeConfirmationTests` 的一次失败**无法归因**（第二轮不复现，与 1045 无文本耦合，未在 parent 上单独跑）。
+2. §44.10 的 **P0 级静态检查**（`otool -L`：Release 二进制 XCTest link count = 0）**未重跑**（它只验了**行为等价**：生产进程真的注册了热键 ⇒ 探针在生产为假）。
+3. **CI 行为**未跑；确认了**跨进程哨兵不在 CI 里** ⇒ P1-1 的盲区**没有任何自动化覆盖**。
+4. Carbon 结果的**普适性**只在本机（macOS 27.2.0 / arm64 / 本 GUI 会话）测过。
+5. 「1374 / 4 / 0」在**纯净环境**（CI 那样的空生产域）是否成立 ⇒ 未验（本机有既有生产域 ⇒ 正好是既有 ZZZ flake 会响的状态）。
+
+
+
+### 45.12 核验发现的处置（**全部落地**）
+
+| ID | 修法 | 验收 |
+|---|---|---|
+| **P1-1** | 哨兵判据改为**三重条件**：成功行**在** **且** skip 行**不在** **且** 该行来自**本脚本启动的 PID**（`ClipMemory[$APP_PID:`）⇒ 判据不再与被测代码发出的字符串脱钩 | 变异 **M16**（探针恒真〔锚点保留〕+ 成功日志上移）⇒ 哨兵 **红**（`sentinel_rc == 1`）⇒ 旧哨兵会**假绿**的那个洞已闭 |
+| **P1-2** | 让状态项的**创建动作可观测**：`AppDelegate.makeStatusItem()` 是唯一创建点，每次调用**计数** ⇒ 行为守卫断言「测试宿主创建数 = 0」。**别名、改名、把创建挪进 helper —— 都躲不过一个计数** | 变异 **M14**（创建挪到闸门前）、**M15**（Mutation A 等价形：创建但不赋值）⇒ **两条都只被新守卫 ⑰ 抓住**（⑨⑱ 仍绿 ⇒ 证明计数守卫是**必要补充**而非冗余） |
+| **P2-1** | skip 路径改为**独立退出码 77** + 明文 `SKIPPED (not verified)` ⇒ 只查 `$?` 的包装器不再把「没验」读成「验过」 | 脚本 `skip()` 统一走 `exit 77`；本轮变异脚本的判据同步收紧为「只接受 rc == 1」 |
+| **P2-2** | 哨兵**不再声称**具体组合 ⇒ 文案改为「生产进程真的注册了全局热键」，并**明写**为什么不能声称（os_log 脱敏 + 快捷键可配） | 脚本成功/失败文案均已改 |
+| **P2-3** | ⚠️ **本条的前提被 1046 推翻并改写**（见 §46.9）：原处置是「跑前快照存在性、跑后**还原到跑前状态**」⇒ 在**旧极性**下这条其实是**反的**（还原成「不存在」恰好会让用户下次启动**多记一次崩溃**）。翻正极性后的正确规则是：「**本脚本发的 SIGTERM 不是用户的崩溃 ⇒ 跑完删掉哨兵**」，且**仅在本脚本自己启动的 app** 时才删（skip 路径上跑着的是用户自己的实例，它的哨兵不能碰） | `cleanup()` 内改为「`APP_LAUNCHED_BY_US=1` ⇒ 删哨兵」；实测：脚本跑完后哨兵文件消失、用户 `safeMode.crashCount` 不被多记 |
+| **P3-1** | 订正 1044 测试的**两条断言消息**（`:64` / `:192`）+ 台账 3 处（`:1850` / `:1887` / `:1942`）⇒ 被推翻的后果②不再出现在用户真会读到的文本里 | 已逐处核对 |
+| **P3-2** | §45.10 的「1374 / 4 / 0」补上 §44.9 的限定：**全量全绿不是稳定属性**（核验员 2 轮各跑出 2 与 3 个**既有**失败，parent 同样复现） | 已补 |
+
+⚠️ **一条重要的结构教训**（本轮最值钱的一条）：
+
+P1-2 暴露的是**守卫的盲区形状** —— 「**钉住了资源，却没钉住动作**」：
+
+* 守卫 ⑨ 回答的是「这个资源**从哪来**」
+* 守卫 ⑩ 回答的是「这个判定**用什么实参**」
+* ⇒ 两者都回答不了「这个资源**有没有被创建 / 有没有交给它的主人**」
+
+⇒ **⇒ 每加一条守卫，都要问它回答的是哪个问题；三个问题都答了，才算覆盖。**
+⇒ 而当问题的答案是「**计数**」而不是「**文本形状**」时，就该用**计数**
+（seam + 计数 + 行为守卫），别再用 needle 硬凑。
+
+⇒ **同族教训的延续**：1044 核验员抓的是「守卫盯**写法**不盯**资源**」（⇒ 改成盯资源身份）；
+1045 核验员抓的是「守卫盯**资源来源**不盯**创建动作**」（⇒ 改成可观测的计数）。
+⇒ **两次都是同一个形状**：*守卫钉住的那个东西，和真正要保证的那件事之间，
+差着**一层**。* ⇒ 下一轮加固任何守卫时，先问「**差的那一层是什么**」。
+
+---
+
+## 46. ID-REVIEW-1046（2026-10-28）：崩溃哨兵**极性反了** —— 正常退出被记成崩溃，真崩溃反而检测不到
+
+> **它在哪儿冒出来的**：1045 修「同族第 9 例」（测试宿主删改用户崩溃哨兵）时，
+> 为哨兵脚本写「跑前快照 / 跑后还原」时，必须先搞清**哨兵的存在与否到底代表
+> 什么** ⇒ 一查就发现**协议与实现方向相反** ⇒ 这不是脚本问题，是**生产缺陷**。
+
+### 46.1 协议（三处注释）vs 实现（一行判断）
+
+| 出处 | 说的是什么 |
+|---|---|
+| `SafeModeService.swift:5-9`（头部注释） | 「write a sentinel on applicationDidFinishLaunching, **delete it on applicationWillTerminate**. If the sentinel is **still present** when we launch, the previous run terminated abnormally」 |
+| `SafeModeService.swift:304-306`（`clearSentinelOnNormalExit`） | 「called on applicationWillTerminate. The sentinel being **ABSENT** on the next launch means the previous run didn't exit normally.」 |
+| `AppDelegate.swift:397-400`（`applicationWillTerminate`） | 「clear the safe-mode sentinel on graceful exit. **If we crash, the sentinel stays in place** and the NEXT launch's `registerPreviousLaunchDidCrash()` counts this as a crash.」 |
+
+⇒ **协议是**：哨兵**存在** ⇒ 上次**没有**走到 `applicationWillTerminate` ⇒ **崩溃**。
+
+**实现（修复前 `SafeModeService.swift:174`）却是反的**：
+
+```swift
+guard fileManager.fileExists(atPath: sentinelURL.path) else {
+    // No sentinel = previous launch terminated abnormally   ← 反了
+    let newCount = crashCount + 1
+```
+
+⇒ 「哨兵**不存在**」才计数。而 `clearSentinelOnNormalExit()` 恰恰在**正常退出**时删哨兵
+⇒ **每一次正常 ⌘Q 退出，下一次启动都记成一次崩溃**。
+
+### 46.2 实测证据（用户机器上的真实状态，不是推演）
+
+| 事实 | 值 | 来源 |
+|---|---|---|
+| 阈值 | `threshold = 3` | `SafeModeService.swift:29` |
+| 用户生产域 `safeMode.active` | **1**（安全模式**开着**） | `defaults read com.clipmemory.app` |
+| 用户生产域 `safeMode.crashCount` | **8** | 同上 |
+| 用户崩溃哨兵文件 | 存在（0 字节） | `~/Library/Application Support/ClipMemory/.running-sentinel` |
+| 交叉证据 | §ID-REVIEW-1037 记录的污染残留是 `safeMode.active = true` + `crashCount = 5` ⇒ 之后又涨到 **8** | `docs/skips-ledger.md:229` |
+
+⇒ **用户此刻正被一个从未崩溃过的 app 挡在安全模式外面**（阈值 3，计数 8）。
+（5 → 8 与「此后发生过 3 次正常退出」一致；但那不是唯一解释，如实标注。）
+
+### 46.3 为什么既有测试没抓到（**测试名与断言互相矛盾**）
+
+`SafeModeServiceTests.testNormalExitPreventsCrashCount` 的**名字**说「prevents」，
+**断言**写的是 `crashCount == before + 1`，注释里甚至自陈：
+
+> 「So the test asserts the BAD case: even after a normal exit, the next launch WILL
+> count as one … The 3-launch threshold absorbs the noise.」
+
+⇒ 2026-08-16 的作者**发现了矛盾**，但用「阈值会吸收噪声」把它糊过去了 ⇒
+**「测试名与断言互相矛盾」本身就是极性反了的确凿证据**。
+
+### 46.4 附带发现：崩溃计数**从来不会被重置**
+
+`registerSuccessfulLaunch()`（文档：「Resets the counter so a future crash starts a
+fresh 3-launch window」）**在全仓没有任何调用点** ⇒ 即便把极性翻正，
+「3 次**连续**崩溃」也会退化成「一辈子 3 次崩溃」。
+
+### 46.5 修法（三处，生产行为**故意**改变）
+
+| # | 改哪 | 改成什么 | 为什么这样改 |
+|---|---|---|---|
+| 1 | `SafeModeService.registerPreviousLaunchDidCrash()` | 极性**翻正**：`sentinelSurvived` ⇒ 计崩溃；**不存在** ⇒ 不计 | 协议就是协议；实现一直在违背它 |
+| 2 | `AppDelegate.applicationDidFinishLaunching()` **末尾** | 接上 `SafeModeService.shared.registerSuccessfulLaunch()` | 让「3 次**连续**崩溃」真的是连续。⚠️ 位置必须在启动流程**之后** —— 放在 `registerPreviousLaunchDidCrash()` 旁边会把刚记上的崩溃立刻清零 ⇒ 安全模式永远不触发 |
+| 3 | `SafeModeService.reconcileLegacyCrashPolarity()`（新增，**一次性**） | 把旧极性误置的 `safeMode.active` / `safeMode.crashCount` 清掉，并用 `safeMode.polarityFixedV1` 标记**只做一次** | 见 §46.6 —— 清理是**可证明的**，不是猜测 |
+| 4 | `SafeModeService.init(…countsCrashes:)` + `shared = SafeModeService(countsCrashes: !TestIsolation.isRunningTests)` | **测试进程里不做崩溃记账**（只写哨兵**文件**）⇒ 共享 SafeMode suite 保持干净 | 见 §46.8b —— app 的启动时刻不可控 ⇒ 它写共享 suite 会被 canary 记到**无辜旁观者**头上；**不**用「把 key 从监控列表拿掉」那种削弱守卫的做法 |
+
+**保留的协议细节**：
+* 哨兵属于**上一次**启动 ⇒ 本次先删再写（保留原有的 remove-then-write 结构）
+* `writeSentinel()` 失败 ⇒ **不计数**（沿用 ID-CRASH-0004 的三件套门：无法区分
+  「上次崩了」与「我们自己写失败」）
+* **off-by-one 是协议固有的**：一次崩溃要到**下一次**启动才被计到 ⇒ 3 次连续崩溃
+  需要 **4 次启动**才数满 3（已在测试注释里写死，防止有人「修回去」）
+
+### 46.6 为什么「清掉用户的安全模式状态」是**可证明的**，不是拍脑袋
+
+旧极性下，计数**只**在「上次没有哨兵」时 +1；而按协议，「上次没有哨兵」**唯一**
+对应「上次**正常退出**」（`clearSentinelOnNormalExit` 在正常退出时删它）⇒
+**旧极性记下来的每一次「崩溃」都是一次正常退出** ⇒ 计数与安全模式标志 **100% 是假的**。
+
+⇒ 且 `safeMode.active` 只可能由 `activateSafeMode()`（崩溃路径）置真，用户只能
+**清**不能置 ⇒ **它 100% 来自误计数**。
+
+⇒ ⇒ 清理 = 把用户状态**还原成它本来的样子**，不是「顺手删个脏数据」。
+⇒ 且迁移**只做一次**（标记键）⇒ 迁移之后新产生的合法安全模式不会被二次清掉。
+
+### 46.7 回归测试
+
+* **新增** `Tests/ClipMemoryTests/Review1046RegressionTests.swift`（**7 条**）：
+  ① 正常退出不计崩溃 ② 哨兵还在⇒计崩溃 ③ 三次连续崩溃⇒安全模式
+  ④ 反复正常退出⇒计数永不累积 ⑤ 一次性迁移（含「只做一次」）⑤b 干净安装⇒迁移无副作用
+  ⑥ `registerSuccessfulLaunch()` 必须**恰好一个**生产调用点
+* **改写** `Tests/ClipMemoryTests/SafeModeServiceTests.swift`（**6 条**）：原先锁定
+  **旧极性**的断言全部翻正；`testNormalExitPreventsCrashCount` 的**名字与断言
+  终于一致**（并保留那段「作者当年发现了矛盾」的注释作为历史记录）
+
+> ⚠️ **一条必须记下来的教训**：新写的 ②「哨兵还在 ⇒ 计崩溃」**第一次跑就绿了**
+> —— 但那是在**有 bug 的代码**上绿。原因：测试手动写哨兵时**目录还不存在**，
+> `try? Data().write(to:)` 静默失败 ⇒ 断言的是「没有哨兵」而测试名说「有哨兵」
+> ⇒ **假绿**。修法：先建目录 + **断言哨兵真的落到磁盘上**。
+> ⇒ *「测试绿」不等于「测试测到了它声称的东西」* —— 与 1042 那条「守卫全绿的两种
+> 含义」同源。
+
+### 46.7b 变异验证：**7 条（N1–N7），7 条全红**（harness `/tmp/cm-1046-mutate.py`）
+
+| ID | 变异 | 被谁抓住 |
+|---|---|---|
+| **N1** | **极性反转**（哨兵存在 ⇔ 上次崩溃 ⇒ 换回旧的错误极性） | **12 条**红（1046 的 ①③④⑤c + `SafeModeServiceTests` 的 6 条） |
+| **N2** | 崩溃不计数（`+1` ⇒ `+0` ⇒ 真崩溃检测不到） | **7 条**红 |
+| **N3** | 迁移的「只做一次」守卫被删（第二次运行会清掉合法安全模式） | **6 条**红 |
+| **N4** | 迁移**根本没被调用**（用户被误置的状态永远清不掉） | `testTheLaunchPathActuallyReconcilesTheLegacyState` |
+| **N5** | 迁移不清 `safeMode.active`（用户仍被误触发的安全模式挡住） | 迁移那 2 条 |
+| **N6** | 迁移不清 `crashCount`（用户的误计数留在 8） | 迁移那 2 条 |
+| **N7** | `registerSuccessfulLaunch()` 没有调用点（计数永不重置） | `testRegisterSuccessfulLaunchHasAProductionCallSite` |
+| **N8** | 测试进程也做崩溃记账（`countsCrashes` 恒为 true ⇒ 共享 SafeMode suite 被污染 ⇒ canary 抓错人） | `testTheTestHostKeepsTheSharedSafeModeSuiteClean` |
+
+⇒ 全部 `restore_drift = False`（逐字还原 + sha256 漂移检查）。
+
+> ⚠️ **N4 第一版存活**，且这个「存活」本身是一条方法论：
+> 我的迁移测试**直接调** `reconcileLegacyCrashPolarity()` ⇒ 只测了「**方法本身**」
+> ⇒ 把它的**调用点**删掉，那段代码可以是一段**永远不执行**的死代码，**没有任何测试
+> 会红**。⇒ 补了 ⑤c「从**生产入口** `registerPreviousLaunchDidCrash()` 走一遍」的
+> **行为**测试 ⇒ N4 变红。
+> ⇒ *「变异存活」的第一嫌疑不是测试弱，而是**它压根没触发你要它测的那条路**。*
+
+### 46.8 端到端验收（**在用户自己的机器上实测**）
+
+| 项 | 跑前 | 跑后 |
+|---|---|---|
+| `safeMode.active` | 1 | **0** ✅ |
+| `safeMode.crashCount` | 8 | **0** ✅ |
+| `safeMode.polarityFixedV1` | （不存在） | **1** ✅（⇒ 只会执行一次） |
+| 崩溃哨兵文件 | 存在 | **不存在** ✅（⇒ 下次启动不会多记一次崩溃） |
+| 残留进程 | — | **无** ✅ |
+
+⇒ 迁移在真实生产进程里**自愈**了；哨兵脚本在真实生产进程里**绿**（`exit 0`，
+三重判据含 PID 匹配全部成立）。
+
+### 46.8b ⚠️ 连带发现：app 启动时写**共享 SafeMode suite** ⇒ ZZZ canary 抓错人
+
+**实测**：全量跑到最后，ZZZ canary 报
+
+```
+testNoTestWroteIntoTheSharedIsolationSuite failed — Offenders:
+TrashStoreMainActorTests.-[...testRetryActuallyReschedulesAfterSaveFailure]
+left safeMode.crashCount in SafeModeService-XCTest-isolation
+```
+
+⇒ 被指名的那个测试**根本没碰** SafeMode（它测的是 TrashStore 的重试保存）⇒
+**归因是错的**。
+
+**根因**：canary 的机制是「每个 test **前**清空共享 suite、**后**查残留」
+⇒ 一次**落在某个 test 窗口内**的写入会被记到那个 test 头上。而 app 的启动
+（`applicationDidFinishLaunching` → `registerPreviousLaunchDidCrash()` /
+`registerSuccessfulLaunch()`）跑在**主 run loop** 上 ⇒ 它落在整轮测试的
+**哪个时刻不可控** ⇒ 「归因给某个 test」这件事本身没有意义。
+⇒ 这与 bootstrap 自己记录的 `ImageIntegrity.scannedMtimes` 是**同一个形状**
+（那里给出的处理是「不要监控那个 key」）。
+
+⇒ **但本轮没有照抄那个处理**，而是把**污染本身消掉**：
+
+| 做法 | 评价 |
+|---|---|
+| 把 SafeMode 的 3 个 key 从 canary 监控列表里拿掉 | 削弱守卫（且这 3 个 key 正是 1037 事故里漏进生产的那两个）⇒ **不做** |
+| **测试进程里不做崩溃记账**（只写哨兵**文件**） | ✅ 污染不再发生 ⇒ canary 的守卫**原样保留** |
+
+**为什么「测试进程里不做记账」是对的**（不是为了让测试绿而作弊）：
+* 测试进程**没有「上一次启动」可判** ⇒ 崩溃计数在那里**本来就没有意义**；
+* 但**哨兵文件仍然要写** —— 而且必须写进**测试专用目录**
+  （`ClipMemory/SafeMode-Tests/`）⇒ 那次写入正是 ID-REVIEW-1045「同族第 9 例」
+  守卫的**牙齿**（变异 M12「哨兵路径硬编码为生产目录」靠它才抓得住）⇒
+  ⇒ 去掉记账**不会**削弱 1045 的守卫；
+* ⇒ 记账被关掉后，测试宿主**一个 UserDefaults 键都不写** ⇒ 共享 SafeMode suite
+  保持干净 ⇒ canary 继续盯**真正的** test 侧泄漏。
+
+**实现**：`SafeModeService.init(…countsCrashes: Bool = true)`；
+`SafeModeService.shared` 传 `countsCrashes: !TestIsolation.isRunningTests`
+⇒ 生产**行为零变化**；每个单元测试自建 service ⇒ 默认 `true` ⇒ 全量行为不变。
+
+**⚠️ 1045 的「同族第 9 例」守卫会不会因此变瞎？—— 不会**（自查 + 实测）：
+那 3 条守卫是**纯函数 + 结构**守卫，不是「看时间窗内 inode/mtime 变没变」：
+
+| 守卫 | 形式 | 是否依赖「测试宿主真的写了哨兵」 |
+|---|---|---|
+| ⑭ | `sentinelDirectoryName(isRunningTests: false) == "ClipMemory"`（纯函数） | 否 |
+| ⑮ | `sentinelDirectoryName(isRunningTests: true) == "ClipMemory/SafeMode-Tests"`（纯函数） | 否 |
+| ⑯ | 结构守卫：app 树里 `sentinelDirectoryName(isRunningTests: ` **恰好 2 次**（1 声明 + 1 调用），且调用点实参是 `TestIsolation.isRunningTests` | 否 |
+
+⇒ 实测：`sentinelDirectoryName(isRunningTests: ` 在 app 树里仍是**恰好 2 处**
+（`SafeModeService.swift:108` 调用 + `:119` 声明）⇒ 变异 **M12**（哨兵路径硬编码
+为生产目录）仍被抓住 ⇒ **守卫生效**。
+⇒ 换句话说：**闸门关掉的是「记账」，不是「写哨兵文件」** —— 而守卫盯的是
+「**路径怎么算出来的**」，不是「有没有真的写」。
+
+### 46.9 对 ID-REVIEW-1045 的连带订正（**P2-3 的前提被推翻**）
+
+1045 核验员的 **P2-3**（「SIGTERM 留虚假崩溃债 ⇒ 跑前快照 / 跑后还原」）**前提是
+按协议的极性说的**。实测发现旧实现是反的 ⇒ 在旧极性下：
+
+| 脚本跑完后的哨兵状态 | 用户下次启动（旧极性） | 结论 |
+|---|---|---|
+| 留着（app 写的） | 哨兵**存在** ⇒ 不计数 | ✅ 无假债 |
+| 删掉（原处置「还原成跑前状态 = 不存在」） | 哨兵**不存在** ⇒ **计数 +1** | ❌ **原处置会制造假债** |
+
+⇒ ⇒ 原处置在旧极性下是**反的**；翻正极性后它才变成必要的，而**正确规则**也不是
+「还原到跑前状态」，而是「**本脚本发的 SIGTERM 不是用户的崩溃 ⇒ 跑完删掉哨兵**」
+（且仅在本脚本自己启动 app 时才删 —— skip 路径上跑着的是用户自己的实例）。
+⇒ 已在 §45.12 的 P2-3 行就地订正。
+
+### 46.10 「看 33 个」再扫
+
+| 方向 | 结果 |
+|---|---|
+| 全仓「哨兵」相关读写点 | 枚举完毕：`writeSentinel` / `removeItem` / `clearSentinelOnNormalExit` / `sentinelURL` —— **极性只有一处判断**（`registerPreviousLaunchDidCrash`）⇒ 改一处即改全套 ✅ |
+| 全仓 `registerSuccessfulLaunch` 调用点 | 修复前 **0 个** ⇒ 已补 1 个（且测试 ⑥ 钉住「恰好 1 个」） |
+| 全仓 `isInSafeMode` 消费方 | 只有 `SafeModeBanner`（UI 横幅）⇒ 误触发的安全模式**只影响 UI**，不会让 app 功能降级（这决定了本次可以「自动清理」而不是「让用户手动点」） |
+| 「是不是测试进程」探针 | 本条**不涉及**（1045 已收口） |
+
+### 46.11 已知未覆盖 / 有意保留（如实记录）
+
+* **一次性迁移会自动清掉用户的 `safeMode.active`** ⇒ 这是**故意**的（§46.6 可证明
+  它 100% 是假的）。若将来出现「由别处置真」的路径，这条迁移必须同步复核。
+* **迁移只在 app 启动时执行** ⇒ 若用户长期不启动 app，误计数会一直留在盘上
+  （但它只在被读时才有害 ⇒ 无实际影响）。
+* `safeMode.active` 本身仍是**粘性**的（迁移之后新触发的安全模式要用户点
+  「退出安全模式」才清）⇒ 这是**原有设计**，本轮未改。
+* 协议固有的 **off-by-one**（一次崩溃要到下一次启动才被计到）**保留** ⇒ 已写进
+  测试注释，防止后人「修正」它。
