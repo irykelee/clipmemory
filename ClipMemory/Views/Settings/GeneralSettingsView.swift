@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
-import ServiceManagement
+// ID-REVIEW-1047 (2026-10-28): `import ServiceManagement` moved to
+// `Services/LaunchAtLoginService.swift` — the login item is a user-global
+// resource and now lives behind a test-process gate.
 import Carbon.HIToolbox
 
 /// General settings tab: hotkey, launch-at-login, language, appearance.
@@ -17,7 +19,11 @@ struct GeneralSettingsView: View {
     @State private var hotkeyRefresh = false
     @State private var isRecordingHotKey = false
     @State private var keyEventMonitor: Any?
-    @State private var launchAtLoginEnabled: Bool = SMAppService.mainApp.status == .enabled
+    // ID-REVIEW-1047 (2026-10-28): the login item is a **user-global
+    // resource** (`SMAppService.mainApp` addresses the user's real "Open at
+    // Login" registration) ⇒ in a test process it must not be touched at all
+    // — neither read nor written. See `LaunchAtLoginService`.
+    @State private var launchAtLoginEnabled: Bool = LaunchAtLoginService.isEnabled()
 
     var body: some View {
         Form {
@@ -52,7 +58,10 @@ struct GeneralSettingsView: View {
                     get: { launchAtLoginEnabled },
                     set: { v in
                         do {
-                            if v { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+                            // ID-REVIEW-1047 (2026-10-28): the write path is
+                            // production-only — a test process must never be
+                            // able to turn the user's "Open at Login" on/off.
+                            try LaunchAtLoginService.setEnabled(v)
                             launchAtLoginEnabled = v
                         } catch {
                             showLaunchAtLoginError()
@@ -125,7 +134,9 @@ struct GeneralSettingsView: View {
     // MARK: - Launch at Login
 
     private func refreshLaunchAtLogin() {
-        launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
+        // ID-REVIEW-1047 (2026-10-28): through the gate — a test process must
+        // not query the user's login-item registration.
+        launchAtLoginEnabled = LaunchAtLoginService.isEnabled()
     }
 
     private func showLaunchAtLoginError() {

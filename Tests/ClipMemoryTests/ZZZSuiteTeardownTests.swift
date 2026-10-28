@@ -345,6 +345,38 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         )
     }
 
+    /// Skip unless the **AAA bootstrap** captured the production baseline.
+    ///
+    /// ⚠️ ID-REVIEW-1047 (2026-10-28, independent verifier): the production
+    /// comparison is only meaningful when the "before" snapshot EXISTS.
+    ///
+    /// ⇒ `AAASuiteBootstrapTests` takes that snapshot. In a **narrow run**
+    /// (`-only-testing:`) that class never runs ⇒ `before` is EMPTY ⇒
+    /// **every** production key looks "ADDED" ⇒ the two data blobs
+    /// (deliberately NOT in any allowlist since ID-REVIEW-1038) make the
+    /// canary **fail unconditionally**.
+    ///
+    /// ⇒ That artifact is not harmless: it was observed as a **false
+    /// catch** — a mutation harness that ran only the canary class reported
+    /// "the canary caught it" while the canary was in fact failing on
+    /// *every* key, including keys the mutation never touched ⇒ a mutation
+    /// was credited to the canary that the canary would have flagged anyway.
+    ///
+    /// ⇒ Skip explicitly (visible in the report) rather than fail red.
+    ///
+    /// ⚠️ One helper for all three canaries (ID-REVIEW-1047 round 2) — the
+    /// third copy used to be inlined and pushed `testNoProductionPollution`'s
+    /// body past SwiftLint's `function_body_length` (54 > 50) ⇒ a **new**
+    /// lint warning, i.e. a regression this round introduced.
+    private func skipUnlessProductionBaselineCaptured() throws {
+        try XCTSkipUnless(
+            AAASuiteBootstrapTests.didSnapshotProductionDomain,
+            "production baseline not captured — the AAA suite bootstrap did not run "
+            + "in this process (a narrow `-only-testing:` run has no baseline ⇒ "
+            + "every production key would look ADDED ⇒ the comparison is meaningless)"
+        )
+    }
+
     /// Runs LAST in the suite (alphabetically after every other class).
     /// Compares the production persistent domain against the AAA snapshot.
     /// Fails on keys NOT in `toleratedPollution` (allowlist). The
@@ -358,6 +390,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// `XCTFail` would still see the explicit `XCTAssert` as a hard stop.
     func testNoProductionPollution() throws {
         try skipIfAnotherInstanceIsRunning()
+        try skipUnlessProductionBaselineCaptured()
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
         let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
@@ -460,10 +493,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // compare against — a focused run that skips the suite bootstrap.
         // Skip explicitly (visible in the report) instead of failing with
         // a bogus "0 bytes vs N bytes".
-        try XCTSkipUnless(
-            AAASuiteBootstrapTests.didSnapshotProductionDomain,
-            "production baseline not captured — the AAA suite bootstrap did not run in this process"
-        )
+        try skipUnlessProductionBaselineCaptured()
 
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
@@ -537,10 +567,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // ID-REVIEW-1030: the comparison is only attributable when no other
         // ClipMemory instance is running.
         try skipIfAnotherInstanceIsRunning()
-        try XCTSkipUnless(
-            AAASuiteBootstrapTests.didSnapshotProductionDomain,
-            "production baseline not captured — the AAA suite bootstrap did not run in this process"
-        )
+        try skipUnlessProductionBaselineCaptured()
 
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]

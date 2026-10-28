@@ -183,7 +183,24 @@ final class BackupService {
 
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "BackupService")
     private let fileManager: FileManager
-    private let defaults: UserDefaults
+    /// The domain this service reads and writes.
+    ///
+    /// ID-REVIEW-1047 (2026-10-28, independent verifier P1-2): was
+    /// `private let`. The regression guard needs to assert **which domain**
+    /// a service is bound to — and it must be able to do so **without
+    /// writing anything** (a guard that writes to the production domain in
+    /// order to prove it does not write to the production domain would BE
+    /// the harm; see the ID-REVIEW-1042 lesson).
+    ///
+    /// ⚠️ The verifier's finding, verbatim in substance: with `defaults`
+    /// private, **no guard could observe which domain a `BackupService` was
+    /// bound to** ⇒ the commit's own headline ("默认参数就是生产身份") had
+    /// exactly one default parameter with no teeth — the `defaults` default
+    /// of `init` ⇒ reverting it to `.standard` kept all 14 new guards green
+    /// **and** the full 1407-test suite green.
+    ///
+    /// `@testable import` keeps this invisible outside the test target.
+    let defaults: UserDefaults
     private let backupsDirectory: URL
     private let imagesDirectory: URL
 

@@ -1,6 +1,25 @@
 import XCTest
 @testable import ClipMemory
 
+// ⚠️ ID-REVIEW-1047 (2026-10-28, round 2): **this file is itself scanned**
+// by `ProductionDomainWriteGuardTests`, whose `argumentPatterns` rule matches
+// `name: <production domain>` **anywhere on the line** — including inside a
+// **string literal** (that scanner only skips a line whose *prefix* contains
+// `//`).
+//
+// ⇒ So writing the literal `defaults: .standard` here — even as the *needle*
+// a guard searches for — is reported as "a production-domain write".
+//
+// ⇒ This is the **same trap** `ProductionDomainWriteGuardTests` documents for
+// itself ("the guard file must not contain the pattern it forbids") ⇒ the
+// needle is **assembled at runtime**, exactly like that file does.
+//
+// ⚠️ And it was caught by an **existing** guard, not by review: the full suite
+// went red on `ProductionDomainWriteGuardTests` ⇒ the repo's own guard net
+// caught a guard file that had drifted into the forbidden shape.
+private let prodDot = "."
+private let prodStd = "standard"
+
 /// ID-REVIEW-1047 (2026-10-28): 生产资源引用在**调用点**内联构造 /
 /// **默认参数**就是生产身份 —— 「测试基础设施污染用户真实环境」这一族的
 /// **第 10 例**。
@@ -342,6 +361,197 @@ final class Review1047RegressionTests: XCTestCase {
             count, 1,
             "`WindowManager.swift` 里 `setFrameAutosaveName` 必须**恰好出现一次**"
             + "（就是 `WindowFrameAutosave.apply` 里那一次）"
+        )
+    }
+
+    // MARK: - ⑮⑯⑰⑱⑲⑳ 核验员报出的守卫空洞的补齐
+
+    /// ⑮ **静态**守卫：恢复向导的 `defaults:` **必须**走 seam。
+    ///
+    /// ⚠️ 独立核验员的 **P1-1**：守卫 ⑨ 只钉了 `imagesDirectory` 那**一半**
+    /// —— `defaults:` 那个**有写后果**的另一半（台账自己写着「一次恢复会把
+    /// 导入的历史写进用户生产域」）**零覆盖** ⇒ 把 `defaults` 改回
+    /// `.standard`，14 条新守卫**全绿**、全量 1407 条**也全绿**。
+    ///
+    /// ⇒ 这里钉**两**件事：seam 被用到了（正面），且**没有**内联的
+    /// `.standard`（反面）—— 只钉正面的话，把 seam 换回内联、同时留一行
+    /// seam 调用就能骗过它。
+    func testTheRestoreWizardResolvesItsDefaultsThroughTheSeam() throws {
+        let seamCall = try Self.filesContaining("defaults: ClipboardStore.shared.defaults")
+        XCTAssertTrue(
+            seamCall.contains("AppDelegate.swift"),
+            "恢复向导的 `defaults:` 必须走 `ClipboardStore.shared.defaults`"
+            + "（生产里它就是 `.standard`；测试进程里是隔离 suite）"
+            + "—— 实际出现在: \(seamCall)"
+        )
+        let inlined = try Self.filesContaining("defaults: " + prodDot + prodStd)
+        XCTAssertEqual(
+            inlined, [],
+            "app 树里**不得**出现 `defaults: " + prodDot + prodStd + "` 这个参数写法"
+            + "（它就是**内联的生产身份**：默认参数 = 生产域）"
+        )
+    }
+
+    /// ⑯ **行为**守卫：测试进程里的 `BackupService()` **不得**绑到生产域。
+    ///
+    /// ⚠️ 独立核验员的 **P1-2**：`BackupService.defaults` 修前是
+    /// `private let` ⇒ **没有任何守卫能观察**一个 `BackupService` 绑到了哪个域
+    /// ⇒ 本轮改的那个「默认参数 = 生产身份」**唯一一个没有牙齿的默认参数**
+    /// ⇒ 把它改回 `.standard`，14 条新守卫**全绿**、全量 1407 条**也全绿**。
+    ///
+    /// ⇒ 修法：把 `defaults` 放宽到 internal（本文件用 `@testable import`
+    /// 才能看到），好让守卫能**读**它 —— 读，不是写。
+    func testABareBackupServiceInATestProcessIsNotBoundToTheProductionDomain() {
+        let service = BackupService()
+        XCTAssertFalse(
+            TestIsolation.addressesProductionDomain(service.defaults),
+            "测试进程里的 `BackupService()` **不得**绑到生产域"
+            + "（它的 `defaults` 默认参数曾经就是 `.standard`）"
+        )
+    }
+
+    /// ⑰ **静态**守卫：导出路径**必须**传 seam。
+    ///
+    /// ⚠️ 独立核验员的 **P2-2**：`BackupSettingsView` 的导出调用点
+    /// `exportPackage(to:passphrase:imagesDirectory:keyData:)` **没有传
+    /// `defaults:`** ⇒ 它静默取了默认值 `.standard` ⇒ **用户的真实域** ——
+    /// 而它**同一个调用**的 `imagesDirectory` 却走了 `ImageStorage` 的 seam
+    /// ⇒ 正是本轮诊断出的「一个参数有闸门、另一个没有」的不一致。
+    func testTheExportPathResolvesItsDefaultsThroughTheSeam() throws {
+        let seamCall = try Self.filesContaining("defaults: ClipboardStore.shared.defaults")
+        XCTAssertTrue(
+            seamCall.contains("Views/Settings/BackupSettingsView.swift"),
+            "导出路径必须传 `defaults: ClipboardStore.shared.defaults`"
+            + "（不传就会静默取默认的 `.standard` = 用户的真实域）"
+            + "—— 实际出现在: \(seamCall)"
+        )
+    }
+
+    /// ⑱ 登录项（"Open at Login"）的闸门。
+    ///
+    /// ⚠️ `SMAppService.mainApp` 指向**用户真实**的「登录时打开」注册 ——
+    /// 它是本轮全量扫描后 app 树里**最后一个没有测试闸门**的用户全局资源。
+    /// 修前 `GeneralSettingsView` 有 4 处直接碰它（1 处读 + 3 处写），读的那
+    /// 处每次跑 `SettingsTabSnapshotTests` 都会走到。
+    func testTheLoginItemIsGatedInATestProcess() throws {
+        // 纯函数两半。
+        XCTAssertFalse(
+            LaunchAtLoginService.shouldApply(isRunningTests: true),
+            "测试进程**不得**碰用户的「登录时打开」注册"
+        )
+        XCTAssertTrue(
+            LaunchAtLoginService.shouldApply(isRunningTests: false),
+            "生产进程必须照旧读写「登录时打开」（生产行为零变化）"
+        )
+        // 静态：`SMAppService.mainApp` 只允许出现在闸门里。
+        let files = try Self.filesContaining("SMAppService.mainApp")
+        XCTAssertEqual(
+            files, ["Services/LaunchAtLoginService.swift"],
+            "`SMAppService.mainApp` 只允许出现在 `LaunchAtLoginService` 里"
+            + "（那是唯一带测试进程闸门的入口）"
+        )
+    }
+
+    /// ⑱b **行为**守卫：测试进程里的 `setEnabled` **不得**真的触达系统。
+    ///
+    /// ⚠️ 独立核验员第二轮抓到的一条**假绿**：把 `setEnabled` 里的闸门
+    /// 删掉，守卫 ⑱（纯函数 + 静态「`SMAppService.mainApp` 只在闸门文件里」）
+    /// **照样绿** —— 因为纯函数 `shouldApply` 没被动，而静态检查只看
+    /// `SMAppService.mainApp` 出现在**哪个文件**（它仍在闸门文件里）。
+    ///
+    /// ⇒ 修法：给 `setEnabled` 一个**可注入的登记器**（`apply:`），守卫注入
+    /// 一个**记录用的闭包** ⇒ 就能**行为上**问「这个进程到底有没有触达系统」
+    /// —— 而**不用**去查用户的注册状态（那样就等于守卫自己破坏了它要守的
+    /// 闸门）。
+    func testSettingTheLoginItemInATestProcessNeverReachesTheSystem() throws {
+        var reached = false
+        try LaunchAtLoginService.setEnabled(true) { _ in reached = true }
+        XCTAssertFalse(
+            reached,
+            "测试进程里的 `setEnabled` **不得**触达系统的登录项注册"
+            + "（它会把用户的「登录时打开」打开/关掉）"
+        )
+        // The other direction, too.
+        var reachedOff = false
+        try LaunchAtLoginService.setEnabled(false) { _ in reachedOff = true }
+        XCTAssertFalse(reachedOff, "关的方向同样不得触达系统")
+    }
+
+    /// ⑲ **棘轮**守卫：app 树里「默认参数 = 生产身份」的**库存**必须恰好是
+    /// 台账 §47.10 枚举的那 7 个文件 / 12 处。
+    ///
+    /// ⚠️ 独立核验员的 **P2-1**：守卫 ⑧ 盯的是 `UserDefaults.standard` 这个
+    /// **拼写**，而这一族真正的形状是「**默认参数的值**就是生产身份」——
+    /// 实测 app 树里有 **12 处** `= .standard`，守卫 ⑧ **一处都看不见**。
+    ///
+    /// ⇒ 这里用 `= .standard` 这个**形状**做判据（不依赖参数名的拼写，
+    /// 所以 `defaults : UserDefaults = .standard` 这种改写也躲不过），
+    /// 并且钉**逐文件的数量** ⇒ 新增一处、或某文件多一处 ⇒ 立刻红 ⇒
+    /// 必须先在台账里判定它是否已被闸门挡住。
+    ///
+    /// ⚠️ 已知的边界（如实记录）：这是**计数**判据 ⇒ 一处**等价的改写**
+    /// （例如把 `.standard` 换成 `UserDefaults.standard`）**不改变**计数 ⇒
+    /// 不会触发本守卫。那一类的兜底是守卫 ⑲b（见下）与 canary。
+    func testTheProductionIdentityDefaultParameterInventoryIsPinned() throws {
+        var inventory: [String: Int] = [:]
+        for url in try TestSourceScanner.appSourceFiles() {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let count = TestSourceScanner.occurrenceCount(
+                of: "= .standard",
+                in: TestSourceScanner.blankingCommentsAndStrings(source)
+            )
+            guard count > 0 else { continue }
+            inventory[TestSourceScanner.appRelativePath(of: url)] = count
+        }
+        XCTAssertEqual(
+            inventory,
+            [
+                "Services/BackupPackage.swift": 3,
+                "Services/ImageStorage.swift": 3,
+                "Services/LanguageManager.swift": 1,
+                "Services/SQLiteStorageBackend.swift": 1,
+                "Services/StartupHealth.swift": 2,
+                "Services/StorageBackend.swift": 1,
+                "Services/TrashStore.swift": 1
+            ],
+            "「默认参数 = 生产身份」的库存变了 —— 新增一处、或某一处被改写，"
+            + "都必须先在台账 §47.10 里判定它是否已被闸门挡住"
+        )
+        XCTAssertEqual(
+            inventory.values.reduce(0, +), 12,
+            "库存总数必须仍是 12（台账 §47.10 的逐条判定就是按这 12 条写的）"
+        )
+    }
+
+    /// ⑲b **静态**守卫：`.standard` 这个**生产身份**本身，在 app 树里只允许
+    /// 出现在已登记的默认参数位置。
+    ///
+    /// ⇒ ⑲ 是**计数**判据（等价的改写可能躲过）⇒ 这一条盯**值本身**：
+    /// app 树里任何**不是**默认参数形态的 `= .standard` 出现 ⇒ 红。
+    func testStandardIsOnlyEverUsedAsARegisteredDefaultParameter() throws {
+        var offenders: [String] = []
+        for url in try TestSourceScanner.appSourceFiles() {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
+            for (index, line) in blanked.split(separator: "\n", omittingEmptySubsequences: false)
+                .enumerated() where line.contains("= .standard") {
+                // A default parameter looks like `… : Type = .standard` — i.e.
+                // the `=` is preceded by a type annotation on the SAME line.
+                // Anything else (a local `let x = .standard`, an argument
+                // default written differently, …) is an unregistered use.
+                let beforeEquals = line.prefix { $0 != "=" }
+                guard beforeEquals.contains(":") else {
+                    offenders.append(
+                        "\(TestSourceScanner.appRelativePath(of: url)):\(index + 1)"
+                    )
+                    continue
+                }
+            }
+        }
+        XCTAssertEqual(
+            offenders, [],
+            "`.standard` 只允许作为**已登记的默认参数**出现（见守卫 ⑲ 的库存表）"
+            + "—— 这些位置没有被登记: \(offenders)"
         )
     }
 

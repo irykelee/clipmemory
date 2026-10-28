@@ -204,6 +204,18 @@ struct BackupSettingsView: View {
                 try BackupPackage.exportPackage(
                     to: url,
                     passphrase: passphrase,
+                    // ID-REVIEW-1047 (2026-10-28, independent verifier P2-2):
+                    // this call site did NOT pass `defaults:` ⇒ it silently took
+                    // `BackupPackage.exportPackage`'s default `.standard` ⇒
+                    // **the user's real production domain**, while its sibling
+                    // `imagesDirectory` argument went through the `ImageStorage`
+                    // seam ⇒ the same "one argument gated, the other not"
+                    // inconsistency the restore wizard had. The export READS
+                    // the user's real blobs through this domain (no corruption),
+                    // but a test process must not be reading production at all.
+                    // ⇒ Pass the store's own domain, so the export sees exactly
+                    // what the store sees.
+                    defaults: ClipboardStore.shared.defaults,
                     imagesDirectory: ImageStorage.shared.imagesDirectoryURL,
                     keyData: keyData
                 )

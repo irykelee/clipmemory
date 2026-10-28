@@ -141,8 +141,18 @@ class HotKeyManager {
     /// ID-REVIEW-1010: injected UserDefaults so XCTest can redirect hotkey
     /// persistence to an isolated suite. Production path passes
     /// `UserDefaults.standard`; the XCTest helper below returns an isolated
-    /// suite keyed off `XCTestConfigurationFilePath`, matching the
-    /// `ClipboardStore.xcTestDefaults` pattern.
+    /// suite, matching the `ClipboardStore.xcTestDefaults` pattern.
+    ///
+    /// ⚠️ ID-REVIEW-1047 (2026-10-28): this comment used to say the suite is
+    /// "keyed off `XCTestConfigurationFilePath`" — **that is no longer what
+    /// the code does**. ID-CRASH-0031 / ID-REVIEW-1044 unified the probe onto
+    /// `TestIsolation.isRunningTests` (three signals); the implementation
+    /// below has been the stronger one ever since. ⇒ A comment that
+    /// describes a *different* isolation than the code enforces is the same
+    /// shape as the ID-REVIEW-1043 finding ("代码里写着的不变量 ≠ 被强制的不
+    /// 变量") — here in the harmless direction (the code is STRONGER than the
+    /// comment), but it still misleads the next reader about what is
+    /// actually being relied on.
     nonisolated static var xcTestDefaults: UserDefaults {
         // ID-REVIEW-1010 restored (2026-10-02, auto-review-20261002-083606
         // FAIL rework): mirrors `ClipboardStore.xcTestDefaults` /

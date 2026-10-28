@@ -2795,7 +2795,7 @@ left safeMode.crashCount in SafeModeService-XCTest-isolation
 | N2 | `FirstLaunchService.defaultsFor` 恒返回 `.standard` | ② ③ |
 | N3 | `ServiceContainer` 的 seam 显式绑 `.standard` | ④ |
 | N4 | 恢复向导改回内联图片路径 + `.standard` | ⑧ ⑨ |
-| N5 | `BackupService.init` 的 defaults 默认参数改回 `.standard` | ⑤ |
+| N5 | `BackupService.init` 的 defaults 默认参数改回 `.standard` | ⑯（**原写「⑤」是错的**，见 §48.2 / §48.6：原判据其实是 canary 在**窄跑**里的无条件假红） |
 | N6 | `BackupService.defaultsFor` 恒返回 `.standard` | ⑤ ⑥ |
 | N7 | 备份目录在测试进程里也指生产目录 | ⑥ |
 | N8 | 图片目录在测试进程里也指生产目录 | ⑥ |
@@ -2814,11 +2814,18 @@ left safeMode.crashCount in SafeModeService-XCTest-isolation
 | `ImageStorage.swift` | 3 | `ImageStorage.init` 在测试进程里**早退** ⇒ 迁移/清理都不跑 ⇒ **已闸门** |
 | `StorageBackend.swift` / `SQLiteStorageBackend.swift` | 2 | `ClipboardStore` 的测试分支用 `MemoryStorageBackend` ⇒ 生产 backend 不会被构造 ⇒ **不可达** |
 | `TrashStore.swift` | 1 | 由 `ClipboardStore.init` 用**同一个** `defaults` 构造 ⇒ **已闸门** |
-| `BackupPackage.swift` | 3 | 导出/导入的调用点现在都传 seam（`BackupSettingsView` / `RestoreWizardViewModel`）⇒ **已闸门** |
+| `BackupPackage.swift` | 3 | ⚠️ **原判定「已闸门」对导出路径是假的**（见 §48.4）：导出调用点 `BackupSettingsView.swift` **没有传 `defaults:`** ⇒ 静默取默认的 `.standard` ⇒ 用户的真实域。**已修**：调用点显式传 seam + 守卫 ⑰。导入路径的调用点（`RestoreWizardViewModel`）确实传了 seam ✅ |
 
 ⇒ **没有一个是「当前可达的活雷」**；但它们全是**同一个形状的地雷**
-⇒ 本轮把这一族的**形状**钉在了守卫 ⑧ 里（app 树里 `UserDefaults.standard`
-只允许出现在判别器里），并把**新写的**默认参数全部改成走 seam。
+⇒ 本轮把**新写的**默认参数全部改成走 seam。
+
+⚠️ **订正（独立核验 P2-1，§48.3）**：本节原写「本轮把这一族的**形状**钉在了守卫 ⑧ 里
+（app 树里 `UserDefaults.standard` 只允许出现在判别器里）」—— **那是过头的**：
+守卫 ⑧ 盯的是 `UserDefaults.standard` 这个 **API 名（拼写）**，而这一族的形状是
+「**默认参数的值**就是生产身份」⇒ app 树里有 **12 处** `= .standard`，守卫 ⑧
+**一处都看不见** ⇒ 核验员的 M1 / M11 / M10b 三条「存活」变异**全在这个盲区里**。
+⇒ 已补：守卫 ⑲（用 `= .standard` 这个**形状**做判据的**逐文件库存棘轮**）
++ 守卫 ⑲b + 守卫 ⑮（app 树里 `defaults: .standard` 零命中）。
 
 ### 47.11 顺带修掉的 CI 断点
 
@@ -2827,7 +2834,9 @@ push 之后 CI **红了**：`lint-ids` job 的 **tsan filter lint (ID-CI-0010)**
 
 ⇒ 根因是**上一轮（1046）自己造的**：1046 给 `SafeModeServiceTests` 加了 2 条测试，
 而那个类**正是 TSan subset 的 9 个类之一** ⇒ 期望数必须跟着动。
-⇒ 已把 `tsan.yml:69` 的 `SUBSET_EXPECTED` 改成 `97`，并把注释里的
+⇒ 已把 `tsan.yml:75` 的 `SUBSET_EXPECTED` 改成 `97`（⚠️ 本节原写 `:69` —— **行号错了**，
+`:69` 是一行 `continue-on-error` 注释；**与同一个 commit 修的 `SWIFT6_MIGRATION.md` §8
+行号矛盾是同一类漂移** ⇒ 见 §48.5 P3-2），并把注释里的
 「95 as of 2026-10-15」一并订正。
 
 ⇒ ⇒ **这条本身就是「看 33 个」在 CI 侧的形状**：往 subset 类里加测试会打破
@@ -2936,6 +2945,183 @@ NSWindow Frame com.clipmemory.app.SettingsWindow
 harness 起点的快照**逐字节一致**（sha256 相同、解析后的键值对相同）
 ⇒ **用户的数据完好**。
 
+⚠️ **订正（独立核验 P3-1，§48.5）**：这句话**只对「harness 自己的起点快照」成立**，
+**不等于「回到本轮之前」** ⇒ 用户的设置窗口位置在本轮测试跑完之后**仍然是** `971`
+（本轮之前是 `970`）⇒ **那 1 像素没有被回滚**。
+⇒ 本轮的修复只阻止**将来**再犯；**历史上那 1 像素不可区分**于更早的测试写下的值
+⇒ **无法诚实地还原**（与 ID-REVIEW-1042 的剪贴板情形同类）⇒ 只能如实记录。
+
 ⇒ ⇒ **元模式**：*`cfprefsd` 是**写后缓存**的 ⇒ 「还原文件」不等于「还原状态」；
 而「下一轮才出现的污染」几乎总是**上一轮**留下的。⇒ 判「有没有弄脏用户环境」
 要看**终点与起点的对比**，不能看单轮的信号。*
+
+---
+
+## 48. ID-REVIEW-1047 的**独立核验**（2026-10-28）：VERDICT = FAIL ⇒ 2×P1 + 2×P2 + 3×P3
+
+> 核验员是**独立子 agent**（不是自查），在自己的沙箱副本 `/tmp/verify1047/repo`
+> 里跑自己的 harness，并**先快照、后比对**用户环境。
+> ⇒ 它抓到的不是「风格问题」，而是**本轮自己的守卫真的有洞**。
+
+### 48.1 P1-1 守卫 ⑨ 是**单边**的：恢复向导的 `defaults` 那**一半零覆盖**
+
+核验员的 **M11**：把 `AppDelegate.swift` 里恢复向导的 `defaults:` 改回 `.standard`
+⇒ **14 条新守卫全绿**，**全量 1407 条测试也全绿**。
+
+**根因**：守卫 ⑨ 只 grep 了**两个字符串**（`imagesDirectory: ImageStorage…` 与
+`imagesDirectory: AppDirectories`）⇒ `defaults:` 那个参数**从未被检查**。
+⇒ 而那**恰恰是有写后果的一半**（台账自己写着「一次恢复会把导入的历史写进用户
+生产域」）。
+
+⇒ **为什么我自己的 N4 没抓到它**：N4 把**两半一起**改回内联 ⇒ 被 `imagesDirectory`
+那半抓住了 ⇒ **N4 变红并不能证明 `defaults` 那半有守卫**。
+⇒ ⇒ **元模式**：*一条守卫只要覆盖了两个并列的机制中的一个，它对另一个就是零覆盖；
+而「把两个一起改」的变异会给出「有覆盖」的错觉。*
+
+**修法**：守卫 ⑮ —— **正面**（`defaults: ClipboardStore.shared.defaults` 必须出现在
+AppDelegate）+ **反面**（app 树里 `defaults: .standard` **零命中**）。
+
+### 48.2 P1-2 台账的 N5 归因是**错的**：那个默认参数**没有任何守卫**
+
+核验员的 **M1**（= 我台账里的 N5）：把 `BackupService.init` 的 `defaults` 默认参数
+改回 `.standard` ⇒ **14 条新守卫全绿**，**全量 1407 条也全绿**。
+
+**根因（两层）**：
+1. 守卫 ⑤ 断言的是**纯函数** `BackupService.defaultsFor(isTestProcess:)`，
+   **从未碰过 `init` 的默认参数**；
+2. `BackupService.defaults` 修前是 `private let` ⇒ **没有任何守卫能观察**一个
+   `BackupService` 绑到了哪个域 ⇒ 而本轮恰恰把 `FirstLaunchService.store` 放宽到
+   internal **就是为了**让守卫能断言绑到了哪个域 ⇒ **同一个 commit 里对两个
+   服务做了不一致的处理**。
+
+⇒ ⇒ **元模式**：*「把状态放宽到可断言」这件事本身就是要**逐个服务**做的；
+给一个服务做了，不等于另一个服务也做了 —— 而台账会把两个服务写成同一个故事。*
+
+**修法**：`BackupService.defaults` 放宽到 internal + 守卫 ⑯（**行为**、**只读**）。
+
+### 48.3 P2-1 守卫 ⑧ 盯的是**拼写**，不是**形状**
+
+守卫 ⑧ 盯 `UserDefaults.standard` 这个 **API 名**。而这一族真正的形状是
+「**默认参数的值**就是生产身份」⇒ 实测 app 树里有 **12 处** `= .standard`
+（`BackupPackage`×3、`ImageStorage`×3、`StartupHealth`×2、`StorageBackend` /
+`SQLiteStorageBackend` / `TrashStore` / `LanguageManager` 各 ×1）
+⇒ 守卫 ⑧ **一处都看不见** ⇒ 核验员的 M1 / M11 / M10b **全在这个盲区里**。
+
+**修法**：守卫 ⑲（**棘轮**）—— 用 `= .standard` 这个**形状**做判据（不依赖参数名的
+拼写 ⇒ `defaults : UserDefaults = .standard` 这种改写也躲不过），并钉**逐文件
+数量** ⇒ 新增一处 / 某文件多一处 ⇒ 立刻红 ⇒ 必须先在 §47.10 里判定。
++ 守卫 ⑲b（盯 `.standard` 这个**值**本身出现在哪些**未登记**的位置）。
+
+⚠️ **如实记录边界**：⑲ 是**计数**判据 ⇒ 一处**等价的改写**（把 `.standard` 写成
+`UserDefaults.standard`）**不改变**计数 ⇒ 不会触发 ⇒ 那一类的兜底是守卫 ⑧
+（API 名）与 canary。
+
+### 48.4 P2-2 §47.10 的 `BackupPackage` 判定**对导出路径是假的**
+
+§47.10 写的是「导出/导入的调用点现在都传 seam ⇒ **已闸门**」。
+**事实**：`BackupSettingsView.swift` 的导出调用点
+`exportPackage(to:passphrase:imagesDirectory:keyData:)` **没有传 `defaults:`**
+⇒ 它**静默取了默认值 `.standard`** ⇒ **用户的真实域** ——
+而**同一个调用**的 `imagesDirectory` 却走了 `ImageStorage` 的 seam
+⇒ **正是本轮诊断出的「一个参数有闸门、另一个没有」的不一致**。
+
+⇒ 导出**只读**用户的 blob（无损坏），但一个测试进程**根本不该读生产域**。
+⇒ **修法**：调用点显式传 `defaults: ClipboardStore.shared.defaults` + 守卫 ⑰。
+
+⇒ ⇒ **元模式**：*「这条路径没有显式传参」看起来像「它用了安全默认值」，其实**恰好相反**
+—— 显式传参是**唯一**能保证「这个调用点想用哪个域」的方式。*
+
+### 48.5 P3 三条
+
+* **P3-1 用户的设置窗口位置仍然偏了 1 像素**：`970 → 971` 是**本轮测试跑出来的**，
+  本轮的修复只阻止**将来**再犯 ⇒ **历史上那 1 像素没有回滚**。
+  ⚠️ §47.13b 写的「用户的数据完好」**只对 harness 自己的起点快照成立**，
+  **不等于「回到本轮之前」** ⇒ 已订正。
+  ⇒ 且这 1 像素**不可区分**于更早的测试写下的值 ⇒ **无法诚实地还原**
+  （同 ID-REVIEW-1042 的剪贴板情形）⇒ 只能如实记录。
+* **P3-2 `tsan.yml` 的行号写错了**：§47.11 写 `tsan.yml:69`，实际
+  `SUBSET_EXPECTED: '97'` 在 **:75**（:69 是一行 `continue-on-error` 注释）
+  ⇒ 已订正 —— **与同一个 commit 修的 `SWIFT6_MIGRATION.md` §8 行号矛盾是同一类漂移**。
+* **P3-3 `SMAppService` 没有测试进程探针** ⇒ 见 §48.7（第 12 例）。
+
+### 48.6 修 P1-2 时**顺手撞出**的第二个洞：canary 在**窄跑**里**必然假红**
+
+修完 P1-2（把 `BackupService.defaults` 放宽 + 加守卫 ⑯）后跑一次窄跑，
+canary 报「NEW production UserDefaults pollution: key ADDED "ClipboardItems"」。
+
+⇒ **查证结果**：用户的 `ClipboardItems` **完好无损**（155405 字节的数组，条目都在）
+⇒ 是**假阳性**，根因：`testNoProductionPollution` **没有**在「AAA 基线不存在」时跳过
+⇒ 窄跑（`-only-testing:`）里 `AAASuiteBootstrapTests` 根本不跑 ⇒ `before` 是**空的**
+⇒ **每一个**生产键都像「新增」⇒ 而两个数据 blob 自 ID-REVIEW-1038 起**故意不在**
+任何白名单里 ⇒ **canary 在窄跑里必然失败**。
+
+⇒ ⚠️ **这直接污染了我上一轮的结论**：我的 N5「被 canary 抓住」——**那个抓是假的**
+（canary 在那次窄跑里本来就会红）⇒ **台账 §47.9 的 N5 归因（「⑤」）是错的**，
+真凶是「canary 在窄跑里无条件失败」。
+
+⇒ ⇒ **元模式**：*「某条守卫抓到了我的变异」这句话，本身也需要被质疑 ——
+先问「**这条守卫在这轮运行里会不会本来就响**」。否则你会把「它反正会响」
+误记成「它有牙齿」。*
+
+⇒ **修法**：`testNoProductionPollution` 加 `XCTSkipUnless(didSnapshotProductionDomain, …)`
+（与 `testProductionDataBlobsAreUnchanged` 一致）⇒ 窄跑里**显式跳过**（可见），
+而不是**假红**。
+⇒ 修完之后，N5 由**新守卫 ⑯**抓住 —— 那才是有牙齿的抓。
+
+### 48.7 同族第 12 例：**登录项（"Open at Login"）**没有测试进程闸门
+
+修完上面三条后做**全量扫描**（把 app 树里所有「用户全局资源引用」列了一遍）⇒
+`SMAppService.mainApp` 是**最后一个**没有闸门的：
+
+* `GeneralSettingsView.swift:20` — `@State … = SMAppService.mainApp.status == .enabled`
+  ⇒ **读**，在 view 构造时求值 ⇒ `SettingsTabSnapshotTests.testGeneralSettingsTabDefault`
+  （它构造 `GeneralSettingsView(hotKeyManager: nil)`）**每次跑都会走到**
+  ⇒ 读的是**用户真实的「登录时打开」注册状态**；
+* `:55` — `try SMAppService.mainApp.register()` / `.unregister()` 在 Toggle 的
+  setter 里 ⇒ **写**路径**没有任何闸门** ⇒ 一个驱动过那个开关的测试会
+  **把用户的「登录时打开」打开/关掉**。
+
+⇒ **修法**：新增 `ClipMemory/Services/LaunchAtLoginService.swift`
+（纯函数 `shouldApply(isRunningTests:)` + `isEnabled()` + `setEnabled(_:)`），
+`GeneralSettingsView` 的读与写都改走它 ⇒ 测试进程**完全不碰**登录项。
+⇒ **生产零变化**：`shouldApply(false) == true` ⇒ 读写真实注册，与原来一致。
+⇒ 守卫 ⑱（纯函数两半 + 静态「`SMAppService.mainApp` 只允许出现在闸门里」）。
+⇒ ⚠️ **但守卫 ⑱ 是单边的**（同 §48.1 的形状）：把 `setEnabled` 里的**闸门**删掉，
+`shouldApply` 这个**纯函数**没被动、`SMAppService.mainApp` 也**仍然只在闸门文件里**
+⇒ 守卫 ⑱ **照样绿** ⇒ ⇒ **守卫 ⑱b**（**行为**）：给 `setEnabled` 一个**可注入的登记器**
+（`apply:`），守卫注入一个**记录闭包** ⇒ 就能**行为上**问「这个进程到底有没有触达系统」——
+而**不用**去查用户的注册状态（那样就等于守卫自己破坏了它要守的闸门）。
+
+### 48.8 第二轮收口的**验收**，以及本轮撞出的**两个新洞**
+
+**新洞 ①（§48.6 已记）：canary 在窄跑里必然假红** ⇒ 已在
+`testNoProductionPollution` 加 `XCTSkipUnless(didSnapshotProductionDomain, …)`
+⇒ 三个 canary 现在共用**一个** `skipUnlessProductionBaselineCaptured()` helper
+（原先第三个是内联副本，把函数体撑到 54 行 ⇒ **新**增一条 SwiftLint `function_body_length`
+⇒ 11 ≠ 基线 10 ⇒ 抽 helper 修回 **10**）。
+
+**新洞 ②：守卫文件自身含被禁写法 ⇒ 被**既有**守卫抓到**。
+守卫 ⑮ 要 grep `defaults: .standard` ⇒ 把这个**字面量**写进测试文件 ⇒ 被**既有**的
+`ProductionDomainWriteGuardTests` 判成「一次生产域写入」（它的 `argumentPatterns`
+`[A-Za-z_]\w*\s*:\s*<productionDomain>` **不跳过字符串字面量**，只跳过「行前缀含 `//`」的行）
+⇒ **全量 1414 条红了一条** ⇒ 这是**真阳性**：仓库自己的守卫网抓到了一条漂进被禁形状的守卫。
+⇒ 修法照该文件**既有**约定：`private let prodDot = "."` / `prodStd = "standard"`
++ **运行时拼装** needle ⇒ 语义不变，扫描器不再命中。
+
+**harness 的两处自我修正（与 ID-REVIEW-1046 的铁律同型）**：
+1. **0 test cases ran ⇒ 报 `<NOT_PROVEN>`，绝不报「存活」**（1046 铁律机械化）；
+2. **BUILD_FAILED 检测放宽** —— 原判据要求错误行里**同时**出现 `SwiftCompile`/`SwiftDriver`，
+   而 `file.swift:64:40: error: cannot find 'X' in scope` **不匹配** ⇒ 变异被报成「存活」，
+   **其实测试根本没跑** ⇒ N16 就是这样**假判**的（它真的编译不过：删了 `import ServiceManagement`）。
+   ⇒ 已改为「任意 `file.swift:line:col: error:`」。
+
+**N16 / N17 重锚点**（上一轮的 N16 是假判）：
+* **N16** = 删掉 `LaunchAtLoginService.setEnabled` 里的**闸门** ⇒ **只有守卫 ⑱b 能抓**
+  ⇒ 这就是「行为守卫」的必要性证明（纯函数 ⑱ 与静态 ⑱ 都看不见它）；
+* **N17** = 设置页**整条**绕过闸门（读 + 写都直接 `SMAppService.mainApp`）⇒ 守卫 ⑱ 抓。
+
+**验收**：全量 **1414 / 4 skipped / 0 failures**；lint **10 = 基线**；
+**变异 17 条（N1–N17）全红**、drift=False；**生产域与 harness 起点快照逐键零差异**（29 键）。
+⇒ 其中 **N6 / N10 的 `prod_changed=True` 是**正面**证据**：闸门确实挡住了「绑生产域」
+与「测试进程写窗口位置到用户域」这两种污染，且 harness 的快照/还原**精确回滚**
+⇒ *「验证工具本身不能成为它要消灭的那种伤害源*（ID-REVIEW-1042）这条，在本轮是**被验证**的，不是被声称的。
