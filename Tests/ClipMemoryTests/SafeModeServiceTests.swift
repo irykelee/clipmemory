@@ -43,35 +43,74 @@ final class SafeModeServiceTests: XCTestCase {
         XCTAssertFalse(service.isInSafeMode)
     }
 
-    /// ID-CRASH-0003: previous launch's sentinel is still in place →
-    /// we count it as a crash.
-    func testMissingSentinelIncrementsCrashCount() {
+    /// ID-CRASH-0003: the previous launch's sentinel is **gone** ⇒ it
+    /// exited gracefully ⇒ NOT a crash.
+    ///
+    /// ⚠️ ID-REVIEW-1046 (2026-10-28): this assertion used to be the
+    /// other way round ("missing sentinel ⇒ count a crash"), which was
+    /// the **inverted** polarity: the sentinel is deleted on a GRACEFUL
+    /// exit (`clearSentinelOnNormalExit`), so "missing" means "exited
+    /// normally" ⇒ every normal ⌘Q was counted as a crash (the user's
+    /// `safeMode.crashCount` reached 8 and safe mode was switched on for
+    /// an app that had never crashed).
+    func testMissingSentinelDoesNotIncrementCrashCount() {
         let service = makeService()
-        // No sentinel in tmpDir → previous launch "crashed".
+        // No sentinel in tmpDir → previous launch exited gracefully.
+        service.registerPreviousLaunchDidCrash()
+        XCTAssertEqual(service.crashCount, 0)
+        XCTAssertFalse(service.isInSafeMode)
+    }
+
+    /// ID-REVIEW-1046 (2026-10-28): the previous launch's sentinel is
+    /// **still there** ⇒ it never reached `applicationWillTerminate` ⇒
+    /// it crashed ⇒ count it.
+    ///
+    /// ⚠️ The directory must exist before the sentinel can be written —
+    /// the service creates it in `writeSentinel()`, but a *manual* write
+    /// would silently fail (`try?`) and the test would then pass for the
+    /// wrong reason.
+    func testSurvivingSentinelIncrementsCrashCount() throws {
+        let service = makeService()
+        let sentinel = tmpDir.appendingPathComponent("ClipMemory/.running-sentinel")
+        try FileManager.default.createDirectory(
+            at: sentinel.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data().write(to: sentinel)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sentinel.path))
+
         service.registerPreviousLaunchDidCrash()
         XCTAssertEqual(service.crashCount, 1)
         XCTAssertFalse(service.isInSafeMode, "1 < 3 threshold")
     }
 
     /// ID-CRASH-0003: three consecutive crashes activate safe-mode.
-    /// We simulate three launches in a row, each seeing the previous
-    /// launch's missing sentinel.
+    ///
+    /// ID-REVIEW-1046: a crash is now simulated by **leaving** the
+    /// sentinel in place (the service writes it on every launch, so the
+    /// next launch sees it ⇒ counts). The old version deleted the
+    /// sentinel between launches, which under the inverted polarity was
+    /// how you faked a crash.
+    ///
+    /// ⚠️ **off-by-one 是协议固有的**：哨兵由上一次启动写下 ⇒ 「上一次崩了」
+    /// 要到本次启动才被计到 ⇒ 3 次崩溃需要 4 次启动才数满 3。
     func testThreeConsecutiveCrashesActivateSafeMode() {
         let service = makeService()
-        // Crash 1
+        // Launch 1 — fresh install, nothing to judge yet.
         service.registerPreviousLaunchDidCrash()
+        XCTAssertEqual(service.crashCount, 0)
         XCTAssertFalse(service.isInSafeMode)
-        // Reset sentinel to simulate the next launch seeing a fresh
-        // "missing sentinel" (the previous launch's sentinel got
-        // written during crash-1's registerPreviousLaunchDidCrash,
-        // so we delete it to simulate the chain continuing).
-        try? FileManager.default.removeItem(at: tmpDir.appendingPathComponent("ClipMemory/.running-sentinel"))
-        // Crash 2
+        // Launch 2 — launch 1's sentinel survived ⇒ launch 1 crashed.
         service.registerPreviousLaunchDidCrash()
+        XCTAssertEqual(service.crashCount, 1)
+        XCTAssertFalse(service.isInSafeMode)
+        // Launch 3
+        service.registerPreviousLaunchDidCrash()
+        XCTAssertEqual(service.crashCount, 2)
         XCTAssertFalse(service.isInSafeMode, "2 < 3 threshold")
-        try? FileManager.default.removeItem(at: tmpDir.appendingPathComponent("ClipMemory/.running-sentinel"))
-        // Crash 3
+        // Launch 4 — third consecutive crash.
         service.registerPreviousLaunchDidCrash()
+        XCTAssertEqual(service.crashCount, 3)
         XCTAssertTrue(service.isInSafeMode, "3 >= 3 threshold → safe-mode activates")
 
         // stateDidChangeNotification must have been posted at least
@@ -87,11 +126,11 @@ final class SafeModeServiceTests: XCTestCase {
     /// ID-CRASH-0003: after a successful launch, the counter resets.
     func testSuccessfulLaunchResetsCounter() {
         let service = makeService()
-        // Bump the counter to 2 (just below threshold) without
-        // activating safe mode.
-        service.registerPreviousLaunchDidCrash() // 1
-        try? FileManager.default.removeItem(at: tmpDir.appendingPathComponent("ClipMemory/.running-sentinel"))
-        service.registerPreviousLaunchDidCrash() // 2
+        // Two crashes in a row (each launch's sentinel survives into the
+        // next launch ⇒ counted there — hence the off-by-one).
+        service.registerPreviousLaunchDidCrash() // launch 1 → 0
+        service.registerPreviousLaunchDidCrash() // launch 2 → 1
+        service.registerPreviousLaunchDidCrash() // launch 3 → 2
         XCTAssertEqual(service.crashCount, 2)
 
         service.registerSuccessfulLaunch()
@@ -102,10 +141,10 @@ final class SafeModeServiceTests: XCTestCase {
     /// consecutive crashes re-arm the banner.
     func testExitSafeModeClearsState() {
         let service = makeService()
-        // Force into safe mode by repeated registration.
-        for _ in 0..<3 {
+        // Force into safe mode by repeated registration (4 launches for
+        // 3 crashes — the crash is counted at the NEXT launch).
+        for _ in 0..<4 {
             service.registerPreviousLaunchDidCrash()
-            try? FileManager.default.removeItem(at: tmpDir.appendingPathComponent("ClipMemory/.running-sentinel"))
         }
         XCTAssertTrue(service.isInSafeMode)
 
@@ -117,6 +156,13 @@ final class SafeModeServiceTests: XCTestCase {
     /// ID-CRASH-0003: normal exit removes the sentinel — the next
     /// launch's registerPreviousLaunchDidCrash() should NOT count as
     /// a crash.
+    ///
+    /// ⚠️ ID-REVIEW-1046 (2026-10-28): this test's NAME always said
+    /// "prevents", but its ASSERTION said the opposite (`crashCount ==
+    /// before + 1`) and a long comment explained why: the author had
+    /// found that the polarity was inverted and papered over it with
+    /// "the threshold absorbs the noise". The polarity is now correct
+    /// ⇒ the name and the assertion finally agree.
     func testNormalExitPreventsCrashCount() {
         let service = makeService()
         // Simulate a normal launch (sentinel written) followed by a
@@ -124,44 +170,31 @@ final class SafeModeServiceTests: XCTestCase {
         service.registerPreviousLaunchDidCrash() // writes sentinel
         service.clearSentinelOnNormalExit()
 
-        // Now simulate the next launch — register sees no sentinel
-        // because the previous launch cleaned up. Wait, that's wrong:
-        // no sentinel means crash. Let me re-check.
-        //
-        // Actually the test is: after normal exit, the sentinel is
-        // GONE. The NEXT launch will see no sentinel and increment.
-        // That's the bug we're avoiding — we want the next launch to
-        // see the NEW sentinel written by THIS launch's
-        // registerPreviousLaunchDidCrash, not the absence of one.
-        //
-        // The correct sequence:
-        // 1. launch-1 starts → register writes sentinel-A
-        // 2. launch-1 exits normally → clearSentinel deletes sentinel-A
-        // 3. launch-2 starts → register sees no sentinel (← BAD,
-        //    counts as crash!) and writes sentinel-B
-        //
-        // So the test asserts the BAD case: even after a normal exit,
-        // the next launch WILL count as one (because we can't tell
-        // "previous launch cleanly exited" from "previous launch
-        // crashed"). The 3-launch threshold absorbs the noise.
         let crashCountBefore = service.crashCount
         service.registerPreviousLaunchDidCrash() // sees no sentinel
-        XCTAssertEqual(service.crashCount, crashCountBefore + 1,
-            "after normal exit the next launch still counts as 1 (threshold absorbs noise)")
+        XCTAssertEqual(service.crashCount, crashCountBefore,
+            "after a normal exit the next launch must NOT count as a crash")
+        XCTAssertFalse(service.isInSafeMode)
     }
 
     /// ID-CRASH-0003: threshold boundary — exactly 2 crashes must
     /// not trigger safe-mode; exactly 3 must.
+    ///
+    /// ⚠️ off-by-one: the crash of launch N is counted at launch N+1 ⇒
+    /// 3 crashes need 4 launches.
     func testThresholdBoundary() {
         let service = makeService()
-        for i in 1...3 {
+        // Launch 1 → 0, launch 2 → 1, launch 3 → 2, launch 4 → 3.
+        for launch in 1...4 {
             service.registerPreviousLaunchDidCrash()
-            try? FileManager.default.removeItem(at: tmpDir.appendingPathComponent("ClipMemory/.running-sentinel"))
-            if i < 3 {
-                XCTAssertFalse(service.isInSafeMode, "crash #\(i) of 3 must NOT activate safe-mode")
+            if launch < 4 {
+                XCTAssertFalse(
+                    service.isInSafeMode,
+                    "launch \(launch) → crashCount \(launch - 1) < 3 ⇒ must NOT activate safe-mode"
+                )
             }
         }
-        XCTAssertTrue(service.isInSafeMode, "crash #3 of 3 activates safe-mode")
+        XCTAssertTrue(service.isInSafeMode, "3rd consecutive crash activates safe-mode")
     }
 
     // MARK: - Helpers

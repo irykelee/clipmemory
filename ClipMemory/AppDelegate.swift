@@ -285,6 +285,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // C: start HangDetector watchdog last so all prior setup completes
         // before the main-thread heartbeat timer begins ticking.
         HangDetector.start()
+        // ID-REVIEW-1046 (2026-10-28): this launch completed ⇒ reset the
+        // crash counter, so "3 CONSECUTIVE crashes" means three crashes in
+        // a row instead of three crashes ever.
+        //
+        // ⚠️ `registerSuccessfulLaunch()` had **no call site** before this
+        // fix ⇒ the counter accumulated across the user's whole lifetime
+        // ⇒ a crash in January plus a crash in July together counted
+        // towards the threshold.
+        //
+        // ⚠️ Placement matters: it must run AFTER the startup work (and
+        // NOT next to `registerPreviousLaunchDidCrash()` at :244 — that
+        // would clear the crash we just counted ⇒ safe mode could never
+        // trigger).
+        SafeModeService.shared.registerSuccessfulLaunch()
     }
 
     // ID-LIFE-0026 (MEDIUM-2, audit 2026-08-15): graceful-quit gate. AppKit calls this
@@ -538,6 +552,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - ID-REVIEW-1045 P1-2: the menu-bar status item creation is OBSERVABLE
+
+    /// The seam that creates the menu-bar status item.
+    ///
+    /// ID-REVIEW-1045 P1-2 (independent verifier, measured): the static
+    /// guards pinned the RESOURCE (`NSStatusBar.system`) and the ARGUMENT
+    /// (the probe), but not the ACT of creating. A mutation could create
+    /// the item without assigning it to `statusItem` (or through an alias)
+    /// ⇒ every guard stayed green (36/36 tests) while the test host really
+    /// occupied a slot in the user's menu bar — the exact defect
+    /// ID-REVIEW-1044 closed.
+    ///
+    /// ⇒ Fix: make the creation **observable** instead of text-pinned.
+    /// Creation goes through this one seam and every call increments a
+    /// counter ⇒ a **behavioural** guard can assert "the test host created
+    /// NOTHING", which no aliasing or relocation can hide.
+    ///
+    /// Production behaviour is unchanged: the default factory is the very
+    /// same call the code made before.
+    private static let statusItemFactoryLock = NSLock()
+    nonisolated(unsafe) static var statusItemFactory: (NSStatusBar) -> NSStatusItem = {
+        $0.statusItem(withLength: NSStatusItem.variableLength)
+    }
+    /// How many menu-bar status items this process has actually created.
+    /// ID-REVIEW-1045 P1-2: inside a test host this must stay **0**.
+    nonisolated(unsafe) static var statusItemCreationCount = 0
+
+    /// The number of status-item creations observed so far.
+    static var statusItemCreations: Int {
+        statusItemFactoryLock.lock()
+        defer { statusItemFactoryLock.unlock() }
+        return statusItemCreationCount
+    }
+
+    /// The single creation site. Counts every attempt, so a creation that
+    /// happens *before* the test-host gate (or that never reaches
+    /// `AppDelegate.statusItem`) is still visible.
+    private static func makeStatusItem() -> NSStatusItem {
+        statusItemFactoryLock.lock()
+        statusItemCreationCount += 1
+        let factory = statusItemFactory
+        statusItemFactoryLock.unlock()
+        return factory(NSStatusBar.system)
+    }
+
     /// ID-REVIEW-1045 (2026-10-28): **纯函数**决策 seam —— 测试宿主**不得**
     /// 在用户的菜单栏里占一个位置。
     ///
@@ -570,8 +629,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         //
         // ID-REVIEW-1045: 判定改走纯函数 `shouldCreateStatusItem` ⇒
         // 「生产 ⇒ 一定创建」那半边现在**可测**。
+        // ID-REVIEW-1045 P1-2: 创建走 `makeStatusItem()` 这个**可观测**
+        // 的 seam ⇒ 行为守卫能断言「测试宿主一个都没创建」。
         guard Self.shouldCreateStatusItem(isRunningTests: TestIsolation.isRunningTests) else { return }
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = Self.makeStatusItem()
         if let button = statusItem?.button {
             // ID-L10N-0010 (2026-07-30 audit): use L10n.appName for VoiceOver. The
             // tooltip below already does this; consistency across both is

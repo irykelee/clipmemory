@@ -221,6 +221,7 @@
 		CBD475D4A83322AF0106B8F7 /* ClipboardStore+Utilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB445D521CEED7F4A2FB3EB /* ClipboardStore+Utilities.swift */; };
 		CBDB1962F845E54282C5DA3E /* BackupPackageImportFromLocalBackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 560139C0F75E8A292267BB24 /* BackupPackageImportFromLocalBackupTests.swift */; };
 		CCCC9FFCF1EB417F74198F26 /* EncryptionFailedAlertThrottlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C6F13182E51140986AB1201 /* EncryptionFailedAlertThrottlerTests.swift */; };
+		CD3BA5C31461A98BDA2A125D /* Review1046RegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A84820C0740D002C5C8821 /* Review1046RegressionTests.swift */; };
 		CD508E53D63E290E2C7546DA /* SQLiteStorageBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 734031561BB0E2E44712BE36 /* SQLiteStorageBackend.swift */; };
 		CE551C64250E58C046EC78C3 /* LanguageManagerMainActorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD54AB9BB7B3D33A39561936 /* LanguageManagerMainActorTests.swift */; };
 		CF07E8F9B986D6676EE302C2 /* ClipboardStore+Encryption.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCD80AD431514537E75C8D85 /* ClipboardStore+Encryption.swift */; };
@@ -497,6 +498,7 @@
 		C427BA3EB3748FCBD6B1EF0F /* OCRServiceLanguageFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRServiceLanguageFallbackTests.swift; sourceTree = "<group>"; };
 		C4B9E4A0CBFAE2A5B8C248E7 /* RestoreWizardTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreWizardTypes.swift; sourceTree = "<group>"; };
 		C4DF9D5EC30A4297B53974BF /* DecryptionFailedLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecryptionFailedLoopTests.swift; sourceTree = "<group>"; };
+		C5A84820C0740D002C5C8821 /* Review1046RegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Review1046RegressionTests.swift; sourceTree = "<group>"; };
 		C6D2821AF8DB1B3210BC7F41 /* ClipMemory.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClipMemory.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C72273B00BF3BBC48397B157 /* TagPickerLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagPickerLogic.swift; sourceTree = "<group>"; };
 		C726CD8268B68815EB5FE9B1 /* HistoryCaptureSettingsViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryCaptureSettingsViewTests.swift; sourceTree = "<group>"; };
@@ -745,6 +747,7 @@
 				B676DEEC6C6924753393AB27 /* Review1043RegressionTests.swift */,
 				DD93D9A199377DA6135C8010 /* Review1044RegressionTests.swift */,
 				547F54925D7CC3185A7B6A74 /* Review1045RegressionTests.swift */,
+				C5A84820C0740D002C5C8821 /* Review1046RegressionTests.swift */,
 				F50DEF7083A598F2CA5D9D4C /* RichTextParserBehaviorTests.swift */,
 				31B6698EBE6386F1C7FEE434 /* SafeModeServiceTests.swift */,
 				92B3C4F1253D486C376AF508 /* SeamBaselineIsolationTests.swift */,
@@ -1171,6 +1174,7 @@
 				8C81E79E236CC9648D375EE6 /* Review1043RegressionTests.swift in Sources */,
 				943A3754088507BB35EEE2EC /* Review1044RegressionTests.swift in Sources */,
 				00C2199DCD8A5A8D82F0C545 /* Review1045RegressionTests.swift in Sources */,
+				CD3BA5C31461A98BDA2A125D /* Review1046RegressionTests.swift in Sources */,
 				BA733FF9DD0FD73ACAA1907F /* RichTextParserBehaviorTests.swift in Sources */,
 				DEBC5FB4CB06289D3EC40465 /* SQLiteBinderTests.swift in Sources */,
 				388D1F48712D6465EE66AB94 /* SQLiteSchemaVersionTests.swift in Sources */,

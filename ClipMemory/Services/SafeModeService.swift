@@ -21,7 +21,29 @@ import Foundation
 /// in safe mode until they explicitly exit.
 @MainActor
 final class SafeModeService {
-    static let shared = SafeModeService()
+    /// ID-REVIEW-1046 (2026-10-28): the app's shared instance.
+    ///
+    /// ⚠️ `countsCrashes` is **false in a test process** — and that is not
+    /// a convenience, it is the only correct behaviour there:
+    ///
+    /// * A test process has **no "previous launch"** to judge ⇒ the
+    ///   crash counters are meaningless ⇒ but the SENTINEL FILE still has
+    ///   to be written, because that write is what proves the test host
+    ///   never touches the user's own sentinel (ID-REVIEW-1045's
+    ///   「同族第 9 例」guard).
+    /// * The bookkeeping writes `safeMode.crashCount` / `safeMode.active`
+    ///   / `safeMode.sentinelHealthy` into the **process-shared**
+    ///   `SafeModeService-XCTest-isolation` suite. The app's startup runs
+    ///   on the main run loop, i.e. at a moment that is **not attributable
+    ///   to any test** ⇒ the ZZZ canary ends up blaming an innocent
+    ///   bystander for the app's own write (measured 2026-10-28: the
+    ///   canary named `TrashStoreMainActorTests`, a test that never
+    ///   touches SafeMode). The same shape as the async-writer problem
+    ///   the bootstrap documents for `ImageIntegrity.scannedMtimes`.
+    ///   ⇒ Skip the bookkeeping in a test process ⇒ the shared suite
+    ///   stays pristine ⇒ the canary keeps its teeth for **real**
+    ///   test-side leaks.
+    static let shared = SafeModeService(countsCrashes: !TestIsolation.isRunningTests)
 
     /// Consecutive-crash count required to enter safe mode. 3 matches
     /// the conventional threshold (Office, Photoshop, etc.) and avoids
@@ -101,6 +123,13 @@ final class SafeModeService {
     private let defaults: UserDefaults
     private let fileManager: FileManager
     private let directoryOverride: URL?
+    /// Whether this instance keeps the crash bookkeeping at all.
+    ///
+    /// ID-REVIEW-1046 (2026-10-28): `false` for the app's shared instance
+    /// **in a test process** (see the note on `shared`). Every unit test
+    /// constructs its own service ⇒ the default `true` keeps the full
+    /// behaviour under test.
+    private let countsCrashes: Bool
 
     /// ID-REVIEW-1011 (code-review-2026-10-01 v2.9.6 safe-mode seam):
     /// XCTest isolation helper. Mirrors `ClipboardStore.xcTestDefaults`
@@ -123,11 +152,13 @@ final class SafeModeService {
     init(
         defaults: UserDefaults = SafeModeService.xcTestDefaults,
         fileManager: FileManager = .default,
-        directory: URL? = nil
+        directory: URL? = nil,
+        countsCrashes: Bool = true
     ) {
         self.defaults = defaults
         self.fileManager = fileManager
         self.directoryOverride = directory
+        self.countsCrashes = countsCrashes
     }
 
     /// Consecutive crash count from previous launches. Returns 0 on a
@@ -143,6 +174,51 @@ final class SafeModeService {
         defaults.bool(forKey: safeModeActiveKey)
     }
 
+    /// ID-REVIEW-1046 (2026-10-28): the key that marks the one-shot
+    /// reconciliation of the state the INVERTED sentinel polarity left
+    /// behind. See `reconcileLegacyCrashPolarity()`.
+    nonisolated static let legacyCrashPolarityMigrationKey = "safeMode.polarityFixedV1"
+
+    /// ID-REVIEW-1046 (2026-10-28): **一次性**清理旧极性误置的状态。
+    ///
+    /// ## 为什么要清理
+    ///
+    /// 旧实现把哨兵极性写反了（协议是「哨兵**存在** ⇔ 上次**没有**正常
+    /// 退出 ⇒ 崩溃」，实现却按「哨兵**不存在** ⇒ 崩溃」计数）⇒ **每一次
+    /// 正常退出都被记成一次崩溃**。用户机器上的实测后果：
+    /// `safeMode.crashCount` 涨到 8、`safeMode.active` 被置为 true
+    /// （阈值 3）⇒ **用户正被一个从未崩溃过的 app 挡在安全模式外面**。
+    ///
+    /// ## 为什么可以「证明」该清而不是「猜」
+    ///
+    /// 旧极性下，计数**只**在「上次没有哨兵」时 +1；而按协议
+    /// （`clearSentinelOnNormalExit` 在**正常退出**时删哨兵），「上次没有
+    /// 哨兵」唯一对应「上次**正常退出**」⇒ **旧极性记下来的每一次「崩溃」
+    /// 都是一次正常退出** ⇒ 计数与安全模式标志 **100% 是假的**。
+    /// ⇒ 清理不是猜测，是把用户状态还原成它本来的样子。
+    ///
+    /// ## 只做一次
+    ///
+    /// 迁移标记（`legacyCrashPolarityMigrationKey`）保证它**只**跑一次：
+    /// 迁移之后新产生的合法安全模式不会被第二次清理掉。
+    func reconcileLegacyCrashPolarity() {
+        // ID-REVIEW-1046: a test process keeps no crash bookkeeping at all
+        // (see `shared`) ⇒ the migration has nothing to reconcile there.
+        guard countsCrashes else { return }
+        guard defaults.object(forKey: Self.legacyCrashPolarityMigrationKey) == nil else { return }
+        defaults.set(true, forKey: Self.legacyCrashPolarityMigrationKey)
+
+        let wasActive = defaults.bool(forKey: safeModeActiveKey)
+        let count = defaults.integer(forKey: crashCountKey)
+        guard wasActive || count > 0 else { return }
+
+        defaults.set(false, forKey: safeModeActiveKey)
+        defaults.set(0, forKey: crashCountKey)
+        postStateChanged()
+        NSLog("[SafeModeService] ID-REVIEW-1046: cleared the spurious safe-mode state "
+              + "(active=\(wasActive), crashCount=\(count)) left by the inverted sentinel polarity")
+    }
+
     /// ID-CRASH-0003: called on applicationDidFinishLaunching, before
     /// any work that could prime caches. Detects whether the previous
     /// launch crashed (no sentinel) and either increments the counter
@@ -151,6 +227,24 @@ final class SafeModeService {
     /// Must be called exactly once per launch. Calling it twice in
     /// the same launch would double-count a single previous crash.
     func registerPreviousLaunchDidCrash() {
+        // ID-REVIEW-1046: a test process has no "previous launch" to judge
+        // ⇒ no crash bookkeeping ⇒ no writes into the process-shared
+        // SafeMode suite (which the ZZZ canary watches — an app-startup
+        // write there is not attributable to any test, so the canary would
+        // blame a bystander).
+        //
+        // The SENTINEL FILE is still written — into the TEST-ISOLATED
+        // directory (ID-REVIEW-1045's 同族第 9 例 fix) — because that
+        // write is exactly what proves the test host never touches the
+        // user's own sentinel.
+        guard countsCrashes else {
+            writeSentinel()
+            return
+        }
+        // ID-REVIEW-1046: reconcile the state the inverted polarity left
+        // behind BEFORE the crash accounting runs (the accounting below
+        // then sees the restored, truthful counter).
+        reconcileLegacyCrashPolarity()
         // ID-CRASH-0004: if the sentinel writer is degraded, we
         // can't tell whether a missing sentinel is "previous launch
         // crashed" or "previous launch's writer failed". Skip the
@@ -166,16 +260,37 @@ final class SafeModeService {
         // ID-CRASH-0004: pre-flight the sentinel write BEFORE
         // counting. If our writer can't reach the file (sandbox
         // denial, disk full, etc.), don't increment the crash
-        // counter — we can't tell a missing sentinel apart from a
-        // write failure, and counting a write failure as a crash
-        // would push the user toward safe-mode for an unrelated
-        // reason. The three-piece gate on the write path itself
-        // surfaces the degraded state to the user.
-        guard fileManager.fileExists(atPath: sentinelURL.path) else {
-            // No sentinel = previous launch terminated abnormally
-            // OR our writer failed previously. Try writing now —
-            // if it succeeds, this launch was just a force-quit;
-            // if it fails, we mark degraded and don't count.
+        // counter — we can't tell "the previous run crashed" apart
+        // from "our writer failed", and counting a write failure as
+        // a crash would push the user toward safe-mode for an
+        // unrelated reason. The three-piece gate on the write path
+        // itself surfaces the degraded state to the user.
+        //
+        // ID-REVIEW-1046 (2026-10-28): the POLARITY FIX.
+        //
+        // The protocol (see this file's header comment,
+        // `clearSentinelOnNormalExit()` and
+        // `AppDelegate.applicationWillTerminate`):
+        //
+        //   * the sentinel is WRITTEN at launch,
+        //   * it is DELETED on a GRACEFUL exit,
+        //   * ⇒ "the sentinel is STILL THERE at the next launch" means
+        //     "the previous run never reached applicationWillTerminate"
+        //     ⇒ THAT is the crash signal.
+        //
+        // The old code had it backwards — it counted a crash when the
+        // sentinel was MISSING, i.e. exactly when the previous run had
+        // exited gracefully. Measured consequences on the user's own
+        // machine: every normal ⌘Q was counted as a crash
+        // (`safeMode.crashCount` reached 8, `safeMode.active` was
+        // switched on for an app that had never crashed), and real
+        // crashes were never detected at all.
+        let sentinelSurvived = fileManager.fileExists(atPath: sentinelURL.path)
+        // The sentinel on disk belongs to the PREVIOUS launch — ours
+        // must be fresh, so drop it before writing our own.
+        _ = try? fileManager.removeItem(at: sentinelURL)
+        if sentinelSurvived {
+            // The previous launch did NOT exit gracefully ⇒ it crashed.
             let writeOK = writeSentinel()
             guard writeOK else { return }
             let newCount = crashCount + 1
@@ -185,10 +300,8 @@ final class SafeModeService {
             }
             return
         }
-        // Sentinel present = previous launch terminated normally.
-        // (Stale sentinel from a force-quit-with-sentinel-installed
-        // is a rare edge case we accept — the threshold absorbs it.)
-        _ = try? fileManager.removeItem(at: sentinelURL)
+        // No sentinel ⇒ the previous launch exited gracefully ⇒ NOT a
+        // crash. Just take the sentinel for this launch.
         writeSentinel()
     }
 
@@ -197,6 +310,8 @@ final class SafeModeService {
     /// queued, backup triggered if needed). Resets the counter so a
     /// future crash starts a fresh 3-launch window.
     func registerSuccessfulLaunch() {
+        // ID-REVIEW-1046: no bookkeeping in a test process (see `shared`).
+        guard countsCrashes else { return }
         defaults.set(0, forKey: crashCountKey)
     }
 
@@ -262,8 +377,12 @@ final class SafeModeService {
                     NSLog("[SafeModeService] sentinel write recovered on attempt #%d", attempt + 1)
                 }
                 if !sentinelHealthy {
-                    defaults.set(true, forKey: sentinelHealthyKey)
-                    postStateChanged()
+                    // ID-REVIEW-1046: in a test process the bookkeeping is
+                    // off ⇒ don't write into the shared SafeMode suite.
+                    if countsCrashes {
+                        defaults.set(true, forKey: sentinelHealthyKey)
+                        postStateChanged()
+                    }
                 }
                 return true
             } catch {
@@ -283,8 +402,14 @@ final class SafeModeService {
         // accounting so a write failure on our side doesn't push the
         // user toward safe-mode for a non-crash.
         if sentinelHealthy {
-            defaults.set(false, forKey: sentinelHealthyKey)
-            postStateChanged()
+            // ID-REVIEW-1046: in a test process the bookkeeping is off ⇒
+            // don't write into the shared SafeMode suite (the ZZZ canary
+            // watches it, and an app-startup write there is not
+            // attributable to any test).
+            if countsCrashes {
+                defaults.set(false, forKey: sentinelHealthyKey)
+                postStateChanged()
+            }
         }
         return false
     }

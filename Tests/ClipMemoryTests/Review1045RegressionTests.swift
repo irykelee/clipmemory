@@ -451,6 +451,58 @@ final class Review1045RegressionTests: XCTestCase {
         )
     }
 
+    // MARK: - ⑰⑱ 独立核验实测的真洞：状态项的**创建动作**必须可观测
+
+    /// ⑰ **行为守卫**：测试宿主**一个状态项都没创建过**。
+    ///
+    /// ⚠️ 这一条来自独立核验员**实测**的真洞（ID-REVIEW-1045 P1-2）。
+    /// 修之前的静态守卫钉的是「**资源来源**」（`NSStatusBar.system` 出现
+    /// 几次）和「**调用点实参**」（是不是规范探针），**没钉「创建动作」**
+    /// ⇒ 下面这个变异能同时躲过它们：
+    ///
+    /// ```swift
+    /// let allowed = Self.shouldCreateStatusItem(isRunningTests: TestIsolation.isRunningTests)
+    /// let bar = NSStatusBar.system                 // ← 仍然只有 1 次 ⇒ 资源守卫绿
+    /// let created = Self.makeStatusItem(bar)       // ← 创建在这里，无条件发生
+    /// if allowed { statusItem = created }          // ← 没赋值 ⇒ 属性守卫绿
+    /// ```
+    ///
+    /// 实测结果：**36 条测试全绿 + 跨进程哨兵绿**，而测试宿主**真的**在用户
+    /// 菜单栏占了一个位置 —— 正是 ID-REVIEW-1044 关掉的那个缺陷。
+    ///
+    /// ⇒ 修法是让创建**可观测**：`AppDelegate.makeStatusItem()` 是唯一的
+    /// 创建点，每次调用都计数 ⇒ **行为守卫**断言「测试宿主创建数为 0」。
+    /// ⇒ 别名、改名、把创建挪到 helper 里 —— 都躲不过一个**计数**。
+    func testTheTestHostNeverCreatedAMenuBarStatusItem() {
+        XCTAssertEqual(
+            AppDelegate.statusItemCreations, 0,
+            "测试宿主**不得**创建任何菜单栏状态项"
+            + "（`LSUIElement = true` ⇒ 它就是 app 在菜单栏上的全部存在；"
+            + "创建数 > 0 ⇒ 用户菜单栏里多了一个来路不明的 ClipMemory 图标，"
+            + "而属性守卫与资源守卫都看不见它 —— ID-REVIEW-1045 独立核验实测："
+            + "36 条测试全绿）"
+        )
+    }
+
+    /// ⑱ 状态项必须**赋给** `AppDelegate.statusItem`，且只有这一处。
+    ///
+    /// ⑰ 才是主修复（计数看得见**创建**）；这一条是 belt-and-braces：它把
+    /// 「状态项最终落在谁身上」钉死，避免有人把创建拆到别处却仍算作
+    /// 「创建了但没人要」。
+    func testTheStatusItemMustBeAssignedToTheAppDelegateProperty() throws {
+        // Scoped to AppDelegate.swift on purpose: `statusItem = ` also
+        // appears in WindowManager.swift, where it assigns a DIFFERENT
+        // type's property — the needle must not confuse the two.
+        let sites = try Self.callSites(of: "statusItem = ")
+            .filter { $0.hasPrefix("AppDelegate.swift") }
+        XCTAssertEqual(
+            sites, ["AppDelegate.swift×1"],
+            "状态项必须**赋给** `AppDelegate.statusItem`，且只有这一处"
+            + "（守卫 ⑰ 才是「创建动作可观测」的主修复；这条防的是"
+            + "「创建了却没人要」）"
+        )
+    }
+
     // MARK: - Helper
 
     private static func repoRoot() -> URL {

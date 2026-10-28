@@ -184,7 +184,21 @@ If TSan infrastructure reveals an unexpectedly high number of races, or if Swift
 > measured note about `loadFullSizeImageAsync` returning its completion on
 > the main thread.
 >
-> <!-- nonisolated-unsafe-declaration-count: 20 -->
+> ID-REVIEW-1045 (2026-10-28): **{count} declarations**. The two new ones are the
+> menu-bar status item's **creation seam** in `AppDelegate`:
+> `statusItemFactory` (`AppDelegate.swift:575`) — the closure that actually
+> creates the `NSStatusItem` — and `statusItemCreationCount`
+> (`AppDelegate.swift:580`) — the counter that makes the creation **observable**
+> (the static guards pinned the RESOURCE and the ARGUMENT, never the ACT of
+> creating ⇒ a mutation could create the item without assigning it and every
+> guard stayed green while the test host really occupied a slot in the user's
+> menu bar). Both are guarded by `statusItemFactoryLock` (`:574`). They are
+> deliberately NOT folded into `TestIsolation.defaults`: that seam owns
+> `UserDefaults` storage, these own the **creation action** on a system
+> resource — the same "one concept, two mechanisms" split as
+> `AppPasteboard.overrideBoard`.
+
+> <!-- nonisolated-unsafe-declaration-count: 22 -->
 
 ### How this was measured
 
@@ -198,9 +212,17 @@ Reproduce with (run from the repo root):
 rg -n --no-heading -g '*.swift' '^[^/]*nonisolated\(unsafe\)' ClipMemory/
 ```
 
-Raw output on 2026-10-27 — 20 lines, i.e. 20 declarations:
+Raw output on 2026-10-28 — 22 lines, i.e. 22 declarations:
 
 ```
+AppDelegate.swift:575:    nonisolated(unsafe) static var statusItemFactory: (NSStatusBar) -> NSStatusItem = {
+AppDelegate.swift:580:    nonisolated(unsafe) static var statusItemCreationCount = 0
+Services/LanguageManager.swift:29:    nonisolated(unsafe) static var injectedForTest: LanguageManager?
+Services/LanguageManager.swift:74:    nonisolated(unsafe) static var defaults: UserDefaults {
+Services/LanguageManager.swift:102:    nonisolated(unsafe) private static var codeStorage: String = "en"
+Services/WindowManager.swift:113:    nonisolated(unsafe) static var defaults: UserDefaults {
+Services/UpdateService.swift:202:    nonisolated(unsafe) static var defaults: UserDefaults {
+Services/UpdateService.swift:235:    nonisolated(unsafe) static var injectedForTest: UpdateService?
 Services/ClipboardStore.swift:928:    nonisolated(unsafe) let contentCache: NSCache<NSString, NSString> = {
 Services/ClipboardStore.swift:939:    nonisolated(unsafe) private let rtfPlaintextCache: NSCache<NSString, NSString> = {
 Services/ClipboardStore.swift:1046:    nonisolated(unsafe) var pendingFailedIDs = Set<UUID>()
@@ -212,12 +234,6 @@ Services/ClipboardStore.swift:2446:    nonisolated(unsafe) var prewarmInFlight =
 Services/ClipboardStore.swift:2447:    nonisolated(unsafe) var prewarmPendingItems: [ClipboardItem]?
 Services/ClipboardStore.swift:2448:    nonisolated(unsafe) var prewarmPendingCompletions: [() -> Void] = []
 Services/ClipboardStore.swift:2457:    nonisolated(unsafe) var pendingPrewarmWorkItem: DispatchWorkItem?
-Services/LanguageManager.swift:29:    nonisolated(unsafe) static var injectedForTest: LanguageManager?
-Services/LanguageManager.swift:74:    nonisolated(unsafe) static var defaults: UserDefaults {
-Services/LanguageManager.swift:102:    nonisolated(unsafe) private static var codeStorage: String = "en"
-Services/UpdateService.swift:202:    nonisolated(unsafe) static var defaults: UserDefaults {
-Services/UpdateService.swift:235:    nonisolated(unsafe) static var injectedForTest: UpdateService?
-Services/WindowManager.swift:113:    nonisolated(unsafe) static var defaults: UserDefaults {
 Utils/AppPasteboard.swift:81:    private nonisolated(unsafe) static var overrideBoard: NSPasteboard?
 Utils/AppStorageDefaults.swift:93:    private nonisolated(unsafe) static var overrideStorage: UserDefaults?
 Utils/TestIsolation.swift:97:    private nonisolated(unsafe) static var defaultsStorage: UserDefaults = baselineDefaults
@@ -239,6 +255,8 @@ just copied from the declaration comments.
 
 | File | Line | Symbol | Current isolation (verified) | Phase 3 plan |
 |------|------|--------|------------------------------|--------------|
+| `AppDelegate.swift` | 575 | `statusItemFactory: (NSStatusBar) -> NSStatusItem` | ID-REVIEW-1045 P1-2: the seam that creates the menu-bar status item. The factory is **read** under `statusItemFactoryLock` (`:574`) inside `makeStatusItem()` (`:592`) and **invoked outside** the lock (the creation itself must not hold the lock). It is deliberately NOT `TestIsolation.defaults`: that seam owns `UserDefaults` storage, this one owns the **creation action** on a system resource | actor-isolate the canonical seam |
+| `AppDelegate.swift` | 580 | `statusItemCreationCount: Int` | ID-REVIEW-1045 P1-2: the counter that makes the creation **observable** — every increment and every read is bracketed by `statusItemFactoryLock` (`:574`; reads go through `statusItemCreations` at `:583`). A behavioural guard asserts "the test host created NOTHING" ⇒ aliasing, renaming or moving the creation into a helper cannot hide it | actor-isolate the canonical seam |
 | `Services/ClipboardStore.swift` | 928 | `contentCache: NSCache` | `NSCache` is documented thread-safe (per NSCache header); the nonisolated decrypt kernels touch it from prewarm's utility-queue workers | actor-isolated cache |
 | `Services/ClipboardStore.swift` | 939 | `rtfPlaintextCache: NSCache` | same NSCache thread-safety contract as `contentCache` | actor-isolated cache |
 | `Services/ClipboardStore.swift` | 1046 | `pendingFailedIDs: Set<UUID>` | every access bracketed by `pendingFailedIDsLock` (`:1047`) — `ClipboardStore.swift:2419`, `ClipboardStore+Encryption.swift:59,252,310,322` | actor-isolated state |
@@ -260,8 +278,9 @@ just copied from the declaration comments.
 | `Utils/AppPasteboard.swift` | 81 | `overrideBoard: NSPasteboard?` | test seam — the pasteboard the app reads from and writes to. ID-REVIEW-1042 (2026-10-27): in a test process the app binds to a PRIVATE pasteboard, so the suite can neither read nor write the user's real clipboard (ID-REVIEW-1041 measured the damage: the suite's fixtures were captured by a separately running ClipMemory app into the user's real history, and the final `clearContents()` emptied the clipboard). Deliberately NOT `TestIsolation.defaults` — that seam owns `UserDefaults` storage, this one owns a system resource. Guarded by `AppPasteboard.lock`; the read points are NOT all on the main actor (`ClipboardMonitor` polls from its own timer queue), so a bare `static var` would be a data race — the same shape that aborted the test host in CI run 40186263416 | actor-isolate the canonical seam |
 | `Utils/AppStorageDefaults.swift` | 93 | `overrideStorage: UserDefaults?` | test seam — the appearance store the view tree's `@AppStorage` declarations and `sz(_:)` resolve against. ID-REVIEW-1039 (2026-10-27): deliberately NOT `TestIsolation.defaults`, and it owns its own suite in a test process. Reason (measured): swapping the canonical service seam invalidates `LanguageManager.shared`'s **instance-identity** cache (`_sharedDefaultDefaults === defaults`), so the next read of `shared` re-creates the manager and binds it to whatever the service seam holds at that moment — and the next `selectedLanguage` assignment writes `appLanguage` + `AppleLanguages` into THAT store. When that store is the baseline suite, the ZZZ canary goes red naming four unrelated test classes. (`LanguageManager.init` itself writes nothing — `didSet` does not fire during `init`.) Guarded by `AppStorageDefaults.lock` (`:90`) | actor-isolate the canonical seam |
 
-**20 declarations** = 12 production cache/state vars (11 in
-`ClipboardStore` + `LanguageManager.codeStorage`) + 8 test-seam statics
+**22 declarations** = 14 production cache/state vars (11 in
+`ClipboardStore` + `LanguageManager.codeStorage` + the 2 `AppDelegate`
+status-item creation seam vars) + 8 test-seam statics
 (3 service forwarders + 2 `injectedForTest` + 1 canonical storage
 + 1 appearance-seam override + 1 pasteboard-seam override).
 
@@ -299,4 +318,4 @@ commit — the alternative is a row that points at the wrong line.
 
 ---
 
-*Last updated: 2026-10-27 (ID-REVIEW-1042: §8 refreshed — the new `AppPasteboard` pasteboard seam contributes the 20th `nonisolated(unsafe)` declaration (`Utils/AppPasteboard.swift:76`, `overrideBoard`); the COUNT moves 19 → **20**, and the roster row + raw-output block are refreshed in the same commit, as the drift-protection test demands). Previous: 2026-10-26 (ID-REVIEW-1036: §8's `LanguageManager` / `UpdateService` / `TestIsolation` rows refreshed — the ID-REVIEW-1036 seam hardening moved `TestIsolation.defaults` from a stored property to a lock-guarded computed accessor over `defaultsStorage` (declaration now at :97), which shifted the `LanguageManager` rows (20→29, 65→74, 93→102) and `UpdateService.injectedForTest` (226→235); the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1026: §8's `ClipboardStore` rows refreshed again — the ID-REVIEW-1026 sentinel rework moved the declarations to 928–2457; the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1025: §8's `ClipboardStore` rows refreshed twice — the declarations moved from 2329–2341 to 2347–2359 (the `pendingKeyItems` overflow notification) and then to 2397–2409 (the items-load-failed sentinel check); the COUNT is unchanged). Previous: 2026-10-23 (ID-REVIEW-1024 review: §8's `TestIsolation` row refreshed — the declaration moved from line 50 to line 84 in ID-CRASH-0066 — and the line numbers are now enforced by a test, like the count). Previous: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*
+*Last updated: 2026-10-28 (ID-REVIEW-1045: §8 refreshed — the menu-bar status item's creation seam contributes 2 new `nonisolated(unsafe)` declarations (`AppDelegate.swift:575` `statusItemFactory`, `:580` `statusItemCreationCount`); the COUNT moves 20 → **22**, and the roster rows + raw-output block are refreshed in the same commit, as the drift-protection test demands). Previous: 2026-10-27 (ID-REVIEW-1042: §8 refreshed — the new `AppPasteboard` pasteboard seam contributes the 20th `nonisolated(unsafe)` declaration (`Utils/AppPasteboard.swift:76`, `overrideBoard`); the COUNT moves 19 → **20**, and the roster row + raw-output block are refreshed in the same commit, as the drift-protection test demands). Previous: 2026-10-26 (ID-REVIEW-1036: §8's `LanguageManager` / `UpdateService` / `TestIsolation` rows refreshed — the ID-REVIEW-1036 seam hardening moved `TestIsolation.defaults` from a stored property to a lock-guarded computed accessor over `defaultsStorage` (declaration now at :97), which shifted the `LanguageManager` rows (20→29, 65→74, 93→102) and `UpdateService.injectedForTest` (226→235); the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1026: §8's `ClipboardStore` rows refreshed again — the ID-REVIEW-1026 sentinel rework moved the declarations to 928–2457; the COUNT is unchanged at 18). Previous: 2026-10-24 (ID-REVIEW-1025: §8's `ClipboardStore` rows refreshed twice — the declarations moved from 2329–2341 to 2347–2359 (the `pendingKeyItems` overflow notification) and then to 2397–2409 (the items-load-failed sentinel check); the COUNT is unchanged). Previous: 2026-10-23 (ID-REVIEW-1024 review: §8's `TestIsolation` row refreshed — the declaration moved from line 50 to line 84 in ID-CRASH-0066 — and the line numbers are now enforced by a test, like the count). Previous: 2026-10-23 (ID-CRASH-0064: §8 re-measured — 17 → **18** declarations, line numbers and two isolation contracts corrected, count now enforced by a test). Previous: 2026-09-29 (ID-CRASH-0030 P2-21 roster appended). Related: `.github/workflows/tsan.yml`, `audit-report-2026-08-15.md` (MEDIUM-14 / ID-STORE-0008).*

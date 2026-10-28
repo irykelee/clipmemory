@@ -61,7 +61,7 @@ final class Review1044RegressionTests: XCTestCase {
         XCTAssertNil(
             delegate.hotKeyManager?.hotKeyRef,
             "测试宿主不得持有系统级全局热键（hotKeyRef 非 nil ⇒ ⌘⇧V 被测试进程占着，"
-            + "用户的 app 会注册失败并静默失去热键）"
+            + "用户按 ⌘⇧V 时测试宿主**也会响应**，在用户屏幕上弹一个假窗口）"
         )
     }
 
@@ -189,7 +189,9 @@ final class Review1044RegressionTests: XCTestCase {
         if testHostHoldsIt {
             XCTFail(
                 "测试宿主占着生产热键 ⌘⇧V（status=\(status)）—— "
-                + "用户的 app 将注册失败并静默失去热键，直到重启 app"
+                + "用户按 ⌘⇧V 时测试宿主**也会响应**，在用户屏幕上弹一个假窗口"
+                + "（注意：Carbon 的键位组合只在**同一进程内**独占 —— 跨进程实测"
+                + "两个进程可同时持有同一组合 ⇒ 用户的真 app **仍能**注册成功）"
             )
             return
         }
