@@ -2232,5 +2232,5 @@ M6 的变异改写成合法 Swift 后**红**。
 | 新测试 | `Review1045RegressionTests.swift`，**19 个** |
 | lint | **10 条 = 基线**（本轮一度引入 2 条：1 条 trailing_comma + 1 条标识符超 40 字符，已修） |
 | Release + 跨进程哨兵 | **绿**（干净 Release）/ **红**（M13 变异，红在正确理由上） |
-| 用户环境 | 生产钥匙串项 `cdat`/`mdat` 仍是 2026-07-19（**逐字节未变**）；用户崩溃哨兵 inode/mtime **不再变化**；**零残留进程**（app / `SecurityAgent` / `log stream`） |
+| 用户环境 | 生产钥匙串项 `cdat`/`mdat` 仍是 2026-07-19（**逐字节未变**）；用户崩溃哨兵 inode/mtime **不再变化**；**零残留进程**（app / `SecurityAgent` / `log stream`）；**`~/Library/Preferences` 的 plist 端到端 delta = 0**（跑一次 `Review1045RegressionTests` 前后逐文件比对：1040 → 1040，新增清单为空） |
 | 台账 | 本节 §45（+ §44 订正） |
