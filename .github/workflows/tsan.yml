@@ -31,8 +31,14 @@ jobs:
     # ID-CI-0009 (2026-09-26): PR subset assertion drift guard.
     # PR 触发: 跑最可能暴露 race 的 subset. The "-ne" assertion below
     # calibrates the expected count to the live `-only-testing` filter
-    # list (see SUBSET_EXPECTED in the assertion step — 95 as of
-    # 2026-10-15, confirmed by Scripts/lint-tsan-filter.sh).
+    # list (see SUBSET_EXPECTED in the assertion step — 97 as of
+    # 2026-10-28, confirmed by Scripts/lint-tsan-filter.sh).
+    # ⚠️ ID-REVIEW-1046 (2026-10-28): 95 → 97. The `SafeModeServiceTests`
+    # class gained 2 tests (the "写哨兵失败时不得计数" and the
+    # "计数必须是有条件清零" regressions) and it IS one of the 9 subset
+    # classes ⇒ the expected count had to move with it.
+    # ⇒ **This is the "看 33 个" rule applied to CI**: adding a test to ANY
+    # subset class breaks this guard, and the guard is what tells you.
     # Update that env var when intentionally adding/removing a
     # race-prone test class. ID-CI-0009 added SUBSET_PASSED export so
     # the PR comment can distinguish "subset broken" from "subset
@@ -66,7 +72,7 @@ jobs:
       # expected count. Both the assertion step (bash) and the PR
       # comment step (JS via process.env) read this. Update when the
       # `-only-testing` class list changes — see comment above.
-      SUBSET_EXPECTED: '95'
+      SUBSET_EXPECTED: '97'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 

@@ -224,10 +224,17 @@ final class Review1046RegressionTests: XCTestCase {
     /// ⑤ 旧极性误置的 `safeMode.active` / `safeMode.crashCount` ⇒
     /// **一次性**清理；且**只**清理一次。
     ///
-    /// 为什么可以证明「清理是对的」而不是「猜测」：
+    /// 为什么该清（**强论证**，不是「证明」—— ID-REVIEW-1046 核验 P2-1 订正）：
     /// 旧极性下，计数**只**在「上次没有哨兵」时 +1，而「上次没有哨兵」
-    /// 在协议里唯一对应「上次**正常退出**」⇒ **旧极性记下来的每一次
-    /// 「崩溃」都是一次正常退出** ⇒ 计数与安全模式标志 100% 是假的。
+    /// **绝大多数**对应「上次**正常退出**」⇒ **旧极性记下来的绝大多数
+    /// 「崩溃」都是一次正常退出** ⇒ 计数与安全模式标志**几乎必然是假的**。
+    ///
+    /// ⚠️ **订正记录**：本注释原先写的是「『上次没有哨兵』**唯一**对应
+    /// ⇒ **100% 是假的**」—— 那**过头**了：「上次没有哨兵」还可能是
+    /// **早崩**（崩在哨兵写下之前 ⇒ 那次崩溃在旧极性下**确实**被计了 ⇒
+    /// 计数里**可能有真计数**）、全新安装、1045 的测试宿主删过哨兵、
+    /// 用户/清理工具删过它。⇒ 清理仍然正确（理由见台账 §46.6），
+    /// 但**不再声称是证明**。
     func testLegacySpuriousSafeModeStateIsReconciledExactlyOnce() {
         defaultsSuite.set(true, forKey: "safeMode.active")
         defaultsSuite.set(8, forKey: "safeMode.crashCount")
@@ -238,7 +245,7 @@ final class Review1046RegressionTests: XCTestCase {
         XCTAssertFalse(
             service.isInSafeMode,
             "旧极性下 `safeMode.active` 只可能被「把正常退出当成崩溃」的路径"
-            + "置为 true ⇒ 它 100% 是假的 ⇒ 必须清掉（用户此刻正被它挡在"
+            + "置为 true ⇒ 它几乎必然是假的 ⇒ 必须清掉（用户此刻正被它挡在"
             + "安全模式外面）"
         )
         XCTAssertEqual(service.crashCount, 0, "误计数必须一并清零")

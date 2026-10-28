@@ -49,6 +49,51 @@ final class MainWindow: NSWindow {
     }
 }
 
+/// ID-REVIEW-1047 (2026-10-28): AppKit's **frame autosave** must not run in
+/// a test process.
+///
+/// `setFrameAutosaveName(_:)` makes AppKit persist the window's frame into
+/// `UserDefaults.standard` under the derived key `NSWindow Frame <name>`.
+/// In the **test host** `UserDefaults.standard` IS the user's real
+/// `com.clipmemory.app` domain ⇒ **a test that opens the window overwrites
+/// the user's saved window position**.
+///
+/// Measured 2026-10-28 (this round's own test runs): the user's Settings
+/// window moved `970 → 971` on the x axis — because the test host opens the
+/// window and `AppDelegate.positionSettingsWindow` places it relative to the
+/// main window, which is somewhere else in the test host ⇒ AppKit autosaved
+/// the test-derived position.
+///
+/// ⇒ **The ZZZ canary cannot see this**: its `systemKeyPrefixes` filter
+/// (`NS` / `Apple` / `com.apple.`) hides every `NSWindow Frame *` key. The
+/// filter exists for genuine system keys — but *our* autosave names wear an
+/// `NS` prefix, so the filter hides our own key too
+/// (*a canary that cannot see cannot protect*).
+///
+/// ⇒ Fix: in a test process the frame is simply **not autosaved**. The
+/// window keeps its deterministic init rect (tests get a stable geometry —
+/// better than restoring the user's frame) and the user's domain stays
+/// untouched.
+enum WindowFrameAutosave {
+    /// The **pure** decision — should this window's frame be autosaved?
+    ///
+    /// Split out so the production half is assertable from a test (inside a
+    /// test host `TestIsolation.isRunningTests` is always true ⇒ "production
+    /// ⇒ autosave" is otherwise structurally unreachable).
+    nonisolated static func shouldAutosave(isRunningTests: Bool) -> Bool {
+        !isRunningTests
+    }
+
+    /// Attach `name` as the autosave name — **production only**.
+    ///
+    /// Production behaviour is byte-identical: the same name, the same
+    /// AppKit restore-on-show, the same save-on-move.
+    static func apply(to window: NSWindow, name: String) {
+        guard shouldAutosave(isRunningTests: TestIsolation.isRunningTests) else { return }
+        window.setFrameAutosaveName(name)
+    }
+}
+
 class WindowManager: NSObject, NSWindowDelegate {
     private let logger = Logger(subsystem: "com.clipmemory.app", category: "WindowManager")
     private(set) var mainWindow: NSWindow?
@@ -188,8 +233,16 @@ class WindowManager: NSObject, NSWindowDelegate {
             // pass here would be overridden. An empty rect lets AppKit center
             // the window on its first launch (no prior autosave), then
             // restore on every subsequent launch.
+            //
+            // ID-REVIEW-1047 (2026-10-28): in a TEST process the autosave is
+            // skipped (see `WindowFrameAutosave`) ⇒ the autosave would write
+            // the user's saved window position into the user's real domain.
+            // ⇒ the `.zero` init rect has to be replaced by a deterministic
+            // one there, otherwise the window would have no size at all.
             let window = MainWindow(
-                contentRect: .zero,
+                contentRect: TestIsolation.isRunningTests
+                    ? NSRect(x: 0, y: 0, width: 800, height: 600)
+                    : .zero,
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered, defer: false
             )
@@ -202,7 +255,7 @@ class WindowManager: NSObject, NSWindowDelegate {
             //   - restore on show
             //   - off-screen defense (frame on a since-detached display
             //     is pulled back to the main visibleFrame on restore)
-            window.setFrameAutosaveName("com.clipmemory.app.MainWindow")
+            WindowFrameAutosave.apply(to: window, name: "com.clipmemory.app.MainWindow")
             window.delegate = self
             window.isReleasedWhenClosed = false
             // 2026-07-25: on macOS 26 (Tahoe) the title bar layer renders

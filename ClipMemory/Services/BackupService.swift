@@ -37,6 +37,60 @@ enum BackupError: LocalizedError {
 }
 
 final class BackupService {
+    /// ID-REVIEW-1047 (2026-10-28): the XCTest-isolated suite name.
+    ///
+    /// A **fixed** name (not a UUID) so a guard can address it and so the
+    /// suite does not create a new preferences plist on every test process.
+    nonisolated static let xcTestIsolationSuiteName = "BackupService-XCTest-isolation"
+
+    /// ID-REVIEW-1047: the **pure** resolver — which domain does a
+    /// `BackupService` bind to?
+    ///
+    /// Split out so the production half is assertable from a test (inside a
+    /// test host `TestIsolation.isRunningTests` is always true).
+    static func defaultsFor(isTestProcess: Bool) -> UserDefaults {
+        guard isTestProcess else { return .standard }
+        return UserDefaults(suiteName: xcTestIsolationSuiteName) ?? .standard
+    }
+
+    /// ID-REVIEW-1047: the per-process tmp root for the backup / image
+    /// directories of a test process.
+    ///
+    /// ID-CRASH-0031 follow-up (kept): the PID alone is not enough — a new
+    /// test process can land on a recycled PID while the previous process's
+    /// temp dir is still on disk. The UUID makes the directory unique per
+    /// process.
+    static let testIsolationRoot: URL = {
+        FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ClipMemory-BackupService-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)",
+            isDirectory: true
+        )
+    }()
+
+    /// ID-REVIEW-1047: the **pure** resolver — where do the user's backups
+    /// live?
+    ///
+    /// Production ⇒ the user's real `ClipMemory/Backups` directory.
+    /// A test process ⇒ a tmp directory, so a bare `BackupService()` in a
+    /// test can never create — or **prune** — the user's real backups.
+    static func defaultBackupsDirectory(isTestProcess: Bool) -> URL {
+        guard isTestProcess else {
+            return AppDirectories.applicationSupport
+                .appendingPathComponent("ClipMemory/Backups", isDirectory: true)
+        }
+        return testIsolationRoot.appendingPathComponent("Backups", isDirectory: true)
+    }
+
+    /// ID-REVIEW-1047: the sibling of `defaultBackupsDirectory` for the
+    /// image directory.
+    static func defaultImagesDirectory(isTestProcess: Bool) -> URL {
+        guard isTestProcess else {
+            return AppDirectories.applicationSupport
+                .appendingPathComponent("ClipMemory/Images", isDirectory: true)
+        }
+        return testIsolationRoot.appendingPathComponent("Images", isDirectory: true)
+    }
+
     /// ID-CRASH-0031 (2026-10-20): under XCTest the shared instance must
     /// not read the production `com.clipmemory.app` domain and must not
     /// write into the production `Backups/` directory.
@@ -48,16 +102,8 @@ final class BackupService {
     /// prune it, rotating the user's own backups out.
     static let shared: BackupService = {
         guard TestIsolation.isRunningTests else { return BackupService() }
-        let suiteName = "BackupService-XCTest-isolation"
-        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-            // ID-CRASH-0031 follow-up: the PID alone is not enough — a
-            // new test process can land on a recycled PID while the
-            // previous process's temp dir is still on disk. The UUID
-            // makes the directory unique per process.
-            "ClipMemory-BackupService-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)",
-            isDirectory: true
-        )
+        let defaults = BackupService.defaultsFor(isTestProcess: true)
+        let root = BackupService.testIsolationRoot
         return BackupService(
             backupsDirectory: root.appendingPathComponent("Backups", isDirectory: true),
             imagesDirectory: root.appendingPathComponent("Images", isDirectory: true),
@@ -141,12 +187,30 @@ final class BackupService {
     private let backupsDirectory: URL
     private let imagesDirectory: URL
 
-    init(backupsDirectory: URL? = nil, imagesDirectory: URL? = nil, defaults: UserDefaults = .standard, fileManager: FileManager = .default) {
-        let appSupport = AppDirectories.applicationSupport
+    /// ID-REVIEW-1047 (2026-10-28): the default parameters used to be
+    /// **production identities** — `defaults: UserDefaults = .standard`
+    /// plus the user's real `ClipMemory/Backups` / `ClipMemory/Images`
+    /// directories. A bare `BackupService()` inside a test would therefore
+    /// write into the user's real preferences domain and — worse — a
+    /// `backupNow()` would create and **prune** the user's real backups.
+    ///
+    /// ⇒ The defaults now resolve through the seams above: production keeps
+    /// `.standard` and the real directories (**byte-identical**), a test
+    /// process gets the isolated suite and a tmp directory.
+    ///
+    /// ⇒ Judged at the **convergence point** (`init`), not at the call
+    /// sites — the ID-REVIEW-1043 rule ("在收敛点判定，不在调用点判定").
+    init(
+        backupsDirectory: URL? = nil,
+        imagesDirectory: URL? = nil,
+        defaults: UserDefaults = BackupService.defaultsFor(isTestProcess: TestIsolation.isRunningTests),
+        fileManager: FileManager = .default
+    ) {
+        let inTests = TestIsolation.isRunningTests
         self.backupsDirectory = backupsDirectory
-            ?? appSupport.appendingPathComponent("ClipMemory/Backups", isDirectory: true)
+            ?? BackupService.defaultBackupsDirectory(isTestProcess: inTests)
         self.imagesDirectory = imagesDirectory
-            ?? appSupport.appendingPathComponent("ClipMemory/Images", isDirectory: true)
+            ?? BackupService.defaultImagesDirectory(isTestProcess: inTests)
         self.defaults = defaults
         // BKP-1 (2026-07-24): injectable so tests can deterministically fail
         // the .incomplete marker removal without chmod tricks on real dirs.
@@ -154,6 +218,11 @@ final class BackupService {
     }
 
     var backupsDirectoryURL: URL { backupsDirectory }
+
+    /// ID-REVIEW-1047 (2026-10-28): the sibling accessor for the image
+    /// directory — the regression guard needs to assert WHICH directory a
+    /// service binds to, and reading it must not write anything.
+    var imagesDirectoryURL: URL { imagesDirectory }
 
     var isEnabled: Bool {
         get { defaults.object(forKey: Self.enabledKey) as? Bool ?? true }

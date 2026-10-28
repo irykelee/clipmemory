@@ -175,6 +175,13 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         // AppDelegate init paths (StartupHealth + WelcomeView + BackupService):
         "lastLaunchTime",            // StartupHealth.swift:24, 144 — set in logSnapshot
         "hasLaunchedBefore",         // WelcomeView.swift:171, 178 — first launch marker
+        // ⚠️ ID-REVIEW-1047 (2026-10-28): this key is a **one-shot** value
+        // (written once, by the welcome window's "Get Started" button) ⇒ its
+        // production VALUE must never change during a suite. The main canary
+        // SKIPS every allowlisted key ⇒ a write here used to be invisible.
+        // ⇒ `testFirstLaunchFlagIsNeverChangedDuringTheSuite` now covers
+        // this key explicitly (absence-aware: added / removed / changed all
+        // fail; "absent before AND after" does not).
         "appLanguage",               // LanguageManager.shared init (4-LM seam) — writes current language
         // ID-CRASH-0031 (2026-10-20): "ClipboardTrashedItems" and
         // "ClipboardItems" REMOVED from this allowlist. They used to be
@@ -480,6 +487,81 @@ final class ZZZSuiteTeardownTests: XCTestCase {
             XCTFail(message)
             XCTAssert(false, message)
         }
+    }
+
+    /// ID-REVIEW-1047 (2026-10-28): the **pure** comparison behind
+    /// `testFirstLaunchFlagIsNeverChangedDuringTheSuite`.
+    ///
+    /// Pure on purpose: the guard has to be **testable without writing to
+    /// the production domain** — a guard that proves "we do not write
+    /// production" by writing production would BE the harm (the
+    /// ID-REVIEW-1042 lesson "验证工具本身不能成为它要消灭的那种伤害源").
+    ///
+    /// Returns the two rendered values when they DIFFER, `nil` when they
+    /// match. Because an absent key renders as `"<absent>"`, the three
+    /// destruction shapes are all covered by one equality check:
+    /// * added (absent → present) ⇒ drift
+    /// * removed (present → absent) ⇒ drift
+    /// * flipped (true → false) ⇒ drift
+    /// * absent on both sides ⇒ no drift (nothing happened)
+    static func firstLaunchFlagDrift(before: Any?, after: Any?) -> (before: String, after: String)? {
+        let beforeText = before.map { String(describing: $0) } ?? "<absent>"
+        let afterText = after.map { String(describing: $0) } ?? "<absent>"
+        guard beforeText != afterText else { return nil }
+        return (beforeText, afterText)
+    }
+
+    /// ID-REVIEW-1047 (2026-10-28): the **first-launch flag** is a one-shot
+    /// value — it is written exactly once, when the user finishes the
+    /// welcome flow — so its production value must **never** change during a
+    /// test run. Not "never appears" (a cold domain has no key at all), and
+    /// not "never flips" (a boolean has one value).
+    ///
+    /// ### Why a dedicated guard
+    ///
+    /// `hasLaunchedBefore` is listed in `appLifecycleKeys`, and the main
+    /// canary **skips every allowlisted key** ⇒ a write to it was invisible.
+    /// That is exactly the shape ID-REVIEW-1038 removed `ClipboardItems` /
+    /// `ClipboardTrashedItems` for: *a canary that tolerates a change cannot
+    /// see destruction*.
+    ///
+    /// ### Why the guard had teeth to lose
+    ///
+    /// `FirstLaunchService.init()` used to bind to `UserDefaults.standard`,
+    /// and `WelcomeView`'s "Get Started" button calls
+    /// `FirstLaunchManager.markLaunched()` ⇒ one click in the test host
+    /// would have flipped **the user's real** first-launch flag (the user's
+    /// app would stop showing the welcome screen). The isolation seam is
+    /// what makes this guard meaningful; see `FirstLaunchService`.
+    func testFirstLaunchFlagIsNeverChangedDuringTheSuite() throws {
+        // ID-REVIEW-1030: the comparison is only attributable when no other
+        // ClipMemory instance is running.
+        try skipIfAnotherInstanceIsRunning()
+        try XCTSkipUnless(
+            AAASuiteBootstrapTests.didSnapshotProductionDomain,
+            "production baseline not captured — the AAA suite bootstrap did not run in this process"
+        )
+
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
+        let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
+
+        let key = FirstLaunchService.hasLaunchedKey
+        guard let drift = Self.firstLaunchFlagDrift(
+            before: before[key],
+            after: after[key]
+        ) else { return }
+
+        let message = """
+        ID-REVIEW-1047: the production first-launch flag "\(key)" changed during \
+        the test suite (before: \(drift.before), after: \(drift.after)).
+        That flag is written exactly once, by the welcome window's "Get Started" \
+        button — so a change means a test reached that path and wrote into the \
+        user's real `com.clipmemory.app` domain. The user would silently stop \
+        seeing the welcome screen (or start seeing it again).
+        """
+        XCTFail(message)
+        XCTAssert(false, message)
     }
 
     /// Sanity check on environment invariants. NOT a ratchet —

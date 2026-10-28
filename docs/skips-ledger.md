@@ -2658,11 +2658,284 @@ left safeMode.crashCount in SafeModeService-XCTest-isolation
 
 ### 46.11 已知未覆盖 / 有意保留（如实记录）
 
-* **一次性迁移会自动清掉用户的 `safeMode.active`** ⇒ 这是**故意**的（§46.6 可证明
-  它 100% 是假的）。若将来出现「由别处置真」的路径，这条迁移必须同步复核。
+* **一次性迁移会自动清掉用户的 `safeMode.active`** ⇒ 这是**故意**的（§46.6 的**强论证**：
+  它**几乎必然**是假的 —— 注意 §46.6 的订正块已把本节原先的「**100% 是假的**」
+  **降级**为「绝大多数是假的」：早崩那次在旧极性下**确实**被计了 ⇒ 计数里
+  **可能有真计数** ⇒ 不得再声称「证明」）。若将来出现「由别处置真」的路径，
+  这条迁移必须同步复核。
 * **迁移只在 app 启动时执行** ⇒ 若用户长期不启动 app，误计数会一直留在盘上
   （但它只在被读时才有害 ⇒ 无实际影响）。
 * `safeMode.active` 本身仍是**粘性**的（迁移之后新触发的安全模式要用户点
   「退出安全模式」才清）⇒ 这是**原有设计**，本轮未改。
 * 协议固有的 **off-by-one**（一次崩溃要到下一次启动才被计到）**保留** ⇒ 已写进
   测试注释，防止后人「修正」它。
+
+---
+
+## 47. ID-REVIEW-1047（2026-10-28）：生产资源在**调用点**内联构造 —— 同族第 10 例
+
+> **它在哪儿冒出来的**：1046 收口后做「看 33 个」再扫时，顺手用脚本把 app 树里
+> **所有**「用户全局资源引用」列了一遍 ⇒ 撞出三处**和 1042–1046 同型**、但
+> 一直没被收口的实例。
+
+### 47.1 这一族的完整家谱（10 例）
+
+| 轮次 | 被污染的用户资源 | 闸门挂在哪个探针上 |
+|---|---|---|
+| §42 ID-REVIEW-1042 | 系统通用剪贴板 | `TestIsolation.isRunningTests` |
+| §43 ID-REVIEW-1043 | 生产钥匙串项 | 同上 |
+| §44 ID-REVIEW-1044 | 全局热键 ⌘⇧V + 菜单栏状态项 | 同上 |
+| §45 ID-REVIEW-1045 | 崩溃哨兵**文件** | 同上 |
+| §46 ID-REVIEW-1046 | 崩溃计数**共享 suite** | 同上 |
+| **§47 ID-REVIEW-1047（本条）** | **首次启动标志 / 恢复向导的图片目录 + 域 / 备份目录** | 同上 |
+
+⇒ 探针**只有一个**（`TestIsolation.isRunningTests`）—— 这一条从 1042 起就没变过，
+变的只是**挂在它上面的资源**。
+
+### 47.2 根因形状：**生产身份出现在「默认参数」和「调用点」里**
+
+1043 已经把这条教训写死了：**「默认参数常常就是生产身份」**、**「在收敛点判定，
+不在调用点判定」**。⇒ 本条的三处实例全都是它的复现：
+
+| # | 位置 | 内联的生产身份 | 用户可见后果 |
+|---|---|---|---|
+| ① | `FirstLaunchService.init()` | `self.store = .standard` | **首次启动标志被写进用户真实域** ⇒ 用户的 app 从此不再弹欢迎页 |
+| ② | `AppDelegate.showRestoreWizard()` | 内联 `ClipMemory/Images` + `defaults: .standard` | 恢复向导会把**导入的历史写进用户生产域**，并动用户真实图片目录 |
+| ③ | `BackupService.init(...)` | `defaults = .standard` + 生产目录默认值 | 测试里一个裸 `BackupService()` 写用户偏好域；一次 `backupNow()` **创建并剪掉用户的真实备份** |
+| ④ | `setFrameAutosaveName`（3 处窗口） | AppKit 把窗口位置自动保存进 `UserDefaults.standard` | **测试宿主会改写用户保存的窗口位置**（见 §47.6b） |
+
+⚠️ ④ 是**本轮实测撞出来的**（不是读代码读出来的）—— 见 §47.6b。
+
+### 47.3 ① 详细：`FirstLaunchService` 的注释在**撒谎**
+
+修前该文件的头部注释写着：
+
+> "Test seam: a `xcTestDefaults` suite name parallels the existing
+> `ClipboardStore.xcTestDefaults` pattern, so XCTest can redirect
+> `hasLaunchedBefore` reads/writes away from production `com.clipmemory.app`."
+
+⇒ **那个 seam 根本不存在**：该文件只有 `init()`（→ `.standard`）和
+`init(store:)`，零 `xcTestDefaults`。⇒ 一条**写在注释里的、没有被强制**的不变量
+—— 与 ID-REVIEW-1043 的教训**逐字同型**（「代码里写着的不变量 ≠ 被强制的不变量」）。
+
+**写路径是真的**：`WelcomeView.swift:24` 的「Get Started」按钮 →
+`FirstLaunchManager.markLaunched()` → `ServiceContainer.firstLaunch` →
+`FirstLaunchService()` → **`.standard`** ⇒ 用户的真实域。
+⇒ 而**测试宿主真的会开那个欢迎窗**（`SettingsWindowTests` 调
+`AppDelegate.showWelcomeView()`）⇒ 只要那个按钮被点一次，用户的首次启动标志
+就翻了。
+
+### 47.4 ② 详细：同一屏的两个调用点**不一致**
+
+`AppDelegate.showRestoreWizard()` 内联拼了生产图片路径，而**同一屏**的
+`BackupSettingsView.swift:207`（导出路径）**本来就走** `ImageStorage` 的 seam
+⇒ 两个调用点一个走一个不走 ⇒ 缺口长期隐形。
+
+⇒ 更糟的是它导入进去的那个 store（`ClipboardStore.shared`）**是隔离的**
+⇒ 于是「读源」在生产、「写目标」也在生产，但**中间那个 store** 在隔离域
+⇒ 一致性彻底破了。
+
+### 47.5 ③ 详细：备份目录比偏好域更狠
+
+`BackupService.init` 的默认值 = 用户的真实 `ClipMemory/Backups`。
+⇒ `backupNow()` 不只是写偏好域，它会**创建**备份目录，并按保留份数
+**剪掉用户自己的旧备份**（保留 3/7/14/30 份）。
+
+### 47.6 canary 盲区：`hasLaunchedBefore` **在白名单里**
+
+`ZZZSuiteTeardownTests.appLifecycleKeys` 含 `hasLaunchedBefore`
+⇒ 主 canary **跳过**所有白名单键 ⇒ 对这个键的写入**看不见**。
+
+⇒ 这与 ID-REVIEW-1038 把 `ClipboardItems` / `ClipboardTrashedItems` 移出白名单的
+理由**完全同型**：*能容忍变化 ⇒ 看不见破坏*。
+
+⇒ 修法**不是**把 key 拿掉（那会与「生产 app 冷启动会写它」的历史观察冲突），
+而是**给它一条专门的值稳定性守卫**（下节 47.7）。
+
+### 47.7 修法（四条，全部**零生产行为变化**）
+
+| # | 改法 | 生产侧 |
+|---|---|---|
+| ① | `FirstLaunchService.init()` 走**纯函数** seam `defaultsFor(isTestProcess:)` | `isTestProcess == false` ⇒ **就是** `.standard`（同一个对象） |
+| ② | `AppDelegate.showRestoreWizard()` 走 `ImageStorage.shared.imagesDirectoryURL` + `ClipboardStore.shared.defaults` | 路径**逐字节相同**、域**逐字节相同** |
+| ③ | `BackupService.init` 的默认参数走 `defaultsFor(isTestProcess:)` + `defaultBackupsDirectory(isTestProcess:)` / `defaultImagesDirectory(isTestProcess:)` | 生产分支仍返回 `.standard` 与两个真实目录 |
+| ④ | canary 新增 `testFirstLaunchFlagIsNeverChangedDuringTheSuite`（**值稳定性**守卫） | 纯读；只比较，不写 |
+
+⇒ 判定**全部落在收敛点**（`init` / 纯函数），**不在调用点**（1043 规则）。
+
+### 47.8 守卫（`Review1047RegressionTests`，10 条）
+
+| # | 守卫 | 形式 |
+|---|---|---|
+| ① | 测试进程里 `FirstLaunchService()` **不得**绑到生产域 | **行为**（只读） |
+| ② | `defaultsFor(isTestProcess: false)` **必须**就是 `.standard` | 纯函数 |
+| ③ | `defaultsFor(isTestProcess: true)` **不得**是生产域 | 纯函数 |
+| ④ | `ServiceContainer.firstLaunch` 这个 **seam** 不得绑到生产域 | 行为 |
+| ⑤ | `BackupService.defaultsFor` 两半 | 纯函数 |
+| ⑥ | 测试进程里的裸 `BackupService()` **不得**用生产目录 | 行为 |
+| ⑦ | 生产分支的目录/域**必须**与修前一致 | 纯函数 |
+| ⑧ | app 树里 `UserDefaults.standard` **只**允许出现在域判别器 | **静态**（文件集合） |
+| ⑨ | 恢复向导**必须**走 seam，且**不得**内联路径 | 静态（两条） |
+| ⑩ | canary 的比较函数**必须**能分辨「加了/删了/翻了/什么都没发生」 | 纯函数自测 |
+
+⚠️ **守卫全部是只读的** —— 这是 ID-REVIEW-1042 的教训
+（「验证工具本身不能成为它要消灭的那种伤害源」）：
+用「写生产域再检查」来证明「我们没写生产域」，那个**验证工具本身就是那个伤害源**
+⇒ 一旦实现退化，守卫会真的把用户的首次启动标志翻掉。
+⇒ 所以 ①④⑥ 断言的是「**这个实例绑到了哪个域/目录**」，不是「写进去之后有没有变」。
+
+⚠️ 守卫 ⑧ 盯的是**资源身份**（`UserDefaults.standard` 这个 API 名没法用别的写法
+绕开），不是「写法风格」—— ID-REVIEW-1044 的教训。
+
+### 47.9 变异（9 条，全部红）
+
+| ID | 变异 | 抓住它的守卫 |
+|---|---|---|
+| N1 | `FirstLaunchService.init()` 改回 `.standard` | ① ④ |
+| N2 | `FirstLaunchService.defaultsFor` 恒返回 `.standard` | ② ③ |
+| N3 | `ServiceContainer` 的 seam 显式绑 `.standard` | ④ |
+| N4 | 恢复向导改回内联图片路径 + `.standard` | ⑧ ⑨ |
+| N5 | `BackupService.init` 的 defaults 默认参数改回 `.standard` | ⑤ |
+| N6 | `BackupService.defaultsFor` 恒返回 `.standard` | ⑤ ⑥ |
+| N7 | 备份目录在测试进程里也指生产目录 | ⑥ |
+| N8 | 图片目录在测试进程里也指生产目录 | ⑥ |
+| N9 | canary 的漂移比较恒返回「无漂移」 | ⑩ |
+
+⚠️ harness 沿用 1046 的两条修正：**同一文件的多 patch 顺序应用**、
+**编译失败单列 `<BUILD_FAILED>`**；并**新增**：跑前快照用户的生产偏好 plist、
+每条变异后比对（变了就**大声报告 + 还原**）⇒ 验证工具本身不碰用户环境。
+
+### 47.10 「看 33 个」再扫：app 树 12 处 `defaults: UserDefaults = .standard` 逐条判定
+
+| 文件 | 处数 | 判定 |
+|---|---|---|
+| `LanguageManager.swift` | 1 | `LanguageManager.shared` 在测试进程里走隔离 suite ⇒ **已闸门** |
+| `StartupHealth.swift` | 2 | `AppDelegate.swift:86` 的 `guard !TestIsolation.isRunningTests` 挡住启动路径 ⇒ **已闸门** |
+| `ImageStorage.swift` | 3 | `ImageStorage.init` 在测试进程里**早退** ⇒ 迁移/清理都不跑 ⇒ **已闸门** |
+| `StorageBackend.swift` / `SQLiteStorageBackend.swift` | 2 | `ClipboardStore` 的测试分支用 `MemoryStorageBackend` ⇒ 生产 backend 不会被构造 ⇒ **不可达** |
+| `TrashStore.swift` | 1 | 由 `ClipboardStore.init` 用**同一个** `defaults` 构造 ⇒ **已闸门** |
+| `BackupPackage.swift` | 3 | 导出/导入的调用点现在都传 seam（`BackupSettingsView` / `RestoreWizardViewModel`）⇒ **已闸门** |
+
+⇒ **没有一个是「当前可达的活雷」**；但它们全是**同一个形状的地雷**
+⇒ 本轮把这一族的**形状**钉在了守卫 ⑧ 里（app 树里 `UserDefaults.standard`
+只允许出现在判别器里），并把**新写的**默认参数全部改成走 seam。
+
+### 47.11 顺带修掉的 CI 断点
+
+push 之后 CI **红了**：`lint-ids` job 的 **tsan filter lint (ID-CI-0010)**
+报 `SUBSET_EXPECTED=95, actual=97`。
+
+⇒ 根因是**上一轮（1046）自己造的**：1046 给 `SafeModeServiceTests` 加了 2 条测试，
+而那个类**正是 TSan subset 的 9 个类之一** ⇒ 期望数必须跟着动。
+⇒ 已把 `tsan.yml:69` 的 `SUBSET_EXPECTED` 改成 `97`，并把注释里的
+「95 as of 2026-10-15」一并订正。
+
+⇒ ⇒ **这条本身就是「看 33 个」在 CI 侧的形状**：往 subset 类里加测试会打破
+这个守卫 —— 而**正是这个守卫**告诉了你。
+
+### 47.12 已知未覆盖 / 有意保留（如实记录）
+
+* **`ImageStorage.migrateFromLegacyIfNeeded(defaults: .standard)`** 的**方法级**
+  闸门缺失 —— 闸门在 `ImageStorage.init`（早退）里 ⇒ 直接调该方法的路径没有
+  闸门；目前只有测试在调，且都显式传参 ⇒ **暂不改**（改它要动 `ImageStorage`
+  的公开契约）。
+* **`FileStorageBackend.init(defaults: .standard)`** 在测试进程里若被**直接**
+  构造，仍会写生产域 ⇒ 当前无此调用点（`ClipboardStore` 的测试分支用
+  `MemoryStorageBackend`）⇒ 记为**潜在**，待接线时一并处理。
+* **canary 的新守卫是「值稳定性」** ⇒ 它覆盖 add / remove / flip 三种破坏，
+  但**不覆盖**「键的存在性变了而值恰好相同」这种不可能的情形。
+* **`BackupService` 的 `defaultImagesDirectory` 在测试进程里指向 tmp**，
+  而 `ImageStorage` 的图片目录指向 `ClipMemory/Images-Tests` ⇒ 两者**不同源**
+  ⇒ 这是**既有**状况（`BackupService.shared` 修前就是这样），本轮未改。
+
+### 47.6b 同族第 11 例：**测试宿主会改写用户保存的窗口位置**（实测撞出来的）
+
+**它不是读代码读出来的，是本轮 harness 自己报出来的。**
+
+变异 harness 跑完 9 条后报 `prod_changed=True`（7/9 条）。第一反应是「harness 自己
+弄脏了用户环境」⇒ 按 ID-REVIEW-1042 的纪律去查**到底哪个键变了**：
+
+```
+NSWindow Frame com.clipmemory.app.SettingsWindow
+  '970 628 560 572 0 0 2560 1410 ' → '971 628 560 572 0 0 2560 1410 '
+```
+
+⇒ **用户的设置窗口在测试跑完后往右挪了 1 像素**，而且它写进了**用户真实的
+`com.clipmemory.app` 域**。
+
+**机制**（三处，全部在 app 树里）：
+
+| 位置 | autosave 名 |
+|---|---|
+| `WindowManager.swift` `MainWindow` | `com.clipmemory.app.MainWindow` |
+| `AppDelegate.swift` `showRecentCrashes()` | `com.clipmemory.app.RecentCrashesWindow` |
+| `AppDelegate.swift` `makeSettingsWindow()` | `com.clipmemory.app.SettingsWindow` |
+
+`setFrameAutosaveName(_:)` 让 AppKit 把窗口位置存进 `UserDefaults.standard`
+（键名派生为 `NSWindow Frame <name>`）⇒ **测试宿主里 `UserDefaults.standard`
+就是用户的真实域** ⇒ 测试宿主一开窗并挪动它，就**覆盖用户保存的位置**。
+
+**为什么正好是设置窗口**：测试宿主会开设置窗（`SettingsWindowTests` 调
+`AppDelegate.showWelcomeView()` / 设置窗路径），而
+`AppDelegate.positionSettingsWindow(win, relativeTo: mainWindow)` 会**把它挪到
+主窗口旁边** —— 测试宿主里的主窗口位置跟用户的不一样 ⇒ 算出来的位置也不一样
+⇒ AppKit 把这个**测试算出来的位置**存了下来。
+
+⚠️ **canary 看不见它**：ZZZ canary 的 `systemKeyPrefixes`（`NS` / `Apple` /
+`com.apple.`）会把每个 `NSWindow Frame *` 键滤掉。那个过滤器本来是给**系统**
+键用的，而**我们自己的** autosave 名恰好也带 `NS` 前缀 ⇒ *看不见 ⇒ 保护不了*。
+
+**修法**：`WindowFrameAutosave.apply(to:name:)` —— 一个**只在生产**才挂 autosave
+名的入口；测试进程里窗口保留自己那份**确定的** init rect（顺带让测试拿到稳定
+几何，比"恢复用户的位置"更好）。
+⇒ 三个调用点全部改走它；`MainWindow` 的 init rect 在测试进程里从 `.zero` 换成
+`800×600`（因为生产时它**依赖** autosave 恢复尺寸，测试里没有 autosave 就得有尺寸）。
+
+### 47.8b 新增守卫（⑪–⑭）
+
+| # | 守卫 | 形式 |
+|---|---|---|
+| ⑪ | 测试进程**不得**自动保存窗口位置 | 纯函数 |
+| ⑫ | 生产进程**必须**自动保存（零生产变化） | 纯函数 |
+| ⑬ | 测试进程里 `apply` **不得**真的挂上 autosave 名（只读 `frameAutosaveName`） | **行为** |
+| ⑭ | `setFrameAutosaveName` **只**允许出现在 `WindowFrameAutosave.apply` 里 | **静态**（文件集合 + 恰好 1 次） |
+
+⚠️ ⑬ 同样是**只读**守卫（读 `window.frameAutosaveName`）⇒ 实现退化时守卫本身
+**不会**去写用户的域。
+
+### 47.9b 新增变异（N10–N12）
+
+| ID | 变异 | 抓住它的守卫 |
+|---|---|---|
+| N10 | 窗口自动保存的判定恒为真 | ⑪ |
+| N11 | `apply` 绕过闸门直接 `setFrameAutosaveName` | ⑬ ⑭ |
+| N12 | 设置窗口绕过闸门直接 `setFrameAutosaveName` | ⑭ |
+
+### 47.13 harness 的两处自我修正（本轮实测）
+
+1. **`prod_changed` 的判据从「文件哈希」改成「解析后的键值对」**。
+   ⇒ 第一版用 sha256 比对 plist 文件 ⇒ `cfprefsd` 每次 flush 重新序列化就会让
+   哈希变 ⇒ **无变化的运行也被报成"用户的域变了"** ⇒ 假阳性会把真信号淹掉。
+   ⇒ 改成比对 `key → (类型, 值)`（`Data` 比字节）⇒ 只在**真变了**时才报。
+2. **N9（只改测试文件的变异）也报 `prod_changed=True`** ⇒ 这本身就是证据：
+   那条变化**与变异无关** ⇒ 是「窗口位置」这条共用路径 ⇒ 正好指向 §47.6b。
+
+⇒ ⇒ **元模式**：*当一条「本轮之外的信号」在多个变异上都出现时，它多半不是变异
+造成的 —— 而是**环境本来就脏**。⇒ 查它，而不是怀疑自己的工具。*
+
+### 47.13b `prod_changed` 的两条 True —— 一条**是真的**，一条是**假阳性**（如实记录）
+
+12 条变异跑完后，`prod_changed` 只剩 **2 条**为 True：
+
+| 变异 | `prod_changed` | 判定 |
+|---|---|---|
+| **N3**（`ServiceContainer` 的 seam 显式绑 `.standard`） | **True** | ✅ **真的**：那条变异确实让测试宿主把 `hasLaunchedBefore` 写进了用户的真实域 —— 而且 **canary 抓到了**（`testNoProductionPollution` 失败）⇒ **守卫有牙的正面证据**。harness 跑完立刻还原。 |
+| **N9**（canary 的漂移比较恒返回「无漂移」） | **True** | ⚠️ **假阳性**：N9 只改了一个**测试文件**，它**不可能**让 app 写用户域。⇒ 真凶是**上一条 N8** 的写入 —— `cfprefsd` 把它**缓存**着，harness 还原的是**文件**，cfprefsd 在 N9 期间才把缓存**写回**磁盘 ⇒ 于是 N9 替 N8 背了锅。 |
+
+⇒ **判据**（以**最终状态**为准，而不是单轮）：harness 跑完后，生产域与
+harness 起点的快照**逐字节一致**（sha256 相同、解析后的键值对相同）
+⇒ **用户的数据完好**。
+
+⇒ ⇒ **元模式**：*`cfprefsd` 是**写后缓存**的 ⇒ 「还原文件」不等于「还原状态」；
+而「下一轮才出现的污染」几乎总是**上一轮**留下的。⇒ 判「有没有弄脏用户环境」
+要看**终点与起点的对比**，不能看单轮的信号。*

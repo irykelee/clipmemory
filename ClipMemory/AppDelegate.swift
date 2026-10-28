@@ -772,7 +772,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentViewController = NSHostingController(
             rootView: windowManager?.recentCrashesViewFactory() ?? RecentCrashesView()
         )
-        window.setFrameAutosaveName("com.clipmemory.app.RecentCrashesWindow")
+        WindowFrameAutosave.apply(to: window, name: "com.clipmemory.app.RecentCrashesWindow")
         window.center()
         recentCrashesWindow = window
         window.makeKeyAndOrderFront(nil)
@@ -1076,7 +1076,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered, defer: false
         )
         win.title = L10n.settingsWindowTitle
-        win.setFrameAutosaveName("com.clipmemory.app.SettingsWindow")
+        // ID-REVIEW-1047 (2026-10-28): the autosave is production-only —
+        // AppKit would otherwise persist the frame into the user's real
+        // `com.clipmemory.app` domain, and the test host positions this
+        // window relative to the main window ⇒ a test run would overwrite
+        // the user's saved settings-window position.
+        WindowFrameAutosave.apply(to: win, name: "com.clipmemory.app.SettingsWindow")
         win.isReleasedWhenClosed = false
         win.contentView = NSHostingView(rootView: rootView)
         return win
@@ -1140,8 +1145,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func showRestoreWizard() {
         RestoreWizardWindowController.shared.present(
             backupService: .shared,
-            imagesDirectory: AppDirectories.applicationSupport.appendingPathComponent("ClipMemory/Images", isDirectory: true),
-            defaults: .standard,
+            // ID-REVIEW-1047 (2026-10-28): these two were **inlined
+            // production identities**:
+            //
+            //   imagesDirectory: AppDirectories.applicationSupport
+            //       .appendingPathComponent("ClipMemory/Images")
+            //   defaults: .standard
+            //
+            // ⇒ in a test process the wizard would have pointed at the
+            // user's REAL image directory and the user's REAL
+            // `com.clipmemory.app` domain — while the store it imports INTO
+            // (`ClipboardStore.shared`) is isolated ⇒ the import would have
+            // written the user's clipboard history into production.
+            //
+            // ⇒ They are now resolved through the seams that already carry
+            // the test-process redirection:
+            //   * `ImageStorage.shared.imagesDirectoryURL` →
+            //     `ClipMemory/Images` in production (**identical path**),
+            //     `ClipMemory/Images-Tests` in a test process;
+            //   * `ClipboardStore.shared.defaults` → `.standard` in
+            //     production (**identical**), the isolated suite in tests.
+            //
+            // ⇒ Production behaviour is byte-identical; the sibling call
+            // site in the SAME screen (`BackupSettingsView.swift:207`,
+            // the export path) already used the `ImageStorage` seam — the
+            // two call sites disagreed, which is how the gap stayed invisible.
+            imagesDirectory: ImageStorage.shared.imagesDirectoryURL,
+            defaults: ClipboardStore.shared.defaults,
             // ID-CRASH-0032 (2026-09-28 code-review P2-25): route
             // through `windowManager?.restoreWizardViewFactory` so this
             // construction site stops bypassing the factory indirection
