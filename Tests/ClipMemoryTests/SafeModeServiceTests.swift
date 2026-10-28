@@ -124,17 +124,66 @@ final class SafeModeServiceTests: XCTestCase {
     }
 
     /// ID-CRASH-0003: after a successful launch, the counter resets.
-    func testSuccessfulLaunchResetsCounter() {
+    ///
+    /// ⚠️ ID-REVIEW-1046 (independent verifier, measured): the reset is
+    /// **conditional** — a launch that DETECTED a crash is itself a
+    /// successful launch ⇒ an unconditional reset would wipe the crash it
+    /// just counted ⇒ the counter could never exceed 1 ⇒ the
+    /// 3-consecutive-crash threshold would be **unreachable** and safe
+    /// mode would be dead code (the verifier's probe: 8 consecutive
+    /// crashes ⇒ the counter stayed 0).
+    ///
+    /// ⇒ two halves, both asserted below:
+    /// * a launch that did NOT follow a crash ⇒ the streak is broken ⇒ reset
+    /// * a launch that DID detect a crash ⇒ the streak continues ⇒ kept
+    func testSuccessfulLaunchAfterACleanRunResetsCounter() throws {
+        // ⚠️ The "clean run" needs its OWN suite AND its own directory: the
+        // directory holds the sentinel, and a leftover sentinel means
+        // "the previous run crashed" ⇒ the launch would detect a crash
+        // (and the counter would carry over).
+        let cleanSuite = TestSuiteCleanup.makeSuite(named: "clean-\(UUID().uuidString)")
+        defer { TestSuiteCleanup.destroy(cleanSuite) }
+        let cleanDir = tmpDir.appendingPathComponent("clean", isDirectory: true)
+        try FileManager.default.createDirectory(at: cleanDir, withIntermediateDirectories: true)
+        let cleanService = SafeModeService(defaults: cleanSuite, directory: cleanDir)
+
+        // This launch did NOT detect a crash (no sentinel on disk) ⇒ the
+        // streak is broken ⇒ reset.
+        cleanService.registerPreviousLaunchDidCrash()
+        cleanService.registerSuccessfulLaunch()
+        XCTAssertEqual(
+            cleanService.crashCount, 0,
+            "一次**没有**跟随崩溃的成功启动必须清零计数（streak 断了）"
+        )
+
+        // And the streak does accumulate across crashes (the other half).
         let service = makeService()
-        // Two crashes in a row (each launch's sentinel survives into the
-        // next launch ⇒ counted there — hence the off-by-one).
         service.registerPreviousLaunchDidCrash() // launch 1 → 0
         service.registerPreviousLaunchDidCrash() // launch 2 → 1
         service.registerPreviousLaunchDidCrash() // launch 3 → 2
         XCTAssertEqual(service.crashCount, 2)
+    }
+
+    /// A successful launch that DETECTED a crash must **keep** the streak.
+    ///
+    /// This is the P1-1 regression guard: without it, the counter is
+    /// wiped by the very launch that counted the crash ⇒ the threshold
+    /// can never be reached.
+    func testASuccessfulLaunchThatDetectedACrashKeepsTheStreak() {
+        let service = makeService()
+        // launch 1: no sentinel → no crash → writes the sentinel
+        service.registerPreviousLaunchDidCrash()
+        // launch 2: the sentinel survived → a crash → count = 1
+        service.registerPreviousLaunchDidCrash()
+        XCTAssertEqual(service.crashCount, 1)
 
         service.registerSuccessfulLaunch()
-        XCTAssertEqual(service.crashCount, 0, "successful launch resets counter")
+        XCTAssertEqual(
+            service.crashCount, 1,
+            "检测到崩溃的那次启动**不得**把计数清零"
+            + "（否则计数永远 ≤ 1 ⇒ 3 次连续崩溃永远触发不了安全模式 —— "
+            + "独立核验实测：连崩 8 次计数仍是 0）"
+        )
     }
 
     /// ID-CRASH-0003: exitSafeMode() clears both flags so the next 3

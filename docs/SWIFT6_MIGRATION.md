@@ -215,8 +215,8 @@ rg -n --no-heading -g '*.swift' '^[^/]*nonisolated\(unsafe\)' ClipMemory/
 Raw output on 2026-10-28 — 22 lines, i.e. 22 declarations:
 
 ```
-AppDelegate.swift:575:    nonisolated(unsafe) static var statusItemFactory: (NSStatusBar) -> NSStatusItem = {
-AppDelegate.swift:580:    nonisolated(unsafe) static var statusItemCreationCount = 0
+AppDelegate.swift:590:    nonisolated(unsafe) static var statusItemFactory: (NSStatusBar) -> NSStatusItem = {
+AppDelegate.swift:595:    nonisolated(unsafe) static var statusItemCreationCount = 0
 Services/LanguageManager.swift:29:    nonisolated(unsafe) static var injectedForTest: LanguageManager?
 Services/LanguageManager.swift:74:    nonisolated(unsafe) static var defaults: UserDefaults {
 Services/LanguageManager.swift:102:    nonisolated(unsafe) private static var codeStorage: String = "en"
@@ -255,7 +255,7 @@ just copied from the declaration comments.
 
 | File | Line | Symbol | Current isolation (verified) | Phase 3 plan |
 |------|------|--------|------------------------------|--------------|
-| `AppDelegate.swift` | 575 | `statusItemFactory: (NSStatusBar) -> NSStatusItem` | ID-REVIEW-1045 P1-2: the seam that creates the menu-bar status item. The factory is **read** under `statusItemFactoryLock` (`:574`) inside `makeStatusItem()` (`:592`) and **invoked outside** the lock (the creation itself must not hold the lock). It is deliberately NOT `TestIsolation.defaults`: that seam owns `UserDefaults` storage, this one owns the **creation action** on a system resource | actor-isolate the canonical seam |
+| `AppDelegate.swift` | 590 | `statusItemFactory: (NSStatusBar) -> NSStatusItem` | ID-REVIEW-1045 P1-2: the seam that creates the menu-bar status item. The factory is **read** under `statusItemFactoryLock` (`:574`) inside `makeStatusItem()` (`:592`) and **invoked outside** the lock (the creation itself must not hold the lock). It is deliberately NOT `TestIsolation.defaults`: that seam owns `UserDefaults` storage, this one owns the **creation action** on a system resource | actor-isolate the canonical seam |
 | `AppDelegate.swift` | 580 | `statusItemCreationCount: Int` | ID-REVIEW-1045 P1-2: the counter that makes the creation **observable** — every increment and every read is bracketed by `statusItemFactoryLock` (`:574`; reads go through `statusItemCreations` at `:583`). A behavioural guard asserts "the test host created NOTHING" ⇒ aliasing, renaming or moving the creation into a helper cannot hide it | actor-isolate the canonical seam |
 | `Services/ClipboardStore.swift` | 928 | `contentCache: NSCache` | `NSCache` is documented thread-safe (per NSCache header); the nonisolated decrypt kernels touch it from prewarm's utility-queue workers | actor-isolated cache |
 | `Services/ClipboardStore.swift` | 939 | `rtfPlaintextCache: NSCache` | same NSCache thread-safety contract as `contentCache` | actor-isolated cache |

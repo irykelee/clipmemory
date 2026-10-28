@@ -2352,6 +2352,15 @@ guard fileManager.fileExists(atPath: sentinelURL.path) else {
 | 用户崩溃哨兵文件 | 存在（0 字节） | `~/Library/Application Support/ClipMemory/.running-sentinel` |
 | 交叉证据 | §ID-REVIEW-1037 记录的污染残留是 `safeMode.active = true` + `crashCount = 5` ⇒ 之后又涨到 **8** | `docs/skips-ledger.md:229` |
 
+> ⚠️ **精确化（独立核验 P1-2）**：「真崩溃反而检测不到」这句要分两半说 ——
+> * **哨兵写下之后的崩溃**（启动完成后崩）：旧极性下**检测不到**（哨兵留在原地 ⇒
+>   走「一切正常」那半边）⇒ 这半句成立；
+> * **哨兵写下之前的崩溃**（启动早期崩）：旧极性下**反而被计到了**
+>   （没有哨兵 ⇒ 按旧极性「就是崩溃」）⇒ 计数里**可能混着真计数**
+>   （这正是 P2-1 指出的「『没有哨兵』不唯一对应『正常退出』」）。
+> ⇒ 而**翻正**极性后，这两半**对调**了：早崩检测不到、晚崩检测得到 ⇒
+> ⇒ ⇒ 所以还必须把哨兵写入**提前**（§46.9c 的 P1-2 处置）才能两头都对。
+
 ⇒ **用户此刻正被一个从未崩溃过的 app 挡在安全模式外面**（阈值 3，计数 8）。
 （5 → 8 与「此后发生过 3 次正常退出」一致；但那不是唯一解释，如实标注。）
 
@@ -2377,7 +2386,7 @@ fresh 3-launch window」）**在全仓没有任何调用点** ⇒ 即便把极�
 | # | 改哪 | 改成什么 | 为什么这样改 |
 |---|---|---|---|
 | 1 | `SafeModeService.registerPreviousLaunchDidCrash()` | 极性**翻正**：`sentinelSurvived` ⇒ 计崩溃；**不存在** ⇒ 不计 | 协议就是协议；实现一直在违背它 |
-| 2 | `AppDelegate.applicationDidFinishLaunching()` **末尾** | 接上 `SafeModeService.shared.registerSuccessfulLaunch()` | 让「3 次**连续**崩溃」真的是连续。⚠️ 位置必须在启动流程**之后** —— 放在 `registerPreviousLaunchDidCrash()` 旁边会把刚记上的崩溃立刻清零 ⇒ 安全模式永远不触发 |
+| 2 | `AppDelegate.applicationDidFinishLaunching()` **末尾** | 接上 `SafeModeService.shared.registerSuccessfulLaunch()` | 让「3 次**连续**崩溃」真的是连续。⚠️ **本行的「位置」说法已被独立核验订正**（§46.9b P1-1 / P2-2）：清零必须**有条件**（只有本次启动**没**检测到崩溃才清）—— 无条件清零会把「刚检测到崩溃的那次启动」也清掉 ⇒ 计数永远 ≤ 1 ⇒ 阈值永远够不到 ⇒ **安全模式是死代码**（核验员 PROBE-A：连崩 8 次计数仍是 0）。**改成有条件之后，调用点的位置就不重要了** ⇒ 「位置是致命的」这句话只对无条件重置成立 |
 | 3 | `SafeModeService.reconcileLegacyCrashPolarity()`（新增，**一次性**） | 把旧极性误置的 `safeMode.active` / `safeMode.crashCount` 清掉，并用 `safeMode.polarityFixedV1` 标记**只做一次** | 见 §46.6 —— 清理是**可证明的**，不是猜测 |
 | 4 | `SafeModeService.init(…countsCrashes:)` + `shared = SafeModeService(countsCrashes: !TestIsolation.isRunningTests)` | **测试进程里不做崩溃记账**（只写哨兵**文件**）⇒ 共享 SafeMode suite 保持干净 | 见 §46.8b —— app 的启动时刻不可控 ⇒ 它写共享 suite 会被 canary 记到**无辜旁观者**头上；**不**用「把 key 从监控列表拿掉」那种削弱守卫的做法 |
 
@@ -2392,23 +2401,40 @@ fresh 3-launch window」）**在全仓没有任何调用点** ⇒ 即便把极�
 
 旧极性下，计数**只**在「上次没有哨兵」时 +1；而按协议，「上次没有哨兵」**唯一**
 对应「上次**正常退出**」（`clearSentinelOnNormalExit` 在正常退出时删它）⇒
-**旧极性记下来的每一次「崩溃」都是一次正常退出** ⇒ 计数与安全模式标志 **100% 是假的**。
+**旧极性记下来的绝大多数「崩溃」都是一次正常退出** ⇒ 计数与安全模式标志
+**几乎肯定是假的**。
 
-⇒ 且 `safeMode.active` 只可能由 `activateSafeMode()`（崩溃路径）置真，用户只能
-**清**不能置 ⇒ **它 100% 来自误计数**。
+> ⚠️ **订正（ID-REVIEW-1046 独立核验 P2-1）**：本节原先写的是「**唯一**对应」
+> ⇒「**100% 是假的**」。**那是过头的**：「上次没有哨兵」还有另外几种成因 ——
+> ① **启动早期的崩溃**（崩在哨兵写下之前 ⇒ 那次崩溃在旧极性下**确实**被计了
+> ⇒ 计数里**可能有真计数**）；② 全新安装；③ ID-REVIEW-1045 的测试宿主删过
+> 用户的哨兵；④ 用户或清理工具删了它。
+> ⇒ ⇒ **清理仍然正确**（理由见下），但**不再声称是「证明」**。
 
-⇒ ⇒ 清理 = 把用户状态**还原成它本来的样子**，不是「顺手删个脏数据」。
+**为什么清理仍然正确**（改成「强论证」而不是「证明」）：
+* `safeMode.active` 只可能由 `activateSafeMode()`（崩溃路径）置真，用户只能**清**
+  不能置 ⇒ 它**只能**来自那条误计数路径；
+* 旧极性下**每次正常退出都 +1** ⇒ 用户每天开关一次 app ⇒ 三天就必然越过阈值
+  3 ⇒ **这个标志几乎必然是误计数点亮的**（用户当时的状态：`active = 1`、
+  `crashCount = 8`）；
+* 翻正后的极性下，计数语义是「**距上一次干净启动**的连续崩溃数」⇒ 一旦迁移把
+  计数清零，**新语义下本来就要从 0 起步** ⇒ 迁移不是「额外抹掉」什么，
+  只是**提前**做了新语义要求的第一步。
+
+⇒ ⇒ 迁移 = 把用户状态**还原成它本来的样子**，不是「顺手删个脏数据」。
 ⇒ 且迁移**只做一次**（标记键）⇒ 迁移之后新产生的合法安全模式不会被二次清掉。
 
 ### 46.7 回归测试
 
-* **新增** `Tests/ClipMemoryTests/Review1046RegressionTests.swift`（**7 条**）：
+* **新增** `Tests/ClipMemoryTests/Review1046RegressionTests.swift`（**14 条**；独立核验后从 9 条扩到 14 条 —— 见 §46.9c）：
   ① 正常退出不计崩溃 ② 哨兵还在⇒计崩溃 ③ 三次连续崩溃⇒安全模式
   ④ 反复正常退出⇒计数永不累积 ⑤ 一次性迁移（含「只做一次」）⑤b 干净安装⇒迁移无副作用
   ⑥ `registerSuccessfulLaunch()` 必须**恰好一个**生产调用点
-* **改写** `Tests/ClipMemoryTests/SafeModeServiceTests.swift`（**6 条**）：原先锁定
-  **旧极性**的断言全部翻正；`testNormalExitPreventsCrashCount` 的**名字与断言
-  终于一致**（并保留那段「作者当年发现了矛盾」的注释作为历史记录）
+* **改写** `Tests/ClipMemoryTests/SafeModeServiceTests.swift`（**13 条**；独立核验后从
+  12 条扩到 13 条）：原先锁定**旧极性**的断言全部翻正；
+  `testNormalExitPreventsCrashCount` 的**名字与断言终于一致**（并保留那段
+  「作者当年发现了矛盾」的注释作为历史记录）；`testSuccessfulLaunchResetsCounter`
+  拆成「干净启动清零」+「检测到崩溃则保留 streak」两条（见 §46.9c）
 
 > ⚠️ **一条必须记下来的教训**：新写的 ②「哨兵还在 ⇒ 计崩溃」**第一次跑就绿了**
 > —— 但那是在**有 bug 的代码**上绿。原因：测试手动写哨兵时**目录还不存在**，
@@ -2417,7 +2443,7 @@ fresh 3-launch window」）**在全仓没有任何调用点** ⇒ 即便把极�
 > ⇒ *「测试绿」不等于「测试测到了它声称的东西」* —— 与 1042 那条「守卫全绿的两种
 > 含义」同源。
 
-### 46.7b 变异验证：**7 条（N1–N7），7 条全红**（harness `/tmp/cm-1046-mutate.py`）
+### 46.7b 变异验证：**13 条（N1–N13），13 条全红**（harness `/tmp/cm-1046-mutate.py`）
 
 | ID | 变异 | 被谁抓住 |
 |---|---|---|
@@ -2429,6 +2455,31 @@ fresh 3-launch window」）**在全仓没有任何调用点** ⇒ 即便把极�
 | **N6** | 迁移不清 `crashCount`（用户的误计数留在 8） | 迁移那 2 条 |
 | **N7** | `registerSuccessfulLaunch()` 没有调用点（计数永不重置） | `testRegisterSuccessfulLaunchHasAProductionCallSite` |
 | **N8** | 测试进程也做崩溃记账（`countsCrashes` 恒为 true ⇒ 共享 SafeMode suite 被污染 ⇒ canary 抓错人） | `testTheTestHostKeepsTheSharedSafeModeSuiteClean` |
+| **N9** | 清零改回**无条件**（检测到崩溃的那次启动把计数清零 ⇒ 阈值永远够不到） | ⑥b 真实启动顺序 + `testASuccessfulLaunchThatDetectedACrashKeepsTheStreak` |
+| **N10** | 哨兵写入挪回启动后期（早崩检测不到） | ⑥c 顺序守卫 |
+| **N11** | 哨兵写失败时照样计数（ID-CRASH-0004 的门被拆掉） | ⑥d |
+| **N12** | `countsCrashes` 写死 false（生产的安全模式功能静默失效） | ⑥e |
+| **N13** | 测试进程不再写任何哨兵（1045 守卫的牙齿被拔掉） | ⑥f |
+
+⇒ **N9–N13 五条是独立核验员报出的「存活」变异**（他的 harness：
+`/tmp/verify1046/mutate.py`）⇒ 本轮把它们**全部变成红** ⇒ 他报的 5 个洞
+（**M5b / M7b / M10b / M12 / 早崩**）都补上了守卫。
+
+> ⚠️ **N10 第一版「存活」是【我自己的 harness 的 bug】，不是守卫没牙齿** ——
+> 这条必须写进台账，因为它就是本项目**反复踩过**的那个坑：
+>
+> * N10 是**同一文件上的两个 patch**（① 删掉早期的哨兵调用 ② 在
+>   `setupClipboardMonitor()` 之后插回一次）。
+> * 我的 harness 对每个 patch 都基于**原文**做替换并**各自写盘** ⇒
+>   **后一次写盘覆盖前一次** ⇒ 「删除」那个 patch **根本没落到文件里** ⇒
+>   文件里同时留着早期和晚期两次调用 ⇒ 顺序守卫看到的是早期那次 ⇒ 绿。
+>   ⇒ **变异没跑起来，却被记成了「存活」**。
+> * 修法：同一文件的多个 patch **必须顺序应用**（每个基于上一个的结果）。
+> * ⇒ 与 1045 轮次里 M6 的那个 bug **同源**（删行留下 `||` 开头 ⇒ 编译不过
+>   ⇒ 被误判成「变异存活」）⇒ 已有纪律：**编译失败单列为 `<BUILD_FAILED>`**。
+>   ⇒ 本轮把纪律**再扩一条**：***同一文件多 patch 必须顺序应用***，
+>   否则「变异存活」这个结论**不成立**。
+> * ⇒ 修好 harness 后 **N10 立刻变红**（被 ⑥c 顺序守卫抓住）⇒ 守卫本来就有牙齿。
 
 ⇒ 全部 `restore_drift = False`（逐字还原 + sha256 漂移检查）。
 
@@ -2448,6 +2499,7 @@ fresh 3-launch window」）**在全仓没有任何调用点** ⇒ 即便把极�
 | `safeMode.polarityFixedV1` | （不存在） | **1** ✅（⇒ 只会执行一次） |
 | 崩溃哨兵文件 | 存在 | **不存在** ✅（⇒ 下次启动不会多记一次崩溃） |
 | 残留进程 | — | **无** ✅ |
+| 全量（独立核验后） | —— | **1392 tests / 4 skipped / 0 failures**（处置前 1386 ⇒ 核验后新增 6 条守卫）⇒ canary **确定性绿**（修前它偶发红，且抓到的是无辜旁观者） |
 
 ⇒ 迁移在真实生产进程里**自愈**了；哨兵脚本在真实生产进程里**绿**（`exit 0`，
 三重判据含 PID 匹配全部成立）。
@@ -2522,6 +2574,78 @@ left safeMode.crashCount in SafeModeService-XCTest-isolation
 「还原到跑前状态」，而是「**本脚本发的 SIGTERM 不是用户的崩溃 ⇒ 跑完删掉哨兵**」
 （且仅在本脚本自己启动 app 时才删 —— skip 路径上跑着的是用户自己的实例）。
 ⇒ 已在 §45.12 的 P2-3 行就地订正。
+
+### 46.9b 独立核验（verifier 子 agent，**非自查**）：**VERDICT = FAIL** —— 2×P1 + 5×P2 + 7×P3
+
+核验员跑了约 2h（含自建变异 harness `/tmp/verify1046/mutate.py`、自建 probe、
+逐条回放哨兵判据）。**独立证实的部分**（已记入台账）：极性方向正确、全仓只有
+一处极性判断点、`safeMode.active` 只有崩溃路径能置真、一次性迁移成立、
+`safeMode.active` 只影响一个横幅、三重判据与 `log stream --style compact`
+的 PID 格式吻合、skip 路径只走 77、§8 roster 自洽、`countsCrashes` 在生产为真、
+`static let shared` 的求值时机安全、既有测试改写**没丢覆盖**。
+
+**报出的洞（全部处置，见 §46.9c）**：
+
+| ID | 级别 | 洞 | 处置 |
+|---|---|---|---|
+| **P1-1** | P1 | **3 次连续崩溃的阈值在真实启动顺序下永远够不到** —— 核验员 PROBE-A 实测：连崩 8 次计数仍是 **0** ⇒ 安全模式是**死代码**。根因：`registerSuccessfulLaunch()` 在**每次**启动末尾无条件清零，**包括刚检测到崩溃的那次** | 重置改**有条件**（只有本次启动**没**检测到崩溃才清零）+ 新增「真实启动顺序」回归测试 |
+| **P1-2** | P1 | 极性翻正后产生新的盲区：**早崩检测不到** —— 哨兵是在 `registerPreviousLaunchDidCrash()` 里写的 ⇒ 崩在它**之前**（窗口/状态项/剪贴板/网络/热键…）时**没留下任何哨兵** ⇒ 下次启动读「没有哨兵」=「上次正常退出」⇒ **那些崩溃根本不被计数** | 把哨兵写入**提到单实例守卫之后的最早期**（在任何可能崩溃的启动工作之前）+ 新增顺序守卫 |
+| **P2-1** | P2 | 迁移的「100% 是假的」**证明不成立**：「上次没有哨兵」并不唯一对应「上次正常退出」（还可能是**早崩**、全新安装、1045 的测试宿主删了哨兵、用户/清理工具删了它） | 台账与代码注释**订正**为「绝大多数是假」（早崩那次是真计数）⇒ 清理仍是正确的还原，但**不再声称是证明** |
+| **P2-2** | P2 | `registerSuccessfulLaunch()` 的守卫只查**调用点数量**，不查**位置** ⇒ 核验员的 M5b（挪到 `registerPreviousLaunchDidCrash()` 旁边）**存活** | 重置改**有条件**后，位置**根本不重要** ⇒ 旧台账「位置是致命的」的说法**订正**（那是对无条件重置才成立）⇒ 断言改为「它被调用了」 |
+| **P2-3** | P2 | ID-CRASH-0004 的「写失败就不计数」那扇门**在崩溃分支里没有测试覆盖** ⇒ M7b **存活** | 新增测试：哨兵还在 + 自己的写失败 ⇒ **不得**计数 |
+| **P2-4** | P2 | `countsCrashes` seam **零守卫** ⇒ M10b（写死 `false`）**存活** ⇒ 那条变异会让**生产**环境的整个安全模式功能静默失效 —— 正是 1045 要消灭的形状，**由新 seam 重新引入** | 新增结构守卫：`shared` 必须按 `!TestIsolation.isRunningTests` 接线 |
+| **P2-5** | P2 | `exitSafeMode()` 是三个共享 key 最后一个**没闸门**的写点（当前**潜伏**，没有测试驱动那个按钮） | 补 `countsCrashes` 闸门 |
+| **P3-1** | P3 | 两处文档注释仍在讲**旧极性**（`clearSentinelOnNormalExit` 说「哨兵不在 ⇒ 上次没正常退出」；`registerPreviousLaunchDidCrash` 说「崩了（没有哨兵）」）；`writeSentinel` 的推理仍是「missing sentinel」口径 | 三处全部订正，并注明「头部注释与 AppDelegate 的注释一直是对的，实现直到 1046 才与它们一致」 |
+| **P3-2** | P3 | 台账数字错：§46.7 说 1046 测试「7 条」（实为 **14**）、「SafeModeServiceTests 6 条」（实为 **13**）；§45.10 说 1045「19 个」（实为 21）；**§46 全节没有全量数据行** | 全部订正，并补全量行 |
+| **P3-3** | P3 | canary 的 key 名册漏了新 key `safeMode.polarityFixedV1`（名册自称镜像该服务的调用点） | 补进 `guardedSharedSuiteKeys` |
+| **P3-4** | P3 | 1045 的**证明机制本身没有被断言** ⇒ M12（把测试进程的哨兵写入整个删掉）**存活** | 新增测试：测试宿主**必须**写自己的哨兵，且**不得**碰用户的哨兵 |
+| **P3-5** | P3 | `Review1045RegressionTests.swift` 的文件头仍写着「跨进程问 Carbon『⌘⇧V 被谁占着』… 系统级独占」—— 已被 1044 核验**实测推翻** | 就地订正（并说明哨兵因此改为只信生产进程自己的日志） |
+| **P3-6** | P3 | 哨兵脚本的**构建失败**路径打印「see $WORK_DIR/build.log」，但 `cleanup()` 会删掉 `$WORK_DIR` ⇒ **它指向的证据被自己删了**（核验员亲身撞上） | 该路径加 `KEEP_WORK_DIR=1` |
+| **P3-7** | P3 | 核验员**没能**跑通哨兵脚本的绿色路径（它的 Release 构建撞上我正在改代码 ⇒ 构建失败）⇒ 脚本绿路径**未经它验证** | **我自己**跑过：`exit 0`，三重判据（含 PID 匹配）在真实生产进程上成立；并把这一点写进台账 |
+
+⇒ ⚠️ 核验员还指出三条**疑似假阳性测试**：
+`testThreeConsecutiveCrashesActivateSafeMode`（从不调用 `registerSuccessfulLaunch()`
+⇒ 断言的是产品**没有**的行为）、`testRegisterSuccessfulLaunchHasAProductionCallSite`
+（消息讲位置、断言只数数量）、`testSuccessfulLaunchResetsCounter`（孤立测重置）。
+⇒ 三条都已被新的「真实启动顺序」测试**取代或改写**（见 §46.9c）。
+
+### 46.9c 核验发现的处置（**全部落地**）
+
+| 洞 | 处置（代码） | 新增/改写的守卫 | 变异 |
+|---|---|---|---|
+| **P1-1** 阈值永远够不到 | `registerSuccessfulLaunch()` 的清零改**有条件**：`guard !detectedCrashThisLaunch else { return }`（本次启动**检测到**崩溃 ⇒ **不清**） | ⑥b `testThreeConsecutiveCrashesActivateSafeModeInTheRealLaunchOrder` —— **模拟真实启动顺序**（每次启动 = 新实例 / 同一 suite / 同一目录；「崩溃」= 没走优雅退出）⇒ 4 次启动后计数 3 且安全模式开启 | **N9**（清零改回无条件）⇒ 红 |
+| **P1-2** 早崩检测不到 | 把 `SafeModeService.shared.registerPreviousLaunchDidCrash()` 从启动**中段**（`setupClipboardMonitor` 之后）**提到单实例守卫之后的最早期** ⇒ 哨兵在任何可能崩溃的启动工作之前就存在 | ⑥c `testTheCrashSentinelIsWrittenBeforeAnyStartupWorkThatCouldCrash` —— **顺序**守卫（行号：`registerPreviousLaunchDidCrash()` 必须早于 `setupWindowManager()` / `setupStatusItem()` / `setupClipboardMonitor()`） | **N10**（哨兵写入挪回后期）⇒ 红 |
+| **P2-1** 证明过头 | 台账 §46.6 与代码注释改成「**绝大多数**是假的」+ 列出另外四种成因；论证改成「标志几乎必然是误计数点亮的」+「新语义下计数本来就要从 0 起步」 | —（文档订正） | — |
+| **P2-2** 位置守卫无效 | 重置改有条件 ⇒ **位置不再重要** ⇒ 旧说法订正；测试 ⑥ 的消息改为「它被调用了」 | ⑥b（真实顺序）覆盖了「挪到旁边也无害」 | **N9** 同上 |
+| **P2-3** 写失败不计数无覆盖 | 保留 `guard writeOK else { return }` 并写明理由 | ⑥d `testACrashIsNotCountedWhenTheSentinelCannotBeWritten`（哨兵还在 + 自己的写失败 ⇒ 计数必须为 0） | **N11**（把那扇门换成 `_ = writeOK()`）⇒ 红 |
+| **P2-4** seam 无守卫 | `shared` 保持 `countsCrashes: !TestIsolation.isRunningTests` | ⑥e `testTheSharedInstanceIsWiredToTheProductionProbe`（结构守卫：恰好 1 处、且实参是探针） | **N12**（写死 `false`）⇒ 红 |
+| **P2-5** `exitSafeMode` 无闸门 | 补 `guard countsCrashes else { return }` | （同 ⑥f 的思路；当前潜伏） | — |
+| **P3-1** 注释仍在讲旧极性 | 三处注释就地订正（`registerPreviousLaunchDidCrash` / `clearSentinelOnNormalExit` / `writeSentinel` 的降级路径），并注明「头部注释与 AppDelegate 的注释一直是对的」 | — | — |
+| **P3-2** 台账数字错 | §46.2 / §46.5 / §46.6 / §46.7 的条数与全量数据全部订正 | — | — |
+| **P3-3** canary 名册漏 key | `safeMode.polarityFixedV1` 补进 `guardedSharedSuiteKeys` | canary 自身 | — |
+| **P3-4** 1045 的证明机制没被断言 | —— | ⑥f `testTheTestHostWritesItsOwnSentinelAndNeverTheUsers`（测试宿主**必须**写 `ClipMemory/SafeMode-Tests/.running-sentinel`，且**不得**动用户的哨兵：存在性 + mtime 都不变） | **N13**（把测试进程的哨兵写入整个删掉）⇒ 红 |
+| **P3-5** 文件头留着实测已推翻的说法 | `Review1045RegressionTests.swift` 文件头就地订正 | — | — |
+| **P3-6** 脚本指向被自己删掉的证据 | 构建失败路径加 `KEEP_WORK_DIR=1` | — | — |
+| **P3-7** 脚本绿路径未经核验 | **我自己**跑过（`exit 0`；三重判据含 PID 匹配在真实生产进程上成立）；核验员另行用 7 组合成日志逐条回放了判据块 | — | — |
+
+⚠️ **核验员指出的三条「疑似假阳性测试」的处置**：
+* `testThreeConsecutiveCrashesActivateSafeMode`（从不调用 `registerSuccessfulLaunch()`）
+  ⇒ **保留但改名改义**：它现在断言的是「**服务层**的三次连续崩溃语义」，
+  而**产品层**的同一场景由 ⑥b（真实启动顺序）断言 —— 两条**分工明确**，
+  且 ⑥b 在旧的无条件清零上**会红** ⇒ 这正是它该有的样子。
+* `testRegisterSuccessfulLaunchHasAProductionCallSite` ⇒ 消息不再讲位置，
+  断言保持「恰好一个调用点」；**位置无关**由 ⑥b 的行为保证。
+* `testSuccessfulLaunchResetsCounter` ⇒ 拆成
+  `testSuccessfulLaunchAfterACleanRunResetsCounter`（干净启动 ⇒ 清零）+
+  `testASuccessfulLaunchThatDetectedACrashKeepsTheStreak`（检测到崩溃 ⇒ 保留）。
+
+⇒ **一条元教训（本轮最贵的一条）**：
+*「把一个钩子接到生产路径上」这件事本身，会**改变**被钩住的那个语义。*
+⇒ 我把 `registerSuccessfulLaunch()`（原本设计为「启动成功 ⇒ 清零」）接上去时，
+**没问**「这次启动是不是刚好也检测到了一次崩溃」⇒ 于是它把**自己刚记下的崩溃**
+清掉了 ⇒ **阈值永远够不到** ⇒ 整个安全模式变成死代码。
+⇒ ⇒ **接钩子前必须问**：*「这个钩子在本进程的这一轮里，会不会被它自己触发的那件事
+影响？」*
 
 ### 46.10 「看 33 个」再扫
 

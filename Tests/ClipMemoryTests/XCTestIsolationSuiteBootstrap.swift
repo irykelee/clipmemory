@@ -161,7 +161,12 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
         safeModeServiceSuiteName: [
             "safeMode.crashCount",
             "safeMode.active",
-            "safeMode.sentinelHealthy"
+            "safeMode.sentinelHealthy",
+            // ID-REVIEW-1046 (2026-10-28): the one-shot migration marker is
+            // a FOURTH `defaults.set` site of this service ⇒ the roster
+            // that claims to mirror the service's call sites must list it
+            // too (otherwise it is already drifting).
+            "safeMode.polarityFixedV1"
         ]
     ]
 

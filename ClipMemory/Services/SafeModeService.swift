@@ -130,6 +130,14 @@ final class SafeModeService {
     /// constructs its own service ⇒ the default `true` keeps the full
     /// behaviour under test.
     private let countsCrashes: Bool
+    /// Whether THIS launch detected that the previous run crashed.
+    ///
+    /// ID-REVIEW-1046 (2026-10-28, independent verifier measured): the
+    /// counter's streak must survive a launch that *detected* a crash —
+    /// otherwise the threshold can never be reached (the launch that
+    /// detects a crash is itself a successful launch, so an unconditional
+    /// reset would wipe the crash it just counted).
+    private var detectedCrashThisLaunch = false
 
     /// ID-REVIEW-1011 (code-review-2026-10-01 v2.9.6 safe-mode seam):
     /// XCTest isolation helper. Mirrors `ClipboardStore.xcTestDefaults`
@@ -221,8 +229,15 @@ final class SafeModeService {
 
     /// ID-CRASH-0003: called on applicationDidFinishLaunching, before
     /// any work that could prime caches. Detects whether the previous
-    /// launch crashed (no sentinel) and either increments the counter
-    /// (below threshold) or activates safe mode.
+    /// launch crashed (**the sentinel is still there** — it is written at
+    /// launch and deleted on a graceful exit) and either increments the
+    /// counter (below threshold) or activates safe mode.
+    ///
+    /// ⚠️ ID-REVIEW-1046: this call must happen **as early as possible**
+    /// in the launch: the sentinel it writes is the only evidence that
+    /// the previous run reached this point ⇒ a crash BEFORE this call
+    /// leaves no sentinel ⇒ the next launch cannot tell "crashed" from
+    /// "exited gracefully" ⇒ that crash is never counted.
     ///
     /// Must be called exactly once per launch. Calling it twice in
     /// the same launch would double-count a single previous crash.
@@ -286,6 +301,7 @@ final class SafeModeService {
         // switched on for an app that had never crashed), and real
         // crashes were never detected at all.
         let sentinelSurvived = fileManager.fileExists(atPath: sentinelURL.path)
+        detectedCrashThisLaunch = sentinelSurvived
         // The sentinel on disk belongs to the PREVIOUS launch — ours
         // must be fresh, so drop it before writing our own.
         _ = try? fileManager.removeItem(at: sentinelURL)
@@ -312,6 +328,23 @@ final class SafeModeService {
     func registerSuccessfulLaunch() {
         // ID-REVIEW-1046: no bookkeeping in a test process (see `shared`).
         guard countsCrashes else { return }
+        // ⚠️ ID-REVIEW-1046 (independent verifier, measured): the reset
+        // MUST be conditional. A launch that just DETECTED a crash is
+        // itself a successful launch ⇒ an unconditional reset would wipe
+        // the crash it just counted ⇒ the counter could never exceed 1 ⇒
+        // **the 3-consecutive-crash threshold would be unreachable** and
+        // safe mode would be dead code (the verifier's probe: 8
+        // consecutive crashes ⇒ the counter stayed 0).
+        //
+        // ⇒ the streak is broken only by a launch that did NOT follow a
+        // crash (i.e. the previous run exited gracefully).
+        //
+        // ⚠️ Because the decision is "did THIS launch detect a crash",
+        // the CALL SITE's position does not matter ⇒ moving it next to
+        // `registerPreviousLaunchDidCrash()` is harmless. (The ledger's
+        // earlier text claimed that position was fatal — corrected in
+        // §46; the claim was true for the UNCONDITIONAL reset.)
+        guard !detectedCrashThisLaunch else { return }
         defaults.set(0, forKey: crashCountKey)
     }
 
@@ -321,6 +354,10 @@ final class SafeModeService {
     /// Also resets sentinelHealthy — exit is the user's signal that
     /// they trust the install again, so we re-arm the write path.
     func exitSafeMode() {
+        // ID-REVIEW-1046: in a test process the bookkeeping is off ⇒ don't
+        // write into the process-shared SafeMode suite (the ZZZ canary
+        // watches it, and a write there is not attributable to any test).
+        guard countsCrashes else { return }
         defaults.set(false, forKey: safeModeActiveKey)
         defaults.set(0, forKey: crashCountKey)
         defaults.set(true, forKey: sentinelHealthyKey)
@@ -397,8 +434,8 @@ final class SafeModeService {
         }
         // All attempts exhausted — flip to degraded, notify the
         // banner. The next launch's registerPreviousLaunchDidCrash
-        // will see no sentinel and would normally count that as a
-        // crash; the sentinelHealthy check short-circuits that
+        // cannot distinguish "the previous run crashed" from "our own
+        // writer failed" ⇒ the sentinelHealthy check short-circuits that
         // accounting so a write failure on our side doesn't push the
         // user toward safe-mode for a non-crash.
         if sentinelHealthy {
@@ -427,8 +464,16 @@ final class SafeModeService {
     private var sentinelHealthy: Bool { isSentinelHealthy }
 
     /// ID-CRASH-0003: called on applicationWillTerminate. The sentinel
-    /// being ABSENT on the next launch means the previous run didn't
-    /// exit normally.
+    /// is DELETED here ⇒ the next launch finds no sentinel ⇒ it concludes
+    /// "the previous run exited gracefully" ⇒ no crash is counted.
+    ///
+    /// ⚠️ ID-REVIEW-1046: the polarity used to be the other way round
+    /// (this doc used to say "the sentinel being ABSENT on the next
+    /// launch means the previous run didn't exit normally") ⇒ every
+    /// normal exit was counted as a crash. The header comment of this
+    /// file and `AppDelegate.applicationWillTerminate` have always
+    /// described the CORRECT polarity; the implementation did not match
+    /// them until ID-REVIEW-1046.
     func clearSentinelOnNormalExit() {
         try? fileManager.removeItem(at: sentinelURL)
     }

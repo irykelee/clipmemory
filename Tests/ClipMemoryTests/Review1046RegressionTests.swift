@@ -291,15 +291,193 @@ final class Review1046RegressionTests: XCTestCase {
     ///
     /// 修复前它**一个调用点都没有** ⇒ 计数永不重置 ⇒ 「3 次**连续**崩溃」
     /// 退化成「一辈子 3 次崩溃」。
+    ///
+    /// ⚠️ 断言的**不是**调用点的位置，而是「它被调用了」。位置无关紧要：
+    /// 重置是**有条件**的（只有当本次启动**没有**检测到崩溃时才清零）⇒
+    /// 把它挪到 `registerPreviousLaunchDidCrash()` 旁边也**无害** ⇒
+    /// 「位置是致命的」这个旧说法只对**无条件**重置成立（已订正，见台账 §46）。
     func testRegisterSuccessfulLaunchHasAProductionCallSite() throws {
         let sites = try Self.callSites(of: "SafeModeService.shared.registerSuccessfulLaunch()")
         XCTAssertEqual(
             sites, ["AppDelegate.swift×1"],
             "`registerSuccessfulLaunch()` 必须**恰好有一个**生产调用点"
             + "（修复前是 0 个 ⇒ 崩溃计数永不重置 ⇒ 「3 次连续崩溃」变成"
-            + "「一辈子 3 次崩溃」）；调用点必须落在启动流程真正走完之后，"
-            + "不能放在 `registerPreviousLaunchDidCrash()` 旁边（那会把刚"
-            + "记上的崩溃立刻清零 ⇒ 安全模式永远不会触发）"
+            + "「一辈子 3 次崩溃」）"
+        )
+    }
+
+    /// ⑥b **真实启动顺序**下，3 次连续崩溃必须真的进入安全模式。
+    ///
+    /// ⚠️ 这一条来自独立核验员的**实测**（他的 PROBE-A：连崩 8 次，计数仍是
+    /// 0 ⇒ 阈值**永远够不到** ⇒ 安全模式是死代码）。
+    ///
+    /// 根因：`registerSuccessfulLaunch()` 在**每次**启动末尾把计数清零 ——
+    /// **包括「刚刚检测到崩溃」的那一次启动**（检测到崩溃的这次启动本身也是
+    /// 一次成功启动）⇒ 计数永远不超过 1。
+    ///
+    /// ⇒ 修法：重置**有条件** —— 只有当本次启动**没有**检测到崩溃时才清零。
+    ///
+    /// ⚠️ 本测试**模拟真实的启动顺序**（每次启动 = 一个新实例、同一 suite、
+    /// 同一目录；「崩溃」= 没有走到优雅退出 ⇒ 哨兵留在原地）⇒
+    /// 只测「计数器重置」或只测「单次崩溃」的测试**测不到**这个组合
+    /// （核验员点名：`testThreeConsecutiveCrashesActivateSafeMode` 从不调用
+    /// `registerSuccessfulLaunch()` ⇒ 它断言的是产品**没有**的行为）。
+    func testThreeConsecutiveCrashesActivateSafeModeInTheRealLaunchOrder() {
+        var last: SafeModeService?
+        for launch in 1...4 {
+            // A new launch = a new process: fresh service, same suite,
+            // same sentinel directory.
+            let service = SafeModeService(defaults: defaultsSuite, directory: tmpDir)
+            service.registerPreviousLaunchDidCrash()   // the app's FIRST call
+            // …startup work…
+            service.registerSuccessfulLaunch()         // the app's LAST call
+            // ⚠️ deliberately NO clearSentinelOnNormalExit() ⇒ this launch
+            // "crashed" ⇒ its sentinel survives into the next launch.
+            last = service
+        }
+        XCTAssertEqual(
+            last?.crashCount, 3,
+            "真实启动顺序下，3 次连续崩溃必须把计数累到 3"
+            + "（独立核验实测：清零无条件时，连崩 8 次计数仍是 0 ⇒ 阈值永远"
+            + "够不到 ⇒ 安全模式是死代码）"
+        )
+        XCTAssertTrue(
+            last?.isInSafeMode == true,
+            "真实启动顺序下，3 次连续崩溃必须进入安全模式"
+            + "（这是这个功能**存在的全部理由**）"
+        )
+    }
+
+    /// ⑥c **启动早期的崩溃必须被检测到**（哨兵要写在启动工作之前）。
+    ///
+    /// ⚠️ 独立核验的 P1-2（实测）：哨兵是在 `registerPreviousLaunchDidCrash()`
+    /// 里写的 ⇒ 崩溃发生在它**之前**（窗口管理、状态项、剪贴板监控、网络
+    /// 监控、热键……）时**没有留下任何哨兵** ⇒ 下一次启动读到的「没有哨兵」
+    /// 在**翻正后的极性**下意味着「上次正常退出」⇒ **那些崩溃根本不会被计数**。
+    ///
+    /// ⇒ 修法：把这次调用提到**单实例守卫之后的最早期** ⇒ 哨兵在任何可能崩溃
+    /// 的启动工作之前就存在了。
+    ///
+    /// ⇒ 守卫用**结构**判据（行号先后），因为「顺序」是这里的全部要害。
+    func testTheCrashSentinelIsWrittenBeforeAnyStartupWorkThatCouldCrash() throws {
+        let sentinelCall = try Self.lineNumber(
+            of: "SafeModeService.shared.registerPreviousLaunchDidCrash()",
+            in: "AppDelegate.swift"
+        )
+        XCTAssertNotNil(
+            sentinelCall,
+            "AppDelegate 里必须有 `SafeModeService.shared.registerPreviousLaunchDidCrash()`"
+        )
+        for startupStep in ["setupWindowManager()", "setupStatusItem()", "setupClipboardMonitor()"] {
+            let stepLine = try Self.lineNumber(of: startupStep, in: "AppDelegate.swift")
+            XCTAssertNotNil(stepLine, "AppDelegate 里必须有 \(startupStep)")
+            XCTAssertLessThan(
+                sentinelCall ?? .max, stepLine ?? .min,
+                "崩溃哨兵必须在 \(startupStep) **之前**写下"
+                + "（哨兵是「上次跑到哪儿了」的唯一证据 ⇒ 写在启动工作之后，"
+                + "那些早崩就永远检测不到 —— 独立核验 P1-2 实测）"
+            )
+        }
+    }
+
+    /// ⑥d **写哨兵失败时不得把「上次崩了」当成事实来计数**。
+    ///
+    /// ⚠️ 独立核验的 P2-3：ID-CRASH-0004 的这条门（`guard writeOK else { return }`）
+    /// 在**崩溃分支**里没有任何测试覆盖 ⇒ 变异 M7b（把门换成 `_ = writeSentinel()`）
+    /// **存活**。
+    ///
+    /// 语义：我们的写失败 ⇒ 我们无法区分「上次真的崩了」与「我们自己写不出去」
+    /// ⇒ 不计数（否则一次磁盘压力就能把用户推进安全模式）。
+    func testACrashIsNotCountedWhenTheSentinelCannotBeWritten() throws {
+        // The previous run crashed ⇒ its sentinel is still there.
+        let dir = tmpDir.appendingPathComponent("ClipMemory", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data().write(to: dir.appendingPathComponent(".running-sentinel"))
+
+        final class FailingWriter: FileManager, @unchecked Sendable {
+            override func createDirectory(
+                at url: URL,
+                withIntermediateDirectories createIntermediates: Bool,
+                attributes: [FileAttributeKey: Any]? = nil
+            ) throws {
+                throw NSError(domain: "test", code: 28 /* ENOSPC */)
+            }
+        }
+        let service = SafeModeService(
+            defaults: defaultsSuite,
+            fileManager: FailingWriter(),
+            directory: tmpDir
+        )
+        service.registerPreviousLaunchDidCrash()
+
+        XCTAssertEqual(
+            service.crashCount, 0,
+            "哨兵写失败时**不得**计数：我们分不清「上次崩了」与「我们自己写"
+            + "失败」（ID-CRASH-0004 的三件套门）⇒ 否则一次磁盘压力就能把用户"
+            + "推进安全模式"
+        )
+        XCTAssertFalse(service.isInSafeMode)
+    }
+
+    /// ⑥e `countsCrashes` seam 必须按**身份**接线（不是写死）。
+    ///
+    /// ⚠️ 独立核验的 P2-4：变异 M10b（把 `countsCrashes` 写死为 `false`）
+    /// **存活** ⇒ 那条变异会让**生产**环境的整个安全模式功能静默失效
+    /// （不计数、不迁移、不写哨兵健康标志）—— 正是 1045 要消灭的
+    /// 「探针说真 ⇒ 生产功能静默死掉」的形状，**由一个新 seam 重新引入**。
+    func testTheSharedInstanceIsWiredToTheProductionProbe() throws {
+        let sites = try Self.callSites(
+            of: "SafeModeService(countsCrashes: !TestIsolation.isRunningTests)"
+        )
+        XCTAssertEqual(
+            sites, ["Services/SafeModeService.swift×1"],
+            "共享实例必须**按探针**决定要不要做崩溃记账"
+            + "（`countsCrashes: !TestIsolation.isRunningTests`）"
+            + "—— 写死 false 会让**生产**环境的整个安全模式功能静默失效"
+            + "（独立核验变异 M10b 实测存活）"
+        )
+    }
+
+    /// ⑥f 测试宿主**必须写自己的哨兵**，且**不得**碰用户的哨兵。
+    ///
+    /// ⚠️ 独立核验的 P3-4：变异 M12（把测试进程分支里的 `writeSentinel()` 删掉）
+    /// **存活** ⇒ 因为没有任何测试断言「测试宿主确实写了（测试专用目录里的）
+    /// 哨兵」⇒ 那个写可以整个消失，而守卫照样绿。
+    ///
+    /// ⇒ 这一条把「写哨兵」这件事**本身**变成可断言的。
+    func testTheTestHostWritesItsOwnSentinelAndNeverTheUsers() throws {
+        let appSupport = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Application Support/ClipMemory", isDirectory: true)
+        let userSentinel = appSupport.appendingPathComponent(".running-sentinel")
+        let testSentinel = appSupport
+            .appendingPathComponent("SafeMode-Tests", isDirectory: true)
+            .appendingPathComponent(".running-sentinel")
+
+        // The user's sentinel must be recorded BEFORE, and compared AFTER.
+        let userExistedBefore = FileManager.default.fileExists(atPath: userSentinel.path)
+        let userAttrsBefore = try? FileManager.default.attributesOfItem(atPath: userSentinel.path)
+
+        // Start from a clean slate in the TEST-ONLY directory so the
+        // assertion below is about THIS call, not about a leftover.
+        try? FileManager.default.removeItem(at: testSentinel)
+
+        SafeModeService.shared.registerPreviousLaunchDidCrash()
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: testSentinel.path),
+            "测试宿主**必须**写自己的哨兵（`ClipMemory/SafeMode-Tests/.running-sentinel`）"
+            + "—— 那次写入正是 ID-REVIEW-1045「同族第 9 例」守卫的牙齿"
+            + "（独立核验变异 M12：把这次写入整个删掉，守卫照样绿）"
+        )
+        XCTAssertEqual(
+            FileManager.default.fileExists(atPath: userSentinel.path), userExistedBefore,
+            "测试宿主**不得**创建或删除用户的崩溃哨兵"
+        )
+        let userAttrsAfter = try? FileManager.default.attributesOfItem(atPath: userSentinel.path)
+        XCTAssertEqual(
+            userAttrsAfter?[.modificationDate] as? Date,
+            userAttrsBefore?[.modificationDate] as? Date,
+            "测试宿主**不得**改写用户的崩溃哨兵（mtime 必须不变）"
         )
     }
 
@@ -370,5 +548,27 @@ final class Review1046RegressionTests: XCTestCase {
             sites.append("\(TestSourceScanner.appRelativePath(of: url))×\(count)")
         }
         return sites
+    }
+
+    /// The 1-based line number of `needle` in the app file `relativePath`
+    /// (e.g. "AppDelegate.swift"), or `nil` when it is not there.
+    ///
+    /// Used for ORDER guards: the "is this called before that" questions
+    /// cannot be answered by counting occurrences.
+    private static func lineNumber(
+        of needle: String,
+        in relativePath: String
+    ) throws -> Int? {
+        let files = try TestSourceScanner.appSourceFiles()
+        guard let url = files.first(where: {
+            TestSourceScanner.appRelativePath(of: $0) == relativePath
+        }) else { return nil }
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
+        for (index, line) in blanked.split(separator: "\n", omittingEmptySubsequences: false)
+            .enumerated() where line.contains(needle) {
+            return index + 1
+        }
+        return nil
     }
 }

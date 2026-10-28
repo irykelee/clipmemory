@@ -173,6 +173,12 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
     # ⇒ the script must use the project's real signing identity.
     if ! (cd "$REPO_ROOT" && xcodebuild -scheme ClipMemory -configuration Release build \
             >"$WORK_DIR/build.log" 2>&1); then
+        # ⚠️ ID-REVIEW-1046 (independent verifier, P3-6): the message points
+        # at "$WORK_DIR/build.log" — so the artefact MUST survive. The
+        # default cleanup() deletes $WORK_DIR, and this path did not set
+        # KEEP_WORK_DIR ⇒ the file the error message names was gone by the
+        # time the user looked for it. (The verifier hit this firsthand.)
+        KEEP_WORK_DIR=1
         fail "Release build failed — see $WORK_DIR/build.log"
         say "This script needs the project's normal signing identity"
         say "(\"Apple Development\", DEVELOPMENT_TEAM in project.yml) — an ad-hoc"

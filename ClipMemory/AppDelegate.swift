@@ -179,6 +179,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
            !SingleInstanceLock.shared.acquire(timeout: Self.instanceLockTimeout) {
             refuseToRunAsDuplicateInstance()
         }
+        // ID-CRASH-0003 (2026-08-16 audit MEDIUM-1 fix): detect whether
+        // the previous launch crashed and enter safe-mode after 3
+        // consecutive crashes.
+        //
+        // ⚠️ ID-REVIEW-1046 (2026-10-28, independent verifier measured):
+        // this call MUST stay at this position — **as early as possible**
+        // after the single-instance guard (which must come first: it MUST
+        // run before anything touches the user's data).
+        //
+        // Why so early: the call WRITES the crash sentinel, and that file
+        // is the only evidence that the previous run got this far. A
+        // crash anywhere between here and the old call site (window
+        // manager, status item, clipboard monitor, network monitor, hot
+        // key, …) left NO sentinel behind ⇒ the next launch read "no
+        // sentinel" ⇒ under the corrected polarity that means "the
+        // previous run exited gracefully" ⇒ **those crashes were never
+        // counted at all**. ⇒ the sentinel has to exist before the first
+        // piece of startup work that could crash.
+        //
+        // The banner observer is registered separately by ContentView's
+        // banner view; this call only updates the persistent state and
+        // posts the change notification.
+        SafeModeService.shared.registerPreviousLaunchDidCrash()
         // HIGH-3 (2026-07-26 review): own the key-failure alert presentation
         // here instead of in CryptoService so the service layer has no AppKit
         // dependency (NSAlert, NSApp.terminate).
@@ -234,14 +257,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // prewarm, first render). See `setupMemoryWarningObserver` for the
         // iOS-vs-macOS API rationale.
         setupMemoryWarningObserver()
-        // ID-CRASH-0003 (2026-08-16 audit MEDIUM-1 fix): detect whether
-        // the previous launch crashed (no sentinel) and enter safe-mode
-        // after 3 consecutive crashes. Call BEFORE OCR backfill / backup
-        // schedule so a stuck crash loop doesn't repeatedly re-prime
-        // expensive work. The banner observer is registered separately
-        // by ContentView's banner view; this call only updates the
-        // persistent state and posts the change notification.
-        SafeModeService.shared.registerPreviousLaunchDidCrash()
         setupSettingsMenuItem()
         // ID-CRASH-0002 (2026-08-16 audit MEDIUM-1 fix): install Help →
         // View Recent Crashes. The lazy window is created on first
