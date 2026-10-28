@@ -186,9 +186,9 @@ If TSan infrastructure reveals an unexpectedly high number of races, or if Swift
 >
 > ID-REVIEW-1045 (2026-10-28): **{count} declarations**. The two new ones are the
 > menu-bar status item's **creation seam** in `AppDelegate`:
-> `statusItemFactory` (`AppDelegate.swift:590`) — the closure that actually
+> `statusItemFactory` (`AppDelegate.swift:596`) — the closure that actually
 > creates the `NSStatusItem` — and `statusItemCreationCount`
-> (`AppDelegate.swift:595`) — the counter that makes the creation **observable**
+> (`AppDelegate.swift:601`) — the counter that makes the creation **observable**
 > (the static guards pinned the RESOURCE and the ARGUMENT, never the ACT of
 > creating ⇒ a mutation could create the item without assigning it and every
 > guard stayed green while the test host really occupied a slot in the user's
@@ -200,7 +200,7 @@ If TSan infrastructure reveals an unexpectedly high number of races, or if Swift
 >
 > ⚠️ **ID-REVIEW-1047 (2026-10-28) 订正**：本段的行号原先写的是 `:575` /
 > `:580` / `:574`（**旧状态**），而上面的 raw-output 块与 roster 表格里是
-> `:590` / `:595` / `:589` ⇒ **同一份文档里的两处行号互相矛盾**，会把下一个
+> `:596` / `:601` / `:595` ⇒ **同一份文档里的两处行号互相矛盾**，会把下一个
 > 读者指到错误的行 ⇒ 已按实测统一。
 
 > <!-- nonisolated-unsafe-declaration-count: 22 -->
@@ -220,8 +220,8 @@ rg -n --no-heading -g '*.swift' '^[^/]*nonisolated\(unsafe\)' ClipMemory/
 Raw output on 2026-10-28 — 22 lines, i.e. 22 declarations:
 
 ```
-AppDelegate.swift:590:    nonisolated(unsafe) static var statusItemFactory: (NSStatusBar) -> NSStatusItem = {
-AppDelegate.swift:595:    nonisolated(unsafe) static var statusItemCreationCount = 0
+AppDelegate.swift:596:    nonisolated(unsafe) static var statusItemFactory: (NSStatusBar) -> NSStatusItem = {
+AppDelegate.swift:601:    nonisolated(unsafe) static var statusItemCreationCount = 0
 Services/LanguageManager.swift:29:    nonisolated(unsafe) static var injectedForTest: LanguageManager?
 Services/LanguageManager.swift:74:    nonisolated(unsafe) static var defaults: UserDefaults {
 Services/LanguageManager.swift:102:    nonisolated(unsafe) private static var codeStorage: String = "en"
@@ -260,8 +260,8 @@ just copied from the declaration comments.
 
 | File | Line | Symbol | Current isolation (verified) | Phase 3 plan |
 |------|------|--------|------------------------------|--------------|
-| `AppDelegate.swift` | 590 | `statusItemFactory: (NSStatusBar) -> NSStatusItem` | ID-REVIEW-1045 P1-2: the seam that creates the menu-bar status item. The factory is **read** under `statusItemFactoryLock` (`:574`) inside `makeStatusItem()` (`:592`) and **invoked outside** the lock (the creation itself must not hold the lock). It is deliberately NOT `TestIsolation.defaults`: that seam owns `UserDefaults` storage, this one owns the **creation action** on a system resource | actor-isolate the canonical seam |
-| `AppDelegate.swift` | 580 | `statusItemCreationCount: Int` | ID-REVIEW-1045 P1-2: the counter that makes the creation **observable** — every increment and every read is bracketed by `statusItemFactoryLock` (`:574`; reads go through `statusItemCreations` at `:583`). A behavioural guard asserts "the test host created NOTHING" ⇒ aliasing, renaming or moving the creation into a helper cannot hide it | actor-isolate the canonical seam |
+| `AppDelegate.swift` | 596 | `statusItemFactory: (NSStatusBar) -> NSStatusItem` | ID-REVIEW-1045 P1-2: the seam that creates the menu-bar status item. The factory is **read** under `statusItemFactoryLock` (`:595`) inside `makeStatusItem()` (`:613`) and **invoked outside** the lock (the creation itself must not hold the lock). It is deliberately NOT `TestIsolation.defaults`: that seam owns `UserDefaults` storage, this one owns the **creation action** on a system resource | actor-isolate the canonical seam |
+| `AppDelegate.swift` | 601 | `statusItemCreationCount: Int` | ID-REVIEW-1045 P1-2: the counter that makes the creation **observable** — every increment and every read is bracketed by `statusItemFactoryLock` (`:595`; reads go through `statusItemCreations` at `:604`). A behavioural guard asserts "the test host created NOTHING" ⇒ aliasing, renaming or moving the creation into a helper cannot hide it | actor-isolate the canonical seam |
 | `Services/ClipboardStore.swift` | 928 | `contentCache: NSCache` | `NSCache` is documented thread-safe (per NSCache header); the nonisolated decrypt kernels touch it from prewarm's utility-queue workers | actor-isolated cache |
 | `Services/ClipboardStore.swift` | 939 | `rtfPlaintextCache: NSCache` | same NSCache thread-safety contract as `contentCache` | actor-isolated cache |
 | `Services/ClipboardStore.swift` | 1046 | `pendingFailedIDs: Set<UUID>` | every access bracketed by `pendingFailedIDsLock` (`:1047`) — `ClipboardStore.swift:2419`, `ClipboardStore+Encryption.swift:59,252,310,322` | actor-isolated state |
@@ -323,4 +323,4 @@ commit — the alternative is a row that points at the wrong line.
 
 ---
 
-*Last updated: 2026-10-28 (ID-REVIEW-1047: §8's `WindowManager` row refreshed — the declaration moved 113 → 158 because the new `WindowFrameAutosave` gate was added to the same file (AppKit's frame autosave must not run in a test process — it would rewrite the user's saved window position in the user's real domain); the COUNT is unchanged at 22. Also: the §8 prose's stale `AppDelegate.swift:575/580/574` references were corrected to `:590/595/589` — the same document carried two contradictory sets of line numbers. Previous: 2026-10-28 (ID-REVIEW-1045: §8 refreshed — the menu-bar status item's creation seam contributes 2 new `nonisolated(unsafe)` declarations (`AppDelegate.swift:575` `statusItemFactory`, `:580` `statusItemCreationCount`); the COUNT moves 20 → **22**, and the roster rows + raw-output block are refreshed in the same commit, as the drift-protection test demands).
+*Last updated: 2026-10-28 (ID-REVIEW-1048: §8's `AppDelegate.swift` rows + raw-output block refreshed — the declarations moved 590 → 596 and 595 → 601 because the ID-REVIEW-1048 comment block (6 lines) was added above them in the same file. ⚠️ **The TABLE and the RAW-OUTPUT BLOCK had disagreed** (the table still said `590` / `580` while the block said `590` / `595`) ⇒ only the raw block is drift-tested ⇒ the table's staleness was **invisible** ⇒ both are refreshed here, together with the inline `:574` / `:592` / `:583` references (→ `:595` / `:613` / `:604`). Previous: 2026-10-28 (ID-REVIEW-1047: §8's `WindowManager` row refreshed — the declaration moved 113 → 158 because the new `WindowFrameAutosave` gate was added to the same file (AppKit's frame autosave must not run in a test process — it would rewrite the user's saved window position in the user's real domain); the COUNT is unchanged at 22. Also: the §8 prose's stale `AppDelegate.swift:575/580/574` references were corrected to `:590/595/589` — the same document carried two contradictory sets of line numbers. Previous: 2026-10-28 (ID-REVIEW-1045: §8 refreshed — the menu-bar status item's creation seam contributes 2 new `nonisolated(unsafe)` declarations (`AppDelegate.swift:575` `statusItemFactory`, `:580` `statusItemCreationCount`); the COUNT moves 20 → **22**, and the roster rows + raw-output block are refreshed in the same commit, as the drift-protection test demands).

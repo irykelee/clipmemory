@@ -38,6 +38,8 @@ EXTRA_PREFIXES = [
     "TestIsolation-XCTest-isolation",
     "SafeModeService-XCTest-isolation",
     "AppStorageDefaults-XCTest-isolation",
+    # ID-REVIEW-1048 (2026-10-28): StartupHealth's own isolation suite.
+    "StartupHealth-XCTest-isolation",
 ]
 
 

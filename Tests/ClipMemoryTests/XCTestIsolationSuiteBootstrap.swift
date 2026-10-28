@@ -59,8 +59,22 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
         "HotKeyManager-XCTest-isolation",
         "BackupService-XCTest-isolation",
         testIsolationSuiteName,
-        safeModeServiceSuiteName
+        safeModeServiceSuiteName,
+        // ID-REVIEW-1048 (2026-10-28): `StartupHealth`'s own suite. It is
+        // cleared before every test case like the others (its
+        // `lastLaunchTime` must not leak into a later test).
+        //
+        // ⚠️ It is deliberately **NOT** in `guardedSharedSuiteKeys`: the write
+        // guard exists to catch a test that publishes a setting **for other
+        // tests to read**, and StartupHealth writing `lastLaunchTime` into
+        // **its own** suite is that service's legitimate behaviour, not a
+        // stray write.
+        startupHealthSuiteName
     ]
+
+    /// The suite `StartupHealth.defaultsFor(isTestProcess:)` resolves to under
+    /// XCTest.
+    static let startupHealthSuiteName = "StartupHealth-XCTest-isolation"
 
     /// The canonical seam's baseline suite (`TestIsolation.baselineDefaults`).
     ///

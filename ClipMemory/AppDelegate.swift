@@ -274,9 +274,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // lastBackupDate, etc.). The :469 guard covers setupClipboardMonitor;
         // this guard covers welcome判定 + UpdateService init + backup +
         // OCR backfill. StartupHealth.logSnapshot is now guarded separately
-        // at :86 (ID-APP-0003) because it writes lastLaunchTime to the
+        // at :249 (ID-APP-0003) because it writes lastLaunchTime to the
         // shared .standard domain, not a fresh store. Observer setup above
         // is read-only or test-inert and stays unguarded.
+        //
+        // ⚠️ ID-REVIEW-1048 (2026-10-28): that `:249` guard used to be the
+        // ONLY thing standing between a test process and the production
+        // Keychain item (`StartupHealth`'s `keyStore` default parameter was
+        // the production identity) ⇒ it is now gated at the **read** site
+        // too, by identity — see `StartupHealth.mayReadKeyStore`.
         guard !TestIsolation.isRunningTests else { return }
         if FirstLaunchManager.isFirstLaunch { showWelcomeWindow() }
         // Start Sparkle: daily background check per SUEnableAutomaticChecks.

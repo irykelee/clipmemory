@@ -510,7 +510,6 @@ final class Review1047RegressionTests: XCTestCase {
                 "Services/ImageStorage.swift": 3,
                 "Services/LanguageManager.swift": 1,
                 "Services/SQLiteStorageBackend.swift": 1,
-                "Services/StartupHealth.swift": 2,
                 "Services/StorageBackend.swift": 1,
                 "Services/TrashStore.swift": 1
             ],
@@ -518,8 +517,11 @@ final class Review1047RegressionTests: XCTestCase {
             + "都必须先在台账 §47.10 里判定它是否已被闸门挡住"
         )
         XCTAssertEqual(
-            inventory.values.reduce(0, +), 12,
-            "库存总数必须仍是 12（台账 §47.10 的逐条判定就是按这 12 条写的）"
+            inventory.values.reduce(0, +), 10,
+            "库存总数必须仍是 10（台账 §47.10 的逐条判定就是按这 10 条写的；"
+            + "⚠️ ID-REVIEW-1048 把 `StartupHealth.swift` 的 2 处 `= .standard` "
+            + "换成了走 seam 的默认参数 ⇒ 12 → 10，**这是棘轮在正常工作**，"
+            + "不是漏改）"
         )
     }
 

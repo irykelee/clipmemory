@@ -2810,7 +2810,7 @@ left safeMode.crashCount in SafeModeService-XCTest-isolation
 | 文件 | 处数 | 判定 |
 |---|---|---|
 | `LanguageManager.swift` | 1 | `LanguageManager.shared` 在测试进程里走隔离 suite ⇒ **已闸门** |
-| `StartupHealth.swift` | 2 | `AppDelegate.swift:86` 的 `guard !TestIsolation.isRunningTests` 挡住启动路径 ⇒ **已闸门** |
+| `StartupHealth.swift` | 2 | ⚠️ **原判定「已闸门」是「半」的**（见 §49）：`AppDelegate.swift:249`（⚠️ 原写 `:86` —— **行号漂移**）的 `guard !TestIsolation.isRunningTests` 确实挡住了**启动路径**，但**这两个默认参数本身是生产身份**：① `keyStore` = **生产钥匙串**（ID-REVIEW-1043 的闸门只挂在 `CryptoService.prepareKey` 这**一个收敛点**上，**没覆盖** `StartupHealth` 的**兄弟读路径**）；② `defaults` = **生产域**，而 `logSnapshot` 会**写** `lastLaunchTime`。⇒ **已修**（ID-REVIEW-1048）：两个默认参数都改走 seam ⇒ 库存 **2 → 0** |
 | `ImageStorage.swift` | 3 | `ImageStorage.init` 在测试进程里**早退** ⇒ 迁移/清理都不跑 ⇒ **已闸门** |
 | `StorageBackend.swift` / `SQLiteStorageBackend.swift` | 2 | `ClipboardStore` 的测试分支用 `MemoryStorageBackend` ⇒ 生产 backend 不会被构造 ⇒ **不可达** |
 | `TrashStore.swift` | 1 | 由 `ClipboardStore.init` 用**同一个** `defaults` 构造 ⇒ **已闸门** |
@@ -2818,6 +2818,11 @@ left safeMode.crashCount in SafeModeService-XCTest-isolation
 
 ⇒ **没有一个是「当前可达的活雷」**；但它们全是**同一个形状的地雷**
 ⇒ 本轮把**新写的**默认参数全部改成走 seam。
+
+⚠️ **库存变更（ID-REVIEW-1048，2026-10-28）**：`StartupHealth.swift` 的 2 处已被
+改成走 seam ⇒ **逐文件库存棘轮（守卫 ⑲）由 12 处降为 10 处**。
+⇒ 本表记录的是**第 47 轮那次扫描的快照**；**当前**的权威数字以**守卫 ⑲**为准。
+⇒ ⇒ *棘轮在**库存下降**时也必须响 —— 否则「修好了」和「漏改了」在报告里长得一模一样。*
 
 ⚠️ **订正（独立核验 P2-1，§48.3）**：本节原写「本轮把这一族的**形状**钉在了守卫 ⑧ 里
 （app 树里 `UserDefaults.standard` 只允许出现在判别器里）」—— **那是过头的**：
@@ -3010,6 +3015,8 @@ AppDelegate）+ **反面**（app 树里 `defaults: .standard` **零命中**）�
 **修法**：守卫 ⑲（**棘轮**）—— 用 `= .standard` 这个**形状**做判据（不依赖参数名的
 拼写 ⇒ `defaults : UserDefaults = .standard` 这种改写也躲不过），并钉**逐文件
 数量** ⇒ 新增一处 / 某文件多一处 ⇒ 立刻红 ⇒ 必须先在 §47.10 里判定。
+⚠️ **ID-REVIEW-1048（2026-10-28）**：该棘轮随后把 `StartupHealth.swift` 的 2 处
+改成走 seam ⇒ 库存 **12 → 10**（守卫 ⑲ 的期望值已同步）⇒ 见 §49。
 + 守卫 ⑲b（盯 `.standard` 这个**值**本身出现在哪些**未登记**的位置）。
 
 ⚠️ **如实记录边界**：⑲ 是**计数**判据 ⇒ 一处**等价的改写**（把 `.standard` 写成
@@ -3122,6 +3129,138 @@ canary 报「NEW production UserDefaults pollution: key ADDED "ClipboardItems"�
 
 **验收**：全量 **1414 / 4 skipped / 0 failures**；lint **10 = 基线**；
 **变异 17 条（N1–N17）全红**、drift=False；**生产域与 harness 起点快照逐键零差异**（29 键）。
+⇒ ⚠️ **ID-REVIEW-1048（2026-10-28）**：本节的「12 处 `= .standard`」随后降为
+**10 处**（`StartupHealth` 的 2 处改走 seam）⇒ 见 §49。
 ⇒ 其中 **N6 / N10 的 `prod_changed=True` 是**正面**证据**：闸门确实挡住了「绑生产域」
 与「测试进程写窗口位置到用户域」这两种污染，且 harness 的快照/还原**精确回滚**
 ⇒ *「验证工具本身不能成为它要消灭的那种伤害源*（ID-REVIEW-1042）这条，在本轮是**被验证**的，不是被声称的。
+
+---
+
+## 49. 同族第 13 例：`StartupHealth` 的两个**默认参数**都是**生产身份**（2026-10-28）
+
+> 触发：1047 第二轮 push 之后做**独立**的全量扫面（把 app 树里所有「用户全局
+> 资源引用」按资源类型列了一遍：剪贴板 / 偏好域 / 钥匙串 / 登录项 / 状态项 /
+> 全局热键 / 用户目录 / 子进程 / 剪贴板监控 …）⇒ `StartupHealth.swift` 的两个
+> 默认参数命中了本族的核心形状。
+
+### 49.1 两个默认参数，两个生产身份
+
+```swift
+// ClipMemory/Services/StartupHealth.swift（修前）
+static func snapshot(
+    counts: Counts = .zero,
+    keyStore: any KeyStoring = KeychainKeyStore(),   // ① 生产**钥匙串**
+    imagesDirectory: URL? = nil,
+    fileManager: FileManager = .default,
+    defaults: UserDefaults = .standard                // ② 生产**偏好域**
+) -> Snapshot
+```
+
+* **① `keyStore` = 生产钥匙串身份** —— 与 ID-REVIEW-1047 的
+  `defaults: .standard` **逐字同型**，只是资源从「偏好域」换成了「钥匙串」；
+* **② `defaults` = 生产偏好域身份** —— 而且 `logSnapshot` 会
+  `defaults.set(Date(), forKey: lastLaunchTime)` ⇒ 一个**有写后果**的默认参数。
+
+### 49.2 根因：1043 那道闸门的**覆盖面**比台账暗示的窄
+
+ID-REVIEW-1043（生产钥匙串那一轮）造了一道**按身份判定**的闸门：
+`CryptoService.shouldRefuseKeychainStore(isRunningTests:keyStore:)` ——
+判 `keyStore.keychainService == KeychainKeyStore.defaultService`
+⇒ 任何 conformer 只要报出生产 service 就被拒（**按身份，不按类型**）。
+
+⇒ 它挂在 **`CryptoService.prepareKey` 这一个收敛点**上（那正是 1043 的修法：
+*在收敛点判定，不在调用点判定*）。
+⇒ 而 `StartupHealth.snapshot` / `logSnapshot` 走的是**兄弟读路径** ——
+它们**直接** `keyStore.load()`，**根本到不了**那个收敛点
+⇒ **闸门没覆盖它们**。
+
+⚠️ ⇒ ⇒ **元模式**：*「在收敛点判定」是**正确**的修法，但它的正确性依赖
+「**所有**路径都汇聚到那一点」这个前提 —— 一旦有**兄弟路径**直接从资源上取，
+前提就不成立。⇒ 收敛点闸门**必须有**一条「哪些路径汇聚在这里」的清单，
+否则它是**局部的**安全。*
+
+### 49.3 后果不是「读坏了数据」，是「**读会挂**」
+
+生产钥匙串项 `com.clipmemory.app` / `root-encryption-key` 是由**正规签名**的
+ClipMemory 建的，而测试宿主是 `CODE_SIGN_IDENTITY=-` 的 **ad-hoc** 签名
+⇒ 身份不同 ⇒ macOS **弹钥匙串 ACL 授权框**（`SecurityAgent`）⇒ 测试宿主
+**阻塞**在 `SecItemCopyMatching` 上（ID-REVIEW-1043 实测几十秒）
+⇒ 并且那个 `SecurityAgent` **留在后台不退出** ⇒ 它会**堵死后续所有钥匙串操作**
+⇒ 后面几轮验证会**直接挂死**，看起来像「flake」，其实是**残留的代理进程**。
+
+⇒ ⇒ *「我只想读一下」和「我只想验证一下」这两个前缀，经常是**引入用户可见
+故障**的最短路径 —— 验证工具本身不该成为伤害源。*
+
+### 49.4 而且这个写入**本来就看不见**
+
+`lastLaunchTime` 在 `ZZZSuiteTeardownTests.appLifecycleKeys` 的**白名单**里
+⇒ 主 canary **跳过**它 ⇒ 对它的写入**不可见**
+⇒ 与 ID-REVIEW-1038 把 `ClipboardItems` 移出白名单是**同一种盲区**：
+*能容忍变化 ⇒ 看不见破坏*。
+
+### 49.5 第三条：这个文件的**头部注释**也在撒谎
+
+修前的头注释写着：
+
+> "Tests inject every dependency via parameters so live history stays untouched
+> (per C1 test-never-touch-prod-data rule)"
+
+⇒ 一条**写在注释里的、没有被强制**的不变量
+—— 与 ID-REVIEW-1043（`CryptoService`）与 ID-REVIEW-1047（`FirstLaunchService`）
+**逐字同型**。⇒ 现在它被**强制**了，而不是只被**陈述**。
+
+### 49.6 修法（生产行为零变化）
+
+* `defaults` 默认参数 ⇒ 走**纯函数** seam
+  `StartupHealth.defaultsFor(isTestProcess:)`（生产 ⇒ **同一个** `.standard`；
+  测试 ⇒ 隔离 suite `StartupHealth-XCTest-isolation`）；
+* `keyStore` 读点 ⇒ 走 `StartupHealth.mayReadKeyStore(isRunningTests:keyStore:)`，
+  它**复用** `CryptoService.shouldRefuseKeychainStore`（**不另造一道** ⇒ 两条
+  路径不会漂移）；生产 ⇒ `shouldRefuse(false, …)` 为 false ⇒ 读写真实注册，
+  与原来逐字一致；
+* 隔离 suite 名进 `XCTestIsolationSuiteBootstrap.sharedSuiteNames`（**每个测试前
+  清理**），但**不进** `guardedSharedSuiteKeys`（那里面放的是「谁往**共享** suite
+  乱写」的监视名单，而 `StartupHealth` 写**自己**的 suite 是它的合法行为）；
+* `Scripts/cleanup-test-plists.py` 认领新 suite 名（别让 plist 留在盘上）。
+
+### 49.7 守卫（`Review1048RegressionTests`，9 条）
+
+| 守卫 | 类型 | 钉住什么 |
+|---|---|---|
+| ① | **行为** | `snapshot` **不得**读报出生产 service 的钥匙串（注入的记录型 conformer，**绝不碰真实钥匙串**） |
+| ② | **行为** | `logSnapshot` 同样不得（**两个读点各钉一条** —— 否则「把两个一起改」的变异会给出「有覆盖」的错觉） |
+| ③ | **行为（只读）** | `snapshot` 的**默认**域**必须**是隔离 suite（用「种一个已知日期再读回来」证明） |
+| ③b | **静态** | `snapshot` 与 `logSnapshot` 的默认参数**必须**是**同一个**表达式 |
+| ④ | **纯函数** | `mayReadKeyStore` 的两半（生产 ⇒ 允许；测试 + 生产身份 ⇒ 拒绝；测试 + fake ⇒ 允许） |
+| ⑤ | **纯函数** | `defaultsFor` 的两半 |
+| ⑥ | **棘轮** | app 树里 `KeychainKeyStore()` 的库存**恰好 6 处**（CryptoService 4 + StartupHealth 2） |
+| ⑦ | **静态** | `StartupHealth.swift` 里**不得**再有 `= .standard`，且**必须**用两个 seam |
+| ⑦b | **静态** | 隔离 suite 名与 bootstrap 清理列表**必须**一致（单一真相） |
+
+⚠️ **守卫 ③ 的设计本身就是本族教训的应用**：第一版它调用**会写**的
+`logSnapshot` 来证明「默认域不是生产域」⇒ **如果 seam 被改坏，这个守卫自己
+就会把 `lastLaunchTime` 写进用户的真实域** ⇒ *验证工具本身成了它要消灭的那种
+伤害源* ⇒ 改成用**只读**的 `snapshot` 来证明同一件事（读最多读一次生产域，
+**不写** ⇒ 无污染），写路径由 ③b（两个默认参数表达式**必须相同**）+ ⑦
+传递覆盖。
+
+### 49.8 棘轮的反应：库存 12 → 10
+
+守卫 ⑲（`Review1047RegressionTests` 的逐文件库存棘轮）在 `StartupHealth` 的
+2 处被改走 seam 后**立刻变红** ⇒ 这是棘轮**在正常工作**（不是漏改）
+⇒ 期望值已同步为 **7 个文件 / 10 处**，并在守卫里写明「12 → 10 是**修复**，
+不是漏改」。
+
+⇒ ⇒ *棘轮在**库存下降**时也必须响 —— 否则「修好了」和「漏改了」在报告里
+长得一模一样。*
+
+### 49.9 顺带订正的两处行号漂移
+
+* `ClipMemory/AppDelegate.swift` 的注释写着「`StartupHealth.logSnapshot` is now
+  guarded separately **at :86**」⇒ 实际在 **:249**（ID-APP-0003, 2026-08-03 的
+  旧行号，一路漂到现在）⇒ 已订正；
+* §47.10 的表也写着 `AppDelegate.swift:86` ⇒ 同源漂移 ⇒ 已订正。
+
+⇒ ⇒ *行号漂移是**同一类漂移**：文档里指向代码位置的引用会随代码增长而腐烂，
+而**没人会去看它是否还成立** —— 因为它**看起来**像个事实。*
