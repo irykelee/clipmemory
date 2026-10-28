@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00C2199DCD8A5A8D82F0C545 /* Review1045RegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 547F54925D7CC3185A7B6A74 /* Review1045RegressionTests.swift */; };
 		015F6AFCB7E44CD524CD45FB /* ImageStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB3E3AEDB1137BDD2F31FA85 /* ImageStorageTests.swift */; };
 		01C3FB73A2872934763AA01B /* KnownExcludedApps.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8E6FA99F0AFF7ED9984A514 /* KnownExcludedApps.swift */; };
 		0361640A88E6390DC8C6065E /* SQLiteTrashDimensionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F5357D34517F5571E91920C /* SQLiteTrashDimensionTests.swift */; };
@@ -378,6 +379,7 @@
 		5168EEFFA314A501A67D6960 /* Review1034RegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Review1034RegressionTests.swift; sourceTree = "<group>"; };
 		52DD73C3E0D3409D9F0B3B8D /* ExclusionUpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExclusionUpdateTests.swift; sourceTree = "<group>"; };
 		544EFF5DF257CE8857B2A9CE /* UserDefaultsSearchListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsSearchListTests.swift; sourceTree = "<group>"; };
+		547F54925D7CC3185A7B6A74 /* Review1045RegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Review1045RegressionTests.swift; sourceTree = "<group>"; };
 		55270E699A2FC9E14942B846 /* CloseButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloseButton.swift; sourceTree = "<group>"; };
 		553534F728F51778A9A2B067 /* MemoryCacheRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryCacheRegistry.swift; sourceTree = "<group>"; };
 		560139C0F75E8A292267BB24 /* BackupPackageImportFromLocalBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupPackageImportFromLocalBackupTests.swift; sourceTree = "<group>"; };
@@ -742,6 +744,7 @@
 				D34F343FA80F56432D4120F6 /* Review1042RegressionTests.swift */,
 				B676DEEC6C6924753393AB27 /* Review1043RegressionTests.swift */,
 				DD93D9A199377DA6135C8010 /* Review1044RegressionTests.swift */,
+				547F54925D7CC3185A7B6A74 /* Review1045RegressionTests.swift */,
 				F50DEF7083A598F2CA5D9D4C /* RichTextParserBehaviorTests.swift */,
 				31B6698EBE6386F1C7FEE434 /* SafeModeServiceTests.swift */,
 				92B3C4F1253D486C376AF508 /* SeamBaselineIsolationTests.swift */,
@@ -1167,6 +1170,7 @@
 				F46E2F6DDEE2F808E3A140DC /* Review1042RegressionTests.swift in Sources */,
 				8C81E79E236CC9648D375EE6 /* Review1043RegressionTests.swift in Sources */,
 				943A3754088507BB35EEE2EC /* Review1044RegressionTests.swift in Sources */,
+				00C2199DCD8A5A8D82F0C545 /* Review1045RegressionTests.swift in Sources */,
 				BA733FF9DD0FD73ACAA1907F /* RichTextParserBehaviorTests.swift in Sources */,
 				DEBC5FB4CB06289D3EC40465 /* SQLiteBinderTests.swift in Sources */,
 				388D1F48712D6465EE66AB94 /* SQLiteSchemaVersionTests.swift in Sources */,

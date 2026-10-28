@@ -49,6 +49,27 @@ final class SafeModeService {
     /// Cleanup sweeps that target the home directory root.
     /// `directoryOverride` lets tests redirect to a tmp-dir without
     /// touching the user's real Application Support directory.
+    ///
+    /// ID-REVIEW-1045 (2026-10-28): the **test host** must not touch the
+    /// user's sentinel either. `SafeModeService.xcTestDefaults` isolates
+    /// the three UserDefaults keys, but the sentinel is a **FILE** and
+    /// its path was NOT isolated ⇒ the test host deleted and rewrote
+    /// `~/Library/Application Support/ClipMemory/.running-sentinel` on
+    /// every run (measured 2026-10-28: the file's inode AND mtime both
+    /// changed across a single test run).
+    ///
+    /// ⇒ Why that matters to the user: the sentinel is the crash
+    /// detector's memory of "the previous launch exited normally".
+    /// The test host deleting it makes the real app believe its previous
+    /// launch crashed (⇒ a spurious crash count, possibly a spurious
+    /// safe-mode entry), and the test host rewriting it makes the real
+    /// app believe the previous launch was clean (⇒ a real crash is not
+    /// counted). Both directions weaken a user-visible safety net.
+    ///
+    /// ⇒ Same isolation pattern as `ImageStorage` (`Images-Tests`) and
+    /// `CryptoService` (`Keys-Tests`): a dedicated test-only directory
+    /// under Application Support. Production behaviour is unchanged
+    /// (`isRunningTests` is false in production).
     private var sentinelURL: URL {
         if let override = directoryOverride {
             return override
@@ -62,8 +83,19 @@ final class SafeModeService {
             create: true
         )) ?? FileManager.default.temporaryDirectory
         return appSupport
-            .appendingPathComponent("ClipMemory", isDirectory: true)
+            .appendingPathComponent(Self.sentinelDirectoryName(isRunningTests: TestIsolation.isRunningTests),
+                                    isDirectory: true)
             .appendingPathComponent(sentinelFilename)
+    }
+
+    /// ID-REVIEW-1045: the **pure** decision seam — which directory holds
+    /// the crash sentinel.
+    ///
+    /// Split out so the production half is directly assertable: in a test
+    /// host the probe is always true, so "production ⇒ the user's own
+    /// directory" could not be checked from inside the test process.
+    nonisolated static func sentinelDirectoryName(isRunningTests: Bool) -> String {
+        isRunningTests ? "ClipMemory/SafeMode-Tests" : "ClipMemory"
     }
 
     private let defaults: UserDefaults

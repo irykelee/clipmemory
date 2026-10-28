@@ -538,6 +538,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// ID-REVIEW-1045 (2026-10-28): **纯函数**决策 seam —— 测试宿主**不得**
+    /// 在用户的菜单栏里占一个位置。
+    ///
+    /// 抽成纯函数的理由与 `HotKeyManager.shouldRegisterSystemHotKey`
+    /// 同款（ID-REVIEW-1044）：判定若直接写在 `setupStatusItem()` 里，
+    /// 「**生产 ⇒ 一定创建**」那半边在测试里**测不到**（测试进程里
+    /// `isRunningTests` 恒为真）⇒「把 `isRunningTests` 条件删掉」这条
+    /// **最危险**的变异（真机上 app 永远没有菜单栏图标 ⇒ 纯菜单栏 app
+    /// 变成「用户根本找不到的 app」）**不会让任何测试变红**。
+    ///
+    /// 生产行为**零变化**：闸门在生产进程里恒为 false。
+    nonisolated static func shouldCreateStatusItem(isRunningTests: Bool) -> Bool {
+        !isRunningTests
+    }
+
     private func setupStatusItem() {
         // ID-REVIEW-1044 (2026-10-28): 测试宿主**不得**在用户的菜单栏里
         // 占一个位置。
@@ -552,7 +567,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 放在收敛点上。全部读者都是 nil-safe（`statusItem?.button` /
         // `guard let`），徽章只走静态纯函数 `badgedStatusImage(count:)`
         // ⇒ 闸门安全，且生产行为**零变化**。
-        guard !TestIsolation.isRunningTests else { return }
+        //
+        // ID-REVIEW-1045: 判定改走纯函数 `shouldCreateStatusItem` ⇒
+        // 「生产 ⇒ 一定创建」那半边现在**可测**。
+        guard Self.shouldCreateStatusItem(isRunningTests: TestIsolation.isRunningTests) else { return }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
             // ID-L10N-0010 (2026-07-30 audit): use L10n.appName for VoiceOver. The

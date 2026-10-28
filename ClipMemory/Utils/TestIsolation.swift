@@ -188,15 +188,89 @@ enum TestIsolation {
     /// NOT a usable signal: the unified log line `Successfully spawned
     /// ClipMemory`. The test host produces exactly the same line, so it
     /// does not distinguish a test launch from a plain one.
-    nonisolated static let isRunningTests: Bool = {
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-            return true
-        }
-        if NSClassFromString("XCTestCase") != nil {
-            return true
-        }
-        return Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
-    }()
+    nonisolated static let isRunningTests: Bool = isTestProcess(signals: currentTestProcessSignals())
+
+    /// ID-REVIEW-1045 (2026-10-28): the three signals, **structured**.
+    ///
+    /// Before this, the whole probe lived inside one `static let`
+    /// initialiser closure — a **constant of the running process** that
+    /// could not be flipped, and whose decision logic could not be
+    /// exercised from a test. That made two halves untestable:
+    ///
+    /// * "a NON-test process ⇒ probe is false" — the half that decides
+    ///   whether the **production** app registers its global hotkey, shows
+    ///   its menu-bar item, and writes to the user's real domain. In a
+    ///   test host the probe is *always* true, so that half was
+    ///   structurally unreachable.
+    /// * "the decision logic is correct" — e.g. a signal that is supposed
+    ///   to be an OR-term accidentally becoming an AND-term would silently
+    ///   disable the whole test-isolation regime.
+    ///
+    /// The signals are now values, and the decision is a **pure
+    /// function** of them: the production half becomes directly
+    /// assertable by feeding `false`, and every OR-term gets its own
+    /// test.
+    ///
+    /// ⚠️ The probe's *meaning* is unchanged — same three signals, same
+    /// OR semantics, same evaluation timing (first access, `swift_once`).
+    /// Production behaviour is byte-identical.
+    struct TestProcessSignals: Equatable {
+        /// Signal 1 — `XCTestConfigurationFilePath` present with ANY
+        /// value (an empty string still counts; measured 2026-10-20).
+        var hasXCTestConfigPath: Bool
+        /// Signal 2 — the `XCTestCase` class is loaded in this process.
+        var xcTestCaseClassLoaded: Bool
+        /// Signal 3 — an `.xctest` bundle is injected into this process.
+        var xctestBundleInjected: Bool
+
+        /// A process with none of the three signals is NOT a test process.
+        static let none = TestProcessSignals(
+            hasXCTestConfigPath: false,
+            xcTestCaseClassLoaded: false,
+            xctestBundleInjected: false
+        )
+    }
+
+    /// Reads the three signals from the **current** process.
+    ///
+    /// Split out of `isRunningTests` so the probe can be re-derived on
+    /// demand (consistency assertion) instead of being a one-shot
+    /// constant. Keeping the *reads* here — and nowhere else — is what
+    /// the ID-REVIEW-1044 static guard ⑩ pins (all three anchors
+    /// `ProcessInfo.processInfo.environment[` / `NSClassFromString(` /
+    /// `Bundle.allBundles` must appear **only** in this file).
+    nonisolated static func currentTestProcessSignals() -> TestProcessSignals {
+        TestProcessSignals(
+            hasXCTestConfigPath:
+                ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil,
+            xcTestCaseClassLoaded: NSClassFromString("XCTestCase") != nil,
+            xctestBundleInjected:
+                Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
+        )
+    }
+
+    /// The **pure** decision function: is this process a test process?
+    ///
+    /// Three independent signals, OR-ed. "ANY signal ⇒ test process" is
+    /// the fail-safe direction: a false negative (a test process judged
+    /// to be production) writes into the user's real domain — that is
+    /// the ID-CRASH-0031 data-loss shape. A false positive (production
+    /// judged to be a test process) is the ID-REVIEW-1045 shape: the
+    /// production app silently stops registering its hotkey, shows no
+    /// menu-bar item, and keeps its data in an isolated store.
+    ///
+    /// ⚠️ The false-positive direction is why this function exists as a
+    /// **pure** function rather than staying inside the `static let`:
+    /// the production half has to be assertable, and it has to be
+    /// assertable *without* a production binary (see
+    /// `Scripts/production-probe-smoke.sh` for the end-to-end counterpart
+    /// that closes the remaining gap — "the probe is false **in the real
+    /// production process**").
+    nonisolated static func isTestProcess(signals: TestProcessSignals) -> Bool {
+        signals.hasXCTestConfigPath
+            || signals.xcTestCaseClassLoaded
+            || signals.xctestBundleInjected
+    }
 
     /// ID-CRASH-0031: the UserDefaults keys that hold the user's actual
     /// data (history / recycle bin / tags). These are the keys a test
