@@ -24,10 +24,35 @@ import XCTest
 /// once (install-failure and hotkey-conflict), whichever the environment
 /// happens to take.
 ///
+/// ⚠️ ID-REVIEW-1044 (2026-10-28) 起，下面这句话的前提**已不成立**：
+/// 测试宿主不再注册系统级全局热键 ⇒ `RegisterEventHotKey` 在测试里
+/// **根本不会被调用** ⇒ 「注册必然失败」不再是环境属性，而是
+/// 「按设计跳过」。以紧随其后的 ID-REVIEW-1044 说明为准。
+///
 /// In this test environment `RegisterEventHotKey` reliably fails (no usable
 /// application event target / hotkey already held), which exercises the
 /// failure paths deterministically; the premise asserts guard against that
 /// changing silently.
+///
+/// ID-REVIEW-1044 (2026-10-28) — **前提已变，如实订正**：
+/// 测试宿主现在**按设计跳过**系统级热键注册（`HotKeyManager.register()`
+/// 在 XCTest 下不碰 Carbon）⇒ `hotKeyRef == nil` 不再意味着「Carbon 注册
+/// 失败」，而意味着「**根本没去注册**」。
+///
+/// ⚠️ **由此产生一处覆盖率回退（如实记录，不掩饰）**：
+/// 这三个用例此前是**偶然**走到 Carbon 的失败分支的 —— 靠 AppDelegate 在启动
+/// 时先占住 ⌘⇧V，测试自己的注册必然拿到 -9878 ⇒ 那正是本条要修的缺陷。
+/// 缺陷修掉之后，Carbon 的失败分支（生产里真实存在：别的 app 抢了 ⌘⇧V）
+/// 在测试里**不再被走到** ⇒ INFRA-1「失败后不留 retain」这条契约退化成
+/// 「跳过注册时也不留 retain」（更弱，但**确定成立**，且这三个用例**不再
+/// skip**，仍在本轮全量里跑绿）。
+///
+/// **补回覆盖的正确修法**（本轮**不做**，理由见
+/// `docs/skips-ledger.md` §44.7）：把 Carbon 调用抽到协议后面（生产实现 =
+/// Carbon，测试实现 = 假 registrar），闸门落在**生产实现**里而不是
+/// `register()` 里 ⇒ 既能走失败分支，又**不产生任何全局占用**。
+/// 反过来，给 `register()` 加一个「允许真注册」的绕过开关是**不可接受**的
+/// —— 那等于把本条要消灭的洞重新打开。
 ///
 /// No UserDefaults writes: `register()`/`unregister()` never persist, so no
 /// backup/restore is needed here.

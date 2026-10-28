@@ -539,6 +539,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupStatusItem() {
+        // ID-REVIEW-1044 (2026-10-28): 测试宿主**不得**在用户的菜单栏里
+        // 占一个位置。
+        //
+        // `Info.plist` 里 `LSUIElement = true` ⇒ 这个 app 是**纯菜单栏 app**
+        // ⇒ 它的 `NSStatusItem` 就是它在菜单栏上的**全部存在**。测试宿主
+        // 每跑一次测试（实测：全量套件执行 ≈ 64 秒，不含构建），用户的
+        // 菜单栏就多出一个来路不明的 ClipMemory 图标；点开还是**空的**
+        // （测试宿主读的是隔离 store）⇒ 用户看到的是「一个打不开的假 app」。
+        //
+        // 这里是 `NSStatusBar.system.statusItem` 的**唯一**调用点 ⇒ 闸门
+        // 放在收敛点上。全部读者都是 nil-safe（`statusItem?.button` /
+        // `guard let`），徽章只走静态纯函数 `badgedStatusImage(count:)`
+        // ⇒ 闸门安全，且生产行为**零变化**。
+        guard !TestIsolation.isRunningTests else { return }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
             // ID-L10N-0010 (2026-07-30 audit): use L10n.appName for VoiceOver. The

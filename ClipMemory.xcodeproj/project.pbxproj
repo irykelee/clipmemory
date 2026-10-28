@@ -165,6 +165,7 @@
 		918C9F3970589F50C7E06374 /* AppDirectoriesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA672B12AE7F6167EAD741A5 /* AppDirectoriesTests.swift */; };
 		919909C13EFD40D730CCD15E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A060CA837242FD57B25DFFD9 /* ContentView.swift */; };
 		93109F965CEB492A3D5BA11F /* NewTagSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 081BAA0119F98837C5398BFA /* NewTagSheet.swift */; };
+		943A3754088507BB35EEE2EC /* Review1044RegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD93D9A199377DA6135C8010 /* Review1044RegressionTests.swift */; };
 		95D129E50D691795B9F515C4 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = BC6FC42268378577CAAD85B9 /* Sparkle */; };
 		95DADC4C748A5249890001B4 /* ExcludedAppRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E447DDB7BE26D2AB706672FB /* ExcludedAppRow.swift */; };
 		96B79C2628573414CF0F5A85 /* Review1041RegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1066CD7871946CE5CFD31400 /* Review1041RegressionTests.swift */; };
@@ -523,6 +524,7 @@
 		D93DAF3F012D4F78DF1F4F5D /* StoreMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreMigrationTests.swift; sourceTree = "<group>"; };
 		DC31BEBCE7E91DC73D1BBAED /* ProductionDataWriteGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductionDataWriteGuardTests.swift; sourceTree = "<group>"; };
 		DCD80AD431514537E75C8D85 /* ClipboardStore+Encryption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ClipboardStore+Encryption.swift"; sourceTree = "<group>"; };
+		DD93D9A199377DA6135C8010 /* Review1044RegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Review1044RegressionTests.swift; sourceTree = "<group>"; };
 		DE40F85AB73ADECAB89A3D0C /* BackupPackageSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupPackageSecurityTests.swift; sourceTree = "<group>"; };
 		DE9444FA6F97A39888295C1C /* AppPasteboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPasteboard.swift; sourceTree = "<group>"; };
 		DFA1F2D3E8DD885B5C5DD3CE /* BackupQuarantineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupQuarantineTests.swift; sourceTree = "<group>"; };
@@ -739,6 +741,7 @@
 				1066CD7871946CE5CFD31400 /* Review1041RegressionTests.swift */,
 				D34F343FA80F56432D4120F6 /* Review1042RegressionTests.swift */,
 				B676DEEC6C6924753393AB27 /* Review1043RegressionTests.swift */,
+				DD93D9A199377DA6135C8010 /* Review1044RegressionTests.swift */,
 				F50DEF7083A598F2CA5D9D4C /* RichTextParserBehaviorTests.swift */,
 				31B6698EBE6386F1C7FEE434 /* SafeModeServiceTests.swift */,
 				92B3C4F1253D486C376AF508 /* SeamBaselineIsolationTests.swift */,
@@ -1163,6 +1166,7 @@
 				96B79C2628573414CF0F5A85 /* Review1041RegressionTests.swift in Sources */,
 				F46E2F6DDEE2F808E3A140DC /* Review1042RegressionTests.swift in Sources */,
 				8C81E79E236CC9648D375EE6 /* Review1043RegressionTests.swift in Sources */,
+				943A3754088507BB35EEE2EC /* Review1044RegressionTests.swift in Sources */,
 				BA733FF9DD0FD73ACAA1907F /* RichTextParserBehaviorTests.swift in Sources */,
 				DEBC5FB4CB06289D3EC40465 /* SQLiteBinderTests.swift in Sources */,
 				388D1F48712D6465EE66AB94 /* SQLiteSchemaVersionTests.swift in Sources */,

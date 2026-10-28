@@ -127,8 +127,16 @@ class HotKeyManager {
     private var retainedSelfPtr: UnsafeMutableRawPointer?
 
     private(set) var config: HotKeyConfig
-    /// Whether a registration attempt was made this launch (lets UI read the
+    /// Whether a registration was **requested** this launch (lets UI read the
     /// outcome without triggering a re-register).
+    ///
+    /// ⚠️ The flag has ALWAYS meant "requested", never "succeeded": it is set
+    /// **before** the Carbon call — that is true in HEAD as well as after
+    /// ID-REVIEW-1044 (verified against HEAD, 2026-10-28). ID-REVIEW-1044 did
+    /// **not** change this flag's semantics; it only made one case reachable
+    /// in the test host: the request is recorded and the system-global
+    /// registration is then **skipped** (see `shouldRegisterSystemHotKey`).
+    /// Production behaviour is byte-identical.
     private(set) var registerAttempted = false
     /// ID-REVIEW-1010: injected UserDefaults so XCTest can redirect hotkey
     /// persistence to an isolated suite. Production path passes
@@ -158,6 +166,35 @@ class HotKeyManager {
     }
     let defaults: UserDefaults
 
+    /// ID-REVIEW-1044 (2026-10-28): **纯函数**决策 seam —— 测试宿主**不得**占用
+    /// **系统级全局资源**：全局热键。
+    ///
+    /// ## 实测（修之前，2026-10-28）
+    ///
+    /// `xcodebuild test` 跑起来时，测试宿主（TEST_HOST = 真 app，日志里的
+    /// `ClipMemory[9077]`）打出 `[HotKeyManager] Hotkey registered: ⌘⇧V`
+    /// ⇒ **测试进程真的抢走了用户的全局快捷键**。
+    ///
+    /// Carbon 的语义已实测（`/tmp/cm-carbon-semantics.swift`）：同一个键位
+    /// 组合 ⌘⇧V，**换一个 signature 再注册一样返回 -9878**
+    /// ⇒ 该组合是**系统级独占**的。于是两件事同时成立：
+    /// ① 测试期间用户按 ⌘⇧V，触发的是**测试宿主**（它的 handler 会
+    ///    `showMainWindow()`，在用户屏幕上弹一个假窗口）；
+    /// ② 生产 app 若在测试期间启动，注册会失败（`eventHotKeyExistsErr`），
+    ///    而注册**只在启动时做一次、不重试** ⇒ 用户的 app 会**静默地失去
+    ///    热键，直到重启 app**。
+    ///
+    /// ## 为什么抽成纯函数（ID-REVIEW-1043 的教训）
+    ///
+    /// 判定若直接写在 `register()` 里，「生产 ⇒ 一定注册」那半边在测试里
+    /// **测不到**（测试进程里 `isRunningTests` 恒为真）⇒「把 isRunningTests
+    /// 条件删掉」这条**最危险**的变异（真机上 app 永远拿不到热键，用户按
+    /// ⌘⇧V 没反应）**不会让任何测试变红**。纯函数化之后，生产那一半可以
+    /// 直接喂 `isRunningTests: false` 断言 ⇒ 两半都可测。
+    nonisolated static func shouldRegisterSystemHotKey(isRunningTests: Bool) -> Bool {
+        !isRunningTests
+    }
+
     init(defaults: UserDefaults = HotKeyManager.xcTestDefaults) {
         self.defaults = defaults
         self.config = HotKeyConfig.load(from: defaults)
@@ -171,6 +208,19 @@ class HotKeyManager {
         // explicit unregister() or a config change via updateHotKey().
         guard hotKeyRef == nil else { return }
         registerAttempted = true
+
+        // ID-REVIEW-1044 (2026-10-28): 测试宿主**不得**注册系统级全局热键。
+        //
+        // 这里是**唯一的收敛点**：全 app 树只有这一处 `RegisterEventHotKey`
+        // （静态守卫 `Review1044RegressionTests` 钉住这个「只有一处」的
+        // 事实），而 `updateHotKey()` 走的也是 `register()` ⇒ **一道闸门
+        // 覆盖全部路径**（比 ID-REVIEW-1043 的两处闸门更收敛）。
+        //
+        // 生产行为**零变化**：闸门在生产进程里恒为 false。
+        guard Self.shouldRegisterSystemHotKey(isRunningTests: TestIsolation.isRunningTests) else {
+            logger.info("Hotkey registration skipped in test host — the global shortcut stays free for the production app")
+            return
+        }
 
         // Install the keyboard event handler once — a retry after a failed
         // RegisterEventHotKey must not stack duplicate handlers.

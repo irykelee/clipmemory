@@ -101,7 +101,16 @@ enum ServiceContainer {
     }
 
     static func setCryptoForTesting(_ service: CryptoServiceProtocol) {
-        let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        // ID-REVIEW-1044 (2026-10-28): 统一到 `TestIsolation.isRunningTests`
+        // （三信号）。这里原本直接读 `XCTestConfigurationFilePath`（**一个**
+        // 信号）—— 全仓因此有**两份**「是不是测试进程」的实现，而两份的
+        // 严格程度不一样（ID-REVIEW-1043 的教训）。
+        //
+        // ⚠️ 方向说明：本处是 `precondition`（**fail-closed**：探针漏判会
+        // 直接 trap，而不是悄悄把数据写进生产域），所以它**不是** 1043
+        // 那类活缺陷 —— 但收敛掉之后，全仓只剩**一个**探针实现，
+        // 「探针漏判 ⇒ 写脏用户数据」这条路在结构上被关掉了。
+        let inTest = TestIsolation.isRunningTests
         precondition(inTest, "setCryptoForTesting called outside XCTest")
         cryptoLock.lock()
         defer { cryptoLock.unlock() }
@@ -160,7 +169,8 @@ enum ServiceContainer {
     }
 
     static func setFirstLaunchForTesting(_ service: FirstLaunchService) {
-        let inTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        // ID-REVIEW-1044 (2026-10-28): 同上 —— 统一到 `TestIsolation.isRunningTests`。
+        let inTest = TestIsolation.isRunningTests
         precondition(inTest, "setFirstLaunchForTesting called outside XCTest")
         firstLaunchLock.lock()
         defer { firstLaunchLock.unlock() }

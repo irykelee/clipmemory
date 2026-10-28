@@ -1756,3 +1756,266 @@ verifier 子 agent 跑了约 1 小时（**全量套件 + 代码审计 + 变异�
 随后**中止**该任务。⇒ 上面 4 条来自它的**会话内记录**（已逐条**回原文核对**后落地），
 **不是**它签发的最终报告；本轮的自验由**主 agent 的 8 条变异 + 全量 + Release 编译**承担。
 
+
+## 44. ID-REVIEW-1044（2026-10-28）：测试宿主**抢走用户的全局热键 ⌘⇧V** ⇒ 同族第 6 例
+
+> 本条是「测试基础设施污染用户真实环境」这一族的**第 6 例**。
+> ⑬（ID-REVIEW-1039）测试往**生产域**写 → ⑭（ID-REVIEW-1040）测试往**用户磁盘**
+> 写 20 万 plist → ⑮（ID-REVIEW-1041）测试**毁**用户剪贴板 →
+> ⑯（ID-REVIEW-1042）测试把夹具文本写进用户剪贴板 →
+> ⑰（ID-REVIEW-1043）测试**读**用户生产钥匙串 →
+> ⑱（本条）测试**占住**用户的**系统级全局快捷键**与**菜单栏位置**。
+> 另有**同族第 7 例**（本条顺带收口）：仓库里存在**两份**「是不是测试进程」的实现。
+
+### 44.1 家族位置：⑰ 关的是**钥匙串**，本条关的是**系统级全局资源**
+
+1042 / 1043 关的都是「**某一个具体资源**」（剪贴板内容、钥匙串项）。
+本条关的是**类别**：「测试进程在**系统层面**占住了生产 app 的资源」。
+
+全 app 树扫描系统级全局 API 面（`CGEvent.tap` /
+`CFNotificationCenterGetDarwinNotifyCenter` / `NSDistributedNotificationCenter` /
+`AXObserver` / `IOKit` / `NSStatusBar.system` / `RegisterEventHotKey` /
+`SMAppService`）⇒ **输入事件 tap、darwin 通知、分布式通知、辅助功能观察者、
+IOKit 这五类一律不存在**；真正剩下的全局资源只有 4 个：
+
+| 全局资源 | 位置 | 状态 |
+|---|---|---|
+| 系统通用剪贴板 | `NSPasteboard.general` | ID-REVIEW-1042 已收口 ✅ |
+| 生产钥匙串项 | `com.clipmemory.app` | ID-REVIEW-1043 已收口 ✅ |
+| **系统级全局热键 ⌘⇧V** | `HotKeyManager.swift` `RegisterEventHotKey` | **本条** ⬅️ |
+| **菜单栏状态项** | `AppDelegate.swift` `NSStatusBar.system.statusItem` | **本条** ⬅️ |
+| 登录项 `SMAppService` | `GeneralSettingsView.swift:55` | 只读 + **仅 UI 手动点击**才写；无测试触达（见 §44.8） |
+
+### 44.2 根因（实测，不是推断）
+
+`AppDelegate.applicationDidFinishLaunching` 的调用顺序里，**`setupHotKey()` 在
+XCTest 闸门之前**（`AppDelegate.swift:229` vs 闸门 `:265`）⇒ 测试宿主
+（TEST_HOST = 真 app）启动即注册 ⌘⇧V。
+
+**Carbon 的语义已实测**（`/tmp/cm-carbon-semantics.swift`，2026-10-28）：
+
+| 探测 | 键位组合 | signature | 结果 |
+|---|---|---|---|
+| A | ⌘⇧V | 生产（`0x434C5050`/1） | `0`（成功） |
+| B | ⌘⇧V | 生产（同上） | **`-9878`** |
+| C | ⌘⇧V | **换一个**（`0xDEADBEEF`） | **`-9878`** |
+| D | ⌘⇧X | 换一个 | `0`（成功） |
+
+⇒ **C 是关键**：同一个键位组合**换 signature 再注册一样被拒** ⇒ 该组合是
+**系统级独占**的，不是 per-signature 的。于是本条的两个后果都是真的：
+
+1. 测试期间用户按 ⌘⇧V ⇒ 触发**测试宿主**（它的 handler 会 `showMainWindow()`
+   ⇒ 在用户屏幕上弹一个假窗口）；
+2. 生产 app 若在测试期间启动 ⇒ 注册返回 -9878，而注册**只在启动时做一次、
+   不重试** ⇒ **用户的 app 静默失去热键，直到重启 app**。
+
+### 44.3 实测证据（哨兵判据，可证伪）
+
+修之前，`xcodebuild test` 跑起来时测试宿主（`ClipMemory[9077]`）打出：
+
+```
+[HotKeyManager] Hotkey registered: ⌘⇧V
+```
+
+⇒ **测试进程真的注册成功、真的占着用户的快捷键**（不是推断）。
+修之后，同一条日志变成 `Hotkey registration skipped in test host — …`，
+且哨兵探针（在测试宿主里用生产 signature/id 试注册 ⌘⇧V）拿到 **`noErr`**
+⇒ **系统级证明：那个组合是空的。**
+
+### 44.4 修法（两道闸门，都在**收敛点**上）
+
+1. **`HotKeyManager.register()`** —— 全 app 树**唯一**的 `RegisterEventHotKey`
+   调用点（静态守卫 ⑧ 钉住「只有一处」这个事实）；`updateHotKey()` 也走
+   `register()` ⇒ **一道闸门覆盖全部路径**（比 1043 的两处闸门更收敛）。
+   判定抽成**纯函数** `shouldRegisterSystemHotKey(isRunningTests:)`，
+   这样「生产 ⇒ 一定注册」那半边也可测（否则「删掉 isRunningTests 条件」
+   这条最危险的变异不会让任何测试变红 —— 1043 的教训）。
+2. **`AppDelegate.setupStatusItem()`** —— 全 app 树**唯一**的
+   `NSStatusBar.system.statusItem` 调用点（静态守卫 ⑨）。
+   `LSUIElement = true` ⇒ 这个 `NSStatusItem` 就是 ClipMemory 在菜单栏上的
+   **全部存在** ⇒ 测试宿主每跑一次测试（实测全量 ≈ 70 秒），用户菜单栏就
+   多一个来路不明的 ClipMemory 图标，点开还是**空的**（测试宿主读隔离 store）。
+   全部读者都是 nil-safe（`statusItem?.button` / `guard let`），徽章只走静态
+   纯函数 `badgedStatusImage(count:)` ⇒ 闸门安全。
+3. **顺带收口同族第 7 例**：`ServiceProtocols.swift` 的两处 `precondition`
+   原本直接读 `XCTestConfigurationFilePath`（**1 个信号**）⇒ 全仓有**两份**
+   「是不是测试进程」的实现，而严格程度不一样（1043 的教训）⇒ 统一到
+   `TestIsolation.isRunningTests`（3 信号）。
+   ⚠️ 方向说明：这两处是 `precondition`（**fail-closed**：漏判会直接 trap，
+   而不是悄悄写脏用户数据）⇒ **不是** 1043 那类活缺陷；收敛之后全仓只剩
+   **一个**探针实现，「探针漏判 ⇒ 写脏用户数据」这条路被结构性地关掉了。
+
+**生产行为零变化**：三处闸门在生产进程里恒为 false / 恒不触发。
+
+### 44.5 回归测试（`Review1044RegressionTests.swift`，15 条）
+
+| # | 守卫 | 类型 |
+|---|---|---|
+| ① | 测试宿主不得持有系统级全局热键（`hotKeyManager?.hotKeyRef == nil`） | 行为（承重） |
+| ② | 新建 manager 调 `register()` 不得拿到热键 | 行为 |
+| ③ | `updateHotKey()` 同样不得拿到热键 | 行为 |
+| ④ | 测试宿主不得创建菜单栏状态项 | 行为 |
+| ⑤ | 纯函数**生产侧**：`shouldRegisterSystemHotKey(false) == true` | 纯函数 |
+| ⑥ | 纯函数**测试侧**：`shouldRegisterSystemHotKey(true) == false` | 纯函数 |
+| ⑦ | **系统级哨兵**：用生产 signature/id 试注册 ⌘⇧V ⇒ 必须 `noErr` | 系统级 |
+| ⑧ | `RegisterEventHotKey` 调用点**只有一处**且在 `HotKeyManager` | 静态（结构） |
+| ⑨ | 状态项的**来源** `NSStatusBar.system` **只有一处**且在 `AppDelegate`（**资源身份**，不是调用写法 —— 核验实测的 P2-1 已修） | 静态（结构） |
+| ⑩ | 三个**探针锚点**（`environment[` / `NSClassFromString(` / `Bundle.allBundles`）都**只**出现在 `Utils/TestIsolation.swift`（核验实测的 P2-2 已修） | 静态（结构） |
+| ⑪ | 判定函数的**调用点实参**必须是规范探针 `TestIsolation.isRunningTests` | 静态（文本） |
+| ⑫⑬⑭⑮ | 扫描器控制组：能发现真实调用点 / 不把注释当调用点 / 能发现环境变量读取 / 能分辨「规范探针」与「硬编码常量」 | 控制组 |
+| ⑯⑰ | **新增**控制组：**别名写法**仍被守卫 ⑨ 抓到 / **换了机制**的探针实现仍被守卫 ⑩ 抓到（核验实测的 P2-1 / P2-2 的回归防线） | 控制组 |
+
+### 44.6 变异验证：**13 条，13 条全红**（harness `/tmp/cm-1044-mutate.py`）
+
+| # | 变异 | 抓住它的测试 |
+|---|---|---|
+| M1 | 删掉 `register()` 里的整块闸门 | ① ③ ⑦ ⑪ |
+| M2 | 纯函数反转（`!isRunningTests` → `isRunningTests`） | ① ③ ⑤ ⑥ ⑦ ⑪ |
+| M3 | 纯函数恒真（→ `true`） | ① ③ ⑥ ⑦ ⑪ |
+| M4 | 删掉菜单栏闸门 | ④（**独力**） |
+| M5 | 新增第二个 `RegisterEventHotKey` 调用点 | ⑧（**独力**） |
+| M6 | 新增第二个 `NSStatusBar.system.statusItem` 调用点 | ⑨（**独力**） |
+| M7 | `ServiceProtocols` 退回 1 信号探针 | ⑩（**独力**） |
+| M8 | 闸门改用 1 信号原始探针 | ⑩ ⑪ |
+| M9 | 闸门硬编码 `isRunningTests: false` | ① ③ ⑦ ⑪ |
+| M10 | **闸门放错层**：`register()` → `AppDelegate.setupHotKey()` | ② ③ ⑪ |
+| M11 | **调用点硬编码 `isRunningTests: true`** | ⑪（**独力**） |
+| **MV-B** | **【核验实测】别名写法新增第二个状态项**（`let aliasBar = NSStatusBar.system; aliasBar.statusItem(...)`）—— 修 P2-1 **之前**：15/15 全绿 ⇒ 空绿；修之后 ⇒ **红** | ⑨ |
+| **MV-D** | **【核验实测】菜单栏闸门换成另一个机制的探针**（`NSClassFromString("XCTestCase")`）—— 修 P2-2 **之前**：15/15 全绿 ⇒ 空绿；修之后 ⇒ **红** | ⑩ |
+
+**文件漂移：NONE**（每轮还原后逐文件 sha256 一致）。
+
+⚠️ **MV-B / MV-D 的意义**：它们是**独立核验员**设计的、专打**我这轮新增守卫**
+的盲区的变异（不是我的变异清单里的）⇒ 本轮的守卫**强度**是被**别人**实测出来的，
+不是我自证的。这两条也是「**别名 / 换机制**」这一类逃逸路径的通用防线
+（1040/1042 的同款教训：**盯资源，不盯写法**）。
+
+### 44.7 ⚠️ 已知未覆盖 / 有意保留（如实记录，不充数）
+
+1. **INFRA-1 的 Carbon 失败路径不再被测试走到**（**本条引入的覆盖率回退**）。
+   那三个 `HotKeyRetainFailurePathTests` 用例此前是**偶然**走进 Carbon 失败
+   分支的 —— 靠 AppDelegate 先占住 ⌘⇧V，测试自己的注册必然拿到 -9878 ——
+   **那正是本条要修的缺陷**。缺陷修掉后，那条分支（生产里真实存在：别的 app
+   抢了 ⌘⇧V）不再被走到 ⇒ 契约退化成「跳过注册时也不留 retain」（更弱但
+   **确定成立**；这三个用例**不再 skip**，仍在本轮全量里跑绿）。
+   **补回覆盖的正确修法**：把 Carbon 调用抽到**协议**后面（生产实现 = Carbon，
+   测试实现 = 假 registrar），闸门落在**生产实现**里而不是 `register()` 里
+   ⇒ 既能走失败分支，又**不产生任何全局占用**。
+   ⛔ **不采用**的做法：给 `register()` 加一个「允许真注册」的绕过开关 ——
+   那等于把本条要消灭的洞重新打开。
+2. **守卫 ② 是「合取探测器」**：M1 / M3 / M9 三条变异里它**保持绿** ——
+   因为 AppDelegate 已经占着 ⌘⇧V，测试自己的注册必然被 Carbon 拒 ⇒
+   `hotKeyRef == nil` 有两种成因（闸门生效 / 组合被占）。
+   它**独立有牙**的唯一证据是 **M10**（闸门放错层）⇒ 本条如实标注，
+   不拿它充数。
+3. **守卫 ⑪ 是文本守卫**（不是行为守卫）：纯函数化的「生产那一半不可测」是
+   这个模式的**固有**限制（1043 同款）—— 调用点的实参只能静态钉。
+   M11 证明它**不是充数**：那条变异在行为上**完全抓不到**（测试宿主里都跳过），
+   只有 ⑪ 抓住它。
+4. **用户真 app 在跑时，哨兵 ⑦ 会 skip**：此时组合被**别的进程**占着 ⇒
+   探针不可判定 ⇒ 如实 skip 并说明（不是缺陷，不是本条能管的）。
+5. ⚠️ **订正（独立核验实测推翻我自己的说法）**：
+   ① `registerAttempted` 的语义**没有变** —— 它在 HEAD 里就设在 Carbon 调用
+   **之前**（`HotKeyManager.swift:173` vs Carbon `:213`）⇒ 本条只是**文档澄清**
+   （代码注释已连着改），不是语义变更；生产侧**逐字节**不变。
+   ② 「欢迎窗在测试宿主里从不展示 ⇒ 无影响」**是错的**：
+   `SettingsWindowTests.swift:118` 显式调 `delegate.showWelcomeView()`
+   ⇒ 欢迎窗在测试宿主里**可达** ⇒ 修后（`hotKeyRef == nil` +
+   `registerAttempted == true`）`WelcomeView.swift:127-132` 的
+   `checkHotKeyConflict()` 会报「**冲突**」，修前报「成功」
+   ⇒ **测试宿主里一个可观测的 UI 状态变化**；无任何测试断言它 ⇒ 影响面为
+   「测试宿主里的界面文案」，**生产侧零影响**（闸门在生产不可达）。
+6. **探针「恒为真」这个方向的洞（本轮未闭，如实记录）**：
+   若 `TestIsolation.isRunningTests` 被改成恒真 ⇒ **生产 app 永远不注册
+   ⌘⇧V、永远不显示菜单栏图标**（整个 app 不可用），而**全量测试会全绿**
+   （测试宿主里探针本来就是真 ⇒ 与「恒真」**同形**）。
+   ⇒ 这是「纯函数化」这个模式的**固有边界**（与 1043 同款）：只能靠
+   **把探针的三个信号也抽成纯函数**、并断言「三个信号全假 ⇒ 不是测试进程」
+   来闭 ⇒ 本轮**不做**（要动 `TestIsolation.swift` 这块最承重的共享设施，
+   属于另一个爆炸半径）。
+7. `com.clipmemory.clipboard.key` 是 v1.2.x 的死项（1043 已记，本轮仍不删）。
+
+### 44.8 「看 33 个」再扫（**测量的负结果**，不是「没看」）
+
+- **系统级全局 API 面**：全 app 树扫 `CGEvent.tap` /
+  `CFNotificationCenterGetDarwinNotifyCenter` / `NSDistributedNotificationCenter` /
+  `AXObserver` / `IOKit` ⇒ **零命中**（输入 tap、darwin 通知、分布式通知、
+  辅助功能观察者、IOKit 这几类**全局资源**本项目一个都没用）。
+- **菜单栏**：除 `setupStatusItem()` 外，`NSStatusBar.system` 无其他调用点。
+- **登录项**：`SMAppService.mainApp.status` 是**只读**（读用户登录项状态，
+  无弹窗、无写入）；`.register()` 只在 `GeneralSettingsView` 的 Toggle setter 里，
+  **只有用户手动点 UI 才会走到** ⇒ 测试触达不到（无 ViewInspector / UI 测试）。
+- **全仓「是不是测试进程」的实现**：修之前有 **3 处**（`TestIsolation` 的规范
+  三信号 + `ServiceProtocols` 两处 1 信号）⇒ 收口后**只剩 1 处**，
+  且被静态守卫 ⑩ 钉住。
+- **既有测试对被闸门挡住的东西的依赖**：全仓搜 `statusItem` / `showQuickBar` /
+  `setStatusItem` ⇒ **零命中**；徽章测试只碰静态纯函数
+  `badgedStatusImage(count:)` ⇒ 闸门不破坏任何既有测试。
+
+### 44.9 验收（实测）
+
+| 项 | 结果 |
+|---|---|
+| 全量 | **1353 tests / 4 skipped / 0 failures**（1043 的 1338 + 本轮 15）；4 个 skip 仍是**既有**的 4 个 snapshot 测试（与修前同名单） |
+| lint | **10 条 = HEAD 基线**，**无一条**落在本轮改动的 5 个文件上 |
+| Release 编译 | **BUILD SUCCEEDED** |
+| 变异 | **13 条：13 红**（我的 11 条 + 核验员实测的 2 条）；文件漂移 **NONE** |
+| 生产钥匙串项 | **逐字节未变**（`cdat`/`mdat` 停在 2026-07-19，密钥 sha256 前后一致） |
+| 残留进程 | 无 `SecurityAgent`、无测试宿主 |
+
+⚠️ **「全量全绿」不是稳定性质（如实记录）**：独立核验员在**逐字节相同**的树上
+跑第二轮全量时得到 **13 failures**（`KeychainKeyStoreTests` 2 个
+`errSecInteractionNotAllowed(-67068)` + 3 个本地化类 11 条断言，中文复数退回
+英文 "1 items"）；**这 5 个类单独复跑 42/42 全绿** ⇒ 是**顺序/状态相关**的
+既有 flake，与本条**无文本耦合**（这 5 个类不引用 `HotKeyManager` /
+`statusItem` / `registerAttempted` / `ServiceProtocols` / `TestIsolation`），
+且该轮 ZZ 哨兵仍通过 ⇒ **不是**本条引入。⇒ 上表里的「1353 / 4 skipped / 0
+failures」是**某一次**运行的快照，不是可复现的稳定属性（已在 §44.7 记录）。
+
+### 44.10 独立核验（verifier 子 agent，**非自查**）
+
+核验员跑约 2 小时 20 分，**交出了完整的结构化报告**（`VERDICT = PASS`），
+并**独立复现**了缺陷本身 —— 不是采信我的数字：
+
+| 核验项 | 结论 | 核验员的**独立**测量 |
+|---|---|---|
+| 测试宿主确实抢走了 ⌘⇧V | **确认** | **A/B 正对照**：去掉闸门 ⇒ 宿主日志打出 `Hotkey registered: ⌘⇧V`（pid 25001）；恢复闸门 ⇒ `Hotkey registered` **0** 次、`Hotkey registration skipped in test host` **14** 次 |
+| Carbon 键位组合系统级独占 | **确认** | 自写独立探针：生产 signature ⇒ `0`；**换** signature 同组合 ⇒ `-9878`；换组合 ⇒ `0` |
+| 修复后宿主不再占用 | **确认** | 宿主存活期间从**另一个进程**探 ⌘⇧V ⇒ 12/12 采样 `FREE` |
+| 闸门在生产进程**不可达** | **确认**（P0 级检查） | `otool -L` + 符号表：Release 二进制与 `/Applications/ClipMemory.app` 均 **XCTest link count = 0**、**`XCTestCase` 符号 0 个**、`Bundle.allBundles` 无 `.xctest` ⇒ 三个信号在生产里全为假 ⇒ 闸门**不可能**触发 |
+| `register()` 是唯一的 `RegisterEventHotKey` 路径 | **确认** | 全 app 树 grep：代码命中 **1** 处 |
+| `setupStatusItem()` 是唯一的状态项路径 | **确认** | 全 app 树 grep：代码命中 **1** 处 |
+| 状态项读者全部 nil-safe | **确认** | 列出 5 个读点（`AppDelegate:557/568/738/1476/1492` + `WindowManager:141`），无一处无保护解引用 |
+| 生产钥匙串项未被读/写 | **确认** | 前后 `cdat`/`mdat` 均 `20260719035159Z`；测试专用 service 是 `com.clipmemory.tests` |
+
+**核验员跑出的 4 条发现（全部落地）**：
+
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| **P2-1** | P2 | 守卫 ⑨ 用**调用写法**当 needle ⇒ 别名写法（`let aliasBar = NSStatusBar.system; aliasBar.statusItem(...)`）**数不到** ⇒ 空绿，而测试宿主**真的**多占一个菜单栏图标（且因未赋值给 `AppDelegate.statusItem`，行为守卫 ④ 也看不见）。核验员**实测**：15/15 全绿 | **已修**：needle 换成**资源身份** `NSStatusBar.system`（能创建状态项的路径必然经过这个实例）⇒ 补控制组 ⑯（证明别名写法仍被抓到）；**MV-B 重跑 ⇒ 红** |
+| **P2-2** | P2 | 守卫 ⑩ 只盯 `ProcessInfo.processInfo.environment[` ⇒ 换成**另一个机制**的探针（`NSClassFromString("XCTestCase")`）**数不到** ⇒ 空绿。核验员**实测**：15/15 全绿 | **已修**：守卫 ⑩ 扩成**三个探针锚点**（`environment[` / `NSClassFromString(` / `Bundle.allBundles`）都必须只出现在 `Utils/TestIsolation.swift`；补控制组 ⑰；**MV-D 重跑 ⇒ 红** |
+| **P3-1** | P3 | `registerAttempted` 的文档注释与台账 §44.7-5 都称「语义变了」，但 HEAD 里它**本来就**设在 Carbon 调用之前 ⇒ 实际**没变** | **已订正**：代码注释改成「这个 flag **一直**是『请求过』，本条只是文档澄清」；台账 §44.7-5 连着订正 |
+| **P3-2** | P3 | 逐字节相同的树，第二轮全量出现 13 个失败（5 个无关类，单独复跑全绿）⇒ 台账的「全绿」是**单次快照**而非稳定属性 | **已订正**：§44.9 加了显式说明 + §44.7 记录 |
+
+**核验员自己的 harness 缺陷（如实记录，它自己发现并纠正了）**：
+第一版用 `shutil.copy2` 还原，**保留了旧 mtime** ⇒ llbuild 跳过重编译 ⇒
+MV-B/MV-D 实际跑的是**上一条变异的二进制** ⇒ 假红。它用
+「`SwiftCompile` 行数 0 vs 3」**发现**了这一点，改成 `copyfile` + `os.utime(None)`
+后**从头重跑**，上表数字均来自纠正后的运行。它第一版还原脚本还把三个备份
+文件写进了**仓库根目录**（`?? AppDelegate.swift` 等）⇒ 已删除并重新核验
+`git status`。
+
+⚠️ **核验员也实测出一个我自己的残留洞（本轮未闭，已记 §44.7-6）**：
+探针「恒为真」⇒ 生产 app 彻底不可用而**全量测试全绿** ⇒ 这是纯函数化模式的
+固有边界，要闭必须把探针的三个信号也抽成纯函数（要动 `TestIsolation.swift`
+这块最承重的共享设施）⇒ **本轮刻意不做**，留台账。
+
+**核验员对用户环境的独立测量**：生产钥匙串项 `cdat`/`mdat` 前后一致（未重写）；
+剪贴板内容在核验期间**变了**（`9obz` → 中文自然语言查询 → `StrokeMouse`），
+核验员判定为**用户/其它进程的活动**而非测试产物，证据：① 该内容在
+`Tests/` + `ClipMemory/` 里**零命中**（不是夹具）；② app 只经
+`AppPasteboard.shared` 写盘（XCTest 下解析为**私有板**，守卫
+`Review1041RegressionTests.testNoTestFileMayNameTheGeneralPasteboard` 通过）；
+③ 生产域 `ClipboardItems` blob **未变**（没有夹具被写进真实历史）；
+④ 核验员**自己一次都没写过**剪贴板。⇒ 我已复核：该轮期间剪贴板确实被我
+用于用户自己的活动，**测试进程全程未碰用户的通用剪贴板**。
