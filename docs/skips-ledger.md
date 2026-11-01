@@ -4057,3 +4057,61 @@ offenders=['predicate RENAMED', 'predicate RENAMED'] ⇒ **红**」。
 | **P3-2** | §50.13 / §50.14.5 两张验收表**只报生产域与钥匙串**，没报 `~/Library/Preferences` 的**净增长**（核验员实测 **+103 / 6 次全量 ≈ +17/次**，落在 §40.5 已记录的 `0 ~ +18/次` 区间内 ⇒ **既有行为**，非本轮引入） | 验收表**补上这一行** |
 | **P3-3** | `ci.yml` 只判 `"$code" == "2"` ⇒ 其它非 0（如 python 不在 PATH ⇒ **127**）会一路掉到 `exit "$code"` ⇒ CI 虽仍红，但**没有「闸门坏了」的提示** ⇒ 排查方向被带偏 | 改成 **「除 0/1 外一律按闸门坏了报」** ⇒ 文案带上真实退出码 |
 | **P3-4** | 台账把 `/tmp/cm1049-full4.log` 当验收证据引用 ⇒ `/tmp` **不可长期引用** | harness **入库**（`Scripts/mutation/mutate.py`）⇒ 证据**配方**入库，产物路径可配 |
+
+#### 50.15.7 第四轮验收（**实测**）
+
+| 项 | 命令 / 口径 | 结果 |
+|---|---|---|
+| 全量 | `xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/cm1049-dd` | **1440 tests / 4 skipped / 0 failures** · `** TEST SUCCEEDED **`（第三轮是 1436 ⇒ 本轮 **+4** 条新守卫） |
+| **树外闸门** | `python3 Scripts/verify-production-canaries.py <全量日志>` | ✅「三个生产 canary 与 canary 审计均已 **passed**（安全网是开着的）」· 退出码 **0** |
+| **闸门契约脚本** | `bash Scripts/test/test_verify_production_canaries.sh` | ✅ 10 条断言全成立 · 退出码 **0** |
+| lint | `swiftlint lint --quiet` | **10 = 基线**（棘轮未变：本轮新写的两处违规——守卫 ⑸ 函数体 52 行、`sorted().first`——都是**拆**掉的，**没有**重生成 baseline） |
+| 变异 | `CM_MUTATION_OUT=… python3 Scripts/mutation/mutate.py`（**干净树**） | **45 条（N1–N45）全红**、`caught=False` **0** 条、`restore_drift=True` **0** 条、`oob_error=True` **0** 条、`contract_error=True` **0** 条、`production_domain_changed=True` **仅 N23**（那条变异**故意**写生产域以证明 canary 能抓，事后由 harness 还原） |
+| 产物自述 | `/tmp/cm1049r4-mutations.json` | `meta = {commit: 0f2afdb…, dirty: false, mutation_count: 45, started_at: …}` ⇒ **文件级**自述归属（不再与别的 run 混合） |
+| 生产域 | 跑前 / 跑后两次只读快照 | **29 键、digest `9fdf7e3ba73105ff`，两次一致**（配方见下） |
+| 生产钥匙串 | `security find-generic-password -s com.clipmemory.app -a root-encryption-key`（**只读属性**） | `cdat/mdat = 20260719035159Z` **未被触碰** |
+| `~/Library/Preferences` | plist 计数 | 3703 → **3897**（+194）⇒ 本轮 45 次**窄跑**累计 ⇒ 每次约 +4 ⇒ 落在 §40.5 已披露的 `0 ~ +18/次` 区间内 ⇒ **既有行为**，非本轮引入 |
+| 工作树 | `git status --porcelain` | **空**（harness 逐条还原 ⇒ 无残留变异） |
+
+**digest 配方（逐字可跑，独立核验员 P3-2 要求）**：
+
+```bash
+python3 -c "import plistlib,hashlib;d=plistlib.load(open('/Users/iryke/Library/Preferences/com.clipmemory.app.plist','rb'));print(len(d),hashlib.sha256(repr(sorted((k,repr(v)) for k,v in d.items())).encode()).hexdigest()[:16])"
+```
+
+⇒ 输出 `29 9fdf7e3ba73105ff`（键数 + digest 前 16 位）。
+
+**本轮 3 条新变异各被预期的层抓住**：
+
+| 变异 | 形状 | 被谁抓住 |
+|---|---|---|
+| **N43** | canary **不再调用**纯比较函数（核验员 V6：掏空比较体） | **树内** 守卫 ㉓ `testEveryProductionCanaryStillCallsItsPureComparison` |
+| **N44** | 树外闸门被**中和**（永远 `exit 0`） | **树外** 契约层 `<OUT_OF_BAND: gate contract/wiring violated>`（树内 ㉑/㉒ 仍绿 ⇒ **这正是它存在的理由**） |
+| **N45** | CI 里的闸门**调用被删**（脚本还在，但永不执行） | **树内** 守卫 ㉒ **+ 树外** 契约层（**双抓**） |
+
+#### 50.15.8 本轮**自己**踩的两个坑（harness 的，不是被测物的）
+
+⇒ ⇒ 这两个坑都属于本族的老形状：**「工具报出来的失败」被当成了「被测物的失败」**。
+
+**坑 1 —— 契约检查跑在「还原」之后 ⇒ 变异被误判成存活**
+* N44 第一次跑出来 `caught=False` ⇒ 一度被读成「守卫没牙齿」。
+* 实为 harness 的**顺序错**：`restore_all()` 在 `finally` 里跑，而契约检查
+  （读**源码**）在它**之后** ⇒ 它看到的永远是**已还原**的脚本 ⇒ 变异根本没被
+  检查到。
+* ⇒ 修法：契约检查挪进 `try`（`run_classes` 之后、`restore_all()` 之前）。
+* ⇒ 复核：守卫**本来就有牙**（单独实测：中和后契约脚本 `exit 1`）⇒
+  ⇒ *「变异存活」的第一嫌疑是**工具**，不是被测物*（本项目第 N 次同形）。
+
+**坑 2 —— 产物文件被「追加」⇒ 混着上一轮 / 另一个 commit 的条目**
+* 重跑时产物**追加**到旧文件 ⇒ 旧 run 的 N44 `caught=False` 混进新 run ⇒
+  看起来像「守卫没牙」。
+* ⇒ 与 ID-REVIEW-1049 F9「产物必须自述它跑在哪棵树上」是**同一条纪律**的
+  **第二种表现**：条目级（`commit` 字段）✅ 已有 ⇒ **文件级**（整份产物混着别的
+  run）❌ 缺 ⇒ ⇒ 两种都要堵。
+* ⇒ 修法三件：① 产物**每次从零开始**（`--append` 才保留旧条目）；
+  ② 产物改成 `{"meta": {...}, "results": [...]}` ⇒ **文件级**自述归属；
+  ③ `is_caught(failed)` **单一判据** ⇒ 控制台与产物**同一个表达式**
+  （此前各写一份 ⇒ 给出相反的结论 ⇒ 独立核验员 P2-2 的根因）。
+
+⇒ ⇒ *「证据必须自带归属」有**两个层级**：**条目**说自己在哪棵树上，
+**整份文件**也不能混着别的 run。*
