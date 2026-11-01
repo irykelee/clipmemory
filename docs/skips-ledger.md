@@ -3739,6 +3739,14 @@ try XCTSkipUnless(
 ⇒ 变异清单里凡是**指向一条未被走到的路径**的，要么给它一条**能走到**的
 选择器，要么**换一个能走到**的变异 —— 而不是把「存活」记成「守卫没牙」。
 
+#### 50.12.5b 同族再扫：把「默认参数 = 生产身份」「`?? .standard` 兜底」扫到**测试树**
+
+⇒ **零命中**：测试树里没有任何 `= .standard` 的**默认参数**、也没有任何
+`?? .standard` 兜底 ⇒ ⇒ 这一族在测试树侧**没有漏网的同形状**。
+⇒ 测试树里那 60 处 `UserDefaults.standard` **全部**是**有意**的：
+断言 seam **不是**生产域 / canary 读生产域做前后对比 / 清理残留 /
+带 `ALLOW-PRODUCTION-WRITE:` 标记的刻意写入 ⇒ ⇒ **不是**漏网的默认身份。
+
 #### 50.12.6 残余边界（**如实记录**，不假装闭合）
 
 * **「整条 canary 类被删掉」无法被套件内自证**：审计会以为「canary 类没跑」
@@ -3748,3 +3756,40 @@ try XCTSkipUnless(
 * **宿主崩溃后重启**（CI 已知形状）：重启后的宿主没有基线 ⇒ canary 跳过
   ⇒ 审计**核对通过** ⇒ 绿 —— harness 的 `Restarting after unexpected exit`
   ⇒ `<NOT_PROVEN>` 会把这种跑标成**未证**而不是「存活」。
+
+### 50.13 验收（**第二轮**，**实测**，不是预期）
+
+| 项 | 命令 | 结果 |
+|---|---|---|
+| 全量 | `xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/cm1047-dd` | **1436 tests / 4 skipped / 0 failures** · `** TEST SUCCEEDED **` |
+| lint | `swiftlint lint --quiet` | **10 = 基线**（中途冒出一条 `function_body_length` ⇒ 用**抽取共用 helper**修掉 ⇒ **不**重生成 baseline） |
+| 变异 | `python3 /tmp/cm-1047-mutate.py` | **40 条（N1–N40）全红**、**drift=False × 40**、`caught=False` **0** 条、`prod_changed=True` **仅 N23** |
+| 产物自述 | `/tmp/cm1047-mutations.json` | 每条 `commit = 34ddf5e…`、**`dirty = false`** ⇒ §50.8 的 P3-7 披露已修（本轮**先提交、再在干净树上跑**） |
+| 生产域 | 起点快照 vs 终点实时读盘 | **29 键、digest `9fdf7e3ba73105ff`，两边逐键一致** |
+| 生产钥匙串 | `security find-generic-password -s com.clipmemory.app -a root-encryption-key` | `cdat/mdat = 20260719035159Z` **未被触碰** |
+| 锁探针（P2-1） | 另一个进程持 `.instance.lock` 的 flock | **3 skipped + 审计 passed + 0 failures**（不再误报红） |
+
+**本轮 8 条新变异（N33 重定义 + N34–N40）各自被预期的守卫抓住**：
+
+| 变异 | 形状 | 被谁抓住 |
+|---|---|---|
+| **N33** | canary 跳过但**不上报理由**（跑在**无 AAA 选择器**下 ⇒ 跳过路径真被走到） | **审计测试**（记账对不上） |
+| **N34** | observer 不再记录「AAA 类跑过了」 | 审计测试（三方交叉核对） |
+| **N35** | AAA bootstrap 不再置 `didSnapshotProductionDomain` | 三个 canary 自己的 `XCTAssertTrue` + 审计 |
+| **N36** | 域解析器把 `?? .standard` 兜底放回去 | **守卫 ⑻** |
+| **N37** | **两个声明一起删**（= 核验员 V4） | **审计测试**（有证据却没人声明） |
+| **N38** | 基线武装条件被**反转** | 审计测试（理由在现场不成立） |
+| **N39** | 锁条件被**反转** | 审计测试（理由在现场不成立） |
+| **N40** | `XCTSkip(` 少了 `throw` | **守卫 ⑳** |
+
+⚠️ **N33 第一次跑报「存活」是「空变异」**：有基线 ⇒ canary 不跳过 ⇒ 删掉那行
+**什么也没改** ⇒ ⇒ **又一次撞上「判定存活前必须先排除『变异没跑起来』」** ⇒
+harness 新增「**无 AAA 选择器**」模式 ⇒ 让跳过路径真被走到 ⇒ 现在 caught=True。
+
+⚠️ **lint 中途冒出一条新警告**（棘轮 10 → 11）：我给
+`testNoProductionPollution` 加了一行 `recordStart()` ⇒ 函数体 50 → 51 行 ⇒
+`function_body_length` ⇒ ⇒ 修法**不是**重生成 baseline ⇒ 而是**抽取**：
+两处**重复**的 `stripSystemKeys` 局部函数收成共用 `Self.withoutSystemKeys(_:)`
+⇒ 函数体回到 44 行 ⇒ lint 回到 **10**。
+⇒ ⇒ *「守卫的体积是负债」的反面：**守卫加一行，被守卫的函数就可能越线***
+⇒ ⇒ 修法永远是**拆**，不是**放宽阈值**。
