@@ -4157,6 +4157,12 @@ python3 -c "import plistlib,hashlib;d=plistlib.load(open('/Users/iryke/Library/P
 **V8 关闭**（实测：删掉 ㉒ 后契约脚本 `❌ func test 数量 = 14 < 15` +
 `❌ 守卫 … 不存在` ⇒ exit 1）。
 
+> ⚠️ **第六轮订正（2026-11-01 深夜，独立核验员 P1-1 实测）**：上面那句
+> **「V8 关闭」是错的** —— 删掉守卫确实被抓住了，但**清单本身**没有任何锁：
+> 把清单掏空（只剩注释）⇒ 契约脚本「逐条核对」**逐条通过**（0 条 = 0 个
+> 问题）⇒ exit 0 ⇒ 再删 ㉒ ⇒ **一切全绿** ⇒ ⇒ **V8 只是把缺口挪了一层，
+> 并没有关闭**。第六轮才真正关闭（见 §50.17）。
+
 #### 50.16.3 P1-2：「协同删除极限」的**精确**定义（台账此前的描述不完整）
 
 核验员实测出**两级**极限 ⇒ 台账 §50.15.2 那句「协同删除仍然能让一切变绿」
@@ -4191,6 +4197,16 @@ python3 -c "import plistlib,hashlib;d=plistlib.load(open('/Users/iryke/Library/P
 | **锁的清单** | 契约脚本内的清单核对段 | ✅ 逐条通过：2 个 `file` 数量棘轮（15 ≥ 15、7 ≥ 7、1 ≥ 1）+ 9 个 `guard` 名字检查 + 「清单逐条核对通过」 |
 | lint | `swiftlint lint --quiet` | **10 = 基线**（棘轮未变） |
 | 变异 | `CM_MUTATION_OUT=… python3 Scripts/mutation/mutate.py`（**干净树**） | **47 条（N1–N47）全红**、`caught=False` **0** 条、`restore_drift=True` **0** 条、`oob_error=True` **0** 条、`contract_error=True` **0** 条、`production_domain_changed=True` **仅 N23** |
+
+> ⚠️ **第六轮订正（2026-11-01 深夜）**：上面那句「**47 条全红**」**对 N28
+> 不成立** —— N28 的 `failed_tests` 是 `['<BUILD_FAILED>', '<OUT_OF_BAND:
+> production canaries did not run>']` ⇒ **它编译失败 ⇒ 测试根本没跑 ⇒
+> 什么都没证明**；而 harness 把「编译失败」也算成「被抓住」⇒ ⇒ **N28 是
+> 假绿**。根因：第五轮新增 N46 时把 `IS_EARLY_RETURN` **重名**了 ⇒ 后者
+> 静默覆盖前者 ⇒ N28 只删掉了 `if` 那一行 ⇒ 编译不过。第四轮它是**真的**
+> 被树内 ⑸ 抓住的（第四轮产物：`failed_tests =
+> ['testEveryImageStorageTestProcessGuardIsABareEarlyReturn']`）。
+> ⇒ 第六轮：改锚点名 + 改 `is_caught` 语义 + 加**重复锚点自守卫**（见 §50.17）。
 | 产物自述 | `/tmp/cm1049r5-mutations.json` | `meta = {commit: dbafef7…, dirty: false, mutation_count: 47, started_at: …}`；45 条之外的 47 条**每条的 `commit` 都等于 `meta.commit`** |
 | 生产域 | 跑前 / 跑后两次只读快照 | **29 键、digest `9fdf7e3ba73105ff`，两次一致**（配方见 §50.15.7） |
 | 生产钥匙串 | `security find-generic-password -s com.clipmemory.app -a root-encryption-key`（**只读属性**） | `cdat/mdat = 20260719035159Z` **未被触碰** |
@@ -4220,10 +4236,19 @@ python3 -c "import plistlib,hashlib;d=plistlib.load(open('/Users/iryke/Library/P
 
 #### 50.16.7 已知残余（如实记录，**不夸大也不缩小**）
 
-1. **清单只查「存在 + 数量」，不查「有效性」** ⇒ 一个**被掏空**（函数还在、断言
+~~1. **清单只查「存在 + 数量」，不查「有效性」** ⇒ 一个**被掏空**（函数还在、断言
    没了）的守卫**能过清单** ⇒ ⇒ 有效性由**变异 harness 的连续复跑**保证
    （㉒ 被掏空 ⇒ N45 会「存活」⇒ harness 报红）⇒ ⇒ 两层分工：**清单管存在，
-   harness 管有效**。
+   harness 管有效**。~~
+   ⚠️ **第六轮订正（2026-11-01 深夜，独立核验员 P1-2 实测）**：这段说法
+   **是假的** —— 独立核验员实测「㉒ 的断言被删（函数保留）」⇒ 清单
+   **exit 0** ⇒ 跑 N45 仍 `caught=True`，但抓住它的是**树外契约脚本**
+   （N45 动的是 CI 接线），**树内 ㉒ 根本没参与** ⇒ harness 仍绿 ⇒ ⇒
+   「harness 连续复跑保证有效性」**不成立**（它只保证「有东西抓住了这条
+   变异」，不保证「**预期的那个东西**抓住了」）。
+   ⇒ 第六轮修法：① 清单的 `guard` 条目加**最少断言数**（⇒ 掏空被抓）；
+   ② harness 记录**谁抓住的**（`caught_by`）并对每条变异声明**期望的抓手**
+   （`expect`）⇒ 不符合就**退出码非 0** ⇒ 「有效性」从此**可机械核对**。
 2. **协同删除的精确极限 = 5 处 / 4 类文件**（2 个守卫 + 2 个脚本 + CI/release
    的调用点）⇒ 而**中间态**（删 3 处）**CI 仍红**（CI 仍调用**缺失的**契约脚本
    ⇒ `bash` 127 ⇒ 红）⇒ ⇒ 这条**偶然**兜底不是设计意图，但确实兜住。

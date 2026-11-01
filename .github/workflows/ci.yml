@@ -301,7 +301,30 @@ jobs:
       - name: Out-of-band canary gate contract test (ID-REVIEW-1049 第四轮)
         run: |
           set -euo pipefail
-          bash Scripts/test/test_verify_production_canaries.sh
+          bash Scripts/test/test_verify_production_canaries.sh --contract
+
+      # ID-REVIEW-1049 第六轮 (2026-11-01): the lock MANIFEST's own integrity.
+      #
+      # ⇒ The manifest (`Scripts/canary-gate-locks.txt`) is the OUT-OF-BAND
+      #   list of the locks. Round 5 moved it out of the tree — but the
+      #   manifest itself had NO lock ⇒ emptying it (comments only) makes the
+      #   contract script check **0 entries** ⇒ 0 problems ⇒ exit 0 ⇒ V8 was
+      #   NOT closed (independent verifier P1-1, measured).
+      #
+      # ⇒ This step therefore asserts the manifest's own integrity:
+      #   ① the entry COUNTS (file / guard) match the hard-coded ratchet,
+      #   ② the effective lines' sha256 matches the hard-coded digest,
+      #   ③ every listed guard still has at least the declared number of
+      #      ASSERTIONS (a hollowed-out guard is caught, not just a deleted
+      #      one — independent verifier P1-2).
+      #
+      # ⇒ It is a SEPARATE step on purpose: round 5's mechanism was parasitic
+      #   inside round 4's step ⇒ a failure could not be attributed
+      #   (independent verifier P3-5).
+      - name: Canary-gate lock manifest integrity (ID-REVIEW-1049 第六轮)
+        run: |
+          set -euo pipefail
+          bash Scripts/test/test_verify_production_canaries.sh --manifest
 
       - name: Collect test log for triage
         # ID-CRASH-0037 / issue #93 next step 2 ("Capture the failing

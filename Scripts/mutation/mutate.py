@@ -472,9 +472,24 @@ ZZZ_PURE_CALL = (
 ZZZ_PURE_CALL_GUTTED = "        let newPollution: [String] = []\n"
 # ⑸ 的词边界变异（第五轮 · 独立核验员 P2-3）：把真闸门的谓词**改名** ⇒
 # 旧判据是**子串**匹配 ⇒ 仍命中 ⇒ 守卫全绿；新判据（词边界）⇒ 变红。
-# ⚠️ 真跑它会让 legacy 迁移在测试宿主里执行 ⇒ **写用户的生产域** ⇒
-#   ⇒ 因此这条变异**只窄跑那一个守卫测试**（`only`）⇒ 生产写入路径根本
-#   不会被执行 ⇒ 零风险（实测：生产域 digest 前后一致）。
+# ⚠️ 第六轮**订正**（独立核验员 P2-2，2026-11-01 深夜实测）：第五轮写在这里的
+#   理由是「项目**无** `TEST_HOST` ⇒ 测试跑在独立进程 ⇒ AppDelegate 不启动
+#   ⇒ `ImageStorage.shared` 不会被触发 ⇒ 生产写入路径根本不会执行」——
+#   **这个前提是错的**：本项目**有** `TEST_HOST`
+#   （`ClipMemory.xcodeproj/project.pbxproj:1426` Release / `:1611` Debug
+#   ⇒ `TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ClipMemory.app/Contents/MacOS/ClipMemory"`）
+#   ⇒ 测试**跑在真实 app 宿主里** ⇒ `AppDelegate` 会启动 ⇒
+#   `AppDelegate.setupClipboardMonitor()` 里的 `_ = ImageStorage.shared`
+#   （`ClipMemory/AppDelegate.swift:1307`）**确实会被执行**
+#   ⇒ ⇒ 「窄跑 ⇒ 生产写入路径不会被执行」**不成立**。
+#   ⇒ 真正让窄跑**不写**用户生产域的是**幂等标志**：用户的域里已经有
+#   `ImageStorageMigrationComplete` / `ImageStorageStartupCleanupRan`
+#   ⇒ 迁移与清理**短路** ⇒ 没有新的写入。
+#   ⇒ ⇒ 因此这条变异**仍然只窄跑那一个守卫测试**（`only`），
+#   但**理由必须改成上面这个**（拿掉「无 TEST_HOST」那个错前提）。
+#   ⇒ ⇒ 兜底是 harness 自己的生产域快照/比对（`snapshot_production_domain`
+#   / `production_domain_changed` / `restore_production_domain`）——
+#   **即便**窄跑真的写了，也会被**发现并还原**。
 R1049 = "Tests/ClipMemoryTests/Review1049RegressionTests.swift"
 R1049_GUARD_212_SIG = (
     "    func testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease() throws {\n"
@@ -483,12 +498,78 @@ R1049_GUARD_212_RENAMED = (
     "    func zzRenamedTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease() throws {\n"
 )
 IS = "ClipMemory/Services/ImageStorage.swift"
-IS_EARLY_RETURN = "        if Self.isRunningTests {\n"
-IS_EARLY_RETURN_RENAMED = "        if Self.isRunningTestsDisabled {\n"
+# ⚠️ ID-REVIEW-1049 第六轮（2026-11-01 深夜）：这两个常量**必须**与上面
+#   那对 `IS_EARLY_RETURN` / `IS_EARLY_RETURN_REMOVED` **区分开** ——
+#   第五轮把它们**重名**了 ⇒ 后者静默覆盖前者 ⇒ N28（删掉 init 的整块
+#   早退）只删掉了 `if` 那一行 ⇒ **编译失败** ⇒ 而 harness 又把「编译失败」
+#   算成「被抓住」⇒ ⇒ **N28 是假绿**（第四轮它是真的被树内 ⑸ 抓住的）。
+#   ⇒ ⇒ 名字必须能自证是「**谓词那一行**」而不是「**整块早退**」。
+IS_PREDICATE_IF_LINE = "        if Self.isRunningTests {\n"
+IS_PREDICATE_IF_LINE_RENAMED = "        if Self.isRunningTestsDisabled {\n"
 IS_TEST_PREDICATE = "    private static let isRunningTests = TestIsolation.isRunningTests\n"
 IS_TEST_PREDICATE_RENAMED = (
     "    private static let isRunningTests = TestIsolation.isRunningTests\n"
     "    private static let isRunningTestsDisabled = false\n"
+)
+
+# ── ID-REVIEW-1049 第六轮：清单层与「守卫被掏空」 ─────────────────────────
+LOCKS_MANIFEST = "Scripts/canary-gate-locks.txt"
+
+
+def _manifest_effective_block():
+    """The manifest's effective lines as ONE contiguous block (comments in
+    between are kept) — computed at import time so the mutation survives a
+    legitimate manifest edit instead of going stale.
+
+    ⚠️ Why computed and not hard-coded: the manifest is **locked** by a
+    sha256 inside the contract script ⇒ every legitimate manifest change
+    already requires a second, review-visible edit ⇒ hard-coding the block
+    here would add a THIRD place to keep in sync for no gain.
+    """
+    path = os.path.join(REPO, LOCKS_MANIFEST)
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.readlines()
+    idx = [
+        i for i, line in enumerate(lines)
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if not idx:
+        return ""
+    return "".join(lines[idx[0]:idx[-1] + 1])
+
+
+def _gutter_swift_func(rel, name):
+    """`(old, new)` that replaces `func <name>(…) { … }` with an **empty body**.
+
+    ⚠️ The signature is kept ⇒ the file still **compiles** ⇒ the suite stays
+    green unless something notices the guard became hollow. (That is the
+    whole point: the verifier's P1-2 repro — "the assertions are gone but
+    the function is still there".)
+    """
+    path = os.path.join(REPO, rel)
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.readlines()
+    pattern = re.compile(
+        r"^[ \t]*(?:(?:public|private|internal|fileprivate|static|final|override"
+        r"|class|mutating|@[\w.]+)\s+)*func\s+" + re.escape(name) + r"\s*\("
+    )
+    for i, line in enumerate(lines):
+        if pattern.match(line):
+            indent = len(line) - len(line.lstrip())
+            for j in range(i + 1, len(lines)):
+                if (lines[j].strip() == "}"
+                        and len(lines[j]) - len(lines[j].lstrip()) == indent):
+                    old = "".join(lines[i:j + 1])
+                    new = line + " " * indent + "}\n"
+                    return old, new
+    raise SystemExit(
+        "harness: 找不到 " + rel + " 里的 func " + name + " ⇒ 锚点已漂移"
+    )
+
+
+_MANIFEST_BLOCK = _manifest_effective_block()
+_GUARD_212_GUTTER = _gutter_swift_func(
+    R1049, "testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease"
 )
 
 MUTATIONS = [
@@ -555,7 +636,8 @@ MUTATIONS = [
        RVM_IMPORT_CALL, RVM_IMPORT_CALL_NO_DEFAULTS)]),
     ("N28", "删掉 ImageStorage.init 的测试进程早退（核验员 M6）",
      [("ClipMemory/Services/ImageStorage.swift",
-       IS_EARLY_RETURN, IS_EARLY_RETURN_REMOVED)]),
+       IS_EARLY_RETURN, IS_EARLY_RETURN_REMOVED)],
+     {"expect": ["tree"]}),
     ("N29", "AAA bootstrap 不再置 didSnapshotProductionDomain（核验员 M5：canary 静默解除武装）",
      [("Tests/ClipMemoryTests/AAASuiteBootstrapTests.swift",
        AAA_FLAG, AAA_FLAG_REMOVED)]),
@@ -584,26 +666,39 @@ MUTATIONS = [
      [(ZZZAUDIT, ZZZ_THROW_SKIP, ZZZ_TRY_SKIP)]),
     ("N41", "**三个站点一起删**（核验员 V5：基线捕获 + 两个声明 ⇒ 安全网整体失效而套件仍绿）",
      [(AAA, AAA_CAPTURE, AAA_CAPTURE_REMOVED),
-      (XCTB, XCTB_OBSERVER_ASSIGN, XCTB_OBSERVER_ASSIGN_REMOVED)]),
+      (XCTB, XCTB_OBSERVER_ASSIGN, XCTB_OBSERVER_ASSIGN_REMOVED)],
+     {"expect": ["oob"]}),
     ("N42", "武装 helper `hasProductionBaseline` 被中和（永远 false）",
      [(AAA, AAA_HAS_BASELINE, AAA_HAS_BASELINE_NEUTERED)]),
     # ── 第四轮：树外闸门自己的锁 ───────────────────────────────────────────
     ("N43", "**canary 不再调用纯比较**（核验员 V6：掏空比较体 ⇒ 三层同时失明）",
-     [(ZZZ, ZZZ_PURE_CALL, ZZZ_PURE_CALL_GUTTED)]),
+     [(ZZZ, ZZZ_PURE_CALL, ZZZ_PURE_CALL_GUTTED)],
+     {"expect": ["tree"]}),
     ("N44", "**树外闸门被中和**（永远 exit 0 ⇒ 只有契约脚本能抓）",
-     [(GATE_SCRIPT, GATE_PROBLEMS_IF, GATE_PROBLEMS_IF_NEUTERED)]),
+     [(GATE_SCRIPT, GATE_PROBLEMS_IF, GATE_PROBLEMS_IF_NEUTERED)],
+     {"expect": ["contract"]}),
     ("N45", "**CI 里的闸门调用被删**（脚本还在，但永远不会执行）",
-     [(CI_YML, CI_GATE_CALL, CI_GATE_CALL_REMOVED)]),
+     [(CI_YML, CI_GATE_CALL, CI_GATE_CALL_REMOVED)],
+     {"expect": ["tree", "contract"]}),
     # ── 第五轮：**锁的清单**自己的牙齿 ───────────────────────────────────
     ("N47", "**守卫被改名**（㉒ 不再被 XCTest 跑 ⇒ 清单的名字/数量检查必须抓到）",
-     [(R1049, R1049_GUARD_212_SIG, R1049_GUARD_212_RENAMED)]),
+     [(R1049, R1049_GUARD_212_SIG, R1049_GUARD_212_RENAMED)],
+     {"expect": ["contract"]}),
+    # ── 第六轮：**清单自己**的锁 + 「守卫被掏空」 ───────────────────────────
+    ("N48", "**锁的清单被掏空**（只剩注释 ⇒ 契约脚本必须失败：第五轮实测它 exit 0 ⇒ **V8 没关**）",
+     [(LOCKS_MANIFEST, _MANIFEST_BLOCK, "")],
+     {"expect": ["contract"]}),
+    ("N49", "**守卫 ㉒ 被掏空**（函数保留、断言没了 ⇒ 清单只查「存在」抓不到）",
+     [(R1049, _GUARD_212_GUTTER[0], _GUARD_212_GUTTER[1])],
+     {"expect": ["contract"]}),
     # ── 第五轮：⑸ 的词边界（真跑，但**窄跑**到只触发守卫本身） ───────────
     ("N46", "**闸门谓词被改名**（⑸ 的子串匹配可被绕过 ⇒ 第五轮改词边界）",
-     [(IS, IS_EARLY_RETURN, IS_EARLY_RETURN_RENAMED),
-      (IS, IS_EARLY_RETURN, IS_EARLY_RETURN_RENAMED),
+     [(IS, IS_PREDICATE_IF_LINE, IS_PREDICATE_IF_LINE_RENAMED),
+      (IS, IS_PREDICATE_IF_LINE, IS_PREDICATE_IF_LINE_RENAMED),
       (IS, IS_TEST_PREDICATE, IS_TEST_PREDICATE_RENAMED)],
      {"only": ["ClipMemoryTests/Review1049RegressionTests/"
-               "testEveryImageStorageTestProcessGuardIsABareEarlyReturn"]}),
+               "testEveryImageStorageTestProcessGuardIsABareEarlyReturn"],
+      "expect": ["tree"]}),
 ]
 
 
@@ -832,33 +927,46 @@ def run_out_of_band_contract():
 
 
 def parse_failures(log_path):
+    """⇒ returns `(failed, summary, proven)`.
+
+    ⚠️ ID-REVIEW-1049 第六轮（独立核验员 P2-2 · P3-4）：
+
+    ① **失败正则认全部测试类**（此前只认 6 个白名单类）⇒ 别的类里红了的
+       测试**看不见**⇒ 会被读成「这条变异存活」。
+    ② **汇总行认单数**（`Executed 1 test, with …`）⇒ 窄跑变异此前
+       `summary` 恒为空（实测 N46）。
+    ③ **多返回一个 `proven`**：「测试到底跑起来没有」必须与「失败了哪些」
+       分开报告 —— 编译失败 / 宿主崩溃 / 一个测试都没跑 ⇒ **什么都没证明**。
+    """
     failed = []
     summary = ""
     build_failed = False
     test_cases = 0
     host_crashed = False
+    # ⚠️ 第六轮：认**全部**测试类（不再用白名单）⇒ 白名单漏掉的类里的失败
+    #   此前会被读成「变异存活」。
     pat = re.compile(
-        r"Test Case '-\[ClipMemoryTests\."
-        r"(?:Review1047RegressionTests|Review1048RegressionTests"
-        r"|Review1049RegressionTests|StartupHealthTests"
-        r"|ZZZSuiteTeardownTests|ZZZTheCanariesWereNotDisarmedTests)"
-        r" (\w+)\]' failed"
+        r"Test Case '-\[ClipMemoryTests\.(\w+) (\w+)\]' failed"
     )
+    # ⚠️ 第六轮：`tests,` → `tests?,` ⇒ 单数（`Executed 1 test, with …`）
+    #   也抓得到 ⇒ 窄跑的 `summary` 不再是空串。
+    executed = re.compile(r"Executed \d+ tests?, ")
     compile_error = re.compile(r"\.swift:\d+:\d+: error:")
     with open(log_path, errors="replace") as fh:
         for line in fh:
             m = pat.search(line)
             if m:
-                failed.append(m.group(1))
+                failed.append(m.group(2))
             if "Test Case '-[ClipMemoryTests" in line:
                 test_cases += 1
-            if "Executed " in line and "tests," in line:
+            if executed.search(line):
                 summary = line.strip()
             # ⚠️ ID-REVIEW-1047 round 2: the old detector required the error
             # line to ALSO mention "SwiftCompile"/"SwiftDriver" — a plain
             # `file.swift:64:40: error: cannot find 'X' in scope` did not
-            # match ⇒ the mutation was reported as "SURVIVED" although the
-            # tests NEVER RAN. Broaden it, and add the rule below.
+            # match ⇒ a mutation that did NOT COMPILE was reported as
+            # "SURVIVED" although the tests NEVER RAN. Broaden it, and add the
+            # rule below.
             if compile_error.search(line) or "** BUILD FAILED **" in line:
                 build_failed = True
             # ⚠️ ID-REVIEW-1049 (independent verifier F6 · P2): a **crashed**
@@ -875,23 +983,71 @@ def parse_failures(log_path):
     if failed:
         # A real assertion failure ⇒ the mutation was caught, whatever else
         # happened in the same run.
-        return failed, summary
+        return failed, summary, True
     if host_crashed:
         # ⚠️ "0 failures" AFTER a crash proves NOTHING ⇒ NOT_PROVEN, never
         # "survived" (the ID-REVIEW-1046 rule, now enforced for crashes too).
         return (
             ["<NOT_PROVEN: test host crashed and restarted>"],
             summary or "test host crashed and restarted",
+            False,
         )
     if build_failed:
-        return ["<BUILD_FAILED>"], summary or "BUILD FAILED (mutation did not compile)"
+        # ⚠️ 第六轮：**编译失败不是「抓住」** —— 测试根本没跑 ⇒ 什么都没证明。
+        #   第五轮把它算成「被抓住」（假绿）⇒ 实测：N28 因此被假绿。
+        return (
+            ["<BUILD_FAILED>"],
+            summary or "BUILD FAILED (mutation did not compile)",
+            False,
+        )
     if test_cases == 0:
         # ⚠️ The ID-REVIEW-1046 rule, now enforced mechanically: a verdict of
         # "survived" requires that the tests ACTUALLY RAN. Zero test cases
-        # ⇒ nothing was proven either way ⇒ report it as NOT PROVEN, never
+        # ⇒ nothing was proven either way ⇒ report it as NOT_PROVEN, never
         # as "survived".
-        return ["<NOT_PROVEN:0 test cases ran>"], summary or "no test case ran"
-    return failed, summary
+        return (
+            ["<NOT_PROVEN:0 test cases ran>"],
+            summary or "no test case ran",
+            False,
+        )
+    return failed, summary, True
+
+
+CATCHER_TREE = "tree"
+CATCHER_OOB = "oob"
+CATCHER_CONTRACT = "contract"
+
+
+def catchers_of(failed):
+    """**哪个机制真正抓住了这条变异**（第六轮新增）。
+
+    ⚠️ ID-REVIEW-1049 第六轮（独立核验员 P1-2）：第五轮只记 `caught=True`
+    ⇒ 一条变异**被别的机制**抓住时 harness 照样绿 ⇒ 台账据此写的
+    「有效性由 harness 连续复跑保证」是**假的** ⇒ ⇒ 「抓住」必须**可归因**。
+
+    ⇒ 三类来源：**树内** XCTest 断言 / **树外**闸门（读日志）/ **树外**契约。
+    ⇒ ⚠️ `<BUILD_FAILED>` / `<NOT_PROVEN: …>` / `<HARNESS_ERROR: …>`
+    **不算**「抓住」：
+      · 编译失败 / 宿主崩溃 ⇒ **测试根本没跑** ⇒ 什么都没证明；
+      · `<HARNESS_ERROR: …>` ⇒ **闸门自己坏了**（既不是网开着，也不是网关着）。
+    ⇒ 实测（第六轮）：第五轮的 **N28 就是这样被假绿的** —— 编译失败 ⇒
+      树外闸门在日志里找不到 canary 的 passed ⇒ 被记成「树外闸门抓住了」
+      ⇒ 其实**什么都没证明**（第四轮它是真的被树内 ⑤ 抓住的）。
+    """
+    out = set()
+    for entry in failed:
+        text = str(entry)
+        if (text.startswith("<HARNESS_ERROR:")
+                or text.startswith("<BUILD_FAILED>")
+                or text.startswith("<NOT_PROVEN:")):
+            continue
+        if text.startswith("<OUT_OF_BAND: gate contract"):
+            out.add(CATCHER_CONTRACT)
+        elif text.startswith("<OUT_OF_BAND:"):
+            out.add(CATCHER_OOB)
+        else:
+            out.add(CATCHER_TREE)
+    return out
 
 
 def is_caught(failed):
@@ -904,8 +1060,11 @@ def is_caught(failed):
 
     ⇒ 规则：`<HARNESS_ERROR:` 开头的一律**不算**「被抓住」——
     「闸门自己坏了」既不是「网开着」，也不是「网关着」。
+
+    ⚠️ 第六轮再补两条：`<BUILD_FAILED>` / `<NOT_PROVEN: …>` 也**不算**
+    「被抓住」（测试根本没跑 ⇒ 什么都没证明）⇒ 判据统一由 `catchers_of` 给出。
     """
-    return len([f for f in failed if not f.startswith("<HARNESS_ERROR:")]) > 0
+    return len(catchers_of(failed)) > 0
 
 
 def main():
@@ -996,7 +1155,7 @@ def main():
             restore_all()
             cleanup_residue()
 
-        failed, summary = parse_failures(log_path)
+        failed, summary, proven = parse_failures(log_path)
         # ⚠️ ID-REVIEW-1050: the out-of-band check. ⚠️ SKIPPED in the
         # no-AAA mode — there the canaries legitimately skip (no baseline)
         # ⇒ the check would credit a mutation to the wrong catcher.
@@ -1022,7 +1181,18 @@ def main():
             # a catch ⇒ ⇒ never count it as "caught" (auto-review P0).
             if oob_rc == 1:
                 oob_failed = True
-                failed = failed + ["<OUT_OF_BAND: production canaries did not run>"]
+                if proven:
+                    failed = failed + ["<OUT_OF_BAND: production canaries did not run>"]
+                else:
+                    # ⚠️ 第六轮：**测试根本没跑起来**时，树外闸门读不到
+                    #   canary 的 passed 是**后果**而不是「这条变异被抓」
+                    #   ⇒ 不得计入「抓住」⇒ 否则编译失败会被算成「被抓住」
+                    #   ⇒ 实测：第五轮的 N28 就是这样被**假绿**的。
+                    failed = failed + [
+                        "<NOT_PROVEN: out-of-band check saw no canary, but the "
+                        "test run itself did not execute (build failed / host "
+                        "crashed) ⇒ nothing was proven"
+                    ]
             elif oob_rc not in (0,):
                 oob_error = True
                 failed = failed + [f"<HARNESS_ERROR: out-of-band check exit {oob_rc}>"]
@@ -1058,6 +1228,22 @@ def main():
             # `oob_error`）**相反** ⇒ 台账 §50.14.4 的说法对产物为假。
             # ⇒ 修法：`<HARNESS_ERROR:` 开头的一律**不算**「被抓住」。
             "caught": is_caught(failed),
+            # ⚠️ 第六轮（独立核验员 P1-2）：「被抓住」必须**可归因** ——
+            #   第五轮只记 `caught=True` ⇒ 被**别的机制**抓住时 harness 照样绿
+            #   ⇒ 台账据此写的「有效性由 harness 保证」是假的。
+            "caught_by": sorted(catchers_of(failed)),
+            "expect_catcher": options.get("expect"),
+            "catcher_mismatch": bool(
+                options.get("expect")
+                and not (set(options["expect"]) & catchers_of(failed))
+            ),
+            # ⚠️ 第六轮：区分「被抓住」/「没证明」/「存活」 ——
+            #   编译失败与宿主崩溃都是**什么都没证明**，不是「被抓住」。
+            "status": (
+                "CAUGHT" if catchers_of(failed)
+                else ("NOT_PROVEN" if not proven else "SURVIVED")
+            ),
+            "proven": proven,
             "failed_count": len(failed),
             # ⚠️ 第四轮：把两层 out-of-band 的状态**写进产物** —— 此前
             # `oob_error` / `oob_failed` 只存在于控制台 ⇒ 台账里那个
@@ -1075,14 +1261,76 @@ def main():
         with open(RESULTS, "w") as fh:
             json.dump({"meta": meta, "results": results},
                       fh, indent=2, ensure_ascii=False)
-        print(f"[{mid}] caught={is_caught(failed)} failed={failed} "
+        print(f"[{mid}] caught={is_caught(failed)} by={sorted(catchers_of(failed))} "
+              f"status={'CAUGHT' if catchers_of(failed) else ('NOT_PROVEN' if not proven else 'SURVIVED')} "
+              f"expect={options.get('expect')} failed={failed} "
               f"drift={drift} prod_changed={prod_changed} oob_failed={oob_failed} "
               f"oob_error={oob_error}", flush=True)
 
+    # ⚠️ 第六轮：总判定不再只是一句「DONE」 —— 产物里的 `caught` 与
+    #   控制台的判定必须**一致**，而且要能一眼看出「哪条没抓住」、
+    #   「哪条被**错的机制**抓住」。
+    caught = [r for r in results if r.get("status") == "CAUGHT"]
+    survived = [r for r in results if r.get("status") == "SURVIVED"]
+    not_proven = [r for r in results if r.get("status") == "NOT_PROVEN"]
+    mismatched = [r for r in results if r.get("catcher_mismatch")]
+    drifted = [r for r in results if r.get("restore_drift")]
+    print("=" * 60, flush=True)
+    print(f"VERDICT caught={len(caught)} survived={len(survived)} "
+          f"not_proven={len(not_proven)} catcher_mismatch={len(mismatched)} "
+          f"restore_drift={len(drifted)}", flush=True)
+    for r in survived:
+        print(f"  ❌ SURVIVED {r['id']} {r['label']}", flush=True)
+    for r in not_proven:
+        print(f"  ⚠️ NOT_PROVEN {r['id']} {r['label']} "
+              f"({''.join(str(f) for f in r.get('failed_tests', []))[:120]})",
+              flush=True)
+    for r in mismatched:
+        print(f"  ❌ CATCHER MISMATCH {r['id']} 实际={r.get('caught_by')} "
+              f"期望={r.get('expect_catcher')} ⇒ 它被**别的机制**抓住了",
+              flush=True)
+    for r in drifted:
+        print(f"  ❌ RESTORE DRIFT {r['id']} ⇒ 源码没有被字节级还原", flush=True)
     print("DONE", flush=True)
+    # ⇒ 有「存活」「没证明」「抓手不对」「还原失败」 ⇒ 退码非 0
+    if survived or not_proven or mismatched or drifted:
+        sys.exit(1)
+
+
+def _assert_no_duplicate_anchors():
+    """⚠️ ID-REVIEW-1049 第六轮：模块级常量**被重复定义** ⇒ 后者静默覆盖前者
+    ⇒ 一条变异的锚点被**另一条**换掉 ⇒ 那条变异**编译不过**（或改错了地方）
+    ⇒ 而 harness 又把「编译失败」算成「被抓住」 ⇒ ⇒ **假绿**。
+
+    ⇒ 实测（第六轮发现）：第五轮新增 N46 时把 `IS_EARLY_RETURN` **重新定义**了一次
+    （从「整块早退」变成「谓词那一行」）⇒ N28 只删掉了 `if` 那一行
+    ⇒ **编译失败** ⇒ 树外闸门在日志里找不到 canary 的 passed ⇒ 被记成「被抓住」
+    ⇒ 第五轮的「47 条全红」在 N28 这一条上是**假的**（第四轮它是真的被树内 ⑤ 抓住的）。
+
+    ⇒ ⇒ 在**导入时**扫自己的源码 ⇒ 发现重复定义就**拒绝启动**。
+    """
+    path = os.path.abspath(__file__)
+    with open(path, encoding="utf-8") as fh:
+        source = fh.read()
+    seen = {}
+    for lineno, line in enumerate(source.splitlines(), 1):
+        m = re.match(r"^([A-Z][A-Z0-9_]*)\s*=(?!=)", line)
+        if not m:
+            continue
+        seen.setdefault(m.group(1), []).append(lineno)
+    dups = {k: v for k, v in seen.items() if len(v) > 1}
+    if dups:
+        for name, lines in sorted(dups.items()):
+            print("REFUSING TO RUN: 模块级常量 " + name
+                  + " 被重复定义（行 "
+                  + ", ".join(str(x) for x in lines)
+                  + "）⇒ 后者会静默覆盖前者⇒ 相关变异的锚点会错"
+                  + " ⇒ 可能编译不过⇒ 假绿。", file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":
+    _assert_no_duplicate_anchors()
     # ⚠️ ID-REVIEW-1049 第五轮：变异条目可以是 **3 元组**（id, label, patches）
     # 或 **4 元组**（多一个 options 字典 ⇒ 含窄跑选择器）⇒ ⇒ 这里必须能
     # 两种都解包（第四轮加 N46 时漏了这个预检循环 ⇒ 直接抛异常）。

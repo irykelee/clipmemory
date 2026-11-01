@@ -474,6 +474,16 @@ final class Review1049RegressionTests: XCTestCase {
                 ci.contains("test_verify_production_canaries.sh"),
                 "CI 必须调用闸门契约测试 —— 否则契约脚本永远不跑"
             )
+            // ⚠️ ID-REVIEW-1049 第六轮（独立核验员 P1-1 / P3-5）：清单**自身**的
+            //   完整性检查必须**单独**占一个 CI step ⇒ 否则「清单被掏空 ⇒ 契约
+            //   脚本逐条通过（0 条 = 0 个问题）⇒ exit 0」这件事**在 CI 上不会被
+            //   发现** ⇒ 而第五轮的新机制**寄生**在第四轮的 step 里 ⇒ 失败也
+            //   归不了因。
+            XCTAssertTrue(
+                ci.contains("test_verify_production_canaries.sh --manifest"),
+                "CI 必须单独跑清单完整性检查（`--manifest`）"
+                + "—— 否则清单被掏空时 CI 无感（独立核验员 P1-1）"
+            )
         }
     }
 

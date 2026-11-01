@@ -1,5 +1,6 @@
 # Scripts/canary-gate-locks.txt
 # ID-REVIEW-1049 第五轮（2026-11-01）：**树外**的「锁的清单」。
+# ID-REVIEW-1049 第六轮（2026-11-01 深夜）：清单**自己**的完整性锁 + 守卫「有牙」检查。
 #
 # ⚠️ **为什么清单必须在「锁的外面」**（独立核验员 P1-1，2026-11-01 实测）：
 #   第四轮给「树外闸门」上了三把锁（守卫 ㉑ / 守卫 ㉒ / 树外契约脚本），
@@ -11,30 +12,56 @@
 #     清单跟着一起没了 ⇒ 没有任何东西会发现「少了一把锁」。
 #   ⇒ 修法：把清单**搬到树外**（本文件）⇒ 由**树外**的契约脚本逐条核对。
 #
+# ⚠️ **第六轮：清单自己也会被掏空**（独立核验员 P1-1，2026-11-01 深夜实测）：
+#   第五轮把清单搬到了树外，但**清单自己没有任何锁** ⇒ 把清单掏空（只剩注释）
+#   ⇒ 契约脚本「逐条核对」逐条通过（0 条 = 0 个问题）⇒ exit 0 ⇒
+#   再删掉 ㉒ ⇒ **一切全绿** ⇒ ⇒ **V8 并没有被关闭**，只是把缺口挪了一层。
+#
+#   ⇒ ⇒ *「清单在锁的外面」还不够 —— **清单自己也得被锁住**。*
+#   ⇒ ⇒ 修法（两层）：
+#     ① **条目数棘轮**：`file` / `guard` 条目的**个数**硬编码在契约脚本里
+#        （`EXPECTED_FILE_ENTRIES` / `EXPECTED_GUARD_ENTRIES`）⇒ 清单被掏空
+#        ⇒ 个数对不上 ⇒ 契约脚本 exit 1。
+#     ② **内容 sha256**：清单**有效行**（非注释、非空）的 sha256 硬编码在
+#        契约脚本里 ⇒ 清单被**改一条**（哪怕个数不变）⇒ 对不上 ⇒ exit 1。
+#        ⇒ 注释随便改（不参与哈希）⇒ 日常维护只改注释时不必动契约脚本。
+#
+# ⚠️ **第六轮：守卫被掏空**（独立核验员 P1-2，2026-11-01 深夜实测）：
+#   第五轮的清单只查「函数**存在**」⇒ 把 ㉒ 的**断言**删掉（函数保留）⇒
+#   清单照样 exit 0 ⇒ 守卫**名存实亡**。
+#   ⇒ ⇒ 修法：`guard` 条目多带一个字段 —— 该守卫体内**最少**的**断言数**
+#   （`XCTAssert*` / `XCTFail` / `XCTUnwrap`；审计守卫的断言在它调用的
+#   `assert*` 私有 helper 里 ⇒ 一并计入）⇒ 断言被删 ⇒ 数量对不上 ⇒ exit 1。
+#
 # 格式（每行一条；`#` 开头为注释；空行忽略）：
 #
 #   file  <相对路径>  <该文件里 `func test` 的**最少**个数>
-#   guard <守卫函数名> <所属文件相对路径>
+#   guard <守卫函数名> <所属文件相对路径> <该守卫体内**最少**的断言数>
 #
 # ⇒ 契约脚本（`Scripts/test/test_verify_production_canaries.sh`）逐条核对：
 #   * `file` 行 ⇒ 文件**存在**，且 `func test` 的个数 **不少于** 声明值
-#   * `guard` 行 ⇒ 文件**存在**，且含 `func <名字>(`
+#   * `guard` 行 ⇒ 文件**存在**，守卫函数**存在**，且其体内断言数 **不少于** 声明值
 #
 # ⚠️ 本文件**缺失**时契约脚本必须**失败**（不得「找不到就跳过」⇒ 那等于
 # 「清单被删 ⇒ 锁无人看管 ⇒ 静默放过」⇒ 本族的老形状）。
+#
+# ⚠️ **改动本文件必须同步改契约脚本里的三个常量**
+#   （`EXPECTED_FILE_ENTRIES` / `EXPECTED_GUARD_ENTRIES` /
+#   `EXPECTED_MANIFEST_SHA256`）⇒ ⇒ 任何清单改动都必须是**两个文件**的
+#   协同改动 ⇒ ⇒ **review 里一眼看得见**（这正是本文件存在的意义）。
 
 # ── 第四轮的锁（守卫在测试树里，清单在这里） ──────────────────────────────
 file  Tests/ClipMemoryTests/Review1049RegressionTests.swift 15
-guard testTheOutOfBandCanaryGateScriptIsPresentAndKeepsItsEssentials Tests/ClipMemoryTests/Review1049RegressionTests.swift
-guard testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease Tests/ClipMemoryTests/Review1049RegressionTests.swift
-guard testEveryProductionCanaryStillCallsItsPureComparison Tests/ClipMemoryTests/Review1049RegressionTests.swift
-guard testThePureProductionComparisonsStillHaveTeeth Tests/ClipMemoryTests/Review1049RegressionTests.swift
-guard testEveryImageStorageTestProcessGuardIsABareEarlyReturn Tests/ClipMemoryTests/Review1049RegressionTests.swift
+guard testTheOutOfBandCanaryGateScriptIsPresentAndKeepsItsEssentials Tests/ClipMemoryTests/Review1049RegressionTests.swift 2
+guard testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease Tests/ClipMemoryTests/Review1049RegressionTests.swift 7
+guard testEveryProductionCanaryStillCallsItsPureComparison Tests/ClipMemoryTests/Review1049RegressionTests.swift 3
+guard testThePureProductionComparisonsStillHaveTeeth Tests/ClipMemoryTests/Review1049RegressionTests.swift 6
+guard testEveryImageStorageTestProcessGuardIsABareEarlyReturn Tests/ClipMemoryTests/Review1049RegressionTests.swift 3
 
 # ── 安全网本体（三个生产 canary + 审计） ─────────────────────────────────
 file  Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift 7
 file  Tests/ClipMemoryTests/ZZZTheCanariesWereNotDisarmedTests.swift 1
-guard testNoProductionPollution Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift
-guard testProductionDataBlobsAreUnchanged Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift
-guard testFirstLaunchFlagIsNeverChangedDuringTheSuite Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift
-guard testTheProductionCanariesWereNotDisarmed Tests/ClipMemoryTests/ZZZTheCanariesWereNotDisarmedTests.swift
+guard testNoProductionPollution Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift 2
+guard testProductionDataBlobsAreUnchanged Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift 2
+guard testFirstLaunchFlagIsNeverChangedDuringTheSuite Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift 2
+guard testTheProductionCanariesWereNotDisarmed Tests/ClipMemoryTests/ZZZTheCanariesWereNotDisarmedTests.swift 8
