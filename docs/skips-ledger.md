@@ -3891,5 +3891,41 @@ M5（一个标志被删）⇒ V4（两个声明一起删）⇒ V5（连**捕获*
 ⇒ **harness 同步**：退出码 **2** 记为 `<HARNESS_ERROR: …>` ⇒ **不计入「被抓住」**
 ⇒ ⇒ *「闸门自己坏了」绝不能被记成「它抓到了东西」*。
 
+⇒ ⚠️ **两个计数器语义不同，别混**（审核门 P0 就是在这一点上打转）：
+| 计数器 | 含义 | 退出码 **2** 怎么算 |
+|---|---|---|
+| **harness 的「被抓住」**（`caught`） | 「这条变异**是否被检测到**」 | **不算被抓住**（是 harness 自己的问题） |
+| **release.sh 的 `fails`**（preflight 失败计数） | 「这次发版**能不能继续**」 | **必须算失败** ⇒ 闸门坏了就不该放行发版 |
+
+⇒ ⇒ 同一个退出码，在**两处**语义相反是对的：一个是「**证据**够不够」，一个是
+「**能不能放行**」。
+
 ⇒ ⇒ **元模式**：*「验证工具本身不能成为它要消灭的那种伤害源」还有一个变体 ——
 **验证工具坏了时，必须能被区分出来**，否则它的失败会被读成它成功的反面。*
+
+### 50.14.5 验收（**第三轮**，**实测**）
+
+| 项 | 命令 | 结果 |
+|---|---|---|
+| 全量 | `xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/cm1047-dd` | **1436 tests / 4 skipped / 0 failures** · `** TEST SUCCEEDED **` |
+| **树外检查** | `python3 Scripts/verify-production-canaries.py /tmp/cm1049-full4.log` | ✅「三个生产 canary 与 canary 审计均已 **passed**（安全网是开着的）」· 退出码 **0** |
+| 退出码自测 | 同上，分别喂「好日志 / skip 日志 / 不存在的日志 / 无参」 | **0 / 1 / 2 / 2** ⇒ 三态语义成立 |
+| lint | `swiftlint lint --quiet` | **10 = 基线**（棘轮未变） |
+| 变异 | `python3 /tmp/cm-1047-mutate.py` | **42 条（N1–N42）全红**、**drift=False × 42**、`caught=False` **0** 条、`oob_error` **0** 条、`prod_changed=True` **仅 N23** |
+| 产物自述 | `/tmp/cm1047-mutations.json` | 每条 `commit = e6e5190b…`、**`dirty = false`** |
+| 生产域 | 起点快照 vs 终点实时读盘 | **29 键、digest `9fdf7e3ba73105ff`，两边逐键一致**（配方见 §50.13） |
+| 生产钥匙串 | `security find-generic-password -s com.clipmemory.app -a root-encryption-key` | `cdat/mdat = 20260719035159Z` **未被触碰** |
+| 工作树 | `git status --porcelain` | **空**（harness 跑完后干净 ⇒ 无残留变异） |
+
+**本轮 2 条新变异各自被预期的层抓住**：
+
+| 变异 | 形状 | 被谁抓住 |
+|---|---|---|
+| **N41** | **三个站点一起删**（核验员 V5：基线捕获 + 两个声明） | **只**被**树外**检查（`Scripts/verify-production-canaries.py`）⇒ 树内审计**结构上抓不到**它 |
+| **N42** | 武装 helper `hasProductionBaseline` 被中和（永远 false） | **树内**审计（复核改用原始事实）+ 树外检查 |
+
+⇒ ⇒ 这两条**合起来**说明两层缺一不可：
+* **树内**审计抓得住「**单个 helper** 被中和」（N42）⇒ 因为它复核的是**原始事实**；
+* **树内**审计**抓不住**「**三个来源**一起被删」（N41）⇒ 因为树内的每个信号都没了
+  ⇒ ⇒ 只能靠**树外**（脚本读日志）⇒ ⇒ 而树外那条**自己也必须有退出码三态**
+  ⇒ 否则「闸门坏了」会被读成「网开着」（见 §50.14.4）。
