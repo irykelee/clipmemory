@@ -835,6 +835,22 @@ run_preflight() {
                     fails=$((fails + 1))
                 fi
             done
+            # ID-REVIEW-1049 第三轮 (2026-11-01): the class-level check above says
+            # "the suite ran" — it does NOT say "the three production canaries
+            # actually executed". A **skipped** canary is not a failure ⇒ the
+            # release could ship with the production-domain safety net OFF
+            # (measured: the baseline capture + both claims deleted ⇒ 1436
+            # tests / 7 skipped / 0 failures / TEST SUCCEEDED).
+            # ⇒ This check deliberately lives OUT of the test tree: it reads
+            # the test log, so deleting the tree's own arming signals cannot
+            # silence it.
+            # ⚠️ `if !` keeps `set -e` from killing the whole script.
+            if ! python3 Scripts/verify-production-canaries.py /tmp/preflight-tests.log; then
+                echo "  ❌ 生产 canary 未执行（生产域安全网是关着的）"
+                fails=$((fails + 1))
+            else
+                ok "三个生产 canary 均已执行（生产域安全网是开着的）"
+            fi
         else
             echo "  ❌ 全量测试失败（见 /tmp/preflight-tests.log）"
             fails=$((fails + 1))

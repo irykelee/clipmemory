@@ -332,11 +332,28 @@ final class ZZZTheCanariesWereNotDisarmedTests: XCTestCase {
                     + "NOW ⇒ the reason is not true ⇒ the canary was silently disarmed."
                 )
             case .baselineNotCaptured:
+                // ⚠️ ID-REVIEW-1049 第三轮 (2026-11-01, independent verifier P2-1):
+                // this re-check used to read `hasProductionBaseline` — **the
+                // same expression** as the skip gate ⇒ **tautological** ⇒
+                // neutering that one helper would make the canaries skip
+                // AND the re-check agree ⇒ the net goes off silently.
+                //
+                // ⇒ ⇒ Verify against the **raw facts** instead: the bootstrap's
+                // claim, and the snapshot itself. (The coordinated 3-line
+                // deletion — capture + both claims — still cannot be caught
+                // from inside the tree ⇒ that is what the **out-of-band**
+                // check `Scripts/verify-production-canaries.py` is for.)
                 XCTAssertFalse(
-                    AAASuiteBootstrapTests.hasProductionBaseline,
-                    "ID-REVIEW-1049: a canary claimed it skipped because no production "
-                    + "baseline exists — but a baseline DOES exist ⇒ the reason is not "
-                    + "true ⇒ the canary was silently disarmed."
+                    AAASuiteBootstrapTests.didSnapshotProductionDomain,
+                    "ID-REVIEW-1049 第三轮: a canary claimed it skipped because no production "
+                    + "baseline exists — but the bootstrap says it DID capture one ⇒ "
+                    + "the reason is not true ⇒ the canary was silently disarmed."
+                )
+                XCTAssertTrue(
+                    AAASuiteBootstrapTests.productionPersistentDomainBefore.isEmpty,
+                    "ID-REVIEW-1049 第三轮: a canary claimed it skipped because no production "
+                    + "baseline exists — but the production snapshot EXISTS ⇒ "
+                    + "the reason is not true ⇒ the canary was silently disarmed."
                 )
             }
         }

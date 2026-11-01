@@ -251,6 +251,22 @@ jobs:
             exit 1
           fi
 
+      - name: Assert the production canaries actually ran (ID-REVIEW-1049 第三轮)
+        # The three production canaries are the ONLY thing that catches
+        # "a test wrote the user's production domain". A **skipped** canary
+        # is not a failure ⇒ the suite stays green with the safety net OFF.
+        #
+        # ⇒ This check lives OUTSIDE the test tree on purpose: the audit
+        # inside the tree reads the tree's OWN arming signals ⇒ a
+        # coordinated deletion of those signals cannot be caught from inside
+        # ⇒ the arming must be asserted by a second, independent source
+        # (this script reads the test log).
+        #
+        # ⇒ Measured 2026-11-01 (independent verifier P2-1): deleting the
+        # baseline capture + both claims ⇒ 1436 tests / 7 skipped / 0
+        # failures / TEST SUCCEEDED ⇒ the net was OFF and CI was green.
+        run: python3 Scripts/verify-production-canaries.py /tmp/xcb-test.log
+
       - name: Collect test log for triage
         # ID-CRASH-0037 / issue #93 next step 2 ("Capture the failing
         # test's full xctest.log via GH artifact upload"): the v2.9.5 tag
