@@ -285,7 +285,19 @@ final class ClipboardStore: ObservableObject {
     /// never addressed.
     nonisolated static func defaultsFor(isTestProcess: Bool) -> UserDefaults {
         guard isTestProcess else { return .standard }
-        return UserDefaults(suiteName: "ClipboardStore-XCTest-isolation") ?? .standard
+        // ⚠️ ID-REVIEW-1049 (independent verifier F6): **NO `?? .standard`
+        // fallback.** Inside the test host `UserDefaults.standard` **IS** the
+        // user's real `com.clipmemory.app` domain ⇒ a fallback here would turn
+        // a typo into a production access. Only the TEST branch can reach this ⇒
+        // production never traps.
+        guard let defaults = UserDefaults(suiteName: "ClipboardStore-XCTest-isolation") else {
+            preconditionFailure(
+                "ID-REVIEW-1049: UserDefaults rejected the suite name "
+                + "\("ClipboardStore-XCTest-isolation") — refusing to fall back to .standard "
+                + "(that IS the user's production domain in the test host)"
+            )
+        }
+        return defaults
     }
 
     // @Published with didSet for automatic UserDefaults persistence

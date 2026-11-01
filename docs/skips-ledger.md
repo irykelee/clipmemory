@@ -3409,7 +3409,7 @@ try XCTSkipUnless(
 
 **修法**：
 1. 条件改回 `bootstrapRan`（只在 bootstrap **没跑**时 skip）；
-2. **新增一条「审计」测试** `testZZZTheProductionCanariesWereNotDisarmed` ——
+2. **新增一条「审计」测试** `ZZZTheCanariesWereNotDisarmedTests.testTheProductionCanariesWereNotDisarmed` ——
    它断言「三个 canary **确实执行过**」（计数器 = 3）⇒
    **被解除武装 ⇒ 变红**，不再静默。
 3. **审计的 skip 条件刻意用「基线标志」而不是「AAA 跑过标志」** ——
@@ -3448,7 +3448,12 @@ try XCTSkipUnless(
 | 生产域 | 起点快照 vs 终点实时读盘 | **29 键、digest `9fdf7e3ba73105ff`，两边逐键一致** |
 | 产物自述 | `/tmp/cm1047-mutations.json` | 每条都带 `commit` + `dirty`（F9 的修法） |
 
-**本轮 8 条新变异各自被预期的守卫抓住**：
+> ⚠️ **披露（独立核验员 P3-7）**：这 35 条变异**全部**记录 `commit = 2f1b4c3`、`dirty = true`
+> ⇒ 它们实际跑在「**1048 的提交 + 未提交的 1049 改动**」上，**不是** `cfd04a9` 提交树本身。
+> ⇒ 读这份产物时必须知道这一点（否则「35 条全红」会被读成对 `cfd04a9` 的证明）。
+> ⇒ **本轮（§50.12）已改为：先提交、再在**干净树**上跑变异 ⇒ 产物自述 `dirty = false`。
+
+**本轮 6 条新变异各自被预期的守卫抓住**（原文写「8 条」，表里只有 6 行 ⇒ 已订正）：
 
 | 变异 | 形状 | 被谁抓住 |
 |---|---|---|
@@ -3474,6 +3479,71 @@ try XCTSkipUnless(
    假阳性 ⇒ 在**稳定的树**上重跑 ⇒ `drift=False`。
 ⇒ ⇒ **第三次**撞上同一条纪律：**判定「变异存活」前必须先排除「变异没跑起来」**。
 
+### 50.10 push 后的**本地审核**又抓出一处漏改（P1）——「修一个，看 33 个」的第三次
+
+> ⚠️ 这一条**不在**作者的原计划里 —— 它是 push 之后 `githooks/orca-auto-review.sh`
+> （独立模型审 diff）报出来的 **P1**，**作者自己**确认成立并修掉。
+
+**审核原话**（要点）：
+
+> `[P1]` `ClipboardStore.defaultsFor(isTestProcess:)` 仍保留 `?? .standard` 逻辑 ……
+> `UserDefaults.standard` 在测试宿主中**就是**生产域，这依然保留了
+> 「拼写错误导致生产域写入」的潜在风险。
+
+**它是对的。** 核验员 F6 只点了 `StartupHealth.defaultsFor` **一处** ⇒
+本轮修了 `BackupService` + `StartupHealth` ⇒ **漏了 5 处**：
+
+| 文件 | 状态（修前） |
+|---|---|
+| `Services/SafeModeService.swift` | `UserDefaults(suiteName: "SafeModeService-XCTest-isolation") ?? .standard` |
+| `Services/ClipboardStore.swift` | `UserDefaults(suiteName: "ClipboardStore-XCTest-isolation") ?? .standard` |
+| `Services/FirstLaunchService.swift` | `UserDefaults(suiteName: xcTestIsolationSuiteName) ?? .standard` |
+| `Services/HotKeyManager.swift` | `UserDefaults(suiteName: "HotKeyManager-XCTest-isolation") ?? .standard` |
+| `Utils/TestIsolation.swift` | `UserDefaults(suiteName: xcTestIsolationSuiteName) ?? .standard`（**规范 seam 本身**） |
+
+⇒ **全部**改成 `preconditionFailure`（只有测试分支能到达 ⇒ 生产永不 trap）。
+
+⇒ ⇒ **元模式**：*「修一个，看 33 个」在**这一族**里不是口号，是**必须机械执行**的
+—— 因为这一族的每个实例长得**一模一样**（`?? .standard` / `= .standard` /
+`KeychainKeyStore()`），而**人的眼睛会疲劳** ⇒ ⇒ *「同一形状的 N 处」必须用
+**一条守卫 + 数量/零命中判据**钉住，而不是靠人记着还剩几处。*
+
+⇒ ⇒ 本轮据此新增 **守卫 ⑻**（app 树里 `?? .standard` **零命中**，抹白注释与字符串）
++ **变异 N36**（把兜底放回去 ⇒ ⑻ 必须变红）。
+
+⚠️ **另两条 P2（作者判定为不成立，如实记录）**：
+* 「`logSnapshot` 内部的写入未显式校验域是否隔离」⇒ **不成立**：写入目标是**参数**，
+  而**默认值**现在是进程安全的 seam ⇒ 即便别的组件直接调用，缺省也落在隔离域上
+  ⇒ 另加校验只会重复 seam 已经保证的事。
+* 「守卫 ⑶ 只看 `queried` 标志，若 `shouldApply` 内部读系统仍可能通过」⇒
+  **部分成立**：⑶ 确实看不见 `shouldApply` 内部的读取；⇒ 但**文件集合守卫 ⑱**
+  钉住了 `SMAppService.mainApp` **只**出现在 `LaunchAtLoginService.swift` ⇒
+  任何绕道读取都会被它抓住 ⇒ **兜底存在**，故不作为缺陷。
+
+⚠️ **本轮还撞到一次已知的钥匙串 flake**：
+`CryptoKeyPreparationTests.testRetryAfterLockedPreservesSessionUntilUnlock`
+在全量跑里红过一次（"Retry while still locked must return nil"），
+**单独窄跑 23 条全绿** ⇒ 属**既有的顺序相关 flake**（钥匙串类），
+**与本轮改动无关**（本轮没碰钥匙串逻辑）。⇒ 如实记录，不掩盖。
+
+⚠️ **roster 因此又刷新了一次**：修那 5 处兜底给 `ClipboardStore.swift` 净增 **12 行**
+⇒ §8 的行号再漂移 ⇒ **同一个 commit** 刷新（表格 + 原始输出块 + 内联引用）。
+
+### 50.11 验收（**第二轮**，含 §50.10 的修复）
+
+| 项 | 命令 | 结果 |
+|---|---|---|
+| 全量 | `xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/cm1047-dd` | **1435 tests / 4 skipped / 0 failures** · `** TEST SUCCEEDED **` |
+| lint | `swiftlint lint --quiet \| grep -c "warning:\|error:"` | **10 = 基线** |
+| 变异 | `python3 /tmp/cm-1047-mutate.py` | **36 条（N1–N36）全红**、`restore_drift=False` × 36、`caught=False` **0** 条 |
+| 生产域 | 起点快照 vs 终点实时读盘 | **29 键、digest 逐键一致** |
+
+⇒ **本轮的四次「修一个，看 33 个」**：
+① `BackupPackage` 的 3 个入口（默认参数 = 生产身份）；
+② 3 个生产 canary 被**自己**解除武装（skip 条件写反）；
+③ `?? .standard` 兜底（**7 处**，其中 5 处是本轮漏改 ⇒ 被本地审核抓出）；
+④ 守卫文件自己撑破 lint 阈值 ⇒ 拆文件。
+
 ### 50.9 这一族到此为止（第四轮）
 
 剪贴板（1042）、生产钥匙串（1043）、全局热键 + 状态项（1044）、崩溃哨兵（1045）、
@@ -3496,12 +3566,12 @@ try XCTSkipUnless(
 
 | ID | 级别 | 发现 | 处置 |
 |---|---|---|---|
-| **F2** | **P1** | 守卫 ⑮/⑰ 盯的是**拼写** `defaults: .standard` ⇒「**省掉这个参数**」这个形状**完全隐形**；核验员实测测试树里 **38 处**调用省掉了 `defaults:` | **改默认值本身**（不是再加一条扫描器）：`BackupPackage` 的 3 个入口默认解析到**进程安全**的 seam ⇒ **省略参数不可能再到达用户的域**。新增守卫 ⑹ ⑹b ⑺ ⑺b + 变异 N30/N31/N32 |
+| **F2** | **P1** | 守卫 ⑮/⑰ 盯的是**拼写** `defaults: .standard` ⇒「**省掉这个参数**」这个形状**完全隐形**；核验员实测测试树里 **37 处**原始命中省掉了 `defaults:`（**36 处真实调用点** + **1 处注释**；核验员原话是「38 处」⇒ 数字复现不出来 ⇒ 已订正） | **改默认值本身**（不是再加一条扫描器）：`BackupPackage` 的 3 个入口默认解析到**进程安全**的 seam ⇒ **省略参数不可能再到达用户的域**。新增守卫 ⑹ ⑹b ⑺ ⑺b + 变异 N30/N31/N32 |
 | **F6** | **P2** | harness 的判定语义有洞：**崩掉的测试宿主**被 xcodebuild 重启后报「0 failures」⇒ 朴素判据读成「存活」；而每次崩溃都会**丢掉 AAA 的静态基线标志** ⇒ 三个生产 canary 从此**静默 skip** | harness：`Restarting after unexpected exit` ⇒ 判为 `<NOT_PROVEN: test host crashed and restarted>` ⇒ **绝不**冒充「存活」 |
 | **F8** | **P3** | 台账 §48.8 的「N6 / N10 的 `prod_changed=True` 是正面证据」**归因错了对象**（核验员复现 N6=False、N10=False，**只有 N12** = True） | **§48.8 已就地订正**（结论成立、编号写错） |
 | **F9** | **P3** | 产物 `/tmp/cm1047-mutations.json` 里混进了**在别的树上跑出来的** N18–N21（`afe6e31` 里根本没有那些代码）⇒ 产物**不说明它跑在哪棵树上** | harness 产物现在逐条记 `commit` + `dirty`，且 `ANCHOR_MISSING` 作为**一等公民**带同样的两个字段 |
 | **F7** | P3 | 登录项的**读**闸门零守卫 | **已在 1049 处置**（守卫 ⑶ + 可注入 status provider + 变异 N26） |
-| **F10** | P3 | `SWIFT6_MIGRATION.md` §8 的 roster **表格**仍是旧行号，且漂移守卫**只查原始输出块** | 表格已在 1048 刷新；「让守卫也解析表格」这一半**仍未做** ⇒ 见 §50.7 |
+| **F10** | P3 | `SWIFT6_MIGRATION.md` §8 的 roster **表格**仍是旧行号，且漂移守卫**只查原始输出块** | **两半都已在 1049 做完**：表格在 1048 刷新；漂移守卫现在**也解析 §8 的表格**（`IsolationSeamConsolidationTests.swift` 的 `documentedTableEntries`）⇒ 表格与原始块各 22 条、零差异（实测）。⚠️ 本行原先写着「仍未做 ⇒ 见 §50.7」，而 §50.7 通篇是 canary 解除武装、**不含** F10 的收口记录 ⇒ **台账说「未做」、代码是「已做」**（本族反复要治的那类漂移）⇒ 已就地订正 |
 | **F11** | P3 | `AppDelegate.swift:277` 的注释行号漂移（`:86` ⇒ 实际 `:249`） | 已在 1048 订正 |
 
 #### 50.6.1 F2 的修法：为什么是「改默认值」而不是「加扫描器」
@@ -3513,11 +3583,11 @@ try XCTSkipUnless(
   `restoreQuarantineCopies` 的**写回目标**（`BackupPackage.swift` 里 import 路径上
   `defaults` 的**唯一**一次出现就是传给它的）⇒ 它**不是读源**；
 * `exportPackage` 的 `defaults` 才是**读源**（从域里读 blob 去打包）；
-* 核验员说的「38 处省略 `defaults:`」**全部**是**导入**侧 ⇒ 它们的**唯一**效果是
+* 那批省略（**36 处真实调用点**，另有 **1 处注释**）**全部**是**导入**侧 ⇒ 它们的**唯一**效果是
   「隔离副本写回被 `mustRefuseProductionDataMutation` 拒绝」⇒ **不写生产域**。
 
 ⇒ 于是有两条路：
-1. **删掉默认值**（编译期强制）⇒ 测试树 **38 处**都要改 ⇒ 且**改什么**会**改变
+1. **删掉默认值**（编译期强制）⇒ 测试树 **36 处**都要改 ⇒ 且**改什么**会**改变
    测试语义**（原来被拒、现在会成功）⇒ 高风险、大面积；
 2. **改默认值的指向**（让「省略」落在隔离域上）⇒ 生产**字节不变**
    （生产 ⇒ `.standard`）⇒ 测试树**一处都不用改** ⇒ 「省略参数 = 静默取用户域」
@@ -3555,3 +3625,126 @@ try XCTSkipUnless(
 ⇒ ⇒ **元模式**：*一份**没有自述 provenance** 的产物，等于**没有来源的断言*** ——
 它可以被**读成**它不是它。⇒ harness 逐条记 `commit` + `dirty`。
 
+
+### 50.12 第二轮：独立核验员对 `cfd04a9` 的 **VERDICT = FAIL** —— 处置
+
+> ⚠️ 核验员对 `cfd04a9` 的结论：**VERDICT = FAIL**（1×P1 + 2×P2 + 7×P3）。
+> ⇒ 作者的**验收数据全部被独立复现**（1434 / 4 skipped / 0 failures、三个 canary
+> **passed**、lint **10**、35 条产物自洽、生产域 **29 键逐键零差异**、生产钥匙串
+> `cdat/mdat = 20260719035159Z` **未被触碰**）⇒
+> ⇒ FAIL 的原因**不是**「数字错了」，而是**同形状没扫全**（P1-1）与**2 条 P2**。
+
+#### 50.12.1 P1-1（核验员）：F6 只修了 **2/7** —— `?? .standard` 的**全族**（已修）
+
+核验员在 `cfd04a9` 的**提交树**上实测出 5 处仍在：
+
+| 文件 | 修法 |
+|---|---|
+| `ClipMemory/Services/ClipboardStore.swift` | `?? .standard` ⇒ `preconditionFailure` |
+| `ClipMemory/Services/FirstLaunchService.swift` | 同上 |
+| `ClipMemory/Services/HotKeyManager.swift` | 同上 |
+| `ClipMemory/Services/SafeModeService.swift` | 同上 |
+| `ClipMemory/Utils/TestIsolation.swift`（**规范 seam 本身**） | 同上 |
+
+⇒ 新增**守卫 ⑻**（app 树 `?? .standard` **零命中**；判据跑在**抹白**后的副本上，
+所以注释与字符串不算命中）+ 变异 **N36**（把兜底放回 `FirstLaunchService`
+⇒ 守卫 ⑻ 红）⇒ ⇒ **「同一形状的 N 处必须用一条守卫 + 零命中判据钉住」**，
+不能靠人记着还剩几处。
+
+#### 50.12.2 P2-1（核验员）：审计在「用户正开着 ClipMemory」时**误报红**（已修）
+
+**症状**（核验员实测，另一个进程持有 `.instance.lock`）：
+三个 canary 走**设计好的**跳过路径（`skipIfAnotherInstanceIsRunning`）⇒
+而审计断言「计数器 == 3」⇒ **红** ⇒ ⇒ 1048 之前这个场景是**绿的**
+⇒ 本轮把它变成红的 ⇒ ⇒ 开发机上开着 App 跑全量 ⇒ 套件**恒红**
+⇒ **「红是常态」训练出来的团队看不见「红」** ⇒ 与本族「安全网关着和开着
+在报告里长得一模一样」的初衷**背道而驰**。
+
+**修法**：**每一个跳过都必须带一个理由上报** ⇒ 审计的判据从
+「计数器 == 3」改成「三条 canary 都被**交代**（执行了 / 带理由跳过了）」，
+而且**每个理由都必须在审计当下独立复核**：
+
+| 理由 | 复核方式 | 不成立 ⇒ |
+|---|---|---|
+| `.anotherInstanceRunning` | 此刻真的有人持锁吗？ | 理由是假的 ⇒ canary 被静默解除武装 ⇒ 红 |
+| `.baselineNotCaptured` | 此刻真的没有基线吗？ | 同上 |
+
+⇒ **实测**（锁探针，模拟用户开着 App）：
+`3 skipped`（canary 真跳了）+ 审计 **passed** + **0 failures** ✔
+⇒ ⇒ 而**跳过原因被反转**的形状（N39）现在**必然变红**。
+
+#### 50.12.3 P2-2（核验员）：两个声明一起删 ⇒ 安全网整体失效而套件仍绿（已修）
+
+**根因**：`aaaBootstrapRan` 与 `didSnapshotProductionDomain` 都是**声明**
+（各是一行赋值）⇒ **能一起删** ⇒ 删掉后：三个 canary 跳过（`bootstrapRan == false`）
+⇒ **审计也跳过**（`didSnapshotProductionDomain == false`）⇒ 套件全绿，
+**而安全网是关的** ⇒ 核验员自测 **V4 = SURVIVED**。
+
+⇒ ⇒ **两个能一起删的标志 = 一个标志**（这正是「两个标志互相兜底」说法的
+边界：它只保证**单条**删除被抓住）。
+
+**修法（两条一起上，缺一不可）**：
+
+1. **canary 的武装条件改看「证据」**，不看「声明」：
+   `AAASuiteBootstrapTests.hasProductionBaseline`
+   = `didSnapshotProductionDomain || !productionPersistentDomainBefore.isEmpty`
+   ⇒ ⇒ 删掉两个声明**关不掉** canary（**快照还在** ⇒ 照常跑对比）；
+2. **审计做三方交叉核对**（声明① / 声明② / 证据）⇒
+   ⇒ 「**有证据却没人声明**」判成**红**（这才是 V4 的真正死因）。
+
+⇒ **变异 N37**（两个声明一起删 = 核验员的 V4）⇒ 现在被审计抓住 ✔
+
+⇒ ⇒ **元模式**：*「谁说自己做到了」与「做没做到」必须由**不同来源**回答* ——
+一个声明可以被一起删掉，一份**产物**（快照）不会跟着声明一起消失。
+
+#### 50.12.4 【本轮自己发的 bug】`try XCTSkip(…)` 在 Swift 里**根本不抛** —— 「跳过」变成假绿
+
+**这是本轮作者自己发的第二个 bug**（第一个是 §50.7 的 canary 解除武装），
+而且它**只有在探针跑的时候才暴露**。
+
+**根因**（读 SDK 的 Swift overlay 实测）：
+`XCTSkip` 在 Swift 侧是 **overlay 的 `Error` 结构体**
+（`public struct XCTSkip: Swift::Error`，`init(_ message:file:line:)`）⇒
+**`XCTSkip(…)` 只是构造一个值，什么都不抛** ⇒
+`try XCTSkip(…)` = 「造一个值然后丢掉」⇒ **「跳过」根本没发生** ⇒
+测试**继续跑**并 **pass** ⇒ ⇒ 「跳过」变成了**假绿**。
+
+**实测现场**（锁探针，第一次跑新设计时）：
+三个 canary **既记了「跳过」又继续执行** ⇒ 审计看到 `3 executed + 3 skipped`
+⇒ 报红 ⇒ ⇒ 而更糟的是：**跳过没发生，测试还绿着**。
+
+**修法**：
+1. 全部改成 **`throw XCTSkip(…)`**（仓库里既有的 11 处都是这个形式）；
+2. 新增**守卫 ⑳**：测试树里每一处 `XCTSkip(` 前面**必须**是 `throw`
+   （判据跑在**抹白**后的副本上 ⇒ 本守卫自己的说明文字不会命中自己）；
+3. 变异 **N40**（把 `throw` 去掉）⇒ 守卫 ⑳ 红 ✔
+
+⇒ ⇒ **元模式**：*「跳过」有两个入口（`throw XCTSkip` / `XCTSkipIf`），而其中
+一个在 Swift 里**是哑的** ⇒ 「跳过」这个动作本身也需要被钉住* ——
+**「跳过不是失败」的另一面是：「跳过可能根本没发生」。**
+
+#### 50.12.5 harness：让「跳过路径」真的被跑到（**无 AAA 选择器**模式）
+
+**N33（重定义）** = 「canary 跳过但**不上报理由**」。
+第一次跑它时 **caught=False** ⇒ ⇒ **不是守卫没牙，是这条路径根本没被走到**
+（有基线的跑里 canary 不跳过 ⇒ 删掉那行**什么也没改**）⇒
+⇒ **又一次撞上同一条纪律**：判定「变异存活」前**必须先排除「变异没跑起来」**。
+
+⇒ harness 新增 **「无 AAA 选择器」模式**：该模式下**不选** `AAASuiteBootstrapTests`
+⇒ ⇒ 三个 canary 走**跳过路径** ⇒ ⇒ 跳过理由的上报/核对**真的被执行到**。
+（这同时是一条**合法**的生产配置：`-only-testing:` 一个不含引导类的类。）
+⇒ N33 现在 **caught=True** ✔
+
+⇒ ⇒ **元模式**：*「一个守卫只能断言它能在测试里到达的东西」* ⇒
+⇒ 变异清单里凡是**指向一条未被走到的路径**的，要么给它一条**能走到**的
+选择器，要么**换一个能走到**的变异 —— 而不是把「存活」记成「守卫没牙」。
+
+#### 50.12.6 残余边界（**如实记录**，不假装闭合）
+
+* **「整条 canary 类被删掉」无法被套件内自证**：审计会以为「canary 类没跑」
+  ⇒ 跳过 ⇒ 绿。这是**任何进程内自证**的极限（同族此前已记过一次）。
+* **锁复核的代价**：审计会**重新读一次**锁 ⇒ 若用户恰好在这几毫秒里退出 App
+  ⇒ 一次**可见的**假红（可重跑）。取舍：宁可假红一次，也不要「静默跳过」。
+* **宿主崩溃后重启**（CI 已知形状）：重启后的宿主没有基线 ⇒ canary 跳过
+  ⇒ 审计**核对通过** ⇒ 绿 —— harness 的 `Restarting after unexpected exit`
+  ⇒ `<NOT_PROVEN>` 会把这种跑标成**未证**而不是「存活」。

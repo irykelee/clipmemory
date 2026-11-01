@@ -118,17 +118,24 @@ final class Review1049RegressionTests: XCTestCase {
         var offenders: [String] = []
         for url in try TestSourceScanner.appSourceFiles() {
             let source = try String(contentsOf: url, encoding: .utf8)
+            // ⚠️ ID-REVIEW-1049 (independent verifier P3-1): the scan runs on a
+            // **BLANKED** copy (comments and string literals replaced by
+            // spaces) ⇒ a doc comment that merely mentions `exportPackage(` is
+            // not a call site. The verifier proved the false positive with a
+            // comment-only patch (the guard went red on a file that had no
+            // call site at all).
+            let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
             let relative = TestSourceScanner.appRelativePath(of: url)
             for callee in callees {
-                for range in Self.callRanges(of: callee, in: source) {
+                for range in Self.callRanges(of: callee, in: blanked) {
                     // A **definition** is not a call site.
-                    let lineStart = source[..<range.lowerBound].lastIndex(of: "\n")
-                        .map { source.index(after: $0) } ?? source.startIndex
-                    let prefix = source[lineStart..<range.lowerBound]
+                    let lineStart = blanked[..<range.lowerBound].lastIndex(of: "\n")
+                        .map { blanked.index(after: $0) } ?? blanked.startIndex
+                    let prefix = blanked[lineStart..<range.lowerBound]
                     if prefix.contains("func ") { continue }
-                    let arguments = String(source[range])
+                    let arguments = String(blanked[range])
                     if arguments.contains("defaults:") { continue }
-                    let line = source[..<range.lowerBound].filter { $0 == "\n" }.count + 1
+                    let line = blanked[..<range.lowerBound].filter { $0 == "\n" }.count + 1
                     offenders.append("\(relative):\(line) — `\(callee)(` 没有显式传 `defaults:`")
                 }
             }
@@ -304,6 +311,91 @@ final class Review1049RegressionTests: XCTestCase {
             XCTestIsolationSuiteBootstrap.backupPackageSuiteName,
             "app 侧与测试侧登记的 suite 名字必须一致 —— "
             + "分叉 ⇒ 清理脚本与写守卫会看着**错误的** suite 而通过"
+        )
+    }
+
+    // MARK: - ⑻ 域解析器的兜底（F6 的**全族**）
+
+    /// ⑻ **形状**守卫：app 树里**不得**再有 `?? .standard` 这种
+    /// 「解析不到就退回生产域」的兜底。
+    ///
+    /// ⚠️ **这条是「修一个，看 33 个」的产物**：独立核验员 F6 只点了
+    /// `StartupHealth.defaultsFor` 一处 ⇒ 本轮修了 `BackupService` 与
+    /// `StartupHealth` ⇒ **漏了 5 处**：
+    /// `SafeModeService` / `ClipboardStore` / `FirstLaunchService` /
+    /// `HotKeyManager` / `TestIsolation`（规范 seam 本身）。
+    /// ⇒ 而 push 后的本地审核（`githooks/orca-auto-review.sh`）把它作为
+    /// **P1** 报了出来 ⇒ **独立审核确实抓到了作者自己的漏改**。
+    ///
+    /// ⇒ 为什么它是**活路径**（不是理论问题）：在测试宿主里
+    /// `UserDefaults.standard` **就是**用户的真实 `com.clipmemory.app` 域 ⇒
+    /// 一旦 suite 名被拒（拼写错误 / 未来改名漏改），兜底会把**测试**静默
+    /// 接到**生产域**上 ⇒ 而这正是本族的核心形状。
+    ///
+    /// ⇒ 判据用**形状**（`?? .standard`），并**抹白注释与字符串** ⇒
+    /// 本守卫自己的说明文字不会命中自己。
+    func testNoDomainResolverFallsBackToTheProductionDomain() throws {
+        var offenders: [String] = []
+        for url in try TestSourceScanner.appSourceFiles() {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let count = TestSourceScanner.occurrenceCount(
+                of: "?? .standard",
+                in: TestSourceScanner.blankingCommentsAndStrings(source)
+            )
+            guard count > 0 else { continue }
+            offenders.append("\(TestSourceScanner.appRelativePath(of: url)) (\(count) 处)")
+        }
+        XCTAssertEqual(
+            offenders, [],
+            "域解析器**不得**用 `?? .standard` 兜底 —— 在测试宿主里 `.standard` "
+            + "**就是**用户的真实域 ⇒ 兜底会把测试静默接到生产域上"
+            + "（独立核验员 F6 的形状，本轮修掉全部 5 处）：\(offenders)"
+        )
+    }
+
+    // MARK: - ⑳ `XCTSkip` 必须是 Swift 抛错形式（**宏 vs overlay**）
+
+    /// ⑳ **形状**守卫：测试树里每一处 `XCTSkip(` 都必须写成 `throw XCTSkip(`。
+    ///
+    /// ⚠️ **为什么这条存在**（实测 2026-11-01，本轮自己踩到）：Swift 侧的
+    /// `XCTSkip` 是 **overlay 的 `Error` 结构体**（`public struct XCTSkip:
+    /// Swift::Error`，`init(_ message:file:line:)`）⇒ **`XCTSkip(…)` 只是构造
+    /// 一个值，**不抛**任何东西 ⇒ 写成 `try XCTSkip(…)` 时那个值被丢掉 ⇒
+    /// 「跳过」**根本没发生** ⇒ 测试继续跑并 **pass** ⇒ 「跳过」变成假绿。
+    ///
+    /// ⇒ 真正会跳过的只有三种写法：`throw XCTSkip(…)` /
+    /// `try XCTSkipIf(…)` / `try XCTSkipUnless(…)`（后两个是 overlay 里
+    /// 真正 `throws` 的函数）。⇒ 仓库里既有的 11 处都用 `throw XCTSkip(…)`。
+    ///
+    /// ⇒ 实测：写成 `try XCTSkip(…)` ⇒ 锁探针一开 ⇒ 三个 canary **既记了跳过
+    /// 又继续执行** ⇒ 审计看到 `3 executed + 3 skipped` ⇒ 报红 ⇒ 而更糟的是
+    /// **「跳过」根本没发生**。
+    ///
+    /// ⇒ 判据是**形状**（`XCTSkip(` 前面必须是 `throw`）⇒ 与参数无关；
+    /// 扫描跑在**抹白**后的副本上 ⇒ 本守卫自己的说明文字不会命中自己。
+    func testEveryXCTSkipIsAThrowNotTheObjectiveCMacro() throws {
+        var offenders: [String] = []
+        for url in try TestSourceScanner.testSourceFiles() {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
+            var index = blanked.startIndex
+            while let found = blanked.range(of: "XCTSkip(", range: index..<blanked.endIndex) {
+                index = found.upperBound
+                let before = String(blanked[..<found.lowerBound])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if before.hasSuffix("throw") { continue }
+                let line = blanked[..<found.lowerBound].filter { $0 == "\n" }.count + 1
+                offenders.append(
+                    "\(TestSourceScanner.relativePath(of: url)):\(line)"
+                    + " — `XCTSkip(` 必须写成 `throw XCTSkip(`"
+                )
+            }
+        }
+        XCTAssertEqual(
+            offenders, [],
+            "每一处 `XCTSkip(` 都必须写成 `throw XCTSkip(` —— 裸 `XCTSkip` 命中的是 "
+            + "**ObjC 宏** ⇒ 它抛的 NSException **不会**让 Swift 帧停下 ⇒ "
+            + "「跳过」之后代码继续跑 ⇒ 测试 pass ⇒ 假绿：\(offenders)"
         )
     }
 

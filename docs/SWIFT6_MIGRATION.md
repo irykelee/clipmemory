@@ -228,17 +228,17 @@ Services/LanguageManager.swift:102:    nonisolated(unsafe) private static var co
 Services/WindowManager.swift:158:    nonisolated(unsafe) static var defaults: UserDefaults {
 Services/UpdateService.swift:202:    nonisolated(unsafe) static var defaults: UserDefaults {
 Services/UpdateService.swift:235:    nonisolated(unsafe) static var injectedForTest: UpdateService?
-Services/ClipboardStore.swift:949:    nonisolated(unsafe) let contentCache: NSCache<NSString, NSString> = {
-Services/ClipboardStore.swift:960:    nonisolated(unsafe) private let rtfPlaintextCache: NSCache<NSString, NSString> = {
-Services/ClipboardStore.swift:1067:    nonisolated(unsafe) var pendingFailedIDs = Set<UUID>()
-Services/ClipboardStore.swift:1068:    nonisolated(unsafe) let pendingFailedIDsLock = NSLock()
-Services/ClipboardStore.swift:1076:    nonisolated(unsafe) var pendingDiagnostics: [PendingDiagnostic] = []
-Services/ClipboardStore.swift:1077:    nonisolated(unsafe) let pendingDiagnosticsLock = NSLock()
-Services/ClipboardStore.swift:2466:    nonisolated(unsafe) let prewarmStateLock = NSLock()
-Services/ClipboardStore.swift:2467:    nonisolated(unsafe) var prewarmInFlight = false
-Services/ClipboardStore.swift:2468:    nonisolated(unsafe) var prewarmPendingItems: [ClipboardItem]?
-Services/ClipboardStore.swift:2469:    nonisolated(unsafe) var prewarmPendingCompletions: [() -> Void] = []
-Services/ClipboardStore.swift:2478:    nonisolated(unsafe) var pendingPrewarmWorkItem: DispatchWorkItem?
+Services/ClipboardStore.swift:961:    nonisolated(unsafe) let contentCache: NSCache<NSString, NSString> = {
+Services/ClipboardStore.swift:972:    nonisolated(unsafe) private let rtfPlaintextCache: NSCache<NSString, NSString> = {
+Services/ClipboardStore.swift:1079:    nonisolated(unsafe) var pendingFailedIDs = Set<UUID>()
+Services/ClipboardStore.swift:1080:    nonisolated(unsafe) let pendingFailedIDsLock = NSLock()
+Services/ClipboardStore.swift:1088:    nonisolated(unsafe) var pendingDiagnostics: [PendingDiagnostic] = []
+Services/ClipboardStore.swift:1089:    nonisolated(unsafe) let pendingDiagnosticsLock = NSLock()
+Services/ClipboardStore.swift:2478:    nonisolated(unsafe) let prewarmStateLock = NSLock()
+Services/ClipboardStore.swift:2479:    nonisolated(unsafe) var prewarmInFlight = false
+Services/ClipboardStore.swift:2480:    nonisolated(unsafe) var prewarmPendingItems: [ClipboardItem]?
+Services/ClipboardStore.swift:2481:    nonisolated(unsafe) var prewarmPendingCompletions: [() -> Void] = []
+Services/ClipboardStore.swift:2490:    nonisolated(unsafe) var pendingPrewarmWorkItem: DispatchWorkItem?
 Utils/AppPasteboard.swift:81:    private nonisolated(unsafe) static var overrideBoard: NSPasteboard?
 Utils/AppStorageDefaults.swift:93:    private nonisolated(unsafe) static var overrideStorage: UserDefaults?
 Utils/TestIsolation.swift:97:    private nonisolated(unsafe) static var defaultsStorage: UserDefaults = baselineDefaults
@@ -262,17 +262,17 @@ just copied from the declaration comments.
 |------|------|--------|------------------------------|--------------|
 | `AppDelegate.swift` | 596 | `statusItemFactory: (NSStatusBar) -> NSStatusItem` | ID-REVIEW-1045 P1-2: the seam that creates the menu-bar status item. The factory is **read** under `statusItemFactoryLock` (`:595`) inside `makeStatusItem()` (`:613`) and **invoked outside** the lock (the creation itself must not hold the lock). It is deliberately NOT `TestIsolation.defaults`: that seam owns `UserDefaults` storage, this one owns the **creation action** on a system resource | actor-isolate the canonical seam |
 | `AppDelegate.swift` | 601 | `statusItemCreationCount: Int` | ID-REVIEW-1045 P1-2: the counter that makes the creation **observable** — every increment and every read is bracketed by `statusItemFactoryLock` (`:595`; reads go through `statusItemCreations` at `:604`). A behavioural guard asserts "the test host created NOTHING" ⇒ aliasing, renaming or moving the creation into a helper cannot hide it | actor-isolate the canonical seam |
-| `Services/ClipboardStore.swift` | 949 | `contentCache: NSCache` | `NSCache` is documented thread-safe (per NSCache header); the nonisolated decrypt kernels touch it from prewarm's utility-queue workers | actor-isolated cache |
-| `Services/ClipboardStore.swift` | 960 | `rtfPlaintextCache: NSCache` | same NSCache thread-safety contract as `contentCache` | actor-isolated cache |
-| `Services/ClipboardStore.swift` | 1067 | `pendingFailedIDs: Set<UUID>` | every access bracketed by `pendingFailedIDsLock` (`:1068`) — `ClipboardStore.swift:2440`, `ClipboardStore+Encryption.swift:59,252,310,322` | actor-isolated state |
-| `Services/ClipboardStore.swift` | 1068 | `pendingFailedIDsLock: NSLock` | paired with `:1067` | eliminate with actor |
-| `Services/ClipboardStore.swift` | 1076 | `pendingDiagnostics: [PendingDiagnostic]` | every access bracketed by `pendingDiagnosticsLock` (`:1077`) — `ClipboardStore+Encryption.swift:229,262,272` | actor-isolated state |
-| `Services/ClipboardStore.swift` | 1077 | `pendingDiagnosticsLock: NSLock` | paired with `:1076` | eliminate with actor |
-| `Services/ClipboardStore.swift` | 2466 | `prewarmStateLock: NSLock` | paired with `:2467-2448` | eliminate with actor |
-| `Services/ClipboardStore.swift` | 2467 | `prewarmInFlight: Bool` | guarded by `prewarmStateLock` — `ClipboardStore+Prewarm.swift:99-107,157-167` | actor-isolated state |
-| `Services/ClipboardStore.swift` | 2468 | `prewarmPendingItems: [ClipboardItem]?` | guarded by `prewarmStateLock` | actor-isolated state |
-| `Services/ClipboardStore.swift` | 2469 | `prewarmPendingCompletions: [() -> Void]` | guarded by `prewarmStateLock` | actor-isolated state |
-| `Services/ClipboardStore.swift` | 2478 | `pendingPrewarmWorkItem: DispatchWorkItem?` | ⚠ **NOT lock-guarded.** Main-thread-only: the work item is scheduled on `DispatchQueue.main` and its body runs there (`ClipboardStore+Prewarm.swift:59,60,70,74,78` — none of those take `prewarmStateLock`). The previous roster claimed "guarded by prewarmStateLock"; the code does not do that | actor-isolated state |
+| `Services/ClipboardStore.swift` | 961 | `contentCache: NSCache` | `NSCache` is documented thread-safe (per NSCache header); the nonisolated decrypt kernels touch it from prewarm's utility-queue workers | actor-isolated cache |
+| `Services/ClipboardStore.swift` | 972 | `rtfPlaintextCache: NSCache` | same NSCache thread-safety contract as `contentCache` | actor-isolated cache |
+| `Services/ClipboardStore.swift` | 1079 | `pendingFailedIDs: Set<UUID>` | every access bracketed by `pendingFailedIDsLock` (`:1080`) — `ClipboardStore.swift:2464`, `ClipboardStore+Encryption.swift:59,252,310,322` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 1080 | `pendingFailedIDsLock: NSLock` | paired with `:1079` | eliminate with actor |
+| `Services/ClipboardStore.swift` | 1088 | `pendingDiagnostics: [PendingDiagnostic]` | every access bracketed by `pendingDiagnosticsLock` (`:1089`) — `ClipboardStore+Encryption.swift:229,262,272` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 1089 | `pendingDiagnosticsLock: NSLock` | paired with `:1088` | eliminate with actor |
+| `Services/ClipboardStore.swift` | 2478 | `prewarmStateLock: NSLock` | paired with `:2479-2448` | eliminate with actor |
+| `Services/ClipboardStore.swift` | 2479 | `prewarmInFlight: Bool` | guarded by `prewarmStateLock` — `ClipboardStore+Prewarm.swift:99-107,157-167` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 2480 | `prewarmPendingItems: [ClipboardItem]?` | guarded by `prewarmStateLock` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 2481 | `prewarmPendingCompletions: [() -> Void]` | guarded by `prewarmStateLock` | actor-isolated state |
+| `Services/ClipboardStore.swift` | 2490 | `pendingPrewarmWorkItem: DispatchWorkItem?` | ⚠ **NOT lock-guarded.** Main-thread-only: the work item is scheduled on `DispatchQueue.main` and its body runs there (`ClipboardStore+Prewarm.swift:59,60,70,74,78` — none of those take `prewarmStateLock`). The previous roster claimed "guarded by prewarmStateLock"; the code does not do that | actor-isolated state |
 | `Services/LanguageManager.swift` | 29 | `injectedForTest: LanguageManager?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
 | `Services/LanguageManager.swift` | 74 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
 | `Services/LanguageManager.swift` | 102 | `codeStorage: String` | guarded by `codeLock` at every access (`LanguageManager.swift:99`, `currentLanguageCode` at `:103`). The previous roster cited ":86", which is the computed property, not the lock | eliminate with actor |
@@ -294,7 +294,7 @@ status-item creation seam vars) + 8 test-seam statics
 * **3 concurrent accessors** of the state above are declared `nonisolated`
   WITHOUT `(unsafe)`, so they are not declarations of this kind and are
   not counted: `ClipboardStore+Encryption.swift:191`
-  (`getDecryptedContent`), `ClipboardStore.swift:2524`
+  (`getDecryptedContent`), `ClipboardStore.swift:2536`
   (`getRTFPlaintext`), `ClipboardStore+OCR.swift:186`
   (`getDecryptedOcrText`). They are the reason the lock contracts above
   matter: they read/write the same state from prewarm's utility queue.

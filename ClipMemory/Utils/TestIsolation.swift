@@ -151,7 +151,19 @@ enum TestIsolation {
         // `UserDefaults(suiteName:)` returns nil only for an invalid name;
         // the constant above is valid, so the fallback is unreachable in
         // practice. It mirrors `ClipboardStore.xcTestDefaults`.
-        return UserDefaults(suiteName: xcTestIsolationSuiteName) ?? .standard
+        // ⚠️ ID-REVIEW-1049 (independent verifier F6): **NO `?? .standard`
+        // fallback.** Inside the test host `UserDefaults.standard` **IS** the
+        // user's real `com.clipmemory.app` domain ⇒ a fallback here would turn
+        // a typo into a production access. Only the TEST branch can reach this ⇒
+        // production never traps.
+        guard let defaults = UserDefaults(suiteName: xcTestIsolationSuiteName) else {
+            preconditionFailure(
+                "ID-REVIEW-1049: UserDefaults rejected the suite name "
+                + "\(xcTestIsolationSuiteName) — refusing to fall back to .standard "
+                + "(that IS the user's production domain in the test host)"
+            )
+        }
+        return defaults
     }
 
     /// Tests call this in `setUp`. Existing call sites use the

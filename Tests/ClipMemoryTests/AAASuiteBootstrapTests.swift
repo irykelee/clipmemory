@@ -31,6 +31,25 @@ final class AAASuiteBootstrapTests: XCTestCase {
     /// to compare against.
     static var didSnapshotProductionDomain = false
 
+    /// ID-REVIEW-1049 (independent verifier P2-2): the **evidence** that a
+    /// production baseline exists — independent of the two *claims*
+    /// (`didSnapshotProductionDomain` and `aaaBootstrapRan`).
+    ///
+    /// ⚠️ Why this exists: the two claims can be deleted **together** ⇒ the
+    /// canaries would skip and the audit would skip ⇒ the suite stays green
+    /// while the safety net is off (the verifier's V4 mutation survived).
+    ///
+    /// ⇒ The canaries arm on **this** (the snapshot itself), so deleting a
+    /// claim can no longer disarm them.
+    ///
+    /// ⚠️ Why the snapshot alone is not enough: an **empty** snapshot is
+    /// indistinguishable from "the class never ran" ⇒ the claim is still
+    /// needed to tell "captured, and the user's domain really is empty" from
+    /// "never captured" ⇒ hence the OR.
+    static var hasProductionBaseline: Bool {
+        didSnapshotProductionDomain || !productionPersistentDomainBefore.isEmpty
+    }
+
     override static func setUp() {
         super.setUp()
         let bundleId = Bundle.main.bundleIdentifier ?? ""

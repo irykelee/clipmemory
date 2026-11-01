@@ -61,6 +61,21 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// between before/after snapshots without meaning a test wrote them.
     private static let systemKeyPrefixes = ["NS", "Apple", "com.apple."]
 
+    /// Drops the system runtime keys (NS* / Apple* / com.apple.*) from a
+    /// production-domain snapshot.
+    ///
+    /// ⚠️ ID-REVIEW-1049 (2026-11-01): this used to be a **local** function
+    /// **copied** into two test bodies ⇒ adding one line to
+    /// `testNoProductionPollution` pushed it to 51 lines ⇒ a **new**
+    /// `function_body_length` warning (the lint ratchet only suppresses
+    /// PRE-EXISTING violations ⇒ a new one shows up). ⇒ ⇒ The fix is
+    /// **extract**, never "regenerate the baseline".
+    private static func withoutSystemKeys(_ dict: [String: Any]) -> [String: Any] {
+        dict.filter { key, _ in
+            !systemKeyPrefixes.contains { key.hasPrefix($0) }
+        }
+    }
+
     /// Pre-existing pollution that the canary FORWARD-ACCEPTS.
     /// Each entry is a production UserDefaults key that the test
     /// suite writes as a side-effect of exercising production code
@@ -338,6 +353,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// `xcodebuild` to exit non-zero, but a future CI tool that swallows
     /// `XCTFail` would still see the explicit `XCTAssert` as a hard stop.
     func testNoProductionPollution() throws {
+        ProductionCanaryGuard.recordStart()
         try ProductionCanaryGuard.skipIfAnotherInstanceIsRunning()
         try ProductionCanaryGuard.skipUnlessProductionBaselineCaptured()
         ProductionCanaryGuard.recordExecution()
@@ -346,14 +362,8 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
 
         // Build filtered key sets (strip system keys)
-        func stripSystemKeys(_ dict: [String: Any]) -> [String: Any] {
-            dict.filter { key, _ in
-                !Self.systemKeyPrefixes.contains { key.hasPrefix($0) }
-            }
-        }
-
-        let filteredBefore = stripSystemKeys(before)
-        let filteredAfter = stripSystemKeys(after)
+        let filteredBefore = Self.withoutSystemKeys(before)
+        let filteredAfter = Self.withoutSystemKeys(after)
         let allKeys = Set(filteredBefore.keys).union(filteredAfter.keys)
 
         var newPollution: [String] = []
@@ -438,6 +448,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     func testProductionDataBlobsAreUnchanged() throws {
         // ID-REVIEW-1030: the content comparison can only be trusted when no
         // other ClipMemory instance is running — see the helper's doc comment.
+        ProductionCanaryGuard.recordStart()
         try ProductionCanaryGuard.skipIfAnotherInstanceIsRunning()
         // ID-CRASH-0031: without the AAA baseline there is nothing to
         // compare against — a focused run that skips the suite bootstrap.
@@ -517,6 +528,7 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     func testFirstLaunchFlagIsNeverChangedDuringTheSuite() throws {
         // ID-REVIEW-1030: the comparison is only attributable when no other
         // ClipMemory instance is running.
+        ProductionCanaryGuard.recordStart()
         try ProductionCanaryGuard.skipIfAnotherInstanceIsRunning()
         try ProductionCanaryGuard.skipUnlessProductionBaselineCaptured()
         ProductionCanaryGuard.recordExecution()
@@ -568,14 +580,8 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
         let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
 
-        func stripSystemKeys(_ dict: [String: Any]) -> [String: Any] {
-            dict.filter { key, _ in
-                !Self.systemKeyPrefixes.contains { key.hasPrefix($0) }
-            }
-        }
-
-        let filteredAfter = stripSystemKeys(after)
-        let filteredBefore = stripSystemKeys(before)
+        let filteredAfter = Self.withoutSystemKeys(after)
+        let filteredBefore = Self.withoutSystemKeys(before)
         let allKeys = Set(filteredBefore.keys).union(filteredAfter.keys)
 
         // NEW-2 follow-up (2026-08-06) + NEW-9 (2026-08-07): the

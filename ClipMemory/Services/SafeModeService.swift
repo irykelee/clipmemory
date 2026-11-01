@@ -154,7 +154,19 @@ final class SafeModeService {
         if !TestIsolation.isRunningTests {
             return .standard
         }
-        return UserDefaults(suiteName: "SafeModeService-XCTest-isolation") ?? .standard
+        // ⚠️ ID-REVIEW-1049 (independent verifier F6): **NO `?? .standard`
+        // fallback.** Inside the test host `UserDefaults.standard` **IS** the
+        // user's real `com.clipmemory.app` domain ⇒ a fallback here would turn
+        // a typo into a production access. Only the TEST branch can reach this ⇒
+        // production never traps.
+        guard let defaults = UserDefaults(suiteName: "SafeModeService-XCTest-isolation") else {
+            preconditionFailure(
+                "ID-REVIEW-1049: UserDefaults rejected the suite name "
+                + "\("SafeModeService-XCTest-isolation") — refusing to fall back to .standard "
+                + "(that IS the user's production domain in the test host)"
+            )
+        }
+        return defaults
     }
 
     init(
