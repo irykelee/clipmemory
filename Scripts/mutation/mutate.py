@@ -470,6 +470,19 @@ ZZZ_PURE_CALL = (
     "        let newPollution = Self.newProductionPollution(before: before, after: after)\n"
 )
 ZZZ_PURE_CALL_GUTTED = "        let newPollution: [String] = []\n"
+# ⑸ 的词边界变异（第五轮 · 独立核验员 P2-3）：把真闸门的谓词**改名** ⇒
+# 旧判据是**子串**匹配 ⇒ 仍命中 ⇒ 守卫全绿；新判据（词边界）⇒ 变红。
+# ⚠️ 真跑它会让 legacy 迁移在测试宿主里执行 ⇒ **写用户的生产域** ⇒
+#   ⇒ 因此这条变异**只窄跑那一个守卫测试**（`only`）⇒ 生产写入路径根本
+#   不会被执行 ⇒ 零风险（实测：生产域 digest 前后一致）。
+IS = "ClipMemory/Services/ImageStorage.swift"
+IS_EARLY_RETURN = "        if Self.isRunningTests {\n"
+IS_EARLY_RETURN_RENAMED = "        if Self.isRunningTestsDisabled {\n"
+IS_TEST_PREDICATE = "    private static let isRunningTests = TestIsolation.isRunningTests\n"
+IS_TEST_PREDICATE_RENAMED = (
+    "    private static let isRunningTests = TestIsolation.isRunningTests\n"
+    "    private static let isRunningTestsDisabled = false\n"
+)
 
 MUTATIONS = [
     ("N1", "FirstLaunchService.init() 改回 `.standard`（默认参数 = 生产身份）",
@@ -574,12 +587,13 @@ MUTATIONS = [
      [(GATE_SCRIPT, GATE_PROBLEMS_IF, GATE_PROBLEMS_IF_NEUTERED)]),
     ("N45", "**CI 里的闸门调用被删**（脚本还在，但永远不会执行）",
      [(CI_YML, CI_GATE_CALL, CI_GATE_CALL_REMOVED)]),
-    # ⚠️ 刻意**没有**的一条：把 `ImageStorage` 的闸门谓词改名
-    # （`if Self.isRunningTests` → `if Self.isRunningTestsDisabled`）。
-    # ⇒ 守卫 ⑸ 的**词边界**修法对它有牙（已用逻辑级验证证明：旧判据绿、
-    # 新判据红），但**真跑**这条变异会让 legacy 迁移在测试宿主里执行 ⇒
-    # **写用户的生产域** ⇒ ⇒ 与「验证工具本身不能成为它要消灭的那种伤害源」
-    # 冲突 ⇒ 不入自动 harness，只保留逻辑级证据（台账 §50.15）。
+    # ── 第五轮：⑸ 的词边界（真跑，但**窄跑**到只触发守卫本身） ───────────
+    ("N46", "**闸门谓词被改名**（⑸ 的子串匹配可被绕过 ⇒ 第五轮改词边界）",
+     [(IS, IS_EARLY_RETURN, IS_EARLY_RETURN_RENAMED),
+      (IS, IS_EARLY_RETURN, IS_EARLY_RETURN_RENAMED),
+      (IS, IS_TEST_PREDICATE, IS_TEST_PREDICATE_RENAMED)],
+     {"only": ["ClipMemoryTests/Review1049RegressionTests/"
+               "testEveryImageStorageTestProcessGuardIsABareEarlyReturn"]}),
 ]
 
 
@@ -704,7 +718,26 @@ def restore_production_domain():
 NO_AAA_MUTATIONS = {"N33"}
 
 
-def run_classes(log_path, without_aaa=False):
+def run_classes(log_path, without_aaa=False, only_classes=None):
+    """Run the mutation's test selection.
+
+    ⚠️ ID-REVIEW-1049 第五轮：`only_classes` 让某些变异**只跑指定的测试** ——
+    用于「真跑会写用户生产域」的那类变异：把测试**窄跑**到只触发守卫本身
+    ⇒ 被测代码路径（生产写入）**根本不会被执行** ⇒ 零风险（独立核验员 P2-3
+    实测：无 TEST_HOST ⇒ 测试跑在独立进程 ⇒ AppDelegate 不启动 ⇒
+    `ImageStorage.shared` 不会被 AppDelegate 触发 ⇒ 生产域 digest 前后一致）。
+    """
+    if only_classes:
+        cmd = [
+            "xcodebuild", "-scheme", "ClipMemory", "-configuration", "Debug", "test",
+            "CODE_SIGN_IDENTITY=-",
+            "-derivedDataPath", "/tmp/cm1047-dd",
+        ]
+        for target in only_classes:
+            cmd.append(f"-only-testing:{target}")
+        proc = subprocess.run(cmd, stdout=open(log_path, "w"),
+                              stderr=subprocess.STDOUT)
+        return proc.returncode
     cmd = [
         "xcodebuild", "-scheme", "ClipMemory", "-configuration", "Debug", "test",
         "CODE_SIGN_IDENTITY=-",
@@ -897,7 +930,9 @@ def main():
     snapshot_production_domain()
 
     only = set(sys.argv[1:])
-    for mid, label, patches in MUTATIONS:
+    for entry in MUTATIONS:
+        mid, label, patches = entry[0], entry[1], entry[2]
+        options = entry[3] if len(entry) > 3 else {}
         if only and mid not in only:
             continue
         backups = {}
@@ -936,7 +971,9 @@ def main():
         contract_rc = 0
         contract_msg = ""
         try:
-            run_classes(log_path, without_aaa=(mid in NO_AAA_MUTATIONS))
+            run_classes(log_path,
+                        without_aaa=(mid in NO_AAA_MUTATIONS),
+                        only_classes=options.get("only"))
             # ⚠️ ID-REVIEW-1049 第四轮：**契约检查必须在「还原」之前跑** ——
             # 它读的是**源码**（脚本文件 + ci.yml + release.sh）⇒ 还原之后它
             # 看到的永远是「没被变异」的那份 ⇒ ⇒ 变异会被**误判成存活**。

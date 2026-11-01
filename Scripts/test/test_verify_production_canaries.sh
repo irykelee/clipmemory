@@ -118,6 +118,67 @@ else
   bad "release.sh 没有 canary_gate 分支"
 fi
 
+# ---------------------------------------------------------------- ③ 锁的清单（**树外**）
+# ⚠️ ID-REVIEW-1049 第五轮：第四轮的三把锁（㉑ / ㉒ / 本脚本）**自己**零保护
+#   —— 独立核验员实测：只删 ㉑ + ㉒ 两个函数 ⇒ 全量 1439/4/0 全绿、CI 绿、
+#   本脚本 exit 0 ⇒ ⇒ 锁的「清单」必须搬到**锁的外面**（`Scripts/canary-gate-locks.txt`）
+#   ⇒ 由本脚本（树外）逐条核对。
+MANIFEST="$REPO_ROOT/Scripts/canary-gate-locks.txt"
+if [[ ! -f "$MANIFEST" ]]; then
+  bad "锁的清单缺失（`Scripts/canary-gate-locks.txt`）—— 清单在**锁的外面**"
+  bad "  ⇒ 缺失 = 没人知道少了哪把锁 ⇒ 必须失败，不得静默放过"
+else
+  manifest_out="$(python3 - "$REPO_ROOT" "$MANIFEST" <<'PY'
+import os, re, sys
+root, manifest = sys.argv[1], sys.argv[2]
+problems = []
+with open(manifest, encoding="utf-8") as fh:
+    for raw in fh:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if parts[0] == "file" and len(parts) == 3:
+            rel, want = parts[1], int(parts[2])
+            path = os.path.join(root, rel)
+            if not os.path.isfile(path):
+                problems.append(f"清单声明的文件不存在：{rel}")
+                continue
+            src = open(path, encoding="utf-8").read()
+            n = len(re.findall(r"func\s+test[A-Za-z0-9_]*\s*\(", src))
+            if n < want:
+                problems.append(
+                    f"{rel} 的 `func test` 数量 = {n} < 清单声明的 {want} ⇒ 有守卫被删了"
+                )
+            else:
+                print(f"✅ {rel} 的 `func test` 数量 = {n} ≥ {want}")
+        elif parts[0] == "guard" and len(parts) == 3:
+            name, rel = parts[1], parts[2]
+            path = os.path.join(root, rel)
+            if not os.path.isfile(path):
+                problems.append(f"清单声明的守卫所属文件不存在：{rel}")
+                continue
+            src = open(path, encoding="utf-8").read()
+            if re.search(r"func\s+" + re.escape(name) + r"\s*\(", src):
+                print(f"✅ 守卫 {name} 在 {rel} 里存在")
+            else:
+                problems.append(f"守卫 {name} **不存在**于 {rel} ⇒ 它被删了")
+        else:
+            problems.append(f"清单里有无法识别的行：{line}")
+for p in problems:
+    print(f"❌ {p}")
+sys.exit(1 if problems else 0)
+PY
+)"
+  manifest_rc=$?
+  printf '%s\n' "$manifest_out"
+  if [[ "$manifest_rc" == "0" ]]; then
+    ok "锁的清单（树外）逐条核对通过"
+  else
+    bad "锁的清单（树外）核对失败 —— 上面每一条 ❌ 都是「一把锁不见了」"
+  fi
+fi
+
 # ---------------------------------------------------------------- 汇总
 if [[ "$fails" == "0" ]]; then
   echo "✅ 树外闸门的契约与接线全部成立"
