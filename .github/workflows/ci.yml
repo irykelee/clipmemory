@@ -265,7 +265,19 @@ jobs:
         # ⇒ Measured 2026-11-01 (independent verifier P2-1): deleting the
         # baseline capture + both claims ⇒ 1436 tests / 7 skipped / 0
         # failures / TEST SUCCEEDED ⇒ the net was OFF and CI was green.
-        run: python3 Scripts/verify-production-canaries.py /tmp/xcb-test.log
+        run: |
+          set -uo pipefail
+          # ⚠️ Exit-code discipline (auto-review P0): 0 = armed, 1 = the check
+          # RAN and the net is OFF, 2 = the check COULD NOT RUN (missing log
+          # / usage error) ⇒ the two failures must not be conflated, or a
+          # broken gate would be reported as "the safety net is off".
+          code=0
+          python3 Scripts/verify-production-canaries.py /tmp/xcb-test.log || code=$?
+          if [[ "$code" == "2" ]]; then
+            echo "::error::canary 状态检查自己没跑起来（退出码 2）—— 这是闸门坏了，不是安全网关着"
+            exit 1
+          fi
+          exit "$code"
 
       - name: Collect test log for triage
         # ID-CRASH-0037 / issue #93 next step 2 ("Capture the failing

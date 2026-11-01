@@ -844,13 +844,26 @@ run_preflight() {
             # ⇒ This check deliberately lives OUT of the test tree: it reads
             # the test log, so deleting the tree's own arming signals cannot
             # silence it.
-            # ⚠️ `if !` keeps `set -e` from killing the whole script.
-            if ! python3 Scripts/verify-production-canaries.py /tmp/preflight-tests.log; then
-                echo "  ❌ 生产 canary 未执行（生产域安全网是关着的）"
-                fails=$((fails + 1))
-            else
-                ok "三个生产 canary 均已执行（生产域安全网是开着的）"
-            fi
+            # ⚠️ Exit-code discipline (auto-review P0): 0 = armed, 1 = the check
+            # RAN and the net is OFF, 2 = the check COULD NOT RUN (missing log
+            # / usage error) ⇒ `cmd || code=$?` keeps `set -e` from killing the
+            # script **and** preserves the code ⇒ the two failures must not be
+            # conflated, or a broken gate would be reported as "net off".
+            canary_gate=0
+            python3 Scripts/verify-production-canaries.py /tmp/preflight-tests.log || canary_gate=$?
+            case "$canary_gate" in
+                0)
+                    ok "三个生产 canary 均已执行（生产域安全网是开着的）"
+                    ;;
+                1)
+                    echo "  ❌ 生产 canary 未执行（生产域安全网是关着的）"
+                    fails=$((fails + 1))
+                    ;;
+                *)
+                    echo "  ❌ canary 状态检查**自己没跑起来**（退出码 ${canary_gate}）—— 这不是「安全网关着」，是**闸门坏了**"
+                    fails=$((fails + 1))
+                    ;;
+            esac
         else
             echo "  ❌ 全量测试失败（见 /tmp/preflight-tests.log）"
             fails=$((fails + 1))

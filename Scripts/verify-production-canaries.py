@@ -30,7 +30,19 @@ and here the two sources are **the test tree** and **the log/this script**.
 
     python3 Scripts/verify-production-canaries.py <test-log>
 
-Exit code 0 = armed, 1 = disarmed (or the log is unusable).
+## Exit codes (⚠️ the three cases must stay distinguishable)
+
+| code | meaning |
+|---|---|
+| **0** | armed — the three canaries and the audit all passed |
+| **1** | the check **ran** and the safety net is **OFF** (a canary was skipped / did not pass) |
+| **2** | the check **could not run** (usage error / the log is missing or unreadable) |
+
+⚠️ Why 1 and 2 must not be conflated (auto-review P0, 2026-11-01): if a
+**broken gate** (missing log, wrong path, a Python error) reports the same
+code as "the safety net is off", then the real cause is **masked** — the
+operator sees "canaries did not run" and goes hunting in the test tree while
+the gate itself is the thing that broke.
 
 ⚠️ **Read-only**: it only reads the log file. It never touches the user's
 preferences, the keychain, or the repository.
@@ -74,8 +86,15 @@ def main(argv: list[str]) -> int:
 
     log_path = Path(argv[1])
     if not log_path.exists():
-        print(f"❌ 找不到测试日志：{log_path}", file=sys.stderr)
-        return 1
+        print(
+            f"❌ **检查自己没跑起来**：找不到测试日志 {log_path} "
+            "（这不是「安全网关着」，是闸门坏了）",
+            file=sys.stderr,
+        )
+        return 2
+    if not log_path.is_file():
+        print(f"❌ **检查自己没跑起来**：{log_path} 不是文件", file=sys.stderr)
+        return 2
 
     log = log_path.read_text(encoding="utf-8", errors="replace")
     problems: list[str] = []
