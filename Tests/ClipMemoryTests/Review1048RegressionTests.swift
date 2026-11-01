@@ -55,6 +55,7 @@ import XCTest
 /// ② 同上，`logSnapshot` 也不得
 /// ③ 测试进程里，`snapshot` 的**默认**域**必须**是隔离 suite（**只读**证明）
 /// ③b `snapshot` 与 `logSnapshot` 的默认参数**必须**是**同一个**表达式
+/// ③c `logSnapshot` 必须只写**注入的**域，**不得**碰生产域
 /// ④ `mayReadKeyStore` 的**两半**：生产 ⇒ 允许；测试 + 生产身份 ⇒ 拒绝
 /// ⑤ `defaultsFor` 的**两半**：生产 ⇒ **同一个** `.standard`；测试 ⇒ 不是生产域
 /// ⑥ app 树里 `KeychainKeyStore()` 的**库存**必须恰好是 6 处（棘轮）
@@ -181,6 +182,59 @@ final class Review1048RegressionTests: XCTestCase {
             "`snapshot` 与 `logSnapshot` 的 `defaults` 默认参数**必须**是"
             + "**同一个**表达式（`\(expression)`）—— "
             + "否则**写**的那条路径（`logSnapshot`）没有被守卫 ③ 覆盖到"
+        )
+    }
+
+    /// ③c **行为**守卫：`logSnapshot` 必须把 `lastLaunchTime` 写进**注入的**域，
+    /// 且**不得**碰生产域。
+    ///
+    /// ⚠️ ID-REVIEW-1049 (2026-10-28, ID-REVIEW-1048's independent verifier
+    /// **F1 / F3**): 守卫 ③b 钉的是**默认参数表达式**，⑦ 钉的是该文件里**不得**
+    /// 出现 `= .standard` —— 两者都**管不到写入点本身**。
+    /// ⇒ 核验员实测**存活**了两条变异：
+    /// * **M1**：写入点被改去写**别的域** ⇒ ① ③b ⑦ **全绿**；
+    /// * **M2**：写入点**额外**多写一处（生产域）⇒ ① ③b ⑦ **全绿**，
+    ///   而且**四个 ZZZ 生产 canary 也全绿**（因为 `lastLaunchTime` 当时在
+    ///   canary 的白名单里 ⇒ *能容忍变化 ⇒ 看不见破坏*）。
+    /// ⇒ 这里钉**写入点**本身：注入一个隔离域 ⇒ 调用 `logSnapshot` ⇒ 断言
+    /// ① 隔离域**拿到了** `lastLaunchTime`（写确实发生了）
+    /// ② **生产域的 `lastLaunchTime` 没变**（前后比对 ⇒ 对生产域**只读**）
+    ///
+    /// ⚠️ **这条守卫失败时的残留是有界的**：它最多把 `lastLaunchTime`
+    /// —— 一个**每次启动都会被 app 重写**的时间戳 —— 写进生产域。
+    /// ⇒ 那与 `ClipboardItems`（用户的历史）那种**不可接受**的破坏**不同量级**。
+    /// ⇒ 并且 `lastLaunchTime` 现在**已从 ZZZ canary 的白名单里移出**
+    /// ⇒ canary 自己成了兜底（ID-REVIEW-1049）。
+    func testLogSnapshotWritesOnlyIntoTheInjectedDomain() {
+        // ⚠️ ID-REVIEW-1049: the production domain is **read inline** here, NOT
+        // bound to a local — `let production = UserDefaults.standard` matches
+        // the repo's own **alias rule** (`ProductionDomainWriteGuardTests`
+        // rule B) ⇒ the existing guard reports this file as a production-domain
+        // write site. That rule cannot tell a read from a write ⇒ the fix is
+        // to not create an alias at all, not to add an
+        // `ALLOW-PRODUCTION-WRITE` marker (this site does **no** write, and a
+        // marker would be a false "yes, we write production here").
+        let key = UserDefaultsKey.lastLaunchTime.rawValue
+        let before = UserDefaults.standard.object(forKey: key) as? Date
+        let injected = TestSuiteCleanup.makeSuite(named: "Review1049-write-\(UUID().uuidString)")
+        injected.removeObject(forKey: key)
+
+        StartupHealth.logSnapshot(
+            keyStore: RecordingKeyStore(reportsProductionService: false),
+            imagesDirectory: Self.temporaryImagesDirectory(),
+            defaults: injected
+        )
+
+        XCTAssertNotNil(
+            injected.object(forKey: key) as? Date,
+            "`logSnapshot` 必须把 `lastLaunchTime` 写进**注入的**域"
+            + "（否则「写去哪了」这件事就没人管了）"
+        )
+        XCTAssertEqual(
+            UserDefaults.standard.object(forKey: key) as? Date,
+            before,
+            "`logSnapshot` **不得**碰生产域 —— 生产域的 `lastLaunchTime` 必须"
+            + "**逐值不变**（这一条就是核验员 M2 的直接反面）"
         )
     }
 

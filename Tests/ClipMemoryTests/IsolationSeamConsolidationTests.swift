@@ -315,6 +315,28 @@ final class IsolationSeamConsolidationTests: XCTestCase {
             "docs/SWIFT6_MIGRATION.md §8's raw output no longer matches the code — "
             + "refresh the roster in the same commit that moved the declarations"
         )
+
+        // ⚠️ ID-REVIEW-1049 (2026-10-28, independent verifier **F10 · P3**):
+        // the guard parsed ONLY the raw-output block ⇒ §8's **roster table**
+        // — which carries the SAME line numbers in its "Line" column — could
+        // go stale **invisibly**.
+        // ⇒ Measured by the verifier: the table said `AppDelegate.swift | 580`
+        // while the block said `595` ⇒ the table's drift was neither caught
+        // nor fixed, and the page footer even CLAIMED it had been fixed.
+        // ⇒ ⇒ *「被守着的那一半」不等于「文档里出现过的那一半」* ⇒ a second
+        //   copy of the same fact needs its own guard.
+        let table = Self.documentedTableEntries(in: doc)
+        XCTAssertFalse(
+            table.isEmpty,
+            "docs/SWIFT6_MIGRATION.md §8 no longer carries a readable roster table"
+        )
+        XCTAssertEqual(
+            Set(table.map { "\($0.path):\($0.line)" }),
+            Set(documented.map { "\($0.path):\($0.line)" }),
+            "docs/SWIFT6_MIGRATION.md §8's roster TABLE disagrees with its raw "
+            + "output block — the table is a second copy of the same fact and "
+            + "needs its own refresh (independent verifier F10)"
+        )
     }
 
     // MARK: - Helpers
@@ -398,6 +420,28 @@ final class IsolationSeamConsolidationTests: XCTestCase {
             let path = parts[0].trimmingCharacters(in: .whitespaces)
             guard path.hasSuffix(".swift") else { continue }
             guard let line = Int(parts[1].trimmingCharacters(in: .whitespaces)) else { continue }
+            entries.append((path, line))
+        }
+        return entries
+    }
+
+    /// The `(path, line)` pairs listed in §8's **roster table**.
+    ///
+    /// The table repeats the raw block's line numbers in its "Line" column,
+    /// with rows shaped `| `File.swift` | 123 | Symbol | … |`.
+    ///
+    /// ID-REVIEW-1049 (independent verifier F10 · P3): this is a **second copy
+    /// of the same fact** ⇒ it needs its own guard, not the raw block's.
+    private static func documentedTableEntries(in doc: String) -> [(path: String, line: Int)] {
+        var entries: [(path: String, line: Int)] = []
+        for rawLine in doc.split(separator: "\n") {
+            let cells = rawLine.split(separator: "|", omittingEmptySubsequences: false)
+            guard cells.count >= 3 else { continue }
+            let fileCell = cells[1].trimmingCharacters(in: .whitespaces)
+            guard fileCell.hasPrefix("`"), fileCell.hasSuffix("`") else { continue }
+            let path = fileCell.trimmingCharacters(in: CharacterSet(charactersIn: "` "))
+            guard path.hasSuffix(".swift") else { continue }
+            guard let line = Int(cells[2].trimmingCharacters(in: .whitespaces)) else { continue }
             entries.append((path, line))
         }
         return entries

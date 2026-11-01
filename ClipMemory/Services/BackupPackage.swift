@@ -204,6 +204,51 @@ struct BackupImportResult: Equatable {
 
 final class BackupPackage {
     private static let logger = Logger(subsystem: "com.clipmemory.app", category: "BackupPackage")
+
+    /// ID-REVIEW-1049 (2026-10-28, independent verifier F2 · P1): the
+    /// **default domain** of the backup entry points used to be the
+    /// **production identity** (`defaults: UserDefaults = .standard`).
+    ///
+    /// ⚠️ The shape of the defect: "omit the argument" was **silently**
+    /// equivalent to "use the user's real domain". Two consequences, and they
+    /// are *different in kind*:
+    ///   * `exportPackage` **reads** the blobs out of that domain ⇒ a test
+    ///     process read the user's real clipboard history;
+    ///   * `importPackage` / `importFromLocalBackup` **write** the quarantine
+    ///     copies back into it ⇒ the write is refused by
+    ///     `TestIsolation.mustRefuseProductionDataMutation` ⇒ the import
+    ///     silently degraded instead of failing loudly.
+    ///
+    /// ⇒ The default now resolves through a **process-safe** seam: production
+    /// keeps `.standard` (**byte-identical** behaviour), a test process gets an
+    /// isolated suite ⇒ *omitting the argument can no longer reach the user's
+    /// domain*, from either direction.
+    ///
+    /// ⚠️ NO `?? .standard` fallback (independent verifier F6): inside the test
+    /// host `UserDefaults.standard` **IS** the user's real
+    /// `com.clipmemory.app` domain ⇒ a fallback here would turn a typo into a
+    /// production access. Only the test branch can reach the trap ⇒
+    /// production never traps.
+    nonisolated static let xcTestIsolationSuiteName = "BackupPackage-XCTest-isolation"
+
+    /// The **pure** resolver — which domain do the backup entry points bind to?
+    ///
+    /// Split out so the production half is assertable from a test (inside a
+    /// test host `TestIsolation.isRunningTests` is always true ⇒ "production ⇒
+    /// the real domain" would otherwise be structurally unreachable — the
+    /// ID-REVIEW-1045 shape).
+    static func defaultsFor(isTestProcess: Bool) -> UserDefaults {
+        guard isTestProcess else { return .standard }
+        guard let defaults = UserDefaults(suiteName: xcTestIsolationSuiteName) else {
+            preconditionFailure(
+                "ID-REVIEW-1049: UserDefaults rejected the suite name "
+                + "\(xcTestIsolationSuiteName) — refusing to fall back to "
+                + ".standard (that IS the user's production domain in the test host)"
+            )
+        }
+        return defaults
+    }
+
     /// ID-REVIEW-1015 (code-review-2026-10-01 §八 1-4, 2026-10-05):
     /// bumped 1 → 3. v3 packages seal a fresh one-shot `packageKey` in
     /// `key.enc` instead of the machine root key — cracking a weak
@@ -723,7 +768,7 @@ final class BackupPackage {
     static func exportPackage(
         to destination: URL,
         passphrase: String,
-        defaults: UserDefaults = .standard,
+        defaults: UserDefaults = BackupPackage.defaultsFor(isTestProcess: TestIsolation.isRunningTests),
         imagesDirectory: URL,
         keyData: Data
     ) throws {
@@ -1038,7 +1083,7 @@ final class BackupPackage {
         store: ClipboardStore,
         localCrypto: CryptoServiceProtocol,
         imagesDirectory: URL,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = BackupPackage.defaultsFor(isTestProcess: TestIsolation.isRunningTests)
     ) throws -> BackupImportResult {
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("clipmemory-import-\(UUID().uuidString)", isDirectory: true)
@@ -1776,7 +1821,7 @@ final class BackupPackage {
         _ directory: URL,
         store: ClipboardStore,
         imagesDirectory: URL,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = BackupPackage.defaultsFor(isTestProcess: TestIsolation.isRunningTests)
     ) throws -> BackupImportResult {
         // ID-BACKUP-0006 (2026-10-23): 先还原隔离副本。失败则整个导入中止
         // —— store 还没被改动，不会留下「导了一半」的中间态；隔离副本是

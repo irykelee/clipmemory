@@ -18,6 +18,17 @@ import Security
 // errSecAuthFailed, errSecNotAvailable) and permanent codes
 // (errSecParam, errSecAllocate, etc.) to exercise both branches.
 final class FailingKeychainStore: KeyStoring {
+
+    /// ID-REVIEW-1049: the **identity** this store reports.
+    ///
+    /// ⚠️ The protocol requirement is **not optional** any more ⇒ every
+    /// conformer must state its identity ⇒ a decorator cannot silently forget
+    /// to forward it (which is exactly how the old extension default let one
+    /// slip past the production-identity gate).
+    ///
+    /// ⇒ `nil` = "not the production Keychain" ⇒ this store is never refused
+    /// by `shouldRefuseKeychainStore`.
+    var keychainService: String? { nil }
     var statusToReturn: OSStatus = errSecAuthFailed
     func load() -> Data? { nil }
     func loadStatus() -> KeychainLoadStatus { .notFound }
@@ -36,6 +47,17 @@ final class FailingKeychainStore: KeyStoring {
 // P2-3 (OpenCode auto-review, 2026-09-23): store signature changed
 // from `-> OSStatus` to `throws` per the new KeyStoring contract.
 final class InMemoryKeychainStore: KeyStoring {
+
+    /// ID-REVIEW-1049: the **identity** this store reports.
+    ///
+    /// ⚠️ The protocol requirement is **not optional** any more ⇒ every
+    /// conformer must state its identity ⇒ a decorator cannot silently forget
+    /// to forward it (which is exactly how the old extension default let one
+    /// slip past the production-identity gate).
+    ///
+    /// ⇒ `nil` = "not the production Keychain" ⇒ this store is never refused
+    /// by `shouldRefuseKeychainStore`.
+    var keychainService: String? { nil }
     private var stored: Data?
     func load() -> Data? { stored }
     func loadStatus() -> KeychainLoadStatus {
@@ -59,6 +81,17 @@ final class InMemoryKeychainStore: KeyStoring {
 // data loss); now it should be `.transient` (keep the disk file
 // for next-launch retry).
 final class VerifyMismatchKeychainStore: KeyStoring {
+
+    /// ID-REVIEW-1049: the **identity** this store reports.
+    ///
+    /// ⚠️ The protocol requirement is **not optional** any more ⇒ every
+    /// conformer must state its identity ⇒ a decorator cannot silently forget
+    /// to forward it (which is exactly how the old extension default let one
+    /// slip past the production-identity gate).
+    ///
+    /// ⇒ `nil` = "not the production Keychain" ⇒ this store is never refused
+    /// by `shouldRefuseKeychainStore`.
+    var keychainService: String? { nil }
     func load() -> Data? { Data(repeating: 0xFF, count: 32) }
     func loadStatus() -> KeychainLoadStatus { .notFound }
     @discardableResult

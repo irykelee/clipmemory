@@ -86,15 +86,28 @@ protocol KeyStoring {
     /// decorator / another conformer wrapping the production store would slip
     /// past it and query the user's real keychain item.
     ///
-    /// Default (`nil`) = "not a Keychain store" ⇒ never the production one.
+    /// `nil` = "not a Keychain store" ⇒ never the production one.
+    ///
+    /// ⚠️ ID-REVIEW-1049 (2026-10-28, ID-REVIEW-1048's independent verifier
+    /// F2): this is now **REQUIRED** — the protocol-extension default that
+    /// used to provide `nil` is **gone**.
+    ///
+    /// ⇒ Why: the default let a **decorator** that wraps the production store
+    /// but does **not** forward this property slip past the identity gate
+    /// (`shouldRefuseKeychainStore` compares this value) ⇒ the shipped code
+    /// comment claiming "a decorator is refused too" was **false** — it only
+    /// held for decorators that *opted in* to forwarding.
+    ///
+    /// ⇒ Making it required turns "a decorator must **remember** to forward
+    /// its identity" into "**the compiler makes every conformer declare it**"
+    /// ⇒ the class of bug cannot recur.
     var keychainService: String? { get }
 }
 
 extension KeyStoring {
-    /// ID-REVIEW-1043: default = "not a Keychain store".
-    ///
-    /// Only a store that actually talks to a Keychain service overrides this.
-    var keychainService: String? { nil }
+    // ⚠️ ID-REVIEW-1049: the `keychainService` default that used to live here
+    // is **GONE** — the identity is now a **protocol requirement** so that
+    // every conformer must declare it (see the protocol's doc comment).
 
     /// Default for stores that cannot distinguish locked from not-found
     /// (in-memory test fakes, encrypted-file fallbacks). Real Keychain

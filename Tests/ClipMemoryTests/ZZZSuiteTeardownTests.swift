@@ -173,7 +173,21 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// from actual app behavior — re-calibrate.
     private static let appLifecycleKeys: Set<String> = [
         // AppDelegate init paths (StartupHealth + WelcomeView + BackupService):
-        "lastLaunchTime",            // StartupHealth.swift:24, 144 — set in logSnapshot
+        //
+        // ⚠️ ID-REVIEW-1049 (2026-10-28, ID-REVIEW-1048's independent verifier
+        // F3): "lastLaunchTime" was **REMOVED** from this allowlist.
+        // ⇒ It used to be here because the app lifecycle wrote it on every run
+        //   — but the app's `logSnapshot` call site has been guarded by
+        //   `!TestIsolation.isRunningTests` ever since (ID-APP-0003, 2026-08-03)
+        //   ⇒ measured: a full suite run leaves the production domain
+        //   **byte-identical**, this key included.
+        // ⇒ So the allowlist entry was covering a write that **no longer
+        //   happens** — and it was hiding the one that **must never happen**:
+        //   the verifier's end-to-end probe wrote `lastLaunchTime` into the
+        //   app's own standard domain and **all four ZZZ production canaries
+        //   stayed green**.
+        // ⇒ ⇒ *A canary that tolerates a change cannot see destruction*
+        //   (the ID-REVIEW-1038 rule) ⇒ the key is now **watched**.
         "hasLaunchedBefore",         // WelcomeView.swift:171, 178 — first launch marker
         // ⚠️ ID-REVIEW-1047 (2026-10-28): this key is a **one-shot** value
         // (written once, by the welcome window's "Get Started" button) ⇒ its
@@ -312,71 +326,6 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         )
     }
 
-    /// ID-REVIEW-1030 (2026-10-25): the production-domain **content** comparison
-    /// can only be trusted when no other ClipMemory instance is running.
-    ///
-    /// The comparison is "before vs after the whole suite" — it sees *that* the
-    /// production domain changed, never *who* changed it. When the real app is
-    /// running it rewrites its own `ClipboardItems` blob on every save, and
-    /// because AES-GCM uses a fresh nonce per save, even an identical-item
-    /// re-save changes the bytes while keeping the length. The guard then
-    /// reports "the production data blob was rewritten" for a test run that
-    /// never touched production.
-    ///
-    /// Measured 2026-10-25 on this machine: the real app's CoreSpotlight
-    /// re-index bursts line up exactly with the blob's byte change during the
-    /// suite; the suite is green on CI (no app runs there) and green locally
-    /// while the app is closed.
-    ///
-    /// The test host deliberately never takes the single-instance lock (see
-    /// `SingleInstanceLock`), so a held lock means a real instance is running
-    /// ⇒ the comparison is unattributable ⇒ skip it **visibly** instead of
-    /// failing on somebody else's write. The seam guards
-    /// (`TestIsolation.mustRefuseProductionDataMutation`) and the byte-level
-    /// comparison still apply whenever the lock is free — which is the case
-    /// on CI.
-    private func skipIfAnotherInstanceIsRunning() throws {
-        try XCTSkipIf(
-            SingleInstanceLock.isHeldByAnotherProcess(),
-            "another ClipMemory instance is running (.instance.lock is held) — it "
-            + "legitimately rewrites its own production data, which this process "
-            + "cannot attribute; skipping the production-domain content "
-            + "comparison (on CI no instance runs, so the check still executes)"
-        )
-    }
-
-    /// Skip unless the **AAA bootstrap** captured the production baseline.
-    ///
-    /// ⚠️ ID-REVIEW-1047 (2026-10-28, independent verifier): the production
-    /// comparison is only meaningful when the "before" snapshot EXISTS.
-    ///
-    /// ⇒ `AAASuiteBootstrapTests` takes that snapshot. In a **narrow run**
-    /// (`-only-testing:`) that class never runs ⇒ `before` is EMPTY ⇒
-    /// **every** production key looks "ADDED" ⇒ the two data blobs
-    /// (deliberately NOT in any allowlist since ID-REVIEW-1038) make the
-    /// canary **fail unconditionally**.
-    ///
-    /// ⇒ That artifact is not harmless: it was observed as a **false
-    /// catch** — a mutation harness that ran only the canary class reported
-    /// "the canary caught it" while the canary was in fact failing on
-    /// *every* key, including keys the mutation never touched ⇒ a mutation
-    /// was credited to the canary that the canary would have flagged anyway.
-    ///
-    /// ⇒ Skip explicitly (visible in the report) rather than fail red.
-    ///
-    /// ⚠️ One helper for all three canaries (ID-REVIEW-1047 round 2) — the
-    /// third copy used to be inlined and pushed `testNoProductionPollution`'s
-    /// body past SwiftLint's `function_body_length` (54 > 50) ⇒ a **new**
-    /// lint warning, i.e. a regression this round introduced.
-    private func skipUnlessProductionBaselineCaptured() throws {
-        try XCTSkipUnless(
-            AAASuiteBootstrapTests.didSnapshotProductionDomain,
-            "production baseline not captured — the AAA suite bootstrap did not run "
-            + "in this process (a narrow `-only-testing:` run has no baseline ⇒ "
-            + "every production key would look ADDED ⇒ the comparison is meaningless)"
-        )
-    }
-
     /// Runs LAST in the suite (alphabetically after every other class).
     /// Compares the production persistent domain against the AAA snapshot.
     /// Fails on keys NOT in `toleratedPollution` (allowlist). The
@@ -389,8 +338,9 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// `xcodebuild` to exit non-zero, but a future CI tool that swallows
     /// `XCTFail` would still see the explicit `XCTAssert` as a hard stop.
     func testNoProductionPollution() throws {
-        try skipIfAnotherInstanceIsRunning()
-        try skipUnlessProductionBaselineCaptured()
+        try ProductionCanaryGuard.skipIfAnotherInstanceIsRunning()
+        try ProductionCanaryGuard.skipUnlessProductionBaselineCaptured()
+        ProductionCanaryGuard.recordExecution()
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
         let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
@@ -488,12 +438,13 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     func testProductionDataBlobsAreUnchanged() throws {
         // ID-REVIEW-1030: the content comparison can only be trusted when no
         // other ClipMemory instance is running — see the helper's doc comment.
-        try skipIfAnotherInstanceIsRunning()
+        try ProductionCanaryGuard.skipIfAnotherInstanceIsRunning()
         // ID-CRASH-0031: without the AAA baseline there is nothing to
         // compare against — a focused run that skips the suite bootstrap.
         // Skip explicitly (visible in the report) instead of failing with
         // a bogus "0 bytes vs N bytes".
-        try skipUnlessProductionBaselineCaptured()
+        try ProductionCanaryGuard.skipUnlessProductionBaselineCaptured()
+        ProductionCanaryGuard.recordExecution()
 
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
@@ -566,8 +517,9 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     func testFirstLaunchFlagIsNeverChangedDuringTheSuite() throws {
         // ID-REVIEW-1030: the comparison is only attributable when no other
         // ClipMemory instance is running.
-        try skipIfAnotherInstanceIsRunning()
-        try skipUnlessProductionBaselineCaptured()
+        try ProductionCanaryGuard.skipIfAnotherInstanceIsRunning()
+        try ProductionCanaryGuard.skipUnlessProductionBaselineCaptured()
+        ProductionCanaryGuard.recordExecution()
 
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
@@ -792,4 +744,5 @@ final class ZZZSuiteTeardownTests: XCTestCase {
                        + "`toleratedPollution` or `appLifecycleKeys`) must be caught. "
                        + "If this fails, the canary's not-in-list check has been disabled.")
     }
+
 }

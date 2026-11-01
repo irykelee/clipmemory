@@ -56,9 +56,32 @@ enum LaunchAtLoginService {
     ///
     /// Production ⇒ the real registration status. A test process ⇒ `false`,
     /// without querying the system at all.
-    static func isEnabled() -> Bool {
+    /// ⚠️ ID-REVIEW-1049 (independent verifier M4): the `status` parameter is a
+    /// **test seam** — the read path needs one exactly like the write path
+    /// (`setEnabled(_:apply:)`).
+    ///
+    /// ⇒ Before this, deleting the **read** gate (`guard shouldApply(...)`)
+    /// kept every guard green: ⑱ only asserted the *pure* `shouldApply` and
+    /// the *file set*, and ⑱b only covered the **write** ⇒ the read was
+    /// **zero-covered**.
+    /// ⇒ With an injectable status provider, a guard can assert "this process
+    /// never queried the system" **without** querying the user's registration
+    /// (a guard that reads the user's login item to prove it does not read it
+    /// would defeat the very gate it is testing).
+    static func isEnabled(
+        status: () -> SMAppService.Status = systemStatus
+    ) -> Bool {
         guard shouldApply(isRunningTests: TestIsolation.isRunningTests) else { return false }
-        return SMAppService.mainApp.status == .enabled
+        return status() == .enabled
+    }
+
+    /// The real thing: the app's own login-item registration status.
+    ///
+    /// ⚠️ Production only — `isEnabled` is the single caller and it gates
+    /// this. Guard ⑱ asserts that `SMAppService.mainApp` appears **only** in
+    /// this file.
+    private static func systemStatus() -> SMAppService.Status {
+        SMAppService.mainApp.status
     }
 
     /// Turn the login item on or off.

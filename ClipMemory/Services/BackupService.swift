@@ -50,7 +50,22 @@ final class BackupService {
     /// test host `TestIsolation.isRunningTests` is always true).
     static func defaultsFor(isTestProcess: Bool) -> UserDefaults {
         guard isTestProcess else { return .standard }
-        return UserDefaults(suiteName: xcTestIsolationSuiteName) ?? .standard
+        // ⚠️ ID-REVIEW-1049 (independent verifier F6): **NO `?? .standard`
+        // fallback.** Inside the test host `UserDefaults.standard` **IS** the
+        // user's real `com.clipmemory.app` domain ⇒ a fallback here would turn
+        // a typo into a production write — exactly the failure mode the
+        // `StartupHealth` seam was fixed for in the same round.
+        // ⇒ The repo's established convention is `TestSuiteCleanup.makeSuite`'s
+        // `preconditionFailure` ("failing loudly is the safe direction").
+        // ⚠️ Only the TEST branch can reach this ⇒ production never traps.
+        guard let defaults = UserDefaults(suiteName: xcTestIsolationSuiteName) else {
+            preconditionFailure(
+                "ID-REVIEW-1049: UserDefaults rejected the suite name "
+                + "\(xcTestIsolationSuiteName) — refusing to fall back to "
+                + ".standard (that IS the user's production domain in the test host)"
+            )
+        }
+        return defaults
     }
 
     /// ID-REVIEW-1047: the per-process tmp root for the backup / image

@@ -69,12 +69,41 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
         // tests to read**, and StartupHealth writing `lastLaunchTime` into
         // **its own** suite is that service's legitimate behaviour, not a
         // stray write.
-        startupHealthSuiteName
+        startupHealthSuiteName,
+        // ID-REVIEW-1049 (2026-10-28): `BackupPackage`'s own suite — the
+        // default domain of the backup entry points (the seam that replaced
+        // the `= .standard` production identity). Cleared before every test
+        // case like the others.
+        //
+        // ⚠️ Deliberately NOT in `guardedSharedSuiteKeys`: nothing publishes a
+        // setting here for other tests to read — the suite only receives the
+        // backup entry points' own reads/writes.
+        backupPackageSuiteName
     ]
+
+    /// The suite `BackupPackage.defaultsFor(isTestProcess:)` resolves to under
+    /// XCTest.
+    static let backupPackageSuiteName = "BackupPackage-XCTest-isolation"
 
     /// The suite `StartupHealth.defaultsFor(isTestProcess:)` resolves to under
     /// XCTest.
     static let startupHealthSuiteName = "StartupHealth-XCTest-isolation"
+
+    /// ID-REVIEW-1049 (2026-10-28, independent verifier M5): did the
+    /// `AAASuiteBootstrapTests` class actually **run** in this process?
+    ///
+    /// ⚠️ Why this signal exists: the three production canaries used to skip
+    /// when "the baseline flag is false" — and that flag is set **by** the
+    /// bootstrap ⇒ deleting that **one line** silently **disarmed all three
+    /// canaries** and the suite stayed green ⇒ the verifier's M5 survived.
+    ///
+    /// ⇒ This is an **independent** signal ("did the class run?"), recorded by
+    /// the observer ⇒ the flag and this can no longer be removed **together**.
+    ///
+    /// ⚠️ Recorded on `testCaseDidFinish`, not `testCaseWillStart`: the
+    /// observer is registered *by* the AAA class's `setUp`, so that class's
+    /// own `testCaseWillStart` has already fired by the time it is listening.
+    static private(set) var aaaBootstrapRan = false
 
     /// The canonical seam's baseline suite (`TestIsolation.baselineDefaults`).
     ///
@@ -267,6 +296,11 @@ final class XCTestIsolationSuiteBootstrap: NSObject {
         }
 
         func testCaseDidFinish(_ testCase: XCTestCase) {
+            // ID-REVIEW-1049: record that the AAA bootstrap class ran — the
+            // independent signal the production canaries now tie their skip to.
+            if testCase is AAASuiteBootstrapTests {
+                XCTestIsolationSuiteBootstrap.aaaBootstrapRan = true
+            }
             XCTestIsolationSuiteBootstrap.recordSharedSuiteViolationIfPresent(
                 testCase: "\(type(of: testCase)).\(testCase.name)"
             )

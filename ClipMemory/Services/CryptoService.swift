@@ -501,6 +501,11 @@ class CryptoService: CryptoServiceProtocol {
         guard isRunningTests else { return false }
         // 按**身份**判定，不按**类型**判定：任何 conformer 只要报出生产
         // service 就该被拒（包装生产 store 的装饰器也算）。
+        // ⚠️ ID-REVIEW-1049: 「装饰器也算」这句话直到现在才为真 ——
+        // `keychainService` 原先有协议扩展的默认实现 `nil` ⇒ 一个**不转发**
+        // 它的装饰器报 `nil` ⇒ 会被**放行**（核验员实测：被包装的 store 的
+        // `load()` 真的被调用了）⇒ 现已改成**协议必需项** ⇒ 编译器强制每个
+        // conformer 声明身份 ⇒ 装饰器**无法忘记**转发。
         return keyStore.keychainService == KeychainKeyStore.defaultService
     }
 

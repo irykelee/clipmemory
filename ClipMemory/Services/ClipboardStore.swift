@@ -261,9 +261,30 @@ final class ClipboardStore: ObservableObject {
         // independent signals (the env var with ANY value, a loaded
         // `XCTestCase` class, an injected `.xctest` bundle), so the
         // isolation holds even when the env var is missing.
-        if !TestIsolation.isRunningTests {
-            return .standard
-        }
+        Self.defaultsFor(isTestProcess: TestIsolation.isRunningTests)
+    }
+
+    /// ID-REVIEW-1049 (2026-10-28, independent verifier M7 / M8): the **pure**
+    /// resolver — which domain does the seam resolve to?
+    ///
+    /// ⚠️ Why this was split out: `xcTestDefaults` used to be an `if/else` on
+    /// `TestIsolation.isRunningTests` ⇒ inside a test host that flag is
+    /// **always true** ⇒ the **production half was structurally unreachable**
+    /// ⇒ **no guard could assert it** ⇒ two mutations **survived**:
+    /// * **M8** — the production branch rewritten to the isolated suite
+    ///   (⇒ production would no longer use `.standard`, and nothing noticed);
+    /// * **M7** — the test branch rewritten to `.standard`
+    ///   (⇒ the test host would write the user's real domain, and nothing
+    ///   noticed).
+    ///
+    /// ⇒ Splitting the decision into a **pure function** makes **both** halves
+    /// assertable from a test (the ID-REVIEW-1045 / 1047 pattern).
+    ///
+    /// ⚠️ Production half ⇒ the **same** `UserDefaults.standard` ⇒ byte-identical
+    /// behaviour. Test half ⇒ the isolated suite ⇒ the user's real domain is
+    /// never addressed.
+    nonisolated static func defaultsFor(isTestProcess: Bool) -> UserDefaults {
+        guard isTestProcess else { return .standard }
         return UserDefaults(suiteName: "ClipboardStore-XCTest-isolation") ?? .standard
     }
 

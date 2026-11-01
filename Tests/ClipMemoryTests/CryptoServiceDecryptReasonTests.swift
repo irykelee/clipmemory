@@ -170,6 +170,17 @@ final class CryptoServiceDecryptReasonTests: XCTestCase {
     }
 
     private final class MockKeyStore: KeyStoring {
+
+    /// ID-REVIEW-1049: the **identity** this store reports.
+    ///
+    /// ⚠️ The protocol requirement is **not optional** any more ⇒ every
+    /// conformer must state its identity ⇒ a decorator cannot silently forget
+    /// to forward it (which is exactly how the old extension default let one
+    /// slip past the production-identity gate).
+    ///
+    /// ⇒ `nil` = "not the production Keychain" ⇒ this store is never refused
+    /// by `shouldRefuseKeychainStore`.
+    var keychainService: String? { nil }
         private(set) var stored: Data?
         func load() -> Data? { stored }
         func loadStatus() -> KeychainLoadStatus {

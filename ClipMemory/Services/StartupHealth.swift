@@ -71,7 +71,22 @@ enum StartupHealth {
     /// unreachable — the ID-REVIEW-1045 shape).
     nonisolated static func defaultsFor(isTestProcess: Bool) -> UserDefaults {
         guard isTestProcess else { return .standard }
-        return UserDefaults(suiteName: xcTestIsolationSuiteName) ?? .standard
+        // ⚠️ ID-REVIEW-1049 (independent verifier F6): **NO `?? .standard`
+        // fallback.** A rejected suite name must not silently resolve to the
+        // **production** domain — in the test host `UserDefaults.standard` IS
+        // the user's real `com.clipmemory.app` domain ⇒ a fallback here would
+        // turn a typo into a production write.
+        // ⇒ The repo's established convention is `TestSuiteCleanup.makeSuite`'s
+        // `preconditionFailure` ("failing loudly is the safe direction").
+        // ⚠️ Only the TEST branch can reach this ⇒ production never traps.
+        guard let defaults = UserDefaults(suiteName: xcTestIsolationSuiteName) else {
+            preconditionFailure(
+                "ID-REVIEW-1049: UserDefaults rejected the suite name "
+                + "\(xcTestIsolationSuiteName) — refusing to fall back to "
+                + ".standard (that IS the user's production domain in the test host)"
+            )
+        }
+        return defaults
     }
 
     /// ID-REVIEW-1048: may this process **read** this key store?
@@ -87,6 +102,15 @@ enum StartupHealth {
     /// ⇒ The judgement is **by identity**, not by type: any `KeyStoring`
     /// conformer that reports the production service is refused — including a
     /// decorator that wraps the production store.
+    ///
+    /// ⚠️ ID-REVIEW-1049: the "including a decorator" half was **false** until
+    /// now. `keychainService` used to have a protocol-extension default of
+    /// `nil` ⇒ a decorator that did **not** forward it reported `nil` ⇒ it was
+    /// **allowed** ⇒ and it *did* reach the production item (the verifier
+    /// measured it: the wrapped store's `load()` was called).
+    /// ⇒ The default is **gone**: the identity is now a **protocol
+    /// requirement** ⇒ **the compiler makes every conformer declare it** ⇒ a
+    /// decorator **cannot forget** to forward it.
     ///
     /// ⇒ It **reuses** `CryptoService`'s convergence-point judgement
     /// (ID-REVIEW-1043) instead of inventing a second one ⇒ the two paths

@@ -27,6 +27,17 @@ final class CryptoKeyPreparationTests: XCTestCase {
 
     /// In-memory key store; store() results can be scripted per call.
     private final class MockKeyStore: KeyStoring {
+
+    /// ID-REVIEW-1049: the **identity** this store reports.
+    ///
+    /// ⚠️ The protocol requirement is **not optional** any more ⇒ every
+    /// conformer must state its identity ⇒ a decorator cannot silently forget
+    /// to forward it (which is exactly how the old extension default let one
+    /// slip past the production-identity gate).
+    ///
+    /// ⇒ `nil` = "not the production Keychain" ⇒ this store is never refused
+    /// by `shouldRefuseKeychainStore`.
+    var keychainService: String? { nil }
         private(set) var stored: Data?
         /// P2-3 (OpenCode auto-review, 2026-09-23): each entry is an OSStatus
         /// that the test wants `store()` to throw on the next call. errSecSuccess
@@ -605,6 +616,17 @@ final class CryptoKeyPreparationTests: XCTestCase {
     /// existing tests that retain — the mocks are wrong about production
     /// contract, not the production code). Tracked in CRYPTO-LINT-0001.
     private final class NonRetainingKeyStoreProbe: KeyStoring {
+
+    /// ID-REVIEW-1049: the **identity** this store reports.
+    ///
+    /// ⚠️ The protocol requirement is **not optional** any more ⇒ every
+    /// conformer must state its identity ⇒ a decorator cannot silently forget
+    /// to forward it (which is exactly how the old extension default let one
+    /// slip past the production-identity gate).
+    ///
+    /// ⇒ `nil` = "not the production Keychain" ⇒ this store is never refused
+    /// by `shouldRefuseKeychainStore`.
+    var keychainService: String? { nil }
         var loadReturn: Data?
         func store(_ keyData: Data) throws {
             // Intentionally does NOT retain. Production semantics match
