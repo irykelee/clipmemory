@@ -125,7 +125,10 @@ fi
 #   ⇒ 由本脚本（树外）逐条核对。
 MANIFEST="$REPO_ROOT/Scripts/canary-gate-locks.txt"
 if [[ ! -f "$MANIFEST" ]]; then
-  bad "锁的清单缺失（`Scripts/canary-gate-locks.txt`）—— 清单在**锁的外面**"
+  # ⚠️ 这里**不能**用反引号：双引号里的反引号是**命令替换** ⇒ bash 会去执行
+  #    那个文件 ⇒ 报 "Permission denied" 且把路径吞成空 ⇒ 报错文案反而失真
+  #    （2026-11-01 实测踩到）⇒ ⇒ 用「」。
+  bad "锁的清单缺失（Scripts/canary-gate-locks.txt）—— 清单在**锁的外面**"
   bad "  ⇒ 缺失 = 没人知道少了哪把锁 ⇒ 必须失败，不得静默放过"
 else
   manifest_out="$(python3 - "$REPO_ROOT" "$MANIFEST" <<'PY'
