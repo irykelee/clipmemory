@@ -1063,8 +1063,11 @@ def main():
 
 
 if __name__ == "__main__":
-    for _mid, _label, patches in MUTATIONS:
-        for rel, _old, _new in patches:
+    # ⚠️ ID-REVIEW-1049 第五轮：变异条目可以是 **3 元组**（id, label, patches）
+    # 或 **4 元组**（多一个 options 字典 ⇒ 含窄跑选择器）⇒ ⇒ 这里必须能
+    # 两种都解包（第四轮加 N46 时漏了这个预检循环 ⇒ 直接抛异常）。
+    for _entry in MUTATIONS:
+        for rel, _old, _new in _entry[2]:
             p = os.path.join(REPO, rel)
             if rel not in _ORIG_HASHES:
                 _ORIG_HASHES[rel] = sha256(p)
