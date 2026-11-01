@@ -4441,3 +4441,19 @@ python3 -c "import plistlib,hashlib;d=plistlib.load(open('/Users/iryke/Library/P
    + 独立核验员的前后 digest 实测保证。
 6. **断言数棘轮是「最少」语义** ⇒ 新增断言**不会**破、删除**会**破
    ⇒ 这是有意的（避免「加一条断言就要改三个文件」）。
+
+#### 50.17.9 审核门（opencode）本轮 findings 的**人工核验**
+
+| 报告 | finding | 裁决 |
+|---|---|---|
+| `auto-review-20261101-220318-19929.md`（1641fcd 那轮，P2×2） | 「脚本注释中的 `2026-11-01` 日期可能为笔误或超前预测」 | **false-positive** —— 本仓库的时间线就在 2026，那是**本轮的实测日期**；审核模型按 2024/2025 的先验猜错了 |
+| 同上 | 「修复逻辑正确，避免了 Shell 在双引号内解析反引号导致的命令替换问题」 | **false-positive** —— 这**不是缺陷**，是对 `1641fcd` 那次修复的**正面确认** |
+| `auto-review-20261102-072922-35165.md`（P1×1 + P2×2） | 「`EXPECTED_MANIFEST_SHA256` 硬编码值仅在当前清单状态下有效 … 必须同步更新此 SHA256」 | **false-positive** —— 这**描述的正是设计意图**：改清单必须**同时**改契约脚本 ⇒ **两个文件的协同改动在 review 里看得见**（§50.17.2）⇒ 模型把「设计上的耦合」读成了「维护隐患」 |
+| 同上 | 「新增的最少断言数检查…若变异产生假绿…仍可能在某些极端复杂的编译器行为下产生误报」 | **false-positive** —— 判据是**计数 + sha256**，**不依赖编译器行为**；模型自己提到的那类假绿（N28 编译失败被算成抓住）**本轮已修**（§50.17.4） |
+| 同上 | 「台账 50.17 节更新非常详尽…符合项目对高确定性审计的要求」 | **false-positive** —— **正面评价**，不构成 finding |
+| `auto-review-20261102-073733-56648.md`（P1×2 + P2×1） | 「`EXPECTED_MANIFEST_SHA256` 缺乏上下文说明 … 建议在文档中明确此 Hash 的生成方式」 | **confirmed**（**真缺口**）⇒ **本轮已修**：常量旁补上**可复制的生成配方** + **口径**（有效行 / 逐行 `strip` / 换行连接 / 末尾再加一个换行 / **注释不参与**）⇒ 已实测「复制粘贴即可重算，且结果与常量一致」⇒ 该条随该文件改动**自动失效** |
+| 同上 | 「需确保 `--contract` 模式下的 `grep` 逻辑不会因为 `manifest` 的变动而产生干扰」 | **false-positive** —— **实测**（实验副本 `/tmp/cm1049r6-expB`）：清单被掏空时 `--contract` 仍 **exit 0**（contract 段**完全不看**清单）、`--manifest` **exit 1**、`--all` **exit 1**；清单完好时三者 0 / 0 / 0 ⇒ ⇒ 三个模式**互不依赖** |
+| 同上 | 「应确保 `mutation/mutate.py` 的 `expected` 字段与本轮新增的 `caught_by` 逻辑完全对齐」 | **false-positive** —— 模型**记错了字段名**：选项键是 `expect`、产物字段是 `expect_catcher`、台账写的也是 `expect`；且比对**就在同一处**（`set(expect) & catchers_of(failed)`）⇒ 对齐无误 |
+
+⇒ ⇒ 本轮共 **8 条** findings 逐条核验入台账（`githooks/review-adjudication.jsonl`）：
+**7 条 false-positive + 1 条 confirmed（已当场修）**。

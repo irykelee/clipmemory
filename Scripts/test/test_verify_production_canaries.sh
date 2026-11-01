@@ -161,6 +161,16 @@ MANIFEST="$REPO_ROOT/Scripts/canary-gate-locks.txt"
 
 # ⚠️ 这三个常量就是「清单的锁」⇒ 改清单必须**同步**改它们 ⇒ 任何清单改动
 #   都是**两个文件**的协同改动 ⇒ ⇒ **review 里一眼看得见**（本文件的全部意义）。
+#
+# ⚠️ **怎么重新生成 EXPECTED_MANIFEST_SHA256**（审核门 P1 指到的缺口，
+#   2026-11-01 深夜已补 —— 原先只写「硬编码」，没写**口径** ⇒ 改清单的人
+#   没法自己重算）：
+#
+#     python3 -c "import hashlib;p='Scripts/canary-gate-locks.txt';raw=open(p,encoding='utf-8').read();eff=[l.strip() for l in raw.splitlines() if l.strip() and not l.strip().startswith('#')];print(hashlib.sha256(('\n'.join(eff)+'\n').encode('utf-8')).hexdigest())"
+#
+#   ⇒ **口径**：清单的**有效行**（非空、非注释）**逐行 strip** ⇒ 用换行连接
+#   ⇒ 末尾**再加一个**换行 ⇒ 取 sha256。
+#   ⇒ ⇒ **注释不参与哈希** ⇒ 日常改注释**不必**重算 ⇒ 改**条目**才必须。
 EXPECTED_FILE_ENTRIES=3
 EXPECTED_GUARD_ENTRIES=9
 EXPECTED_MANIFEST_SHA256=98fe0e37d390cdf70468ccff75fb9a52de2589ac67b6c353c6643f3f09ea4c3e
