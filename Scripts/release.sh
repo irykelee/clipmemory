@@ -869,6 +869,23 @@ run_preflight() {
             fails=$((fails + 1))
         fi
     fi
+    # ID-REVIEW-1049 第四轮 (2026-11-01): the out-of-band gate's OWN contract
+    # (0 armed / 1 net off / 2 gate broken) + its wiring.
+    # ⇒ Independent verifier P1-1 (measured): deleting the gate script
+    # together with its two call sites (ci.yml + release.sh) left the suite
+    # fully green — the gate itself had NO lock ⇒ "谁说自己做到了" was moved
+    # out of the tree, but the out-of-band lock was itself unlocked.
+    # ⇒ This runs the contract test ⇒ a neutered gate (always exit 0) or a
+    # removed call site fails the release.
+    # ⚠️ Independent of the test suite on purpose: it must run even when the
+    # suite failed (then it is the only remaining signal).
+    if bash Scripts/test/test_verify_production_canaries.sh >/tmp/gate-contract.log 2>&1; then
+        ok "树外闸门的契约与接线成立"
+    else
+        echo "  ❌ 树外闸门的契约/接线检查失败（见 /tmp/gate-contract.log）"
+        tail -20 /tmp/gate-contract.log
+        fails=$((fails + 1))
+    fi
     return $fails
 }
 

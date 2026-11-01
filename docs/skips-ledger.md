@@ -3778,7 +3778,7 @@ try XCTSkipUnless(
 | lint | `swiftlint lint --quiet` | **10 = 基线**（中途冒出一条 `function_body_length` ⇒ 用**抽取共用 helper**修掉 ⇒ **不**重生成 baseline） |
 | 变异 | `python3 /tmp/cm-1047-mutate.py` | **40 条（N1–N40）全红**、**drift=False × 40**、`caught=False` **0** 条、`prod_changed=True` **仅 N23** |
 | 产物自述 | `/tmp/cm1047-mutations.json` | 每条 `commit = 34ddf5e…`、**`dirty = false`** ⇒ §50.8 的 P3-7 披露已修（本轮**先提交、再在干净树上跑**） |
-| 生产域 | 起点快照 vs 终点实时读盘 | **29 键、digest `9fdf7e3ba73105ff`，两边逐键一致** |
+| 生产域 | 起点快照 vs 终点实时读盘 | **29 键、digest `9fdf7e3ba73105ff`，两边逐键一致**<br>**digest 的配方（逐字可跑）**：<br>`python3 -c "import plistlib,hashlib;d=plistlib.load(open('/Users/iryke/Library/Preferences/com.clipmemory.app.plist','rb'));print(len(d),hashlib.sha256(repr(sorted((k,repr(v)) for k,v in d.items())).encode()).hexdigest()[:16])"`<br>⚠️ **字节级披露**：跑完后 `cfprefsd` 会**重新序列化**生产 plist ⇒ **字节会变、逻辑不变** ⇒ 「零污染」只在**逻辑层**成立 |
 | 生产钥匙串 | `security find-generic-password -s com.clipmemory.app -a root-encryption-key` | `cdat/mdat = 20260719035159Z` **未被触碰** |
 | 锁探针（P2-1） | 另一个进程持 `.instance.lock` 的 flock | **3 skipped + 审计 passed + 0 failures**（不再误报红） |
 
@@ -3863,7 +3863,7 @@ M5（一个标志被删）⇒ V4（两个声明一起删）⇒ V5（连**捕获*
 | # | 核验员的发现 | 处置 |
 |---|---|---|
 | **P3-1** | §50.12.4 的「**11 处** `throw XCTSkip`」实测为 **12 处**（`cfd04a9` 9 处 + 本轮 3 处） | 已订正 |
-| **P3-2** | digest `9fdf7e3ba73105ff` **无法复现**（核验员试了约 **1 万种**组合） | **把配方逐字写进台账**（§50.13 的 digest 行）⇒ 现在**可复现** |
+| **P3-2** | digest `9fdf7e3ba73105ff` **无法复现**（核验员试了约 **1 万种**组合） | **把配方逐字写进台账**（§50.13 的 digest 行 ⇒ 第四轮又补进 §50.15.7）⇒ 现在**可复现** |
 | **P3-3** | 测试跑会让 `cfprefsd` **重新序列化**生产 plist（**字节**变、**逻辑**不变） | 在 §50.13 的 digest 行**就地披露** ⇒ 「零污染」只在**逻辑层**成立 |
 | **P3-4** | §50.11 的数字（1435 / 36 条）描述的是**未提交**的中间态 | 标注为「**开发中记录**」并指向 §50.13（对应提交态）⇒ 审计者不会把它当成提交树的证据 |
 
@@ -3908,12 +3908,13 @@ M5（一个标志被删）⇒ V4（两个声明一起删）⇒ V5（连**捕获*
 | 项 | 命令 | 结果 |
 |---|---|---|
 | 全量 | `xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/cm1047-dd` | **1436 tests / 4 skipped / 0 failures** · `** TEST SUCCEEDED **` |
-| **树外检查** | `python3 Scripts/verify-production-canaries.py /tmp/cm1049-full4.log` | ✅「三个生产 canary 与 canary 审计均已 **passed**（安全网是开着的）」· 退出码 **0** |
+| **树外检查** | `python3 Scripts/verify-production-canaries.py <全量日志>`<br>⚠️ 第三轮当时写的是 `/tmp/cm1049-full4.log` ⇒ `/tmp` **不可长期引用** ⇒ 第四轮起写**配方**（日志路径随跑随变） | ✅「三个生产 canary 与 canary 审计均已 **passed**（安全网是开着的）」· 退出码 **0** |
 | 退出码自测 | 同上，分别喂「好日志 / skip 日志 / 不存在的日志 / 无参」 | **0 / 1 / 2 / 2** ⇒ 三态语义成立 |
 | lint | `swiftlint lint --quiet` | **10 = 基线**（棘轮未变） |
 | 变异 | `python3 /tmp/cm-1047-mutate.py` | **42 条（N1–N42）全红**、**drift=False × 42**、`caught=False` **0** 条、`oob_error` **0** 条、`prod_changed=True` **仅 N23** |
 | 产物自述 | `/tmp/cm1047-mutations.json` | 每条 `commit = e6e5190b…`、**`dirty = false`** |
-| 生产域 | 起点快照 vs 终点实时读盘 | **29 键、digest `9fdf7e3ba73105ff`，两边逐键一致**（配方见 §50.13） |
+| 生产域 | 起点快照 vs 终点实时读盘 | **29 键、digest `9fdf7e3ba73105ff`，两边逐键一致**（配方见 **§50.15.7**） |
+| **`~/Library/Preferences` 净增长** | 跑前 vs 跑后的 plist 计数 | ⚠️ **本表漏了这项**（核验员 P3-2）⇒ 第四轮补上：每轮全量会新建约 **+17 个**测试 suite 的 plist（**既有行为**，§40.5 已记录 `0 ~ +18/次`）⇒ **不是**零污染，但落在**已披露**的区间内 |
 | 生产钥匙串 | `security find-generic-password -s com.clipmemory.app -a root-encryption-key` | `cdat/mdat = 20260719035159Z` **未被触碰** |
 | 工作树 | `git status --porcelain` | **空**（harness 跑完后干净 ⇒ 无残留变异） |
 
@@ -3929,3 +3930,130 @@ M5（一个标志被删）⇒ V4（两个声明一起删）⇒ V5（连**捕获*
 * **树内**审计**抓不住**「**三个来源**一起被删」（N41）⇒ 因为树内的每个信号都没了
   ⇒ ⇒ 只能靠**树外**（脚本读日志）⇒ ⇒ 而树外那条**自己也必须有退出码三态**
   ⇒ 否则「闸门坏了」会被读成「网开着」（见 §50.14.4）。
+
+### 50.15 第四轮：第三轮核验的 **VERDICT = FAIL** 处置（2026-11-01 晚）
+
+#### 50.15.1 核验员说了什么
+
+第三轮独立核验（**独立子 agent**，对象 = `cfd04a9..7df50c5`）的结论：
+**VERDICT = FAIL**（**1×P1 + 4×P2 + 4×P3**）。
+
+⇒ **8 项验收里 7 项全过**：全量 **1436 / 4 skipped / 0 failures**、树外闸门
+退出码 **0**、lint **10**、**V5 三处协同删除**独立复现（`1436 / 7 / 0 /
+TEST SUCCEEDED` + 三个 canary **skipped** + 树内审计 **passed** + 树外闸门
+**exit 1**）、**N42** 独立复现（树内审计 **红** 6 条断言 + 树外 **1**）、
+退出码三态 **0 / 1 / 2 / 2**、digest 配方**逐字可跑**且值一致、
+生产域 **29 键 digest 逐键一致**、生产钥匙串 **cdat/mdat 未被触碰**。
+
+⇒ ⇒ FAIL **只来自一层**：**树外闸门自己没人锁**。
+⇒ ⇒ 而核验员**明确支持**第三轮的结构性结论（「树内抓不到三处协同删除、
+树外才行」）—— 失败与那个结论**无关**。
+
+#### 50.15.2 P1-1：树外闸门**零保护**（核验员实测复现）
+
+**现象**：把 `Scripts/verify-production-canaries.py` 整个文件 +
+`.github/workflows/ci.yml` 里调用它的那一步（28 行）+ `Scripts/release.sh`
+里的闸门块（15 行）**一起删掉** ⇒ 全量测试仍 **1436 / 4 skipped / 0 failures
+/ TEST SUCCEEDED** ⇒ **CI 绿、发版绿、测试绿、零告警**。
+
+**根因**：全仓 `grep verify-production-canaries` 只有 **3 处**命中（脚本自身 +
+两个调用点）⇒ `Tests/` 树里**没有任何测试**读 `ci.yml` / `release.sh` / 该
+脚本 ⇒ 5 个 workflow 里 4 个零命中 ⇒ `pre-commit` / `pre-push` hook 不涉及。
+
+⇒ ⇒ **同族的第四代形状**：M5（一个标志被删）⇒ V4（两个声明一起删）⇒
+V5（连**捕获**一起删）⇒ **V7（树外那把锁本身没人锁）**。
+⇒ ⇒ 而**同族先例就在同一个仓库里**：`Scripts/production-probe-smoke.sh`
+**有**存在性守卫（守卫 ⑬，连「必须包含哪几件事」都钉了）⇒ **新脚本没有**。
+
+**修法（三层）**：
+
+| 层 | 手段 | 钉住什么 |
+|---|---|---|
+| 树内 | **守卫 ㉑**（存在 + 内容） | 脚本**存在**且含 `PRODUCTION_CANARIES` / `AUDIT_TEST` / 三个 canary 名 / `return 0` / `return 1` / `return 2` |
+| 树内 | **守卫 ㉒**（接线） | `ci.yml` 与 `release.sh` **仍调用**它；CI **仍区分**「闸门坏了」；契约脚本**存在且被 CI 调用** |
+| **树外** | **`Scripts/test/test_verify_production_canaries.sh`**（行为） | 退出码契约 **0 / 1 / 2 / 2** + 接线 ⇒ 接进 **CI** 与 **`release.sh` 的 preflight** |
+
+⇒ ⇒ **中和点在哪**：把脚本改成**永远 `exit 0`** ⇒ 树内的 ㉑/㉒ **仍绿**
+（脚本还在、接线还在）⇒ **只有契约脚本会红**（它断言「skipped 日志 ⇒ 必须
+返回 1」）⇒ ⇒ **树外那把锁，现在有第二把树外的锁看着它**。
+
+⚠️ **这条守卫自己的极限（如实记录）**：守卫、脚本、`ci.yml` 三者**都在仓库
+里** ⇒ **协同删除**仍然能让一切变绿 ⇒ 这是「仓库内没有仓库外」的**结构性
+上限**，不是守卫能消掉的 ⇒ **提高协同成本**（3 处、3 种文件、2 个不同的树）
+是这里能做到的全部。
+
+#### 50.15.3 P2-1（核验员 **V6**）：**canary 体被掏空** ⇒ 三层同时失明
+
+**现象**：把 `testNoProductionPollution` 的**比较体**整段删掉（只留
+`recordExecution()` 记账）⇒ 三个 canary 报 **passed**、树内审计报 **passed**、
+树外闸门报「**安全网是开着的**」（`exit 0`）⇒ ⇒ **两层同时失明**。
+
+**根因**：**判定逻辑只存在于 canary 的函数体里** ⇒ 它**不可直接断言** ⇒
+树外闸门只能证明「canary **执行过**且 **passed**」，证明不了「canary **还在
+做比较**」。
+
+**修法（与 `firstLaunchFlagDrift`（ID-REVIEW-1047）同形）**：
+1. 把判定抽成**纯函数**（不读全局、不写任何东西 ⇒ 断言它**不会**成为它要
+   消灭的那种伤害源）：
+   * `ZZZSuiteTeardownTests.newProductionPollution(before:after:) -> [String]`
+   * `ZZZSuiteTeardownTests.rewrittenProductionBlobs(before:after:) -> [String]`
+2. **正对照**（守卫 ㉓b）**直接调用**那两个函数 ⇒ 证明它们**还有牙**
+   （新增 / 删除 / 变更 三种形状、blob 字节变化、相同 ⇒ 不报）
+   ⇒ ⚠️ 正对照必须**调用**真身，不能**重实现**一遍（核验员 V6 的原话）
+3. **接线钉**（守卫 ㉓）⇒ 三个 canary 的函数体必须**仍然调用**各自的纯比较
+   函数，**且仍然调用 `XCTFail`** ⇒ 掏空比较体 ⇒ **变红**
+
+#### 50.15.4 P2-2：harness 的 `caught` 语义 —— 控制台与**产物相反**
+
+**现象**（核验员实测）：把 harness 的判定代码原样执行 ⇒ 退出码 **2**
+（闸门自己坏了）时：
+
+| | 控制台 `caught` | **产物 JSON** `caught` |
+|---|---|---|
+| 退出码 2 | **False** ✅ | **True** ❗ |
+
+**根因**：harness 把 `<HARNESS_ERROR: …>`（harness 自己坏了）**也 append 进
+`failed`**，而产物写的是 `"caught": len(failed) > 0` ⇒ ⇒ 台账 §50.14.4 那句
+「退出码 2 **不计入「被抓住」**」**对产物为假**。
+**附带**：`oob_error` / `oob_failed` **只存在于控制台** ⇒ 台账 §50.14.5 里那个
+「`oob_error` **0** 条」在**证据文件里查无实据**。
+
+**修法（两件）**：
+1. 产物写 `"caught": len([f for f in failed if not f.startswith("<HARNESS_ERROR:")]) > 0`
+   ⇒ 与控制台**一致**；并把 `oob_failed` / `oob_error` / `contract_failed` /
+   `contract_error` **写进产物**
+2. **harness 入库**（`Scripts/mutation/mutate.py`）⇒ 此前它**只活在 `/tmp`**
+   ⇒ 证据**不可复现**、第三方**无法重跑**（核验员 P3-4）⇒ 路径改由 `__file__`
+   推导，产物路径可用 `CM_MUTATION_OUT` / `CM_MUTATION_STATE` 覆盖
+3. **安全护栏**：它会**改写并还原**仓库里的源码文件 ⇒ **默认拒绝在脏树上
+   运行**（`--allow-dirty` 才放行）
+
+⇒ ⇒ 第四轮还给它加了**第二层 out-of-band**：除了「树外闸门读测试日志」，
+再加「树外闸门**自己**的契约 + 接线」（`Scripts/test/test_verify_production_canaries.sh`）
+
+#### 50.15.5 P2-3：守卫 ⑸ 可被「改谓词名」绕过
+
+**现象**：守卫 ⑸ 用 `blanked.range(of: "if Self.isRunningTests")` ⇒ **子串**
+匹配 ⇒ 把谓词改名成 `if Self.isRunningTestsDisabled {`（且该属性恒 false）
+⇒ **子串仍然命中** ⇒ 计数仍 = 2、形状仍合规 ⇒ **守卫全绿** ⇒ 而真闸门已失效。
+
+**修法**：**词边界** —— 匹配到的后面**不能**再跟标识符字符（字母 / 数字 /
+下划线）⇒ 改名即 offender ⇒ 变红。
+
+⚠️ **验证方式（如实记录）**：这条**没有**进自动 harness ⇒ 因为**真跑**它
+会让 `ImageStorage` 的 legacy 迁移在测试宿主里执行 ⇒ **写用户的生产域**
+⇒ ⇒ 与「验证工具本身不能成为它要消灭的那种伤害源」直接冲突。
+⇒ ⇒ 改用**逻辑级**验证：把守卫的判据**逐字移植**到 Python、喂**改名后**的
+源码 ⇒ 实测「旧判据 count=2 offenders=[] ⇒ **绿**」「新判据 count=2
+offenders=['predicate RENAMED', 'predicate RENAMED'] ⇒ **红**」。
+⇒ ⚠️ 这条证据的**性质**是「判据的差异」，**不是**「真跑一次红」—— 两者
+不可混为一谈，故如实标注。
+
+#### 50.15.6 P3 ×4
+
+| # | 问题 | 处置 |
+|---|---|---|
+| **P3-1** | digest 配方其实在 **§50.8**（`docs/skips-ledger.md:3448`），而 §50.13 / §50.14.5 写「配方见 §50.13」⇒ **指错** | §50.15.7 把**配方逐字**写进本节，并把 §50.13 / §50.14.5 的指针改到本节 |
+| **P3-2** | §50.13 / §50.14.5 两张验收表**只报生产域与钥匙串**，没报 `~/Library/Preferences` 的**净增长**（核验员实测 **+103 / 6 次全量 ≈ +17/次**，落在 §40.5 已记录的 `0 ~ +18/次` 区间内 ⇒ **既有行为**，非本轮引入） | 验收表**补上这一行** |
+| **P3-3** | `ci.yml` 只判 `"$code" == "2"` ⇒ 其它非 0（如 python 不在 PATH ⇒ **127**）会一路掉到 `exit "$code"` ⇒ CI 虽仍红，但**没有「闸门坏了」的提示** ⇒ 排查方向被带偏 | 改成 **「除 0/1 外一律按闸门坏了报」** ⇒ 文案带上真实退出码 |
+| **P3-4** | 台账把 `/tmp/cm1049-full4.log` 当验收证据引用 ⇒ `/tmp` **不可长期引用** | harness **入库**（`Scripts/mutation/mutate.py`）⇒ 证据**配方**入库，产物路径可配 |

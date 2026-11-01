@@ -273,11 +273,35 @@ jobs:
           # broken gate would be reported as "the safety net is off".
           code=0
           python3 Scripts/verify-production-canaries.py /tmp/xcb-test.log || code=$?
-          if [[ "$code" == "2" ]]; then
-            echo "::error::canary 状态检查自己没跑起来（退出码 2）—— 这是闸门坏了，不是安全网关着"
+          # ⚠️ ID-REVIEW-1049 第四轮（独立核验员 P3-3）：这里原本只判「== 2」
+          # ⇒ **其它**非 0 的退出码（例如 python 不在 PATH ⇒ 127）会一路
+          # 掉到 `exit "$code"` ⇒ CI 虽然仍然红，但**没有任何「闸门坏了」的
+          # 提示** ⇒ 排查方向会被带偏 ⇒ ⇒ 改成：**除 0/1 之外一律按「闸门
+          # 自己坏了」报**（可区分性由文案承担）。
+          if [[ "$code" != "0" && "$code" != "1" ]]; then
+            echo "::error::canary 状态检查自己没跑起来（退出码 $code）—— 这是闸门坏了，不是安全网关着"
             exit 1
           fi
           exit "$code"
+
+      # ID-REVIEW-1049 第四轮 (2026-11-01): the out-of-band gate's OWN contract.
+      # The gate script is the only thing that catches "a test wrote the user's
+      # production domain" — but it had NO guard of its own: deleting the
+      # script + its two call sites (ci.yml / release.sh) left the suite
+      # fully green (1436 / 4 skipped / 0 failures) with zero warnings
+      # (independent verifier P1-1).
+      #
+      # ⇒ This test pins the gate's three-state exit-code contract
+      # (0 armed / 1 net off / 2 gate broken) and its wiring. The mutation
+      # it exists to catch: "make the script always exit 0" — the
+      # "skipped log ⇒ must return 1" assertion turns red immediately.
+      #
+      # ⇒ Hermetic: it feeds the gate SYNTHETIC logs in a temp dir; it never
+      # touches the user's preferences, keychain or clipboard.
+      - name: Out-of-band canary gate contract test (ID-REVIEW-1049 第四轮)
+        run: |
+          set -euo pipefail
+          bash Scripts/test/test_verify_production_canaries.sh
 
       - name: Collect test log for triage
         # ID-CRASH-0037 / issue #93 next step 2 ("Capture the failing

@@ -169,28 +169,10 @@ final class Review1049RegressionTests: XCTestCase {
         let source = try String(contentsOf: url, encoding: .utf8)
         let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
 
-        var searchStart = blanked.startIndex
-        var guardCount = 0
-        var offenders: [String] = []
-        while let found = blanked.range(
-            of: "if Self.isRunningTests",
-            range: searchStart..<blanked.endIndex
-        ) {
-            guardCount += 1
-            searchStart = found.upperBound
-            let after = String(blanked[found.upperBound...])
-            guard let returnRange = after.range(of: "return") else {
-                offenders.append("a test-process guard with NO `return`")
-                continue
-            }
-            // The `return` must be the guard's OWN first statement — i.e. the
-            // guard body is a bare early return, not a conditional inside a
-            // longer block.
-            let between = String(after[..<returnRange.lowerBound])
-            if between.contains("if ") || between.contains("else") {
-                offenders.append("a test-process guard whose `return` is not the first statement")
-            }
-        }
+        // ⚠️ 扫描逻辑抽成 helper（ID-REVIEW-1049 第四轮）：守卫 ⑸ 加了**词边界**
+        // 检查后函数体 52 行 ⇒ 超过 `function_body_length` 的 50 行 ⇒ ⇒
+        // **拆**，不放宽（lint 棘轮：baseline 只压既有违规 ⇒ 新增违规会冒出来）。
+        let (guardCount, offenders) = Self.scanImageStorageGuards(in: blanked)
 
         XCTAssertGreaterThan(
             guardCount, 0,
@@ -399,7 +381,278 @@ final class Review1049RegressionTests: XCTestCase {
         )
     }
 
+    // MARK: - ㉑ 树外闸门必须**存在**（独立核验员 P1-1）
+
+    /// ㉑ **存在性 + 内容**守卫（仿守卫 ⑬）：树外闸门脚本必须存在，且必须保留
+    /// 它赖以成立的那几件事。
+    ///
+    /// ⚠️ **为什么必须有这条**（独立核验员 P1-1，2026-11-01 实测）：把
+    /// `Scripts/verify-production-canaries.py` + `.github/workflows/ci.yml` 里
+    /// 调用它的那一步 + `Scripts/release.sh` 里的闸门块**一起删掉** ⇒
+    /// 全量测试仍然 **1436 / 4 skipped / 0 failures / TEST SUCCEEDED**
+    /// ⇒ CI 绿、发版绿、测试绿、**零告警** ⇒ ⇒ 第三轮的**唯一**新增机制可以
+    /// 被无声移除 ⇒ ⇒ *「谁说自己做到了」搬到了树外，但**树外那把锁没人锁**。*
+    func testTheOutOfBandCanaryGateScriptIsPresentAndKeepsItsEssentials() throws {
+        let url = Self.repoRoot.appendingPathComponent("Scripts/verify-production-canaries.py")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: url.path),
+            "树外闸门脚本必须存在（`Scripts/verify-production-canaries.py`）"
+            + "—— 它是「安全网关着而套件全绿」的唯一拦截者"
+            + "（独立核验员 P1-1：连同它的两处接线一起删掉，套件仍然全绿）"
+        )
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let source = try String(contentsOf: url, encoding: .utf8)
+        for needle in [
+            "PRODUCTION_CANARIES",
+            "AUDIT_TEST",
+            "testNoProductionPollution",
+            "testProductionDataBlobsAreUnchanged",
+            "testFirstLaunchFlagIsNeverChangedDuringTheSuite",
+            "return 0",
+            "return 1",
+            "return 2"
+        ] {
+            XCTAssertTrue(
+                source.contains(needle),
+                "树外闸门脚本必须包含 \(needle)"
+                + "（缺了它，闸门要么看不见 canary、要么分不清「网关着」与「闸门坏了」）"
+            )
+        }
+    }
+
+    // MARK: - ㉒ 树外闸门必须**接在线上**（独立核验员 P1-1）
+
+    /// ㉒ **接线**守卫：树外闸门必须仍然被 **CI** 与 **发版 preflight** 调用，
+    /// 且 **CI** 必须仍然区分「退出码 2 = 闸门自己坏了」。
+    ///
+    /// ⚠️ **为什么接线也要钉**：「脚本存在」不等于「脚本在跑」⇒ 删掉
+    /// `ci.yml` 里那一步，脚本还在，但**永远不会执行** ⇒ 与删除脚本等价。
+    ///
+    /// ⚠️ **这条守卫自己的极限**（如实记录）：守卫、脚本、`ci.yml` 三者都在
+    /// 仓库里 ⇒ **协同删除**仍然能让一切变绿 —— 这是「仓库内没有仓库外」的
+    /// 结构性上限，不是本守卫能消掉的。⇒ 提高**协同成本**（三处、三种文件）
+    /// 是这里能做到的全部；真正的下一层是**发布产物**里带一份自述。
+    func testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease() throws {
+        let ci = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent(".github/workflows/ci.yml"),
+            encoding: .utf8
+        )
+        let release = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("Scripts/release.sh"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            ci.contains("Scripts/verify-production-canaries.py"),
+            "CI 必须仍然调用树外闸门 —— 否则「安全网关着而套件全绿」在 CI 上无人拦截"
+        )
+        // CI 必须把「闸门坏了」与「安全网关着」**分开处理** ——
+        // 两种合法写法：显式判 2（`== "2"`），或「除 0/1 外一律闸门坏了」
+        // （`!= "0"`，ID-REVIEW-1049 第四轮 · 独立核验员 P3-3）。
+        XCTAssertTrue(
+            ci.contains("\"$code\" != \"0\"") || ci.contains("\"$code\" == \"2\""),
+            "CI 必须仍然区分「闸门自己坏了」与「安全网关着」"
+            + "—— 否则闸门坏了会被读成安全网关着 ⇒ 排查方向会被带偏"
+        )
+        XCTAssertTrue(
+            release.contains("Scripts/verify-production-canaries.py"),
+            "发版 preflight 必须仍然调用树外闸门 —— 否则发版放行时不再核对安全网"
+        )
+        XCTAssertTrue(
+            release.contains("canary_gate"),
+            "发版 preflight 必须仍然按三态处理退出码（0 开 / 1 关 / 2 闸门坏了）"
+        )
+        // 契约脚本本身也必须还在、且被 CI 调用 —— 否则「脚本的中和」无人发现。
+        let contract = Self.repoRoot
+            .appendingPathComponent("Scripts/test/test_verify_production_canaries.sh")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: contract.path),
+            "闸门契约测试脚本必须存在（`Scripts/test/test_verify_production_canaries.sh`）"
+            + "—— 它断言退出码 0/1/2 三态 ⇒ 脚本被改成「永远 exit 0」时它会变红"
+        )
+        if FileManager.default.fileExists(atPath: contract.path) {
+            XCTAssertTrue(
+                ci.contains("test_verify_production_canaries.sh"),
+                "CI 必须调用闸门契约测试 —— 否则契约脚本永远不跑"
+            )
+        }
+    }
+
+    // MARK: - ㉓ canary 必须**仍在做比较**（独立核验员 P2-1 / V6）
+
+    /// ㉓ **接线钉**：三个生产 canary 必须仍然调用各自的**纯比较函数**。
+    ///
+    /// ⚠️ **这条修的是什么**（独立核验员 V6，2026-11-01 实测）：把
+    /// `testNoProductionPollution` 的**比较体**整段删掉（只留
+    /// `recordExecution()` 记账）⇒ canary 报 **passed**、树内审计报
+    /// **passed**、树外闸门报「**安全网是开着的**」⇒ ⇒ **两层同时失明**。
+    ///
+    /// ⇒ ⇒ 根因：**判定逻辑只存在于 canary 的函数体里** ⇒ 它**不可直接断言**
+    /// ⇒ ⇒ 修法（与 `firstLaunchFlagDrift` 同形）：把判定抽成**纯函数**
+    /// ⇒ ① 正对照能直接证明它**还有牙**（守卫 ㉓b）；
+    /// ② canary 不再调用它时，**本条接线钉**变红。
+    func testEveryProductionCanaryStillCallsItsPureComparison() throws {
+        let url = Self.repoRoot
+            .appendingPathComponent("Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let blanked = TestSourceScanner.blankingCommentsAndStrings(source)
+        let wiring: [(canary: String, helper: String)] = [
+            ("testNoProductionPollution", "Self.newProductionPollution("),
+            ("testProductionDataBlobsAreUnchanged", "Self.rewrittenProductionBlobs("),
+            ("testFirstLaunchFlagIsNeverChangedDuringTheSuite", "Self.firstLaunchFlagDrift(")
+        ]
+        var offenders: [String] = []
+        for (canary, helper) in wiring {
+            guard let body = Self.memberBody(of: canary, in: blanked) else {
+                offenders.append("\(canary) —— 找不到它的函数体")
+                continue
+            }
+            if !body.contains(helper) {
+                offenders.append("\(canary) 不再调用 \(helper) ⇒ 它的比较体可能已被掏空")
+            }
+            if !body.contains("XCTFail") {
+                offenders.append("\(canary) 不再调用 XCTFail ⇒ 真有污染时它不会报红")
+            }
+        }
+        XCTAssertEqual(
+            offenders, [],
+            "每个生产 canary 必须仍然调用它的纯比较函数并仍然会报红 —— "
+            + "「掏空比较体」会让 canary / 树内审计 / 树外闸门**三层同时失明**"
+            + "（独立核验员 V6）：\(offenders)"
+        )
+    }
+
+    /// ㉓b **正对照**：三个纯比较函数必须**还有牙**（能真的报出污染）。
+    ///
+    /// ⚠️ 正对照必须**直接调用**那三个函数（不是**重实现**一遍逻辑）——
+    /// 重实现的那份永远不会坏 ⇒ 它证明不了真身在坏（核验员 V6 的原话）。
+    func testThePureProductionComparisonsStillHaveTeeth() throws {
+        // 新增键 ⇒ 报出
+        let added = ZZZSuiteTeardownTests.newProductionPollution(
+            before: [:],
+            after: ["zzz-review1049-new": "v"]
+        )
+        XCTAssertEqual(
+            added.count, 1,
+            "新增的生产域键必须被报成污染（`newProductionPollution` 没牙了）"
+        )
+        XCTAssertTrue(
+            added.first?.contains("zzz-review1049-new") == true,
+            "报出的污染必须点名那个键：\(added)"
+        )
+        // 删除键 ⇒ 报出（删除比新增更严重）
+        let removals = ZZZSuiteTeardownTests.newProductionPollution(
+            before: ["zzz-review1049-gone": "v"],
+            after: [:]
+        )
+        XCTAssertEqual(
+            removals.count, 1,
+            "被删除的生产域键必须被报出（丢用户的值比污染更严重）"
+        )
+        // 两边一样 ⇒ 没有污染
+        XCTAssertEqual(
+            ZZZSuiteTeardownTests.newProductionPollution(
+                before: ["zzz-review1049-same": "v"],
+                after: ["zzz-review1049-same": "v"]
+            ),
+            [],
+            "前后一致的快照**不得**报出污染"
+        )
+        // blob 字节变化 ⇒ 报出；字节相同 ⇒ 不报
+        guard let key = TestIsolation.productionDataKeys.min() else {
+            throw XCTSkip("生产数据键集合为空 ⇒ 无法构造 blob 正对照")
+        }
+        let blobBefore: [String: Any] = [key: Data([0x01, 0x02])]
+        let blobAfter: [String: Any] = [key: Data([0x01, 0x03])]
+        XCTAssertEqual(
+            ZZZSuiteTeardownTests.rewrittenProductionBlobs(
+                before: blobBefore,
+                after: blobAfter
+            ),
+            [key],
+            "生产数据 blob 的**字节**变了就必须被报出"
+        )
+        XCTAssertEqual(
+            ZZZSuiteTeardownTests.rewrittenProductionBlobs(
+                before: blobBefore,
+                after: blobBefore
+            ),
+            [],
+            "字节没变的 blob 不得被报出"
+        )
+    }
+
     // MARK: - Helpers
+
+    /// The test-process guards in `ImageStorage.swift`: how many there are and
+    /// which of them are malformed.
+    ///
+    /// ⚠️ ID-REVIEW-1049 第四轮（独立核验员 P2-3）：判据里加了**词边界** ——
+    /// 原本是**子串**匹配 `if Self.isRunningTests` ⇒ 把谓词改名成
+    /// `if Self.isRunningTestsDisabled {` 仍然命中 ⇒ 计数不变、形状不变 ⇒
+    /// **守卫全绿** ⇒ 而真闸门已经失效。
+    private static func scanImageStorageGuards(
+        in blanked: String
+    ) -> (count: Int, offenders: [String]) {
+        var count = 0
+        var offenders: [String] = []
+        var searchStart = blanked.startIndex
+        while let found = blanked.range(
+            of: "if Self.isRunningTests",
+            range: searchStart..<blanked.endIndex
+        ) {
+            count += 1
+            searchStart = found.upperBound
+            // The match must END the predicate — a word boundary.
+            let afterMatch = blanked[found.upperBound...]
+            if let next = afterMatch.first,
+               next.isLetter || next.isNumber || next == "_" {
+                offenders.append(
+                    "a test-process guard whose predicate was RENAMED "
+                    + "(`...isRunningTests` 后面紧跟标识符字符 ⇒ 它不是那个闸门了)"
+                )
+                continue
+            }
+            let after = String(blanked[found.upperBound...])
+            guard let returnRange = after.range(of: "return") else {
+                offenders.append("a test-process guard with NO `return`")
+                continue
+            }
+            // The `return` must be the guard's OWN first statement — i.e. the
+            // guard body is a bare early return, not a conditional inside a
+            // longer block.
+            let between = String(after[..<returnRange.lowerBound])
+            if between.contains("if ") || between.contains("else") {
+                offenders.append("a test-process guard whose `return` is not the first statement")
+            }
+        }
+        return (count, offenders)
+    }
+
+    /// The body of the member function `name` inside `blanked` (a source
+    /// whose comments and string literals have been replaced by spaces).
+    ///
+    /// ⚠️ Brace matching is safe on the BLANKED copy: string literals and
+    /// comments are blanked ⇒ no stray `{` / `}` can appear inside them.
+    private static func memberBody(of name: String, in blanked: String) -> String? {
+        guard let signature = blanked.range(of: "func \(name)(") else { return nil }
+        guard let open = blanked.range(of: "{", range: signature.upperBound..<blanked.endIndex) else {
+            return nil
+        }
+        var depth = 0
+        var index = open.lowerBound
+        while index < blanked.endIndex {
+            let character = blanked[index]
+            if character == "{" { depth += 1 }
+            if character == "}" {
+                depth -= 1
+                if depth == 0 {
+                    return String(blanked[signature.upperBound..<index])
+                }
+            }
+            index = blanked.index(after: index)
+        }
+        return nil
+    }
 
     /// Repository root, computed from this file's own location.
     private static let repoRoot: URL = {

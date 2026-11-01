@@ -352,15 +352,25 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// intentional redundancy: test-method-level failures cause
     /// `xcodebuild` to exit non-zero, but a future CI tool that swallows
     /// `XCTFail` would still see the explicit `XCTAssert` as a hard stop.
-    func testNoProductionPollution() throws {
-        ProductionCanaryGuard.recordStart()
-        try ProductionCanaryGuard.skipIfAnotherInstanceIsRunning()
-        try ProductionCanaryGuard.skipUnlessProductionBaselineCaptured()
-        ProductionCanaryGuard.recordExecution()
-        let bundleId = Bundle.main.bundleIdentifier ?? ""
-        let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
-        let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
-
+    /// ID-REVIEW-1049 第四轮（2026-11-01）：**纯**比较函数 —— 「前后两份生产域
+    /// 快照之间，哪些键属于**新污染**」。
+    ///
+    /// ⚠️ **为什么抽出来**（独立核验员 V6，2026-11-01）：核验员把 canary 的
+    /// **比较体**整段删掉（只留 `recordExecution()` 记账）⇒ canary 报 passed、
+    /// 树内审计报 passed、树外闸门报「安全网是开着的」⇒ **两层同时失明**
+    /// ⇒ ⇒ 判定逻辑一旦只存在于 canary 的函数体里，它就**不可直接断言**。
+    ///
+    /// ⇒ 修法与 `firstLaunchFlagDrift`（ID-REVIEW-1047）**同形**：把判定抽成
+    /// **纯函数** ⇒ ①「正对照」能直接调用它并证明它**还有牙**；
+    /// ② canary 若不再调用它，**接线守卫**（`Review1049RegressionTests` 守卫 ㉔）
+    /// 会变红 ⇒ ⇒ 「掏空 canary 体」这个变异**不再是沉默的**。
+    ///
+    /// ⚠️ **纯**：不读全局状态、不写任何东西 ⇒ 断言它**不会**成为它要消灭的
+    /// 那种伤害源（ID-REVIEW-1042 教训）。
+    static func newProductionPollution(
+        before: [String: Any],
+        after: [String: Any]
+    ) -> [String] {
         // Build filtered key sets (strip system keys)
         let filteredBefore = Self.withoutSystemKeys(before)
         let filteredAfter = Self.withoutSystemKeys(after)
@@ -409,6 +419,21 @@ final class ZZZSuiteTeardownTests: XCTestCase {
                 // comments on the two sets for why each is acceptable.
             }
         }
+        return newPollution
+    }
+
+    func testNoProductionPollution() throws {
+        ProductionCanaryGuard.recordStart()
+        try ProductionCanaryGuard.skipIfAnotherInstanceIsRunning()
+        try ProductionCanaryGuard.skipUnlessProductionBaselineCaptured()
+        ProductionCanaryGuard.recordExecution()
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
+        let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
+
+        // ⚠️ 判定在**纯函数**里（ID-REVIEW-1049 第四轮）⇒ 「正对照」能直接
+        // 断言它还有牙；canary 不再调用它时，接线守卫会变红（核验员 V6）。
+        let newPollution = Self.newProductionPollution(before: before, after: after)
 
         if !newPollution.isEmpty {
             let message = "ZZZ suite teardown: NEW production UserDefaults pollution detected "
@@ -445,6 +470,25 @@ final class ZZZSuiteTeardownTests: XCTestCase {
     /// re-encode changes the bytes without changing the data. That is
     /// still a write to the user's data, and it is still the thing that
     /// hid the incident, so it must not pass silently.
+    /// ID-REVIEW-1049 第四轮（2026-11-01）：**纯**比较函数 —— 「哪几个生产数据
+    /// blob 的**字节**在两份快照之间变了」。
+    ///
+    /// ⚠️ **为什么抽出来**：同 `newProductionPollution` 的理由（核验员 V6：
+    /// 掏空 canary 的比较体 ⇒ 两层同时失明）。
+    static func rewrittenProductionBlobs(
+        before: [String: Any],
+        after: [String: Any]
+    ) -> [String] {
+        var rewritten: [String] = []
+        for key in TestIsolation.productionDataKeys.sorted() {
+            let beforeData = before[key] as? Data
+            let afterData = after[key] as? Data
+            if beforeData == afterData { continue }
+            rewritten.append(key)
+        }
+        return rewritten
+    }
+
     func testProductionDataBlobsAreUnchanged() throws {
         // ID-REVIEW-1030: the content comparison can only be trusted when no
         // other ClipMemory instance is running — see the helper's doc comment.
@@ -461,14 +505,11 @@ final class ZZZSuiteTeardownTests: XCTestCase {
         let after = UserDefaults.standard.persistentDomain(forName: bundleId) ?? [:]
         let before = AAASuiteBootstrapTests.productionPersistentDomainBefore
 
-        for key in TestIsolation.productionDataKeys.sorted() {
-            let beforeData = before[key] as? Data
-            let afterData = after[key] as? Data
-
-            if beforeData == afterData { continue }
-
-            let beforeBytes = beforeData?.count ?? 0
-            let afterBytes = afterData?.count ?? 0
+        // ⚠️ 判定在**纯函数**里（ID-REVIEW-1049 第四轮）⇒ 「正对照」能直接
+        // 断言它还有牙；canary 不再调用它时，接线守卫会变红（核验员 V6）。
+        for key in Self.rewrittenProductionBlobs(before: before, after: after) {
+            let beforeBytes = (before[key] as? Data)?.count ?? 0
+            let afterBytes = (after[key] as? Data)?.count ?? 0
             let message = """
             ID-CRASH-0031: the production data blob "\(key)" was rewritten during the \
             test suite (before: \(beforeBytes) bytes, after: \(afterBytes) bytes).
