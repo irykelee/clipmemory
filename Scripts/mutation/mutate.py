@@ -475,6 +475,13 @@ ZZZ_PURE_CALL_GUTTED = "        let newPollution: [String] = []\n"
 # ⚠️ 真跑它会让 legacy 迁移在测试宿主里执行 ⇒ **写用户的生产域** ⇒
 #   ⇒ 因此这条变异**只窄跑那一个守卫测试**（`only`）⇒ 生产写入路径根本
 #   不会被执行 ⇒ 零风险（实测：生产域 digest 前后一致）。
+R1049 = "Tests/ClipMemoryTests/Review1049RegressionTests.swift"
+R1049_GUARD_212_SIG = (
+    "    func testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease() throws {\n"
+)
+R1049_GUARD_212_RENAMED = (
+    "    func zzRenamedTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease() throws {\n"
+)
 IS = "ClipMemory/Services/ImageStorage.swift"
 IS_EARLY_RETURN = "        if Self.isRunningTests {\n"
 IS_EARLY_RETURN_RENAMED = "        if Self.isRunningTestsDisabled {\n"
@@ -587,6 +594,9 @@ MUTATIONS = [
      [(GATE_SCRIPT, GATE_PROBLEMS_IF, GATE_PROBLEMS_IF_NEUTERED)]),
     ("N45", "**CI 里的闸门调用被删**（脚本还在，但永远不会执行）",
      [(CI_YML, CI_GATE_CALL, CI_GATE_CALL_REMOVED)]),
+    # ── 第五轮：**锁的清单**自己的牙齿 ───────────────────────────────────
+    ("N47", "**守卫被改名**（㉒ 不再被 XCTest 跑 ⇒ 清单的名字/数量检查必须抓到）",
+     [(R1049, R1049_GUARD_212_SIG, R1049_GUARD_212_RENAMED)]),
     # ── 第五轮：⑸ 的词边界（真跑，但**窄跑**到只触发守卫本身） ───────────
     ("N46", "**闸门谓词被改名**（⑸ 的子串匹配可被绕过 ⇒ 第五轮改词边界）",
      [(IS, IS_EARLY_RETURN, IS_EARLY_RETURN_RENAMED),
