@@ -851,25 +851,49 @@ def parse_failures(log_path):
     return failed, summary
 
 
+def is_caught(failed):
+    """Was the mutation CAUGHT?
+
+    ⚠️ ONE definition, used by BOTH the console print and the artifact
+    (ID-REVIEW-1049 第四轮 · 独立核验员 P2-2)：此前它们**各写一份** ⇒ 产物
+    把 `<HARNESS_ERROR: …>`（harness 自己坏了）算成「被抓住」，控制台不算
+    ⇒ ⇒ 同一份结果**两个相反的结论** ⇒ 台账被带偏。
+
+    ⇒ 规则：`<HARNESS_ERROR:` 开头的一律**不算**「被抓住」——
+    「闸门自己坏了」既不是「网开着」，也不是「网关着」。
+    """
+    return len([f for f in failed if not f.startswith("<HARNESS_ERROR:")]) > 0
+
+
 def main():
+    # ⚠️ ID-REVIEW-1049 第四轮：产物**每次从零开始** ——
+    # 此前它会**追加**到旧文件 ⇒ 产物里混着**上一轮 / 另一个 commit** 的条目
+    # ⇒ ⇒ 读的人会把旧条目当本轮结果（实测：旧 run 的 N44 `caught=False`
+    # 混进新 run ⇒ 看起来像「守卫没牙」）⇒ ⇒ 这与 ID-REVIEW-1049 F9
+    # 「产物必须自述它跑在哪棵树上」是**同一条纪律**的第二种表现。
+    # ⇒ `--append` 才保留旧条目（明确要求时才用）。
     results = []
-    # ⚠️ ID-REVIEW-1049 第四轮（入库后的安全护栏）：本脚本会**改写工作树里的
-    # 源码文件**（逐条变异 ⇒ 逐条还原）⇒ 在**脏**树上跑 ⇒ 还原会把你的
-    # 未提交改动一起冲掉 ⇒ ⇒ 默认**拒绝**执行。
-    # ⇒ `--allow-dirty` 可以强行放行（自担风险）。
+    if "--append" in sys.argv and os.path.exists(RESULTS):
+        try:
+            with open(RESULTS) as fh:
+                results = json.load(fh)
+        except Exception:
+            results = []
+    # ⚠️ 脏树护栏：它会**改写并还原**仓库里的源码文件 ⇒ 脏树上跑会冲掉
+    # 未提交的改动 ⇒ 默认拒绝（`--allow-dirty` 可强行放行）。
     if WORKTREE_DIRTY and "--allow-dirty" not in sys.argv:
         print("拒绝执行：工作树不干净。", file=sys.stderr)
         print("⇒ 本 harness 会改写并还原仓库里的源码文件 ⇒ 脏树上会冲掉你的未提交改动。",
               file=sys.stderr)
         print("⇒ 先提交 / stash，或显式加 `--allow-dirty`（自担风险）。", file=sys.stderr)
         sys.exit(2)
-    if os.path.exists(RESULTS):
-        try:
-            with open(RESULTS) as fh:
-                results = json.load(fh)
-        except Exception:
-            results = []
-
+    meta = {
+        "commit": HEAD_SHA,
+        "dirty": WORKTREE_DIRTY,
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "mutation_count": len(MUTATIONS),
+        "repo": REPO,
+    }
     snapshot_production_domain()
 
     only = set(sys.argv[1:])
@@ -891,7 +915,8 @@ def main():
                             "caught": False, "commit": HEAD_SHA,
                             "dirty": WORKTREE_DIRTY, "missing": missing})
             with open(RESULTS, "w") as fh:
-                json.dump(results, fh, indent=2, ensure_ascii=False)
+                json.dump({"meta": meta, "results": results},
+                          fh, indent=2, ensure_ascii=False)
             print(f"[{mid}] ANCHOR MISSING {missing} — skipped", flush=True)
             continue
 
@@ -976,9 +1001,7 @@ def main():
             # 「这条变异**被抓住**」⇒ 与控制台打印的 `caught`（后者排除了
             # `oob_error`）**相反** ⇒ 台账 §50.14.4 的说法对产物为假。
             # ⇒ 修法：`<HARNESS_ERROR:` 开头的一律**不算**「被抓住」。
-            "caught": len([
-                f for f in failed if not f.startswith("<HARNESS_ERROR:")
-            ]) > 0,
+            "caught": is_caught(failed),
             "failed_count": len(failed),
             # ⚠️ 第四轮：把两层 out-of-band 的状态**写进产物** —— 此前
             # `oob_error` / `oob_failed` 只存在于控制台 ⇒ 台账里那个
@@ -993,8 +1016,9 @@ def main():
             "seconds": round(time.time() - started, 1),
         })
         with open(RESULTS, "w") as fh:
-            json.dump(results, fh, indent=2, ensure_ascii=False)
-        print(f"[{mid}] caught={bool(failed) and not oob_error} failed={failed} "
+            json.dump({"meta": meta, "results": results},
+                      fh, indent=2, ensure_ascii=False)
+        print(f"[{mid}] caught={is_caught(failed)} failed={failed} "
               f"drift={drift} prod_changed={prod_changed} oob_failed={oob_failed} "
               f"oob_error={oob_error}", flush=True)
 
