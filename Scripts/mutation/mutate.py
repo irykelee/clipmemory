@@ -908,8 +908,18 @@ def main():
 
         log_path = f"/tmp/cm1047-mut-{mid}.log"
         started = time.time()
+        contract_rc = 0
+        contract_msg = ""
         try:
             run_classes(log_path, without_aaa=(mid in NO_AAA_MUTATIONS))
+            # ⚠️ ID-REVIEW-1049 第四轮：**契约检查必须在「还原」之前跑** ——
+            # 它读的是**源码**（脚本文件 + ci.yml + release.sh）⇒ 还原之后它
+            # 看到的永远是「没被变异」的那份 ⇒ ⇒ 变异会被**误判成存活**。
+            # ⇒ 实测踩坑：N44「树外闸门被中和」最初 caught=False ⇒ 一度被
+            #   读成「守卫没牙」⇒ 实际是 **harness 的顺序错了** ⇒ 而守卫
+            #   其实有牙（单独实测：中和后契约脚本 exit 1）⇒
+            #   ⇒ *「变异存活」的第一嫌疑是**工具**，不是被测物*。
+            contract_rc, contract_msg = run_out_of_band_contract()
         finally:
             restore_all()
             cleanup_residue()
@@ -936,8 +946,7 @@ def main():
                 oob_error = True
                 failed = failed + [f"<HARNESS_ERROR: out-of-band check exit {oob_rc}>"]
         # ⚠️ ID-REVIEW-1049 第四轮：树外闸门**自己**的契约 + 接线（静态 ⇒ 与
-        # 测试跑无关 ⇒ 每条变异都查）。
-        contract_rc, contract_msg = run_out_of_band_contract()
+        # 测试跑无关 ⇒ 每条变异都查）。⚠️ 它在**还原之前**已经算好了（见上）。
         if contract_rc == 1:
             contract_failed = True
             failed = failed + ["<OUT_OF_BAND: gate contract/wiring violated>"]
