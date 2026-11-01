@@ -995,7 +995,16 @@ def main():
         oob_error = False
         contract_failed = False
         contract_error = False
-        if mid not in NO_AAA_MUTATIONS:
+        # ⚠️ 窄跑（`only`）的变异**不能**用树外闸门判：窄跑本就不跑三个
+        # canary ⇒ 闸门读日志必然看到「没有 passed」⇒ exit 1 ⇒ 那不是
+        # 「这条变异被抓」，而是「这次跑法没有 canary」⇒ ⇒ 记成 oob_failed
+        # 会**误导**（实测 N46：oob_failed=True，但它是被树内守卫 ⑸ 抓的）。
+        oob_skipped = ""
+        if options.get("only"):
+            oob_skipped = "narrow-selector mutation ⇒ 三个 canary 不在选择器里"
+        elif mid in NO_AAA_MUTATIONS:
+            oob_skipped = "no-AAA mode ⇒ canary 合法跳过"
+        if not oob_skipped:
             oob_rc, oob_msg = run_out_of_band_check(log_path)
             # ⚠️ Exit-code discipline: 0 = armed, 1 = the check RAN and the net
             # is OFF ⇒ the mutation is CAUGHT; 2 = the check COULD NOT RUN
@@ -1045,6 +1054,7 @@ def main():
             # 「oob_error 0 条」在证据文件里**查无实据**。
             "oob_failed": oob_failed,
             "oob_error": oob_error,
+            "oob_skipped": oob_skipped,
             "contract_failed": contract_failed,
             "contract_error": contract_error,
             "summary": summary,
