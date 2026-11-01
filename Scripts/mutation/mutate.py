@@ -1102,6 +1102,12 @@ def main():
     for entry in MUTATIONS:
         mid, label, patches = entry[0], entry[1], entry[2]
         options = entry[3] if len(entry) > 3 else {}
+        # ⚠ ID-REVIEW-1049 第六轮：**默认**期望「树内 XCTest 断言」抓住它
+        #   ⇒ 每条变异都必须有一个**具体**的抓手 ⇒ 「被别的机制抓住」会被标成
+        #   `catcher_mismatch` ⇒ 这就是 N28 那一类假绿（编译失败 ⇒ 树内根本没
+        #   跑 ⇒ 被树外闸门「顺手」记成抓住）的**通用防线**。
+        #   ⇒ 真正该由树外抓的（N41 / N44 / N47 / N48 / N49）在条目里显式声明。
+        expect = options.get("expect") or [CATCHER_TREE]
         if only and mid not in only:
             continue
         backups = {}
@@ -1232,10 +1238,9 @@ def main():
             #   第五轮只记 `caught=True` ⇒ 被**别的机制**抓住时 harness 照样绿
             #   ⇒ 台账据此写的「有效性由 harness 保证」是假的。
             "caught_by": sorted(catchers_of(failed)),
-            "expect_catcher": options.get("expect"),
+            "expect_catcher": expect,
             "catcher_mismatch": bool(
-                options.get("expect")
-                and not (set(options["expect"]) & catchers_of(failed))
+                not (set(expect) & catchers_of(failed))
             ),
             # ⚠️ 第六轮：区分「被抓住」/「没证明」/「存活」 ——
             #   编译失败与宿主崩溃都是**什么都没证明**，不是「被抓住」。
@@ -1263,7 +1268,7 @@ def main():
                       fh, indent=2, ensure_ascii=False)
         print(f"[{mid}] caught={is_caught(failed)} by={sorted(catchers_of(failed))} "
               f"status={'CAUGHT' if catchers_of(failed) else ('NOT_PROVEN' if not proven else 'SURVIVED')} "
-              f"expect={options.get('expect')} failed={failed} "
+              f"expect={expect} failed={failed} "
               f"drift={drift} prod_changed={prod_changed} oob_failed={oob_failed} "
               f"oob_error={oob_error}", flush=True)
 
