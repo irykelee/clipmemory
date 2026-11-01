@@ -4180,3 +4180,53 @@ python3 -c "import plistlib,hashlib;d=plistlib.load(open('/Users/iryke/Library/P
 | **P2-3** | ⑸ 的词边界变异**未**入自动 harness（第四轮的理由：真跑会写生产域）⇒ 核验员给出**更优解**：项目**无 `TEST_HOST`** ⇒ 测试跑在**独立进程**、AppDelegate 不启动 ⇒ **只窄跑那一个守卫测试** ⇒ 生产写入路径根本不会被执行 | harness 新增**每条变异可选的窄跑选择器** ⇒ **N46** 入库（只跑 `testEveryImageStorageTestProcessGuardIsABareEarlyReturn`）⇒ 生产域 digest 前后一致由 harness 的快照/比对机制兜住 |
 | **P3-1** | 交底里的 HEAD 不准（实际 `abcb98c`）⇒ 但被审 8 个文件与 `0f2afdb` **逐字相同** | 台账 §50.15.7 的 `commit=0f2afdb` 判定为**如实**（非过期）⇒ §50.16.6 加一句说明 |
 | **P3-2** | 台账的 Preferences 计数（3703→3897）与核验员自己的（3896→3986）**口径不同** | §50.16.6 注明**口径**（台账 = 45 次窄跑；核验员 = 10+ 次全量/窄跑）⇒ **非造假** |
+
+#### 50.16.5 第五轮验收（**实测**）
+
+| 项 | 命令 / 口径 | 结果 |
+|---|---|---|
+| 全量 | `xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/cm1049-dd` | **1440 tests / 4 skipped / 0 failures** · `** TEST SUCCEEDED **` |
+| **树外闸门** | `python3 Scripts/verify-production-canaries.py <全量日志>` | ✅「三个生产 canary 与 canary 审计均已 **passed**（安全网是开着的）」· 退出码 **0** |
+| **闸门契约脚本** | `bash Scripts/test/test_verify_production_canaries.sh` | ✅ **11 条输出**（**10 条断言 + 1 条汇总**）· 退出码 **0**（第四轮台账写「10 条断言」⇒ **口径订正**，见 §50.16.4 的 P2-1） |
+| **锁的清单** | 契约脚本内的清单核对段 | ✅ 逐条通过：2 个 `file` 数量棘轮（15 ≥ 15、7 ≥ 7、1 ≥ 1）+ 9 个 `guard` 名字检查 + 「清单逐条核对通过」 |
+| lint | `swiftlint lint --quiet` | **10 = 基线**（棘轮未变） |
+| 变异 | `CM_MUTATION_OUT=… python3 Scripts/mutation/mutate.py`（**干净树**） | **47 条（N1–N47）全红**、`caught=False` **0** 条、`restore_drift=True` **0** 条、`oob_error=True` **0** 条、`contract_error=True` **0** 条、`production_domain_changed=True` **仅 N23** |
+| 产物自述 | `/tmp/cm1049r5-mutations.json` | `meta = {commit: dbafef7…, dirty: false, mutation_count: 47, started_at: …}`；45 条之外的 47 条**每条的 `commit` 都等于 `meta.commit`** |
+| 生产域 | 跑前 / 跑后两次只读快照 | **29 键、digest `9fdf7e3ba73105ff`，两次一致**（配方见 §50.15.7） |
+| 生产钥匙串 | `security find-generic-password -s com.clipmemory.app -a root-encryption-key`（**只读属性**） | `cdat/mdat = 20260719035159Z` **未被触碰** |
+| `~/Library/Preferences` | plist 计数 | 4068 → **4154**（+86）⇒ 47 次窄跑累计 ⇒ 落在 §40.5 已披露的区间内 ⇒ **既有行为** |
+| 工作树 | `git status --porcelain` | **空**（harness 逐条还原 ⇒ 无残留变异） |
+
+**本轮 2 条新变异各被预期的层抓住**：
+
+| 变异 | 形状 | 被谁抓住 |
+|---|---|---|
+| **N46** | 闸门**谓词被改名**（⑸ 的子串匹配可被绕过） | **树内** 守卫 ⑸ `testEveryImageStorageTestProcessGuardIsABareEarlyReturn`（⚠️ 窄跑 ⇒ `oob_skipped` 已记原因 ⇒ 不再用树外闸门判，避免**误导**） |
+| **N47** | **守卫 ㉒ 被改名**（它不再被 XCTest 跑 ⇒ 静默失效） | **树外**清单层 `<OUT_OF_BAND: gate contract/wiring violated>`（**只有**树外的清单能抓它） |
+
+#### 50.16.6 这一族的完整谱系（到第五轮为止）
+
+| 轮次 | 缺口代号 | 形状 | 抓住它的层 |
+|---|---|---|---|
+| 1047 | **M5** | 一个标志被删 | 树内审计（读**原始事实**） |
+| 1048 | **V4** | 两个声明一起删 | 树内审计（**三方交叉核对**） |
+| 1049 三轮 | **V5** | 连**捕获**一起删（三站点） | **树外**闸门（读**测试日志**） |
+| 1049 四轮 | **V7** | **树外那把锁**本身没人锁 | 树内守卫 ㉑/㉒ + **树外**契约脚本 |
+| 1049 五轮 | **V8** | **锁的清单**也在锁里面 ⇒ 锁可被整把摘掉 | **树外的清单**（`Scripts/canary-gate-locks.txt`）+ 树外契约脚本 |
+
+⇒ ⇒ *这条族的形状在迭代中**逐层上移**：每一次修法都把「谁在断言」往**树外**推一层 ⇒
+⇒ 而**极限**始终是同一个：**仓库里的一切同时被删** ⇒ ⇒ 台账 §50.16.3 记的
+**5 处 / 4 类文件**就是当前的精确极限（再往上就没有「树内/树外」之分了）。
+
+#### 50.16.7 已知残余（如实记录，**不夸大也不缩小**）
+
+1. **清单只查「存在 + 数量」，不查「有效性」** ⇒ 一个**被掏空**（函数还在、断言
+   没了）的守卫**能过清单** ⇒ ⇒ 有效性由**变异 harness 的连续复跑**保证
+   （㉒ 被掏空 ⇒ N45 会「存活」⇒ harness 报红）⇒ ⇒ 两层分工：**清单管存在，
+   harness 管有效**。
+2. **协同删除的精确极限 = 5 处 / 4 类文件**（2 个守卫 + 2 个脚本 + CI/release
+   的调用点）⇒ 而**中间态**（删 3 处）**CI 仍红**（CI 仍调用**缺失的**契约脚本
+   ⇒ `bash` 127 ⇒ 红）⇒ ⇒ 这条**偶然**兜底不是设计意图，但确实兜住。
+3. **⑸ 的词边界**已入 harness，但它是**窄跑**（只跑那一个守卫测试）⇒ 它证明的
+   是「守卫会变红」，**不是**「整条链路在生产域上零污染」⇒ 后者由 harness 的
+   生产域快照/比对 + 独立核验员的前后 digest 实测保证。
