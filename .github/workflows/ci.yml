@@ -289,6 +289,23 @@ jobs:
           set -euo pipefail
           python3 Scripts/test/test_shell_heredoc_quote_rule.py .
 
+      # ID-REVIEW-1049 第十轮 (2026-11-02): the ledger's own section pointers.
+      #
+      # ⇒ "见 §50.22.4" is a POINTER, and a pointer is data: pointing at a
+      #   section that does not exist breaks the chain of reasoning while
+      #   looking perfectly normal. This is V14 ("the label must be sourced
+      #   from the same thing it points at") applied to pointers.
+      #
+      # ⇒ The review gate raised exactly this twice on 2026-11-02 ("ensure the
+      #   reference will not break when section numbers change"). Prose cannot
+      #   stop that ⇒ it needs a mechanical check.
+      #
+      # ⇒ Its own step (attributable failures — ID-REVIEW-1049 sixth round P3-6).
+      - name: "Ledger section pointers resolve (ID-REVIEW-1049 第十轮)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_ledger_section_pointers.py .
+
       - name: Assert the production canaries actually ran (ID-REVIEW-1049 第三轮)
         # The three production canaries are the ONLY thing that catches
         # "a test wrote the user's production domain". A **skipped** canary

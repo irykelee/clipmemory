@@ -64,6 +64,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -220,19 +221,51 @@ def bash_major(interpreter: str) -> int | None:
     return None
 
 
+def find_bash5() -> str | None:
+    '''找到 PATH 上**主版本 ≥ 5** 的 bash ⇒ 返回其路径。
+
+    ⚠️ **为什么不能直接用 `"bash"`**（实测踩过 ⇒ CI 跑红，2026-11-02）：
+    * 本机：`bash` = `/opt/homebrew/bin/bash`（**5.3**）⇒ 用它验 5.x 列。
+    * **GitHub 的 macOS runner**：`bash` = **`/bin/bash`（3.2）** ⇒ 用它验
+      「5.x 列」⇒ 实测拿到 **rc=2**（3.2 的行为）⇒ 与语料里「5.x = 0」的
+      期望**冲突** ⇒ ⇒ **CI 红**，而本机全绿。
+    ⇒ ⇒ 也就是说：*「`bash`」这个名字在两台机器上指的是**不同的东西***
+    ⇒ ⇒ ⇒ **语料里的一列必须绑定到「某个明确版本的 bash」，而不是一个名字**
+    ⇒ ⇒ 本函数找**主版本 ≥ 5** 的那个 ⇒ 找不到 ⇒ **该列跳过**（不假装检查过）。
+    '''
+    candidates = [
+        "/opt/homebrew/bin/bash",
+        "/usr/local/bin/bash",
+        "/usr/bin/bash",
+    ]
+    which = shutil.which("bash")
+    if which:
+        candidates.insert(0, which)
+    seen: set[str] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        major = bash_major(path)
+        if major is not None and major >= 5:
+            return path
+    return None
+
+
 def corpus_sha256(path: str) -> str:
     with open(path, "rb") as fh:
         return hashlib.sha256(fh.read()).hexdigest()
 
 
 def observed_cases(tmpdir: str) -> list[dict[str, object]]:
+    bash5 = find_bash5()
     cases: list[dict[str, object]] = []
     for shape in SHAPES:
         for quote, counts in (("dq", DQ_COUNTS), ("sq", SQ_COUNTS)):
             for count in counts:
                 script = build_script(shape, quote, count, tmpdir)
                 rc32 = run_bash_n(script, BASH3, tmpdir)
-                rc53 = run_bash_n(script, "bash", tmpdir)
+                rc53 = run_bash_n(script, bash5, tmpdir) if bash5 else None
                 cases.append({
                     "shape": shape,
                     "quote": quote,
@@ -291,7 +324,7 @@ def check_baselines(corpus: dict) -> list[str]:
     return problems
 
 
-def compare(corpus: dict, tmpdir: str) -> list[str]:
+def compare(corpus: dict, tmpdir: str, bash5: str | None = None) -> list[str]:
     problems: list[str] = []
     by_key = {
         (c["shape"], c["quote"], int(c["count"])): c
@@ -323,10 +356,16 @@ def compare(corpus: dict, tmpdir: str) -> list[str]:
                     )
                 want53 = case.get("expect_bash53_rc")
                 if want53 is not None:
-                    rc53 = run_bash_n(script, "bash", tmpdir)
+                    # ⚠️ **只在真的找到 ≥5 的 bash 时才验这一列** ——
+                    #   否则「`bash`」在 CI 上指的是 **3.2** ⇒ 会拿 3.2 的行为
+                    #   去对「5.x 的期望」⇒ **必然冲突** ⇒ CI 假红
+                    #   （实测踩过，2026-11-02）。
+                    if bash5 is None:
+                        continue
+                    rc53 = run_bash_n(script, bash5, tmpdir)
                     if rc53 is None:
                         problems.append(
-                            f"{shape}/{quote}/{count}: 没能用 bash -n 检查 5.3 列"
+                            f"{shape}/{quote}/{count}: 没能用 {bash5} -n 检查 5.x 列"
                         )
                     elif rc53 != int(want53):
                         problems.append(
@@ -342,7 +381,7 @@ def self_test() -> list[str]:
     with tempfile.TemporaryDirectory() as tmpdir:
         cases = observed_cases(tmpdir)
         corpus = build_corpus(cases)
-        clean = compare(corpus, tmpdir)
+        clean = compare(corpus, tmpdir, find_bash5())
         if clean:
             problems.append(
                 "自检失败：刚生成的语料与实测**本应一致**，却报出 "
@@ -351,7 +390,7 @@ def self_test() -> list[str]:
         # 注入假期望
         first = corpus["cases"][0]
         first["expect_bash32_rc"] = 99
-        poisoned = compare(corpus, tmpdir)
+        poisoned = compare(corpus, tmpdir, find_bash5())
         if not poisoned:
             problems.append(
                 "自检失败：注入假期望后**仍然全绿** ⇒ 本守卫**没有牙齿**"
@@ -446,7 +485,7 @@ def main(argv: list[str]) -> int:
     problems.extend(check_baselines(corpus))
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        problems.extend(compare(corpus, tmpdir))
+        problems.extend(compare(corpus, tmpdir, find_bash5()))
 
     if problems:
         print("❌ 规则守卫发现不一致：", file=sys.stderr)
@@ -455,8 +494,14 @@ def main(argv: list[str]) -> int:
         return 1
 
     total = len(corpus.get("cases", []))
+    bash5 = find_bash5()
+    if bash5 is None:
+        suffix = "；⚠️ **本机没有 bash ≥ 5** ⇒ 5.x 列**已跳过**（不假装检查过）"
+    else:
+        suffix = f"；5.x 列用 `{bash5}`（bash {bash_major(bash5)}）复核"
     print(f"✅ {total} 条规则用例与实测**逐条一致**（{BASH3} = "
-          f"bash {bash_major(BASH3)}）⇒ 规则没有漂移；语料 sha256 已锁定")
+          f"bash {bash_major(BASH3)}）⇒ 规则没有漂移；语料 sha256 已锁定"
+          + suffix)
     return 0
 
 
