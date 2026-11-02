@@ -44,6 +44,14 @@ set -uo pipefail
 #        变成**机械事实**：口径漂移 ⇒ 那一边的校验立刻变红。
 #   ⇒ ⇒ 该绕过已固化为变异 **N51**（实测被本脚本的契约层抓住）。
 #
+# ⚠️ ID-REVIEW-1049 第八轮（审核门 P2 confirmed）：**语料的 sha256 是
+#   「文件原始字节」口径** ⇒ ⇒ 那就**必须**把它的字节口径一起锁 ⇒ ⇒
+#   `.gitattributes` 里有 `*.sh` / `*.py` / `*.yml` / `*.md` 的 `text eol=lf`，
+#   但**原来没锁 `*.json`** ⇒ Windows checkout（autocrlf）会把语料字节换成
+#   CRLF ⇒ 哈希对不上 ⇒ 本脚本**误红** ⇒ ⇒ 本轮已加 `*.json text eol=lf`。
+#   ⇒ ⇒ *锁一个**字节口径**的东西，就必须连它的**字节口径**一起锁* —— 这是
+#   本族（「数出来的东西是不是真货」）在**版本控制**这一层的同形表现。
+#
 # ⚠ ID-REVIEW-1049 第六轮：模式开关 ⇒ CI 里「契约 + 接线」与「清单完整性」
 #   各自一个 step ⇒ 失败时**一眼看得出是哪一层**（独立核验员 P3-5：第五轮
 #   的新机制**寄生**在第四轮的 step 里 ⇒ 失败归属不清）。
@@ -185,6 +193,18 @@ MANIFEST="$REPO_ROOT/Scripts/canary-gate-locks.txt"
 #   ⇒ **口径**：清单的**有效行**（非空、非注释）**逐行 strip** ⇒ 用换行连接
 #   ⇒ 末尾**再加一个**换行 ⇒ 取 sha256。
 #   ⇒ ⇒ **注释不参与哈希** ⇒ 日常改注释**不必**重算 ⇒ 改**条目**才必须。
+#
+# ⚠️ ID-REVIEW-1049 第八轮：**这三个常量为什么是现在这个数**（审核门 P1 指到的
+#   缺口 —— 原先只写「要同步改」，没写**这次**为什么变 ⇒ 下一个改清单的人
+#   不知道自己改了什么）：
+#   * `EXPECTED_FILE_ENTRIES=3` ⇒ 三个文件条目（1049 守卫文件 / ZZZ 套件 /
+#     ZZZ 审计）⇒ **第八轮未变**。
+#   * `EXPECTED_GUARD_ENTRIES=9 → 10` ⇒ **第八轮新增**树内守卫 ⑹
+#     `testTheBlankingScannerAgreesWithTheSharedCorpus`（读共用语料）
+#     ⇒ 清单的 `guard` 条目 **+1** ⇒ 同步 +1。
+#   * `EXPECTED_MANIFEST_SHA256` ⇒ 随之变化（清单**有效行**变了 ⇒ 哈希必变）。
+#     ⚠️ 同时清单里 `file` 条目的**最少 `func test` 数** 15 → 16（第八轮加了
+#     守卫 ⑹ ⇒ 那个文件多了一个 `func test`）⇒ ⇒ **清单与本脚本是两次协同**。
 EXPECTED_FILE_ENTRIES=3
 EXPECTED_GUARD_ENTRIES=10
 EXPECTED_MANIFEST_SHA256=43bc08783c4c3ae534ce0085a19e37d891f106dda5ed6ce9bbb27dc17ae032eb

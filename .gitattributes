@@ -14,6 +14,13 @@
 
 # Scripts (lint-anchored regex sensitive to line endings)
 *.sh             text eol=lf
+# ⚠️ ID-REVIEW-1049 第八轮（审核门 P2 confirmed）：`*.json` **原来没被锁**
+#   ⇒ 抹白语料 `Scripts/test/blanking-corpus.json` 的 sha256 口径是
+#   **文件原始字节** ⇒ Windows checkout（autocrlf）会把字节换成 CRLF
+#   ⇒ 哈希对不上 ⇒ 契约脚本**误红** ⇒ ⇒ 锁一个**字节口径**的东西 ⇒
+#   **必须**连它的字节口径一起锁。
+*.json           text eol=lf
+*.sh             text eol=lf
 *.yml            text eol=lf
 *.yaml           text eol=lf
 *.toml           text eol=lf
