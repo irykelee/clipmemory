@@ -131,6 +131,11 @@ LEDGER_COUNTS_ROW = re.compile(
     r"\|\s*正对照\s*\|.*?\*\*(\d+)\*\*\s*处指针.*?"
     r"\*\*(\d+)\*\*\s*个节标题.*?\*\*(\d+)\*\*\s*处指向",
 )
+# ⚠️ 台账里**必须**写着本守卫自检的**断言数** ⇒ ⇒ 否则「自检用例数」这个
+#   数字是**手写**的 ⇒ ⇒ 没人核对 ⇒ ⇒ 核验员 P2-1 实测：台账写「8 类坏指针
+#   + 3 类台账数字问题」，守卫自报 7/2 ⇒ ⇒ 三个数字**都数不上** ⇒ ⇒ ⇒
+#   ⇒ ⇒ 本条把那个数字变成**机器核对**的（散文守卫用同款机制）。
+SELF_COUNT_LEDGER_RE = re.compile(r"指针守卫自检断言数[：:]\s*\*\*(\d+)\*\*")
 
 
 def check_ledger(lines: list[str]) -> tuple[list[str], int, list[tuple[int, str, str]], int]:
@@ -401,22 +406,34 @@ SELF_TEST_CASES: list[tuple[str, str, str | None]] = [
 ]
 
 
-def self_test() -> list[str]:
-    '''在合成台账上注入坏指针 ⇒ 断言**每一类都报红** ⇒ 证明「有牙齿」。'''
+def self_test() -> tuple[list[str], int]:
+    '''在合成台账上注入坏指针 ⇒ 断言**每一类都报红** ⇒ 证明「有牙齿」。
+
+    ⚠️ **断言数由机器数** ⇒ ⇒ 每一条断言都**累加** ⇒ ⇒ ⇒ 台账里那个数字
+    ⇒ ⇒ ⇒ 不许手写 ⇒ ⇒ ⇒ 它由 `main --self-test` **自报** ⇒ ⇒ ⇒ 而台账里
+    ⇒ ⇒ ⇒ 写的那个数字**由本守卫核对**（见 `main`）⇒ ⇒ ⇒ ⇒ 「陈旧数字没人
+    ⇒ ⇒ ⇒ 管」这个洞从**这一条**开始被堵上（核验员 P2-1 实测：台账写
+    ⇒ ⇒ ⇒ 「8 类坏指针 + 3 类台账数字问题」，守卫自报 7/2 ⇒ ⇒ 三个数字
+    ⇒ ⇒ ⇒ **都数不上** ⇒ ⇒ ⇒ 而其中「2」还是**手写**的常量）。
+    '''
     problems: list[str] = []
+    assertions = 0
     base_problems, base_checked, _, _ = check_ledger(SYNTHETIC_LEDGER.split("\n"))
+    assertions += 1
     if base_problems:
         problems.append(
             "自检失败：合成台账**本应干净**，却报出 "
             f"{len(base_problems)} 处问题 ⇒ 判据本身有问题："
             + base_problems[0]
         )
+    assertions += 1
     if base_checked <= 0:
         problems.append(
             "自检失败：合成台账里**一个指针都没检查**（checked=0）"
             " ⇒ 本守卫**什么都没做**却报绿 ⇒ 不算通过"
         )
     for name, text, expected in SELF_TEST_CASES:
+        assertions += 1
         found, _checked, _, _ = judge(text.split("\n"),
                                       require_counts_table=False)
         if not found:
@@ -436,6 +453,7 @@ def self_test() -> list[str]:
         "| 正对照 | ✅ exit 0（**999** 处指针全部指向真实且唯一的节；"
         "**999** 个节标题；**0** 处指向别的编号体系 ⇒ 已跳过） |\n"
     )
+    assertions += 1
     found, _, _, _ = judge(drifted.split("\n"), require_counts_table=False)
     if not any("已经漂了" in problem for problem in found):
         problems.append(
@@ -443,6 +461,7 @@ def self_test() -> list[str]:
             " ⇒ ⇒ 「台账里的数字漂了没人报红」这个洞**没堵上**"
         )
     # ⚠️ **验收表不存在** ⇒ 主路径必须报红（否则「核对机制」可被静默关闭）。
+    assertions += 1
     found, _, _, _ = judge(SYNTHETIC_LEDGER.split("\n"),
                            require_counts_table=True)
     if not any("找不到" in problem and "静默关闭" in problem for problem in found):
@@ -461,6 +480,7 @@ def self_test() -> list[str]:
         "| 正对照 | ✅ exit 0（**2** 处指针全部指向真实且唯一的节；"
         "**2** 个节标题；**0** 处指向别的编号体系 ⇒ 已跳过） |\n"
     )
+    assertions += 1
     found, _, _, _ = judge(two_tables.split("\n"),
                             require_counts_table=False)
     if not any("张「正对照」表" in problem for problem in found):
@@ -468,7 +488,7 @@ def self_test() -> list[str]:
             "自检失败：台账里有**两张**「正对照」表时**仍然全绿**"
             " ⇒ ⇒ 守卫会拿**历史**那张的数字来比 ⇒ ⇒ **虚假报错**没堵上"
         )
-    return problems
+    return problems, assertions
 
 
 def main(argv: list[str]) -> int:
@@ -490,15 +510,16 @@ def main(argv: list[str]) -> int:
         return 2
 
     if "--self-test" in flags:
-        problems = self_test()
+        problems, assertions = self_test()
         if problems:
             print("❌ 自检失败：", file=sys.stderr)
             for problem in problems:
                 print("   - " + problem, file=sys.stderr)
             return 1
-        print(f"✅ 自检通过：{len(SELF_TEST_CASES)} 类坏指针 + 2 类台账数字问题"
+        print(f"✅ 自检通过：**{assertions}** 个断言"
+              f"（{len(SELF_TEST_CASES)} 类坏指针 + 3 类台账验收表机制 + 2 个基线）"
               f"**全部报红**；占位符 / 案例编号 / 尾随标点**全部不误报**"
-              f"（⇒ 本守卫有牙齿）")
+              f"（⇒ 本守卫有牙齿；断言数由**机器数**，台账里那个数字由本守卫**核对**）")
         return 0
 
     path = os.path.join(root, LEDGER_REL)
@@ -509,6 +530,27 @@ def main(argv: list[str]) -> int:
         lines = fh.read().split("\n")
 
     problems, checked, skipped, heading_count = judge(lines)
+
+    # ⇒ ⇒ **自检也要在检查模式下跑一遍** ⇒ ⇒ ⇒ 否则「自检坏了但检查模式
+    # ⇒ ⇒ ⇒ 照样是绿的」⇒ ⇒ ⇒ 而且台账里那个数字**没人数** ⇒ ⇒ ⇒ 同族。
+    self_problems, assertions = self_test()
+    problems += [f"自检失败：{problem}" for problem in self_problems]
+    stated_list = SELF_COUNT_LEDGER_RE.findall("\n".join(lines))
+    if not stated_list:
+        problems.append(
+            f"{LEDGER_REL}: 台账里**找不到**「指针守卫自检断言数」⇒ ⇒ "
+            f"那个数字是**手写**的 ⇒ ⇒ 没人核对 ⇒ ⇒ 报红"
+            f"（补一行：指针守卫自检断言数：**{assertions}**）"
+        )
+    else:
+        drifted = [value for value in stated_list if int(value) != assertions]
+        if drifted:
+            problems.append(
+                f"{LEDGER_REL}: 台账里写的「指针守卫自检断言数」= "
+                f"**{drifted[0]}**，而**机器数**是 **{assertions}** ⇒ ⇒ "
+                f"数字**已经漂了** ⇒ ⇒ 刷成实测值（否则下一个读它的人"
+                f"会读到假数字）"
+            )
 
     if problems:
         print("❌ 台账指针检查发现断链：", file=sys.stderr)

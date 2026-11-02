@@ -220,8 +220,57 @@ def zero_files_problem(scanned: int) -> str | None:
     )
 
 
+def tracked_candidate_count(root: str) -> int | None:
+    '''**独立**枚举（`git ls-files`）⇒ ⇒ 返回应被扫到的文件数（None = 无法枚举）。
+
+    ⇒ ⇒ 为什么要有**第二条枚举路径**：本守卫的文件清单来自 `os.walk`
+    ⇒ ⇒ ⇒ 而 `os.walk` 的结果**没人核对** ⇒ ⇒ ⇒ 若路径规则失效（跳过目录
+    ⇒ ⇒ ⇒ 写错、后缀写错、walk 提前退出）⇒ ⇒ ⇒ 扫到的文件变少 ⇒ ⇒ ⇒
+    ⇒ ⇒ ⇒ 而「零文件」判据**只覆盖最极端的一种**（`scanned == 0`）⇒ ⇒ ⇒
+    ⇒ ⇒ ⇒ 剩下 1 个文件那种失效 ⇒ ⇒ ⇒ 守卫**照样报绿**（核验员 P3-3）
+    ⇒ ⇒ ⇒ ⇒ ⇒ 本函数用**另一条**枚举路径交叉核对 ⇒ ⇒ ⇒ 与 V13
+    ⇒ ⇒ ⇒ ⇒（两份实现各写各的 ⇒ ⇒ 差值能暴露单边错误）同款。
+
+    ⚠️ **已从工作树删掉、但还在 git index 里**的文件**不计入** ⇒ ⇒
+    ⇒ ⇒ 否则「删了文件还没 stage」会误报 ⇒ ⇒ ⇒ 只数**磁盘上真的存在**的。
+    '''
+    try:
+        out = subprocess.run(
+            ["git", "-C", root, "ls-files"],
+            capture_output=True, text=True, timeout=60,
+        ).stdout
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-except
+        return None
+    files = [line for line in out.split("\n") if line.strip()]
+    if not files:
+        return None
+    count = 0
+    for rel in files:
+        if not rel.endswith(SUFFIXES):
+            continue
+        if os.path.exists(os.path.join(root, rel)):
+            count += 1
+    return count
+
+
+def fewer_files_problem(scanned: int, expected: int | None) -> str | None:
+    '''扫到的文件数**少于**独立枚举出的数量 ⇒ ⇒ 报红。
+
+    ⇒ ⇒ 「零文件」只是**最极端**的一种失效形态（核验员 P3-3）⇒ ⇒
+    ⇒ ⇒ 本条堵的是**这一类**（「**少扫了**」）⇒ ⇒ ⇒ 判据是**纯函数**
+    ⇒ ⇒ ⇒ ⇒ 所以自检能直接测它（不必真的造一个坏掉的仓库）。
+    '''
+    if expected is None or scanned >= expected:
+        return None
+    return (
+        f"扫到 **{scanned}** 个文件，而**独立枚举**（`git ls-files`）出 "
+        f"**{expected}** 个 ⇒ ⇒ **少扫了** ⇒ ⇒ 路径规则失效 / 仓库结构变了"
+        f" ⇒ ⇒ 报红（不假装检查过）"
+    )
+
+
 def self_test() -> list[str]:
-    '''证明「有牙齿」：零文件**必须**报红 ⇒ ⇒ 不许报绿。'''
+    '''证明「有牙齿」：零文件**必须**报红；少扫了**也必须**报红。'''
     problems: list[str] = []
     if zero_files_problem(0) is None:
         problems.append(
@@ -231,6 +280,20 @@ def self_test() -> list[str]:
     if zero_files_problem(3) is not None:
         problems.append(
             "自检失败：扫了 3 个文件竟然报红 ⇒ ⇒ 判据过严"
+        )
+    # ⇒ ⇒ 「少扫了」这一类失效（P3-3）⇒ ⇒ 必须也能报红。
+    if fewer_files_problem(1, 5) is None:
+        problems.append(
+            "自检失败：只扫到 1 个文件、独立枚举出 5 个时**不报红** ⇒ ⇒ "
+            "「少扫了」这种失效形态**判据没覆盖** ⇒ ⇒ 本守卫**没有牙齿**"
+        )
+    if fewer_files_problem(5, 5) is not None:
+        problems.append(
+            "自检失败：扫到 5 个、独立枚举也是 5 个时竟然报红 ⇒ ⇒ 判据过严"
+        )
+    if fewer_files_problem(3, None) is not None:
+        problems.append(
+            "自检失败：**无法枚举**时竟然报红 ⇒ ⇒ 判据过严（应当跳过而不是报错）"
         )
     return problems
 
@@ -243,7 +306,8 @@ def main(argv: list[str]) -> int:
             for problem in problems:
                 print("   - " + problem, file=sys.stderr)
             return 1
-        print("✅ 自检通过：扫了 **0** 个文件**必须报红**（不假装检查过）"
+        print("✅ 自检通过：扫了 **0** 个文件**必须报红**；"
+              "「少扫了」（独立枚举对不上）**也必须报红**"
               " ⇒ ⇒ 本守卫有牙齿")
         return 0
     if len(argv) != 2:
@@ -282,6 +346,13 @@ def main(argv: list[str]) -> int:
     zero = zero_files_problem(scanned)
     if zero:
         problems.append(zero)
+
+    # ⇒ ⇒ **少扫了**（P3-3：零文件只是最极端的一种失效形态）⇒ ⇒
+    # ⇒ ⇒ 用**独立**的枚举路径交叉核对 ⇒ ⇒ 「路径规则失效 ⇒ 只剩 1 个
+    # ⇒ ⇒ 文件」这种形态也能被抓住 ⇒ ⇒ 不再只覆盖 `scanned == 0`。
+    fewer = fewer_files_problem(scanned, tracked_candidate_count(root))
+    if fewer:
+        problems.append(fewer)
 
     problems.extend(yaml_problems(root))
 
