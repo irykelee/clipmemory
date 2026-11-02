@@ -32,6 +32,8 @@
    （台账允许有孤立的节）⇒ ⇒ **不报**。⚠️ 只报**坏指针**，不报**孤儿节**
    ⇒ ⇒ 避免守卫变成「逼你删内容」。
 8. **重复节编号**本身就是问题（不要求「有指针指向它」）⇒ ⇒ 报红。
+9. 台账「验收表」里写的**数字**（指针数 / 节标题数 / 跳过数）必须**等于实测**
+   ⇒ ⇒ 不一致 ⇒ ⇒ **报红** ⇒ ⇒ 「改台账忘了刷数字」**不可能悄悄过去**。
 
 ## ⚠️ 判据陷阱（本守卫第一版踩过 ⇒ 写在这里免得再踩）
 
@@ -118,6 +120,17 @@ ANY_HEADING = re.compile(r"^#{1,6}\s")
 CROSS_FILE = re.compile(r"[\w./-]+\.(?:md|swift|sh|py|yml|yaml|json|txt)\`?\s*§")
 
 MAX_REPORTED_SKIPS = 20
+
+# ⚠️ 台账「验收表」里写的**数字**（指针数 / 节标题数 / 跳过数）——
+#   ⇒ 手工维护 ⇒ **会漂** ⇒ ⇒ 而漂了的数字**没人会发现**（守卫自己是绿的）
+#   ⇒ ⇒ 这正是本族的「**陈旧数字没人报红**」（V18 的文档面）。
+#   ⇒ ⇒ 判据：**台账里写的数字必须等于实测数字** ⇒ ⇒ 不一致 ⇒ **报红**
+#   ⇒ ⇒ ⇒ 于是「改台账忘了刷数字」**再也不可能悄悄过去**。
+#   ⚠️ 台账里**没有**这张表 ⇒ 跳过（不要求它存在）。
+LEDGER_COUNTS_ROW = re.compile(
+    r"\|\s*正对照\s*\|.*?\*\*(\d+)\*\*\s*处指针.*?"
+    r"\*\*(\d+)\*\*\s*个节标题.*?\*\*(\d+)\*\*\s*处指向",
+)
 
 
 def check_ledger(lines: list[str]) -> tuple[list[str], int, list[tuple[int, str, str]], int]:
@@ -260,6 +273,49 @@ def check_ledger(lines: list[str]) -> tuple[list[str], int, list[tuple[int, str,
     return problems, checked, skipped, len(headings)
 
 
+def judge(lines: list[str]) -> tuple[list[str], int, list[tuple[int, str, str]], int]:
+    '''完整判定（指针检查 + 验收表数字核对）⇒ ⇒ main 与 --self-test 共用。'''
+    problems, checked, skipped, heading_count = check_ledger(lines)
+    problems += check_ledger_counts(lines, checked, heading_count, len(skipped))
+    return problems, checked, skipped, heading_count
+
+
+def check_ledger_counts(lines: list[str], checked: int, heading_count: int,
+                         skipped_count: int) -> list[str]:
+    '''台账「验收表」里写的数字**必须**等于实测数字 ⇒ ⇒ 否则**报红**。
+
+    ⚠️ 为什么要这道：台账里那些数字是**手工维护**的 ⇒ ⇒ 加一节就得改一次
+    ⇒ ⇒ **忘了改**就是「**陈旧的数字**」⇒ ⇒ 而守卫**自己**是绿的
+    ⇒ ⇒ 没有任何东西会报红 ⇒ ⇒ 与 V18（变异 harness 把「跳过」记成「通过」）
+    **同族**：一个**没人核对**的数字会悄悄变成假的。
+    '''
+    problems: list[str] = []
+    match = None
+    for lineno, line in enumerate(lines, 1):
+        found = LEDGER_COUNTS_ROW.search(line)
+        if found:
+            match = (lineno, found)
+            break
+    if match is None:
+        # 台账里没有这张表 ⇒ 不要求它存在（合成台账 / 旧版台账都属这类）。
+        return problems
+    lineno, found = match
+    stated_pointers = int(found.group(1))
+    stated_headings = int(found.group(2))
+    stated_skipped = int(found.group(3))
+    actual = (checked, heading_count, skipped_count)
+    stated = (stated_pointers, stated_headings, stated_skipped)
+    if stated != actual:
+        problems.append(
+            f"{LEDGER_REL}:{lineno}: 验收表里写的数字（指针 **{stated_pointers}** / "
+            f"节标题 **{stated_headings}** / 跳过 **{stated_skipped}**）"
+            f"与**实测**（指针 **{actual[0]}** / 节标题 **{actual[1]}** / "
+            f"跳过 **{actual[2]}**）**不一致** ⇒ ⇒ 台账里的数字**已经漂了**"
+            f" ⇒ ⇒ 刷成实测值（否则下一个读它的人会读到假数字）"
+        )
+    return problems
+
+
 # ---------------------------------------------------------------------------
 # `--self-test`：在**合成台账**上证明「有牙齿」⇒ ⇒ 不依赖仓库里的任何文件。
 # ---------------------------------------------------------------------------
@@ -331,7 +387,7 @@ def self_test() -> list[str]:
             " ⇒ 本守卫**什么都没做**却报绿 ⇒ 不算通过"
         )
     for name, text, expected in SELF_TEST_CASES:
-        found, _checked, _, _ = check_ledger(text.split("\n"))
+        found, _checked, _, _ = judge(text.split("\n"))
         if not found:
             problems.append(
                 f"自检失败：注入「{name}」之后**仍然全绿** ⇒ 本守卫**没有牙齿**"
@@ -343,6 +399,18 @@ def self_test() -> list[str]:
                 f"但**没有一条**包含「{expected}」⇒ 报的不是**这一类**问题"
                 f" ⇒ 判据与自检对不上：{found[0]}"
             )
+    # ⚠️ 验收表里的**数字漂了** ⇒ 必须报红（否则「陈旧数字没人发现」）。
+    drifted = SYNTHETIC_LEDGER + (
+        "\n| 项 | 结果 |\n|---|---|\n"
+        "| 正对照 | ✅ exit 0（**999** 处指针全部指向真实且唯一的节；"
+        "**999** 个节标题；**0** 处指向别的编号体系 ⇒ 已跳过） |\n"
+    )
+    found, _, _, _ = judge(drifted.split("\n"))
+    if not any("已经漂了" in problem for problem in found):
+        problems.append(
+            "自检失败：把验收表里的数字改成 999 之后**仍然全绿**"
+            " ⇒ ⇒ 「台账里的数字漂了没人报红」这个洞**没堵上**"
+        )
     return problems
 
 
@@ -383,7 +451,7 @@ def main(argv: list[str]) -> int:
     with open(path, encoding="utf-8") as fh:
         lines = fh.read().split("\n")
 
-    problems, checked, skipped, heading_count = check_ledger(lines)
+    problems, checked, skipped, heading_count = judge(lines)
 
     if problems:
         print("❌ 台账指针检查发现断链：", file=sys.stderr)
