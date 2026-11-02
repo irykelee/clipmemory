@@ -290,16 +290,27 @@ def check_ledger_counts(lines: list[str], checked: int, heading_count: int,
     **同族**：一个**没人核对**的数字会悄悄变成假的。
     '''
     problems: list[str] = []
-    match = None
+    matches: list[tuple[int, re.Match[str]]] = []
     for lineno, line in enumerate(lines, 1):
         found = LEDGER_COUNTS_ROW.search(line)
         if found:
-            match = (lineno, found)
-            break
-    if match is None:
+            matches.append((lineno, found))
+    if not matches:
         # 台账里没有这张表 ⇒ 不要求它存在（合成台账 / 旧版台账都属这类）。
         return problems
-    lineno, found = match
+    if len(matches) > 1:
+        # ⚠️ **多张「正对照」表** ⇒ 守卫不知道该核对**哪一张** ⇒
+        #   ⇒ 与「重复编号本身就是问题」同款：歧义**本身**就是问题。
+        #   ⇒ ⇒ 取第一张 ⇒ 可能是**历史**那张 ⇒ ⇒ **虚假报错** ⇒ ⇒ 报出来。
+        places = ", ".join(str(lineno) for lineno, _ in matches)
+        problems.append(
+            f"{LEDGER_REL}: 台账里有 **{len(matches)}** 张「正对照」表"
+            f"（行 {places}）⇒ ⇒ 守卫不知道该核对**哪一张**的数字"
+            f" ⇒ ⇒ 取第一张可能是**历史**那张 ⇒ ⇒ **会虚假报错**"
+            f" ⇒ ⇒ 只保留**一张**（或把历史那张的数字删掉）"
+        )
+        return problems
+    lineno, found = matches[0]
     stated_pointers = int(found.group(1))
     stated_headings = int(found.group(2))
     stated_skipped = int(found.group(3))
@@ -411,6 +422,22 @@ def self_test() -> list[str]:
             "自检失败：把验收表里的数字改成 999 之后**仍然全绿**"
             " ⇒ ⇒ 「台账里的数字漂了没人报红」这个洞**没堵上**"
         )
+    # ⚠️ **两张「正对照」表** ⇒ 守卫不知道核对哪一张 ⇒ 必须报红
+    #   （否则它会拿**历史**那张的数字来比 ⇒ ⇒ **虚假报错**）。
+    two_tables = SYNTHETIC_LEDGER + (
+        "\n| 项 | 结果 |\n|---|---|\n"
+        "| 正对照 | ✅ exit 0（**1** 处指针全部指向真实且唯一的节；"
+        "**1** 个节标题；**0** 处指向别的编号体系 ⇒ 已跳过） |\n"
+        "| 项 | 结果 |\n|---|---|\n"
+        "| 正对照 | ✅ exit 0（**2** 处指针全部指向真实且唯一的节；"
+        "**2** 个节标题；**0** 处指向别的编号体系 ⇒ 已跳过） |\n"
+    )
+    found, _, _, _ = judge(two_tables.split("\n"))
+    if not any("张「正对照」表" in problem for problem in found):
+        problems.append(
+            "自检失败：台账里有**两张**「正对照」表时**仍然全绿**"
+            " ⇒ ⇒ 守卫会拿**历史**那张的数字来比 ⇒ ⇒ **虚假报错**没堵上"
+        )
     return problems
 
 
@@ -439,8 +466,8 @@ def main(argv: list[str]) -> int:
             for problem in problems:
                 print("   - " + problem, file=sys.stderr)
             return 1
-        print(f"✅ 自检通过：{len(SELF_TEST_CASES)} 类坏指针**全部报红**；"
-              f"占位符 / 案例编号 / 尾随标点**全部不误报**"
+        print(f"✅ 自检通过：{len(SELF_TEST_CASES)} 类坏指针 + 2 类台账数字问题"
+              f"**全部报红**；占位符 / 案例编号 / 尾随标点**全部不误报**"
               f"（⇒ 本守卫有牙齿）")
         return 0
 
