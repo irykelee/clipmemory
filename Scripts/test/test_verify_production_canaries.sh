@@ -228,8 +228,9 @@ if [[ ! -f "$MANIFEST" ]]; then
 else
   # ⚠️ ID-REVIEW-1049 第八轮（CI 跑红，2026-11-02）：**heredoc 不能放在 `$( )` 里**
   #   ⇒ bash **3.2**（macOS 自带 /bin/bash；GitHub 的 macOS runner 就是它）在解析
-  #   `$( … )` 时会把 heredoc 正文里的**连续三个双引号 `"""`** 当成 shell 语法 ⇒
-  #   ⇒ 报 `unexpected EOF while looking for matching `"'` ⇒ **CI 红**，
+  #   `$( … )` 时会把 heredoc 正文里的引号**算进外层的配对计数** ⇒ ⇒ 正文里
+  #   **奇数个**双引号（**或**奇数个单引号）⇒ 配不上 ⇒ 报
+  #   `unexpected EOF while looking for matching `"'` ⇒ **CI 红**，
   #   而本机 bash **5.3** **完全测不出来**（实测：同一个文件 5.3 通过、3.2 报错）。
   #   ⇒ ⇒ 本脚本的 Python 块**必须**含 `"""`（它要检测多行字面量！）⇒ ⇒
   #   **修法**：heredoc **先落成临时文件**，再在 `$( )` 里调用它
@@ -237,6 +238,15 @@ else
   #   ⇒ ⇒ 这与上一轮那条「`$VAR` 紧跟多字节字符」是**同一族**：
   #   **bash 3.2 与 5.x 的解析差异，本机 5.x 永远测不出来** ⇒ 必须**显式**用
   #   `/bin/bash` 验（守卫：`Scripts/test/test_shell_multibyte_var_boundary.py`）。
+  #
+  # ⚠️ 第十轮（2026-11-02）：上面的规则**只写在这里是不够的** ⇒ 它的散文副本
+  #   有好几处（守卫 docstring / 本注释 / 台账）⇒ 第九轮改了**一处**、漏了**其余**
+  #   ⇒ 同一处错误规则同时以「窄」（只说「连续三个双引号」）与「宽」
+  #   （漏了「词法上在 `$( )` 内」这个维度）两种形态留在仓库里。
+  #   ⇒ ⇒ **判据的机器可读单一出处** = `Scripts/test/shell-heredoc-quote-corpus.json`
+  #   （sha256 硬编码在 `Scripts/test/test_shell_heredoc_quote_rule.py` 里）
+  #   ⇒ 由该守卫拿 `/bin/bash -n` **逐条重测** 112 个用例 ⇒ 规则漂了就红。
+  #   ⇒ ⇒ **本注释只负责说「为什么这么写」；判据本身以语料为准。**
   cat > "$TMP/manifest_check.py" <<'PY'
 import hashlib
 import json

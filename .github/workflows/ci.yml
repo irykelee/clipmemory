@@ -267,6 +267,28 @@ jobs:
           set -euo pipefail
           python3 Scripts/test/test_shell_multibyte_var_boundary.py .
 
+      # ID-REVIEW-1049 第十轮 (2026-11-02): the heredoc quote-parity RULE
+      # itself must not drift.
+      #
+      # ⇒ The step above scans the repo's shell scripts with `bash -n` (it asks
+      #   the PARSER, so a wrong rule cannot blind it). But the rule we WRITE
+      #   DOWN — "`$( … )` heredocs must have an even number of each quote
+      #   kind" — lives in several prose copies (guard docstring, contract
+      #   script comment, ledger). Round 9 fixed ONE copy and left three
+      #   stale ones ⇒ the same wrong rule was still on record.
+      #
+      # ⇒ ⇒ This step checks the rule against reality: a machine-readable
+      #   corpus (Scripts/test/shell-heredoc-quote-corpus.json, sha256-locked)
+      #   holds the EXPECTED parse result for every shape × quote count, and
+      #   the guard re-measures all of them with /bin/bash -n.
+      #
+      # ⇒ It is its OWN step (not a mode of the step above) so a failure is
+      #   attributable — ID-REVIEW-1049 sixth round P3-6.
+      - name: "Shell heredoc quote-parity rule vs reality (ID-REVIEW-1049 第十轮)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_shell_heredoc_quote_rule.py .
+
       - name: Assert the production canaries actually ran (ID-REVIEW-1049 第三轮)
         # The three production canaries are the ONLY thing that catches
         # "a test wrote the user's production domain". A **skipped** canary

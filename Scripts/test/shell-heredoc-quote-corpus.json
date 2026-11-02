@@ -1,0 +1,844 @@
+{
+  "cases": [
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 5,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 6,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 7,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 8,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "outside_top"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 5,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 6,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 7,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 8,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 5,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 6,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 7,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 8,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_nested_sub"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 5,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 6,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 7,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 8,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_group"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 5,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 6,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 7,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 8,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_sub_pipeline"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 5,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 6,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 7,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 8,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 5,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 6,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 7,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 8,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "in_func_body_called_in_sub"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 5,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 6,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 7,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 8,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "dq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 0,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 1,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 2,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 3,
+      "expect_bash32_rc": 2,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "func_def_in_sub"
+    },
+    {
+      "count": 4,
+      "expect_bash32_rc": 0,
+      "expect_bash53_rc": 0,
+      "quote": "sq",
+      "shape": "func_def_in_sub"
+    }
+  ],
+  "counts": {
+    "dq": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "sq": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "note": "ID-REVIEW-1049 第十轮：bash 3.2 的「heredoc 引号奇偶」规则的**机器可读出处**。\n本文件由 `python3 Scripts/test/test_shell_heredoc_quote_rule.py . --regenerate` 生成 ⇒ 期望值**来自实测**，不靠手抄。\n⚠️ sha256 硬编码在那个脚本里（EXPECTED_CORPUS_SHA256）⇒ 改本文件必须同时改脚本 ⇒ 协同成本。\n⚠️ `expect_bash32_rc` = /bin/bash（macOS 自带 3.2）`bash -n` 的退出码；`expect_bash53_rc` = PATH 上 bash ≥5 的退出码（不存在时为 null ⇒ 该列**跳过**，不假装检查过）。\n⚠️ count=0 的行是**基线**：形状构造本身必须合法（rc=0）⇒ 否则整列数据作废。",
+  "schema": "cm1049-heredoc-quote-rule/v1",
+  "shapes": {
+    "func_def_in_sub": {
+      "desc": "**函数定义本身**词法上在 `$( … )` 内 ⇒ 触发",
+      "in_sub_lexically": true
+    },
+    "in_func_body": {
+      "desc": "heredoc 在**函数体内**，函数在**顶层**被调用",
+      "in_sub_lexically": false
+    },
+    "in_func_body_called_in_sub": {
+      "desc": "heredoc 在**函数体内**，函数**在 `$( … )` 内被调用**（运行时在 `$( )` 里，但**词法上不在** ⇒ 安全）",
+      "in_sub_lexically": false
+    },
+    "in_nested_sub": {
+      "desc": "heredoc 词法上在**嵌套**的 `$( … )` 内",
+      "in_sub_lexically": true
+    },
+    "in_sub": {
+      "desc": "heredoc 词法上在 `$( … )` 内（最小复现）",
+      "in_sub_lexically": true
+    },
+    "in_sub_group": {
+      "desc": "heredoc 词法上在 `$( … )` 内的 `{ … }` 组里",
+      "in_sub_lexically": true
+    },
+    "in_sub_pipeline": {
+      "desc": "heredoc 词法上在 `$( … )` 内的**管道**里",
+      "in_sub_lexically": true
+    },
+    "outside_top": {
+      "desc": "heredoc 在顶层（词法上不在任何 `$( )` 内）",
+      "in_sub_lexically": false
+    }
+  }
+}
