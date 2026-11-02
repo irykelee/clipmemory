@@ -272,10 +272,16 @@ jobs:
       #
       # ⇒ The step above scans the repo's shell scripts with `bash -n` (it asks
       #   the PARSER, so a wrong rule cannot blind it). But the rule we WRITE
-      #   DOWN — "`$( … )` heredocs must have an even number of each quote
-      #   kind" — lives in several prose copies (guard docstring, contract
-      #   script comment, ledger). Round 9 fixed ONE copy and left three
-      #   stale ones ⇒ the same wrong rule was still on record.
+      #   DOWN — "a heredoc that is LEXICALLY inside a `$( … )` must have an
+      #   even number of each quote kind" — lives in several prose copies
+      #   (guard docstring, contract script comment, ledger). Round 9 fixed ONE
+      #   copy and left three stale ones ⇒ the same wrong rule was still on
+      #   record.
+      #
+      # ⇒ ⇒ **"lexically" is load-bearing** (round 10 measured it): the trigger
+      #   is the heredoc being LEXICALLY inside the `$( … )` TEXT — not "running
+      #   inside `$( … )`". A heredoc in a function body, called from within
+      #   `$( … )`, is lexically OUTSIDE ⇒ it is fine at any quote parity.
       #
       # ⇒ ⇒ This step checks the rule against reality: a machine-readable
       #   corpus (Scripts/test/shell-heredoc-quote-corpus.json, sha256-locked)
@@ -314,6 +320,27 @@ jobs:
           set -euo pipefail
           python3 Scripts/test/test_ledger_section_pointers.py .
           python3 Scripts/test/test_ledger_section_pointers.py . --self-test
+
+      # ID-REVIEW-1049 第十轮 c: the rule's PROSE COPIES must not drift.
+      #
+      # ⇒ ⇒ V15 ("a rule written in prose is itself a driftable copy") has now
+      #   bitten TWICE: round 9 (one copy fixed, three stale ones left) and
+      #   round 10 (the independent verifier found 4 copies missing the
+      #   "lexically" qualifier — one of them written in THIS very round).
+      #   ⇒ ⇒ Both times the failure mode was "forgot one", never "wrote one
+      #   wrong" ⇒ ⇒ people cannot be relied on ⇒ ⇒ the drift must be checked
+      #   by MACHINE.
+      #
+      # ⇒ ⇒ This guard checks every tracked prose file: a narrow phrasing must
+      #   carry a "this is the old/ wrong form" marker, and a rule statement
+      #   must carry BOTH the "lexically" qualifier AND a pointer to the
+      #   machine-readable corpus (the prose copy's job is "say why + point at
+      #   the truth", NOT "restate the truth").
+      - name: "Rule prose copies don't drift (ID-REVIEW-1049 第十轮 c)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_rule_prose_copies.py .
+          python3 Scripts/test/test_rule_prose_copies.py . --self-test
 
       # ID-REVIEW-1049 第十轮 c: the mutation harness's ANCHORS.
       #
