@@ -222,7 +222,7 @@ python3 "$ADJ" add --ledger "$L12" --repo-root "$REPO" \
 RC12=$?
 set -e
 [ "$RC12" != "0" ] \
-  && pass "add 拒绝仓库外的 file（相对上跳，退出码 $RC12）" || fail "add 接受了仓库外的 file（相对上跳）"
+  && pass "add 拒绝仓库外的 file（相对上跳，退出码 ${RC12}）" || fail "add 接受了仓库外的 file（相对上跳）"
 [ ! -s "$L12" ] \
   && pass "越界的 file 没有写进台账" || fail "越界的 file 被写进了台账"
 grep -q "仓库内" "$TEST_DIR/a12.err" \
@@ -235,7 +235,7 @@ python3 "$ADJ" add --ledger "$L12" --repo-root "$REPO" \
 RC12B=$?
 set -e
 [ "$RC12B" != "0" ] \
-  && pass "add 拒绝绝对路径（退出码 $RC12B）" || fail "add 接受了绝对路径"
+  && pass "add 拒绝绝对路径（退出码 ${RC12B}）" || fail "add 接受了绝对路径"
 # 台账里已经躺着一行越界条目时，apply 也不能用它（不读那个文件）
 L12C="$TEST_DIR/l12c.jsonl"
 cat > "$L12C" <<EOF
@@ -268,7 +268,7 @@ BEFORE13=$(grep -c '^FINDINGS' "$R13" || true)
 OUT=$(apply_ledger "$R13" "$L13" advisory FAIL)
 AFTER13=$(grep -c '^FINDINGS' "$R13" || true)
 [ "$BEFORE13" = "$AFTER13" ] \
-  && pass "apply 前后 findings 条数不变（$AFTER13）" || fail "apply 把 findings 从 $BEFORE13 条变成 $AFTER13 条"
+  && pass "apply 前后 findings 条数不变（${AFTER13}）" || fail "apply 把 findings 从 $BEFORE13 条变成 $AFTER13 条"
 grep -q 'strip_previous_adjudication finds' "$R13" \
   && pass "正文里引用的标题行仍在" || fail "正文被误删"
 # 幂等：跑两次只留一份核验段（用哨兵计数，标题行在正文里也有）
@@ -276,7 +276,7 @@ apply_ledger "$R13" "$L13" advisory FAIL > /dev/null
 apply_ledger "$R13" "$L13" advisory FAIL > /dev/null
 SENT13=$(grep -c 'cm-adjudication:v1' "$R13" || true)
 [ "$SENT13" = "1" ] \
-  && pass "重复 apply 后核验段只留一份（哨兵计数 $SENT13）" || fail "核验段叠加了 $SENT13 份"
+  && pass "重复 apply 后核验段只留一份（哨兵计数 ${SENT13}）" || fail "核验段叠加了 $SENT13 份"
 
 # ===================================================================
 echo "--- 断言 14: apply 崩溃 ⇒ fail-closed（行为级，不是 grep 源码）---"

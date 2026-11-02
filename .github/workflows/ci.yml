@@ -251,6 +251,22 @@ jobs:
             exit 1
           fi
 
+      # ID-REVIEW-1049 第六轮 (2026-11-01): shell 脚本的**可移植性**静态守卫。
+      #
+      # ⇒ CI 第一次把第六轮跑红，报的是
+      #   `test_verify_production_canaries.sh: line 352: MODE?: unbound variable`
+      #   ⇒ 根因：`echo "…（mode=$MODE）"` —— **全角括号紧跟未加花括号的
+      #   `$MODE`** ⇒ 在 **bash 3.2 + UTF-8 locale**（= 本 CI runner）下，
+      #   bash 把多字节字符**吸进变量名** ⇒ `set -u` ⇒ unbound variable。
+      # ⇒ **本地测不出来**（本机 bash 5.3 判定不同 ⇒ 同一脚本本地 exit 0、
+      #   CI exit 1）⇒ ⇒ 只有 CI 能引爆 ⇒ 这正是本族最危险的形状。
+      # ⇒ 修法：`$VAR` 后紧跟多字节字符时**一律加花括号**（`${VAR}`）。
+      # ⇒ 本 step 就是防止它**再回来**。
+      - name: "Shell portability — no multibyte char right after an unbraced $VAR"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_shell_multibyte_var_boundary.py .
+
       - name: Assert the production canaries actually ran (ID-REVIEW-1049 第三轮)
         # The three production canaries are the ONLY thing that catches
         # "a test wrote the user's production domain". A **skipped** canary
@@ -279,7 +295,7 @@ jobs:
           # 提示** ⇒ 排查方向会被带偏 ⇒ ⇒ 改成：**除 0/1 之外一律按「闸门
           # 自己坏了」报**（可区分性由文案承担）。
           if [[ "$code" != "0" && "$code" != "1" ]]; then
-            echo "::error::canary 状态检查自己没跑起来（退出码 $code）—— 这是闸门坏了，不是安全网关着"
+            echo "::error::canary 状态检查自己没跑起来（退出码 ${code}）—— 这是闸门坏了，不是安全网关着"
             exit 1
           fi
           exit "$code"

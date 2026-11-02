@@ -886,6 +886,18 @@ run_preflight() {
         tail -20 /tmp/gate-contract.log
         fails=$((fails + 1))
     fi
+    # ID-REVIEW-1049 第六轮（2026-11-01）：shell 脚本的**可移植性**静态守卫。
+    # ⇒ 根因：多字节字符紧跟**未加花括号**的 `$VAR` ⇒ 在 **bash 3.2 + UTF-8
+    #   locale**（= CI runner）下 bash 把那个多字节字符**吸进变量名** ⇒
+    #   `set -u` ⇒ unbound variable ⇒ ⇒ **本地测不出来**（本机 bash 5.3 判定不同）
+    #   ⇒ 只有 CI 能引爆 ⇒ 发版前也应当拦住。
+    if python3 Scripts/test/test_shell_multibyte_var_boundary.py . >/tmp/shell-portability.log 2>&1; then
+        ok "shell 脚本的可移植性静态检查通过"
+    else
+        echo "  ❌ shell 脚本的可移植性检查失败（见 /tmp/shell-portability.log）"
+        tail -20 /tmp/shell-portability.log
+        fails=$((fails + 1))
+    fi
     return $fails
 }
 

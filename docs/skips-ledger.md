@@ -4457,3 +4457,52 @@ python3 -c "import plistlib,hashlib;d=plistlib.load(open('/Users/iryke/Library/P
 
 ⇒ ⇒ 本轮共 **8 条** findings 逐条核验入台账（`githooks/review-adjudication.jsonl`）：
 **7 条 false-positive + 1 条 confirmed（已当场修）**。
+
+#### 50.17.10 **CI 第一次把第六轮跑红** —— 只有 CI 的 bash 能引爆的「本地看起来绿」（2026-11-01 深夜）
+
+**现象**（CI run `41363403417`，commit `1fc5a1f`）：第三个闸门 step
+「Out-of-band canary gate contract test」**红**，第四个 step 被**跳过**：
+
+    Scripts/test/test_verify_production_canaries.sh: line 352: MODE?: unbound variable
+    ##[error]Process completed with exit code 1.
+
+⇒ 而**本地**同一个脚本 `exit 0`（三种模式全过）⇒ ⇒ **「本地绿、CI 红」**。
+
+**根因**：`echo "✅ …（mode=$MODE）"` —— **全角右括号 `）` 紧跟在未加花括号
+的 `$MODE` 后面** ⇒ 在 **bash 3.2 + UTF-8 locale**（= GitHub macOS runner）下，
+bash 把那个**多字节字符吸进了变量名**（`$MODE）` 变成变量 `MODE）`）⇒
+`set -u` ⇒ **unbound variable** ⇒ 退出码 1。
+
+⇒ **复现**（不用改任何文件）：
+
+    env LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 /bin/bash -c 'MODE=xx; echo "A$MODE）B"'
+    #   ⇒ 输出 `A??B`（变量名被吸走）
+    env LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 /bin/bash -c 'MODE=xx; echo "A${MODE}B"'
+    #   ⇒ 输出 `AxxB` ✔（花括号明确终止变量名）
+
+⇒ ⇒ *本机默认 bash 5.3 的判定与 bash 3.2 不同 ⇒ ⇒ **本地测不出来** ⇒ ⇒
+**只有 CI 能引爆** ⇒ ⇒ 这正是本族最危险的形状：**「看起来绿」**。
+
+**修法（三层）**：
+
+1. **同族全扫**（「修一个，看 33 个」）：全仓 `*.sh` / `*.yml` / `*.yaml`
+   扫「未加花括号的 `$NAME` 后紧跟非 ASCII 字节」⇒ **22 处命中**
+   ⇒ **19 处真代码**全部改成 `${VAR}`（另 3 处在注释里 ⇒ 不会被解析 ⇒ 不动）
+   ⇒ 涉及 `ci.yml` / `test_verify_production_canaries.sh` /
+   `test_ollama_endpoints.sh` / `test_review_adjudicate.sh` /
+   `orca-auto-review.sh`。
+   ⚠️ 其中 `ci.yml:282`（第三轮那个 step 的**报错文案**）是**潜伏地雷** ——
+   那行**只在闸门坏的时候才执行** ⇒ 平时绿、出事时炸。
+2. **静态守卫**（新）：`Scripts/test/test_shell_multibyte_var_boundary.py`
+   ⇒ 扫同一形状 + **顺带**检查 workflow 的 YAML **能不能解析**
+   ⇒ 接进 **CI**（独立 step）与 **`release.sh` preflight**。
+   ⇒ 反向验证：种一个隐患 ⇒ exit 1；种一个坏 YAML ⇒ exit 1。
+3. **本地验收补一步**：CI 的 YAML 也要**本地能解析**（本轮就因为 step 名里
+   漏了引号 ⇒ `name: Shell portability: …` ⇒ YAML 里裸 `:` ⇒
+   "mapping values are not allowed here" ⇒ **本地也没发现**）
+   ⇒ ⇒ 已并进守卫的 YAML 检查。
+
+⇒ ⇒ ⇒ **元教训**：*「本地全绿」不等于「对」* —— 凡是依赖 **shell 版本 /
+locale / 运行时**的行为，都必须有一条**跨环境**的验证（CI 的 bash 3.2 就是
+那条通道）⇒ ⇒ 而**能静态发现的，别留给 CI**：本轮两次都是「本地绿、CI 红」，
+而两次的根因**都能静态看出来** ⇒ ⇒ 守卫就该守在这里。

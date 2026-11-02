@@ -106,10 +106,10 @@ RC_BAD=$?
 set -e
 [ "$RC_OK" = "0" ] && grep -q '"version":"0.40.11"' "$TEST_DIR/o0a" \
   && pass "桩能返回可达端点的版本号" \
-  || fail "桩对可达端点没有正确返回（exit=$RC_OK，内容=$(cat "$TEST_DIR/o0a")）"
+  || fail "桩对可达端点没有正确返回（exit=${RC_OK}，内容=$(cat "$TEST_DIR/o0a")）"
 [ "$RC_BAD" = "7" ] \
   && pass "桩能模拟「端点连不上」（curl 退出码 7）" \
-  || fail "桩没有模拟出「连不上」（exit=$RC_BAD，应为 7）——「不可达」分支根本没被执行过"
+  || fail "桩没有模拟出「连不上」（exit=${RC_BAD}，应为 7）——「不可达」分支根本没被执行过"
 
 echo "--- 断言 1: 内置端口按版本号降序（新版在前）---"
 F="$TEST_DIR/f1.tsv"
@@ -117,7 +117,7 @@ printf 'http://127.0.0.1:11435\t0.40.11\nhttp://127.0.0.1:11434\t0.24.0\n' > "$F
 OUT=$(discover "$F" bash env -u OLLAMA_HOST -u REVIEW_OLLAMA_ENDPOINTS)
 FIRST=$(printf '%s\n' "$OUT" | head -1)
 [ "$FIRST" = "http://127.0.0.1:11435" ] \
-  && pass "版本号新的端点排第一（$FIRST）" || fail "版本排序错，第一行是 $FIRST"
+  && pass "版本号新的端点排第一（${FIRST}）" || fail "版本排序错，第一行是 $FIRST"
 printf '%s\n' "$OUT" | grep -q "11434" \
   && pass "旧端点仍在候选里（作为兜底）" || fail "旧端点被丢掉了"
 
@@ -130,7 +130,7 @@ FIRST=$(printf '%s\n' "$OUT" | head -1)
 echo "--- 断言 3: 显式候选与内置端口去重 ---"
 COUNT=$(discover "$F" bash env OLLAMA_HOST=http://127.0.0.1:11434 | grep -c "11434" || true)
 [ "$COUNT" = "1" ] \
-  && pass "同一端点只出现一次（计数 $COUNT）" || fail "同一端点出现了 $COUNT 次"
+  && pass "同一端点只出现一次（计数 ${COUNT}）" || fail "同一端点出现了 $COUNT 次"
 
 echo "--- 断言 4: 额外候选按逗号分隔且排在前面 ---"
 F4="$TEST_DIR/f4.tsv"
@@ -173,7 +173,7 @@ RC=$?
 set -e
 [ "$RC" = "0" ] \
   && pass "不可达端点没有让函数中止（exit 0）" \
-  || fail "不可达端点让函数中止了（exit $RC）：$(head -c 200 "$TEST_DIR/e7")"
+  || fail "不可达端点让函数中止了（exit ${RC}）：$(head -c 200 "$TEST_DIR/e7")"
 printf '%s\n' "$OUT" | grep -q "http://127.0.0.1:11435" \
   && pass "可用的端点仍然被返回（11435 没被牵连）" \
   || fail "可用的 11435 被牵连丢掉了，输出=[$(printf '%s\n' "$OUT" | tr '\n' ' ')]"
@@ -188,7 +188,7 @@ OUT=$(discover "$F" bash env -u OLLAMA_HOST \
         REVIEW_OLLAMA_ENDPOINTS=http://127.0.0.1:11435,http://127.0.0.1:11435)
 COUNT=$(printf '%s\n' "$OUT" | grep -c "http://127.0.0.1:11435" || true)
 [ "$COUNT" = "1" ] \
-  && pass "显式段内部的重复端点只出现一次（计数 $COUNT）" \
+  && pass "显式段内部的重复端点只出现一次（计数 ${COUNT}）" \
   || fail "显式段内部的重复端点出现了 $COUNT 次"
 
 echo "--- 断言 9: macOS 系统 bash 3.2 下不崩 ---"
@@ -201,10 +201,10 @@ if [[ -x /bin/bash ]] && /bin/bash --version 2>/dev/null | grep -q "version 3\."
   set -e
   [ "$RC" = "0" ] \
     && pass "bash 3.2 下不崩（exit 0）" \
-    || fail "bash 3.2 下崩了（exit $RC）：$(head -c 200 "$TEST_DIR/e9")"
+    || fail "bash 3.2 下崩了（exit ${RC}）：$(head -c 200 "$TEST_DIR/e9")"
   FIRST3=$(printf '%s\n' "$OUT" | head -1)
   [ "$FIRST3" = "http://127.0.0.1:11435" ] \
-    && pass "bash 3.2 下排序结果正确（$FIRST3）" \
+    && pass "bash 3.2 下排序结果正确（${FIRST3}）" \
     || fail "bash 3.2 下排序错，第一行是 $FIRST3"
 else
   echo "⏭️  跳过：/bin/bash 不是 3.x（当前：$(/bin/bash --version 2>/dev/null | head -1)）"

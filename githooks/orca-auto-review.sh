@@ -382,7 +382,7 @@ REVIEW_VERDICT: PASS
         : > "$RAWOUT"
       done < <(ollama_discover_endpoints)
       if [[ -z "$OLLAMA_EP" ]]; then
-        echo "[auto-review] ⚠️ ollama 直连未产出报告（$MODEL，所有本地端点都试过了）" >&2
+        echo "[auto-review] ⚠️ ollama 直连未产出报告（${MODEL}，所有本地端点都试过了）" >&2
       else
         echo "[auto-review]    本地 ollama 端点：$OLLAMA_EP" >&2
       fi
@@ -469,7 +469,7 @@ if [[ -z "$MODEL_TEXT" ]]; then
     echo "[auto-review] ⚠️ 模型本次未产出任何文本结论（事件流 $EVENTS 条，无有效正文）" >&2
     echo "[auto-review]    常见原因: 中途被权限拒绝 / 步数耗尽 / 模型异常退出。原始事件流: $RAWOUT" >&2
     MODEL_TEXT="（本次 opencode 运行未产出任何文本结论：事件流 $EVENTS 条，无有效正文。
-常见原因：中途被权限拒绝、步数耗尽、或模型异常退出。原始事件流见 $RAWOUT）
+常见原因：中途被权限拒绝、步数耗尽、或模型异常退出。原始事件流见 ${RAWOUT}）
 "
   else
     # 输出不是 JSON 事件流（例如直接在 stdout 上报错）→ 退回原始输出，
@@ -654,7 +654,7 @@ case "$ADJ_STATUS" in
     echo "[auto-review] ⚠️ 人工核验层不可用：找不到 python3 —— 按模型结论 ${VERDICT} 处理。" >&2
     ;;
   no-ledger)
-    echo "[auto-review] ℹ️ 没有人工核验台账（$ADJ_LEDGER）—— 按模型结论 ${VERDICT} 处理。" >&2
+    echo "[auto-review] ℹ️ 没有人工核验台账（${ADJ_LEDGER}）—— 按模型结论 ${VERDICT} 处理。" >&2
     ;;
   missing)
     echo "[auto-review] ⚠️ 人工核验层不可用：缺少判定单元 —— 按模型结论 ${VERDICT} 处理。" >&2

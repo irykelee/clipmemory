@@ -93,7 +93,7 @@ run_gate() { # $1 = log path, $2 = expected exit code, $3 = 说明
   if [[ "$got" == "$want" ]]; then
     ok "$desc ⇒ 退出码 $got"
   else
-    bad "$desc ⇒ 期望退出码 $want，实得 $got"
+    bad "$desc ⇒ 期望退出码 ${want}，实得 $got"
   fi
 }
 
@@ -349,8 +349,8 @@ fi  # ← 模式：manifest
 #   而漂移 ⇒ 写死就会变成下一次陈旧数字的来源 ⇒ 第五轮就是这么错的）。
 echo "SUMMARY mode=$MODE asserts=$asserts fails=$fails"
 if [[ "$fails" == "0" ]]; then
-  echo "✅ 树外闸门的契约与接线全部成立（mode=$MODE）"
+  echo "✅ 树外闸门的契约与接线全部成立（mode=${MODE}）"
   exit 0
 fi
-echo "❌ 树外闸门的契约/接线有 $fails 处不成立（mode=$MODE）"
+echo "❌ 树外闸门的契约/接线有 $fails 处不成立（mode=${MODE}）"
 exit 1
