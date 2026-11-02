@@ -538,13 +538,18 @@ def _manifest_effective_block():
     return "".join(lines[idx[0]:idx[-1] + 1])
 
 
-def _gutter_swift_func(rel, name):
+def _gutter_swift_func(rel, name, filler=None):
     """`(old, new)` that replaces `func <name>(…) { … }` with an **empty body**.
 
     ⚠️ The signature is kept ⇒ the file still **compiles** ⇒ the suite stays
     green unless something notices the guard became hollow. (That is the
     whole point: the verifier's P1-2 repro — "the assertions are gone but
     the function is still there".)
+
+    ⚠️ `filler` = 用**注释**填出来的「假断言」⇒ 这是**第七轮**要堵的绕过口
+    （独立核验员 P1-1 实测：契约脚本的断言计数原本**不抹白** ⇒ 注释里的
+    `XCTAssertTrue(...)` 被计成真断言 ⇒ 「删掉断言 + 注释填行数」⇒
+    **exit 0** ⇒ 三道防线同时失明）⇒ ⇒ 这条变异就是那个攻击的**固化**。
     """
     path = os.path.join(REPO, rel)
     with open(path, encoding="utf-8") as fh:
@@ -560,7 +565,11 @@ def _gutter_swift_func(rel, name):
                 if (lines[j].strip() == "}"
                         and len(lines[j]) - len(lines[j].lstrip()) == indent):
                     old = "".join(lines[i:j + 1])
-                    new = line + " " * indent + "}\n"
+                    body = ""
+                    if filler:
+                        pad = " " * (indent + 4)
+                        body = "".join(pad + f + "\n" for f in filler)
+                    new = line + body + " " * indent + "}\n"
                     return old, new
     raise SystemExit(
         "harness: 找不到 " + rel + " 里的 func " + name + " ⇒ 锚点已漂移"
@@ -570,6 +579,23 @@ def _gutter_swift_func(rel, name):
 _MANIFEST_BLOCK = _manifest_effective_block()
 _GUARD_212_GUTTER = _gutter_swift_func(
     R1049, "testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease"
+)
+# ⚠️ 第七轮（N50）：「删掉断言 + 用**注释**填同样的行数」⇒ 旧契约脚本
+#   （纯文本正则、不抹白）会把注释里的 `XCTAssertTrue` 计成真断言 ⇒
+#   **exit 0** ⇒ 三道防线同时失明（独立核验员 P1-1 实测）⇒ ⇒ 固化它。
+_GUARD_212_COMMENT_FILLER = [
+    '// XCTAssertTrue(ci.contains("Scripts/verify-production-canaries.py"))',
+    '// XCTAssertTrue(ci.contains("\\"$code\\" != \\"0\\""))',
+    '// XCTAssertTrue(release.contains("Scripts/verify-production-canaries.py"))',
+    '// XCTAssertTrue(release.contains("canary_gate"))',
+    '// XCTAssertTrue(FileManager.default.fileExists(atPath: contract.path))',
+    '// XCTAssertTrue(ci.contains("test_verify_production_canaries.sh"))',
+    '// XCTAssertTrue(ci.contains("test_verify_production_canaries.sh --manifest"))',
+]
+_GUARD_212_COMMENT_GUTTER = _gutter_swift_func(
+    R1049,
+    "testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease",
+    filler=_GUARD_212_COMMENT_FILLER,
 )
 
 MUTATIONS = [
@@ -690,6 +716,10 @@ MUTATIONS = [
      {"expect": ["contract"]}),
     ("N49", "**守卫 ㉒ 被掏空**（函数保留、断言没了 ⇒ 清单只查「存在」抓不到）",
      [(R1049, _GUARD_212_GUTTER[0], _GUARD_212_GUTTER[1])],
+     {"expect": ["contract"]}),
+    ("N50", "**守卫 ㉒ 被掏空 + 用注释填行数**（核验员 P1-1：旧契约脚本"
+     "不抹白 ⇒ 注释里的 XCTAssert 被计成真断言 ⇒ 三道防线同时失明）",
+     [(R1049, _GUARD_212_COMMENT_GUTTER[0], _GUARD_212_COMMENT_GUTTER[1])],
      {"expect": ["contract"]}),
     # ── 第五轮：⑸ 的词边界（真跑，但**窄跑**到只触发守卫本身） ───────────
     ("N46", "**闸门谓词被改名**（⑸ 的子串匹配可被绕过 ⇒ 第五轮改词边界）",
@@ -827,10 +857,24 @@ def run_classes(log_path, without_aaa=False, only_classes=None):
     """Run the mutation's test selection.
 
     ⚠️ ID-REVIEW-1049 第五轮：`only_classes` 让某些变异**只跑指定的测试** ——
-    用于「真跑会写用户生产域」的那类变异：把测试**窄跑**到只触发守卫本身
-    ⇒ 被测代码路径（生产写入）**根本不会被执行** ⇒ 零风险（独立核验员 P2-3
-    实测：无 TEST_HOST ⇒ 测试跑在独立进程 ⇒ AppDelegate 不启动 ⇒
-    `ImageStorage.shared` 不会被 AppDelegate 触发 ⇒ 生产域 digest 前后一致）。
+    用于「真跑会写用户生产域」的那类变异：把测试**窄跑**到只触发守卫本身。
+
+    ⚠️⚠️ **第七轮订正（独立核验员 P3-2，2026-11-02 实测）**：本 docstring
+    **此前**写着「无 TEST_HOST ⇒ 测试跑在独立进程 ⇒ AppDelegate 不启动 ⇒
+    `ImageStorage.shared` 不会被触发 ⇒ 生产域 digest 前后一致」——
+    **那个前提是错的**，而且**与同文件 `:475-492` 的订正自相矛盾**：
+      * 本项目**有** `TEST_HOST`（`ClipMemory.xcodeproj/project.pbxproj:1426`
+        Release / `:1611` Debug ⇒ `TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ClipMemory.app/
+        Contents/MacOS/ClipMemory"`）⇒ 测试**跑在真实 app 宿主**里；
+      * ⇒ `AppDelegate` **会**启动 ⇒ `AppDelegate.setupClipboardMonitor()` 里的
+        `_ = ImageStorage.shared`（`ClipMemory/AppDelegate.swift:1307`）**确实会执行**；
+      * ⇒ 真正让窄跑**不写**用户生产域的是**用户域里已有的幂等标志**
+        （`ImageStorageMigrationComplete` / `ImageStorageStartupCleanupRan`）
+        ⇒ 迁移与清理**短路** ⇒ 没有新的写入。
+      * ⇒ 兜底是 harness 自己的**生产域快照 / 比对 / 还原**
+        （`snapshot_production_domain` / `production_domain_changed` /
+        `restore_production_domain`）⇒ **即便**窄跑真的写了，也会被**发现并还原**。
+    ⇒ ⇒ ⇒ **不要再写「窄跑 ⇒ 生产写入路径不会被执行」** —— 那句话是错的。
     """
     if only_classes:
         cmd = [
@@ -1239,9 +1283,14 @@ def main():
             #   ⇒ 台账据此写的「有效性由 harness 保证」是假的。
             "caught_by": sorted(catchers_of(failed)),
             "expect_catcher": expect,
-            "catcher_mismatch": bool(
-                not (set(expect) & catchers_of(failed))
-            ),
+            # ⚠️ 第七轮（P3-4）：判据从「**或**」（交集非空）改成「**全部**」
+            #   ⇒ 「预期的那个抓手**缺席**」现在会被发现 ⇒ ⇒ 「或」语义只能
+            #   发现「完全没人抓」，发现不了「该抓的那个没参与」—— 而后者
+            #   正是 P1-2 那一族的形状（独立核验员实测：在「注释填充绕过」的
+            #   树上，N45 的 `caught_by` 只剩 `['contract']`，树内已完全缺席，
+            #   而旧的交集判据仍判 mismatch=false ⇒ harness 绿）。
+            "catcher_mismatch": bool(set(expect) - catchers_of(failed)),
+            "missing_catcher": sorted(set(expect) - catchers_of(failed)),
             # ⚠️ 第六轮：区分「被抓住」/「没证明」/「存活」 ——
             #   编译失败与宿主崩溃都是**什么都没证明**，不是「被抓住」。
             "status": (
@@ -1334,8 +1383,13 @@ def _assert_no_duplicate_anchors():
         sys.exit(2)
 
 
+# ⚠️ 第七轮（P3-1）：自守卫**在导入时**就跑（此前只挂在 `__main__` 下 ⇒
+#   `import mutate` **不触发** ⇒ 而重复常量在 import 路径下**确实会静默覆盖**
+#   —— 正是它要防的形状）⇒ ⇒ 提到模块级 ⇒ 任何导入路径都拒绝。
+_assert_no_duplicate_anchors()
+
+
 if __name__ == "__main__":
-    _assert_no_duplicate_anchors()
     # ⚠️ ID-REVIEW-1049 第五轮：变异条目可以是 **3 元组**（id, label, patches）
     # 或 **4 元组**（多一个 options 字典 ⇒ 含窄跑选择器）⇒ ⇒ 这里必须能
     # 两种都解包（第四轮加 N46 时漏了这个预检循环 ⇒ 直接抛异常）。

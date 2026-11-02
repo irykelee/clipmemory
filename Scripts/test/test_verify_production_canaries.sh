@@ -173,7 +173,7 @@ MANIFEST="$REPO_ROOT/Scripts/canary-gate-locks.txt"
 #   ⇒ ⇒ **注释不参与哈希** ⇒ 日常改注释**不必**重算 ⇒ 改**条目**才必须。
 EXPECTED_FILE_ENTRIES=3
 EXPECTED_GUARD_ENTRIES=9
-EXPECTED_MANIFEST_SHA256=98fe0e37d390cdf70468ccff75fb9a52de2589ac67b6c353c6643f3f09ea4c3e
+EXPECTED_MANIFEST_SHA256=bac3f657ca1c9015a842c00700fd4ee6b0f9730a71e7f9d97effc239d7e40431
 
 if [[ ! -f "$MANIFEST" ]]; then
   # ⚠️ 这里**不能**用反引号：双引号里的反引号是**命令替换** ⇒ bash 会去执行
@@ -226,6 +226,69 @@ if n_guard != want_guards:
         + " ⇒ 清单被掏空 / 被删条"
     )
 
+def blank_swift(text):
+    """Replace comments and string literals with spaces (same idea as the
+    tree guards' `TestSourceScanner.blankingCommentsAndStrings`).
+
+    ⚠️ ID-REVIEW-1049 第七轮（独立核验员 P1-1，2026-11-02 实测）：本契约脚本
+    的断言计数原本是**纯文本正则**（不抹白）⇒ 把守卫的断言全删掉、再用
+    **注释**填同样的行数 ⇒ 计数照样「达标」⇒ **exit 0** ⇒ **三道防线
+    同时失明** ⇒ ⇒ ⇒ 断言计数必须与树内守卫**同口径**：先抹白，再数。
+
+    ⇒ 抹白**保留换行**（⇒ 基于缩进的函数体切分仍可用）与**保留列数**
+    （⇒ 报错行号仍对得上）。
+    ⇒ Swift 的块注释**可嵌套** ⇒ 深度计数。
+    """
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":
+            j = text.find("\n", i)
+            if j < 0:
+                j = n
+            out.append(" " * (j - i))
+            i = j
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "*":
+            depth = 0
+            j = i
+            while j < n:
+                if text.startswith("/*", j):
+                    depth += 1
+                    j += 2
+                    continue
+                if text.startswith("*/", j):
+                    depth -= 1
+                    j += 2
+                    if depth == 0:
+                        break
+                    continue
+                j += 1
+            out.append("".join(c if c == "\n" else " " for c in text[i:j]))
+            i = j
+            continue
+        if ch == '"':
+            j = i + 1
+            while j < n:
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == '"':
+                    j += 1
+                    break
+                if text[j] == "\n":
+                    break
+                j += 1
+            out.append("".join(c if c == "\n" else " " for c in text[i:j]))
+            i = j
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 FUNC_PATTERN = (
     r"^[ \t]*(?:(?:public|private|internal|fileprivate|static|final|override"
     r"|class|mutating|@[\w.]+)\s+)*func\s+"
@@ -253,12 +316,17 @@ def func_body(source, name):
     return None
 
 
-def assertion_count(source, name):
+def assertion_count(blanked, name):
     """How many assertions the guard really has.
+
+    ⇒ `blanked` = **已抹白**的源码（注释与字符串都变成空格）⇒ ⇒ 注释里写的
+    `XCTAssertTrue(...)` **不算数** ⇒ ⇒ 「删掉断言 + 用注释填行数」这个
+    绕过口被堵死（独立核验员 P1-1，2026-11-02 实测）。
 
     ⇒ The **audit** guard delegates to `assert*` private helpers ⇒ their
     assertions count too (otherwise it would look toothless while it is not).
     """
+    source = blanked
     body = func_body(source, name)
     if body is None:
         return None
@@ -287,7 +355,8 @@ for line in effective:
             problems.append("清单里 `file` 的数量不是整数：" + line)
             continue
         source = open(path, encoding="utf-8").read()
-        n = len(re.findall(r"func\s+test[A-Za-z0-9_]*\s*\(", source))
+        # ⚠️ 第七轮 P1-1：同样**先抹白** ⇒ 注释里的 `func test` 不计数。
+        n = len(re.findall(r"func\s+test[A-Za-z0-9_]*\s*\(", blank_swift(source)))
         if n < want:
             problems.append(
                 rel + " 的 `func test` 数量 = " + str(n) + " < 清单声明的 "
@@ -307,10 +376,13 @@ for line in effective:
             problems.append("清单里 `guard` 的断言数不是整数：" + line)
             continue
         source = open(path, encoding="utf-8").read()
-        if func_body(source, name) is None:
+        # ⚠️ 第七轮 P1-1：**先抹白**再判断 ⇒ 「函数被注释掉」不算存在、
+        #   「断言被注释掉」不算有牙 ⇒ 与树内守卫同口径。
+        blanked = blank_swift(source)
+        if func_body(blanked, name) is None:
             problems.append("守卫 " + name + " **不存在**于 " + rel + " ⇒ 它被删了")
             continue
-        n = assertion_count(source, name)
+        n = assertion_count(blanked, name)
         if n is None or n < want:
             problems.append(
                 "守卫 " + name + " 的断言数 = " + str(n) + " < 清单声明的 "
