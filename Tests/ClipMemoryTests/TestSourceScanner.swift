@@ -179,11 +179,25 @@ enum TestSourceScanner {
                 continue
             }
             if c == "/" && i + 1 < chars.count && chars[i + 1] == "*" {
+                // ⚠️ ID-REVIEW-1049 第八轮（2026-11-02 实测）：Swift 的块注释
+                // **可嵌套** ⇒ 必须**深度计数** ⇒ 否则 `/* /* */ XCTAssert(…) */`
+                // 里那个内层 `*/` **之后**的内容会被当成代码 ⇒ ⇒ 与树外契约脚本
+                // 的口径不一致（实测：树内 = 1、契约 = 0）⇒ ⇒ 「同口径」必须是
+                // **机械**的（`Scripts/test/blanking-corpus.json` 两边共用）。
+                var depth = 0
                 while i < chars.count {
+                    if chars[i] == "/" && i + 1 < chars.count && chars[i + 1] == "*" {
+                        out.append("  ")
+                        depth += 1
+                        i += 2
+                        continue
+                    }
                     if chars[i] == "*" && i + 1 < chars.count && chars[i + 1] == "/" {
                         out.append("  ")
+                        depth -= 1
                         i += 2
-                        break
+                        if depth == 0 { break }
+                        continue
                     }
                     out.append(isNewline(chars[i]) ? "\n" : " ")
                     i += 1
@@ -201,6 +215,20 @@ enum TestSourceScanner {
                 // Measured 2026-10-27 (ID-REVIEW-1041): the guard's own
                 // positive-control sample lived in a `"""` block and the
                 // scanner reported it as a real use.
+                //
+                // ⚠️ ID-REVIEW-1049 第八轮：这条分支**就是**树外契约脚本
+                //   第八轮补上的那一条 —— 契约脚本原本只抹 `//` / `/* */` /
+                //   `"…"`，**没抹 `"""…"""`** ⇒ ⇒ 断言藏进多行字面量里
+                //   ⇒ 契约脚本把它当成真断言（实测：报「断言数 = 7 ≥ 7」）
+                //   ⇒ ⇒ 树内 + 契约 **同时失明**（实测：树内 15 tests /
+                //   0 failures、契约 exit 0）⇒ ⇒ 两边现在共用
+                //   `Scripts/test/blanking-corpus.json` ⇒ 口径**机械**对齐。
+                var rawHashes = 0
+                var back = i - 1
+                while back >= 0 && chars[back] == "#" {
+                    rawHashes += 1
+                    back -= 1
+                }
                 out.append("   ")
                 i += 3
                 while i < chars.count {
@@ -208,9 +236,17 @@ enum TestSourceScanner {
                         && chars[i + 1] == "\"" && chars[i + 2] == "\"" {
                         out.append("   ")
                         i += 3
-                        break
+                        // 原始多行字符串的结束符后面还有 `#`（`"""#`）。
+                        var got = 0
+                        while got < rawHashes && i < chars.count && chars[i] == "#" {
+                            out.append(" ")
+                            i += 1
+                            got += 1
+                        }
+                        if got == rawHashes { break }
+                        continue
                     }
-                    if chars[i] == "\\" && i + 1 < chars.count {
+                    if rawHashes == 0 && chars[i] == "\\" && i + 1 < chars.count {
                         out.append(" ")
                         out.append(isNewline(chars[i + 1]) ? "\n" : " ")
                         i += 2
@@ -222,13 +258,24 @@ enum TestSourceScanner {
                 continue
             }
             if c == "\"" {
-                // A string literal. Swift also has raw strings;
-                // the naive scan is good enough for a test-tree guard and
-                // errs on the side of blanking.
+                // A string literal. Swift also has RAW strings (`#"…"#` /
+                // `##"…"##`) ⇒ the closing delimiter carries the **same**
+                // number of `#` ⇒ the scan must count them, otherwise the
+                // literal's content leaks out as "code".
+                //
+                // ⚠️ ID-REVIEW-1049 第八轮：这条分支与树外契约脚本的同名分支
+                //   现在**逐字对应**（`Scripts/test/blanking-corpus.json`
+                //   两边共用同一份语料 ⇒ 口径差异会当场变红）。
+                var rawHashes = 0
+                var back = i - 1
+                while back >= 0 && chars[back] == "#" {
+                    rawHashes += 1
+                    back -= 1
+                }
                 out.append(" ")
                 i += 1
                 while i < chars.count {
-                    if chars[i] == "\\" && i + 1 < chars.count {
+                    if rawHashes == 0 && chars[i] == "\\" && i + 1 < chars.count {
                         out.append(" ")
                         out.append(isNewline(chars[i + 1]) ? "\n" : " ")
                         i += 2
@@ -237,7 +284,15 @@ enum TestSourceScanner {
                     if chars[i] == "\"" {
                         out.append(" ")
                         i += 1
-                        break
+                        // 原始字符串的结束符后面还有 `#`（`"#`）。
+                        var got = 0
+                        while got < rawHashes && i < chars.count && chars[i] == "#" {
+                            out.append(" ")
+                            i += 1
+                            got += 1
+                        }
+                        if got == rawHashes { break }
+                        continue
                     }
                     out.append(isNewline(chars[i]) ? "\n" : " ")
                     i += 1

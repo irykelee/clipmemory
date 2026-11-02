@@ -51,12 +51,13 @@
 #   协同改动 ⇒ ⇒ **review 里一眼看得见**（这正是本文件存在的意义）。
 
 # ── 第四轮的锁（守卫在测试树里，清单在这里） ──────────────────────────────
-file  Tests/ClipMemoryTests/Review1049RegressionTests.swift 15
+file  Tests/ClipMemoryTests/Review1049RegressionTests.swift 16
 guard testTheOutOfBandCanaryGateScriptIsPresentAndKeepsItsEssentials Tests/ClipMemoryTests/Review1049RegressionTests.swift 2
 guard testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease Tests/ClipMemoryTests/Review1049RegressionTests.swift 7
 guard testEveryProductionCanaryStillCallsItsPureComparison Tests/ClipMemoryTests/Review1049RegressionTests.swift 1
 guard testThePureProductionComparisonsStillHaveTeeth Tests/ClipMemoryTests/Review1049RegressionTests.swift 6
 guard testEveryImageStorageTestProcessGuardIsABareEarlyReturn Tests/ClipMemoryTests/Review1049RegressionTests.swift 3
+guard testTheBlankingScannerAgreesWithTheSharedCorpus Tests/ClipMemoryTests/Review1049RegressionTests.swift 2
 
 # ── 安全网本体（三个生产 canary + 审计） ─────────────────────────────────
 file  Tests/ClipMemoryTests/ZZZSuiteTeardownTests.swift 7

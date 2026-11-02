@@ -598,6 +598,27 @@ _GUARD_212_COMMENT_GUTTER = _gutter_swift_func(
     filler=_GUARD_212_COMMENT_FILLER,
 )
 
+# ⚠️ 第八轮（N51）：「删掉断言 + 用**多行字面量**填同样的位置」⇒
+#   第七轮补的抹白**只抹了注释**（`//` / `/* */`）与**单行**字符串 ⇒
+#   `"""…"""` **没被抹** ⇒ 里面的 `XCTAssertTrue` 被计成**真断言** ⇒
+#   ⇒ 实测（第八轮）：契约脚本报「断言数 = 7 ≥ 7」+ 树内 15 tests /
+#   0 failures ⇒ ⇒ **树内 + 契约同时失明**（第七轮那条绕过只是被换了个
+#   通道）⇒ ⇒ 这条变异把那个通道**固化**下来。
+_GUARD_212_MULTILINE_FILLER = [
+    'let fakeAssert1 = """\n        XCTAssertTrue(true)\n        """',
+    'let fakeAssert2 = """\n        XCTAssertTrue(true)\n        """',
+    'let fakeAssert3 = """\n        XCTAssertTrue(true)\n        """',
+    'let fakeAssert4 = """\n        XCTAssertTrue(true)\n        """',
+    'let fakeAssert5 = """\n        XCTAssertTrue(true)\n        """',
+    'let fakeAssert6 = """\n        XCTAssertTrue(true)\n        """',
+    'let fakeAssert7 = """\n        XCTAssertTrue(true)\n        """',
+]
+_GUARD_212_MULTILINE_GUTTER = _gutter_swift_func(
+    R1049,
+    "testTheOutOfBandCanaryGateIsStillWiredIntoCIAndRelease",
+    filler=_GUARD_212_MULTILINE_FILLER,
+)
+
 MUTATIONS = [
     ("N1", "FirstLaunchService.init() 改回 `.standard`（默认参数 = 生产身份）",
      [(FL, FL_INIT, FL_INIT_PROD)]),
@@ -720,6 +741,11 @@ MUTATIONS = [
     ("N50", "**守卫 ㉒ 被掏空 + 用注释填行数**（核验员 P1-1：旧契约脚本"
      "不抹白 ⇒ 注释里的 XCTAssert 被计成真断言 ⇒ 三道防线同时失明）",
      [(R1049, _GUARD_212_COMMENT_GUTTER[0], _GUARD_212_COMMENT_GUTTER[1])],
+     {"expect": ["contract"]}),
+    ("N51", "**守卫 ㉒ 被掏空 + 用多行字面量填位置**（第八轮实测：契约脚本"
+     "没抹 `\"\"\"…\"\"\"` ⇒ 字面量里的 XCTAssert 被计成真断言 ⇒ 树内 + "
+     "契约**同时**失明）",
+     [(R1049, _GUARD_212_MULTILINE_GUTTER[0], _GUARD_212_MULTILINE_GUTTER[1])],
      {"expect": ["contract"]}),
     # ── 第五轮：⑸ 的词边界（真跑，但**窄跑**到只触发守卫本身） ───────────
     ("N46", "**闸门谓词被改名**（⑸ 的子串匹配可被绕过 ⇒ 第五轮改词边界）",

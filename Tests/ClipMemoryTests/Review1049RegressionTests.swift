@@ -664,6 +664,84 @@ final class Review1049RegressionTests: XCTestCase {
         return nil
     }
 
+    // MARK: - ⑹ 抹白口径的**机械**对齐（第八轮）
+
+    /// ⑹ **语料**守卫：树内扫描器必须与**树外**契约脚本对**同一份语料**
+    /// 给出**同一个**答案。
+    ///
+    /// ⚠️ 为什么要「同一份语料」：树内（`TestSourceScanner`）与树外
+    /// （`Scripts/test/test_verify_production_canaries.sh` 里的 `blank_swift`）
+    /// 是**两份独立实现** ⇒ 口径只要差一条，就会出现「树内数出来的 ≠ 树外
+    /// 数出来的 ≠ 真货」⇒ ⇒ **第八轮实测**：契约脚本**没抹 `"""…"""`** ⇒
+    /// 断言藏进多行字面量 ⇒ 树内 15 tests / 0 failures + 契约 exit 0 ⇒
+    /// **两边同时失明** ⇒ ⇒ 语料（树外 `Scripts/test/blanking-corpus.json`）
+    /// 被**两边共用** ⇒ 口径漂移 ⇒ 那一边的校验立刻变红。
+    ///
+    /// ⚠️ 语料**缺失**时必须**失败**（不得跳过）⇒ 那等于「口径对齐这道
+    /// 防线不存在」。
+    func testTheBlankingScannerAgreesWithTheSharedCorpus() throws {
+        let corpusURL = Self.repoRoot
+            .appendingPathComponent("Scripts/test/blanking-corpus.json")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: corpusURL.path),
+            "抹白语料必须存在（`Scripts/test/blanking-corpus.json`）"
+            + "—— 它是「树内 / 树外同口径」的**唯一**依据 ⇒ 缺失必须失败"
+        )
+        let data = try Data(contentsOf: corpusURL)
+        let drift = try Self.corpusDrift(from: data)
+        XCTAssertTrue(
+            drift.isEmpty,
+            "树内扫描器与树外契约脚本的抹白口径**必须一致** ⇒ 漂移的用例："
+            + drift.joined(separator: ", ")
+        )
+    }
+
+    /// 语料里每条用例在**树内扫描器**下的抹白结果；与期望不符的记成漂移。
+    private static func corpusDrift(from data: Data) throws -> [String] {
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let root = object as? [String: Any],
+              let cases = root["cases"] as? [[String: Any]] else {
+            throw CorpusError.malformed
+        }
+        guard !cases.isEmpty else { throw CorpusError.empty }
+        var drift: [String] = []
+        for testCase in cases {
+            let name = testCase["name"] as? String ?? "?"
+            let lines = testCase["lines"] as? [String] ?? []
+            let wantAssertions = testCase["expect_assertions"] as? Int ?? -1
+            let wantFuncTests = testCase["expect_func_tests"] as? Int ?? -1
+            let blanked = TestSourceScanner.blankingCommentsAndStrings(
+                lines.joined(separator: "\n")
+            )
+            let gotAssertions = try Self.countOccurrences(
+                of: "\\bXCTAssert\\w*|\\bXCTFail\\b|\\bXCTUnwrap\\b", in: blanked
+            )
+            let gotFuncTests = try Self.countOccurrences(
+                of: "func\\s+test[A-Za-z0-9_]*\\s*\\(", in: blanked
+            )
+            if gotAssertions != wantAssertions || gotFuncTests != wantFuncTests {
+                drift.append(
+                    name + "（树内 " + String(gotAssertions) + "/" + String(gotFuncTests)
+                    + " ≠ 期望 " + String(wantAssertions) + "/" + String(wantFuncTests) + "）"
+                )
+            }
+        }
+        return drift
+    }
+
+    /// 出现次数（不是行数）⇒ 同一行里的两次出现算两次。
+    private static func countOccurrences(of pattern: String, in text: String) throws -> Int {
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.numberOfMatches(in: text, range: range)
+    }
+
+    /// 语料本身坏掉时的错误（**必须**让测试失败，不得静默跳过）。
+    private enum CorpusError: Error {
+        case malformed
+        case empty
+    }
+
     /// Repository root, computed from this file's own location.
     private static let repoRoot: URL = {
         URL(fileURLWithPath: #filePath)

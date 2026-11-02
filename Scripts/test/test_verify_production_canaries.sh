@@ -30,11 +30,25 @@
 #   ⇒ ⇒ *清单在锁的外面 ⇒ **锁必须在清单的外面**。*
 set -uo pipefail
 
+# ⚠ ID-REVIEW-1049 第八轮（2026-11-02 实测）：**抹白只抹了一半** ⇒
+#   第七轮补的抹白抹了 `//` / `/* */` / `"…"` ⇒ 但**没抹 `"""…"""`**
+#   （Swift 的**多行字面量**）⇒ ⇒ 断言藏进多行字面量里仍被计成**真断言**
+#   ⇒ 实测（副本）：契约脚本报「断言数 = 7 ≥ 7」+ 树内 15 tests /
+#   0 failures ⇒ ⇒ **树内 + 契约同时失明** ⇒ ⇒ 第七轮堵住的那条绕过
+#   **只是被换了个通道**。
+#   ⇒ ⇒ 修法（两处）：
+#     ① 本脚本的 `blank_swift` 补 `"""…"""` + Swift **原始字符串**
+#        （`#"…"#` / `#"""…"""#`）⇒ 与树内扫描器**逐字对应**；
+#     ② 树内（`TestSourceScanner`）与树外（本脚本）**共用同一份语料**
+#        （`Scripts/test/blanking-corpus.json`）⇒ ⇒ 「同口径」从**散文**
+#        变成**机械事实**：口径漂移 ⇒ 那一边的校验立刻变红。
+#   ⇒ ⇒ 该绕过已固化为变异 **N51**（实测被本脚本的契约层抓住）。
+#
 # ⚠ ID-REVIEW-1049 第六轮：模式开关 ⇒ CI 里「契约 + 接线」与「清单完整性」
 #   各自一个 step ⇒ 失败时**一眼看得出是哪一层**（独立核验员 P3-5：第五轮
 #   的新机制**寄生**在第四轮的 step 里 ⇒ 失败归属不清）。
 #   all（默认，release.sh 用它）= 全部 ；contract = 契约 + 接线 ；
-#   manifest = 只跑清单自身的完整性（条目数 + sha256 + 守卫断言数）。
+#   manifest = 只跑清单自身的完整性（条目数 + sha256 + 守卫断言数 + 语料）。
 MODE="${1:-all}"
 MODE="${MODE#--}"   # `--manifest` 与 `manifest` 都接受
 if [[ "$MODE" != "all" && "$MODE" != "contract" && "$MODE" != "manifest" ]]; then
@@ -172,8 +186,18 @@ MANIFEST="$REPO_ROOT/Scripts/canary-gate-locks.txt"
 #   ⇒ 末尾**再加一个**换行 ⇒ 取 sha256。
 #   ⇒ ⇒ **注释不参与哈希** ⇒ 日常改注释**不必**重算 ⇒ 改**条目**才必须。
 EXPECTED_FILE_ENTRIES=3
-EXPECTED_GUARD_ENTRIES=9
-EXPECTED_MANIFEST_SHA256=bac3f657ca1c9015a842c00700fd4ee6b0f9730a71e7f9d97effc239d7e40431
+EXPECTED_GUARD_ENTRIES=10
+EXPECTED_MANIFEST_SHA256=43bc08783c4c3ae534ce0085a19e37d891f106dda5ed6ce9bbb27dc17ae032eb
+
+# ⚠️ ID-REVIEW-1049 第八轮（2026-11-02 实测）：**抹白语料**的 sha256。
+#   ⇒ 语料被改弱（期望值被调低）⇒ 本脚本 exit 1。
+#
+#   ⇒ **怎么重算**（口径 = 文件**原始字节**，不做任何规范化）：
+#
+#     python3 -c "import hashlib;print(hashlib.sha256(open('Scripts/test/blanking-corpus.json','rb').read()).hexdigest())"
+#
+EXPECTED_CORPUS_SHA256=ca2bae723fdbec3866a5af19ca353ad02c1bdde1718386726240a4004c3aab9f
+CORPUS="$REPO_ROOT/Scripts/test/blanking-corpus.json"
 
 if [[ ! -f "$MANIFEST" ]]; then
   # ⚠️ 这里**不能**用反引号：双引号里的反引号是**命令替换** ⇒ bash 会去执行
@@ -183,8 +207,10 @@ if [[ ! -f "$MANIFEST" ]]; then
   bad "  ⇒ 缺失 = 没人知道少了哪把锁 ⇒ 必须失败，不得静默放过"
 else
   manifest_out="$(python3 - "$REPO_ROOT" "$MANIFEST" \
-    "$EXPECTED_FILE_ENTRIES" "$EXPECTED_GUARD_ENTRIES" "$EXPECTED_MANIFEST_SHA256" <<'PY'
+    "$EXPECTED_FILE_ENTRIES" "$EXPECTED_GUARD_ENTRIES" "$EXPECTED_MANIFEST_SHA256" \
+    "$CORPUS" "$EXPECTED_CORPUS_SHA256" <<'PY'
 import hashlib
+import json
 import os
 import re
 import sys
@@ -192,6 +218,7 @@ import sys
 root, manifest = sys.argv[1], sys.argv[2]
 want_files, want_guards = int(sys.argv[3]), int(sys.argv[4])
 want_sha = sys.argv[5]
+corpus_path, want_corpus_sha = sys.argv[6], sys.argv[7]
 
 problems = []
 
@@ -227,18 +254,27 @@ if n_guard != want_guards:
     )
 
 def blank_swift(text):
-    """Replace comments and string literals with spaces (same idea as the
-    tree guards' `TestSourceScanner.blankingCommentsAndStrings`).
+    '''Replace comments and string literals with spaces.
 
-    ⚠️ ID-REVIEW-1049 第七轮（独立核验员 P1-1，2026-11-02 实测）：本契约脚本
-    的断言计数原本是**纯文本正则**（不抹白）⇒ 把守卫的断言全删掉、再用
-    **注释**填同样的行数 ⇒ 计数照样「达标」⇒ **exit 0** ⇒ **三道防线
-    同时失明** ⇒ ⇒ ⇒ 断言计数必须与树内守卫**同口径**：先抹白，再数。
+    ⚠️ This MUST stay **character-for-character equivalent** to the tree
+    guards' `TestSourceScanner.blankingCommentsAndStrings` (Swift) ⇒ ⇒ the
+    two are pinned to the SAME corpus (`Scripts/test/blanking-corpus.json`)
+    ⇒ ⇒ a divergence between them turns the tree-side test red AND the
+    contract-side check red ⇒ ⇒ 「同口径」is **mechanical**, not prose.
+
+    ⇒ 历史（为什么这里有这么多分支）：
+      * 第七轮（独立核验员 P1-1，2026-11-02 实测）：断言计数原本是**纯文本
+        正则**（不抹白）⇒ 删掉断言 + 用**注释**填同样的行数 ⇒ 计数照样达标
+        ⇒ exit 0 ⇒ 树内 + 契约 + CI 三道防线同时失明。
+      * 第八轮（2026-11-02 实测）：抹白了注释，却**没抹 `"""…"""`** ⇒
+        断言藏进**多行字面量**里 ⇒ 本脚本仍把它当成真断言 ⇒ 实测
+        「断言数 = 7 ≥ 7」+ 树内 15 tests / 0 failures ⇒ ⇒ **同样双盲**
+        ⇒ ⇒ 补 `"""` ⇒ 并补 Swift 的**原始字符串**（`#"…"#`）。
 
     ⇒ 抹白**保留换行**（⇒ 基于缩进的函数体切分仍可用）与**保留列数**
     （⇒ 报错行号仍对得上）。
     ⇒ Swift 的块注释**可嵌套** ⇒ 深度计数。
-    """
+    '''
     out = []
     i = 0
     n = len(text)
@@ -252,6 +288,7 @@ def blank_swift(text):
             i = j
             continue
         if ch == "/" and i + 1 < n and text[i + 1] == "*":
+            # 块注释**可嵌套** ⇒ 深度计数（与树内扫描器同一口径）。
             depth = 0
             j = i
             while j < n:
@@ -270,24 +307,53 @@ def blank_swift(text):
             i = j
             continue
         if ch == '"':
-            j = i + 1
-            while j < n:
-                if text[j] == "\\":
-                    j += 2
-                    continue
-                if text[j] == '"':
+            # Swift 原始字符串：`#"…"#` / `##"…"##` / `#"""…"""#`
+            # ⇒ 结束符的 `#` 个数与开始符**相同** ⇒ 必须数出来。
+            raw_hashes = 0
+            k = i - 1
+            while k >= 0 and text[k] == "#":
+                raw_hashes += 1
+                k -= 1
+            if text.startswith('"""', i):
+                # 多行字面量（第八轮补上 ⇒ 断言藏在这里也曾能充数）。
+                j = i + 3
+                while j < n:
+                    if text.startswith('"""', j):
+                        j += 3
+                        got = 0
+                        while got < raw_hashes and j < n and text[j] == "#":
+                            j += 1
+                            got += 1
+                        if got == raw_hashes:
+                            break
+                        continue
+                    if raw_hashes == 0 and text[j] == "\\" and j + 1 < n:
+                        j += 2
+                        continue
                     j += 1
-                    break
-                if text[j] == "\n":
-                    break
-                j += 1
+            else:
+                # 单行字面量。
+                j = i + 1
+                while j < n:
+                    if raw_hashes == 0 and text[j] == "\\" and j + 1 < n:
+                        j += 2
+                        continue
+                    if text[j] == '"':
+                        j += 1
+                        got = 0
+                        while got < raw_hashes and j < n and text[j] == "#":
+                            j += 1
+                            got += 1
+                        if got == raw_hashes:
+                            break
+                        continue
+                    j += 1
             out.append("".join(c if c == "\n" else " " for c in text[i:j]))
             i = j
             continue
         out.append(ch)
         i += 1
     return "".join(out)
-
 
 FUNC_PATTERN = (
     r"^[ \t]*(?:(?:public|private|internal|fileprivate|static|final|override"
@@ -394,6 +460,61 @@ for line in effective:
                   + str(n) + " ≥ " + str(want))
     else:
         problems.append("清单里有无法识别的行：" + line)
+
+# ── ⑧ 抹白语料（第八轮）：树内 / 树外两套抹白的**机械**对齐 ────────────────
+# ⚠️ 为什么需要它（2026-11-02 实测）：本脚本的 `blank_swift` 与树内的
+#   `TestSourceScanner.blankingCommentsAndStrings` 是**两份独立实现**
+#   ⇒ 口径只要差一条就会出现「树内数出来 ≠ 树外数出来 ≠ 真货」。
+#   ⇒ 实测：契约脚本**没抹 `"""…"""`** ⇒ 断言藏进多行字面量 ⇒
+#   树内 15 tests / 0 failures + 契约 exit 0 ⇒ **两边同时失明**。
+#   ⇒ ⇒ 语料（树外）被**两边共用** ⇒ 口径漂移 ⇒ 那一边的校验立刻变红。
+#   ⇒ ⇒ 语料本身被**本脚本里的 sha256**锁住 ⇒ 语料被改弱 ⇒ exit 1。
+try:
+    with open(corpus_path, "rb") as fh:
+        corpus_bytes = fh.read()
+except OSError as exc:
+    problems.append(
+        "抹白语料缺失（Scripts/test/blanking-corpus.json）：" + str(exc)
+        + " ⇒ 语料是「树内 / 树外同口径」的**唯一**依据 ⇒ 缺失必须失败"
+    )
+else:
+    corpus_sha = hashlib.sha256(corpus_bytes).hexdigest()
+    if corpus_sha != want_corpus_sha:
+        problems.append(
+            "抹白语料的 sha256 = " + corpus_sha + " ≠ 期望 " + want_corpus_sha
+            + " ⇒ 语料被**改过**（期望值被调低 ⇒ 口径被放宽）"
+        )
+    else:
+        try:
+            corpus = json.loads(corpus_bytes.decode("utf-8"))
+        except ValueError as exc:
+            problems.append("抹白语料不是合法 JSON：" + str(exc))
+        else:
+            cases = corpus.get("cases") or []
+            if not cases:
+                problems.append("抹白语料里**一条**用例都没有 ⇒ 语料被掏空")
+            for case in cases:
+                name = str(case.get("name", "?"))
+                lines = case.get("lines") or []
+                source = "\n".join(lines)
+                blanked = blank_swift(source)
+                n_assert = len(ASSERT_PATTERN.findall(blanked))
+                n_func = len(
+                    re.findall(r"func\s+test[A-Za-z0-9_]*\s*\(", blanked)
+                )
+                want_assert = case.get("expect_assertions")
+                want_func = case.get("expect_func_tests")
+                if n_assert != want_assert or n_func != want_func:
+                    problems.append(
+                        "语料用例 " + name + " 的抹白结果 = 断言 " + str(n_assert)
+                        + " / func test " + str(n_func)
+                        + " ≠ 期望 " + str(want_assert) + " / " + str(want_func)
+                        + " ⇒ **抹白口径漂了**（树内与树外必须给出同一个答案）"
+                    )
+                else:
+                    print("✅ 语料用例 " + name + " 的抹白结果 = 断言 "
+                          + str(n_assert) + " / func test " + str(n_func)
+                          + "（与树内扫描器共用同一份语料）")
 
 for p in problems:
     print("❌ " + p)

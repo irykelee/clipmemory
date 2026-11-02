@@ -1,0 +1,177 @@
+{
+  "note": [
+    "ID-REVIEW-1049 第八轮（2026-11-02）：**树内与树外共用同一份语料**。",
+    "",
+    "背景：树内扫描器（Tests/ClipMemoryTests/TestSourceScanner.swift 的",
+    "blankingCommentsAndStrings）与树外契约脚本（Scripts/test/test_verify_production_canaries.sh",
+    "的 blank_swift）是**两份独立实现** ⇒ 它们的口径只要差一条，就会出现",
+    "「树内数出来 = 树外数出来 ≠ 真货」⇒ ⇒ 第八轮实测：契约脚本**没抹",
+    "`\"\"\"…\"\"\"`** ⇒ 断言藏进多行字面量 ⇒ 树内 15 tests / 0 failures +",
+    "契约 exit 0 ⇒ **两边同时失明**。",
+    "",
+    "⇒ ⇒ 本文件把「口径一致」变成**机械**事实：两个实现都必须对**每条**",
+    "语料给出**同样的**期望值 ⇒ 任何一边改动导致口径漂移 ⇒ 那一边的",
+    "校验立刻变红。",
+    "",
+    "⚠️ 期望值取自 **Swift 语言语义**（不是取自某一个实现）⇒ 语料被改弱了，",
+    "本文件的 sha256（硬编码在契约脚本里）会不匹配 ⇒ exit 1。",
+    "",
+    "字段：name = 用例名；lines = 源码逐行；expect_assertions = 抹白后",
+    "XCTAssert*/XCTFail/XCTUnwrap 的**出现次数**；expect_func_tests = 抹白后",
+    "`func test…(` 的**出现次数**。两条路径都用同一份抹白结果 ⇒ 语料同时守住",
+    "「断言数棘轮」与「func test 数棘轮」。"
+  ],
+  "cases": [
+    {
+      "name": "real_assertion",
+      "lines": [
+        "func f() {",
+        "    XCTAssertTrue(true)",
+        "}"
+      ],
+      "expect_assertions": 1,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "real_assertion_multiline",
+      "lines": [
+        "func f() {",
+        "    XCTAssertTrue(",
+        "        a == b",
+        "    )",
+        "}"
+      ],
+      "expect_assertions": 1,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "comment_fill",
+      "lines": [
+        "func f() {",
+        "    // XCTAssertTrue(true)",
+        "    // XCTFail(\"boom\")",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "block_comment",
+      "lines": [
+        "func f() {",
+        "    /* XCTAssertTrue(true)",
+        "       XCTFail(\"boom\") */",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "nested_block_comment",
+      "lines": [
+        "func f() {",
+        "    /* outer /* inner */ XCTAssertTrue(true) */",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "multiline_literal",
+      "lines": [
+        "func f() {",
+        "    let s = \"\"\"",
+        "    XCTAssertTrue(true)",
+        "    \"\"\"",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "raw_multiline_literal",
+      "lines": [
+        "func f() {",
+        "    let s = #\"\"\"",
+        "    XCTAssertTrue(true)",
+        "    \"\"\"#",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "raw_string",
+      "lines": [
+        "func f() {",
+        "    let s = #\"XCTAssertTrue(true)\"#",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "raw_string_with_quotes",
+      "lines": [
+        "func f() {",
+        "    let s = #\"a \" b XCTAssertTrue(true) c\"#",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "plain_string",
+      "lines": [
+        "func f() {",
+        "    let s = \"XCTAssertTrue(true)\"",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "interpolation_with_quotes",
+      "lines": [
+        "func f() {",
+        "    let s = \"a \\(b(\"c\")) XCTAssertTrue(true)\"",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "func_test_in_comment",
+      "lines": [
+        "// func testHidden() {",
+        "func f() {",
+        "}"
+      ],
+      "expect_assertions": 0,
+      "expect_func_tests": 0
+    },
+    {
+      "name": "real_func_test",
+      "lines": [
+        "func testReal() {",
+        "    XCTAssertTrue(true)",
+        "}"
+      ],
+      "expect_assertions": 1,
+      "expect_func_tests": 1
+    },
+    {
+      "name": "mixed_body",
+      "lines": [
+        "func f() {",
+        "    XCTAssertTrue(true)",
+        "    XCTAssertEqual(a, b)",
+        "    let s = \"XCTFail(\\\"x\\\")\"",
+        "    // XCTUnwrap(z)",
+        "}"
+      ],
+      "expect_assertions": 2,
+      "expect_func_tests": 0
+    }
+  ]
+}
