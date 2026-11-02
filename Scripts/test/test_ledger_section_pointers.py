@@ -273,15 +273,27 @@ def check_ledger(lines: list[str]) -> tuple[list[str], int, list[tuple[int, str,
     return problems, checked, skipped, len(headings)
 
 
-def judge(lines: list[str]) -> tuple[list[str], int, list[tuple[int, str, str]], int]:
-    '''完整判定（指针检查 + 验收表数字核对）⇒ ⇒ main 与 --self-test 共用。'''
+def judge(lines: list[str], require_counts_table: bool = True
+          ) -> tuple[list[str], int, list[tuple[int, str, str]], int]:
+    '''完整判定（指针检查 + 验收表数字核对）⇒ ⇒ main 与 --self-test 共用。
+
+    ⚠️ `require_counts_table`：**真实台账**必须**有**那张「正对照」验收表
+    ⇒ ⇒ 找不到 ⇒ **报红**（否则「台账数字自核对」这个**机制本身**
+    ⇒ ⇒ 可以被**静默关闭**：把表改名 / 删掉 ⇒ ⇒ 守卫照样 exit 0 且
+    ⇒ ⇒ 照样输出「279 处指针全部正确」这种**看起来很绿**的话 ⇒ ⇒
+    ⇒ ⇒ 与 V10 / V17 同族：「**只抓认识的形状 ⇒ 静默漏检**」——
+    ⇒ ⇒ 这里「认识的形状」就是那张表的**表头文字**。
+    ⇒ ⇒ `--self-test` 的**合成台账**故意没有那张表 ⇒ ⇒ 显式传 False。
+    '''
     problems, checked, skipped, heading_count = check_ledger(lines)
-    problems += check_ledger_counts(lines, checked, heading_count, len(skipped))
+    problems += check_ledger_counts(lines, checked, heading_count, len(skipped),
+                                   require_table=require_counts_table)
     return problems, checked, skipped, heading_count
 
 
 def check_ledger_counts(lines: list[str], checked: int, heading_count: int,
-                         skipped_count: int) -> list[str]:
+                         skipped_count: int,
+                         require_table: bool = False) -> list[str]:
     '''台账「验收表」里写的数字**必须**等于实测数字 ⇒ ⇒ 否则**报红**。
 
     ⚠️ 为什么要这道：台账里那些数字是**手工维护**的 ⇒ ⇒ 加一节就得改一次
@@ -296,7 +308,14 @@ def check_ledger_counts(lines: list[str], checked: int, heading_count: int,
         if found:
             matches.append((lineno, found))
     if not matches:
-        # 台账里没有这张表 ⇒ 不要求它存在（合成台账 / 旧版台账都属这类）。
+        if require_table:
+            problems.append(
+                f"{LEDGER_REL}: 台账里**找不到**「正对照」验收表 ⇒ ⇒ "
+                f"「台账里的数字 vs 实测」这个**核对机制根本没跑**"
+                f" ⇒ ⇒ 表被改名 / 删掉 ⇒ ⇒ 机制被**静默关闭**而守卫照样报绿"
+                f" ⇒ ⇒ 恢复那张表（或让守卫认新的表头）"
+            )
+        # 合成台账 / 旧版台账 ⇒ 不要求它存在（--self-test 显式传 False）。
         return problems
     if len(matches) > 1:
         # ⚠️ **多张「正对照」表** ⇒ 守卫不知道该核对**哪一张** ⇒
@@ -398,7 +417,8 @@ def self_test() -> list[str]:
             " ⇒ 本守卫**什么都没做**却报绿 ⇒ 不算通过"
         )
     for name, text, expected in SELF_TEST_CASES:
-        found, _checked, _, _ = judge(text.split("\n"))
+        found, _checked, _, _ = judge(text.split("\n"),
+                                      require_counts_table=False)
         if not found:
             problems.append(
                 f"自检失败：注入「{name}」之后**仍然全绿** ⇒ 本守卫**没有牙齿**"
@@ -416,11 +436,20 @@ def self_test() -> list[str]:
         "| 正对照 | ✅ exit 0（**999** 处指针全部指向真实且唯一的节；"
         "**999** 个节标题；**0** 处指向别的编号体系 ⇒ 已跳过） |\n"
     )
-    found, _, _, _ = judge(drifted.split("\n"))
+    found, _, _, _ = judge(drifted.split("\n"), require_counts_table=False)
     if not any("已经漂了" in problem for problem in found):
         problems.append(
             "自检失败：把验收表里的数字改成 999 之后**仍然全绿**"
             " ⇒ ⇒ 「台账里的数字漂了没人报红」这个洞**没堵上**"
+        )
+    # ⚠️ **验收表不存在** ⇒ 主路径必须报红（否则「核对机制」可被静默关闭）。
+    found, _, _, _ = judge(SYNTHETIC_LEDGER.split("\n"),
+                           require_counts_table=True)
+    if not any("找不到" in problem and "静默关闭" in problem for problem in found):
+        problems.append(
+            "自检失败：台账里**没有**那张验收表时**仍然全绿**"
+            f" ⇒ ⇒ 「台账数字自核对」机制**可以被静默关闭**（改名 / 删表即可）"
+            f" ⇒ ⇒ 这个洞**没堵上**"
         )
     # ⚠️ **两张「正对照」表** ⇒ 守卫不知道核对哪一张 ⇒ 必须报红
     #   （否则它会拿**历史**那张的数字来比 ⇒ ⇒ **虚假报错**）。
@@ -432,7 +461,8 @@ def self_test() -> list[str]:
         "| 正对照 | ✅ exit 0（**2** 处指针全部指向真实且唯一的节；"
         "**2** 个节标题；**0** 处指向别的编号体系 ⇒ 已跳过） |\n"
     )
-    found, _, _, _ = judge(two_tables.split("\n"))
+    found, _, _, _ = judge(two_tables.split("\n"),
+                            require_counts_table=False)
     if not any("张「正对照」表" in problem for problem in found):
         problems.append(
             "自检失败：台账里有**两张**「正对照」表时**仍然全绿**"

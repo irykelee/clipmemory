@@ -203,9 +203,51 @@ def bash3_version() -> str:
         return "?"
 
 
+def zero_files_problem(scanned: int) -> str | None:
+    '''扫了 **0** 个文件 ⇒ ⇒ 报红（**不是**「干净」，是「**没扫到**」）。
+
+    ⚠️ 与 V10 / V17 同族：「**只抓认识的形状 ⇒ 静默漏检**」——
+    ⇒ ⇒ 这里的「形状」是**文件清单** ⇒ ⇒ 路径规则失效 / 仓库结构变了
+    ⇒ ⇒ 守卫会输出「✅ 扫了 **0** 个文件：没有隐患」⇒ ⇒ **静默放行**
+    ⇒ ⇒ 而 CI 照样绿 ⇒ ⇒ ⇒ 与「验收表被改名 ⇒ 数字核对被静默关闭」
+    ⇒ ⇒ 是**同一个洞**的两个实例。
+    '''
+    if scanned > 0:
+        return None
+    return (
+        "扫了 **0** 个文件 ⇒ ⇒ 这**不是**「干净」，是「**没扫到**」"
+        " ⇒ ⇒ 路径规则失效 / 仓库结构变了 ⇒ ⇒ 报红（不假装检查过）"
+    )
+
+
+def self_test() -> list[str]:
+    '''证明「有牙齿」：零文件**必须**报红 ⇒ ⇒ 不许报绿。'''
+    problems: list[str] = []
+    if zero_files_problem(0) is None:
+        problems.append(
+            "自检失败：扫了 **0** 个文件竟然**不报红** ⇒ ⇒ "
+            "「没扫到」会被当成「干净」⇒ ⇒ 本守卫**没有牙齿**"
+        )
+    if zero_files_problem(3) is not None:
+        problems.append(
+            "自检失败：扫了 3 个文件竟然报红 ⇒ ⇒ 判据过严"
+        )
+    return problems
+
+
 def main(argv: list[str]) -> int:
+    if "--self-test" in argv[1:]:
+        problems = self_test()
+        if problems:
+            print("❌ 自检失败：", file=sys.stderr)
+            for problem in problems:
+                print("   - " + problem, file=sys.stderr)
+            return 1
+        print("✅ 自检通过：扫了 **0** 个文件**必须报红**（不假装检查过）"
+              " ⇒ ⇒ 本守卫有牙齿")
+        return 0
     if len(argv) != 2:
-        print("用法：test_shell_multibyte_var_boundary.py <repo-root>",
+        print("用法：test_shell_multibyte_var_boundary.py <repo-root> [--self-test]",
               file=sys.stderr)
         return 2
     root = argv[1]
@@ -236,6 +278,10 @@ def main(argv: list[str]) -> int:
                     f"{tail!r} ⇒ 在 bash 3.2 + UTF-8 locale 下变量名会被吸走 "
                     f"⇒ `set -u` ⇒ unbound variable ⇒ **改成 `${{{var}}}`**"
                 )
+
+    zero = zero_files_problem(scanned)
+    if zero:
+        problems.append(zero)
 
     problems.extend(yaml_problems(root))
 

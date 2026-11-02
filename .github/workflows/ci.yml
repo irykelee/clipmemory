@@ -266,6 +266,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 Scripts/test/test_shell_multibyte_var_boundary.py .
+          # ⇒ ⇒ ID-REVIEW-1049 第十一轮 (2026-11-02): the guard now FAILS
+          #   when it scanned 0 files ("nothing found" is not "clean"), so its
+          #   --self-test proves that path has teeth. V17 shape: a self-test
+          #   that exists but is never invoked in CI is not a self-test.
+          python3 Scripts/test/test_shell_multibyte_var_boundary.py . --self-test
 
       # ID-REVIEW-1049 第十轮 (2026-11-02): the heredoc quote-parity RULE
       # itself must not drift.
