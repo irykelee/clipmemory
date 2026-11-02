@@ -284,10 +284,15 @@ jobs:
       #
       # ⇒ It is its OWN step (not a mode of the step above) so a failure is
       #   attributable — ID-REVIEW-1049 sixth round P3-6.
+      # ⇒ ⇒ **第十一轮追加 `--self-test`**：自检能力写了却**从未被 CI 调用**
+      #   ⇒ ⇒ 「有牙齿」的唯一自动证明**根本不在流水线里跑**
+      #   ⇒ ⇒ 判据被改坏时 CI **不会发现** ⇒ ⇒ 同一个守卫同时是受害者和帮凶。
+      #   ⇒ ⇒ 现在两个守卫的 `--self-test` **都**在 CI 里跑。
       - name: "Shell heredoc quote-parity rule vs reality (ID-REVIEW-1049 第十轮)"
         run: |
           set -euo pipefail
           python3 Scripts/test/test_shell_heredoc_quote_rule.py .
+          python3 Scripts/test/test_shell_heredoc_quote_rule.py . --self-test
 
       # ID-REVIEW-1049 第十轮 (2026-11-02): the ledger's own section pointers.
       #
@@ -300,11 +305,37 @@ jobs:
       #   reference will not break when section numbers change"). Prose cannot
       #   stop that ⇒ it needs a mechanical check.
       #
+      # ⇒ ⇒ **第十一轮追加 `--self-test`**：指针守卫**自带的**负对照矩阵
+      #   （7 类坏指针必须报红 + 占位符/案例编号/尾随标点必须不误报）
+      #   ⇒ ⇒ **在 CI 里自动复验** ⇒ ⇒ 判据哪天被改坏，CI 会立刻报红。
       # ⇒ Its own step (attributable failures — ID-REVIEW-1049 sixth round P3-6).
       - name: "Ledger section pointers resolve (ID-REVIEW-1049 第十轮)"
         run: |
           set -euo pipefail
           python3 Scripts/test/test_ledger_section_pointers.py .
+          python3 Scripts/test/test_ledger_section_pointers.py . --self-test
+
+      # ID-REVIEW-1049 第十轮 c: the mutation harness's ANCHORS.
+      #
+      # ⇒ The harness locates what to mutate by matching an anchor TEXT.
+      #   When the source moves, the anchor stops matching and the harness
+      #   prints `ANCHOR MISSING … — skipped` ⇒ ⇒ that mutation is silently
+      #   NOT tested any more.
+      #
+      # ⇒ ⇒ Measured (round c): that path was in NO verdict bucket
+      #   (VERDICT only counted caught/survived/not_proven/mismatch/drift)
+      #   ⇒ ⇒ anchor drift ⇒ `VERDICT caught=0 …` + **exit 0**
+      #   ⇒ ⇒ "51 mutations, all caught" could become "49, all caught"
+      #   with NOTHING reporting red ⇒ ⇒ the number in the ledger goes stale
+      #   silently. ⇒ "skipped" was being recorded as "passed".
+      #
+      # ⇒ ⇒ This step is the CHEAP pre-flight: no build, no test run — it only
+      #   proves every anchor is still present ⇒ ⇒ the ledger's "51" stays true.
+      #   ⇒ ⇒ The harness itself now ALSO exits non-zero on ANCHOR_MISSING.
+      - name: "Mutation harness anchors still resolve (ID-REVIEW-1049 第十轮 c)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/mutation/check_anchors.py
 
       - name: Assert the production canaries actually ran (ID-REVIEW-1049 第三轮)
         # The three production canaries are the ONLY thing that catches

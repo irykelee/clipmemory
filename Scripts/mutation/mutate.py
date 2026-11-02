@@ -1355,10 +1355,20 @@ def main():
     not_proven = [r for r in results if r.get("status") == "NOT_PROVEN"]
     mismatched = [r for r in results if r.get("catcher_mismatch")]
     drifted = [r for r in results if r.get("restore_drift")]
+    # ⚠️⚠️ ID-REVIEW-1049 第十轮 c：**锚点缺失必须算成失败**。
+    #   实测（第十一轮）：源码一改 ⇒ 锚点不再存在 ⇒ harness 走
+    #   `ANCHOR MISSING … — skipped` ⇒ **那条变异就被悄悄少测了一条** ⇒
+    #   而这条路径**原本不进任何桶**（VERDICT 只数 caught/survived/
+    #   not_proven/mismatch/drift）⇒ ⇒ `VERDICT caught=0 …` + **exit 0**
+    #   ⇒ ⇒ 「51 条全红」可以**无声地**变成「49 条全红」⇒ ⇒ 没有任何东西报红。
+    #   ⇒ ⇒ 这正是本族的「**跳过 ≠ 通过**」：工具把「这条我没测」
+    #   记成了「这条没问题」。
+    anchor_missing = [r for r in results if r.get("status") == "ANCHOR_MISSING"]
     print("=" * 60, flush=True)
     print(f"VERDICT caught={len(caught)} survived={len(survived)} "
           f"not_proven={len(not_proven)} catcher_mismatch={len(mismatched)} "
-          f"restore_drift={len(drifted)}", flush=True)
+          f"restore_drift={len(drifted)} "
+          f"anchor_missing={len(anchor_missing)}", flush=True)
     for r in survived:
         print(f"  ❌ SURVIVED {r['id']} {r['label']}", flush=True)
     for r in not_proven:
@@ -1371,9 +1381,13 @@ def main():
               flush=True)
     for r in drifted:
         print(f"  ❌ RESTORE DRIFT {r['id']} ⇒ 源码没有被字节级还原", flush=True)
+    for r in anchor_missing:
+        print(f"  ❌ ANCHOR MISSING {r['id']} {r['label']} "
+              f"⇒ 锚点不在 {r.get('missing')} ⇒ ⇒ **这条变异根本没被测**"
+              f" ⇒ 「{len(results)} 条全红」这句话**对不上**", flush=True)
     print("DONE", flush=True)
-    # ⇒ 有「存活」「没证明」「抓手不对」「还原失败」 ⇒ 退码非 0
-    if survived or not_proven or mismatched or drifted:
+    # ⇒ 有「存活」「没证明」「抓手不对」「还原失败」「**锚点缺失**」 ⇒ 退码非 0
+    if survived or not_proven or mismatched or drifted or anchor_missing:
         sys.exit(1)
 
 
