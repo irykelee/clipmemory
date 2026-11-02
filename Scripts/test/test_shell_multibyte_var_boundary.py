@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""ID-REVIEW-1049 第六轮：shell 脚本的「**多字节字符紧跟未加花括号的变量**」静态守卫。
+'''ID-REVIEW-1049 第六/八轮：shell 脚本的**可移植性**静态守卫（两道检查）。
 
-## 为什么需要它（**实测**，2026-11-01 深夜）
+## 检查一：「多字节字符紧跟未加花括号的变量」（第六轮，2026-11-01）
 
 CI（GitHub macOS runner）第一次把第六轮的改动跑红，报的是：
 
@@ -28,6 +28,39 @@ bash 3.2 不同）⇒ 同一个脚本本地 exit 0、CI exit 1。
 ⇒ ⇒ **本守卫**就是防止它**再回来**：扫全部 `*.sh` / `*.yml` / `*.yaml`，
 凡「未加花括号的 `$NAME` 后面紧跟一个非 ASCII 字节」⇒ 报红。
 
+## 检查二：**bash 3.2 的语法**（第八轮，2026-11-02）
+
+第八轮的改动把 CI **跑红了**，报的却是另一条 bash 3.2 家族的坑：
+
+    Scripts/test/test_verify_production_canaries.sh: line 548: unexpected EOF
+    while looking for matching `"'
+
+⇒ 根因（**实测**，微实验复现）：**heredoc 放在 `$( … )` 里**时，bash **3.2**
+会把 heredoc 正文里的**连续三个双引号 `"""`** 当成 shell 语法 ⇒ ⇒ 报
+「找不到配对的双引号」⇒ ⇒ **同一个文件本机 bash 5.3 通过、CI 的 bash 3.2 报错**
+⇒ ⇒ 又是「**看起来绿**」。
+
+    # 最小复现（3.2 失败 / 5.3 通过）：
+    out="$(cat <<'PY'
+    a """ b
+    PY
+    )"
+
+    # 修法（3.2 / 5.3 都通过）：heredoc **先落成临时文件**，再在 `$( )` 里调用
+    cat > "$TMP/x.py" <<'PY'
+    a """ b
+    PY
+    out="$(python3 "$TMP/x.py")"
+
+⇒ ⇒ **修法**就是把 heredoc **挪出** `$( )`（实测：不在 `$( )` 里时，bash 3.2
+对 `"""` **完全无感**）。
+
+⇒ ⇒ **本守卫**现在**额外**用 **`/bin/bash`（macOS 自带 = 3.2）** 对每个 shell
+脚本跑一遍 `bash -n`（**只解析、不执行**）⇒ ⇒ **语法层面的 3.2/5.x 差异**
+从此在**提交前**就被抓住，而不是等 CI 炸。
+
+⚠️ `/bin/bash` 不存在（非 macOS）⇒ **明确打印「跳过」** ⇒ **不假装检查过**。
+
 ## 它**不**检查什么
 
 * 加了花括号的 `${VAR}` ⇒ **安全**（`}` 明确终止名字）⇒ 不报。
@@ -35,6 +68,7 @@ bash 3.2 不同）⇒ 同一个脚本本地 exit 0、CI exit 1。
 * `$$` / `$?` / `$1` 这类**特殊参数**后面跟多字节字符 ⇒ 本守卫**不报**
   （`$?` 这类不含名字、不会被吸走）；⚠️ 这是已知的**保守取舍**：宁可漏报
   也不误报 ⇒ 误报会让 CI 变成噪声源。
+* `bash -n` **只查语法**，不查运行期行为。
 
 ## 退出码
 
@@ -44,13 +78,15 @@ bash 3.2 不同）⇒ 同一个脚本本地 exit 0、CI exit 1。
 | **1** | 发现了隐患（每条一行，带文件:行号） |
 | **2** | **守卫自己没跑起来**（用法错误 / 仓库读不到）⇒ 绝不冒充「干净」 |
 
-## ⚠️ **只读**：它只读仓库里的文本文件 ⇒ 不碰用户的偏好设置、钥匙串、剪贴板。
-"""
+## ⚠️ **只读**：它只读仓库里的文本文件、并用 `bash -n` **只解析不执行** ⇒
+不碰用户的偏好设置、钥匙串、剪贴板。
+'''
 
 from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 
 # 未加花括号的变量引用，后面紧跟一个**非 ASCII**字节。
@@ -61,6 +97,9 @@ SKIP_DIRS = {
     "vendor", "ThirdParty",
 }
 SUFFIXES = (".sh", ".bash", ".yml", ".yaml")
+SHELL_SUFFIXES = (".sh", ".bash")
+# macOS 自带的 bash = **3.2**（CI 的 macOS runner 就是它）⇒ 拿它验语法。
+BASH3 = "/bin/bash"
 
 
 def candidate_files(root: str):
@@ -72,14 +111,14 @@ def candidate_files(root: str):
 
 
 def yaml_problems(root: str):
-    """⚠️ **附带**检查：workflow / 配置的 YAML **能不能解析**。
+    '''⚠️ **附带**检查：workflow / 配置的 YAML **能不能解析**。
 
     ⇒ 为什么附带：2026-11-01 深夜本轮就因为 step 名里**漏了引号**
     （`name: Shell portability: …` ⇒ YAML 里的 `:` ⇒ "mapping values are
     not allowed here"）而**本地没发现** ⇒ ⇒ 与本脚本的其它检查一样，
     **能静态发现的，别留给 CI**。
     ⇒ 没有 PyYAML 时**跳过**（不假装检查过）。
-    """
+    '''
     try:
         import yaml  # noqa: PLC0415
     except ImportError:
@@ -95,6 +134,52 @@ def yaml_problems(root: str):
             rel = os.path.relpath(path, root)
             problems.append(f"{rel}: YAML 解析失败：{str(exc).splitlines()[0]}")
     return problems
+
+
+def bash3_syntax_problems(root: str):
+    '''用 **bash 3.2**（`/bin/bash`）对每个 shell 脚本做**只解析**的语法检查。
+
+    ⇒ 为什么必须有（第八轮实测）：bash 3.2 与 5.x 有**语法层面的差异**
+    （如 `$( )` 里的 heredoc 遇到 `"""` ⇒ 3.2 报错、5.3 通过）⇒ ⇒ 本机
+    默认 bash 5.3 **永远测不出来** ⇒ ⇒ 只能**显式**用 `/bin/bash` 验。
+
+    ⇒ `bash -n` **只解析、不执行** ⇒ 对仓库与用户环境**零副作用**。
+    ⇒ `/bin/bash` 不存在 ⇒ 返回 `None`（调用方据此明确打印「跳过」），
+    **不假装检查过**。
+    '''
+    if not os.path.exists(BASH3):
+        return None
+    problems = []
+    for path in candidate_files(root):
+        if not path.endswith(SHELL_SUFFIXES):
+            continue
+        try:
+            result = subprocess.run(
+                [BASH3, "-n", path], capture_output=True, text=True, timeout=30
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            problems.append(
+                f"{os.path.relpath(path, root)}: 无法用 {BASH3} -n 检查：{exc}"
+            )
+            continue
+        if result.returncode != 0:
+            first = (result.stderr or "").strip().splitlines()
+            detail = first[0] if first else f"exit={result.returncode}"
+            problems.append(
+                f"{os.path.relpath(path, root)}: **bash 3.2 语法检查没过** ⇒ {detail}"
+                " ⇒ ⇒ 本机 bash 5.x 可能**测不出来**（CI 会红）"
+            )
+    return problems
+
+
+def bash3_version() -> str:
+    try:
+        out = subprocess.run(
+            [BASH3, "--version"], capture_output=True, text=True, timeout=30
+        ).stdout
+        return out.splitlines()[0].strip() if out else "?"
+    except (OSError, subprocess.SubprocessError):
+        return "?"
 
 
 def main(argv: list[str]) -> int:
@@ -133,14 +218,26 @@ def main(argv: list[str]) -> int:
 
     problems.extend(yaml_problems(root))
 
+    bash3 = bash3_syntax_problems(root)
+    bash3_checked = bash3 is not None
+    if bash3 is None:
+        print(f"⚠️ {BASH3} 不存在（非 macOS）⇒ **bash 3.2 语法检查已跳过**"
+              "（不假装检查过）")
+    else:
+        problems.extend(bash3)
+
     if problems:
         print("❌ 静态守卫发现隐患：", file=sys.stderr)
         for problem in problems:
             print("   - " + problem, file=sys.stderr)
         return 1
 
+    suffix = (
+        f"；并用 {BASH3}（{bash3_version()}）对每个 shell 脚本跑了 `bash -n`"
+        if bash3_checked else ""
+    )
     print(f"✅ 扫了 {scanned} 个 shell / workflow 文件：没有"
-          "「多字节字符紧跟未加花括号的 $VAR」隐患，YAML 也都能解析")
+          "「多字节字符紧跟未加花括号的 $VAR」隐患，YAML 也都能解析" + suffix)
     return 0
 
 

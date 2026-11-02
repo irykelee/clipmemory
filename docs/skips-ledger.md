@@ -4605,7 +4605,7 @@ N28 真跑（`Executed 68 tests, with 1 failure`，失败是**断言**不是编�
 | 全量 | `xcodebuild -scheme ClipMemory -configuration Debug test CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/cm1049r6-dd3` | **1440 tests / 4 skipped / 0 failures** · `** TEST SUCCEEDED **` |
 | **树外闸门** | `python3 Scripts/verify-production-canaries.py <全量日志>` | 退出码 **0** |
 | **契约脚本（三模式）** | `… --all` / `--contract` / `--manifest` | `asserts=23 / 10 / 13`，`fails=0`，退出码 **0** |
-| **CI 同款环境** | `env LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 /bin/bash … --all/--contract/--manifest` | 三模式**全过**（bash 3.2 + UTF-8 locale ⇒ 变量名不被吸走） |
+| **CI 同款环境** | `env LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 /bin/bash … --all/--contract/--manifest` | ⚠️ **这一行当时是「沿用上一轮的结论」，没有在第八轮改动之后重测** ⇒ **事实上它是错的**（改动引入了 `$( )` 里带 `"""` 的 heredoc ⇒ bash 3.2 直接解析失败 ⇒ CI 红） ⇒ ⇒ **订正见 §50.20.6** ⇒ ⇒ *「实测」标签一旦被沿用，就不再是自己测过的了* |
 | **注释填充绕过**（核验员的原攻击） | 副本 `/tmp/cm1049r7-cm6`：删 ㉒ 的 7 个真断言 + 7 行注释填充 | `--manifest` **exit 1**（报「断言数 = 0 < 7」）· `--all` **exit 1** ⇒ **缺口已堵** |
 | **N50**（该攻击的固化） | `CM_MUTATION_OUT=… python3 Scripts/mutation/mutate.py N45 N48 N49 N50` | 四条全部 `status=CAUGHT` · N50 `by=['contract']`（**树外契约层**）· `catcher_mismatch=0` · `restore_drift=0` |
 | **N45 的归因**（AND 语义） | 同上 | `by=['contract','tree']` · `expect=['tree','contract']` ⇒ 两个抓手**都在** ⇒ 不算 mismatch ✔ |
@@ -4798,3 +4798,99 @@ optional」），**树外**那份**独立实现**却没有 ⇒ ⇒ **两份实�
 4. **树内扫描器的改动影响 9 个守卫文件** ⇒ 本轮用「全量 1441/4/0 全绿」证明
    **计数没变** ⇒ 但**新增**的词法形状（嵌套块注释 / 原始字符串）在这 9 个文件里
    **本来就不存在** ⇒ ⇒ 影响为零是**实测**，不是**保证**。
+
+## 50.20 第八轮补：bash 3.2 的**第二个**家族坑 —— `$( )` 里的 heredoc 遇到三引号（2026-11-02）
+
+#### 50.20.1 触发：第八轮第一次 push 的 **CI 红了**
+
+第八轮代码（`92885b5`）推上去后，CI run `41368086904` **红**在
+「Out-of-band canary gate contract test（第四轮）」那个 step：
+
+    Scripts/test/test_verify_production_canaries.sh: line 548: unexpected EOF
+    while looking for matching `"'
+    Scripts/test/test_verify_production_canaries.sh: line 550: syntax error: unexpected end of file
+
+⇒ ⚠️ **本机完全测不出来**：默认 bash **5.3** 跑同一文件 **exit 0**；
+只有 **bash 3.2**（macOS 自带 `/bin/bash`；GitHub 的 macOS runner 就是它）报错
+⇒ ⇒ 与第六轮那条「`$MODE` 紧跟全角 `）`」**同族**：**「看起来绿」**。
+
+#### 50.20.2 根因（**微实验实测**，不是推测）
+
+⇒ **不是**「少了一个 case」，而是**解析器差异**。最小复现：
+
+| 形状 | bash 3.2 | bash 5.3 |
+|---|---|---|
+| `out="$(cat <<'PY' … a 三引号 b … PY )"` | **FAIL**（unexpected EOF） | ok |
+| 同样内容，但 heredoc **不在** `$( )` 里 | ok | ok |
+| 同上，但正文是**五个**连续双引号 | ok | ok |
+| 只含**三个单引号** | ok | ok |
+
+⇒ ⇒ **规则**：**`$( … )` 里的 heredoc，正文里不能出现连续三个双引号**
+（bash 3.2 会把它当成 shell 语法 ⇒ 双引号不配对 ⇒ unexpected EOF）。
+
+⇒ 而本脚本的 Python 块**必须**含这三个双引号 —— 它就是靠 `text.startswith(…3个双引号…, i)`
+来**检测** Swift 多行字面量的 ⇒ ⇒ **不能靠「把三引号删掉」来修**
+⇒ ⇒ **修法必须是结构性的**：把 heredoc **挪出** `$( )`。
+
+⚠️ 顺带记一个**同源**的坑：写这段说明时，我在 **Python 自己的 docstring** 里
+写了三个双引号 ⇒ **把 docstring 提前闭合了** ⇒ `SyntaxError` ⇒ ⇒
+*「三引号在 Python 里也是『开引号』」* —— 与 bash 的坑同源 ⇒ ⇒
+文档里**提到**它时，要么换定界符（单引号三连），要么换说法。
+
+#### 50.20.3 修法（**结构性**）
+
+契约脚本：heredoc **先落成临时文件**（`cat > "$TMP/manifest_check.py" <<'PY'`），
+再在 `$( )` 里**调用**它（`manifest_out="$(python3 "$TMP/manifest_check.py" … )"`）
+⇒ ⇒ 实测：bash **3.2 / 5.3 都通过**，三模式数字不变（`all=38 / contract=10 / manifest=28`）。
+
+#### 50.20.4 守卫：把「用 bash 3.2 验语法」变成**提交前**的事
+
+`Scripts/test/test_shell_multibyte_var_boundary.py`（原本只管「`$VAR` 紧跟多字节
+字符」）**扩成两道检查**：
+
+1. 原检查：`$VAR` + 多字节字符 ⇒ 报红（第六轮）。
+2. **新检查**：对每个 `*.sh` / `*.bash` 跑 **`/bin/bash -n`**（**只解析、不执行**
+   ⇒ 对仓库与用户环境**零副作用**）⇒ bash 3.2 的**语法层**差异在**提交前**就被抓住。
+
+⇒ **负对照实测**：把契约脚本的 heredoc 改回「放在 `$( )` 里」⇒ 守卫 **exit 1**
+（报「bash 3.2 语法检查没过 ⇒ unexpected EOF」）⇒ ⇒ 守卫**有牙齿** ✔
+（⇒ 本族反复强调的：**「守卫能报红」必须用**负对照**证明，不能靠读代码**）。
+
+⇒ CI 的 step 名同步改成「Shell portability — multibyte `$VAR` boundary + bash 3.2
+syntax（ID-REVIEW-1049）」⇒ 名字要**说清它管什么**。
+
+#### 50.20.5 这一族的**第二个** bash 3.2 差异（谱系更新）
+
+| # | 差异 | 症状 | 本机（5.3） | 修法 |
+|---|---|---|---|---|
+| 1 | **变量名**跨多字节字符（第六轮） | `$MODE）` 被当成变量名 ⇒ `set -u` ⇒ unbound variable | **测不出来** | 一律 `${VAR}` |
+| 2 | **`$( )` 里的 heredoc** 遇到三个连续双引号（第八轮） | unexpected EOF ⇒ 脚本**解析失败** | **测不出来** | heredoc 挪出 `$( )` |
+
+⇒ ⇒ **元模式**：*bash 3.2 与 5.x 的差异**只能靠显式用 `/bin/bash` 验** ⇒ ⇒
+凡「本机绿、CI 红」的形状，都应该先问「**这是不是解析器版本差异**」*
+⇒ ⇒ **能静态发现的，别留给 CI**：现在仓库里**每个 shell 脚本**都会在提交前
+被 **bash 3.2** 解析一遍。
+
+#### 50.20.6 订正 §50.19.5 的一行（**自己发的**）
+
+§50.19.5 的验收表里有一行「**CI 同款环境**（bash 3.2 + UTF-8 locale）三模式**全过**」
+⇒ ⇒ **这一行当时是沿用第六轮的结论，没有在第八轮改动之后重测** ⇒ ⇒
+**事实上它是错的**（改动引入了 §50.20.2 那条坑 ⇒ bash 3.2 直接解析失败 ⇒ CI 红）。
+
+⇒ ⇒ *「实测」标签一旦被**沿用**，它就不再是「自己测过的了」* ⇒ ⇒
+这一族的台账里，每个「实测」都必须能回答「**这是哪一次、哪个 commit、测的哪条命令**」；
+**沿用**必须**显式标注**为沿用，否则它就是下一次陈旧数字的来源。
+
+⇒ ⇒ **这一条本身又是本族的老形状**：*台账写了一个没测的「实测」* —— 与第六轮
+核验员的 P1-2（台账把「P1-2 已关闭」写成实测结论）**同形** ⇒ ⇒
+**这个族的坑不在实现里，在「台账怎么写」里也一样多。**
+
+#### 50.20.7 这一轮（第八轮补）的验收（**实测**）
+
+| 项 | 命令 / 口径 | 结果 |
+|---|---|---|
+| **bash 3.2 语法**（新守卫） | `python3 Scripts/test/test_shell_multibyte_var_boundary.py .` | ✅ 38 个文件；`/bin/bash`（**3.2.57**）对每个 shell 脚本 `bash -n` **全过** |
+| **守卫的负对照** | 把契约脚本的 heredoc 改回「放在 `$( )` 里」 | 守卫 **exit 1**（报 unexpected EOF）⇒ **有牙齿** ✔ |
+| **契约脚本**（bash 3.2） | `/bin/bash Scripts/test/test_verify_production_canaries.sh --all/--contract/--manifest` | 三模式**全过**（`all=38 / contract=10 / manifest=28`，`fails=0`） |
+| **契约脚本**（bash 5.3） | `bash … --all/--contract/--manifest` | 三模式**全过**（数字与 3.2 **一致**） |
+| **YAML** | `yaml.safe_load(.github/workflows/ci.yml)` | 解析 OK（CI step 名已改） |

@@ -262,7 +262,7 @@ jobs:
       #   CI exit 1）⇒ ⇒ 只有 CI 能引爆 ⇒ 这正是本族最危险的形状。
       # ⇒ 修法：`$VAR` 后紧跟多字节字符时**一律加花括号**（`${VAR}`）。
       # ⇒ 本 step 就是防止它**再回来**。
-      - name: "Shell portability — no multibyte char right after an unbraced $VAR"
+      - name: "Shell portability — multibyte $VAR boundary + bash 3.2 syntax (ID-REVIEW-1049)"
         run: |
           set -euo pipefail
           python3 Scripts/test/test_shell_multibyte_var_boundary.py .

@@ -226,9 +226,18 @@ if [[ ! -f "$MANIFEST" ]]; then
   bad "锁的清单缺失（Scripts/canary-gate-locks.txt）—— 清单在**锁的外面**"
   bad "  ⇒ 缺失 = 没人知道少了哪把锁 ⇒ 必须失败，不得静默放过"
 else
-  manifest_out="$(python3 - "$REPO_ROOT" "$MANIFEST" \
-    "$EXPECTED_FILE_ENTRIES" "$EXPECTED_GUARD_ENTRIES" "$EXPECTED_MANIFEST_SHA256" \
-    "$CORPUS" "$EXPECTED_CORPUS_SHA256" <<'PY'
+  # ⚠️ ID-REVIEW-1049 第八轮（CI 跑红，2026-11-02）：**heredoc 不能放在 `$( )` 里**
+  #   ⇒ bash **3.2**（macOS 自带 /bin/bash；GitHub 的 macOS runner 就是它）在解析
+  #   `$( … )` 时会把 heredoc 正文里的**连续三个双引号 `"""`** 当成 shell 语法 ⇒
+  #   ⇒ 报 `unexpected EOF while looking for matching `"'` ⇒ **CI 红**，
+  #   而本机 bash **5.3** **完全测不出来**（实测：同一个文件 5.3 通过、3.2 报错）。
+  #   ⇒ ⇒ 本脚本的 Python 块**必须**含 `"""`（它要检测多行字面量！）⇒ ⇒
+  #   **修法**：heredoc **先落成临时文件**，再在 `$( )` 里调用它
+  #   ⇒ （实测：heredoc **不在** `$( )` 里时，bash 3.2 对 `"""` 无感）。
+  #   ⇒ ⇒ 这与上一轮那条「`$VAR` 紧跟多字节字符」是**同一族**：
+  #   **bash 3.2 与 5.x 的解析差异，本机 5.x 永远测不出来** ⇒ 必须**显式**用
+  #   `/bin/bash` 验（守卫：`Scripts/test/test_shell_multibyte_var_boundary.py`）。
+  cat > "$TMP/manifest_check.py" <<'PY'
 import hashlib
 import json
 import os
@@ -540,7 +549,9 @@ for p in problems:
     print("❌ " + p)
 sys.exit(1 if problems else 0)
 PY
-)"
+  manifest_out="$(python3 "$TMP/manifest_check.py" "$REPO_ROOT" "$MANIFEST" \
+    "$EXPECTED_FILE_ENTRIES" "$EXPECTED_GUARD_ENTRIES" "$EXPECTED_MANIFEST_SHA256" \
+    "$CORPUS" "$EXPECTED_CORPUS_SHA256")"
   manifest_rc=$?
   printf '%s\n' "$manifest_out"
   # 清单核对段自己打印的 ✅ 也计入断言数（⇒ 汇总行的条数 = 全脚本的断言数）
