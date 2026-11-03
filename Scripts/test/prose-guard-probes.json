@@ -1,0 +1,365 @@
+{
+ "_说明": "散文副本守卫的**探针清单**（第十三轮入库）。E 段 16 条 = 独立核验员的新逃逸路径探测（期望报红）；A 段 10 组 = 每组一条负对照（期望报红）+ 一条正对照（期望全绿），共 20 条；R 段 3 条 = 第十三轮新发现的逃逸路径（零宽 / 可见分隔符 / 表格行成块）。⇒ 合计 39 条探针 ⇒ 第三方可复算 ⇒ 台账里那些「N/16」「N/10」不再是手写数字。⇒ ⇒ ⚠️ 期望值是**实跑**出来的 ⇒ ⇒ 其中 `fix7_table_whole_block_neg` 由「红」订正为「绿」（前提已变 ⇒ ⇒ 见该条的 note）⇒ ⇒ 台账相应处同步订正。",
+ "_baseline": {
+  "commit": "473fade",
+  "note": "基线 commit（第十二轮 a 用来对标的那个）。⇒ 传 --baseline-guard <该 commit 的守卫路径> ⇒ 就能复算「旧版逃逸 N 条」。⇒ 基线一侧的**期望值**由本清单的 baseline_expect 字段记录 ⇒ 差一个就红。⇒ ⇒ **基线一侧的每个 exit 都已实跑记录在 baseline_expect 里**⇒ ⇒ ⇒ 差一个就红 ⇒ ⇒ ⇒ 「旧版逃逸 N 条」不再是手写数字。",
+  "measured_at_commit": "473fade"
+ },
+ "probes": [
+  {
+   "name": "e_narrow_sandwich",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ 规则：正文里不能出现三双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_narrow_ge3",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ 规则：正文里不能出现三个以上双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_narrow_fullwidth",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ 规则：正文里不能出现３个双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_narrow_nospace",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ 规则：正文里不能出现连续三个双引号。\n",
+   "baseline_exit": 1,
+   "baseline_expect": 1
+  },
+  {
+   "name": "e_narrow_twice",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ 规则：正文里不能出现 3 个双引号或 4 个双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_label_require",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ 规则要求：heredoc 里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_label_ascii_colon",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ 规则: heredoc 里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_label_the_rule",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ 按规则，heredoc 里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_label_below",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ 规则如下：heredoc 里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_label_says",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ 规则说 heredoc 里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_scope_cmd_sub",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ **规则**：命令替换里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_scope_backtick",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ **规则**：反引号里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_scope_subshell",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ **规则**：子 shell 里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_prevblock_marker_old",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "旧的实现只处理了单引号。\n\n⇒ ⇒ 规则：正文里不能出现连续 3 个双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_prevblock_marker_change",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "我们把它改为单引号处理。\n\n⇒ ⇒ 规则：正文里不能出现连续 3 个双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "e_prevblock_marker_remove",
+   "segment": "E",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "移除该检查。\n\n⇒ ⇒ 规则：正文里不能出现连续 3 个双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix1_narrow_digit_neg",
+   "segment": "A",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ 规则：正文里不能出现连续 3 个双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix1_narrow_digit_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "⇒ ⇒ 我原先把规则写成「连续 3 个双引号」⇒ ⇒ 那**不是规则**。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix1_narrow_trio_neg",
+   "segment": "A",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ 规则：正文里不能出现三连双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix1_narrow_trio_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "⇒ ⇒ 每条场景先跑一个 **0 引号基线** ⇒ ⇒ 正常表述。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix2_plain_label_neg",
+   "segment": "A",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ 规则：`$( … )` 里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix2_plain_label_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "⇒ ⇒ **规则**：**词法上**在 `$( … )` 内的 heredoc，引号各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix2_plain_true_label_neg",
+   "segment": "A",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ 真规则：`$( … )` 里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix2_plain_true_label_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "⇒ ⇒ **真规则**：**词法上**在 `$( … )` 内的 heredoc。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix3_no_heredoc_neg",
+   "segment": "A",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ **规则**：`$( … )` 里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 1,
+   "baseline_expect": 1
+  },
+  {
+   "name": "fix3_no_heredoc_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "⇒ ⇒ **规则**：**词法上**在 `$( … )` 内的 heredoc，引号各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix3_no_substitution_neg",
+   "segment": "A",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ **规则**：heredoc 正文里的引号必须各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix3_no_substitution_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "⇒ ⇒ **规则**：**词法上**在 `$( … )` 内的 heredoc，引号各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix3_no_quoteword_neg",
+   "segment": "A",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ **规则**：heredoc 在 `$( … )` 里的正文要怎么处理。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 1,
+   "baseline_expect": 1
+  },
+  {
+   "name": "fix3_no_quoteword_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "⇒ ⇒ **规则**：**词法上**在 `$( … )` 内的 heredoc，引号各自成对。\n⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix4_double_escape_neg",
+   "segment": "A",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ **规则**：正文里不能出现连续 3 个双引号。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix4_double_escape_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "⇒ ⇒ 我原先把规则写成「连续三个双引号」⇒ ⇒ 那**不是规则**。\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix6_table_marker_above_neg",
+   "segment": "A",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ 下表列出各种形状。\n| 形状 | bash 3.2 |\n|---|---|\n| `a 三引号 b` | FAIL |\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix6_table_marker_above_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "⇒ ⇒ ⚠️ **下表是触发实例**，**不是规则** ⇒ ⇒\n| 形状 | bash 3.2 |\n|---|---|\n| `a 三引号 b` | FAIL |\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix7_table_whole_block_neg",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "| 项 | 说明 |\n|---|---|\n| 规则 | heredoc 里的引号各自成对 |\n| 指针 | 判据见 `shell-heredoc-quote-corpus.json` |\n",
+   "note": "核验员当初写「必须红」的前提是第十一轮的**固定 5 元组**标签判定（那时「规则」二字单独出现即算标签）⇒ ⇒ 第十二轮 a 改成**形态判定**后，「规则」后面跟的是「|」而不是结构词 ⇒ ⇒ **不再**算规则标签 ⇒ ⇒ 这条现在**应当是绿的** ⇒ ⇒ 它的**判别力已归零**（新旧守卫都是绿）⇒ ⇒ 真正承重的是守卫自检里的 `table_row_own_block` 用例（⇒ ⇒ 它已被 PG16 变异体杀掉 ⇒ ⇒ 见 Scripts/mutation/prose_guard_mutants.py）",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "fix7_table_whole_block_pos",
+   "segment": "A",
+   "expect": "green",
+   "keyword": "",
+   "text": "| 项 | 说明 |\n|---|---|\n| 条目 | heredoc 里的引号各自成对 |\n| 指针 | 判据见 `shell-heredoc-quote-corpus.json` |\n",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "r17_narrow_zero_width_neg",
+   "segment": "R",
+   "expect": "red",
+   "keyword": "窄表述",
+   "text": "⇒ ⇒ 规则：正文里不能出现连续 3 个​双引号。\n",
+   "note": "零宽字符插在词中间 ⇒ ⇒ 旧判据**打穿** ⇒ ⇒ 第十三轮加归一化",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "r17_label_separator_neg",
+   "segment": "R",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "⇒ ⇒ 「规则」：heredoc 里的引号必须各自成对。\n",
+   "note": "标签与结构词之间插**可见分隔符** ⇒ ⇒ 旧判据**打穿** ⇒ ⇒ 第十三轮加白名单",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  },
+  {
+   "name": "r17_table_row_own_block_neg",
+   "segment": "R",
+   "expect": "red",
+   "keyword": "限定词",
+   "text": "| 项 | 说明 |\n|---|---|\n| **规则** | heredoc 里的引号各自成对 |\n| 指针 | 判据见 `shell-heredoc-quote-corpus.json` |\n",
+   "note": "表格行**各自成块** ⇒ ⇒ 表内那一行缺限定词 ⇒ ⇒ 必须报红",
+   "baseline_exit": 0,
+   "baseline_expect": 0
+  }
+ ]
+}

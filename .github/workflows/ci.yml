@@ -46,6 +46,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        # ⇒ ⇒ **全历史**（第十三轮加）⇒ ⇒ 探针清单的**基线一侧**需要取基线
+        # ⇒ ⇒ commit（`473fade`）的守卫源码 ⇒ ⇒ shallow clone 拿不到 ⇒ ⇒
+        # ⇒ ⇒ ⇒ 而「旧版逃逸 N 条」这个数字**必须**在 CI 里被核对 ⇒ ⇒ ⇒
+        # ⇒ ⇒ ⇒ 否则它就只是台账里的一个手写数字 ⇒ ⇒ ⇒ ⇒ （仓库只有 23M ⇒ ⇒ 代价可忽略）
+        fetch-depth: 0
 
       # REL-23 (2026-08-03): README hygiene gate — DOC-0002/DOC-0003 prevention.
       # Ported from ~/Projects/ClipMemory-local/release.sh preflight (9eebd8d,
@@ -346,6 +351,52 @@ jobs:
           set -euo pipefail
           python3 Scripts/test/test_rule_prose_copies.py .
           python3 Scripts/test/test_rule_prose_copies.py . --self-test
+
+      # ID-REVIEW-1049 第十三轮: the prose guard's MUTATION SET, in-repo.
+      #
+      # ⇒ ⇒ 上一轮在台账里写「散文守卫 **19** 个变异体全部变红」⇒ ⇒ 而那套
+      #   变异集**只存在于 /tmp** ⇒ ⇒ ⇒ ⇒ 第三方**无法复现** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      #   ⇒ ⇒ ⇒ ⇒ CI 也不跑 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **那句话等于没说**
+      #   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ Now the set lives in the repo (Scripts/mutation/prose_guard_mutants.py)
+      #   ⇒ ⇒ ⇒ ⇒ with an id-list sha256 lock ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ It also asserts THREE things the /tmp harness never did:
+      #   ① the BASELINE must be green first (otherwise "all red" means nothing)
+      #   ② the patch must ACTUALLY LAND (else "survived" may mean "never ran")
+      #   ③ an anchor must match EXACTLY ONCE (0 or ≥2 ⇒ ⇒ red, never "skipped")
+      - name: "Prose guard mutation set has teeth (ID-REVIEW-1049 第十三轮)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/mutation/prose_guard_mutants.py
+
+      # ID-REVIEW-1049 第十三轮: the prose guard's PROBE CORPUS, in-repo.
+      #
+      # ⇒ ⇒ 台账里出现过「16/16 全部报红」「10 组全部 PASS」⇒ ⇒ 而那份探针
+      # ⇒ ⇒ ⇒ 清单**只存在于 /tmp** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 第三方**无法复算** ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ Now the corpus lives in the repo (Scripts/test/prose-guard-probes.json)
+      # ⇒ ⇒ ⇒ ⇒ ⇒ with every expectation MEASURED (not transcribed) ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ The BASELINE side runs the guard as of `473fade` ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      - name: "Prose guard probe corpus (ID-REVIEW-1049 第十三轮)"
+        run: |
+          set -euo pipefail
+          git show 473fade:Scripts/test/test_rule_prose_copies.py > "$RUNNER_TEMP/base_prose_guard.py"
+          test -s "$RUNNER_TEMP/base_prose_guard.py"
+          python3 Scripts/test/test_prose_guard_probes.py \
+            --baseline-guard "$RUNNER_TEMP/base_prose_guard.py"
 
       # ID-REVIEW-1049 第十轮 c: the mutation harness's ANCHORS.
       #

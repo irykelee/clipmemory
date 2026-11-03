@@ -88,10 +88,13 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import re
 import subprocess
 import sys
+import tempfile
 
 # guard-exempt: begin
 
@@ -117,8 +120,17 @@ NARROW_PATTERNS = (
     re.compile(r"[三3３]\s*引号"),
 )
 # 「这是旧的 / 错的 / 不是规则」的标记 ⇒ 出现在同一个块里就放过。
+# ⇒ ⇒ ⚠️ **词表里不许有「包含关系」的词** ⇒ ⇒ 否则某个词**永远钉不住**：
+# ⇒ ⇒ ⇒ ⇒ 「只带『已作废』」的样本**必然**也带「作废」⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 删掉
+# ⇒ ⇒ ⇒ ⇒ ⇒ 「已作废」那个用例**照样绿**（被「作废」豁免）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ *⇒ ⇒ 「用例存在」≠「用例有判别力」*（核验员 P2-2 实测：
+# ⇒ ⇒ ⇒ ⇒ ⇒ 20 个词里 **15 个是死词**）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **「已作废」⊃「作废」** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 保留**短**的「作废」⇒ ⇒ 「已作废」**照样**被豁免
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **零行为变化**（纯去冗余）⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 每个词因此**可被单独钉住**。
 NARROW_MARKERS = (
-    "已作废", "原先", "原写", "曾经", "旧规则", "旧写法", "旧版",
+    "原先", "原写", "曾经", "旧规则", "旧写法", "旧版",
     "窄表述", "窄规则", "不是规则", "订正",
     "≠", "触发实例", "错误规则", "改为", "改回", "不再是", "移除",
     "作废", "deprecat",
@@ -133,8 +145,18 @@ NARROW_MARKERS = (
 # ⇒ ⇒ ⇒ 连核验员自己的 fix7 负对照（`| **规则** | heredoc 里的引号各自成对 |`）
 # ⇒ ⇒ ⇒ 都会**逃逸** ⇒ ⇒ ⇒ 形态化**不能**把主流写法弄丢。
 RULE_LABEL_BOLD = re.compile(r"\*\*\s*(?:真)?(?:规则|Rule)\s*\*\*")
+# ⇒ ⇒ ⚠️ **分隔符白名单**（第十三轮：审核门 P2-3 点名的「特殊字符逃逸」）
+# ⇒ ⇒ ⇒ ⇒ 标签与结构词之间插一个**可见分隔符** ⇒ ⇒ 「规则」：/
+# ⇒ ⇒ ⇒ ⇒ 「规则」：/【规则】：/（规则）：/`规则`：/规则**： ⇒ ⇒ **全逃逸**
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⚠️ **不含 `_`** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ （避免 `RULE_LABELS` 之类标识符被误命中）
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⚠️ **不含零宽字符** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 零宽走**归一化**那条路 ⇒ ⇒ ⇒ ⇒
+RULE_LABEL_SEPARATORS = "*」』】）)]》”’\"'`"
 RULE_LABEL_STRUCTURE = re.compile(
-    r"(?:真)?(?:规则|Rule)\s*(?:是|为|：|:|要求|如下|说|，|,)"
+    r"(?:真)?(?:规则|Rule)\s*["
+    + re.escape(RULE_LABEL_SEPARATORS)
+    + r"]*\s*(?:是|为|：|:|要求|如下|说|，|,)"
 )
 # ⇒ ⇒ `RULE` 必须是**独立的词** ⇒ ⇒ 否则 `RULE_LABELS` / `is_rule_statement`
 # ⇒ ⇒ 这些**标识符**会被当成规则陈述（实测假阳性）。
@@ -218,8 +240,20 @@ THIS_RULE_MARKERS = ("heredoc",)
 # ⇒ ⇒ 不再要求另外两个特征词同时在（否则散文一简写就整块逃逸）。
 SUBSTITUTION = re.compile(r"\$\(\s*(?:…|\.\.\.|)\s*\)")
 QUOTE_WORD = re.compile(r"双引号|单引号|引号|quote", re.IGNORECASE)
+# ⇒ ⇒ ⚠️ **零宽 / 格式字符**（U+200B / U+200C / U+200D / U+2060 / U+FEFF）
+# ⇒ ⇒ ⇒ ⇒ 它们**不被** Python 的 `\s` 匹配 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **插在词中间就能逃逸**
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ （实测：插进「规则」中间 ⇒ ⇒ 标签判定失效；插进「双引号」
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 中间 ⇒ ⇒ 窄表述判定失效 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **两条同时失效**）
+ZERO_WIDTH_CHARS = "\u200b\u200c\u200d\u2060\ufeff"
 
 # guard-exempt: end
+
+
+def normalize_text(text: str) -> str:
+    '''剥掉零宽 / 格式字符 ⇒ ⇒ 让「插在词中间」不再能逃逸。'''
+    if not any(ch in text for ch in ZERO_WIDTH_CHARS):
+        return text
+    return "".join(ch for ch in text if ch not in ZERO_WIDTH_CHARS)
 
 
 def check_sentinel_shape(rel: str, text: str) -> list[str]:
@@ -287,7 +321,12 @@ def check_text(rel: str, text: str,
         # ⇒ ⇒ 连带放过**（实测自检当场抓到）。
         if any(lo <= start and end <= hi for lo, hi in exempt_ranges):
             continue
-        blob = "\n".join(block)
+        # ⇒ ⇒ ⚠️ **先归一化**（剥掉零宽 / 格式字符）⇒ ⇒ ⇒ ⇒ 否则「插在词
+        # ⇒ ⇒ ⇒ ⇒ 中间」就能逃逸 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⚠️ **只在这里剥** ⇒ ⇒ ⇒ ⇒ ⇒
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 哨兵识别**不剥** ⇒ ⇒ ⇒ ⇒ ⇒
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ （剥了会让**被藏起来的违规**解禁）
+        blob = normalize_text("\n".join(block))
         # ① 窄表述
         hit = [pat.pattern for pat in NARROW_PATTERNS if pat.search(blob)]
         # ⇒ ⇒ 「紧邻**上一块**带标记」也算放过 ⇒ ⇒ 因为**表格**这类块
@@ -418,7 +457,30 @@ def tracked_files(root: str) -> list[str]:
 
 # guard-exempt: begin
 
-def self_test() -> tuple[list[str], dict[str, int]]:
+def _run_main_in_synthetic_repo() -> tuple[int, str, str]:
+    '''在**合成临时仓库**上跑**真正的 `main()`** ⇒ ⇒ 返回 (rc, stdout, stderr)。
+
+    ⇒ ⇒ 为什么必须真的调 `main()`：核验员 P2-3 实测 —— 变异掉 `main` 里的
+    ⇒ ⇒ ⇒ **接线点**（扫描 / 台账计数）⇒ ⇒ ⇒ **自检照样全绿** ⇒ ⇒ ⇒ ⇒
+    ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ *⇒ ⇒ 「用例存在」≠「用例有判别力」* ⇒ ⇒ ⇒ ⇒
+    ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    '''
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "probe.md"), "w", encoding="utf-8") as fh:
+            fh.write("⇒ ⇒ 规则：正文里不能出现连续 3 个双引号。\n")
+        ledger_dir = os.path.join(tmp, "docs")
+        os.makedirs(ledger_dir, exist_ok=True)
+        with open(os.path.join(ledger_dir, os.path.basename(LEDGER_REL)),
+                  "w", encoding="utf-8") as fh:
+            fh.write("# 台账\n\n散文守卫自检断言数：**999999**\n")
+        out = io.StringIO()
+        err = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main([os.path.basename(__file__), tmp])
+        return rc, out.getvalue(), err.getvalue()
+
+
+def _self_test_body() -> tuple[list[str], dict[str, int]]:
     '''在**合成文本**上证明「有牙齿」⇒ ⇒ 不依赖仓库里的任何文件。
 
     ⚠️ **每一条判据都必须有对应用例** ⇒ ⇒ 否则「有自检」≠「自检在跑」
@@ -456,6 +518,31 @@ def self_test() -> tuple[list[str], dict[str, int]]:
             problems.append(
                 f"自检失败：{name} **本应全绿**却报红 ⇒ ⇒ 判据过严"
                 f" ⇒ ⇒ {found[0][:140]}"
+            )
+
+    def expect_marker_pinned(name: str, text: str, marker: str) -> None:
+        '''豁免词**逐词钉住**（两步都要过 ⇒ ⇒ 这个词才**真的**被钉住）。
+
+        ① **正对照**：该词在词表里 ⇒ ⇒ 块**豁免**（全绿）。
+        ② **反证**：把该词从词表里**拿掉** ⇒ ⇒ 该块**必须**变红 ⇒ ⇒ ⇒ ⇒
+        ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **只做 ① ⇒ ⇒ 删掉这个词用例照样绿** ⇒ ⇒ ⇒
+        ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+        ⇒ ⇒ ⇒ ⇒ *⇒ ⇒ 「用例存在」≠「用例有判别力」*（核验员 P2-2 实测：
+        ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 旧词表里 **20 个词有 15 个是死词**）。
+        '''
+        global NARROW_MARKERS
+        expect_green(name, text)
+        counts["red"] += 1
+        original = NARROW_MARKERS
+        NARROW_MARKERS = tuple(word for word in original if word != marker)
+        try:
+            found = scan_documents([(f"synthetic:{name}", text)])
+        finally:
+            NARROW_MARKERS = original
+        if not any("窄表述" in problem for problem in found):
+            problems.append(
+                f"自检失败：{name} 把豁免词「{marker}」拿掉后**仍然全绿**"
+                f" ⇒ ⇒ 该用例对它**无判别力** ⇒ ⇒ 本守卫**没有牙齿**"
             )
 
     # ── 正对照：合规块必须**不报** ──────────────────────────────
@@ -678,10 +765,172 @@ def self_test() -> tuple[list[str], dict[str, int]]:
                 "⇒ ⇒ 规则：正文里不能出现连续 3 个双引号。\n",
                 "窄表述", rel=SELF_REL)
 
+    # ══ 第十三轮：审核门 P2-3 + 核验员 P2-2 / P3-4 的补齐 ═════════
+
+    # ── main() 的**接线点**必须有牙齿（核验员 P2-3 实测：存活）────
+    # ⇒ ⇒ ⚠️ 断言的是 **stderr 里的具体关键词** ⇒ ⇒ 而不只是退出码 ⇒ ⇒
+    # ⇒ ⇒ ⇒ 否则「扫描接线点」与「台账计数接线点」会**互相掩盖** ⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    counts["red"] += 1
+    _rc, _out, _err = _run_main_in_synthetic_repo()
+    if "窄表述" not in _err:
+        problems.append(
+            "自检失败：main_wiring_scan **本应报红**（期望 stderr 里出现「窄表述」）"
+            " ⇒ ⇒ `main()` 里的**扫描接线点**可能已被摘掉 ⇒ ⇒ 本守卫**没有牙齿**"
+        )
+    counts["red"] += 1
+    if "数字**已经漂了**" not in _err:
+        problems.append(
+            "自检失败：main_wiring_ledger **本应报红**（期望 stderr 里出现"
+            "「数字**已经漂了**」）⇒ ⇒ `main()` 里的**台账计数接线点**可能已被"
+            "摘掉 ⇒ ⇒ 本守卫**没有牙齿**"
+        )
+
+    # ── 豁免词表：**逐词**钉住（核验员 P2-2 实测：15/20 是死词）────
+    # ⇒ ⇒ ⚠️ 每块**只带一个**豁免词 ⇒ ⇒ 否则删掉其中一个词**照样绿**⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ 用例就**钉不住**那个词 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ ⚠️ 文本**硬编码** ⇒ ⇒ ⇒ 若从词表生成 ⇒ ⇒ ⇒ 「删词 ⇒ 用例一起
+    # ⇒ ⇒ ⇒ ⇒ 消失」⇒ ⇒ ⇒ ⇒ 用例**没有判别力** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    expect_marker_pinned("marker_原先",
+                         "⇒ ⇒ 说明：原先。⇒ ⇒ 例：连续 3 个双引号。\n", "原先")
+    expect_marker_pinned("marker_原写",
+                         "⇒ ⇒ 说明：原写。⇒ ⇒ 例：连续 3 个双引号。\n", "原写")
+    expect_marker_pinned("marker_曾经",
+                         "⇒ ⇒ 说明：曾经。⇒ ⇒ 例：连续 3 个双引号。\n", "曾经")
+    expect_marker_pinned("marker_旧规则",
+                         "⇒ ⇒ 说明：旧规则。⇒ ⇒ 例：连续 3 个双引号。\n", "旧规则")
+    expect_marker_pinned("marker_旧写法",
+                         "⇒ ⇒ 说明：旧写法。⇒ ⇒ 例：连续 3 个双引号。\n", "旧写法")
+    expect_marker_pinned("marker_旧版",
+                         "⇒ ⇒ 说明：旧版。⇒ ⇒ 例：连续 3 个双引号。\n", "旧版")
+    expect_marker_pinned("marker_窄表述",
+                         "⇒ ⇒ 说明：窄表述。⇒ ⇒ 例：连续 3 个双引号。\n", "窄表述")
+    expect_marker_pinned("marker_窄规则",
+                         "⇒ ⇒ 说明：窄规则。⇒ ⇒ 例：连续 3 个双引号。\n", "窄规则")
+    expect_marker_pinned("marker_不是规则",
+                         "⇒ ⇒ 说明：不是规则。⇒ ⇒ 例：连续 3 个双引号。\n",
+                         "不是规则")
+    expect_marker_pinned("marker_订正",
+                         "⇒ ⇒ 说明：订正。⇒ ⇒ 例：连续 3 个双引号。\n", "订正")
+    expect_marker_pinned("marker_not_equal",
+                         "⇒ ⇒ 说明：≠。⇒ ⇒ 例：连续 3 个双引号。\n", "≠")
+    expect_marker_pinned("marker_触发实例",
+                         "⇒ ⇒ 说明：触发实例。⇒ ⇒ 例：连续 3 个双引号。\n",
+                         "触发实例")
+    expect_marker_pinned("marker_错误规则",
+                         "⇒ ⇒ 说明：错误规则。⇒ ⇒ 例：连续 3 个双引号。\n",
+                         "错误规则")
+    expect_marker_pinned("marker_改为",
+                         "⇒ ⇒ 说明：改为。⇒ ⇒ 例：连续 3 个双引号。\n", "改为")
+    expect_marker_pinned("marker_改回",
+                         "⇒ ⇒ 说明：改回。⇒ ⇒ 例：连续 3 个双引号。\n", "改回")
+    expect_marker_pinned("marker_不再是",
+                         "⇒ ⇒ 说明：不再是。⇒ ⇒ 例：连续 3 个双引号。\n", "不再是")
+    expect_marker_pinned("marker_移除",
+                         "⇒ ⇒ 说明：移除。⇒ ⇒ 例：连续 3 个双引号。\n", "移除")
+    expect_marker_pinned("marker_作废",
+                         "⇒ ⇒ 说明：作废。⇒ ⇒ 例：连续 3 个双引号。\n", "作废")
+    expect_marker_pinned("marker_deprecat",
+                         "⇒ ⇒ 说明：deprecat。⇒ ⇒ 例：连续 3 个双引号。\n",
+                         "deprecat")
+    # ⇒ ⇒ **裸「窄」不再豁免**（词表的**收紧**必须被钉住）⇒ ⇒ ⇒
+    expect_red("narrow_bare_narrow_not_a_marker",
+                "⇒ ⇒ 说明：窄。⇒ ⇒ 例：连续 3 个双引号。\n", "窄表述")
+
+    # ── 哨兵**未配对**（核验员 P3-4：无自检覆盖）─────────────────
+    expect_red("sentinel_unpaired",
+                "前置说明。\n\n# guard-exempt: begin\n\nX = 1\n\n",
+                "没有配对的", rel=SELF_REL)
+
+    # ── **引用块不切块**（核验员 P3-4：承重，但自检无覆盖）────────
+    # ⇒ ⇒ ⚠️ **这条是绿的** ⇒ ⇒ 而它在「引用块被切开」的变异下会**变红**
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    expect_green("quote_block_joined", (
+        "⇒ ⇒ **规则**：heredoc 里的引号必须各自成对。\n"
+        "\n"
+        "> ⇒ ⇒ 补充：**词法上**在 `$( … )` 的文本内；"
+        f"判据见 `{CORPUS_NAME}`。\n"
+    ))
+
+    # ── 裸 `RULE` 词判标签（核验员 P3-4：变异体存活）──────────────
+    expect_red("bare_RULE_word_is_a_label",
+                "⇒ ⇒ 本 RULE 约束 heredoc 里的引号必须各自成对。\n",
+                "限定词")
+
+    # ── 语料文件名**取值**（硬编码字面量 ⇒ ⇒ 钉住 `CORPUS_NAME`）──
+    expect_green("corpus_name_literal_value",
+                 "⇒ ⇒ **规则**：**词法上**在 `$( … )` 内的 heredoc，"
+                 "正文引号各自成对。\n"
+                 "⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n")
+
+    # ── 嵌套 Markdown：嵌套列表 / 代码块（审核门 P2-3）────────────
+    expect_red("nested_list_rule_statement",
+                "- 外层条目\n"
+                "  - 内层条目：**规则**：heredoc 里的引号必须各自成对。\n",
+                "限定词")
+    expect_red("code_fence_rule_statement_missing_qualifier",
+                "```bash\n"
+                "# **规则**：heredoc 里的引号必须各自成对。\n"
+                "```\n", "限定词")
+    expect_green("code_fence_rule_statement_complete",
+                 "```bash\n"
+                 "# **规则**：**词法上**在 `$( … )` 内的 heredoc，"
+                 "正文引号各自成对。\n"
+                 f"# 判据见 `{CORPUS_NAME}`\n"
+                 "```\n")
+
+    # ── 零宽 / 格式字符：插在词中间也不能逃逸 ─────────────────────
+    expect_red("narrow_zero_width_inside",
+                "⇒ ⇒ 规则：正文里不能出现连续 3 个\u200b双引号。\n",
+                "窄表述")
+    expect_red("label_zero_width_inside",
+                "⇒ ⇒ **规\u200c则**：heredoc 里的引号必须各自成对。\n",
+                "限定词")
+    expect_green("zero_width_without_violation",
+                 "⇒ ⇒ 说明：这里有一个零宽字符\u200d但不构成违规。\n")
+
+    # ── 标签的**可见分隔符**白名单（审核门 P2-3 实测的逃逸面）──────
+    # ⇒ ⇒ ⚠️ 四种分隔符各一条 ⇒ ⇒ ⇒ 删掉白名单 ⇒ ⇒ 四条**同时**变绿 ⇒ ⇒
+    expect_red("label_separator_quote",
+                "⇒ ⇒ 「规则」：heredoc 里的引号必须各自成对。\n", "限定词")
+    expect_red("label_separator_bracket",
+                "⇒ ⇒ 【规则】：heredoc 里的引号必须各自成对。\n", "限定词")
+    expect_red("label_separator_bold_close",
+                "⇒ ⇒ 规则**：heredoc 里的引号必须各自成对。\n", "限定词")
+    expect_red("label_separator_backtick",
+                "⇒ ⇒ `规则`：heredoc 里的引号必须各自成对。\n", "限定词")
+    expect_green("label_separator_quote_complete",
+                 "⇒ ⇒ 「规则」：**词法上**在 `$( … )` 内的 heredoc，"
+                 "正文引号各自成对。\n"
+                 "⇒ ⇒ 判据见 `shell-heredoc-quote-corpus.json`。\n")
+    # ⇒ ⇒ ⚠️ **加粗标签必须自己承重** ⇒ ⇒ ⇒ 分隔符白名单**太宽** ⇒ ⇒ ⇒
+    # ⇒ ⇒ ⇒ 「规则**」后面跟的**不是结构词** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 结构判定匹配不上
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    expect_red("bold_label_without_structure_word",
+                "⇒ ⇒ **规则** —— heredoc 里的引号必须各自成对。\n", "限定词")
+
     return problems, counts
 
 
 # guard-exempt: end
+
+# ⇒ ⇒ ⚠️ **递归守卫** ⇒ ⇒ 自检里会**调用 `main()`**（要证明接线点有牙齿）⇒ ⇒
+# ⇒ ⇒ ⇒ 而 `main()` 又会**调用自检** ⇒ ⇒ ⇒ ⇒ 不挡 ⇒ ⇒ ⇒ **无限递归** ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+_SELF_TEST_ACTIVE = False
+
+
+def self_test() -> tuple[list[str], dict[str, int]]:
+    '''自检入口 ⇒ ⇒ 带**递归守卫**（嵌套那层直接返回空）。'''
+    global _SELF_TEST_ACTIVE
+    if _SELF_TEST_ACTIVE:
+        return [], {"red": 0, "green": 0}
+    _SELF_TEST_ACTIVE = True
+    try:
+        return _self_test_body()
+    finally:
+        _SELF_TEST_ACTIVE = False
+
 
 def check_ledger_self_count(documents: list[tuple[str, str]],
                             expected: int) -> tuple[list[str], str | None]:
@@ -705,7 +954,10 @@ def check_ledger_self_count(documents: list[tuple[str, str]],
     ledger = None
     for rel, text in documents:
         if rel == LEDGER_REL:
-            ledger = text
+            # ⇒ ⇒ 同样**归一化** ⇒ ⇒ 否则零宽插进数字里 ⇒ ⇒ 「找不到」⇒ ⇒
+            # ⇒ ⇒ 报红的**理由**会变成「台账没写」⇒ ⇒ ⇒ ⇒ 而真实原因只是
+            # ⇒ ⇒ ⇒ ⇒ 一个零宽字符 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+            ledger = normalize_text(text)
             break
     if ledger is None:
         return [], (
