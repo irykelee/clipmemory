@@ -115,6 +115,9 @@ CHECKS = [
     ("R143", "Scripts/mutation/prose_guard_mutants.py", "nothas", r"EQUIVALENT_MUTATIONS\s*[:=]", "变异集里**没有**等价豁免通道（只在注释里被提及）"),
     ("R147", "Scripts/mutation/prose_guard_mutants.py", "has", r"EXPECTED_MUTATION_COUNT\s*=\s*24", "变异集是 24 条（无等价豁免）"),
     ("R79", "Scripts/test/test_verify_production_canaries.sh", "has", r'if \[\[ "\$MODE" != "manifest" \]\]', "contract 段与清单段互斥（contract 不看清单）"),
+    ("R149", "docs/skips-ledger.md", "num_match", r"\*\*(\d+)\*\* 条静态判据", "台账写的「静态判据数」== 本脚本自报数"),
+    ("R150", "docs/skips-ledger.md", "num_match", r"\*\*(\d+)\*\* 条实跑判据", "台账写的「实跑判据数」== 本脚本自报数"),
+    ("R151", "docs/skips-ledger.md", "num_match", r"\*\*(\d+)\*\* 键覆盖表", "台账写的「覆盖表键数」== 本脚本自报数"),
     ("R145", "docs/skips-ledger.md", "count_match", r"\*\*(\d+)\*\* 条有效记录", "台账写的「有效记录数」== 台账实际条数"),
     ("P2-30", ".github/workflows/ci.yml", "has", r"bash Scripts/test/test_ollama_endpoints\.sh", "CI 调的是脚本本身，不涉及 discover 签名"),
     ("P2-40", "docs/skips-ledger.md", "has", r"2026-10-2[0-9]", "台账里的日期与本仓库时间线一致（不是未来日期）"),
@@ -372,6 +375,15 @@ def main() -> int:
             continue
         with open(path, encoding="utf-8", errors="replace") as fh:
             text = fh.read()
+        if kind == "num_match":
+            m = re.search(needle, text)
+            if not m:
+                bad.append((cid, rel, desc, "台账里找不到那句数字"))
+                continue
+            actual = {"R149": len(CHECKS), "R150": len(RUNTIME), "R151": len(COVERAGE)}[cid]
+            if int(m.group(1)) != actual:
+                bad.append((cid, rel, desc, f"台账写 {m.group(1)}，本脚本自报 {actual}"))
+            continue
         if kind == "count_match":
             m = re.search(needle, text)
             if not m:
