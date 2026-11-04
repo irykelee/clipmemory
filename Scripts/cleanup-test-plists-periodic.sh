@@ -17,7 +17,11 @@
 #      A. launchd：把下面内容存成 ~/Library/LaunchAgents/com.clipmemory.cleanup-test-plists.plist
 #         → 再 `launchctl load ~/Library/LaunchAgents/com.clipmemory.cleanup-test-plists.plist`
 #      B. cron：  → `crontab -e` 加一行
-#         0 4 1 * * /bin/bash /Users/iryke/Projects/ClipMemory/Scripts/cleanup-test-plists-periodic.sh --apply
+#         0 4 1 * * /bin/bash <REPO_ROOT>/Scripts/cleanup-test-plists-periodic.sh --apply
+#
+#    ⚠️ 模板里的 `<REPO_ROOT>` = **你这台机器上**本仓库的绝对路径 ⇒ ⇒ 复制前
+#    先把它换掉（脚本**自己**用 `$(dirname $0)/..` 推导路径 ⇒ 仓库挪了也不怕；
+#    ⇒ ⇒ 只有**定时任务**的启动路径是写死的 ⇒ ⇒ 挪仓库时要顺手改这一处）。
 #
 #    launchd 模板：
 #      <?xml version="1.0" encoding="UTF-8"?>
@@ -28,13 +32,13 @@
 #        <key>ProgramArguments</key>
 #        <array>
 #          <string>/bin/bash</string>
-#          <string>/Users/iryke/Projects/ClipMemory/Scripts/cleanup-test-plists-periodic.sh</string>
+#          <string>&lt;REPO_ROOT&gt;/Scripts/cleanup-test-plists-periodic.sh</string>
 #          <string>--apply</string>
 #        </array>
 #        <key>StartCalendarInterval</key>
 #        <dict><key>Day</key><integer>1</integer><key>Hour</key><integer>4</integer></dict>
-#        <key>StandardOutPath</key><string>/Users/iryke/Library/Logs/ClipMemory/cleanup-test-plists.log</string>
-#        <key>StandardErrorPath</key><string>/Users/iryke/Library/Logs/ClipMemory/cleanup-test-plists.log</string>
+#        <key>StandardOutPath</key><string>&lt;HOME&gt;/Library/Logs/ClipMemory/cleanup-test-plists.log</string>
+#        <key>StandardErrorPath</key><string>&lt;HOME&gt;/Library/Logs/ClipMemory/cleanup-test-plists.log</string>
 #      </dict>
 #      </plist>
 #
