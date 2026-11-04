@@ -76,7 +76,7 @@ python3 "$CLEANER" >>"$LOG_FILE" 2>&1
 DRY_RC=$?
 
 if [[ $DRY_RC -ne 0 ]]; then
-  echo "❌ 干跑失败（exit $DRY_RC），详见 $LOG_FILE" >&2
+  echo "❌ 干跑失败（exit ${DRY_RC}），详见 ${LOG_FILE}" >&2
   exit 1
 fi
 
@@ -92,7 +92,7 @@ python3 "$CLEANER" --apply >>"$LOG_FILE" 2>&1
 APPLY_RC=$?
 
 if [[ $APPLY_RC -ne 0 ]]; then
-  echo "❌ 删除步骤失败（exit $APPLY_RC），详见 $LOG_FILE" >&2
+  echo "❌ 删除步骤失败（exit ${APPLY_RC}），详见 ${LOG_FILE}" >&2
   exit 1
 fi
 
