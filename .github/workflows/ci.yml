@@ -353,6 +353,20 @@ jobs:
           python3 Scripts/test/test_workflow_schema.py
           python3 Scripts/test/test_workflow_schema.py --self-test
 
+      # ID-REVIEW-1049 第十四轮 e: adjudication 台账的**失效锚点**逐条重验。
+      #
+      # ⇒ ⇒ 第十三轮记下「存量结论因文件改动而**自动失效** ⇒ 留作下一轮的活」
+      # ⇒ ⇒ 第十四轮实测 **124** 条失效（P0 12 / P1 40）⇒ ⇒ 而「重新核验」
+      # ⇒ ⇒ **没有工具** ⇒ ⇒ 人肉做 124 遍既慢又不可复算 ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ 本文件把那 124 条结论**拆成机器可查的判据**（129 静态 + 2 实跑）
+      # ⇒ ⇒ 并带一张**覆盖表**（证明**一条不漏**）⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⛔ **不允许「批量刷 sha」** —— 第十四轮 b 自己踩过：把**没核验过**
+      # ⇒ ⇒ 的结论刷成当前 sha ⇒ ⇒ 等于**断言**「已核验过」⇒ ⇒ ⇒ ⇒ 说谎 ⇒ ⇒ ⇒ ⇒
+      - name: "Adjudication stale-anchor re-verification (ID-REVIEW-1049 第十四轮 e)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_adjudication_claims.py
+
       # ID-REVIEW-1049 第十轮 c: the rule's PROSE COPIES must not drift.
       #
       # ⇒ ⇒ V15 ("a rule written in prose is itself a driftable copy") has now
