@@ -187,6 +187,10 @@ MAX_SELF_EXEMPT_REGIONS = 2
 # ⇒ ⇒ 源码实测 18 ⇒ ⇒ 三个数字都数不上）⇒ ⇒ ⇒ 本行由**机器**核对。
 LEDGER_REL = os.path.join("docs", "skips-ledger.md")
 SELF_COUNT_LEDGER_RE = re.compile(r"散文守卫自检断言数[：:]\s*\*\*(\d+)\*\*")
+# ⇒ ⇒ ⚠️ **扫描文件数**也要机器核对（第十三轮核验员 P2-1 实测：台账写「108」
+# ⇒ ⇒ ⇒ ⇒ 而 HEAD 实测 **110** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 三处手写数字**已漂**）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+SELF_SCAN_COUNT_LEDGER_RE = re.compile(r"散文守卫扫描文件数[：:]\s*\*\*(\d+)\*\*")
 
 
 def blocks_of(lines: list[str]) -> list[tuple[int, list[str]]]:
@@ -879,6 +883,63 @@ def _self_test_body() -> tuple[list[str], dict[str, int]]:
                  f"# 判据见 `{CORPUS_NAME}`\n"
                  "```\n")
 
+    # ── 台账里的**机器数**：自检断言数 + 扫描文件数（第十三轮核验员 P2-1）──
+    # ⇒ ⇒ ⚠️ 这两条**判断**（漂了 ⇒ ⇒ 报红）此前**没有**用例 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ 而它们的**接线点**由 main_wiring_ledger 覆盖 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    ledger_docs_bad = [(LEDGER_REL, "散文守卫自检断言数：**999**\n")]
+    counts["red"] += 1
+    found = check_ledger_self_count(ledger_docs_bad, 97)
+    if not any("已经漂了" in problem for problem in found[0]):
+        problems.append(
+            "自检失败：ledger_self_count_drift **本应报红**（台账写 999 / 机器数 97）"
+            " ⇒ ⇒ 台账的机器数核对**没有牙齿**"
+        )
+    ledger_docs_ok = [(LEDGER_REL, "散文守卫自检断言数：**97**\n")]
+    counts["green"] += 1
+    found = check_ledger_self_count(ledger_docs_ok, 97)
+    if found[0]:
+        problems.append(
+            "自检失败：ledger_self_count_ok **本应全绿**却报红 ⇒ ⇒ 判据过严"
+            f" ⇒ ⇒ {found[0][0][:140]}"
+        )
+    scan_docs_bad = [(LEDGER_REL, "散文守卫扫描文件数：**999**\n")]
+    counts["red"] += 1
+    found = check_ledger_scan_count(scan_docs_bad, 1)
+    if not any("已经漂了" in problem for problem in found[0]):
+        problems.append(
+            "自检失败：ledger_scan_count_drift **本应报红**（台账写 999 / 机器数 1）"
+            " ⇒ ⇒ 扫描文件数的核对**没有牙齿**"
+        )
+    scan_docs_ok = [(LEDGER_REL, "散文守卫扫描文件数：**1**\n")]
+    counts["green"] += 1
+    found = check_ledger_scan_count(scan_docs_ok, 1)
+    if found[0]:
+        problems.append(
+            "自检失败：ledger_scan_count_ok **本应全绿**却报红 ⇒ ⇒ 判据过严"
+            f" ⇒ ⇒ {found[0][0][:140]}"
+        )
+    # ⇒ ⇒ **第十四轮**（审核门 P2）：台账**在**扫描范围里、但**没有**那一行
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **必须报红** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 否则「删掉那一行」就能**静默关掉**
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 这条机器核对 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    scan_docs_missing = [(LEDGER_REL, "散文守卫自检断言数：**97**\n")]
+    counts["red"] += 1
+    found = check_ledger_scan_count(scan_docs_missing, 1)
+    if not found[0]:
+        problems.append(
+            "自检失败：ledger_scan_count_missing **本应报红**（台账在、但那一行"
+            "不在 ⇒ 删掉它就能静默关掉核对）⇒ ⇒ 机器核对**没有牙齿**"
+        )
+    # ⇒ ⇒ **对照组**：台账**根本不在**扫描范围里 ⇒ ⇒ 只告警、不报红 ⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ ⇒ 否则**合成探针仓库**（只有 probe.md）会被误判 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    counts["green"] += 1
+    found = check_ledger_scan_count([("probe.md", "x\n")], 1)
+    if found[0]:
+        problems.append(
+            "自检失败：ledger_scan_count_absent **本应只告警**却报红 ⇒ ⇒ 判据过严"
+            f" ⇒ ⇒ {found[0][0][:140]}"
+        )
+
     # ── 零宽 / 格式字符：插在词中间也不能逃逸 ─────────────────────
     expect_red("narrow_zero_width_inside",
                 "⇒ ⇒ 规则：正文里不能出现连续 3 个\u200b双引号。\n",
@@ -978,6 +1039,50 @@ def check_ledger_self_count(documents: list[tuple[str, str]],
     return [], None
 
 
+def check_ledger_scan_count(documents: list[tuple[str, str]],
+                             scanned: int) -> tuple[list[str], str | None]:
+    '''台账里写的「散文守卫扫描文件数」必须**等于**机器数 ⇒ ⇒ 否则报红。
+
+    ⇒ ⇒ 为什么要有这条：第十三轮核验员 P2-1 实测 —— 台账三处写「**108** 个已跟踪
+    ⇒ ⇒ ⇒ ⇒ 文件」，而 HEAD 实测 **110**（本轮新增 2 个被扫描的 `.py`）⇒ ⇒ ⇒ ⇒ ⇒
+    ⇒ ⇒ ⇒ ⇒ ⇒ **手写数字已漂**，而守卫是绿的 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 「陈旧数字没人管」那族。
+
+    ⇒ ⇒ ⇒ ⇒ 修法不是「小心一点」，而是**让机器核对** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 与「自检
+    ⇒ ⇒ ⇒ ⇒ ⇒ 断言数」同款 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    '''
+    problems: list[str] = []
+    ledger = None
+    for rel, text in documents:
+        if rel == LEDGER_REL:
+            ledger = normalize_text(text)
+            break
+    if ledger is None:
+        return [], (
+            f"⚠️ 扫描范围里**没有** {LEDGER_REL} ⇒ ⇒ 「扫描文件数」这次"
+            f"**没有核对**（台账的**存在性**由指针守卫负责）⇒ ⇒ 不假装检查过"
+        )
+    stated_list = SELF_SCAN_COUNT_LEDGER_RE.findall(ledger)
+    if not stated_list:
+        # ⇒ ⇒ ⚠️ **第十四轮修**（审核门 P2）：这一支原先只**告警** ⇒ ⇒ ⇒ ⇒
+        # ⇒ ⇒ ⇒ ⇒ 而 `main()` 照常 exit 0 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **删掉台账里那一行**
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 就能**静默关掉**这条机器核对 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ *「删掉检查 ⇒ 检查就没了」那族* ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+        # ⇒ ⇒ ⇒ ⇒ 「自检断言数」那条**同款**分支本来就是**报红**（见上）⇒ ⇒ ⇒ ⇒ ⇒
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 这里也必须**报红**⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+        return [f"{LEDGER_REL}: 台账里**找不到**「散文守卫扫描文件数」⇒ ⇒ "
+                f"那个数字是**手写**的 ⇒ ⇒ 没人核对 ⇒ ⇒ 报红"
+                f"（补一行：散文守卫扫描文件数：**{scanned}**）"], None
+    drifted = [value for value in stated_list if int(value) != scanned]
+    if drifted:
+        return [f"{LEDGER_REL}: 台账里写的「散文守卫扫描文件数」= "
+                f"**{drifted[0]}**，而**机器数**是 **{scanned}** ⇒ ⇒ "
+                f"数字**已经漂了** ⇒ ⇒ 刷成实测值（否则下一个读它的人"
+                f"会读到假数字）"], None
+    return [], None
+
+
 def main(argv: list[str]) -> int:
     args = [a for a in argv[1:] if not a.startswith("--")]
     flags = {a for a in argv[1:] if a.startswith("--")}
@@ -1035,6 +1140,10 @@ def main(argv: list[str]) -> int:
     problems += count_problems
     if skipped_note:
         print(skipped_note, file=sys.stderr)
+    scan_problems, scan_skipped = check_ledger_scan_count(documents, scanned)
+    problems += scan_problems
+    if scan_skipped:
+        print(scan_skipped, file=sys.stderr)
 
     if problems:
         print("❌ 规则的散文副本漂移了：", file=sys.stderr)

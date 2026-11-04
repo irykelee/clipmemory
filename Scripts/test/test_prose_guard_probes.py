@@ -17,9 +17,9 @@
 | 段 | 条数 | 语义 |
 |---|---|---|
 | **E** | **16** | 独立核验员构造的**新逃逸路径** ⇒ ⇒ 期望**报红** ⇒ ⇒ 绿了就是**逃逸** |
-| **A** | **10 组**（20 条） | 每组 = 一条**负对照**（期望红）+ 一条**正对照**（期望绿） |
+| **A** | **10 组**（**20** 条） | 每组 = 一条**负对照**（期望红）+ 一条**正对照**（期望绿）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 负对照 **10** 条 + 正对照 **10** 条 |
 
-⇒ ⇒ 合计 **36** 条探针 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ 合计 **39** 条探针（E 16 + A 20 + **R 3**）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
 
 ## 基线一侧怎么算
 
@@ -130,7 +130,12 @@ def main() -> int:
 
     workdir = tempfile.mkdtemp(prefix="cm-prose-probes-")
     rows: list[dict] = []
-    failures: list[str] = []
+    # ⇒ ⇒ ⚠️ **new 侧**与 **baseline 侧**的失败**分开计数** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 第十三轮核验员 P3-4 实测：合在一起算 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 基线漂移会**少报** new 侧符合数 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 而标签仍写「当前守卫」⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    new_failures: list[str] = []
+    baseline_failures: list[str] = []
     try:
         for probe in probes:
             name = probe["name"]
@@ -162,13 +167,13 @@ def main() -> int:
                     row["baseline_expect"] = expected_old
                     row["baseline_ok"] = (row["old_exit"] == expected_old)
                     if not row["baseline_ok"]:
-                        failures.append(
+                        baseline_failures.append(
                             f"{name}：基线 exit {row['old_exit']}，"
                             f"清单里记的是 {expected_old} ⇒ ⇒ 基线口径**漂了**"
                         )
             rows.append(row)
             if not ok:
-                failures.append(f"{name}：{reason} ⇒ ⇒ {new['out'][:160]}")
+                new_failures.append(f"{name}：{reason} ⇒ ⇒ {new['out'][:160]}")
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
@@ -190,8 +195,9 @@ def main() -> int:
         f"{seg} 段 {v[0]} 红 + {v[1]} 绿" for seg, v in sorted(by_segment.items())
     )
     print()
+    new_ok = len(rows) - len(new_failures)
     print(f"合计 **{len(rows)}** 条探针（{seg_text}）"
-          f" ⇒ ⇒ 当前守卫：{len(rows) - len(failures)}/{len(rows)} 符合期望")
+          f" ⇒ ⇒ **当前守卫**：{new_ok}/{len(rows)} 符合期望")
     # ⇒ ⇒ ⚠️ **别写成 `"old" in {…}`** ⇒ ⇒ ⇒ ⇒ 集合里装的是 `old_exit`
     # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
     # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ *「查不到 ⇒ ⇒ 静默放过」那族*
@@ -207,10 +213,12 @@ def main() -> int:
         with open(args.json_out, "w", encoding="utf-8") as fh:
             json.dump(rows, fh, ensure_ascii=False, indent=1)
 
-    if failures:
+    if new_failures or baseline_failures:
         print("❌ 探针清单跑批失败：", file=sys.stderr)
-        for item in failures:
-            print("   - " + item, file=sys.stderr)
+        for item in new_failures:
+            print("   - [当前守卫] " + item, file=sys.stderr)
+        for item in baseline_failures:
+            print("   - [基线口径] " + item, file=sys.stderr)
         return 1
 
     noted = [r for r in rows if r.get("note")]

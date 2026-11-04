@@ -23,6 +23,13 @@
 #  12. 台账的 file 字段不得越出仓库（路径穿越：相对上跳 + 绝对路径）
 #  13. 报告正文里出现标记串 ⇒ findings 不得被抹掉（审自己时的自指陷阱）
 #  14. apply 崩溃 ⇒ fail-closed（不能静默退回「模型结论说了算」）
+#  15. 不传 REVIEW_ADJUDICATE_SCRIPT / REVIEW_REPO_ROOT 也不能崩
+#  16. add 拒绝**编译失败**的 match 正则（写入端 fail-closed，不留占位）
+#  17. add 拒绝**有未提交改动**的 file（先提交、后写锚）；已暂存未提交**允许**
+#  18. add 拒绝**锚到台账自身**（写入即改文件 ⇒ 锚点落库即失效）
+#  19. 干净文件 ⇒ add 成功，且入库的 fileSha256 == 文件实际内容的 sha256
+#  20. audit 行为级：正则编译失败 ⇒ exit 1；锚点失效 / 缺失 / 无锚 **报数**；
+#      默认不阻断（存量分批重验），--fail-on-stale 才 exit 1；且 audit **只读**
 #
 # Run: bash Scripts/test/test_review_adjudicate.sh
 # Exit 0 = PASS, non-zero = FAIL
@@ -357,6 +364,180 @@ OUT15=$(env -u REVIEW_ADJUDICATE_SCRIPT -u REVIEW_REPO_ROOT \
 ADJ_SELF="$(cd "$(dirname "$ADJ_UNIT")" && pwd)/review-adjudicate.py"
 [ -f "$ADJ_SELF" ] \
   && pass "默认脚本路径指向真实文件" || fail "默认脚本路径不存在：$ADJ_SELF"
+
+# ===================================================================
+echo "--- 断言 16: add 拒绝编译失败的 match 正则（写入端 fail-closed）---"
+# 背景（核验员 P3-1, 2026-11-05）：台账里若躺着一行 `match` 正则**编译不过**
+# ⇒ 匹配期**永不命中** ⇒ 那条结论等于没写 ⇒ 而它在台账里看着像「已核验过」。
+# ⇒ 写入端必须**当场拒**，不能等到匹配期才发现。
+REPO2="$TEST_DIR/gitrepo"
+LEDGER16="$REPO2/ledger16.jsonl"
+mkdir -p "$REPO2"
+git -C "$REPO2" init -q
+git -C "$REPO2" config user.email "adj-test@example.com"
+git -C "$REPO2" config user.name "AdjTest"
+printf 'anchored content\n' > "$REPO2/anchored.txt"
+printf 'clean content\n' > "$REPO2/clean.txt"
+printf 'dirty content\n' > "$REPO2/dirty.txt"
+git -C "$REPO2" add -A
+# ⚠️ 必须屏蔽 hook：全局 core.hooksPath 会让这个**临时仓库**的 commit 触发
+# 真实仓库的 pre-commit（含联网的 LLM 审查）⇒ 单测变成依赖网络 ⇒ 会随机变慢/变红。
+git -C "$REPO2" -c core.hooksPath=/dev/null commit -q -m "init"
+: > "$LEDGER16"
+set +e
+python3 "$ADJ" add --ledger "$LEDGER16" --repo-root "$REPO2" \
+  --match '坏正则(未闭合' --file 'anchored.txt' --severity P1 \
+  --verdict confirmed --note '断言16用例' \
+  > "$TEST_DIR/a16.out" 2> "$TEST_DIR/a16.err"
+RC16=$?
+set -e
+[ "$RC16" = "2" ] \
+  && pass "add 拒绝编译失败的 match（退出码 2）" || fail "add 接受了编译失败的 match（退出码 ${RC16}）"
+grep -q "正则编译失败" "$TEST_DIR/a16.err" \
+  && pass "拒绝原因指明是正则编译失败" || fail "拒绝原因没指出正则编译失败"
+[ ! -s "$LEDGER16" ] \
+  && pass "坏正则没有写进台账" || fail "坏正则被写进了台账"
+
+# ===================================================================
+echo "--- 断言 17: add 拒绝有未提交改动的 file（先提交、后写锚）---"
+# 背景（核验员 P1-1, 2026-11-05）：同一个 commit 内既改锚文件又写锚 sha ⇒
+# 锚的是**中间态** ⇒ 落库即失效 ⇒ 结构上不可能生效。
+LEDGER17="$REPO2/ledger17.jsonl"; : > "$LEDGER17"
+printf 'dirty content CHANGED\n' > "$REPO2/dirty.txt"
+set +e
+python3 "$ADJ" add --ledger "$LEDGER17" --repo-root "$REPO2" \
+  --match '某个结论' --file 'dirty.txt' --severity P1 \
+  --verdict confirmed --note '断言17用例' \
+  > "$TEST_DIR/a17.out" 2> "$TEST_DIR/a17.err"
+RC17=$?
+set -e
+[ "$RC17" = "2" ] \
+  && pass "add 拒绝有未提交改动的 file（退出码 2）" || fail "add 接受了中间态 file（退出码 ${RC17}）"
+grep -q "未提交改动" "$TEST_DIR/a17.err" \
+  && pass "拒绝原因指明是未提交改动" || fail "拒绝原因没指出未提交改动"
+[ ! -s "$LEDGER17" ] \
+  && pass "中间态锚点没有写进台账" || fail "中间态锚点被写进了台账"
+
+# 对照：已 `git add` 但**还没 commit** ⇒ 工作区 == 索引 ⇒ 允许写锚。
+# 这一支专门区分「比对索引」与「比对 HEAD」：按 HEAD 比会把它误判成脏 ⇒ 误伤。
+git -C "$REPO2" add dirty.txt
+set +e
+python3 "$ADJ" add --ledger "$LEDGER17" --repo-root "$REPO2" \
+  --match '某个结论' --file 'dirty.txt' --severity P1 \
+  --verdict confirmed --note '断言17对照：已暂存未提交' \
+  > "$TEST_DIR/a17b.out" 2> "$TEST_DIR/a17b.err"
+RC17B=$?
+set -e
+[ "$RC17B" = "0" ] \
+  && pass "已暂存未提交的 file 允许写锚（比对的是索引，不是 HEAD）" \
+  || fail "已暂存未提交的 file 被误拒（退出码 ${RC17B}）"
+
+# ===================================================================
+echo "--- 断言 18: add 拒绝锚到台账自身（自引用）---"
+# 写入这一行本身就会改变那个文件的内容 ⇒ 锚点在落库那一刻**立刻失效** ⇒
+# 结构上不可能生效 ⇒ 直接拒。
+# ⚠️ 台账必须**放在仓库内**且**已存在**：否则会先被「越出仓库」或「文件不存在」
+# 那两条守卫挡下 ⇒ 退出码同样是 2 ⇒ 断言就变成「因错得对」。
+LEDGER18="$REPO2/ledger18.jsonl"; : > "$LEDGER18"
+set +e
+python3 "$ADJ" add --ledger "$LEDGER18" --repo-root "$REPO2" \
+  --match '某个结论' --file 'ledger18.jsonl' --severity P1 \
+  --verdict confirmed --note '断言18用例' \
+  > "$TEST_DIR/a18.out" 2> "$TEST_DIR/a18.err"
+RC18=$?
+set -e
+[ "$RC18" = "2" ] \
+  && pass "add 拒绝锚到台账自身（退出码 2）" || fail "add 接受了自锚（退出码 ${RC18}）"
+grep -q "台账自身" "$TEST_DIR/a18.err" \
+  && pass "拒绝原因指明是台账自身" || fail "拒绝原因不是台账自身（可能是别的守卫）"
+[ ! -s "$LEDGER18" ] \
+  && pass "自锚条目没有写进台账" || fail "自锚条目被写进了台账"
+
+# ===================================================================
+echo "--- 断言 19: 干净文件 ⇒ add 成功，且 fileSha256 与实际一致 ---"
+LEDGER19="$REPO2/ledger19.jsonl"; : > "$LEDGER19"
+set +e
+python3 "$ADJ" add --ledger "$LEDGER19" --repo-root "$REPO2" \
+  --match '某个结论' --file 'clean.txt' --severity P1 \
+  --verdict confirmed --note '断言19用例' \
+  > "$TEST_DIR/a19.out" 2> "$TEST_DIR/a19.err"
+RC19=$?
+set -e
+[ "$RC19" = "0" ] \
+  && pass "干净文件允许写锚（退出码 0）" || fail "干净文件被拒（退出码 ${RC19}）"
+COUNT19=$(grep -c . "$LEDGER19" || true)
+[ "$COUNT19" = "1" ] \
+  && pass "台账写入 1 条" || fail "台账应写入 1 条，实得 ${COUNT19}"
+SHA19=$(python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$REPO2/clean.txt")
+REC19=$(python3 -c "
+import json,sys
+rows=[json.loads(l) for l in open(sys.argv[1],encoding='utf-8') if l.strip()]
+print(rows[0].get('fileSha256','') if rows else '')
+" "$LEDGER19")
+[ "$REC19" = "$SHA19" ] \
+  && pass "fileSha256 与文件实际内容一致" || fail "fileSha256 与实际不一致：记的是 ${REC19:0:12} 实际是 ${SHA19:0:12}"
+REC19F=$(python3 -c "
+import json,sys
+rows=[json.loads(l) for l in open(sys.argv[1],encoding='utf-8') if l.strip()]
+print(rows[0].get('file','') if rows else '')
+" "$LEDGER19")
+[ "$REC19F" = "clean.txt" ] \
+  && pass "file 字段原样入库" || fail "file 字段实得：${REC19F}"
+
+# ===================================================================
+echo "--- 断言 20: audit 行为级（正则编译 / 锚点失效 / 缺失 / 无锚 / 只读）---"
+# 背景（核验员 P1-1）：台账**自己**是绿的（JSON 合法、行数对）⇒ 而结论可能
+# 早就死了（正则编译不过 / 锚点 sha 对不上）⇒ advisory 下不阻断 ⇒ 没人知道。
+# ⇒ audit 必须把「静默失效」变成**看得见的数**。
+LEDGER20="$REPO2/ledger20.jsonl"
+cat > "$LEDGER20" <<EOF
+{"match": "坏正则(未闭合", "verdict": "confirmed", "note": "正则编译不过", "severity": "P1", "adjudicatedAt": "2026-11-05T00:00:00Z", "expiresAt": "2099-11-05T00:00:00Z"}
+{"match": "锚点失效", "file": "clean.txt", "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000", "verdict": "confirmed", "note": "锚点对不上", "severity": "P1", "adjudicatedAt": "2026-11-05T00:00:00Z", "expiresAt": "2099-11-05T00:00:00Z"}
+{"match": "没有锚", "verdict": "confirmed", "note": "无 file 锚", "severity": "P2", "adjudicatedAt": "2026-11-05T00:00:00Z", "expiresAt": "2099-11-05T00:00:00Z"}
+{"match": "文件没了", "file": "gone.txt", "fileSha256": "deadbeef", "verdict": "confirmed", "note": "锚点文件缺失", "severity": "P3", "adjudicatedAt": "2026-11-05T00:00:00Z", "expiresAt": "2099-11-05T00:00:00Z"}
+EOF
+SHA20BEFORE=$(python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$LEDGER20")
+set +e
+python3 "$ADJ" audit --ledger "$LEDGER20" --repo-root "$REPO2" \
+  > "$TEST_DIR/a20.out" 2> "$TEST_DIR/a20.err"
+RC20=$?
+set -e
+[ "$RC20" = "1" ] \
+  && pass "audit 遇到编译失败的正则 ⇒ 退出码 1（硬错）" || fail "audit 退出码应为 1，实得 ${RC20}"
+grep -q "正则编译失败" "$TEST_DIR/a20.err" \
+  && pass "audit 在 stderr 报出正则编译失败" || fail "audit 没有在 stderr 报出正则编译失败"
+grep -qF "match 正则编译失败：**1** 条" "$TEST_DIR/a20.out" \
+  && pass "audit 报出编译失败条数 = 1" || fail "audit 没报出编译失败条数 = 1"
+grep -qF "锚点**已失效**" "$TEST_DIR/a20.out" \
+  && pass "audit 报出锚点失效" || fail "audit 没报出锚点失效"
+grep -qF "锚点文件**不存在**：1 条" "$TEST_DIR/a20.out" \
+  && pass "audit 报出锚点文件缺失 = 1 条" || fail "audit 没报出锚点文件缺失 = 1 条"
+grep -qF "无 file 锚（结论**永不**自动失效）：1 条" "$TEST_DIR/a20.out" \
+  && pass "audit 报出无锚条数 = 1" || fail "audit 没报出无锚条数 = 1"
+SHA20AFTER=$(python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$LEDGER20")
+[ "$SHA20BEFORE" = "$SHA20AFTER" ] \
+  && pass "audit 是只读的（台账内容未变）" || fail "audit 改动了台账"
+
+# 只有锚点失效（无编译失败）⇒ 默认**不阻断**，--fail-on-stale 才阻断。
+LEDGER20B="$REPO2/ledger20b.jsonl"
+cat > "$LEDGER20B" <<EOF
+{"match": "锚点失效", "file": "clean.txt", "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000", "verdict": "confirmed", "note": "锚点对不上", "severity": "P1", "adjudicatedAt": "2026-11-05T00:00:00Z", "expiresAt": "2099-11-05T00:00:00Z"}
+EOF
+set +e
+python3 "$ADJ" audit --ledger "$LEDGER20B" --repo-root "$REPO2" > "$TEST_DIR/a20b.out" 2>&1
+RC20B=$?
+set -e
+[ "$RC20B" = "0" ] \
+  && pass "只有锚点失效时 audit 默认不阻断（存量分批重验）" || fail "audit 默认应不阻断，实得 ${RC20B}"
+grep -qF "**1** 条" "$TEST_DIR/a20b.out" \
+  && pass "audit 报出失效条数 = 1" || fail "audit 没报出失效条数 = 1"
+set +e
+python3 "$ADJ" audit --ledger "$LEDGER20B" --repo-root "$REPO2" --fail-on-stale \
+  > "$TEST_DIR/a20c.out" 2> "$TEST_DIR/a20c.err"
+RC20C=$?
+set -e
+[ "$RC20C" = "1" ] \
+  && pass "--fail-on-stale 时锚点失效 ⇒ 退出码 1" || fail "--fail-on-stale 时退出码应为 1，实得 ${RC20C}"
 
 # ===================================================================
 echo

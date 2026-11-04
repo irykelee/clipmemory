@@ -21,11 +21,23 @@
 
 判定规则（一条 finding 要被「人工结论」接管，需同时满足）：
   1. `match` 正则命中该 finding 文本（正则编译失败 ⇒ **不匹配 + 响亮告警**，
-     不退化为字面子串 —— 那样等于这条结论永远不生效）；
+     不退化为字面子串 —— 那样等于这条结论永远不生效；⇒ ⇒ 而**入库侧**
+     ⇒ ⇒ ⇒ ⇒ **第十四轮**起 `add` 直接**拒绝**写入编译不过的正则 ⇒ ⇒ ⇒ ⇒
+     ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 编译不过的结论**根本进不了台账** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒）；
   2. `severity` 缺省或与该 finding 的严重度一致；
   3. 未过期（`expiresAt` 在未来）；
   4. 若填了 `file`：该文件当前内容的 sha256 必须仍等于 `fileSha256`
      ⇒ **代码一改，这条结论自动失效**，必须重新核验。
+
+`add` 的三条守卫（fail-closed ⇒ 宁可写不进去，也不写一条**注定失效**的结论）：
+  A. `match` 正则**编译不过** ⇒ ⇒ 拒绝写入（编译不过 ⇒ 匹配期永不命中 ⇒ 等于没写）；
+  B. `file` 指向**台账自身** ⇒ ⇒ 拒绝写入（写入这一行就改变了它 ⇒ 锚点立刻失效）；
+  C. `file` 指向的文件**有未提交改动** ⇒ ⇒ 拒绝写入（此刻的 sha 是**中间态** ⇒
+     commit 之后立刻失效）⇒ ⇒ **顺序纪律**：先提交，再写锚。
+
+`audit` 子命令把「静默失效」变成**看得见的数**：正则编译失败 ⇒ **exit 1**；
+锚点失效 / 文件缺失 / 无锚点 ⇒ 计数报出（默认不阻断；存量要分批重验，
+一刀切判红会逼出**批量假重锚**，那比过期更坏）。
 
 `file` 字段必须落在仓库内 —— 台账是**入库文件**，恶意条目可以用 `../` 或
 绝对路径把工具引到仓库外。解析后若不在仓库根之内，一律当作「不适用」
@@ -46,6 +58,7 @@
 用法
 ----
     review-adjudicate.py list  [--ledger P] [--report P] [--repo-root P]
+    review-adjudicate.py audit [--ledger P] [--repo-root P] [--fail-on-stale]
     review-adjudicate.py add   --match REGEX [--file PATH] [--severity P0|P1]
                                --note TEXT [--expires-days N] [--ledger P]
     review-adjudicate.py apply --report P [--ledger P] [--repo-root P]
@@ -65,6 +78,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 
 BLOCKING_SEVERITIES = ("P0", "P1")
@@ -86,6 +100,73 @@ def sha256_file(path):
         for chunk in iter(lambda: handle.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+# ---------------------------------------------------------------- git 锚点判定
+
+def git_toplevel(repo_root):
+    """仓库顶层目录的绝对路径；不在 git 仓库里 ⇒ ⇒ None。"""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", repo_root, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=False,
+        )
+    except (OSError, ValueError):
+        return None
+    if proc.returncode != 0:
+        return None
+    top = proc.stdout.strip()
+    return top or None
+
+
+def git_index_blob_sha(toplevel, rel_path):
+    """**索引**里该文件的 blob 内容 sha256 ⇒ ⇒ 「**下一次 commit 会提交**」的那份。
+
+    ⇒ ⇒ 用**索引**（不是 HEAD、也不是工作区）⇒ ⇒ 因为 commit 提交的是索引。
+    ⇒ ⇒ 文件不在索引里（未跟踪）/ 不是仓库 ⇒ ⇒ None。
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", toplevel, "show", ":" + rel_path],
+            capture_output=True, check=False,
+        )
+    except (OSError, ValueError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return hashlib.sha256(proc.stdout).hexdigest()
+
+
+def anchor_state(repo_root, abs_path):
+    """这个文件能不能当锚点？⇒ ⇒ 返回 (state, detail)。
+
+    state:
+      - ``"clean"``      ⇒ ⇒ 工作区内容 == 索引内容 ⇒ ⇒ **可以锚**（落库那一刻它就是
+        将要提交的那份 ⇒ ⇒ 锚点在 commit 之后**立即生效**）。
+      - ``"dirty"``      ⇒ ⇒ 有**未提交改动** ⇒ ⇒ 此刻写下的 sha 是**中间态**
+        ⇒ ⇒ 锚在 commit 之后**立刻失效**（核验员 P1-1 实测形态）。
+      - ``"untracked"``  ⇒ ⇒ 不在索引里 ⇒ ⇒ 内容随时会变 ⇒ ⇒ 不能锚。
+      - ``"not-a-repo"`` ⇒ ⇒ 不在 git 仓库里 ⇒ ⇒ 无「将要提交的那份」可对照。
+
+    ⇒ ⇒ 为什么必须查**索引**而不是 HEAD：commit 提交的是**索引** ⇒ ⇒ 用 HEAD 比对
+    ⇒ ⇒ 会漏掉「已 `git add` 但还没 commit」这一种 ⇒ ⇒ 那种情况下索引里有新内容 ⇒ ⇒
+    ⇒ ⇒ 而 HEAD 里还是旧的 ⇒ ⇒ 判成 dirty 会**误伤**一次合法的暂存后锚定。
+    """
+    top = git_toplevel(repo_root)
+    if top is None:
+        return "not-a-repo", "不在 git 仓库里 ⇒ ⇒ 无法确认它「将要被提交的那份」"
+    try:
+        rel = os.path.relpath(abs_path, top)
+    except ValueError:
+        return "not-a-repo", "无法计算它相对仓库根的路径"
+    if rel.startswith(".."):
+        return "not-a-repo", "它不在仓库根之下"
+    indexed = git_index_blob_sha(top, rel)
+    if indexed is None:
+        return "untracked", "它**不在 git 索引**里（未跟踪）⇒ ⇒ 内容随时会变 ⇒ ⇒ 不能锚"
+    if sha256_file(abs_path) != indexed:
+        return "dirty", "它**有未提交改动**（工作区内容 ≠ 索引内容）⇒ ⇒ 此刻写下的 sha 是**中间态**"
+    return "clean", ""
 
 
 def resolve_in_repo(repo_root, target):
@@ -416,6 +497,24 @@ def cmd_list(args):
 
 
 def cmd_add(args):
+    # ⇒ ⇒ **守卫①（fail-closed）**：match 正则必须**能编译** ⇒ ⇒ 编译不过 ⇒ ⇒
+    # ⇒ ⇒ 拒绝写入 ⇒ ⇒ 理由：编译不过的正则在匹配期**永不命中** ⇒ ⇒ 那条结论
+    # ⇒ ⇒ 等于**没写** ⇒ ⇒ 而台账里躺着一条 confirmed 却不生效 ⇒ ⇒ 正是最容易
+    # ⇒ ⇒ 让人误以为「已经核验过了」的状态（核验员 P3-1 实测：物理行 171 就是
+    # ⇒ ⇒ 这样一条 ⇒ ⇒ 它**永远**不生效 ⇒ ⇒ 而没人报红）。
+    try:
+        re.compile(args.match)
+    except re.error as err:
+        print(
+            f"[review-adjudicate] 拒绝：match 正则编译失败 —— {args.match!r} — {err}",
+            file=sys.stderr,
+        )
+        print(
+            "             （编译不过 ⇒ ⇒ 匹配期永不命中 ⇒ ⇒ 这条结论等于没写 ⇒ ⇒ "
+            "请先把正则写对（`**` 要转义成 `\\*\\*`）",
+            file=sys.stderr,
+        )
+        return 2
     entry = {
         "match": args.match,
         "verdict": args.verdict,
@@ -435,6 +534,36 @@ def cmd_add(args):
         if not os.path.isfile(path):
             print(f"[review-adjudicate] 文件不存在：{args.file}", file=sys.stderr)
             return 2
+        # ⇒ ⇒ **守卫②（自引用）**：不能锚到**台账自身** ⇒ ⇒ 写入这一行**本身**
+        # ⇒ ⇒ 就改变了那个文件的内容 ⇒ ⇒ 锚点在落库那一刻**立刻失效** ⇒ ⇒
+        # ⇒ ⇒ 结构上不可能生效 ⇒ ⇒ 直接拒。
+        ledger_abs = os.path.realpath(os.path.abspath(args.ledger))
+        if os.path.realpath(path) == ledger_abs:
+            print(
+                f"[review-adjudicate] 拒绝：file 不能是台账自身 —— {args.file}",
+                file=sys.stderr,
+            )
+            print(
+                "             （写入这一行就会改变它 ⇒ ⇒ 锚点立刻失效 ⇒ ⇒ 请锚到别的文件）",
+                file=sys.stderr,
+            )
+            return 2
+        # ⇒ ⇒ **守卫③（中间态，fail-closed）**：目标文件**有未提交改动** ⇒ ⇒
+        # ⇒ ⇒ 此刻记下的 sha 落在**中间态** ⇒ ⇒ commit 之后**立刻失效**
+        # ⇒ ⇒ （核验员 P1-1 实测形态：同一个 commit 内既改锚文件又写锚 sha ⇒ ⇒
+        # ⇒ ⇒ **必然自毁**）⇒ ⇒ 拒绝 ⇒ ⇒ 顺序纪律：先提交 ⇒ ⇒ 再写锚。
+        state, detail = anchor_state(args.repo_root, path)
+        if state != "clean":
+            print(
+                f"[review-adjudicate] 拒绝：{args.file} —— {detail}",
+                file=sys.stderr,
+            )
+            print(
+                "             （⇒ ⇒ 先把改动**提交**，再回来写锚 ⇒ ⇒ 否则锚的是中间态 ⇒ ⇒ "
+                "落库即失效）",
+                file=sys.stderr,
+            )
+            return 2
         entry["file"] = args.file
         entry["fileSha256"] = sha256_file(path)
     if args.severity:
@@ -447,6 +576,81 @@ def cmd_add(args):
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
     print(f"已写入台账：{args.ledger}")
     print(json.dumps(entry, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_audit(args):
+    """台账体检 ⇒ ⇒ 把「静默失效」变成**看得见的数**。
+
+    ⇒ ⇒ 为什么要有它（核验员 P1-1）：台账里「有效结论」的判定**依赖两件**
+    ⇒ ⇒ **外部事实** —— ① `match` 正则**能不能编译**；② 锚点文件的 sha **还对不对**。
+    ⇒ ⇒ 这两件事**都不在台账里** ⇒ ⇒ 台账自己是绿的 ⇒ ⇒ 而结论可能**早就死了**
+    ⇒ ⇒ ⇒ 「代码一改结论自动失效」在**持续改动**下退化成**批量过期**
+    ⇒ ⇒ ⇒ 而 advisory 模式下**不阻断** ⇒ ⇒ ⇒ 于是**没人知道**。
+
+    ⇒ ⇒ 退出码：正则有编译失败 ⇒ ⇒ **exit 1**（硬错）⇒ ⇒ 锚点失效 ⇒ ⇒ 计数报出
+    ⇒ ⇒ （默认**不**判失败 ⇒ ⇒ 因为存量要**分批重验** ⇒ ⇒ 一刀切判红会逼人
+    ⇒ ⇒ **批量假重锚** ⇒ ⇒ 那比过期更坏）；`--fail-on-stale` 可把它也判成失败。
+    """
+    entries = load_ledger(args.ledger)
+    repo_root = os.path.abspath(args.repo_root)
+    bad_regex = []
+    stale = []
+    missing = []
+    no_anchor = 0
+    for index, entry in enumerate(entries, 1):
+        pattern = entry.get("match", "")
+        try:
+            re.compile(pattern)
+        except re.error as err:
+            bad_regex.append((index, pattern, str(err)))
+            continue
+        target = entry.get("file")
+        if not target:
+            no_anchor += 1
+            continue
+        path = resolve_in_repo(repo_root, target)
+        if path is None or not os.path.isfile(path):
+            missing.append((index, target))
+            continue
+        recorded = entry.get("fileSha256")
+        if not recorded or sha256_file(path) != recorded:
+            stale.append((index, target, entry.get("severity") or "-"))
+
+    by_severity = {}
+    for _, _, severity in stale:
+        by_severity[severity] = by_severity.get(severity, 0) + 1
+    severity_text = " / ".join(
+        f"{key} {by_severity[key]}" for key in sorted(by_severity)
+    )
+
+    print(f"[review-adjudicate] 台账：{args.ledger}（{len(entries)} 条有效记录）")
+    print(f"[review-adjudicate] match 正则编译失败：**{len(bad_regex)}** 条")
+    for index, pattern, err in bad_regex:
+        print(f"    第 {index} 条：{pattern!r} — {err}")
+    print(
+        f"[review-adjudicate] 锚点**已失效**（文件内容 ≠ 入库时记的 sha）："
+        f"**{len(stale)}** 条"
+        + (f"（{severity_text}）" if severity_text else "")
+    )
+    print(f"[review-adjudicate] 锚点文件**不存在**：{len(missing)} 条")
+    print(
+        f"[review-adjudicate] 无 file 锚（结论**永不**自动失效）：{no_anchor} 条"
+    )
+    if bad_regex:
+        print(
+            "[review-adjudicate] ❌ 有 match 正则编译失败 ⇒ ⇒ 这些结论**永不生效**"
+            " ⇒ ⇒ 请改正后重跑（**不要**留着它们占位）",
+            file=sys.stderr,
+        )
+        return 1
+    if stale and args.fail_on_stale:
+        print(
+            f"[review-adjudicate] ❌ 有 {len(stale)} 条锚点已失效（--fail-on-stale）",
+            file=sys.stderr,
+        )
+        return 1
+    print("[review-adjudicate] ✅ 全部 match 正则可编译")
     return 0
 
 
@@ -465,13 +669,19 @@ def main(argv=None):
     p_list.set_defaults(func=cmd_list)
 
     p_add = sub.add_parser("add", parents=[common], help="记一条人工核验结论")
-    p_add.add_argument("--match", required=True, help="命中 finding 文本的正则（原样入库；编译失败时在**匹配期**不匹配 + 告警，不退化为字面子串）")
+    p_add.add_argument("--match", required=True, help="命中 finding 文本的正则（原样入库；**编译不过 ⇒ 拒绝写入**（fail-closed）⇒ ⇒ 匹配期永不命中 ⇒ ⇒ 等于没写 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 既存条目若编译不过 ⇒ ⇒ 在**匹配期**不匹配 + 告警，不退化为字面子串）")
     p_add.add_argument("--file", help="相关文件（填了则该文件一改，这条结论自动失效）")
     p_add.add_argument("--severity", choices=["P0", "P1", "P2", "P3"])
     p_add.add_argument("--verdict", required=True, choices=["confirmed", "false-positive"])
     p_add.add_argument("--note", required=True, help="为什么这么判")
     p_add.add_argument("--expires-days", type=int, default=DEFAULT_EXPIRY_DAYS)
     p_add.set_defaults(func=cmd_add)
+
+    p_audit = sub.add_parser("audit", parents=[common],
+                             help="台账体检：正则编译 / 锚点失效 / 缺失文件")
+    p_audit.add_argument("--fail-on-stale", action="store_true",
+                         help="锚点失效也判为失败（默认只报数，不阻断）")
+    p_audit.set_defaults(func=cmd_audit)
 
     p_apply = sub.add_parser("apply", parents=[common], help="按台账给出生效结论并写回报告")
     p_apply.add_argument("--report", required=True)

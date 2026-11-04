@@ -50,7 +50,8 @@ jobs:
         # ⇒ ⇒ commit（`473fade`）的守卫源码 ⇒ ⇒ shallow clone 拿不到 ⇒ ⇒
         # ⇒ ⇒ ⇒ 而「旧版逃逸 N 条」这个数字**必须**在 CI 里被核对 ⇒ ⇒ ⇒
         # ⇒ ⇒ ⇒ 否则它就只是台账里的一个手写数字 ⇒ ⇒ ⇒ ⇒ （仓库只有 23M ⇒ ⇒ 代价可忽略）
-        fetch-depth: 0
+        with:
+          fetch-depth: 0
 
       # REL-23 (2026-08-03): README hygiene gate — DOC-0002/DOC-0003 prevention.
       # Ported from ~/Projects/ClipMemory-local/release.sh preflight (9eebd8d,
@@ -330,6 +331,27 @@ jobs:
           set -euo pipefail
           python3 Scripts/test/test_ledger_section_pointers.py .
           python3 Scripts/test/test_ledger_section_pointers.py . --self-test
+
+      # ID-REVIEW-1049 第十四轮: workflow schema 的**静态守卫**。
+      #
+      # ⇒ ⇒ `fetch-depth: 0` 被写成 **step 级键**（应为 `with:` 的子键）⇒ ⇒
+      #   ⇒ ⇒ GitHub 判定 workflow schema 非法 ⇒ ⇒ ⇒ ⇒ CI run `41587954678`
+      #   ⇒ ⇒ ⇒ ⇒ **0 秒失败**（"This run likely failed because of a workflow
+      #   ⇒ ⇒ ⇒ ⇒ file issue"）⇒ ⇒ ⇒ ⇒ 而 **YAML 能 parse** ⇒ ⇒ ⇒ ⇒
+      #   ⇒ ⇒ ⇒ ⇒ 「能 parse」≠「schema 合法」⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      #   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ Now the checker lives in the repo ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      #   ⇒ ⇒ ⇒ ⇒ (Scripts/test/test_workflow_schema.py) ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      #   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      # ⇒ ⇒ ⇒ ⇒ It is **text-level** on purpose ⇒ ⇒ a YAML parser would happily
+      #   ⇒ ⇒ accept an illegal schema ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      #   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+      - name: "Workflow schema guard (ID-REVIEW-1049 第十四轮)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_workflow_schema.py
+          python3 Scripts/test/test_workflow_schema.py --self-test
 
       # ID-REVIEW-1049 第十轮 c: the rule's PROSE COPIES must not drift.
       #
