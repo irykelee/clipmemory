@@ -112,7 +112,10 @@ CHECKS = [
     ("P2-19", "Scripts/test/test_review_adjudicate.sh", "has", r"mktemp -d", "用 mktemp -d 落临时目录（模型沙箱限制，非测试缺陷）"),
     ("P2-19b", ".github/workflows/ci.yml", "has", r"test_review_adjudicate\.sh", "该测试已接进 CI lint-ids job"),
     ("P2-20", "githooks/review-gate-adjudication.sh", "has", r"crashed|STATUS", "err_file 为空时仍靠退出码判定崩溃（fail-closed）"),
+    ("R143", "Scripts/mutation/prose_guard_mutants.py", "nothas", r"EQUIVALENT_MUTATIONS\s*[:=]", "变异集里**没有**等价豁免通道（只在注释里被提及）"),
+    ("R147", "Scripts/mutation/prose_guard_mutants.py", "has", r"EXPECTED_MUTATION_COUNT\s*=\s*24", "变异集是 24 条（无等价豁免）"),
     ("R79", "Scripts/test/test_verify_production_canaries.sh", "has", r'if \[\[ "\$MODE" != "manifest" \]\]', "contract 段与清单段互斥（contract 不看清单）"),
+    ("R145", "docs/skips-ledger.md", "count_match", r"\*\*(\d+)\*\* 条有效记录", "台账写的「有效记录数」== 台账实际条数"),
     ("P2-30", ".github/workflows/ci.yml", "has", r"bash Scripts/test/test_ollama_endpoints\.sh", "CI 调的是脚本本身，不涉及 discover 签名"),
     ("P2-40", "docs/skips-ledger.md", "has", r"2026-10-2[0-9]", "台账里的日期与本仓库时间线一致（不是未来日期）"),
     ("P2-57", "Tests/ClipMemoryTests/SnapshotTestHelpers.swift", "has", r"AppStorageDefaults\.setShared\(snapshotDefaults\)", "快照助手现在指向 per-test 隔离 suite（前提已变：@AppStorage 全接上 store: seam）"),
@@ -214,12 +217,28 @@ RUNTIME = [
     ("P0-10b", "multibyte 守卫的 --self-test 必须 exit 0",
      ["python3", "Scripts/test/test_shell_multibyte_var_boundary.py", ".", "--self-test"],
      0),
+    ("R141", "散文守卫 check ⇒ exit 0（⇒ 台账里的「扫描文件数」与机器数一致）",
+     ["python3", "Scripts/test/test_rule_prose_copies.py", "."], 0),
+    ("R142", "散文守卫 --self-test ⇒ exit 0（⇒ 台账里的「自检断言数」与机器数一致）",
+     ["python3", "Scripts/test/test_rule_prose_copies.py", ".", "--self-test"], 0),
+    ("R144", "探针跑批带基线 ⇒ exit 0（⇒ fix7 的基线口径与清单一致）",
+     ["python3", "Scripts/test/test_prose_guard_probes.py", "--baseline-guard", "@BASE@"], 0),
+    ("R146", "指针守卫 ⇒ exit 0（⇒ 台账的表格结构合法）",
+     ["python3", "Scripts/test/test_ledger_section_pointers.py", "."], 0),
+    ("R148", "变异集 ⇒ exit 0（⇒ 24 条全红、无存活）",
+     ["python3", "Scripts/mutation/prose_guard_mutants.py"], 0),
 ]
 
 # ── 覆盖表：台账结论（按 match 认）→ 负责它的判据编号 ───────────────
 # ⇒ ⇒ 键 = 台账里的 `match`（原文）⇒ ⇒ 值 = 判据编号列表
 # ⇒ ⇒ 用来证明「124 条**一条不漏**」⇒ ⇒ 而不是「我大概都看了」
 COVERAGE = {
+    "散文守卫扫描文件数": ["R141"],
+    "prose self-test has .97. assertions": ["R142"],
+    "1 条等价": ["R143", "R147", "R148"],
+    "zero discrimination": ["R144"],
+    "台账 164 ⇒ 166": ["R145"],
+    "malformed table rows": ["R146"],
     "15 个是死词": ["R67"],
     "15 条探针 / 修前 14 条逃逸": ["R61"],
     "15/14 未订正": ["R69"],
@@ -353,6 +372,17 @@ def main() -> int:
             continue
         with open(path, encoding="utf-8", errors="replace") as fh:
             text = fh.read()
+        if kind == "count_match":
+            m = re.search(needle, text)
+            if not m:
+                bad.append((cid, rel, desc, "台账里找不到「N 条有效记录」那句"))
+                continue
+            n = sum(1 for line in open(os.path.join(REPO, "githooks/review-adjudication.jsonl"),
+                                       encoding="utf-8")
+                    if line.strip() and not line.startswith("#"))
+            if int(m.group(1)) != n:
+                bad.append((cid, rel, desc, f"台账写 {m.group(1)}，实际 {n}"))
+            continue
         if kind == "count":
             n = _count(rel, needle)
             ok = n > 0
@@ -376,9 +406,20 @@ def main() -> int:
     # ── 实跑判据 ───────────────────────────────────────────────────
     import subprocess
     import tempfile
+    import shutil
+    base = os.path.join(tempfile.mkdtemp(prefix="cm-base-"), "base.py")
+    with open(base, "w", encoding="utf-8") as fh:
+        fh.write(subprocess.run(["git", "-C", REPO, "show",
+                                 "473fade:Scripts/test/test_rule_prose_copies.py"],
+                                capture_output=True, text=True, check=True).stdout)
     for cid, desc, cmd, want in RUNTIME:
-        real = [c.replace("@TMPDIR@", tempfile.mkdtemp(prefix="cm-empty-")) if c == "@TMPDIR@" else c
-                for c in cmd]
+        real = []
+        for c in cmd:
+            if c == "@TMPDIR@":
+                c = tempfile.mkdtemp(prefix="cm-empty-")
+            elif c == "@BASE@":
+                c = base
+            real.append(c)
         proc = subprocess.run(real, cwd=REPO, capture_output=True, text=True, timeout=300)
         if proc.returncode != want:
             bad.append((cid, "（实跑）", desc, f"期望 exit {want}，实得 {proc.returncode}"))
