@@ -2595,6 +2595,10 @@ left safeMode.crashCount in SafeModeService-XCTest-isolation
 | **P2-3** | P2 | ID-CRASH-0004 的「写失败就不计数」那扇门**在崩溃分支里没有测试覆盖** ⇒ M7b **存活** | 新增测试：哨兵还在 + 自己的写失败 ⇒ **不得**计数 |
 | **P2-4** | P2 | `countsCrashes` seam **零守卫** ⇒ M10b（写死 `false`）**存活** ⇒ 那条变异会让**生产**环境的整个安全模式功能静默失效 —— 正是 1045 要消灭的形状，**由新 seam 重新引入** | 新增结构守卫：`shared` 必须按 `!TestIsolation.isRunningTests` 接线 |
 | **P2-5** | P2 | `exitSafeMode()` 是三个共享 key 最后一个**没闸门**的写点（当前**潜伏**，没有测试驱动那个按钮） | 补 `countsCrashes` 闸门 |
+| **P1-3** | 审核门（`auto-review-20261104-174718-80924.md`）：两道 shell 守卫「逻辑高度依赖 bash 3.2 ⇒ 未来版本可能假阳性/假阴性」 | **误报**：① 这两道守卫是**静态形状**检查（版本无关）② 行为那一半**显式**用 `/bin/bash`（3.2）⇒ ⇒ 那就是被测平台自己的 bash（源码 `:120` `BASH3` / `:362`）③ 非 macOS 明确打印「跳过」且**不假装检查过**⇒ ⇒ 「版本依赖」正是设计目标 ⇒ ⇒ 且 CI 的 macOS runner 用的就是 3.2 | 已入 adjudication（false-positive）⇒ ⇒ 锚在 `Scripts/test/test_shell_multibyte_var_boundary.py` |
+| **P2-7** | 审核门（同一报告）：`test_ollama_endpoints.sh` 大量 `$(cat …)` ⇒ 「`set -u` 下可能解析位置偏移」 | **误报**：实测该脚本自测**全绿**（exit 0）⇒ ⇒ 「嵌套解析导致位置偏移」**没有可复现的失败场景**（命令替换失败**不**产生 unbound variable）⇒ ⇒ 推测性表述 ⇒ ⇒ 且该文件本轮未改动 | 已入 adjudication（false-positive） |
+| **P2-8** | 审核门（同一报告）：`countOccurrences` 的 `\bXCTAssert\w*` ⇒ 「极端注释嵌套可能漏报」 | **误报**：词边界只作用在 `X` **之前**（`X` 是词字符 ⇒ 边界稳定）⇒ ⇒ 「漏报」**无实测复现**⇒ ⇒ 该 Swift 文件本轮**零改动** | 已入 adjudication（false-positive） |
+| **P2-9** | 审核门（同一报告）：`EXPECTED_MANIFEST_SHA256` ⇒ 「`.json` 未锁 `eol=lf` ⇒ 跨平台哈希失效」 | **误报**：① 报告的前提**与事实不符** —— `.gitattributes` 里 `*.json text eol=lf` **已锁**（第八轮专门为此加的，注释就写着原因）② 清单哈希按**有效行**算（strip + join + 末尾换行）⇒ ⇒ **与行尾无关** ⇒ ⇒ 语料的原始字节口径也已锁 LF | 已入 adjudication（false-positive） |
 | **P3-1** | P3 | 两处文档注释仍在讲**旧极性**（`clearSentinelOnNormalExit` 说「哨兵不在 ⇒ 上次没正常退出」；`registerPreviousLaunchDidCrash` 说「崩了（没有哨兵）」）；`writeSentinel` 的推理仍是「missing sentinel」口径 | 三处全部订正，并注明「头部注释与 AppDelegate 的注释一直是对的，实现直到 1046 才与它们一致」 |
 | **P3-2** | P3 | 台账数字错：§46.7 说 1046 测试「7 条」（实为 **14**）、「SafeModeServiceTests 6 条」（实为 **13**）；§45.10 说 1045「19 个」（实为 21）；**§46 全节没有全量数据行** | 全部订正，并补全量行 |
 | **P3-3** | P3 | canary 的 key 名册漏了新 key `safeMode.polarityFixedV1`（名册自称镜像该服务的调用点） | 补进 `guardedSharedSuiteKeys` |
@@ -6217,7 +6221,7 @@ P2-2）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 「用例存在」≠「用例有判别力」；�
 | 指针守卫 | ✅ exit 0 / 自检 **12** 个断言 |
 | **workflow schema 守卫**（新增） | ✅ **5** 个 workflow 文件 / **0** 个非法项 / 自检 **8** 条断言 |
 | adjudication 门禁自测 | ✅ 全过（含 `--fail-on-stale` ⇒ 锚点失效 ⇒ exit 1） |
-| adjudication 台账 | **174** 条有效记录 ⇒ ⇒ `audit`：**0** 条正则编译不过 / **124** 条锚点已失效（P0 12 / P1 40 / P2 54 / P3 18）/ **0** 条文件缺失 / **9** 条无锚点 |
+| adjudication 台账 | **178** 条有效记录 ⇒ ⇒ `audit`：**0** 条正则编译不过 / **124** 条锚点已失效（P0 12 / P1 40 / P2 54 / P3 18）/ **0** 条文件缺失 / **9** 条无锚点 |
 | 本轮 Swift 改动 | **0** ⇒ ⇒ 全量 `xcodebuild test` 与 CI / TSan 的结果**以 CI run 为准** |
 | CI | 见 §50.28.6 |
 
