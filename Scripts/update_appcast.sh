@@ -4,7 +4,23 @@
 # Sources cleanly (defines insert_appcast_item) when `source`'d from tests.
 # Runs the insertion when executed directly.
 #
-# Usage: update_appcast.sh <appcast_path> <version> <tarball_path> <ed_signature>
+# Usage: update_appcast.sh <appcast_path> <version> <tarball_path> <ed_signature> \
+#                        [<release_notes_url>] [<channel>] [<short_version>]
+#
+# ID-BETA-0001 (2026-11-04): the last two args are **optional** and default to
+# the pre-beta behaviour ⇒ ⇒ the **stable release path is byte-identical**:
+#   <channel>       — when non-empty, the item carries
+#                     `<sparkle:channel>NAME</sparkle:channel>` ⇒ ⇒ Sparkle
+#                     only offers that item to updaters whose
+#                     `allowedChannels(for:)` contains NAME ⇒ ⇒ **beta items
+#                     are invisible to stable users**.
+#   <short_version> — the user-facing version (CFBundleShortVersionString)
+#                     when it differs from <version> ⇒ ⇒ beta case:
+#                     version="2.10.0-beta.1", short_version="2.10.0"
+#                     ⇒ ⇒ Sparkle compares `CFBundleVersion` (= the build
+#                     version = "2.10.0-beta.1") ⇒ ⇒ and the appcast's
+#                     <sparkle:version> must match it exactly.
+
 
 set -euo pipefail
 
@@ -34,6 +50,9 @@ insert_appcast_item() {
     local tarball_path="$3"
     local ed_signature="$4"
     local release_notes_url="${5:-}"
+    # ID-BETA-0001: channel + short version (both optional ⇒ default = legacy behaviour)
+    local channel="${6:-}"
+    local short_version="${7:-$version}"
 
     # REL-4: a missing </channel> used to make the awk below a silent no-op
     # (pattern never matched, file rewritten unchanged, "Inserted" logged) —
@@ -67,16 +86,22 @@ insert_appcast_item() {
     # write-time and matches both Sparkle docs and the consumer's
     # expectations.
     tmp=$(mktemp)
-    awk -v version="$version" -v pubdate="$pub_date" -v url="$url" -v filesize="$length" -v sig="$ed_signature" -v min_sysver="13.0" -v notes_url="$release_notes_url" '
+    awk -v version="$version" -v pubdate="$pub_date" -v url="$url" -v filesize="$length" -v sig="$ed_signature" -v min_sysver="13.0" -v notes_url="$release_notes_url" -v channel="$channel" -v short_version="$short_version" '
         /<channel>/ {
             print
             print "    <item>"
             print "      <title>Version " version "</title>"
-            print "      <sparkle:shortVersionString>" version "</sparkle:shortVersionString>"
+            print "      <sparkle:shortVersionString>" short_version "</sparkle:shortVersionString>"
             print "      <sparkle:version>" version "</sparkle:version>"
             print "      <sparkle:minimumSystemVersion>" min_sysver "</sparkle:minimumSystemVersion>"
             if (notes_url != "") {
                 print "      <sparkle:releaseNotesLink>" notes_url "</sparkle:releaseNotesLink>"
+            }
+            # ID-BETA-0001: the channel element — **absent** for stable items
+            # ⇒ ⇒ stable users see them; present ⇒ ⇒ only updaters that opted
+            # into that channel see them.
+            if (channel != "") {
+                print "      <sparkle:channel>" channel "</sparkle:channel>"
             }
             print "      <pubDate>" pubdate "</pubDate>"
             print "      <enclosure url=\"" url "\""
@@ -90,7 +115,7 @@ insert_appcast_item() {
     ' "$appcast_path" > "$tmp"
     mv "$tmp" "$appcast_path"
 
-    echo "Inserted appcast item for v${version} (length=${length})"
+    echo "Inserted appcast item for v${version} (length=${length}${channel:+, channel=${channel}})"
 }
 
 # Remove the <item> block for $2 from the appcast at $1.
@@ -151,9 +176,11 @@ remove_appcast_item() {
 
 # --- Main body: only runs when executed, not sourced ---
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-    if [ "$#" -ne 4 ] && [ "$#" -ne 5 ]; then
-        echo "Usage: $0 <appcast_path> <version> <tarball_path> <ed_signature> [<release_notes_url>]" >&2
+    if [ "$#" -lt 4 ] || [ "$#" -gt 7 ]; then
+        echo "Usage: $0 <appcast_path> <version> <tarball_path> <ed_signature> [<release_notes_url>] [<channel>] [<short_version>]" >&2
         echo "  <release_notes_url> defaults to https://github.com/irykelee/clipmemory/releases/tag/v<version>" >&2
+        echo "  <channel> — when set, the item carries <sparkle:channel> ⇒ ⇒ only beta opt-ins see it" >&2
+        echo "  <short_version> — user-facing version when it differs from <version> (beta case)" >&2
         exit 1
     fi
     # ID-REVIEW-1021 (2026-10-06, code-review §五-9): when the 5th arg is

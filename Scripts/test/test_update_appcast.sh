@@ -160,5 +160,47 @@ if grep -qF "<item>" "$BROKEN_APPCAST"; then
     exit 1
 fi
 
-echo "PASS: insert_appcast_item inserts version + length + signature + URL, accumulates items, is idempotent, and fails on missing </channel>"
+# --- Assertion 8 (ID-BETA-0001): the **stable** path carries NO channel ---
+# ⇒ ⇒ 稳定条目没有 <sparkle:channel> ⇒ ⇒ Sparkle 的默认通道 ⇒ ⇒ 所有用户可见
+STABLE_APPCAST="$TEST_DIR/appcast-stable.xml"
+cp "$FAKE_APPCAST" "$STABLE_APPCAST"
+insert_appcast_item "$STABLE_APPCAST" "9.9.12" "$FAKE_TARBALL" "SIG_STABLE=" > /dev/null
+if grep -qF "sparkle:channel" "$STABLE_APPCAST"; then
+    echo "FAIL: the stable path emitted a <sparkle:channel> element" >&2
+    exit 1
+fi
+# ⇒ ⇒ 且 shortVersionString 默认 == version（逐字节不变的老行为）
+if ! grep -qF "<sparkle:shortVersionString>9.9.12</sparkle:shortVersionString>" "$STABLE_APPCAST"; then
+    echo "FAIL: shortVersionString must default to the version string" >&2
+    exit 1
+fi
+
+# --- Assertion 9 (ID-BETA-0001): the beta item carries channel + split versions ---
+BETA_APPCAST="$TEST_DIR/appcast-beta.xml"
+cp "$FAKE_APPCAST" "$BETA_APPCAST"
+insert_appcast_item "$BETA_APPCAST" "9.10.0-beta.1" "$FAKE_TARBALL" "SIG_BETA=" \
+    "https://example.com/notes/9.10.0-beta.1.md" "beta" "9.10.0" > /dev/null
+for needle in \
+    "<sparkle:channel>beta</sparkle:channel>" \
+    "<sparkle:version>9.10.0-beta.1</sparkle:version>" \
+    "<sparkle:shortVersionString>9.10.0</sparkle:shortVersionString>" \
+    "releases/download/v9.10.0-beta.1/ClipMemory.tar.gz"; do
+    if ! grep -qF "$needle" "$BETA_APPCAST"; then
+        echo "FAIL: beta item is missing: $needle" >&2
+        exit 1
+    fi
+done
+# ⇒ ⇒ **只有 beta 条目**带 channel ⇒ ⇒ 老条目一个都不带
+channel_count=$(grep -c "sparkle:channel" "$BETA_APPCAST")
+if [ "$channel_count" -ne 1 ]; then
+    echo "FAIL: expected exactly 1 channel element (the beta item), got $channel_count" >&2
+    exit 1
+fi
+# ⇒ ⇒ 稳定条目仍在（beta 不是替换，是新增）
+if ! grep -qF "<sparkle:version>9.9.10</sparkle:version>" "$BETA_APPCAST"; then
+    echo "FAIL: inserting a beta item dropped the pre-existing stable items" >&2
+    exit 1
+fi
+
+echo "PASS: insert_appcast_item inserts version + length + signature + URL, accumulates items, is idempotent, fails on missing </channel>, and (ID-BETA-0001) the stable path emits no channel while a beta item carries <sparkle:channel>beta</sparkle:channel> + split short/version"
 exit 0

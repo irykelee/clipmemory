@@ -91,6 +91,8 @@
 "settings.add.excluded.app" = "Add Application";
 "settings.section.update" = "Update";
 "settings.update.auto" = "Automatically check for updates";
+"settings.update.betaChannel" = "Receive beta updates";
+"settings.update.betaChannel.footer" = "Beta builds are early releases and may contain unfinished changes. Turn this off at any time to go back to stable releases only.";
 "settings.update.check.now" = "Check for Updates…";
 "settings.update.last.check" = "Last checked: %@";
 "settings.section.backup" = "Backup";

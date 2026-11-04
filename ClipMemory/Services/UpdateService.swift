@@ -35,6 +35,19 @@ private final class FeedURLProvider: NSObject, SPUUpdaterDelegate {
     func feedURLString(for updater: SPUUpdater) -> String? {
         resolvedFeedString
     }
+
+    /// ID-BETA-0001 (2026-11-04): Sparkle 2 的**通道**机制。
+    ///
+    /// ⇒ ⇒ appcast 里带 `<sparkle:channel>beta</sparkle:channel>` 的条目，
+    /// ⇒ ⇒ **只有**把 "beta" 放进 allowed set 的更新器才看得见 ⇒ ⇒ ⇒ ⇒
+    /// ⇒ ⇒ 默认（空 set）= 只看**默认通道**⇒ ⇒ ⇒ ⇒ **稳定用户永远看不到 beta**。
+    ///
+    /// ⇒ ⇒ 这正是「发 beta 不把回归直推全体用户」的机制落点。
+    /// ⚠️ 判定抽成纯函数（`UpdateService.allowedChannels(forBetaEnabled:)`）⇒ ⇒
+    /// ⚠️ delegate 只做转发 ⇒ ⇒ 「beta 关闭 ⇒ 空 set」这半边**可测**。
+    func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+        UpdateService.allowedChannels(forBetaEnabled: UpdateService.betaChannelEnabled)
+    }
 }
 
 /// Gentle update reminders for a dockless (LSUIElement) app. When Sparkle is
@@ -190,6 +203,8 @@ final class UpdateService {
     private static var fallbackConsentKey: String { UserDefaultsKey.updateFallbackFeedConsent.rawValue }
     private static var lastPrimaryItemDateKey: String { UserDefaultsKey.lastPrimaryAppcastItemDate.rawValue }
     private static var feedPolicyKey: String { UserDefaultsKey.updateFeedPolicy.rawValue }
+    /// ID-BETA-0001: the beta-channel opt-in flag.
+    private static var betaChannelKey: String { UserDefaultsKey.updateBetaChannel.rawValue }
 
     /// M13 (2026-08-03): test seam — static injectable UserDefaults suite.
     /// `nonisolated(unsafe)` because the static properties that use it are
@@ -298,6 +313,35 @@ final class UpdateService {
         set {
             Self.defaults.set(newValue.rawValue, forKey: feedPolicyKey)
         }
+    }
+
+    // MARK: - ID-BETA-0001: beta 更新通道
+
+    /// The channel name used by `<sparkle:channel>` in the appcast.
+    ///
+    /// ⇒ ⇒ **必须**与 appcast 里写的通道名**逐字相同**（Sparkle 按名字匹配）⇒ ⇒
+    /// ⇒ ⇒ 改动它就等于「换了一个通道」⇒ ⇒ ⇒ ⇒ 老用户勾了也不会看到新通道的条目。
+    static let betaChannelName = "beta"
+
+    /// Whether the user opted into the **beta** update channel.
+    ///
+    /// ⇒ ⇒ 默认 **false** ⇒ ⇒ ⇒ ⇒ 稳定用户看不到 appcast 里的 beta 条目。
+    /// ⇒ ⇒ 读点：Sparkle 的 `allowedChannels(for:)`（任意线程 ⇒ `UserDefaults` 读线程安全）。
+    static var betaChannelEnabled: Bool {
+        get { Self.defaults.bool(forKey: betaChannelKey) }
+        set { Self.defaults.set(newValue, forKey: betaChannelKey) }
+    }
+
+    /// The channel set Sparkle should be allowed to look in.
+    ///
+    /// ⇒ ⇒ **空 set** = 只看**默认通道**（= 稳定版）⇒ ⇒ ⇒ ⇒ 这是**默认值**，
+    /// ⇒ ⇒ ⇒ ⇒ 也是「beta 不会直推全体用户」的**保证**。
+    /// ⇒ ⇒ 非空 ⇒ ⇒ 只多了 beta 那一条 ⇒ ⇒ 稳定版**依然**可见。
+    ///
+    /// ⇒ ⇒ 纯函数（不读全局状态）⇒ ⇒ 两半都可测 ⇒ ⇒ 与
+    /// ⇒ ⇒ `shouldRefuseKeychainStore(isRunningTests:keyStore:)` 同款。
+    static func allowedChannels(forBetaEnabled enabled: Bool) -> Set<String> {
+        enabled ? [betaChannelName] : []
     }
 
     /// One-shot migration from legacy `UpdateFallbackFeedConsent` Bool to

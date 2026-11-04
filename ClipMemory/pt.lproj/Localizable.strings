@@ -91,6 +91,8 @@
 "settings.add.excluded.app" = "Adicionar aplicativo";
 "settings.section.update" = "Atualizações";
 "settings.update.auto" = "Verificar atualizações automaticamente";
+"settings.update.betaChannel" = "Receber atualizações beta";
+"settings.update.betaChannel.footer" = "As versões beta são lançamentos antecipados e podem conter alterações inacabadas. Desligue a qualquer momento para voltar às versões estáveis.";
 "settings.update.check.now" = "Verificar agora…";
 "settings.update.last.check" = "Última verificação: %@";
 "settings.section.backup" = "Cópia de segurança";

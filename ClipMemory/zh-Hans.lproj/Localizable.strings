@@ -90,6 +90,8 @@
 "settings.add.excluded.app" = "添加应用";
 "settings.section.update" = "更新";
 "settings.update.auto" = "自动检查更新";
+"settings.update.betaChannel" = "接收 beta 版更新";
+"settings.update.betaChannel.footer" = "Beta 版是早期发布的预演版本，可能包含尚未完成的功能。可随时关闭此选项，只接收稳定版。";
 "settings.update.check.now" = "立即检查更新…";
 "settings.update.last.check" = "上次检查：%@";
 "settings.section.backup" = "备份";

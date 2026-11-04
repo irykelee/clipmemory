@@ -23,11 +23,28 @@ struct UpdateAboutSettingsView: View {
                 // current version is shown, never a green "up to date"
                 // claim without evidence from a real appcast fetch).
                 VersionStatusLine(current: AppVersion.current, latest: UpdateService.shared.status.latestAvailableVersion)
+                // ID-BETA-0001: opt into the **beta** update channel.
+                // ⇒ ⇒ Sparkle's `allowedChannels(for:)` returns ["beta"] only while
+                // ⇒ ⇒ this is on ⇒ ⇒ stable users never see a beta item.
+                Toggle(L10n.settingsUpdateBetaChannel, isOn: Binding(
+                    get: { UpdateService.betaChannelEnabled },
+                    set: { newValue in
+                        UpdateService.betaChannelEnabled = newValue
+                        // Just opted in ⇒ check right away so the user sees
+                        // whether a beta exists (instead of waiting for the
+                        // next scheduled check).
+                        if newValue { UpdateService.shared.checkNow() }
+                    }
+                ))
                 Button(L10n.settingsUpdateCheckNow) { UpdateService.shared.checkNow() }.buttonStyle(.link)
             } header: { Text(L10n.settingsSectionUpdate) } footer: {
-                if let lastCheck = UpdateService.shared.lastUpdateCheckDate {
-                    Text(L10n.settingsUpdateLastCheck(lastCheck.formatted(date: .abbreviated, time: .shortened)))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.settingsUpdateBetaChannelFooter)
                         .foregroundColor(.secondary)
+                    if let lastCheck = UpdateService.shared.lastUpdateCheckDate {
+                        Text(L10n.settingsUpdateLastCheck(lastCheck.formatted(date: .abbreviated, time: .shortened)))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
 

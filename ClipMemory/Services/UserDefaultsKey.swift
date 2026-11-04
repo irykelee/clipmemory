@@ -172,6 +172,14 @@ enum UserDefaultsKey: String, CaseIterable {
     /// UpdateService.swift:176.
     case updateFeedPolicy = "UpdateFeedPolicy"
 
+    /// ID-BETA-0001: has the user opted into the **beta** update channel?
+    ///
+    /// ⇒ ⇒ Read by `UpdateService.betaChannelEnabled` ⇒ ⇒ which feeds
+    /// ⇒ ⇒ `SPUUpdaterDelegate.allowedChannels(for:)` ⇒ ⇒ **default (off)**
+    /// ⇒ ⇒ means "only the default channel" ⇒ ⇒ **stable users never see a
+    /// ⇒ ⇒ beta item** in the appcast.
+    case updateBetaChannel = "UpdateBetaChannelEnabled"
+
     // MARK: - LanguageManager
 
     /// User-selected app language code (zh-Hans / en / ja / ko / es / pt).

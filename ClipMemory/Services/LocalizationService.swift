@@ -310,6 +310,10 @@ struct L10n {
     static var settingsAddExcludedApp: String { string("settings.add.excluded.app") }
     static var settingsSectionUpdate: String { string("settings.section.update") }
     static var settingsUpdateAuto: String { string("settings.update.auto") }
+    /// ID-BETA-0001: the opt-in switch for the **beta** update channel.
+    static var settingsUpdateBetaChannel: String { string("settings.update.betaChannel") }
+    /// ID-BETA-0001: what turning the beta channel on (and off) means.
+    static var settingsUpdateBetaChannelFooter: String { string("settings.update.betaChannel.footer") }
     static var settingsUpdateCheckNow: String { string("settings.update.check.now") }
     static func settingsUpdateLastCheck(_ date: String) -> String { string("settings.update.last.check", date) }
     static var settingsSectionBackup: String { string("settings.section.backup") }
