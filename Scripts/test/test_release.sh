@@ -79,6 +79,17 @@ expect_rc 1 "1.0.0beta (无点) invalid"       version_gt "1.0.0beta" "1.0.0-bet
 expect_rc 1 "1.0.0-beta invalid vs stable"    version_gt "1.0.0-beta" "1.0.0"
 expect_rc 1 "stable vs 1.0.0-beta invalid"    version_gt "1.0.0" "1.0.0-beta"
 
+echo "=== validate_release_channel (beta 通道自洽性) ==="
+expect_rc 0 "2.10.0 without --beta is fine"        validate_release_channel "2.10.0" 0
+expect_rc 0 "2.10.0-beta.1 with --beta is fine"    validate_release_channel "2.10.0-beta.1" 1
+expect_rc 1 "2.10.0-beta.1 WITHOUT --beta rejected" validate_release_channel "2.10.0-beta.1" 0
+expect_rc 1 "2.10.0 WITH --beta rejected"           validate_release_channel "2.10.0" 1
+# ⇒ ⇒ 拒绝时必须**说明原因**（人要知道怎么改）
+out=$(validate_release_channel "2.10.0-beta.1" 0 2>&1)
+[[ "$out" == *"--beta"* ]] && ok "拒绝原因里点名了 --beta" || bad "拒绝原因没说清：$out"
+out=$(validate_release_channel "2.10.0" 1 2>&1)
+[[ "$out" == *"beta.N"* ]] && ok "拒绝原因里点名了版本格式" || bad "拒绝原因没说清：$out"
+
 echo "=== classify_commit / strip_commit_prefix ==="
 [[ "$(classify_commit 'feat(ui): add Quick Bar')" == "highlights" ]] && ok "feat → highlights" || bad "feat classify"
 [[ "$(classify_commit 'perf: cache formatter')" == "highlights" ]] && ok "perf → highlights" || bad "perf classify"

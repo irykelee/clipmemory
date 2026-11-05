@@ -130,6 +130,27 @@ version_base() {
     printf '%s' "${1%%-beta.*}"
 }
 
+# validate_release_channel VERSION IS_BETA — beta 通道的自洽性检查。
+#
+# ID-BETA-0001 (2026-11-05)：版本号带 `-beta.N` **必须**同时给 `--beta`，
+# 反之亦然 ⇒ ⇒ 避免「以为自己在发正式版，其实发了 beta」。
+#
+# ⇒ 抽成**纯函数**（不 exit、不碰全局）⇒ ⇒ 这样「哪些组合是非法的」是**可测**的
+# ⇒ ⇒ 而不是埋在 main body 里只能靠真跑脚本试。
+# ⇒ 返回 0 = 合法；返回 1 = 非法（原因打印到 stdout）。
+validate_release_channel() {
+    local version="$1" is_beta="$2"
+    if [[ "$version" == *-beta.* && $is_beta -eq 0 ]]; then
+        echo "版本 ${version} 带 -beta.N 后缀 ⇒ 必须显式加 --beta（否则会被当成正式版发布）"
+        return 1
+    fi
+    if [[ "$version" != *-beta.* && $is_beta -eq 1 ]]; then
+        echo "--beta 需要一个 beta 版本号（vX.Y.Z-beta.N），当前是 ${version}"
+        return 1
+    fi
+    return 0
+}
+
 # version_gt A B — exit 0 iff A is semver-greater than B.
 # awk because macOS ships BSD sort (no `sort -V`).
 #
@@ -1025,12 +1046,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     # ID-BETA-0001 (2026-11-05)：beta 必须是**显式**的 ⇒ ⇒ 版本号带 `-beta.N`
     # 就必须带 `--beta`，反之亦然 ⇒ ⇒ 避免「以为自己在发正式版，其实发了 beta」。
     BASE_VERSION="$(version_base "$VERSION")"
-    if [[ "$VERSION" == *-beta.* && $IS_BETA -eq 0 ]]; then
-        echo "版本 ${VERSION} 带 -beta.N 后缀 ⇒ 必须显式加 --beta（否则会被当成正式版发布）" >&2
-        exit 2
-    fi
-    if [[ "$VERSION" != *-beta.* && $IS_BETA -eq 1 ]]; then
-        echo "--beta 需要一个 beta 版本号（vX.Y.Z-beta.N），当前是 ${VERSION}" >&2
+    if ! validate_release_channel "$VERSION" "$IS_BETA"; then
         exit 2
     fi
 
