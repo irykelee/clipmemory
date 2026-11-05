@@ -367,6 +367,17 @@ jobs:
           set -euo pipefail
           python3 Scripts/test/test_adjudication_claims.py
 
+      # ID-BETA-0001: beta 通道的**接线守卫**。
+      #
+      # ⇒ ⇒ beta 通道的安全性押在三根线上：app 端 delegate 真的转发到纯函数、
+      # ⇒ ⇒ 纯函数默认半边是**空集**、发布侧条目带 channel 且**不动 tap**。
+      # ⇒ ⇒ delegate 是 private ⇒ ⇒ **单元测试够不着** ⇒ ⇒ 这一层只能静态钉。
+      - name: "Beta channel wiring guard (ID-BETA-0001)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_beta_channel_wiring.py
+          python3 Scripts/test/test_beta_channel_wiring.py --self-test
+
       # ID-REVIEW-1049 第十轮 c: the rule's PROSE COPIES must not drift.
       #
       # ⇒ ⇒ V15 ("a rule written in prose is itself a driftable copy") has now
@@ -806,6 +817,16 @@ jobs:
       # wiring check (the gate must block on the EFFECTIVE verdict, not
       # on the model's raw conclusion line) — a regression there would
       # silently re-enable either "never blocks" or "always blocks".
+      # ID-BETA-0001: 清理脚本（**会删文件**）的自测。
+      #
+      # ⇒ ⇒ 它默认是**干跑**，只有 `--apply` 才删 ⇒ ⇒ 自测要证明
+      # ⇒ ⇒ 「默认不删 / --apply 才删 / 未知参数拒绝 / 日志写出」
+      # ⇒ ⇒ 并且**全程用合成 seam** ⇒ ⇒ 绝不碰用户的 ~/Library/Preferences。
+      - name: "Cleanup script self-test (ID-BETA-0001)"
+        run: |
+          set -euo pipefail
+          bash Scripts/test/test_cleanup_test_plists_periodic.sh
+
       - name: Review gate adjudication test (ID-REVIEW-1029)
         run: |
           set -euo pipefail

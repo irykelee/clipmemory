@@ -154,6 +154,13 @@ fi
 # --- Step 7: restore the tap Cask to PREV ---
 # Regenerated from the same template release.yml uses, so the result is
 # byte-identical to what a real v${PREV} release would have produced.
+#
+# ID-BETA-0001 (2026-11-05)：**beta 跳过这一整步** ⇒ ⇒ 因为 beta 发布时
+# **故意不动 tap** ⇒ ⇒ ⇒ tap 现在指的**就是**当前稳定版 ⇒ ⇒ ⇒ 「恢复到
+# PREV_VERSION」会**把 tap 退到更老的版本** ⇒ ⇒ ⇒ 而那正是我们想避免的。
+if [[ "$VERSION" == *-beta.* ]]; then
+    log "⏭ beta 版回滚：**不动 tap**（beta 发布时没改过它 ⇒ tap 仍指向当前稳定版）"
+else
 log "恢复 tap Cask 到 v${PREV}..."
 PREV_SHA=$(gh api "repos/${GH_OWNER_REPO}/releases/tags/v${PREV}" \
     --jq '.assets[] | select(.name=="ClipMemory.tar.gz") | .digest' 2>/dev/null \
@@ -185,6 +192,7 @@ else
         fi
     fi
 fi
+fi  # ← beta 跳过 tap 恢复（见上）
 
 # --- Step 8: what is still manual ---
 echo ""

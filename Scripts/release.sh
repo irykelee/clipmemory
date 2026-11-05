@@ -141,19 +141,29 @@ version_base() {
 version_gt() {
     # ⚠️ awk 的**函数定义必须在顶层**（不能写在 BEGIN 块里）⇒ ⇒ 否则
     # 「awk: syntax error at source line 2 / function <<< parse(...)」。
+    # ⚠️ 畸形 beta 版本（如 `1.0.0-beta`，**缺 `.N`**）**必须判非法** ⇒ ⇒
+    # 审核门 2026-11-05 的两条 P1 都指这里：原来的 `substr(v, n+6) + 0`
+    # ⇒ 对 `1.0.0-beta` 取到**空串** ⇒ `+0` ⇒ 0 ⇒ ⇒ **被当成 beta.0**
+    # ⇒ ⇒ 与 `1.0.0-beta.1` 比出「更小」的假结论 ⇒ ⇒ 现在改成
+    # ⇒ 「beta 序号不是纯数字 ⇒ 整个版本非法」⇒ ⇒ 非法版本一律 exit 1。
     awk -v a="$1" -v b="$2" '
-    function parse(v, arr,   n) {
+    function parse(v, arr,   n, tail) {
         n = index(v, "-beta.");
         if (n > 0) {
             arr["base"] = substr(v, 1, n - 1);
-            arr["beta"] = substr(v, n + 6) + 0;
+            tail = substr(v, n + 6);
+            if (tail !~ /^[0-9]+$/) { arr["bad"] = 1; return }
+            arr["beta"] = tail + 0;
         } else {
+            # 含 beta 字样但不是 `-beta.N` 形状（`1.0.0-beta`、`1.0.0beta`…）⇒ 非法
+            if (v ~ /beta/) { arr["bad"] = 1; return }
             arr["base"] = v;
             arr["beta"] = 999999999;  # 正式版排在同 base 的所有 beta 之后
         }
     }
     BEGIN {
         parse(a, A); parse(b, B);
+        if (A["bad"] || B["bad"]) exit 1;   # 畸形版本 ⇒ 不比较
         na = split(A["base"], x, "."); nb = split(B["base"], y, ".");
         if (na != 3 || nb != 3) exit 1;
         for (i = 1; i <= 3; i++) {

@@ -47,8 +47,11 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLEANER="$REPO_ROOT/Scripts/cleanup-test-plists.py"
-LOG_DIR="$HOME/Library/Logs/ClipMemory"
+# ⇒ ⇒ 两个 **seam**（只为测试能指向合成的夹具 ⇒ ⇒ 默认行为**逐字不变**）：
+#   CM_CLEANER_PATH — 清理脚本的路径（默认：仓库里那个）
+#   CM_LOG_DIR       — 日志目录（默认：~/Library/Logs/ClipMemory）
+CLEANER="${CM_CLEANER_PATH:-$REPO_ROOT/Scripts/cleanup-test-plists.py}"
+LOG_DIR="${CM_LOG_DIR:-$HOME/Library/Logs/ClipMemory}"
 LOG_FILE="$LOG_DIR/cleanup-test-plists.log"
 
 APPLY=0

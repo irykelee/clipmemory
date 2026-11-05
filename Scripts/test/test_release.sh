@@ -68,6 +68,17 @@ expect_rc 1 "beta.1 NOT > beta.2"              version_gt "2.10.0-beta.1" "2.10.
 expect_rc 0 "stable(2.10.0) > beta(2.10.0)"  version_gt "2.10.0" "2.10.0-beta.1"
 expect_rc 1 "beta(2.10.0) NOT > stable(2.11.0)" version_gt "2.10.0-beta.1" "2.11.0"
 
+# --- 畸形 beta 版本必须判**非法**（审核门 2026-11-05 两条 P1）-----------
+# ⇒ ⇒ `1.0.0-beta`（缺 `.N`）原来的 substr 取到空串 ⇒ +0 ⇒ 0 ⇒ 被当成 beta.0
+# ⇒ ⇒ 现在：beta 序号不是纯数字 ⇒ 整个版本非法 ⇒ 一律「不比」
+echo "=== version_gt (畸形 beta 版本 ⇒ 非法) ==="
+expect_rc 1 "1.0.0-beta (缺 .N) invalid"      version_gt "1.0.0-beta" "1.0.0-beta.1"
+expect_rc 1 "1.0.0-beta not > 1.0.0-beta.1"  version_gt "1.0.0-beta" "1.0.0-beta.1"
+expect_rc 1 "1.0.0-beta.x invalid"           version_gt "1.0.0-beta.x" "1.0.0-beta.1"
+expect_rc 1 "1.0.0beta (无点) invalid"       version_gt "1.0.0beta" "1.0.0-beta.1"
+expect_rc 1 "1.0.0-beta invalid vs stable"    version_gt "1.0.0-beta" "1.0.0"
+expect_rc 1 "stable vs 1.0.0-beta invalid"    version_gt "1.0.0" "1.0.0-beta"
+
 echo "=== classify_commit / strip_commit_prefix ==="
 [[ "$(classify_commit 'feat(ui): add Quick Bar')" == "highlights" ]] && ok "feat → highlights" || bad "feat classify"
 [[ "$(classify_commit 'perf: cache formatter')" == "highlights" ]] && ok "perf → highlights" || bad "perf classify"
