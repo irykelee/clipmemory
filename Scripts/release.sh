@@ -1146,13 +1146,22 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
         else
             SYNC_STEP="python3 Scripts/sync_readme.py --version ${VERSION} --changelog <段>（需 README_SYNC_API_KEY/DEEPSEEK_API_KEY）"
         fi
+        # ⚠️ **计划文案**必须与**实际行为**一致 ⇒ ⇒ 否则人照着计划批准，
+        # 实际却做了另一件事（ID-BETA-0001 dry-run 实测抓到的两个文案 bug）。
+        if [[ $IS_BETA -eq 1 ]]; then
+            VERSION_PLAN="MARKETING_VERSION → ${BASE_VERSION} / CURRENT_PROJECT_VERSION → ${VERSION}（**beta**：Sparkle 比较后者）"
+            # beta ⇒ ⇒ README 同步**一定**被跳过（上面 SKIP_README_SYNC 已被强制置 1）
+            SYNC_STEP="⏭ **beta**：跳过 python3 Scripts/sync_readme.py（预发布不进正式 changelog）"
+        else
+            VERSION_PLAN="MARKETING_VERSION/CURRENT_PROJECT_VERSION → ${VERSION}"
+        fi
         if [[ ${VERIFY_INSTALL:-0} -eq 1 ]]; then
             VERIFY_STEP="10. （--verify-install）brew install/upgrade clipmemory + 版本/签名验证"
         else
             VERIFY_STEP=""
         fi
         cat <<EOF
-  1. project.yml MARKETING_VERSION/CURRENT_PROJECT_VERSION → ${VERSION} + xcodegen generate
+  1. project.yml ${VERSION_PLAN} + xcodegen generate
   2. （人工 gate）编辑 $NOTES 后校验双语章节
   3. ${SYNC_STEP}
   4. run_preflight $( [[ $SKIP_TESTS -eq 0 ]] && echo --tests )（内联检查：版本/README/Cask/xcodegen/lint/测试）
