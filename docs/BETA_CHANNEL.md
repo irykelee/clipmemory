@@ -2,9 +2,10 @@
 
 > **目的**：让**预发布版本只推给愿意试的人**，而不是直推全体用户。
 >
-> **状态**：**Phase 1 已落地**（app 端开关 + appcast 写入能力 + 本文档的手工发布流程）。
-> **Phase 2（未做）**：`Scripts/release.sh --beta` 的**自动**发版路径
-> （含 `release.yml` 的 beta 分支、GitHub Release 标记为 prerelease、**不动 Homebrew tap**）。
+> **状态**：**Phase 1 + Phase 2 都已落地** —— app 端开关 + appcast 写入能力 +
+> `Scripts/release.sh --beta` 的**自动**发版路径（`release.yml` 的 beta 分支、GitHub
+> Release 标 prerelease、**不动 Homebrew tap**）。
+> ⇒ ⇒ 用法：`Scripts/release.sh vX.Y.Z-beta.N --beta`
 
 ---
 
@@ -64,9 +65,34 @@ Sparkle 的默认比较器把版本拆成「数字 / 句点 / 字符串」三类
 
 ---
 
-## 三、怎么发一个 beta（Phase 1：手工流程）
+## 三、怎么发一个 beta
 
-> ⚠️ Phase 2 会把这一节变成 `Scripts/release.sh --beta` 一条命令。**现在**按下面走。
+### 方式 A（推荐）：`release.sh --beta` 一条命令
+
+```bash
+Scripts/release.sh v2.10.0-beta.1 --beta
+```
+
+它做什么（**与正式版同一套流程**，只有三处不同）：
+
+| 环节 | 正式版 | beta |
+|---|---|---|
+| `project.yml` | `MARKETING_VERSION` = `CURRENT_PROJECT_VERSION` = `2.10.0` | `MARKETING_VERSION` = **`2.10.0`**、`CURRENT_PROJECT_VERSION` = **`2.10.0-beta.1`** |
+| 7 个 README 的 changelog | 写 | **不写**（预发布不进正式 changelog） |
+| appcast 条目 | 默认通道 | 带 `<sparkle:channel>beta</sparkle:channel>`、`<sparkle:shortVersionString>` = `2.10.0` |
+| GitHub Release | 普通 release | **prerelease**（不被 "Latest release" 指向） |
+| **Homebrew tap** | 更新 | **不动**（brew 用户不该拿到 beta） |
+
+⚠️ **版本递增校验是 beta 感知的**：同一个 base 下
+`beta.1 < beta.2 < … < 正式版` ⇒ ⇒ 「正式版已发 ⇒ 它的 beta 不该再发」这条约束
+**自动成立**（与 Sparkle 自己的比较器一致）。
+
+⚠️ `--beta` **必须显式给**：版本号带 `-beta.N` 而没给 `--beta` ⇒ 脚本**拒绝**
+（避免「以为自己在发正式版，其实发了 beta」）。
+
+### 方式 B（手工流程，用于排查）
+
+> ⚠️ 正常发版走方式 A；这一节留给「流水线挂了 ⇒ 想手工补一步」的场景。
 
 ### 1. 改版本号
 
@@ -145,15 +171,19 @@ grep -A3 "2.10.0-beta.1" appcast.xml
 
 ---
 
-## 四、Phase 2 要做什么（未做）
+## 四、Phase 2（已落地，2026-11-05）
 
-- [ ] `Scripts/release.sh --beta`：版本号推导（`X.Y.Z-beta.N`）、`MARKETING_VERSION` 保持 `X.Y.Z`、
-      `CURRENT_PROJECT_VERSION` 带标记、tag 用 `vX.Y.Z-beta.N`
-- [ ] `.github/workflows/release.yml`：识别 beta tag ⇒ 往 appcast 插 **带通道** 的条目
-      ⇒ **不动 Homebrew tap** ⇒ GitHub Release 标 `--prerelease`
-- [ ] **beta 的独立回滚**（`rollback-release.sh` 要能删掉 beta 条目 —— `remove_appcast_item` 已经按
-      `<sparkle:version>` 匹配 ⇒ ⇒ **已兼容**，但流程要写进 checklist）
-- [ ] `docs/RELEASE_PUSH_CHECKLIST.md` 加 beta 小节
+- [x] `Scripts/release.sh --beta`：版本号推导（`X.Y.Z-beta.N`）、`MARKETING_VERSION` 保持
+      `X.Y.Z`、`CURRENT_PROJECT_VERSION` 带标记、tag 用 `vX.Y.Z-beta.N`；**beta 感知的
+      `version_gt`**（`beta.1 < beta.2 < … < 正式版`）⇒ ⇒ 递增校验不会误拒/误放
+- [x] `.github/workflows/release.yml`：**Detect release channel** step（只看 tag 形状 ⇒
+      正式版路径**逐字不变**）⇒ ⇒ appcast 插**带通道**的条目 ⇒ ⇒ GitHub Release 标
+      **prerelease** ⇒ ⇒ **不动 Homebrew tap** ⇒ ⇒ pre-release verify 的 README 检查
+      对 beta **跳过**
+- [x] `check_project_version` 对 beta 感知（MARKETING 比 base、CURRENT 比完整版本）
+- [x] **beta 强制不写 7 个 README 的 changelog**（预发布不进正式 changelog）
+- [x] 回滚：`remove_appcast_item` 按 `<sparkle:version>` 匹配 ⇒ ⇒ **已兼容** beta 条目
+- [ ] `docs/RELEASE_PUSH_CHECKLIST.md` 加 beta 小节（**未做** ⇒ 手工发版时看本文档）
 
 ---
 

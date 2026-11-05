@@ -32,7 +32,13 @@
 # Usage:
 #   Scripts/release.sh vX.Y.Z [--yes] [--skip-tests] [--dry-run]
 #                                [--skip-readme-sync] [--verify-install]
+#   Scripts/release.sh vX.Y.Z-beta.N --beta     # 预发布（ID-BETA-0001）
 #
+#   --beta             发**预发布**（beta 通道）：版本号必须带 `-beta.N` 后缀
+#                      ⇒ MARKETING_VERSION = X.Y.Z（用户可见）、CURRENT_PROJECT_VERSION
+#                      = X.Y.Z-beta.N（Sparkle 比较用）⇒ ⇒ **不写** 7 个 README 的
+#                      changelog ⇒ ⇒ appcast 条目带 <sparkle:channel>beta</…>
+#                      ⇒ ⇒ **不动 Homebrew tap**（brew 用户不该拿到 beta）
 #   --yes              non-interactive: skip the notes-edit and push-confirm gates
 #   --skip-tests       run_preflight without the full xcodebuild test suite
 #   --dry-run          Phase 0 checks + print previews of every generated file
@@ -108,16 +114,54 @@ valid_semver() {
     [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
 
+# valid_version V — 正式版 X.Y.Z **或** beta 版 X.Y.Z-beta.N。
+#
+# ID-BETA-0001 (2026-11-05)：beta 的版本号带 `-beta.N` 后缀 ⇒ ⇒ 因为
+# Sparkle 比较的是 **CFBundleVersion** ⇒ ⇒ 所以：
+#   MARKETING_VERSION     = X.Y.Z        （macOS 要求 X.Y.Z 整数 ⇒ 用户可见）
+#   CURRENT_PROJECT_VERSION = X.Y.Z-beta.N（Sparkle 比较用 ⇒ 带标记）
+#   tag                   = vX.Y.Z-beta.N
+valid_version() {
+    valid_semver "$1" || [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]
+}
+
+# version_base V — 取 base 版本（X.Y.Z），去掉 -beta.N 后缀。
+version_base() {
+    printf '%s' "${1%%-beta.*}"
+}
+
 # version_gt A B — exit 0 iff A is semver-greater than B.
 # awk because macOS ships BSD sort (no `sort -V`).
+#
+# ID-BETA-0001 (2026-11-05)：**beta 感知** ⇒ ⇒ 同一个 base 下的次序是
+#   beta.1 < beta.2 < ... < **正式版**
+# ⇒ ⇒ 与 Sparkle 自己的比较器一致（`SUStandardVersionComparator.m:262-264`：
+# 多出来的部分是**字符串** ⇒ **短者胜** ⇒ 正式版比它的 beta 新）
+# ⇒ ⇒ 「正式版已发 ⇒ 它的 beta 不该再发」这条约束**自动成立**。
 version_gt() {
-    awk -v a="$1" -v b="$2" 'BEGIN {
-        na = split(a, x, "."); nb = split(b, y, ".");
+    # ⚠️ awk 的**函数定义必须在顶层**（不能写在 BEGIN 块里）⇒ ⇒ 否则
+    # 「awk: syntax error at source line 2 / function <<< parse(...)」。
+    awk -v a="$1" -v b="$2" '
+    function parse(v, arr,   n) {
+        n = index(v, "-beta.");
+        if (n > 0) {
+            arr["base"] = substr(v, 1, n - 1);
+            arr["beta"] = substr(v, n + 6) + 0;
+        } else {
+            arr["base"] = v;
+            arr["beta"] = 999999999;  # 正式版排在同 base 的所有 beta 之后
+        }
+    }
+    BEGIN {
+        parse(a, A); parse(b, B);
+        na = split(A["base"], x, "."); nb = split(B["base"], y, ".");
         if (na != 3 || nb != 3) exit 1;
         for (i = 1; i <= 3; i++) {
             if (x[i] + 0 > y[i] + 0) exit 0;
             if (x[i] + 0 < y[i] + 0) exit 1;
         }
+        if (A["beta"] > B["beta"]) exit 0;
+        if (A["beta"] < B["beta"]) exit 1;
         exit 1;  # equal is not greater
     }'
 }
@@ -511,8 +555,14 @@ verify_release_remote() {
     fi
 
     # 5. Tap-repo Cask version + sha256 match the release tarball digest (B3.9).
+    #
+    # ID-BETA-0001 (2026-11-05): **beta 跳过这一项** ⇒ ⇒ 因为 beta **故意不动
+    # tap**（brew 用户不该拿到 beta）⇒ ⇒ 所以「tap 版本 == 发版版本」这条约束
+    # 对 beta **不成立** ⇒ ⇒ 检查它 ⇒ ⇒ 只会**假红**。
     local cask tap_ver tap_sha asset_sha
-    if cask=$(gh_fetch_main_file "$TAP_REPO" Casks/clipmemory.rb); then
+    if [[ "$version" == *-beta.* ]]; then
+        vok "beta 版：跳过 tap Cask 校验（预发布**故意不动** Homebrew tap）"
+    elif cask=$(gh_fetch_main_file "$TAP_REPO" Casks/clipmemory.rb); then
         tap_ver=$(echo "$cask" | sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' | head -1)
         tap_sha=$(echo "$cask" | sed -nE 's/^[[:space:]]*sha256 "([^"]+)".*/\1/p' | head -1)
         asset_sha=$(gh api "$api" --jq '.assets[] | select(.name == "ClipMemory.tar.gz") | .digest' 2>/dev/null | sed 's/^sha256://')
@@ -622,11 +672,17 @@ sync_main_with_origin() {
 
 # check_project_version VERSION — was preflight.sh §1 + pre_push_verify.sh A1.
 # project.yml 的 MARKETING_VERSION 与 CURRENT_PROJECT_VERSION 必须都等于目标版本。
+#
+# ID-BETA-0001 (2026-11-05)：beta 模式下 **MARKETING_VERSION = base**（X.Y.Z）、
+# **CURRENT_PROJECT_VERSION = 完整版本**（X.Y.Z-beta.N）⇒ ⇒ 因为 macOS 要求
+# MARKETING_VERSION 是 X.Y.Z 整数、而 Sparkle 比较的是 CFBundleVersion。
 check_project_version() {
-    local version="$1" marketing build
+    local version="$1" marketing build expect_marketing
     marketing=$(awk -F'"' '/MARKETING_VERSION:/ {print $2; exit}' project.yml)
     build=$(awk -F'"' '/CURRENT_PROJECT_VERSION:/ {print $2; exit}' project.yml)
-    [[ "$marketing" == "$version" ]] || { echo "  ❌ MARKETING_VERSION='$marketing'（期望 ${version}）"; return 1; }
+    expect_marketing="$version"
+    [[ "$version" == *-beta.* ]] && expect_marketing="$(version_base "$version")"
+    [[ "$marketing" == "$expect_marketing" ]] || { echo "  ❌ MARKETING_VERSION='$marketing'（期望 ${expect_marketing}）"; return 1; }
     [[ "$build" == "$version" ]] || { echo "  ❌ CURRENT_PROJECT_VERSION='$build'（期望 ${version}）"; return 1; }
     return 0
 }
@@ -934,6 +990,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     DRY_RUN=0
     SKIP_README_SYNC=0
     VERIFY_INSTALL=0
+    IS_BETA=0
 
     for arg in "$@"; do
         case "$arg" in
@@ -942,6 +999,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
             --dry-run)           DRY_RUN=1 ;;
             --skip-readme-sync)  SKIP_README_SYNC=1 ;;
             --verify-install)    VERIFY_INSTALL=1 ;;
+            --beta)              IS_BETA=1 ;;
             -h|--help)    usage 0 ;;
             v?*.?*.?*)    VERSION="$arg" ;;
             *)            echo "Unknown argument: $arg" >&2; usage 2 ;;
@@ -949,8 +1007,20 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     done
 
     VERSION="${VERSION#v}"
-    if ! valid_semver "$VERSION"; then
+    if ! valid_version "$VERSION"; then
         echo "Usage: $0 vX.Y.Z [--yes] [--skip-tests] [--dry-run] [--skip-readme-sync] [--verify-install]" >&2
+        echo "       $0 vX.Y.Z-beta.N --beta   # 预发布（ID-BETA-0001）" >&2
+        exit 2
+    fi
+    # ID-BETA-0001 (2026-11-05)：beta 必须是**显式**的 ⇒ ⇒ 版本号带 `-beta.N`
+    # 就必须带 `--beta`，反之亦然 ⇒ ⇒ 避免「以为自己在发正式版，其实发了 beta」。
+    BASE_VERSION="$(version_base "$VERSION")"
+    if [[ "$VERSION" == *-beta.* && $IS_BETA -eq 0 ]]; then
+        echo "版本 ${VERSION} 带 -beta.N 后缀 ⇒ 必须显式加 --beta（否则会被当成正式版发布）" >&2
+        exit 2
+    fi
+    if [[ "$VERSION" != *-beta.* && $IS_BETA -eq 1 ]]; then
+        echo "--beta 需要一个 beta 版本号（vX.Y.Z-beta.N），当前是 ${VERSION}" >&2
         exit 2
     fi
 
@@ -1093,7 +1163,10 @@ EOF
     echo "=== Phase 1: 版本与文档 ==="
 
     # 1. Bump project.yml (both version fields stay in lockstep, B1.1).
-    sed -i '' -E "s|MARKETING_VERSION: \"[^\"]*\"|MARKETING_VERSION: \"${VERSION}\"|" project.yml
+    #    ID-BETA-0001 (2026-11-05)：beta 模式下两个字段**故意不同步** ——
+    #    MARKETING_VERSION = base（X.Y.Z，用户可见、macOS 要求整数三段），
+    #    CURRENT_PROJECT_VERSION = 完整版本（X.Y.Z-beta.N，Sparkle 比较用）。
+    sed -i '' -E "s|MARKETING_VERSION: \"[^\"]*\"|MARKETING_VERSION: \"${BASE_VERSION}\"|" project.yml
     sed -i '' -E "s|CURRENT_PROJECT_VERSION: \"[^\"]*\"|CURRENT_PROJECT_VERSION: \"${VERSION}\"|" project.yml
     xcodegen generate
     ok "project.yml → v${VERSION}，xcodegen 已重新生成"
@@ -1118,6 +1191,15 @@ EOF
     # Key resolution mirrors sync_readme.py: env first, then the macOS
     # Keychain item `clipmemory-readme-sync` (one-time setup:
     # security add-generic-password -U -s clipmemory-readme-sync -a deepseek -w <key>).
+    #
+    # ID-BETA-0001 (2026-11-05)：**beta 绝不写 7 个 README 的 changelog** ⇒ ⇒
+    # 预发布不该出现在正式 changelog 里（用户会以为已正式发布）⇒ ⇒ ⇒ ⇒
+    # 这里**强制**跳过（用户不需要额外记一个 flag）⇒ ⇒ 顺带把 preflight 里
+    # 那两个 README 检查也一起跳过（它们本来就跟 --skip-readme-sync 联动）。
+    if [[ $IS_BETA -eq 1 ]]; then
+        SKIP_README_SYNC=1
+        log "⏭ beta 版**不写** 7 个 README 的 changelog（预发布不进正式 changelog）"
+    fi
     if [[ ${SKIP_README_SYNC:-0} -eq 1 ]]; then
         log "⏭ 已跳过 README 7 语言同步（--skip-readme-sync 逃生门）— 确认 7 个 README 已含 v${VERSION} changelog，或本次发版有意不更新 README"
     else

@@ -44,6 +44,30 @@ expect_rc 0 "3.0.0 > 2.9.9"     version_gt "3.0.0" "2.9.9"
 expect_rc 0 "2.10.0 > 2.9.0 (numeric, not lexicographic)" version_gt "2.10.0" "2.9.0"
 expect_rc 1 "garbage rejected"  version_gt "abc" "2.5.11"
 
+# --- ID-BETA-0001 (2026-11-05): beta 感知的版本比较 ---------------------
+# ⇒ ⇒ 同一个 base 下的次序：beta.1 < beta.2 < ... < **正式版**
+# ⇒ ⇒ 与 Sparkle 自己的比较器一致（正式版比它的 beta 新）⇒ ⇒
+# ⇒ ⇒ ⇒ 「正式版已发 ⇒ 它的 beta 不该再发」这条约束**自动成立**。
+echo "=== valid_version (beta) ==="
+expect_rc 0 "2.10.0 valid"         valid_version "2.10.0"
+expect_rc 0 "2.10.0-beta.1 valid"  valid_version "2.10.0-beta.1"
+expect_rc 1 "2.10.0-beta invalid"  valid_version "2.10.0-beta"
+expect_rc 1 "2.10.0-beta.x invalid" valid_version "2.10.0-beta.x"
+expect_rc 1 "2.10 invalid"          valid_version "2.10"
+expect_rc 1 "v2.10.0 invalid"       valid_version "v2.10.0"
+
+echo "=== version_base (beta) ==="
+[[ "$(version_base '2.10.0-beta.1')" == "2.10.0" ]] && ok "beta → base" || bad "version_base beta"
+[[ "$(version_base '2.10.0')" == "2.10.0" ]] && ok "stable → itself" || bad "version_base stable"
+
+echo "=== version_gt (beta) ==="
+expect_rc 0 "beta(2.10.0) > stable(2.9.6)" version_gt "2.10.0-beta.1" "2.9.6"
+expect_rc 1 "beta(2.10.0) NOT > stable(2.10.0) — 正式版已发 ⇒ 它的 beta 该被拒" version_gt "2.10.0-beta.1" "2.10.0"
+expect_rc 0 "beta.2 > beta.1"                 version_gt "2.10.0-beta.2" "2.10.0-beta.1"
+expect_rc 1 "beta.1 NOT > beta.2"              version_gt "2.10.0-beta.1" "2.10.0-beta.2"
+expect_rc 0 "stable(2.10.0) > beta(2.10.0)"  version_gt "2.10.0" "2.10.0-beta.1"
+expect_rc 1 "beta(2.10.0) NOT > stable(2.11.0)" version_gt "2.10.0-beta.1" "2.11.0"
+
 echo "=== classify_commit / strip_commit_prefix ==="
 [[ "$(classify_commit 'feat(ui): add Quick Bar')" == "highlights" ]] && ok "feat → highlights" || bad "feat classify"
 [[ "$(classify_commit 'perf: cache formatter')" == "highlights" ]] && ok "perf → highlights" || bad "perf classify"

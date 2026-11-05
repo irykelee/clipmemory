@@ -325,6 +325,31 @@ jobs:
       # verify left the public feed advertising a release that was never
       # published. The publish half now runs as 'Publish appcast update'
       # after 'Create GitHub Release'.
+      # ID-BETA-0001 (2026-11-05): 预发布（beta）通道的判定。
+      #
+      # ⇒ ⇒ tag 形如 `vX.Y.Z-beta.N` ⇒ ⇒ 三处行为不同：
+      #   ① appcast 条目带 `<sparkle:channel>beta</sparkle:channel>`
+      #      （且 `<sparkle:shortVersionString>` 用 **base** X.Y.Z）
+      #   ② GitHub Release 标 **prerelease** ⇒ ⇒ 不被 "Latest release" 指向
+      #   ③ **不动 Homebrew tap** ⇒ ⇒ brew 用户**不该**拿到 beta
+      #
+      # ⚠️ 判定只看 **tag 形状** ⇒ ⇒ 正式版路径**逐字不变**（is_beta=false ⇒
+      # 下面三个 step 走的还是从前那套）。
+      - name: Detect release channel (ID-BETA-0001)
+        id: channel
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == *-beta.* ]]; then
+            echo "is_beta=true" >> "$GITHUB_OUTPUT"
+            echo "base_version=${VERSION%%-beta.*}" >> "$GITHUB_OUTPUT"
+            echo "🔬 预发布（beta）通道：${VERSION} ⇒ appcast 带 channel=beta、Release 标 prerelease、**不动 Homebrew tap**"
+          else
+            echo "is_beta=false" >> "$GITHUB_OUTPUT"
+            echo "base_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Sign tarball and update appcast
         if: github.event_name == 'push'
         env:
@@ -389,7 +414,18 @@ jobs:
           # Insert the new item into the working-tree appcast.xml. The commit
           # + push of this change is deliberately NOT done here — see the
           # 'Publish appcast update' step after 'Create GitHub Release'.
-          ./Scripts/update_appcast.sh appcast.xml "$VERSION" Releases/ClipMemory.tar.gz "$SIGNATURE"
+          #
+          # ID-BETA-0001 (2026-11-05): beta ⇒ ⇒ 条目带 <sparkle:channel>beta</…>
+          # ⇒ ⇒ 只有**勾了 beta** 的用户看得见 ⇒ ⇒ 稳定用户不受影响。
+          # ⚠️ 正式版走 else 分支 ⇒ ⇒ **参数与从前逐字相同** ⇒ ⇒ 零影响。
+          if [[ "${{ steps.channel.outputs.is_beta }}" == "true" ]]; then
+            ./Scripts/update_appcast.sh appcast.xml "$VERSION" Releases/ClipMemory.tar.gz "$SIGNATURE" \
+              "https://github.com/irykelee/clipmemory/releases/tag/v${VERSION}" \
+              "beta" \
+              "${{ steps.channel.outputs.base_version }}"
+          else
+            ./Scripts/update_appcast.sh appcast.xml "$VERSION" Releases/ClipMemory.tar.gz "$SIGNATURE"
+          fi
 
       # C1 (2026-07-23 ship-review): pre-release verify, BEFORE the GitHub
       # Release is published. P0-3 (post-release verify) only catches
@@ -406,6 +442,8 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          BASE_VERSION="${{ steps.channel.outputs.base_version }}"
+          IS_BETA="${{ steps.channel.outputs.is_beta }}"
           NOTES="docs/release-notes/v${VERSION}.md"
 
           FAILS=0
@@ -424,22 +462,30 @@ jobs:
           fi
 
           # 2. project.yml MARKETING_VERSION matches the tag.
+          #    ID-BETA-0001 (2026-11-05): beta ⇒ ⇒ MARKETING_VERSION 比的是
+          #    **base**（X.Y.Z）⇒ ⇒ 因为 macOS 要求它是整数三段、而带
+          #    `-beta.N` 的是 CURRENT_PROJECT_VERSION（Sparkle 比较用）。
           MARKETING_VERSION=$(grep -E '^    MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          if [[ "$MARKETING_VERSION" != "$VERSION" ]]; then
-            fail "project.yml MARKETING_VERSION ($MARKETING_VERSION) != tag ($VERSION) — bump before tagging"
+          if [[ "$MARKETING_VERSION" != "$BASE_VERSION" ]]; then
+            fail "project.yml MARKETING_VERSION ($MARKETING_VERSION) != tag ($BASE_VERSION) — bump before tagging"
           else
             ok "project.yml MARKETING_VERSION matches tag"
           fi
 
           # 3. No duplicate ### vX.Y.Z block in any of 7 lang READMEs.
-          for f in README.md docs/lang/README_EN.md docs/lang/README_ZH-HANT.md docs/lang/README_JA.md docs/lang/README_KO.md docs/lang/README_ES.md docs/lang/README_PT.md; do
-            COUNT=$(grep -cE "^### v${VERSION}\b" "$f" || true)
-            if [[ "$COUNT" -ne 1 ]]; then
-              fail "${f} has ${COUNT} '### v${VERSION}' block(s) (expected 1) — re-run sync_readme.py after dedupe fix"
-            else
-              ok "${f} has exactly 1 v${VERSION} block"
-            fi
-          done
+          #    ID-BETA-0001: beta ⇒ ⇒ **跳过**（beta 不写 README changelog）
+          if [[ "$IS_BETA" == "true" ]]; then
+            ok "beta 版：跳过 7 个 README 的 changelog 检查（预发布不进正式 changelog）"
+          else
+            for f in README.md docs/lang/README_EN.md docs/lang/README_ZH-HANT.md docs/lang/README_JA.md docs/lang/README_KO.md docs/lang/README_ES.md docs/lang/README_PT.md; do
+              COUNT=$(grep -cE "^### v${VERSION}\b" "$f" || true)
+              if [[ "$COUNT" -ne 1 ]]; then
+                fail "${f} has ${COUNT} '### v${VERSION}' block(s) (expected 1) — re-run sync_readme.py after dedupe fix"
+              else
+                ok "${f} has exactly 1 v${VERSION} block"
+              fi
+            done
+          fi
 
           if [[ "$FAILS" -gt 0 ]]; then
             echo ""
@@ -494,6 +540,10 @@ jobs:
           # even though the notes-extract step produced the bilingual H1.
           name: ${{ steps.notes.outputs.title }}
           body_path: ${{ steps.notes.outputs.body_path }}
+          # ID-BETA-0001 (2026-11-05): beta ⇒ ⇒ 标 **prerelease** ⇒ ⇒
+          # GitHub 不会把它当 "Latest release" ⇒ ⇒ 走 `releases/latest/download/`
+          # 的稳定用户**拿不到** beta（正式版的 appcast 条目也仍在默认通道）。
+          prerelease: ${{ steps.channel.outputs.is_beta }}
           # Don't auto-generate notes — we supply body_path from release-notes file.
           generate_release_notes: false
 
@@ -638,7 +688,10 @@ jobs:
           curl -sf "https://purge.jsdelivr.net/gh/irykelee/clipmemory@${SOURCE_BRANCH}/appcast.xml" || true
 
       - name: Update Homebrew tap
-        if: github.event_name == 'push'
+        # ID-BETA-0001 (2026-11-05): beta ⇒ ⇒ **绝不动 tap** ⇒ ⇒
+        # brew 用户跑 `brew upgrade` 不该拿到 beta ⇒ ⇒ 正式版路径不受影响
+        # （is_beta=false ⇒ 条件与从前逐字相同）。
+        if: github.event_name == 'push' && steps.channel.outputs.is_beta != 'true'
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |

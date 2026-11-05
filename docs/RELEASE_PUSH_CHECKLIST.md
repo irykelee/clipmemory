@@ -91,6 +91,25 @@ For each of: `README.md` (zh-Hans), `docs/lang/README_{EN,ZH-HANT,JA,KO,ES,PT}.m
 
 ---
 
+## E2. 预发布（beta）发版 —— ID-BETA-0001
+
+> **详细说明**：`docs/BETA_CHANNEL.md`（机制 / 版本号 / 手工流程 / 诚实残余）。
+> **一句话**：预发布版本**只推给勾了 beta 的用户**，**不动 Homebrew tap**。
+
+- [ ] 版本号带 `-beta.N` 后缀：`Scripts/release.sh vX.Y.Z-beta.N --beta`
+      （`--beta` **必须显式给** ⇒ 版本号带后缀却不给 `--beta` ⇒ 脚本**拒绝**）
+- [ ] `MARKETING_VERSION` = `X.Y.Z`（用户可见）、`CURRENT_PROJECT_VERSION` = `X.Y.Z-beta.N`
+      （Sparkle 比较用）⇒ ⇒ 脚本**自动**这样写
+- [ ] 7 个 README 的 changelog **不写**（脚本**自动**跳过）
+- [ ] appcast 条目带 `<sparkle:channel>beta</sparkle:channel>`（流水线**自动**加）
+- [ ] GitHub Release 标 **prerelease**（流水线**自动**标）⇒ ⇒ 不被 "Latest release" 指向
+- [ ] **Homebrew tap 不更新**（流水线**自动**跳过）⇒ ⇒ brew 用户拿不到 beta
+- [ ] 回滚：按 `<sparkle:version>` 删条目 ⇒ `remove_appcast_item` **已兼容**
+- [ ] ⚠️ **beta 的端到端真演练**（第一次真发 beta 时做）：稳定用户的 app 里
+      **看不到** beta 条目 ⇒ 勾上 beta 后**能看到** ⇒ 结果回填 `docs/BETA_CHANNEL.md` §六
+
+---
+
 ## F. One-time Setup — Branch Protection on `main`
 
 > **Why**: 原 `docs/RELEASE_PROCESS_AUDIT_2026-07-22.md` §1 P0-15（该审计文件已从仓库删除；结论内联于此）(no branch protection) → 2026-07-22 v2.5.10 release required user-explicit force-push to main to recover. Branch protection would have blocked that path and forced the fix to flow through a PR.
