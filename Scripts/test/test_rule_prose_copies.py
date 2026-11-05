@@ -903,15 +903,22 @@ def _self_test_body() -> tuple[list[str], dict[str, int]]:
             "自检失败：ledger_self_count_ok **本应全绿**却报红 ⇒ ⇒ 判据过严"
             f" ⇒ ⇒ {found[0][0][:140]}"
         )
-    scan_docs_bad = [(LEDGER_REL, "散文守卫扫描文件数：**999**\n")]
+    # ⇒ ⇒ **第十四轮 e（2026-11-05）**：台账里那个「扫描文件数」的**钉死值**被**移除** ⇒ ⇒
+    # ⇒ ⇒ 理由：它是**手写**的 ⇒ ⇒ **每加一个被扫描的文件它就漂一次** ⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ 每一次「加文件」的 commit 都会让 CI 红（实测连漂 3 次：112→114→116→117）
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **手写数字当契约 = 每次改动都要手工维护** ⇒ ⇒ 必然腐烂。
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 换成**结构不变式**：守卫的扫描集合必须与**独立枚举**一致
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 「少扫了 / 多扫了」当场可见 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **不再需要手写数**。
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 下面的「台账写了就报红」用例**反过来**钉住这一点。
+    scan_docs_stale = [(LEDGER_REL, "散文守卫扫描文件数：**999**\n")]
     counts["red"] += 1
-    found = check_ledger_scan_count(scan_docs_bad, 1)
-    if not any("已经漂了" in problem for problem in found[0]):
+    found = check_ledger_scan_count(scan_docs_stale, 1)
+    if not any("已废弃" in problem for problem in found[0]):
         problems.append(
-            "自检失败：ledger_scan_count_drift **本应报红**（台账写 999 / 机器数 1）"
-            " ⇒ ⇒ 扫描文件数的核对**没有牙齿**"
+            "自检失败：ledger_scan_count_stale **本应报红**（台账还在钉那个手写数）"
+            " ⇒ ⇒ 「手写数字当契约」这条防线**没有牙齿**"
         )
-    scan_docs_ok = [(LEDGER_REL, "散文守卫扫描文件数：**1**\n")]
+    scan_docs_ok = [(LEDGER_REL, "散文守卫（正对照明细）\n")]
     counts["green"] += 1
     found = check_ledger_scan_count(scan_docs_ok, 1)
     if found[0]:
@@ -919,16 +926,15 @@ def _self_test_body() -> tuple[list[str], dict[str, int]]:
             "自检失败：ledger_scan_count_ok **本应全绿**却报红 ⇒ ⇒ 判据过严"
             f" ⇒ ⇒ {found[0][0][:140]}"
         )
-    # ⇒ ⇒ **第十四轮**（审核门 P2）：台账**在**扫描范围里、但**没有**那一行
-    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **必须报红** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 否则「删掉那一行」就能**静默关掉**
-    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 这条机器核对 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ **第十四轮 e**：「台账里**没有**那一行」现在**合法**（不再钉手写数）
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
     scan_docs_missing = [(LEDGER_REL, "散文守卫自检断言数：**97**\n")]
-    counts["red"] += 1
+    counts["green"] += 1
     found = check_ledger_scan_count(scan_docs_missing, 1)
-    if not found[0]:
+    if found[0]:
         problems.append(
-            "自检失败：ledger_scan_count_missing **本应报红**（台账在、但那一行"
-            "不在 ⇒ 删掉它就能静默关掉核对）⇒ ⇒ 机器核对**没有牙齿**"
+            "自检失败：ledger_scan_count_absent **本应全绿**却报红 ⇒ ⇒ 判据过严"
+            f" ⇒ ⇒ {found[0][0][:140]}"
         )
     # ⇒ ⇒ **对照组**：台账**根本不在**扫描范围里 ⇒ ⇒ 只告警、不报红 ⇒ ⇒
     # ⇒ ⇒ ⇒ ⇒ ⇒ 否则**合成探针仓库**（只有 probe.md）会被误判 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
@@ -1041,15 +1047,18 @@ def check_ledger_self_count(documents: list[tuple[str, str]],
 
 def check_ledger_scan_count(documents: list[tuple[str, str]],
                              scanned: int) -> tuple[list[str], str | None]:
-    '''台账里写的「散文守卫扫描文件数」必须**等于**机器数 ⇒ ⇒ 否则报红。
+    '''台账里**不许**再钉死「散文守卫扫描文件数」这个手写数 ⇒ ⇒ 钉了 ⇒ ⇒ 报红。
 
-    ⇒ ⇒ 为什么要有这条：第十三轮核验员 P2-1 实测 —— 台账三处写「**108** 个已跟踪
-    ⇒ ⇒ ⇒ ⇒ 文件」，而 HEAD 实测 **110**（本轮新增 2 个被扫描的 `.py`）⇒ ⇒ ⇒ ⇒ ⇒
-    ⇒ ⇒ ⇒ ⇒ ⇒ **手写数字已漂**，而守卫是绿的 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 「陈旧数字没人管」那族。
+    ⇒ ⇒ **为什么移除它**（第十四轮 e，2026-11-05 实测）：那个数是**手写**的 ⇒ ⇒
+    ⇒ ⇒ ⇒ **每加一个被扫描的文件它就漂一次** ⇒ ⇒ ⇒ ⇒ ⇒ 每次「加文件」的 commit
+    ⇒ ⇒ ⇒ ⇒ ⇒ 都会让 CI 红 ⇒ ⇒ ⇒ ⇒ ⇒ 实测连漂 3 次：112 → 114 → 116 → 117
+    ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **手写数字当契约 = 每次改动都要手工维护** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 必然腐烂。
 
-    ⇒ ⇒ ⇒ ⇒ 修法不是「小心一点」，而是**让机器核对** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 与「自检
-    ⇒ ⇒ ⇒ ⇒ ⇒ 断言数」同款 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
-    ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    ⇒ ⇒ ⇒ ⇒ **换成结构不变式**：守卫的扫描集合必须与**独立枚举**一致
+    ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 「少扫了 / 多扫了」当场可见 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **不再需要手写数**。
+
+    ⇒ ⇒ ⇒ ⇒ 本函数现在只做一件事：**台账里若还留着那一行 ⇒ ⇒ 报红**（提醒删掉）
+    ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 「没有那一行」⇒ ⇒ **全绿**（不再需要任何数字）。
     '''
     problems: list[str] = []
     ledger = None
@@ -1059,28 +1068,35 @@ def check_ledger_scan_count(documents: list[tuple[str, str]],
             break
     if ledger is None:
         return [], (
-            f"⚠️ 扫描范围里**没有** {LEDGER_REL} ⇒ ⇒ 「扫描文件数」这次"
+            f"⚠️ 扫描范围里**没有** {LEDGER_REL} ⇒ ⇒ 「扫描文件数」这条"
             f"**没有核对**（台账的**存在性**由指针守卫负责）⇒ ⇒ 不假装检查过"
         )
     stated_list = SELF_SCAN_COUNT_LEDGER_RE.findall(ledger)
-    if not stated_list:
-        # ⇒ ⇒ ⚠️ **第十四轮修**（审核门 P2）：这一支原先只**告警** ⇒ ⇒ ⇒ ⇒
-        # ⇒ ⇒ ⇒ ⇒ 而 `main()` 照常 exit 0 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **删掉台账里那一行**
-        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 就能**静默关掉**这条机器核对 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
-        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ *「删掉检查 ⇒ 检查就没了」那族* ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
-        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
-        # ⇒ ⇒ ⇒ ⇒ 「自检断言数」那条**同款**分支本来就是**报红**（见上）⇒ ⇒ ⇒ ⇒ ⇒
-        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 这里也必须**报红**⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
-        return [f"{LEDGER_REL}: 台账里**找不到**「散文守卫扫描文件数」⇒ ⇒ "
-                f"那个数字是**手写**的 ⇒ ⇒ 没人核对 ⇒ ⇒ 报红"
-                f"（补一行：散文守卫扫描文件数：**{scanned}**）"], None
-    drifted = [value for value in stated_list if int(value) != scanned]
-    if drifted:
-        return [f"{LEDGER_REL}: 台账里写的「散文守卫扫描文件数」= "
-                f"**{drifted[0]}**，而**机器数**是 **{scanned}** ⇒ ⇒ "
-                f"数字**已经漂了** ⇒ ⇒ 刷成实测值（否则下一个读它的人"
-                f"会读到假数字）"], None
+    if stated_list:
+        return [f"{LEDGER_REL}: 台账里还钉着「散文守卫扫描文件数」= "
+                f"**{stated_list[0]}** ⇒ ⇒ 这个数字**已废弃** ⇒ ⇒ "
+                f"它是**手写**的 ⇒ ⇒ 每加一个被扫描的文件就会漂一次 ⇒ ⇒ "
+                f"（实测连漂 3 次：112→114→116→117）⇒ ⇒ "
+                f"**请删掉这一行** ⇒ ⇒ 「少扫了」现在由**独立枚举交叉核对**保证"
+                f"（见 `independent_scan_set`）⇒ ⇒ 不再需要手写数"], None
     return [], None
+
+
+def independent_scan_set(root: str) -> set[str]:
+    '''**独立枚举**被扫描的文件（走 os.walk，不走 git ls-files）⇒ ⇒ 与守卫自己的
+    扫描集合交叉核对 ⇒ ⇒ 「**少扫了**」（git ls-files 失败/被裁剪）当场可见。
+
+    ⇒ ⇒ 与 multibyte 守卫的「独立枚举」同款思路（那条守卫早就这么做过了）
+    ⇒ ⇒ ⇒ 这里**补上**散文守卫缺的那一半。
+    '''
+    found: set[str] = set()
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames
+                       if d not in (".git", "node_modules", ".build", "DerivedData")]
+        for name in filenames:
+            if name.endswith(SCAN_SUFFIXES):
+                found.add(os.path.relpath(os.path.join(dirpath, name), root))
+    return found
 
 
 def main(argv: list[str]) -> int:
@@ -1114,6 +1130,7 @@ def main(argv: list[str]) -> int:
 
     documents: list[tuple[str, str]] = []
     scanned = 0
+    scanned_set: set[str] = set()
     for rel in tracked_files(root):
         if not rel.endswith(SCAN_SUFFIXES):
             continue
@@ -1124,7 +1141,26 @@ def main(argv: list[str]) -> int:
         except (OSError, UnicodeDecodeError):
             continue
         scanned += 1
+        scanned_set.add(rel)
         documents.append((rel, text))
+
+    # ⇒ ⇒ **第十四轮 e（2026-11-05）**：**独立枚举交叉核对** ⇒ ⇒ 「少扫了 / 多扫了」
+    # ⇒ ⇒ 当场可见 ⇒ ⇒ ⇒ ⇒ **取代**了台账里那个**手写**的「扫描文件数」⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ ⇒ ⇒ 那个数每加一个被扫描的文件就漂一次 ⇒ ⇒ ⇒ ⇒ ⇒ 实测连漂 3 次
+    # ⇒ ⇒ ⇒ ⇒ ⇒ （112→114→116→117）⇒ ⇒ ⇒ ⇒ ⇒ 每次「加文件」的 commit 都让 CI 红
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **手写数字当契约 = 必然腐烂** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    # ⇒ ⇒ 与 multibyte 守卫的「独立枚举」同款思路（那边早就这么做了）⇒ ⇒ 这里补上。
+    independent = independent_scan_set(root)
+    only_tracked = sorted(scanned_set - independent)
+    only_independent = sorted(independent - scanned_set)
+    if only_tracked:
+        problems.append(
+            "散文守卫**少扫了**：git ls-files 里有、但独立枚举(os.walk)里没有 ⇒ ⇒ "
+            f"{len(only_tracked)} 个 ⇒ ⇒ 例如 {only_tracked[:3]}"
+        )
+    # ⇒ ⇒ 反方向（独立枚举比 git ls-files 多）= **未跟踪的文件**（本地新写还没
+    # ⇒ ⇒ git add）⇒ ⇒ **不是缺陷** ⇒ ⇒ **不报**（本地常有几���个未跟踪文件，
+    # ⇒ ⇒ 报出来只是噪音）⇒ ⇒ ⇒ 真正要抓的是上面那个「**少扫了**」方向。
 
     # ⇒ ⇒ **与 `--self-test` 走同一条路径**（`scan_documents`）⇒ ⇒
     # ⇒ ⇒ ⇒ 否则「只测方法不测调用点」⇒ ⇒ 变异掉这里的接线点 ⇒ ⇒
