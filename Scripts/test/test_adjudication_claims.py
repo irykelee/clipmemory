@@ -118,7 +118,7 @@ CHECKS = [
     ("R149", "docs/skips-ledger.md", "num_match", r"\*\*(\d+)\*\* 条静态判据", "台账写的「静态判据数」== 本脚本自报数"),
     ("R150", "docs/skips-ledger.md", "num_match", r"\*\*(\d+)\*\* 条实跑判据", "台账写的「实跑判据数」== 本脚本自报数"),
     ("R151", "docs/skips-ledger.md", "num_match", r"\*\*(\d+)\*\* 键覆盖表", "台账写的「覆盖表键数」== 本脚本自报数"),
-    ("R145", "docs/skips-ledger.md", "count_match", r"\*\*(\d+)\*\* 条有效记录", "台账写的「有效记录数」== 台账实际条数"),
+    ("R145", "docs/skips-ledger.md", "no_pin", r"\*\*(\d+)\*\* 条有效记录", "台账里**不许**再钉「有效记录数」（手写契约 ⇒ 每入账一次就漂一次）⇒ 改由「覆盖表的每个键都必须存在于台账」保证"),
     ("P2-30", ".github/workflows/ci.yml", "has", r"bash Scripts/test/test_ollama_endpoints\.sh", "CI 调的是脚本本身，不涉及 discover 签名"),
     ("P2-40", "docs/skips-ledger.md", "has", r"2026-10-2[0-9]", "台账里的日期与本仓库时间线一致（不是未来日期）"),
     ("P2-57", "Tests/ClipMemoryTests/SnapshotTestHelpers.swift", "has", r"AppStorageDefaults\.setShared\(snapshotDefaults\)", "快照助手现在指向 per-test 隔离 suite（前提已变：@AppStorage 全接上 store: seam）"),
@@ -384,16 +384,13 @@ def main() -> int:
             if int(m.group(1)) != actual:
                 bad.append((cid, rel, desc, f"台账写 {m.group(1)}，本脚本自报 {actual}"))
             continue
-        if kind == "count_match":
+        if kind == "no_pin":
             m = re.search(needle, text)
-            if not m:
-                bad.append((cid, rel, desc, "台账里找不到「N 条有效记录」那句"))
-                continue
-            n = sum(1 for line in open(os.path.join(REPO, "githooks/review-adjudication.jsonl"),
-                                       encoding="utf-8")
-                    if line.strip() and not line.startswith("#"))
-            if int(m.group(1)) != n:
-                bad.append((cid, rel, desc, f"台账写 {m.group(1)}，实际 {n}"))
+            if m:
+                bad.append((cid, rel, desc,
+                            f"台账里还钉着「{m.group(1)} 条有效记录」⇒ ⇒ 这个数**是手写的**"
+                            f" ⇒ ⇒ 每入账一次就漂一次 ⇒ ⇒ **请删掉这一行** ⇒ ⇒ "
+                            f"「台账被截断/丢条目」现在由**覆盖表每个键都必须存在**保证"))
             continue
         if kind == "count":
             n = _count(rel, needle)
