@@ -6365,3 +6365,33 @@ beta 通道**接线守卫**（19 条判据 + 自检 + 真实破坏演练）⇒ �
 ⑤ **顺带把指针守卫的「三个手写数」也拆了**（同一族）：它们**每次改台账就漂一次**
 （本轮实测 313→314 / 306→307）⇒ ⇒ ⇒ 改成「表**必须还在**、但那三个数**不许再出现**」
 ⇒ ⇒ ⇒ 守卫**自报**实测值 ⇒ ⇒ ⇒ 「少扫了」改由**独立枚举交叉核对**保证。
+
+##### 50.28.11 第十四轮 e：把孤儿守卫接进 CI 时，**「接线」本身也有坑**
+
+① **第一次接进去就红了**（run `42327925364`）：`lint-ids` job **失败** ⇒ ⇒
+唯一错误是
+
+```
+sed: can't read s|^([[:space:]]*)version "[^"]*"|\1version "9.9.9"|: No such file or directory
+```
+
+② **根因**：`lint-ids` 跑在 **ubuntu**（`runs-on: ubuntu-latest`）⇒ ⇒ 而这些脚本
+source 的 `Scripts/package.sh:47`（以及 `release.sh` / `rollback-release.sh`）都用
+**BSD sed 的 `sed -i ''`** ⇒ ⇒ **GNU sed** 把 `''` 当**脚本**、把真表达式当
+**文件名** ⇒ ⇒ 报「can't read s|...|」⇒ ⇒ ⇒ ⇒ **同一个脚本 macOS 上绿、Linux 上红**。
+
+③ **处置**：这 6 个脚本是 **macOS 专属**（本项目就是 macOS-only）⇒ ⇒ 它们的 step
+**挪进 macOS job**（`build-and-test`，`runs-on: macos-latest`）⇒ ⇒ `lint-ids`
+（ubuntu）只留**可移植**的那些（Python 守卫 + `test_review_adjudicate.sh` /
+`test_ollama_endpoints.sh` / `test_verify_production_canaries.sh` / 清理脚本自测）。
+
+④ **教训（可复用）**：**把一个测试接进 CI，不等于它就在 CI 里跑** ⇒ ⇒
+① 它必须在**对的 runner** 上（macOS vs Linux 的 `sed -i` 语义不同 ⇒ 本项目所有
+`Scripts/*.sh` 都是 BSD 写法）⇒ ⇒ ② 接进去的**第一次**运行就会暴露
+「本地绿 ≠ CI 绿」的**环境差**（本轮：本地全绿、CI 红）⇒ ⇒ ⇒ ⇒ **第一次红不是
+「我改坏了」，而是「它终于被跑了」** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 记录 + 归位，不是回退。
+
+⑤ ⚠️ **孤儿守卫（R152）自己也有洞，被演练抓出来两次**（详见 §50.28.10 ④）：
+① 「glob 出现在 ci.yml 里」⇒ ⇒ **一句注释**就能满足 ⇒ ⇒ ② 排除注释行后，**step 的
+`name:` 字符串**里也有 glob（不是注释）⇒ ⇒ ⇒ 最后：**只认按名字点名**⇒ ⇒ ⇒
+**演练**：从 CI 删掉 `test_release.sh` 那一行 ⇒ ⇒ ⇒ **报红** ⇒ ⇒ 还原 ⇒ ⇒ **绿**。
