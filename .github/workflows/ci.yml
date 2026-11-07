@@ -473,6 +473,11 @@ jobs:
           test -s "$RUNNER_TEMP/base_prose_guard.py"
           python3 Scripts/test/test_prose_guard_probes.py \
             --baseline-guard "$RUNNER_TEMP/base_prose_guard.py"
+          # ⇒ ⇒ **第十四轮 e**：这个跑批器**自己**也要有自检 ⇒ ⇒ 否则
+          # ⇒ ⇒ 它瞎了（清单「符合期望」变成假话）⇒ ⇒ ⇒ 而它**没人验证**
+          # ⇒ ⇒ ⇒ ⇒ 合成夹具下**逃逸 / 误报 / 基线口径漂了 / 坏清单**四类
+          # ⇒ ⇒ ⇒ ⇒ 都报得出来 ⇒ ⇒ ⇒ ⇒ ⇒ 「它有牙齿」每次 push 都被复算
+          python3 Scripts/test/test_prose_guard_probes.py --self-test
 
       # ID-REVIEW-1049 第十轮 c: the mutation harness's ANCHORS.
       #

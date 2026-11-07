@@ -57,17 +57,20 @@ sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-CORPUS_PATH = os.path.join(HERE, "prose-guard-probes.json")
+# ⇒ ⇒ **seam**（只为自检能指向**合成夹具** ⇒ ⇒ 默认行为**逐字不变**）：
+#   CM_PROBES_CORPUS — 探针清单路径
+#   CM_PROBES_GUARD  — 被跑的守卫路径
+CORPUS_PATH = os.environ.get("CM_PROBES_CORPUS") or os.path.join(HERE, "prose-guard-probes.json")
 GUARD_REL = os.path.join("Scripts", "test", "test_rule_prose_copies.py")
-GUARD_PATH = os.path.join(REPO, GUARD_REL)
+GUARD_PATH = os.environ.get("CM_PROBES_GUARD") or os.path.join(REPO, GUARD_REL)
 
 
-def load_corpus() -> dict | None:
-    if not os.path.exists(CORPUS_PATH):
-        print(f"❌ 读不到探针清单：{CORPUS_PATH}", file=sys.stderr)
+def load_corpus(corpus_path: str = None) -> dict | None:
+    if not os.path.exists(corpus_path):
+        print(f"❌ 读不到探针清单：{corpus_path}", file=sys.stderr)
         return None
     try:
-        with open(CORPUS_PATH, encoding="utf-8") as fh:
+        with open(corpus_path, encoding="utf-8") as fh:
             return json.load(fh)
     except (OSError, json.JSONDecodeError) as exc:
         print(f"❌ 探针清单读不出来：{exc}", file=sys.stderr)
@@ -101,15 +104,17 @@ def run_probe(workdir: str, name: str, text: str,
     return result
 
 
-def main() -> int:
+def run_corpus(corpus_path: str, guard_path: str, baseline_guard: str = None) -> int:
+    """跑一遍清单 ⇒ ⇒ 返回退出码（0 = 全部符合期望）。"""
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--baseline-guard", default=None,
                         help="基线守卫的路径（可选）⇒ ⇒ 复算旧版一侧")
     parser.add_argument("--json", dest="json_out", default=None,
                         help="把逐条结果写成 JSON")
-    args = parser.parse_args()
+    # ⇒ ⇒ `--self-test` 是**本脚本**的开关 ⇒ ⇒ 不能被清单的 argparse 吃进去
+    args = parser.parse_args([a for a in sys.argv[1:] if a != "--self-test"])
 
-    corpus = load_corpus()
+    corpus = load_corpus(corpus_path)
     if corpus is None:
         return 2
     probes = corpus.get("probes") or []
@@ -117,16 +122,17 @@ def main() -> int:
         print("❌ 探针清单是**空的** ⇒ ⇒ 没法跑 ⇒ ⇒ 绝不冒充「全绿」",
               file=sys.stderr)
         return 2
-    if not os.path.exists(GUARD_PATH):
-        print(f"❌ 读不到散文守卫：{GUARD_PATH}", file=sys.stderr)
+    if not os.path.exists(guard_path):
+        print(f"❌ 读不到散文守卫：{guard_path}", file=sys.stderr)
         return 2
 
-    guards = [("new", GUARD_PATH)]
-    if args.baseline_guard:
-        if not os.path.exists(args.baseline_guard):
-            print(f"❌ 读不到基线守卫：{args.baseline_guard}", file=sys.stderr)
+    guards = [("new", guard_path)]
+    baseline = baseline_guard if baseline_guard is not None else args.baseline_guard
+    if baseline:
+        if not os.path.exists(baseline):
+            print(f"❌ 读不到基线守卫：{baseline}", file=sys.stderr)
             return 2
-        guards.append(("old", args.baseline_guard))
+        guards.append(("old", baseline))
 
     workdir = tempfile.mkdtemp(prefix="cm-prose-probes-")
     rows: list[dict] = []
@@ -229,6 +235,83 @@ def main() -> int:
             print(f"   - {row['name']}：{row['note']}")
     print("✅ 探针清单全部符合期望 ⇒ ⇒ 「N/16」「N/10」这些数字**可复现**了")
     return 0
+
+
+
+# ── 自检：合成夹具 ⇒ ⇒ 逐条注入违规 ⇒ ⇒ 必须**报出来** ──────────────────
+# ⇒ ⇒ 为什么需要：本脚本是「**验证探针清单**」的那个 ⇒ ⇒ 它自己**失效**了
+# ⇒ ⇒ ⇒ ⇒ 「清单符合期望」这句话就是**假的** ⇒ ⇒ ⇒ ⇒ 而它**没人验证** ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ 与 `test_release.sh` / `test_adjudication_claims.py` 同族。
+def self_test() -> int:
+    import tempfile
+    problems = []
+    work = tempfile.mkdtemp(prefix="cm-probes-st-")
+    try:
+        guard = os.path.join(work, "fake_guard.py")
+        with open(guard, "w", encoding="utf-8") as fh:
+            fh.write("import os, sys\nsys.exit(int(os.environ.get('FAKE_GUARD_RC', '0')))\n")
+        base_guard = os.path.join(work, "fake_base.py")
+        with open(base_guard, "w", encoding="utf-8") as fh:
+            fh.write("import os, sys\nsys.exit(int(os.environ.get('FAKE_BASE_RC', '0')))\n")
+        corpus = os.path.join(work, "corpus.json")
+
+        def write(probes):
+            with open(corpus, "w", encoding="utf-8") as fh:
+                json.dump({"probes": probes}, fh)
+
+        def run(probes, guard_rc="0", base_rc="0", baseline=None):
+            write(probes)
+            os.environ["FAKE_GUARD_RC"] = guard_rc
+            os.environ["FAKE_BASE_RC"] = base_rc
+            try:
+                return run_corpus(corpus, guard, baseline)
+            finally:
+                os.environ.pop("FAKE_GUARD_RC", None)
+                os.environ.pop("FAKE_BASE_RC", None)
+
+        green = {"name": "p1", "segment": "A", "expect": "green", "keyword": "", "text": "x\n"}
+        red = {"name": "p2", "segment": "A", "expect": "red", "keyword": "", "text": "y\n"}
+
+        # ① 正向控制：期望与守卫行为一致 ⇒ 必须 exit 0
+        if run([green], guard_rc="0") != 0:
+            problems.append("正向控制失败：期望 green + 守卫 exit 0 ⇒ 却报红")
+        if run([red], guard_rc="1") != 0:
+            problems.append("正向控制失败：期望 red + 守卫 exit 1 ⇒ 却报红")
+        # ② 注入违规 ①：期望 red 但守卫**不报** ⇒ 必须报「逃逸」
+        if run([red], guard_rc="0") == 0:
+            problems.append("注入无效：期望 red 而守卫 exit 0 ⇒ 清单跑批**没报逃逸** ⇒ 它瞎了")
+        # ③ 注入违规 ②：期望 green 但守卫**乱报** ⇒ 必须报「误报」
+        if run([green], guard_rc="1") == 0:
+            problems.append("注入无效：期望 green 而守卫 exit 1 ⇒ 清单跑批**没报误报** ⇒ 它瞎了")
+        # ④ 注入违规 ③：基线口径漂了 ⇒ 必须报「基线口径漂了」
+        drifted = dict(red); drifted["baseline_expect"] = 1   # 守卫实际 exit 0 ⇒ 口径错
+        if run([drifted], guard_rc="1", base_rc="0", baseline=base_guard) == 0:
+            problems.append("注入无效：基线口径漂了 ⇒ 清单跑批**没报** ⇒ 它瞎了")
+        # ⑤ 坏清单 ⇒ 必须 exit 2（**不是**「干净」）
+        with open(corpus, "w", encoding="utf-8") as fh:
+            fh.write("{ not json")
+        os.environ["FAKE_GUARD_RC"] = "0"
+        try:
+            if run_corpus(corpus, guard) != 2:
+                problems.append("坏清单必须 exit 2（读不出来）⇒ 它却报「干净」")
+        finally:
+            os.environ.pop("FAKE_GUARD_RC", None)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    if problems:
+        print("❌ 自检失败：", file=sys.stderr)
+        for p in problems:
+            print("   - " + p, file=sys.stderr)
+        return 1
+    print("✅ 自检通过：合成夹具下**逃逸 / 误报 / 基线口径漂了 / 坏清单**四类都报得出来"
+          "（⇒ 这个跑批器**有牙齿**）")
+    return 0
+
+
+def main() -> int:
+    if "--self-test" in sys.argv[1:]:
+        return self_test()
+    return run_corpus(CORPUS_PATH, GUARD_PATH)
 
 
 if __name__ == "__main__":

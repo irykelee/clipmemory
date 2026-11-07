@@ -6421,3 +6421,24 @@ source 的 `Scripts/package.sh:47`（以及 `release.sh` / `rollback-release.sh`
 
 ⑤ **接进 CI**：`lint-ids` 的那一步现在**既跑检查、也跑自检** ⇒ ⇒ ⇒ 「判据有牙齿」
 这句话**每次 push 都被复算**。
+
+##### 50.28.13 第十四轮 e：给「探针清单跑批器」也补上自检（**它自己就是关卡**）
+
+① **先纠正我自己上一条的错误**：我说 `test_rule_prose_copies.py` /
+`test_workflow_schema.py` / `test_ledger_section_pointers.py` **没有自检** ⇒ ⇒
+**实测：三个都早已有** `--self-test` ⇒ ⇒ ⇒ ⇒ 我那句话是**错的** ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ 「我没核实就说了」⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **教训**：列清单前先 `grep` 核实 ⇒ ⇒ ⇒ ⇒
+
+② **真正没有自检的**是另外几个：`test_prose_guard_probes.py` /
+`test_generate_stringsdict.py` / `test_sync_readme.py` / `test_sync_readme_dedupe.py`
+⇒ ⇒ 本轮先补**最关键**的 `test_prose_guard_probes.py`（它是「**验证探针清单**」
+的那个 ⇒ ⇒ 它自己失效 ⇒ ⇒ 「清单符合期望」就变成**假话** ⇒ ⇒ ⇒ 而它**没人验证**）。
+
+③ **做法**：① seam `CM_PROBES_CORPUS` / `CM_PROBES_GUARD`（默认行为**逐字不变**）
+⇒ ⇒ ② `run_corpus(corpus, guard, baseline)` 拆出「跑一遍」⇒ ⇒ ③ `--self-test`
+用**合成夹具**（假守卫按 env 决定退出码）⇒ ⇒ **四类违规**都必须报出来：
+**逃逸**（期望 red 而守卫不报）/ **误报**（期望 green 而守卫乱报）/ **基线口径漂了** /
+**坏清单**（必须 exit **2**，不是「干净」）。
+
+④ **实测**：四类**全部报得出来** ⇒ ⇒ ⇒ 这个跑批器**有牙齿** ⇒ ⇒ 已接进 CI
+⇒ ⇒ ⇒ ⇒ 「它有牙齿」**每次 push 都被复算**。
