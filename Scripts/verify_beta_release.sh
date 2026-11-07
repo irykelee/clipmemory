@@ -120,7 +120,7 @@ fi
 BASE_VERSION="${VERSION%%-beta.*}"
 case "$VERSION" in
     *-beta.*) ;;
-    *) echo "❌ 这不是 beta 版本号：$VERSION（应形如 2.10.0-beta.1）" >&2; exit 2 ;;
+    *) echo "❌ 这不是 beta 版本号：${VERSION}（应形如 2.10.0-beta.1）" >&2; exit 2 ;;
 esac
 
 echo "=== beta 发版验收：v${VERSION} ==="
