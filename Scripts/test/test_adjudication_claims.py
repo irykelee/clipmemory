@@ -12,7 +12,10 @@ import os
 import re
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# ⇒ ⇒ **seam**（只为自检能指向**合成树** ⇒ ⇒ 默认行为**逐字不变**）：
+#   CM_CLAIMS_REPO_ROOT — 换掉被检查的仓库根 ⇒ ⇒ 自检用它跑合成夹具
+REPO = os.environ.get("CM_CLAIMS_REPO_ROOT") or os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 TRIPLE = chr(34) * 3   # ⇒ ⇒ 不用字面量三引号（散文守卫的窄表述会命中）
 
@@ -168,9 +171,9 @@ CHECKS = [
 ]
 
 
-def _wordlist_has(rel: str, word: str) -> bool:
+def _wordlist_has(rel: str, word: str, root: str = None) -> bool:
     """词表**定义**里是否含该词（只看 NARROW_MARKERS / RULE_LABELS 的字面量块）。"""
-    text = open(os.path.join(REPO, rel), encoding="utf-8").read()
+    text = open(os.path.join(root or REPO, rel), encoding="utf-8").read()
     for name in ("NARROW_MARKERS", "RULE_LABELS"):
         m = re.search(rf"{name}[^=]*=\s*\((.*?)\)", text, re.S)
         if m and word in m.group(1):
@@ -178,9 +181,9 @@ def _wordlist_has(rel: str, word: str) -> bool:
     return False
 
 
-def _probe_creates(rel: str, anchor: str) -> bool:
+def _probe_creates(rel: str, anchor: str, root: str = None) -> bool:
     """只读探针函数体内是否出现 O_CREAT / createDirectory（副作用）。"""
-    text = open(os.path.join(REPO, rel), encoding="utf-8").read()
+    text = open(os.path.join(root or REPO, rel), encoding="utf-8").read()
     i = text.find(anchor)
     if i < 0:
         return True   # 探针函数找不到 ⇒ 判据不成立（保守）
@@ -191,14 +194,14 @@ def _probe_creates(rel: str, anchor: str) -> bool:
     return ("O_CREAT" in body) or ("createDirectory" in body)
 
 
-def _count(rel: str, needle: str) -> int:
-    text = open(os.path.join(REPO, rel), encoding="utf-8").read()
+def _count(rel: str, needle: str, root: str = None) -> int:
+    text = open(os.path.join(root or REPO, rel), encoding="utf-8").read()
     return len(re.findall(needle, text))
 
 
-def _in_branch(rel: str, needle: str) -> bool:
+def _in_branch(rel: str, needle: str, root: str = None) -> bool:
     """needle 所在行是否落在 `if [[ ! -f "$MANIFEST" ]]` 的 **else** 分支里。"""
-    text = open(os.path.join(REPO, rel), encoding="utf-8").read()
+    text = open(os.path.join(root or REPO, rel), encoding="utf-8").read()
     lines = text.split("\n")
     i = next((k for k, l in enumerate(lines) if needle in l), -1)
     if i < 0:
@@ -367,10 +370,18 @@ COVERAGE = {
     "需确认该语法在仓库其他脚本.*中的使用是否一致": ["P1-5"],
 }
 
-def main() -> int:
+def run_checks(root: str = None, only: str = None) -> list:
+    """跑全部判据 ⇒ ⇒ 返回问题列表。
+
+    ⇒ ⇒ `root`：被检查的仓库根（自检用**合成树** ⇒ ⇒ 默认 = 本仓库）
+    ⇒ ⇒ `only`：只跑某一条判据（自检**逐条**用 ⇒ ⇒ 避免别的判据掩盖它）
+    """
+    root = root or REPO
     bad = []
     for cid, rel, kind, needle, desc in CHECKS:
-        path = os.path.join(REPO, rel)
+        if only and cid != only:
+            continue
+        path = os.path.join(root, rel)
         if not os.path.exists(path):
             bad.append((cid, rel, desc, "文件不存在"))
             continue
@@ -402,7 +413,7 @@ def main() -> int:
             # ⇒ ⇒ ⇒ ⇒ 的演练实测抓到过这个洞）
             has_glob = False
             orphans = []
-            for path in sorted(_glob.glob(os.path.join(REPO, "Scripts", "test", "*.sh"))):
+            for path in sorted(_glob.glob(os.path.join(root, "Scripts", "test", "*.sh"))):
                 name = os.path.basename(path)
                 if name in ci_code or has_glob:
                     continue
@@ -421,26 +432,30 @@ def main() -> int:
                             f"「台账被截断/丢条目」现在由**覆盖表每个键都必须存在**保证"))
             continue
         if kind == "count":
-            n = _count(rel, needle)
+            n = _count(rel, needle, root)
             ok = n > 0
             if not ok:
                 bad.append((cid, rel, desc, f"计数为 0（{needle!r}）"))
             continue
         if kind == "branch":
-            ok = _in_branch(rel, needle)
+            ok = _in_branch(rel, needle, root)
             if not ok:
                 bad.append((cid, rel, desc, f"不在 else 分支里（{needle!r}）"))
             continue
         if kind == "notlist":
-            ok = not _wordlist_has(rel, needle)
+            ok = not _wordlist_has(rel, needle, root)
         elif kind == "probe_nocreate":
-            ok = not _probe_creates(rel, needle)
+            ok = not _probe_creates(rel, needle, root)
         else:
             hit = re.search(needle, text, re.M) is not None
             ok = hit if kind == "has" else (not hit)
         if not ok:
             bad.append((cid, rel, desc, f"判据不成立（{kind} {needle!r}）"))
     # ── 实跑判据 ───────────────────────────────────────────────────
+    # ⇒ ⇒ `only` 模式（自检逐条用）⇒ ⇒ **不跑**实跑判据 ⇒ ⇒ 它们要在**真仓库**里跑
+    # ⇒ ⇒ （合成树里没有那些脚本 ⇒ 跑了只会假红）⇒ ⇒ ⇒
+    if only:
+        return bad
     import subprocess
     import tempfile
     import shutil
@@ -457,14 +472,14 @@ def main() -> int:
             elif c == "@BASE@":
                 c = base
             real.append(c)
-        proc = subprocess.run(real, cwd=REPO, capture_output=True, text=True, timeout=300)
+        proc = subprocess.run(real, cwd=root, capture_output=True, text=True, timeout=300)
         if proc.returncode != want:
             bad.append((cid, "（实跑）", desc, f"期望 exit {want}，实得 {proc.returncode}"))
 
     # ── 覆盖表：无孤儿（每条台账结论都有判据），且判据编号都存在 ───────
     known = {c[0] for c in CHECKS} | {c[0] for c in RUNTIME}
     ledger_matches = set()
-    for line in open(os.path.join(REPO, "githooks/review-adjudication.jsonl"), encoding="utf-8"):
+    for line in open(os.path.join(root, "githooks/review-adjudication.jsonl"), encoding="utf-8"):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
@@ -477,6 +492,10 @@ def main() -> int:
         if missing:
             bad.append(("COV-" + key[:20], "（覆盖表）", f"{key} ⇒ {missing}", "覆盖表引用了不存在的判据编号"))
 
+    return bad
+
+
+def report(bad: list) -> int:
     print(f"静态判据 {len(CHECKS)} 条 + 实跑判据 {len(RUNTIME)} 条"
           f" + 覆盖表 {len(COVERAGE)} 条结论 ⇒ 不成立 {len(bad)} 条")
     for cid, rel, desc, why in bad:
@@ -484,6 +503,111 @@ def main() -> int:
     if not bad:
         print("✅ 全部判据在**当前**文件里仍然成立")
     return 1 if bad else 0
+
+
+# ── 自检：逐条**注入违规** ⇒ ⇒ 每条判据**必须报红** ──────────────────
+# ⇒ ⇒ 为什么需要：本脚本的 136 条判据**自己**也是「没人验证」的那一类
+# ⇒ ⇒ ⇒ ⇒ （第十四轮 e 实测：`test_release.sh` 的 set -e 陷阱因此**静默**活了很多轮）
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 「断言」≠「被断言过」⇒ ⇒ ⇒ ⇒ ⇒ 这里补上后半句。
+def self_test() -> int:
+    import shutil
+    import tempfile
+    problems = []
+    uncovered = []
+    checked = 0
+    for cid, rel, kind, needle, desc in CHECKS:
+        if kind in ("orphan_guard",):
+            # ⇒ ⇒ 这条要**仓库里的脚本清单**⇒ ⇒ 合成树里放一份最小清单即可
+            continue
+        work = tempfile.mkdtemp(prefix="cm-claims-st-")
+        try:
+            dst = os.path.join(work, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy(os.path.join(REPO, rel), dst)
+            ledger_dst = os.path.join(work, "githooks", "review-adjudication.jsonl")
+            os.makedirs(os.path.dirname(ledger_dst), exist_ok=True)
+            shutil.copy(os.path.join(REPO, "githooks", "review-adjudication.jsonl"),
+                        ledger_dst)
+            with open(dst, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+            # ⇒ ⇒ 注入违规 ⇒ ⇒ 让这条判据**必须**不成立
+            if kind == "has":
+                # ⇒ ⇒ ⚠️ 必须替换**全部**出现处 ⇒ ⇒ 只换第一处 ⇒ ⇒ 后面还有
+                # ⇒ ⇒ ⇒ ⇒ 判据**照样成立** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **注入无效**（自检实测抓到）
+                broken = re.sub(needle, "/* removed by self-test */", text)
+                if broken == text:
+                    broken = text + "\n/* self-test could not inject a violation */\n"
+            elif kind == "nothas":
+                broken = text + "\n" + needle + "\n"
+            elif kind == "num_match":
+                # ⇒ ⇒ 打在 **needle 的匹配处** ⇒ ⇒（替换全文第一个数字 ⇒ ⇒ 可能
+                # ⇒ ⇒ ⇒ 根本不在目标行上 ⇒ ⇒ ⇒ ⇒ 自检实测抓到过这个洞）
+                broken = re.sub(needle, lambda m: m.group(0).replace(
+                    re.search(r"\d+", m.group(0)).group(0), "999"), text, count=1)
+            elif kind == "no_pin":
+                broken = text + "\n**999** 条有效记录\n"
+            elif kind == "count":
+                broken = re.sub(needle, "", text)
+            elif kind == "branch":
+                broken = text.replace(needle, "/* moved out of branch */", 1)
+            elif kind == "notlist":
+                # ⇒ ⇒ 词要进**定义块**才有效 ⇒ ⇒（追加到文件末尾不算 ⇒ ⇒
+                # ⇒ ⇒ ⇒ 自检实测抓到过这个洞）⇒ ⇒ ⇒ ⇒
+                m = re.search(r"(NARROW_MARKERS|RULE_LABELS)\s*=\s*\(", text)
+                if not m:
+                    broken = text + "\n" + needle + "\n"
+                else:
+                    broken = text[:m.end()] + '"' + needle + '",\n' + text[m.end():]
+            elif kind == "probe_nocreate":
+                broken = text + "\n" + needle + "\n"
+            else:
+                broken = text
+            with open(dst, "w", encoding="utf-8") as fh:
+                fh.write(broken)
+            found = run_checks(work, only=cid)
+            # ⇒ ⇒ ⚠️ **区分两种「没红」**（自检实测逼出来的）：**注入无效** vs
+            # ⇒ ⇒ ⇒ ⇒ **判据真的没牙** ⇒ ⇒ 前者不是缺陷、后者才是 ⇒ ⇒ ⇒ ⇒
+            broken_text = broken
+            still = re.search(needle, broken_text, re.M) is not None
+            if kind in ("has", "count", "probe_nocreate"):
+                effective = not still          # 期望 needle **消失**
+            elif kind in ("nothas", "notlist"):
+                effective = still             # 期望 needle **出现**
+            elif kind == "branch":
+                # ⇒ ⇒ 判据的**本体**是「needle 必须在 else 分支里」⇒ ⇒
+                # ⇒ ⇒ ⇒ 注入后它**仍**在分支里 ⇒ ⇒ ⇒ ⇒ ⇒ **注入无效**（不是没牙）
+                effective = not _in_branch(rel, needle, work)
+            else:
+                effective = True              # num_match / no_pin：文本变了就算
+            if not effective:
+                uncovered.append(f"{cid}（{desc}）—— **注入无效**（这条判据**未被自检覆盖**）")
+                continue
+            checked += 1
+            if not any(entry[0] == cid for entry in found):
+                problems.append(
+                    f"自检失败：{cid}（{desc}）被注入违规后**仍然全绿**"
+                    f" ⇒ ⇒ 这条判据**没有牙齿**"
+                )
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    if problems:
+        print("❌ 自检失败：", file=sys.stderr)
+        for p in problems:
+            print("   - " + p, file=sys.stderr)
+        return 1
+    if uncovered:
+        print(f"ℹ️ 有 {len(uncovered)} 条静态判据**未被自检覆盖**（注入无效）：")
+        for u in uncovered:
+            print("   - " + u)
+    print(f"✅ 自检通过：{checked} 条静态判据**逐条注入违规 ⇒ 每条都红**"
+          f"（⇒ 判据**有牙齿**）")
+    return 0
+
+
+def main() -> int:
+    if "--self-test" in sys.argv[1:]:
+        return self_test()
+    return report(run_checks())
 
 
 if __name__ == "__main__":

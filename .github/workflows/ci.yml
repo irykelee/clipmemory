@@ -366,6 +366,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 Scripts/test/test_adjudication_claims.py
+          python3 Scripts/test/test_adjudication_claims.py --self-test
 
       # ID-BETA-0001: beta 通道的**接线守卫**。
       #
