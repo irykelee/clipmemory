@@ -6470,3 +6470,23 @@ source 的 `Scripts/package.sh:47`（以及 `release.sh` / `rollback-release.sh`
 **指向一个会造成回归的修法** ⇒ ⇒ ⇒ ⇒ ⇒ **没人跑 ⇒ 没人发现** ⇒ ⇒ ⇒ ⇒ ⇒
 ⇒ ⇒ ⇒ 「接进 CI」这步**本身**就抓到了它 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
 ⇒ **孤儿守卫不只是「漏测」，它是「错误建议的来源」。**
+
+##### 50.28.15 第十四轮 e：把 beta 的**端到端验收清单**机械化（`Scripts/verify_beta_release.sh`）
+
+① **动机**：`docs/BETA_CHANNEL.md` §六 的残余表里，「端到端真演练」一直是一句
+**待办** ⇒ ⇒ 而「待办」是最容易烂掉的东西 ⇒ ⇒ ⇒ ⇒ ⇒ 把它变成**一条命令**。
+
+② **它验四件**（每件都有**可复算的证据**）：
+| # | 断言 | 证据来源 |
+|---|---|---|
+| ① | appcast 里**确实有**这个 beta 条目，且带 `<sparkle:channel>beta</sparkle:channel>` | appcast XML |
+| ② | `<sparkle:version>` = 完整版本、`<sparkle:shortVersionString>` = base | appcast XML |
+| ③ | **稳定条目仍在**（beta 是新增不是替换） | appcast XML |
+| ④ | GitHub Release 标 **prerelease**，且 **Homebrew tap 没有**被指向 beta | GitHub API |
+
+⇒ ⇒ ④ 的后半条尤其关键：它把「**brew 用户不该拿到 beta**」这条**产品承诺**变成
+**可验证的** ⇒ ⇒ 而不只是文档里的一句话。
+
+③ **可测性**：appcast 的解析抽成**纯函数**（`beta_items` / `default_items`）⇒ ⇒
+`--self-test` 用**合成夹具**证明「beta 条目与稳定条目**分开**解析」⇒ ⇒ 已接进 CI。
+⇒ ⇒ 真发 beta 时，跑这一条命令 = 端到端演练**当场有据**。

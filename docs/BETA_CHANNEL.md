@@ -208,7 +208,7 @@ L26 的纪律：「只在异常路径执行的机制，ship 前必须**真实触
 | Sparkle 按 `allowedChannels` **过滤**条目 | 读 Sparkle 2 源码（`SUAppcastDriver.m:211-221`） | ⚠️ **读源码** |
 | 我们**给** Sparkle 的通道集合 | `UpdateBetaChannelTests`（7 条，纯函数两半都测） | ✅ 实跑 |
 | **版本比较** `2.10.0-beta.1 < 2.10.0` | 读 Sparkle 的比较器（`SUStandardVersionComparator.m:262-264`「多出来的部分是字符串 ⇒ 短者胜」） | ⚠️ **读源码** |
-| **端到端**：真 app + 真 beta 构建 + 真 appcast ⇒ 稳定用户看不到 | —— | ❌ **没做**（需要一次真实 beta 发版） |
+| **端到端**：真 app + 真 beta 构建 + 真 appcast ⇒ 稳定用户看不到 | —— | ❌ **没做**（需要一次真实 beta 发版）⇒ ⇒ **验收清单已机械化**：`bash Scripts/verify_beta_release.sh vX.Y.Z-beta.N` ⇒ ⇒ 一次跑完上面四项（appcast 有 beta 条目 / 版本分裂正确 / 稳定条目仍在 / Release 标了 prerelease / **tap 没被指向 beta**）⇒ ⇒ 它的 `--self-test` 已进 CI |
 | **UI 肉眼确认**：设置 → 更新 里那个开关长什么样、能不能点 | —— | ❌ **没做** ⇒ ⇒ 顺带说明：快照 golden **看不见**这个改动（`Form` 在测试渲染器里**不栅格化** ⇒ 4 个 sibling golden 是纯白）⇒ ⇒ ⇒ 所以「快照绿」**不等于**「UI 对」⇒ ⇒ 需要人打开看一眼 |
 
 ⇒ ⇒ **端到端那一行只能在第一次真发 beta 时补上** ⇒ ⇒ 那时要把结果回填到本节

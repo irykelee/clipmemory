@@ -875,6 +875,10 @@ jobs:
           python3 Scripts/test/test_generate_stringsdict.py
           python3 Scripts/test/test_sync_readme_dedupe.py
           python3 Scripts/test/test_sync_readme.py
+          # ⇒ ⇒ **第十四轮 e**：beta 发版的**端到端验收**脚本 ⇒ ⇒ 它的自检
+          # ⇒ ⇒ ⇒ （appcast 里 beta / 稳定条目的解析**可复算**）⇒ ⇒ 第一次真发
+          # ⇒ ⇒ ⇒ beta 时，它就是那份「验收清单」的一键版
+          bash Scripts/verify_beta_release.sh --self-test
 
       # ID-REVIEW-1033 (2026-10-25): the review gate's LOCAL ollama path —
       # endpoint discovery (githooks/ollama-endpoints.sh). The gate used to
