@@ -152,7 +152,27 @@ def resolve(locale: str, category: str, key: str, one: str, other: str) -> str:
 
 
 def generate_for_locale(locale: str, keys: list) -> str:
-    """Generate the .stringsdict XML body for one locale."""
+    """Generate the .stringsdict XML body for one locale.
+
+    ⚠️ **第十四轮 e（2026-11-07）**：复数机制已于 **2026-07-25 退役**
+    （机制与理由见 on-disk 文件里的说明）⇒ ⇒ 本函数现在**只产出「空壳」**：
+    一个**合法但为空**的 plist ⇒ ⇒ 目的**只是**让 Xcode 工程里的
+    `.stringsdict` 引用继续有效 ⇒ ⇒ 复数处理现在走
+    `L10n.plural(_:_:)` + `Localizable.strings` 里的 `<key>.one` 条目。
+
+    ⇒ ⇒ **为什么必须改**：旧版这里生成的是**已退役**的 `%#@count@` 机制 ⇒ ⇒
+    ⇒ ⇒ 谁跑它 ⇒ ⇒ 谁就把**退役的机制重新写回** 7 个语言 ⇒ ⇒ ⇒ 那是**回归**
+    ⇒ ⇒ ⇒ ⇒ 而仓库里那个孤儿测试还在说「on-disk 与生成器不同步 ⇒ 跑一下生成器」
+    ⇒ ⇒ ⇒ ⇒ **正好会把人引到回归上** ⇒ ⇒ ⇒ ⇒ ⇒ 所以两边一起改。
+
+    ⇒ ⇒ 旧的复数生成逻辑（KEYS / LOCALE_CATEGORIES / resolve）**保留未删**
+    ⇒ ⇒ ⇒ 用途：留作**机制复盘**的证据；**不再**被写出路径调用。
+    """
+    return SHELL_XML
+
+
+def _generate_plural_body(locale: str, keys: list) -> str:
+    """【已退役】复数机制的原生成逻辑 ⇒ ⇒ 只留作证据，不再被写出路径调用。"""
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
@@ -183,6 +203,24 @@ def generate_for_locale(locale: str, keys: list) -> str:
     lines.append("")
     return "\n".join(lines)
 
+
+
+# ⇒ ⇒ **退役空壳**的正文（7 个语言**逐字相同**）⇒ ⇒ 2026-07-25 起复数机制废弃
+# ⇒ ⇒ ⇒ `%#@count@` 机制有四个问题（共享的格式键、缺 value-type 键、系统 locale
+# ⇒ ⇒ ⇒ 查找无视应用内语言覆盖、缺键时渲染成 "(null)"）⇒ ⇒ ⇒ 现在复数走
+# ⇒ ⇒ ⇒ `L10n.plural(_:_:)` + `Localizable.strings` 的 `<key>.one` 条目。
+SHELL_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 2026-07-25: intentionally empty. The %#@count@ plural mechanism was
+     retired (ambiguous shared format key, missing value-type keys, system-
+     locale lookup ignoring the in-app language override, "(null)" rendering
+     for keys missing from the bundled copy). Plural handling now lives in
+     L10n.plural(_:_:) with "<key>.one" entries in Localizable.strings.
+     The file is kept (empty) so the Xcode project references stay valid. -->
+<plist version="1.0">
+<dict/>
+</plist>
+"""
 
 def main():
     repo_root = Path(__file__).parent.parent

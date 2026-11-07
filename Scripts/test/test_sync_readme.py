@@ -53,7 +53,8 @@ class TestGlossary(unittest.TestCase):
 
     def test_glossary_block_mentions_term(self):
         block = sync_readme.glossary_block("en")
-        self.assertIn("回收站 → Recycle Bin", block)
+        self.assertIn("回收站 → Trash", block)   # 第十四轮 e：app 的英文 UI 是 "Trash"
+        # ⇒ ⇒ 旧期望 "Recycle Bin" 是**退役**的旧术语 ⇒ ⇒ 改成与 L10n 一致
 
 
 class TestLlmConfig(unittest.TestCase):

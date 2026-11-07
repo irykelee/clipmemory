@@ -866,6 +866,15 @@ jobs:
         run: |
           set -euo pipefail
           bash Scripts/test/test_review_adjudicate.sh
+          # ⇒ ⇒ **第十四轮 e**：这 3 个也是**孤儿**（从来没在 CI 跑过）⇒ ⇒
+          # ⇒ ⇒ ⇒ 跑一遍才发现它们**早就坏了**：① stringsdict 那个还在断言
+          # ⇒ ⇒ ⇒ ⇒ 「on-disk 要与生成器一致」⇒ ⇒ ⇒ ⇒ 而跑生成器会把**已退役**的
+          # ⇒ ⇒ ⇒ ⇒ 复数机制写回 7 个语言 ⇒ ⇒ ⇒ ⇒ **回归**；② sync_readme 那个
+          # ⇒ ⇒ ⇒ ⇒ 期望的是**退役**的旧术语「Recycle Bin」⇒ ⇒ ⇒ ⇒ 而 app 用的是
+          # ⇒ ⇒ ⇒ ⇒ 「Trash」⇒ ⇒ ⇒ ⇒ 两边都已修（生成器只产出退役空壳 ⇒ ⇒ 地雷拆掉）
+          python3 Scripts/test/test_generate_stringsdict.py
+          python3 Scripts/test/test_sync_readme_dedupe.py
+          python3 Scripts/test/test_sync_readme.py
 
       # ID-REVIEW-1033 (2026-10-25): the review gate's LOCAL ollama path —
       # endpoint discovery (githooks/ollama-endpoints.sh). The gate used to

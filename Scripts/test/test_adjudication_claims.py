@@ -413,7 +413,14 @@ def run_checks(root: str = None, only: str = None) -> list:
             # ⇒ ⇒ ⇒ ⇒ 的演练实测抓到过这个洞）
             has_glob = False
             orphans = []
-            for path in sorted(_glob.glob(os.path.join(root, "Scripts", "test", "*.sh"))):
+            # ⇒ ⇒ ⚠️ **`.py` 也要查**（第十四轮 e 实测的盲区）⇒ ⇒ 只查 `.sh`
+            # ⇒ ⇒ ⇒ ⇒ 时 3 个 **Python** 孤儿（stringsdict / sync_readme ×2）
+            # ⇒ ⇒ ⇒ ⇒ **从来没在 CI 跑过** ⇒ ⇒ ⇒ ⇒ 而它们**早就坏了** ⇒ ⇒ ⇒ ⇒
+            # ⇒ ⇒ ⇒ ⇒ ⇒ 盲区本身就是要查的东西 ⇒ ⇒ ⇒ ⇒
+            scripts = []
+            for pattern in ("*.sh", "*.py"):
+                scripts.extend(_glob.glob(os.path.join(root, "Scripts", "test", pattern)))
+            for path in sorted(scripts):
                 name = os.path.basename(path)
                 if name in ci_code or has_glob:
                     continue
