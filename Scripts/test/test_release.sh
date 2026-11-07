@@ -85,9 +85,12 @@ expect_rc 0 "2.10.0-beta.1 with --beta is fine"    validate_release_channel "2.1
 expect_rc 1 "2.10.0-beta.1 WITHOUT --beta rejected" validate_release_channel "2.10.0-beta.1" 0
 expect_rc 1 "2.10.0 WITH --beta rejected"           validate_release_channel "2.10.0" 1
 # ⇒ ⇒ 拒绝时必须**说明原因**（人要知道怎么改）
-out=$(validate_release_channel "2.10.0-beta.1" 0 2>&1)
+# ⚠️ **必须** `|| true` ⇒ ⇒ 否则 `out=$(...)` 的退出码 = 被调命令的退出码
+# ⇒ ⇒ 而「被拒绝」正是**预期**（返回 1）⇒ ⇒ `set -e` 会让整个测试脚本**当场死掉**
+# ⇒ ⇒ ⇒ （第十四轮 e 实测踩到 ⇒ ⇒ 断言数从未被打印 ⇒ ⇒ ⇒ ⇒ 「60/60 绿」是**没验证过**的数字）
+out=$(validate_release_channel "2.10.0-beta.1" 0 2>&1 || true)
 [[ "$out" == *"--beta"* ]] && ok "拒绝原因里点名了 --beta" || bad "拒绝原因没说清：$out"
-out=$(validate_release_channel "2.10.0" 1 2>&1)
+out=$(validate_release_channel "2.10.0" 1 2>&1 || true)
 [[ "$out" == *"beta.N"* ]] && ok "拒绝原因里点名了版本格式" || bad "拒绝原因没说清：$out"
 
 echo "=== classify_commit / strip_commit_prefix ==="

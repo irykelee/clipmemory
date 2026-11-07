@@ -817,6 +817,33 @@ jobs:
       # wiring check (the gate must block on the EFFECTIVE verdict, not
       # on the model's raw conclusion line) — a regression there would
       # silently re-enable either "never blocks" or "always blocks".
+      # ID-BETA-0001 之十：**孤儿守卫清零** —— `Scripts/test/*.sh` 里**每一个**
+      # 都必须挂进 CI。
+      #
+      # ⇒ ⇒ 实测（2026-11-07）：6 个脚本**从来没在 CI 里跑过** ⇒ ⇒ 其中
+      # ⇒ ⇒ `test_release.sh` 的一个 `set -e` 陷阱（`out=$(…)` 在**预期拒绝**时
+      # ⇒ ⇒ 返回 1 ⇒ ⇒ 赋值语句的退出码也是 1 ⇒ ⇒ 整个脚本**当场死掉**）⇒ ⇒
+      # ⇒ ⇒ **没有任何自动关卡能抓到** ⇒ ⇒ 而 commit message 里已经写了
+      # ⇒ ⇒ ⇒ 「60/60 绿」—— 一个**没跑过**的数字（幸好数字碰巧对）。
+      # ⇒ ⇒ ⇒ ⇒ ⇒ 根因不是那条陷阱 ⇒ ⇒ 是「**守卫本身没人跑**」⇒ ⇒ 接进 CI。
+      - name: "Shell test scripts (all of Scripts/test/*.sh)"
+        run: |
+          set -euo pipefail
+          # ⚠️ **逐个点名**（不是 glob 循环）⇒ ⇒ 孤儿守卫才能精确核对
+          # ⇒ ⇒ ⇒ （glob 循环会让「守卫名单」变成一条**注释**也能满足的检查
+          # ⇒ ⇒ ⇒ ⇒ —— 第十四轮 e 的演练实测抓到过这个洞）
+          bash Scripts/test/test_package_cask_update.sh
+          bash Scripts/test/test_regenerate_snapshots.sh
+          bash Scripts/test/test_release.sh
+          bash Scripts/test/test_remove_appcast_item.sh
+          bash Scripts/test/test_rollback_release.sh
+          bash Scripts/test/test_update_appcast.sh
+          bash Scripts/test/test_cleanup_test_plists_periodic.sh
+          bash Scripts/test/test_ollama_endpoints.sh
+          bash Scripts/test/test_review_adjudicate.sh
+          bash Scripts/test/test_verify_production_canaries.sh --contract
+          bash Scripts/test/test_verify_production_canaries.sh --manifest
+
       # ID-BETA-0001: 清理脚本（**会删文件**）的自测。
       #
       # ⇒ ⇒ 它默认是**干跑**，只有 `--apply` 才删 ⇒ ⇒ 自测要证明

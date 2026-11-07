@@ -131,6 +131,11 @@ LEDGER_COUNTS_ROW = re.compile(
     r"\|\s*正对照\s*\|.*?\*\*(\d+)\*\*\s*处指针.*?"
     r"\*\*(\d+)\*\*\s*个节标题.*?\*\*(\d+)\*\*\s*处指向",
 )
+# ⚠️ 第十四轮 e（2026-11-07）：「验收表**在不在**」与「表里**有没有那三个数**」
+#   ⇒ ⇒ 拆成两个判据 ⇒ ⇒ 表**必须还在**（它是人类可读的验收记录）⇒ ⇒
+#   ⇒ 但那三个**手写数**从契约里**移除**（它们随台账改动而漂 ⇒ 本轮实测
+#   ⇒ ⇒ ⇒ 改一次台账就漂一次：313→314、306→307）⇒ ⇒ ⇒ ⇒ **守卫自己报实测值**。
+LEDGER_TABLE_ROW = re.compile(r"\|\s*正对照\s*\|")
 # ⚠️ 台账里**必须**写着本守卫自检的**断言数** ⇒ ⇒ 否则「自检用例数」这个
 #   数字是**手写**的 ⇒ ⇒ 没人核对 ⇒ ⇒ 核验员 P2-1 实测：台账写「8 类坏指针
 #   + 3 类台账数字问题」，守卫自报 7/2 ⇒ ⇒ 三个数字**都数不上** ⇒ ⇒ ⇒
@@ -313,6 +318,13 @@ def check_ledger_counts(lines: list[str], checked: int, heading_count: int,
         if found:
             matches.append((lineno, found))
     if not matches:
+        # ⇒ ⇒ **第十四轮 e**：表**在**、但那三个数**已被移除** ⇒ ⇒ ⇒ 这是**合法**的
+        # ⇒ ⇒ ⇒ ⇒（数字不再当契约 ⇒ ⇒ 表里只留人类可读的说明）⇒ ⇒ ⇒ ⇒ 不报红。
+        table_rows = [k for k, line in enumerate(lines, 1) if LEDGER_TABLE_ROW.search(line)]
+        if table_rows and not require_table:
+            return problems
+        if table_rows and require_table:
+            return problems
         if require_table:
             problems.append(
                 f"{LEDGER_REL}: 台账里**找不到**「正对照」验收表 ⇒ ⇒ "
@@ -339,15 +351,17 @@ def check_ledger_counts(lines: list[str], checked: int, heading_count: int,
     stated_headings = int(found.group(2))
     stated_skipped = int(found.group(3))
     actual = (checked, heading_count, skipped_count)
-    stated = (stated_pointers, stated_headings, stated_skipped)
-    if stated != actual:
-        problems.append(
-            f"{LEDGER_REL}:{lineno}: 验收表里写的数字（指针 **{stated_pointers}** / "
-            f"节标题 **{stated_headings}** / 跳过 **{stated_skipped}**）"
-            f"与**实测**（指针 **{actual[0]}** / 节标题 **{actual[1]}** / "
-            f"跳过 **{actual[2]}**）**不一致** ⇒ ⇒ 台账里的数字**已经漂了**"
-            f" ⇒ ⇒ 刷成实测值（否则下一个读它的人会读到假数字）"
-        )
+    # ⇒ ⇒ **第十四轮 e**：那三个数**不再**是「必须等于实测」的契约 ⇒ ⇒
+    # ⇒ ⇒ 它们是**手写**的 ⇒ ⇒ 每次改台账就漂 ⇒ ⇒ ⇒ ⇒ 改成**不许再出现**
+    # ⇒ ⇒ ⇒ ⇒ （与散文守卫的「扫描文件数」、adjudication 的「有效记录数」同款）
+    problems.append(
+        f"{LEDGER_REL}:{lineno}: 验收表里还钉着三个**手写数**（指针 "
+        f"**{stated_pointers}** / 节标题 **{stated_headings}** / 跳过 "
+        f"**{stated_skipped}**）⇒ ⇒ 这三个数**已废弃** ⇒ ⇒ 它们是**手写的**"
+        f" ⇒ ⇒ 每次改台账就漂一次 ⇒ ⇒ ⇒ ⇒ **请删掉它们** ⇒ ⇒ 实测由守卫"
+        f"**自报**（指针 **{actual[0]}** / 节标题 **{actual[1]}** / "
+        f"跳过 **{actual[2]}**）⇒ ⇒ ⇒ 「少扫了」改由**独立枚举交叉核对**保证"
+    )
     return problems
 
 
@@ -455,10 +469,24 @@ def self_test() -> tuple[list[str], int]:
     )
     assertions += 1
     found, _, _, _ = judge(drifted.split("\n"), require_counts_table=False)
-    if not any("已经漂了" in problem for problem in found):
+    if not any("已废弃" in problem for problem in found):
         problems.append(
-            "自检失败：把验收表里的数字改成 999 之后**仍然全绿**"
-            " ⇒ ⇒ 「台账里的数字漂了没人报红」这个洞**没堵上**"
+            "自检失败：验收表里**重新钉上**那三个手写数之后**仍然全绿**"
+            " ⇒ ⇒ 「手写数字当契约」这个洞**没堵上**"
+        )
+    # ⚠️ **第十四轮 e**：表在、但那三个数**已移除** ⇒ ⇒ **必须全绿**
+    #   ⇒ ⇒ ⇒ ⇒ （数字不再当契约 ⇒ ⇒ 改台账不该再让人去刷数）
+    without_numbers = SYNTHETIC_LEDGER + (
+        "\n| 项 | 结果 |\n|---|---|\n"
+        "| 正对照 | ✅ exit 0（指针全部指向真实且唯一的节；节标题去重数；"
+        "跳过的指针已逐条列出） |\n"
+    )
+    assertions += 1
+    found, _, _, _ = judge(without_numbers.split("\n"), require_counts_table=False)
+    if found:
+        problems.append(
+            "自检失败：验收表里**没有**那三个手写数时反而报红 ⇒ ⇒ "
+            "判据过严（数字已不是契约）⇒ ⇒ " + found[0]
         )
     # ⚠️ **验收表不存在** ⇒ 主路径必须报红（否则「核对机制」可被静默关闭）。
     assertions += 1

@@ -115,9 +115,10 @@ CHECKS = [
     ("R143", "Scripts/mutation/prose_guard_mutants.py", "nothas", r"EQUIVALENT_MUTATIONS\s*[:=]", "变异集里**没有**等价豁免通道（只在注释里被提及）"),
     ("R147", "Scripts/mutation/prose_guard_mutants.py", "has", r"EXPECTED_MUTATION_COUNT\s*=\s*24", "变异集是 24 条（无等价豁免）"),
     ("R79", "Scripts/test/test_verify_production_canaries.sh", "has", r'if \[\[ "\$MODE" != "manifest" \]\]', "contract 段与清单段互斥（contract 不看清单）"),
-    ("R149", "docs/skips-ledger.md", "num_match", r"\*\*(\d+)\*\* 条静态判据", "台账写的「静态判据数」== 本脚本自报数"),
-    ("R150", "docs/skips-ledger.md", "num_match", r"\*\*(\d+)\*\* 条实跑判据", "台账写的「实跑判据数」== 本脚本自报数"),
-    ("R151", "docs/skips-ledger.md", "num_match", r"\*\*(\d+)\*\* 键覆盖表", "台账写的「覆盖表键数」== 本脚本自报数"),
+    ("R149", "docs/skips-ledger.md", "num_match", r"重验检查表静态判据数[：:]\s*\*\*(\d+)\*\*", "台账**当前状态**行写的「静态判据数」== 本脚本自报数"),
+    ("R150", "docs/skips-ledger.md", "num_match", r"重验检查表实跑判据数[：:]\s*\*\*(\d+)\*\*", "台账**当前状态**行写的「实跑判据数」== 本脚本自报数"),
+    ("R151", "docs/skips-ledger.md", "num_match", r"重验检查表覆盖表键数[：:]\s*\*\*(\d+)\*\*", "台账**当前状态**行写的「覆盖表键数」== 本脚本自报数"),
+    ("R152", ".github/workflows/ci.yml", "orphan_guard", r"Scripts/test/\*\.sh", "**每个** Scripts/test/*.sh 都必须挂进 CI（否则它写的断言数没人能验证）"),
     ("R145", "docs/skips-ledger.md", "no_pin", r"\*\*(\d+)\*\* 条有效记录", "台账里**不许**再钉「有效记录数」（手写契约 ⇒ 每入账一次就漂一次）⇒ 改由「覆盖表的每个键都必须存在于台账」保证"),
     ("P2-30", ".github/workflows/ci.yml", "has", r"bash Scripts/test/test_ollama_endpoints\.sh", "CI 调的是脚本本身，不涉及 discover 签名"),
     ("P2-40", "docs/skips-ledger.md", "has", r"2026-10-2[0-9]", "台账里的日期与本仓库时间线一致（不是未来日期）"),
@@ -383,6 +384,33 @@ def main() -> int:
             actual = {"R149": len(CHECKS), "R150": len(RUNTIME), "R151": len(COVERAGE)}[cid]
             if int(m.group(1)) != actual:
                 bad.append((cid, rel, desc, f"台账写 {m.group(1)}，本脚本自报 {actual}"))
+            continue
+        if kind == "orphan_guard":
+            # ⇒ ⇒ 「孤儿守卫」= 从没在 CI 里跑过的脚本 ⇒ ⇒ 它自己报的断言数
+            # ⇒ ⇒ **没人能验证** ⇒ ⇒ 第十四轮 e 实测：`test_release.sh` 的
+            # ⇒ ⇒ 一个 `set -e` 陷阱因此**静默**活了很多轮 ⇒ ⇒ 而 commit message
+            # ⇒ ⇒ 里还写着「60/60 绿」（一个没跑过的数字）。
+            import glob as _glob
+            # ⇒ ⇒ ⚠️ 只看**非注释行** ⇒ ⇒ 否则 CI 里一句「`Scripts/test/*.sh`
+            # ⇒ ⇒ ⇒ ⇒ 都要跑」的**注释**就能骗过这条判据（**第十四轮 e 的演练
+            # ⇒ ⇒ ⇒ ⇒ 实测抓到**：注释里提到 glob ⇒ ⇒ 判据以为接了线 ⇒ ⇒ ⇒ ⇒
+            # ⇒ ⇒ ⇒ ⇒ 而实际是孤儿）⇒ ⇒ ⇒ ⇒ ⇒
+            ci_code = "\n".join(line for line in text.split("\n")
+                                if not line.lstrip().startswith("#"))
+            # ⇒ ⇒ **不认 glob 循环** ⇒ ⇒ 只认**按名字点名** ⇒ ⇒
+            # ⇒ ⇒ （glob 循环 ⇒ ⇒ 「名单」变成一句注释也能满足 ⇒ ⇒ 第十四轮 e
+            # ⇒ ⇒ ⇒ ⇒ 的演练实测抓到过这个洞）
+            has_glob = False
+            orphans = []
+            for path in sorted(_glob.glob(os.path.join(REPO, "Scripts", "test", "*.sh"))):
+                name = os.path.basename(path)
+                if name in ci_code or has_glob:
+                    continue
+                orphans.append(name)
+            if orphans:
+                bad.append((cid, rel, desc,
+                            f"这些守卫**从来没在 CI 里跑过**：{orphans} ⇒ ⇒ "
+                            f"它们自己报的断言数**没人能验证** ⇒ ⇒ 接进 CI"))
             continue
         if kind == "no_pin":
             m = re.search(needle, text)
