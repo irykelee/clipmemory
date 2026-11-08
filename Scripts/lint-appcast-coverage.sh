@@ -54,6 +54,35 @@ cd "$ROOT"
 APPCAST="$ROOT/appcast.xml"
 WHITELIST_MIN_VERSION="v2.5.0"  # appcast-rollout boundary
 
+# ID-CI-0024 (2026-11-08)：版本**必须**按数值比，不能按字符串比。
+#
+# ⇒ ⇒ 原来的 `[[ "v${tag}" < "${WHITELIST_MIN_VERSION}" ]]` 是**字典序** ⇒ ⇒
+# ⇒ ⇒ ⇒ "v2.10.0" 的第二个字符段是 "1" ⇒ ⇒ ⇒ ⇒ 字典序里 "1" < "5" ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ **v2.10.0 会被当成「早于 rollout 边界」而跳过** ⇒ ⇒ ⇒ ⇒ ⇒ 下一个
+# ⇒ ⇒ ⇒ ⇒ 正式版（v2.10.0）一旦打 tag，**这个 lint 就不再检查它** ⇒ ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ 覆盖率**静默丢失**。beta 这次是它的**先兆**（见下）。
+version_ge() {
+  # version_ge <a> <b> ⇒ 真 ⇔ a >= b（数值；忽略 -beta.N 后缀）
+  local v1="${1#v}" v2="${2#v}"
+  v1="${v1%%-*}"; v2="${v2%%-*}"
+  local oldifs="$IFS"
+  IFS='.'
+  local -a A=($v1)
+  local -a B=($v2)
+  IFS="$oldifs"
+  local n=${#A[@]}
+  [[ ${#B[@]} -gt $n ]] && n=${#B[@]}
+  local i=0 x y
+  for ((i = 0; i < n; i++)); do
+    x="${A[$i]:-0}"; y="${B[$i]:-0}"
+    [[ "$x" =~ ^[0-9]+$ ]] || x=0
+    [[ "$y" =~ ^[0-9]+$ ]] || y=0
+    ((10#$x > 10#$y)) && return 0
+    ((10#$x < 10#$y)) && return 1
+  done
+  return 0
+}
+
 # ID-CRASH-0013 (2026-09-28): explicit per-tag whitelist.
 # Update this list when an intentionally-missing tag gets
 # back-filled into appcast.xml (the fix should be: remove the
@@ -73,14 +102,26 @@ INTENTIONAL_WHITELIST=(
 # （bash 4.4 才修）⇒ ⇒ 所以下面所有数组展开都写成 "${arr[@]+"${arr[@]}"}"。
 declare -a git_tags_stripped=() appcast_versions_stripped=()
 
+# ID-CI-0024 (2026-11-08)：两条正则都**必须认得 beta 后缀**。
+# ⇒ ⇒ 原来 appcast URL 的正则是 `releases/download/v[0-9]+\.[0-9]+(\.[0-9]+)?`
+# ⇒ ⇒ ⇒ 它在 `releases/download/v2.10.0-beta.1/…` 上**只匹配到 v2.10.0**
+# ⇒ ⇒ ⇒ ⇒ 截断了 `-beta.1` ⇒ ⇒ ⇒ ⇒ appcast 里凭空多出一个**不存在的**
+# ⇒ ⇒ ⇒ ⇒ 「v2.10.0 条目」⇒ ⇒ ⇒ ⇒ 而仓库里没有 v2.10.0 这个 tag ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 报「appcast.xml item v2.10.0 has no matching git tag」
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **假阳性**（beta 条目本身完全正确）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 本轮 CI 的 lint-ids 就是被它弄红的。
+# ⇒ ⇒ ⇒ ⇒ 而 tag 侧的正则**不认** beta ⇒ ⇒ ⇒ ⇒ beta tag 被整体排除 ⇒ ⇒ ⇒ ⇒
+# ⇒ ⇒ ⇒ ⇒ 覆盖也被悄悄丢掉了一格。
+VERSION_PATTERN='[0-9]+\.[0-9]+(\.[0-9]+)?(-beta\.[0-9]+)?'
+
 while IFS= read -r _tag; do
   git_tags_stripped+=("${_tag#v}")
-done < <(git tag --list | grep -E '^v[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -u | sed 's/^v//' | sort -u)
+done < <(git tag --list | grep -E "^v${VERSION_PATTERN}\$" | sort -u | sed 's/^v//' | sort -u)
 
 while IFS= read -r _ver; do
   appcast_versions_stripped+=("${_ver#v}")
 done < <(
-  grep -oE 'releases/download/v[0-9]+\.[0-9]+(\.[0-9]+)?' "$APPCAST" \
+  grep -oE "releases/download/v${VERSION_PATTERN}" "$APPCAST" \
     | sed 's|releases/download/||' \
     | sort -u \
     | sed 's/^v//' \
@@ -92,7 +133,8 @@ declare -a violation_msgs=()
 
 for tag in "${git_tags_stripped[@]+"${git_tags_stripped[@]}"}"; do
   # Skip pre-rollout tags (v2.5.0 was the rollout boundary)
-  if [[ "v${tag}" < "${WHITELIST_MIN_VERSION}" ]]; then
+  # ⚠️ 必须用**数值**比较（ID-CI-0024）—— 字典序会把 v2.10.0 判成 < v2.5.0
+  if ! version_ge "v${tag}" "${WHITELIST_MIN_VERSION}"; then
     continue
   fi
   # Skip explicitly whitelisted tags (with documented justification)
