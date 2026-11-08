@@ -6,6 +6,9 @@
 > `Scripts/release.sh --beta` 的**自动**发版路径（`release.yml` 的 beta 分支、GitHub
 > Release 标 prerelease、**不动 Homebrew tap**）。
 > ⇒ ⇒ 用法：`Scripts/release.sh vX.Y.Z-beta.N --beta`
+> ⇒ ⇒ **Phase 3 已完成**（2026-11-08）：**第一个 beta 已真发**（`v2.10.0-beta.1`）
+> ⇒ ⇒ ⇒ 发布后验收**机械化**（`bash Scripts/verify_beta_release.sh vX.Y.Z-beta.N`
+> ⇒ ⇒ ⇒ ⇒ 一次核对 5 件事）⇒ ⇒ ⇒ 结果见 §六。
 
 ---
 
