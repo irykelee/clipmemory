@@ -61,9 +61,21 @@ final class ReleaseReadinessTests: XCTestCase {
             return ("", "")
         }
         let projectVersion = String(contents[projectCaptureRange])
-        XCTAssertEqual(marketingVersion, projectVersion,
-                       "project.yml MARKETING_VERSION and CURRENT_PROJECT_VERSION must match",
-                       file: file, line: line)
+        // ID-BETA-0001 (2026-11-08): a **beta** build deliberately has two
+        // different versions — `MARKETING_VERSION` is the user-facing one
+        // (X.Y.Z) and `CURRENT_PROJECT_VERSION` carries the beta marker
+        // (X.Y.Z-beta.N) because **Sparkle compares the build number**.
+        // ⇒ ⇒ ⇒ the invariant is therefore: they match, **or** the project
+        // version is a beta whose base equals the marketing version.
+        if marketingVersion != projectVersion {
+            let base = projectVersion.split(separator: "-").first.map(String.init) ?? ""
+            let isBeta = projectVersion.contains("-beta.")
+            XCTAssertTrue(isBeta && base == marketingVersion,
+                          "project.yml MARKETING_VERSION (\(marketingVersion)) and "
+                          + "CURRENT_PROJECT_VERSION (\(projectVersion)) must match "
+                          + "— or the latter must be a beta whose base is the former",
+                          file: file, line: line)
+        }
         return (marketingVersion, projectVersion)
     }
 
@@ -83,13 +95,19 @@ final class ReleaseReadinessTests: XCTestCase {
     func testF1_projectPbxproj_allFourSectionsMatchProjectYml() throws {
         let versions = try readProjectYMLVersions()
         let expectedVersion = versions.marketing
+        let expectedBuildVersion = versions.project
         let url = ReleaseReadinessTests.repoRoot
             .appendingPathComponent("ClipMemory.xcodeproj/project.pbxproj")
         let contents = try String(contentsOf: url, encoding: .utf8)
 
         // Match both forms in the same regex so we count occurrences
         // regardless of which identifier precedes the version literal.
-        let pattern = #"(?:MARKETING_VERSION|CURRENT_PROJECT_VERSION)\s*=\s*([0-9][^;\n]*)"#
+        // ⇒ ⇒ ⚠️ **beta 的版本号带 `-`** ⇒ ⇒ xcodegen 会把它**加引号**
+        // ⇒ ⇒ ⇒ ⇒ (`CURRENT_PROJECT_VERSION = "2.10.0-beta.1";`) ⇒ ⇒ ⇒ ⇒
+        // ⇒ ⇒ ⇒ ⇒ 所以捕获组必须允许**可选的引号** ⇒ ⇒ ⇒ ⇒ ⇒
+        // ⇒ ⇒ ⇒ ⇒ 否则 beta 下这个正则**只**匹配到 2 个不带引号的
+        // ⇒ ⇒ ⇒ ⇒ ⇒ MARKETING 行（ID-BETA-0001 发布前被 preflight 抓到）
+        let pattern = #"(?:MARKETING_VERSION|CURRENT_PROJECT_VERSION)\s*=\s*"?([0-9][^";\n]*)"?"#
         let regex = try NSRegularExpression(pattern: pattern)
         let range = NSRange(contents.startIndex..<contents.endIndex, in: contents)
         let matches = regex.matches(in: contents, range: range)
@@ -107,9 +125,13 @@ final class ReleaseReadinessTests: XCTestCase {
             }
             let value = String(contents[captureRange])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            XCTAssertEqual(value, expectedVersion,
-                           "A pbxproj version literal is not \(expectedVersion)",
-                           file: #filePath, line: #line)
+            // ⇒ ⇒ beta 下 pbxproj 里**两个**字面量都合法：MARKETING（用户可见）
+            // ⇒ ⇒ 与 CURRENT（Sparkle 比较用）⇒ ⇒ ⇒ 正式版下两者相同 ⇒ ⇒ ⇒
+            // ⇒ ⇒ ⇒ 这个断言**同时**覆盖两种情形。
+            XCTAssertTrue(value == expectedVersion || value == expectedBuildVersion,
+                          "A pbxproj version literal is neither \(expectedVersion) "
+                          + "nor \(expectedBuildVersion)",
+                          file: #filePath, line: #line)
         }
     }
 
