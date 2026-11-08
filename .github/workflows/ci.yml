@@ -74,6 +74,20 @@ jobs:
           # READMEs for the current dev version (sync_readme.py
           # strip_extra_headings() regression guard).
           VERSION=$(grep -E '^    MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          BUILD_VERSION=$(grep -E '^    CURRENT_PROJECT_VERSION:' project.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          # ⇒ ⇒ **ID-BETA-0001**（2026-11-08）：beta 版的 `MARKETING_VERSION` 与
+          # ⇒ ⇒ `CURRENT_PROJECT_VERSION` **故意不同** ⇒ ⇒ 而且 beta **故意不写**
+          # ⇒ ⇒ 7 个 README 的 changelog（预发布不进正式 changelog）⇒ ⇒ ⇒ ⇒
+          # ⇒ ⇒ ⇒ ⇒ 所以「每个 README 必须**恰好 1 条** `### vX.Y.Z`」这条断言
+          # ⇒ ⇒ ⇒ ⇒ ⇒ **在 beta 下本就不成立** ⇒ ⇒ ⇒ ⇒ ⇒ 只保留「**不得重复**」。
+          # ⇒ ⇒ ⇒ ⇒ ⇒ 正式版（两值相同）⇒ ⇒ ⇒ ⇒ 行为与从前**逐字相同**。
+          if [[ "$VERSION" == "$BUILD_VERSION" ]]; then
+            EXPECT_README_HEADING=1
+            README_HEADING_RULE="expected exactly 1"
+          else
+            EXPECT_README_HEADING=0
+            README_HEADING_RULE="beta 版：README changelog 故意不写 ⇒ 只需无重复"
+          fi
           for f in README.md docs/lang/README_EN.md docs/lang/README_ZH-HANT.md docs/lang/README_JA.md docs/lang/README_KO.md docs/lang/README_ES.md docs/lang/README_PT.md; do
             # NEW-7 (2026-08-03 audit, ID-MISC-0008): `grep -c` on a
             # zero-match input returns exit 1 AND prints "0", so the old
@@ -89,11 +103,15 @@ jobs:
             # duplicates (>1) AND absence (<1).
             COUNT=$(grep -c "^### v${VERSION} (" "$f" 2>/dev/null || true)
             COUNT=${COUNT:-0}
-            if [[ "$COUNT" -ne 1 ]]; then
-              fail "${f} has ${COUNT} '### v${VERSION} (' headings (expected exactly 1, DOC-0002)"
+            if [[ "$EXPECT_README_HEADING" -eq 1 ]]; then
+              if [[ "$COUNT" -ne 1 ]]; then
+                fail "${f} has ${COUNT} '### v${VERSION} (' headings (${README_HEADING_RULE}, DOC-0002)"
+              fi
+            elif [[ "$COUNT" -gt 1 ]]; then
+              fail "${f} has ${COUNT} '### v${VERSION} (' headings（${README_HEADING_RULE}，DOC-0002）"
             fi
           done
-          echo "✅ exactly one v${VERSION} README heading per locale"
+          echo "✅ v${VERSION} README heading 检查通过（${README_HEADING_RULE}）"
 
           # ID-L10N-0024 (2026-08-03 audit, NEW-4): enforce that every
           # locale's v${VERSION} section has the same `###` heading
@@ -116,46 +134,22 @@ jobs:
           # never any other language's. Mirror of sync_readme.py:50
           # GLOSSARY["回收站"] (the canonical map). Covers all 7 langs
           # (REL-24 2026-08-03 audit F-4 — previous gate was 3 files only).
-          declare -A EXPECTED_TRASH=(
-            ["README.md"]="回收站"
-            ["docs/lang/README_ZH-HANT.md"]="垃圾桶"
-            ["docs/lang/README_EN.md"]="Trash"
-            ["docs/lang/README_JA.md"]="ごみ箱"
-            ["docs/lang/README_KO.md"]="휴지통"
-            ["docs/lang/README_ES.md"]="Papelera"
-            ["docs/lang/README_PT.md"]="Lixeira"
-          )
-          # All Trash terms across locales. CJK terms use -F (fixed string);
-          # Western terms use ERE (^|[^A-Za-z0-9_.])Term([^A-Za-z0-9_.]|$)
-          # — proxy for lookbehind/lookahead that avoids matching inside
-          # identifiers like TrashStore or i18n key paths like trash.json
-          # (without needing GNU grep's -P, which stock macOS grep lacks).
-          ALL_TRASH_CJK=("回收站" "垃圾桶" "ごみ箱" "휴지통")
-          ALL_TRASH_WESTERN=("Trash" "Papelera" "Lixeira")
-          for file in "${!EXPECTED_TRASH[@]}"; do
-            expected="${EXPECTED_TRASH[$file]}"
-            for term in "${ALL_TRASH_CJK[@]}"; do
-              if [[ "$term" != "$expected" ]] && grep -qF "$term" "$file" 2>/dev/null; then
-                fail "$file contains foreign Trash term '$term' (expected '$expected' for this locale)"
-              fi
-            done
-            for term in "${ALL_TRASH_WESTERN[@]}"; do
-              if [[ "$term" != "$expected" ]]; then
-                PATTERN="(^|[^A-Za-z0-9_.])${term}([^A-Za-z0-9_.]|$)"
-                if grep -qiE "$PATTERN" "$file" 2>/dev/null; then
-                  fail "$file contains foreign Trash term '$term' as standalone word (expected '$expected')"
-                fi
-              fi
-            done
-          done
-          # Legacy "Recycle Bin" annotation (DOC-0003 root-cause fix) must not
-          # appear in any README regardless of locale.
-          for file in "${!EXPECTED_TRASH[@]}"; do
-            if grep -qiF "Recycle Bin" "$file" 2>/dev/null; then
-              fail "$file contains legacy 'Recycle Bin' annotation (should use local Trash term)"
-            fi
-          done
-          echo "✅ Trash glossary consistent across all 7 locales (zh-Hans/zh-Hant/en/ja/ko/es/pt)"
+          #
+          # ID-CI-0021 (2026-11-08): 这段以前是**内联**在这里的，用
+          # `declare -A EXPECTED_TRASH=(["README.md"]="回收站" …)`。本台阶跑在
+          # **macos-latest** ⇒ 系统的 `/bin/bash` 是 **3.2** ⇒ **没有关联数组**
+          # ⇒ bash 3.2 把 `["README.md"]` 当**算术表达式**解析 ⇒ 语法错误 ⇒
+          # **7 个元素被静默丢弃**（`declare` 整体仍返回 0 ⇒ `set -e` 抓不到）
+          # ⇒ 数组为空 ⇒ 两个 `for file in "${!EXPECTED_TRASH[@]}"` 循环
+          # **一次都不跑** ⇒ 照样打印「✅ Trash glossary consistent across all
+          # 7 locales」⇒ ⇒ **假绿**：查了 0 个文件却声称查了 7 个。
+          # ⇒ ⇒ 已移进 Scripts/lint-readme-glossary.sh（bash 3.2 兼容 +
+          # 「实际查了几个」不变量 + 9 条合成语料自检）。
+          # ⚠️ 该脚本刚接管时就**立刻抓到一条真违规**：README.md 里混进了
+          # 英文 "Trash tab"（中文 README 不该出现别国语言的词）⇒ 已修。
+          bash Scripts/lint-readme-glossary.sh
+          # 自检跑在 /bin/bash（macOS 上就是 3.2）⇒ 与本台阶的真实 shell 一致
+          bash Scripts/lint-readme-glossary.sh --self-test
 
           if [[ "$FAILS" -gt 0 ]]; then
             echo "❌ README hygiene checks FAILED."
