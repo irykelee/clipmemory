@@ -105,8 +105,11 @@ For each of: `README.md` (zh-Hans), `docs/lang/README_{EN,ZH-HANT,JA,KO,ES,PT}.m
 - [ ] GitHub Release 标 **prerelease**（流水线**自动**标）⇒ ⇒ 不被 "Latest release" 指向
 - [ ] **Homebrew tap 不更新**（流水线**自动**跳过）⇒ ⇒ brew 用户拿不到 beta
 - [ ] 回滚：按 `<sparkle:version>` 删条目 ⇒ `remove_appcast_item` **已兼容**
-- [ ] ⚠️ **beta 的端到端真演练**（第一次真发 beta 时做）：稳定用户的 app 里
+- [x] ⚠️ **beta 的端到端真演练**（第一次真发 beta 时做）：稳定用户的 app 里
       **看不到** beta 条目 ⇒ 勾上 beta 后**能看到** ⇒ 结果回填 `docs/BETA_CHANNEL.md` §六
+      ⇒ ⇒ **2026-11-08 已做**（`v2.10.0-beta.1`）⇒ ⇒ 机械化验收脚本
+      ⇒ ⇒ `bash Scripts/verify_beta_release.sh v2.10.0-beta.1` ⇒ ⇒ **7/7 全过**
+      ⇒ ⇒ ⇒ ⚠️ **仍缺 UI 肉眼那一环**（机制侧已验，**没人**在真 app 里勾过开关）
 
 ---
 
