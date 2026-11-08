@@ -836,6 +836,23 @@ jobs:
           chmod +x Scripts/lint-appcast-coverage.sh
           ./Scripts/lint-appcast-coverage.sh
 
+      # ID-CI-0021 (2026-11-08): bash 3.2 兼容性守卫。
+      #
+      # ⇒ ⇒ CI 的 **macos-latest** 台阶用的系统 `/bin/bash` 是 **3.2**；
+      # ⇒ ⇒ **ubuntu 台阶是 bash 5** ⇒ ⇒ ubuntu 上永远绿 ⇒ ⇒ 只有 macOS
+      # ⇒ ⇒ 上才炸 ⇒ ⇒ 所以必须在**代码层面**挡住。
+      # ⇒ ⇒ 真实代价（本轮实测）：ci.yml 的 README 词汇表检查用
+      # ⇒ ⇒ `declare -A` ⇒ bash 3.2 上**静默丢弃 7 个元素** ⇒ 检查循环
+      # ⇒ ⇒ **一次都不跑** ⇒ 打印「✅ 一致」却**一个文件都没查**（假绿）；
+      # ⇒ ⇒ 同轮 `Scripts/lint-appcast-coverage.sh` 用了 `mapfile`（bash 4.0+）
+      # ⇒ ⇒ 在 macOS 上**当场死掉**，而它的头部注释写着「portable form is
+      # ⇒ ⇒ identical」⇒ ⇒ **注释是假的**。
+      - name: "bash 3.2 compatibility guard (ID-CI-0021)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_bash32_compat.py .
+          python3 Scripts/test/test_bash32_compat.py . --self-test
+
       # ID-REVIEW-1029 (2026-10-25): the review gate's OWN gate — the
       # adjudication layer that decides whether a model-reported P0/P1
       # blocks a push. It is the only thing standing between the 9B

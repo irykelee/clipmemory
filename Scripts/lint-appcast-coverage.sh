@@ -35,11 +35,17 @@
 # Usage: Scripts/lint-appcast-coverage.sh
 # Wired into ci.yml lint-ids job (per ID-CRASH-0013).
 #
-# bash compat: stock macOS /bin/bash 3.2 lacks `declare -A`,
-# uses linear scans over parallel arrays. CI (ubuntu bash 5)
-# is more permissive but the portable form is identical.
+# bash compat: stock macOS /bin/bash 3.2 lacks `declare -A` (associative
+# arrays) and `mapfile`/`readarray` (bash 4.0+). ID-CI-0021 (2026-11-08):
+# this script used `mapfile` ⇒ it **died instantly on macOS** ("mapfile:
+# command not found") while CI (ubuntu bash 5) stayed green ⇒ the old
+# "the portable form is identical" claim here was **false**. Now it uses
+# `declare -a` indexed arrays + `while read` (bash 3.2 compatible), and
+# the empty-array-safe expansion "${arr[@]+"${arr[@]}"}" (bash 3.2 + set -u
+# treats "${arr[@]}" on an empty array as unbound).
 # Mirrors the convention from Scripts/lint-release-yml.sh and
 # Scripts/lint-tsan-filter.sh.
+# Guarded by Scripts/test/test_bash32_compat.py (ID-CI-0021).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -58,21 +64,33 @@ INTENTIONAL_WHITELIST=(
   "v2.9.3: shipped but appcast push silently dropped (code-review P2-14)"
 )
 
-mapfile -t git_tags_raw < <(git tag --list | grep -E '^v[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -u)
+# ID-CI-0021 (2026-11-08)：`mapfile`/`readarray` 是 **bash 4.0+** 才有的内建 ⇒
+# 股票 macOS 的 `/bin/bash` 3.2 上**这个脚本会直接死掉**（"mapfile: command
+# not found"）⇒ ⇒ 而脚本头部却写着「the portable form is identical」⇒ ⇒
+# **头部注释是假的**（CI 跑在 ubuntu ⇒ bash 5 ⇒ 一直绿 ⇒ 没人发现）。
+# ⇒ ⇒ 改成 `while read` 收集（bash 3.2 可跑）。
+# ⚠️ bash 3.2 + `set -u` 下**空数组**的 "${arr[@]}" 会报 unbound variable
+# （bash 4.4 才修）⇒ ⇒ 所以下面所有数组展开都写成 "${arr[@]+"${arr[@]}"}"。
+declare -a git_tags_stripped=() appcast_versions_stripped=()
 
-mapfile -t appcast_versions_raw < <(
+while IFS= read -r _tag; do
+  git_tags_stripped+=("${_tag#v}")
+done < <(git tag --list | grep -E '^v[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -u | sed 's/^v//' | sort -u)
+
+while IFS= read -r _ver; do
+  appcast_versions_stripped+=("${_ver#v}")
+done < <(
   grep -oE 'releases/download/v[0-9]+\.[0-9]+(\.[0-9]+)?' "$APPCAST" \
     | sed 's|releases/download/||' \
+    | sort -u \
+    | sed 's/^v//' \
     | sort -u
 )
 
-mapfile -t git_tags_stripped < <(printf '%s\n' "${git_tags_raw[@]}" | sed 's/^v//' | sort -u)
-mapfile -t appcast_versions_stripped < <(printf '%s\n' "${appcast_versions_raw[@]}" | sed 's/^v//' | sort -u)
-
 violations=0
-violation_msgs=()
+declare -a violation_msgs=()
 
-for tag in "${git_tags_stripped[@]}"; do
+for tag in "${git_tags_stripped[@]+"${git_tags_stripped[@]}"}"; do
   # Skip pre-rollout tags (v2.5.0 was the rollout boundary)
   if [[ "v${tag}" < "${WHITELIST_MIN_VERSION}" ]]; then
     continue
@@ -91,7 +109,7 @@ for tag in "${git_tags_stripped[@]}"; do
   fi
   # Check if tag is in appcast
   found=0
-  for appcast_v in "${appcast_versions_stripped[@]}"; do
+  for appcast_v in "${appcast_versions_stripped[@]+"${appcast_versions_stripped[@]}"}"; do
     if [[ "$tag" == "$appcast_v" ]]; then
       found=1
       break
@@ -103,9 +121,9 @@ for tag in "${git_tags_stripped[@]}"; do
   fi
 done
 
-for appcast_v in "${appcast_versions_stripped[@]}"; do
+for appcast_v in "${appcast_versions_stripped[@]+"${appcast_versions_stripped[@]}"}"; do
   found=0
-  for tag in "${git_tags_stripped[@]}"; do
+  for tag in "${git_tags_stripped[@]+"${git_tags_stripped[@]}"}"; do
     if [[ "$tag" == "$appcast_v" ]]; then
       found=1
       break
@@ -131,7 +149,7 @@ if [[ "$violations" -gt 0 ]]; then
   echo "    release)."
   echo ""
   echo "Violations (${violations}):"
-  for msg in "${violation_msgs[@]}"; do
+  for msg in "${violation_msgs[@]+"${violation_msgs[@]}"}"; do
     echo "  - ${msg}"
   done
   echo ""
