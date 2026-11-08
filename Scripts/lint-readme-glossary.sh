@@ -3,7 +3,7 @@
 # Scripts/lint-readme-glossary.sh — DOC-0003：每个 README 只许出现**自己语种**的
 # 「回收站」词，不许出现别国语言的那个。
 #
-# ID-CI-0021 (2026-11-08)：这个检查以前**从来没有真正运行过**。
+# ID-CI-0024 (2026-11-08)：这个检查以前**从来没有真正运行过**。
 #
 #   它原来内联在 .github/workflows/ci.yml 的 build-and-test 台阶里，用
 #   `declare -A EXPECTED_TRASH=(["README.md"]="回收站" …)`。那个台阶跑在
@@ -83,7 +83,7 @@ check_glossary() {
 
     # 不变量 B：清单里的文件必须存在（否则 grep 会静默跳过 ⇒ 假绿）
     if [[ ! -f "$root/$file" ]]; then
-      echo "❌ manifest lists '$file' but that file does not exist (跳过了检查 = 假绿, ID-CI-0021)"
+      echo "❌ manifest lists '$file' but that file does not exist (跳过了检查 = 假绿, ID-CI-0024)"
       fails=$((fails + 1))
       continue
     fi
@@ -114,7 +114,7 @@ check_glossary() {
 
   # 不变量 A：清单为空 = 循环零次 = 假绿 ⇒ 必须报错
   if [[ "$checked" -eq 0 ]]; then
-    echo "❌ manifest is empty — the check would run zero times and pass vacuously (ID-CI-0021)"
+    echo "❌ manifest is empty — the check would run zero times and pass vacuously (ID-CI-0024)"
     fails=$((fails + 1))
   fi
 
@@ -122,7 +122,7 @@ check_glossary() {
   while IFS= read -r cand; do
     [[ -n "$cand" ]] || continue
     if ! manifest_has_file "$manifest" "$cand"; then
-      echo "❌ $cand is a README in this repo but is NOT in the manifest (少扫了 = 假绿, ID-CI-0021)"
+      echo "❌ $cand is a README in this repo but is NOT in the manifest (少扫了 = 假绿, ID-CI-0024)"
       fails=$((fails + 1))
     fi
   done < <(
@@ -214,7 +214,7 @@ selftest() {
   printf 'Recycle Bin was the old name.\n' >> "$fixture/README.md"
   expect_exit 1 "遗留 'Recycle Bin' 被抓住" --root "$fixture" --manifest "$man"
 
-  # ↓↓↓ ID-CI-0021 的直接回归守卫：空清单必须报错，不能假绿 ↓↓↓
+  # ↓↓↓ ID-CI-0024 的直接回归守卫：空清单必须报错，不能假绿 ↓↓↓
   : > "$tmp/empty.txt"
   build_fixture
   expect_exit 1 "空清单报错（不空转通过）" --root "$fixture" --manifest "$tmp/empty.txt"

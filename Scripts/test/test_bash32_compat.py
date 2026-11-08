@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ID-CI-0021 — bash 3.2 兼容性守卫（macOS runner 的 /bin/bash 就是 3.2）。
+"""ID-CI-0024 — bash 3.2 兼容性守卫（macOS runner 的 /bin/bash 就是 3.2）。
 
 为什么需要这个守卫
 ------------------
@@ -185,7 +185,7 @@ def find_violations(root):
 def check(root):
     violations = find_violations(root)
     if violations:
-        print("❌ bash 3.2 兼容性守卫：发现 bash 4.0+ 构造（ID-CI-0021）")
+        print("❌ bash 3.2 兼容性守卫：发现 bash 4.0+ 构造（ID-CI-0024）")
         print("")
         print("为什么这条要命：")
         print("  - CI 的 macos-latest 台阶用的系统 /bin/bash 是 **3.2**；")

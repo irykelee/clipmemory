@@ -36,7 +36,7 @@
 # Wired into ci.yml lint-ids job (per ID-CRASH-0013).
 #
 # bash compat: stock macOS /bin/bash 3.2 lacks `declare -A` (associative
-# arrays) and `mapfile`/`readarray` (bash 4.0+). ID-CI-0021 (2026-11-08):
+# arrays) and `mapfile`/`readarray` (bash 4.0+). ID-CI-0024 (2026-11-08):
 # this script used `mapfile` ⇒ it **died instantly on macOS** ("mapfile:
 # command not found") while CI (ubuntu bash 5) stayed green ⇒ the old
 # "the portable form is identical" claim here was **false**. Now it uses
@@ -45,7 +45,7 @@
 # treats "${arr[@]}" on an empty array as unbound).
 # Mirrors the convention from Scripts/lint-release-yml.sh and
 # Scripts/lint-tsan-filter.sh.
-# Guarded by Scripts/test/test_bash32_compat.py (ID-CI-0021).
+# Guarded by Scripts/test/test_bash32_compat.py (ID-CI-0024).
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -64,7 +64,7 @@ INTENTIONAL_WHITELIST=(
   "v2.9.3: shipped but appcast push silently dropped (code-review P2-14)"
 )
 
-# ID-CI-0021 (2026-11-08)：`mapfile`/`readarray` 是 **bash 4.0+** 才有的内建 ⇒
+# ID-CI-0024 (2026-11-08)：`mapfile`/`readarray` 是 **bash 4.0+** 才有的内建 ⇒
 # 股票 macOS 的 `/bin/bash` 3.2 上**这个脚本会直接死掉**（"mapfile: command
 # not found"）⇒ ⇒ 而脚本头部却写着「the portable form is identical」⇒ ⇒
 # **头部注释是假的**（CI 跑在 ubuntu ⇒ bash 5 ⇒ 一直绿 ⇒ 没人发现）。

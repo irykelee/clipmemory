@@ -135,7 +135,7 @@ jobs:
           # GLOSSARY["回收站"] (the canonical map). Covers all 7 langs
           # (REL-24 2026-08-03 audit F-4 — previous gate was 3 files only).
           #
-          # ID-CI-0021 (2026-11-08): 这段以前是**内联**在这里的，用
+          # ID-CI-0024 (2026-11-08): 这段以前是**内联**在这里的，用
           # `declare -A EXPECTED_TRASH=(["README.md"]="回收站" …)`。本台阶跑在
           # **macos-latest** ⇒ 系统的 `/bin/bash` 是 **3.2** ⇒ **没有关联数组**
           # ⇒ bash 3.2 把 `["README.md"]` 当**算术表达式**解析 ⇒ 语法错误 ⇒
@@ -836,7 +836,7 @@ jobs:
           chmod +x Scripts/lint-appcast-coverage.sh
           ./Scripts/lint-appcast-coverage.sh
 
-      # ID-CI-0021 (2026-11-08): bash 3.2 兼容性守卫。
+      # ID-CI-0024 (2026-11-08): bash 3.2 兼容性守卫。
       #
       # ⇒ ⇒ CI 的 **macos-latest** 台阶用的系统 `/bin/bash` 是 **3.2**；
       # ⇒ ⇒ **ubuntu 台阶是 bash 5** ⇒ ⇒ ubuntu 上永远绿 ⇒ ⇒ 只有 macOS
@@ -847,7 +847,7 @@ jobs:
       # ⇒ ⇒ 同轮 `Scripts/lint-appcast-coverage.sh` 用了 `mapfile`（bash 4.0+）
       # ⇒ ⇒ 在 macOS 上**当场死掉**，而它的头部注释写着「portable form is
       # ⇒ ⇒ identical」⇒ ⇒ **注释是假的**。
-      - name: "bash 3.2 compatibility guard (ID-CI-0021)"
+      - name: "bash 3.2 compatibility guard (ID-CI-0024)"
         run: |
           set -euo pipefail
           python3 Scripts/test/test_bash32_compat.py .
