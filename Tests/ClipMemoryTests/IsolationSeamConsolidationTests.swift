@@ -477,12 +477,95 @@ final class IsolationSeamConsolidationTests: XCTestCase {
         return entries
     }
 
+    /// The `@unchecked Sendable` **roster** (§2 的表格) must point at the
+    /// declarations it claims.
+    ///
+    /// ID-REVIEW-1049 第十三轮 + 2026-11-09：这份名单**从来没有守卫**
+    /// ⇒ ⇒ ⇒ 它的行号**漂了很久都没人发现**（实测：文档写
+    /// ⇒ ⇒ ⇒ ⇒ UpdateService.swift:94 / FeedProbeEngine.swift:259 /
+    /// ⇒ ⇒ ⇒ ⇒ NetworkMonitor.swift:23 ⇒ ⇒ ⇒ ⇒ 真实值是 **107 / 302 / 38**
+    /// ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **其中两个在我这次改动之前就已经漂了**）
+    /// ⇒ ⇒ ⇒ ⇒ 而 §8 的 `nonisolated(unsafe)` 名单**有**守卫 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    /// ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **同一份文档里的两张名单，一张守一张不守** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    /// ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **缺口要么补上，要么它会继续漂** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    func testDocumentedUncheckedSendableRosterPointsAtItsDeclarations() throws {
+        let doc = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("docs/SWIFT6_MIGRATION.md"),
+            encoding: .utf8
+        )
+        let documented = Self.documentedUncheckedSendableSites(in: doc)
+        XCTAssertFalse(
+            documented.isEmpty,
+            "docs/SWIFT6_MIGRATION.md §2 no longer carries a readable `@unchecked Sendable` roster"
+        )
+        let measured = try Self.measuredUncheckedSendableSites(
+            inProductionSources: Self.repoRoot.appendingPathComponent("ClipMemory")
+        )
+        XCTAssertEqual(
+            Set(documented.map { "\($0.path):\($0.line)" }),
+            Set(measured.map { "\($0.path):\($0.line)" }),
+            "docs/SWIFT6_MIGRATION.md §2's `@unchecked Sendable` roster no longer matches "
+            + "the code — refresh it in the same commit that moved the declarations"
+        )
+    }
+
+    /// The `@unchecked Sendable` sites listed in §2's table, as
+    /// (fileName, line) pairs.
+    ///
+    /// The table spells them as bare file names (`UpdateService.swift:107`)
+    /// — NOT paths relative to `ClipMemory/` ⇒ ⇒ ⇒ so the measured side
+    /// ⇒ ⇒ ⇒ uses `lastPathComponent` too ⇒ ⇒ ⇒ ⇒ the two sides agree.
+    private static func documentedUncheckedSendableSites(
+        in doc: String
+    ) -> [(path: String, line: Int)] {
+        var entries: [(path: String, line: Int)] = []
+        for line in doc.split(separator: "\n", omittingEmptySubsequences: false) {
+            let text = String(line)
+            guard text.contains("`@unchecked Sendable` sites") else { continue }
+            let pattern = try? NSRegularExpression(
+                pattern: "([A-Za-z0-9_+]+\\.swift):(\\d+)"
+            )
+            let ns = text as NSString
+            let matches = pattern?.matches(in: text, range: NSRange(location: 0, length: ns.length)) ?? []
+            for m in matches {
+                let path = ns.substring(with: m.range(at: 1))
+                let lineNo = Int(ns.substring(with: m.range(at: 2))) ?? 0
+                entries.append((path, lineNo))
+            }
+        }
+        return entries
+    }
+
+    /// Every `@unchecked Sendable` **declaration** under `root`, as
+    /// (fileName, line) pairs.
+    ///
+    /// `codeLines` already skips lines whose prefix before the match
+    /// contains `//` ⇒ ⇒ ⇒ so the prose mentions inside `///` doc comments
+    /// ⇒ ⇒ ⇒ (e.g. "`@unchecked Sendable` is therefore sound") ⇒ ⇒ ⇒ are
+    /// ⇒ ⇒ ⇒ **not** counted ⇒ ⇒ ⇒ ⇒ only real declarations are.
+    private static func measuredUncheckedSendableSites(
+        inProductionSources root: URL
+    ) throws -> [(path: String, line: Int)] {
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ))
+        var entries: [(path: String, line: Int)] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            for line in codeLines(containing: "@unchecked Sendable", in: source) {
+                entries.append((url.lastPathComponent, line))
+            }
+        }
+        return entries
+    }
+
     /// The path of `url` relative to `root`, computed component-wise.
     ///
     /// Both sides are standardized and symlink-resolved through the SAME
     /// function, so a symlinked checkout root cannot make the two disagree.
-    private static func relativePath(of url: URL, under root: URL) -> String {
-        let fileComponents = normalizedComponents(url)
+    private static func relativePath(of url: URL, under root: URL) -> String {        let fileComponents = normalizedComponents(url)
         let rootComponents = normalizedComponents(root)
         guard fileComponents.count > rootComponents.count,
               Array(fileComponents.prefix(rootComponents.count)) == rootComponents else {

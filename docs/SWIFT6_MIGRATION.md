@@ -22,7 +22,7 @@ Audit finding MEDIUM-14 (`ID-STORE-0008` in ledger) identified that ClipMemory h
 | `SWIFT_VERSION` | 5.9 | `project.yml:19` |
 | `SWIFT_STRICT_CONCURRENCY` | minimal | `project.yml:20` |
 | Sendable conformance sites | 6 | ClipboardItem, Tag, DateFilter, AppVersion, UpdateStatus, BackupItem |
-| `@unchecked Sendable` sites | 3 | UpdateService.swift:94, FeedProbeEngine.swift:259, NetworkMonitor.swift:23 |
+| `@unchecked Sendable` sites | 3 | UpdateService.swift:107, FeedProbeEngine.swift:302, NetworkMonitor.swift:38 |
 | Test suite size | `Scripts/test-count.sh` (static estimate) | see ID-TEST-0002 |
 
 The `minimal` mode disables Swift's strict concurrency checking entirely. This keeps the codebase compiling today but shifts all actor-isolation verification to manual review. Swift 6 introduces a new `complete` mode that enforces Sendable checks and actor isolation at compile time.
@@ -79,11 +79,11 @@ Full migration to Swift 6:
 
 **ClipboardMonitor** — Uses `OSAllocatedUnfairLock` to protect `stateLock` and all mutable clipboards. Phase 3: migrate the monitor to an `actor` for Swift-6-native isolation.
 
-**UpdateService** — `NoOpFeedProbeEngine` (UpdateService.swift:94) is a protocol-conforming no-op with no mutable state. Marked `@unchecked Sendable` with thread-safety justification: type-level no-op (FeedProbeEngine protocol minimum implementation); all methods return static values; compiler-validated zero stored properties.
+**UpdateService** — `NoOpFeedProbeEngine` (UpdateService.swift:107) is a protocol-conforming no-op with no mutable state. Marked `@unchecked Sendable` with thread-safety justification: type-level no-op (FeedProbeEngine protocol minimum implementation); all methods return static values; compiler-validated zero stored properties.
 
-**FeedProbeEngine** — `CappedFetchDelegate` (FeedProbeEngine.swift:259) uses `@unchecked Sendable` with per-fetch `OSAllocatedUnfairLock` + URLSession serial delegate queue. Phase 2: isolate with `@preconcurrency import URLKit` until Swift 6 enables full annotation.
+**FeedProbeEngine** — `CappedFetchDelegate` (FeedProbeEngine.swift:302) uses `@unchecked Sendable` with per-fetch `OSAllocatedUnfairLock` + URLSession serial delegate queue. Phase 2: isolate with `@preconcurrency import URLKit` until Swift 6 enables full annotation.
 
-**NetworkMonitor** — `NetworkMonitor` (NetworkMonitor.swift:23) is `@unchecked Sendable` because it wraps `NWPathMonitor` which is not Sendable. Phase 3: refactor to a dedicated actor with structured concurrency.
+**NetworkMonitor** — `NetworkMonitor` (NetworkMonitor.swift:38) is `@unchecked Sendable` because it wraps `NWPathMonitor` which is not Sendable. Phase 3: refactor to a dedicated actor with structured concurrency.
 
 **BackupPackage** — `BackupItem` enum is fully Sendable. No migration needed.
 
@@ -226,8 +226,8 @@ Services/LanguageManager.swift:29:    nonisolated(unsafe) static var injectedFor
 Services/LanguageManager.swift:74:    nonisolated(unsafe) static var defaults: UserDefaults {
 Services/LanguageManager.swift:102:    nonisolated(unsafe) private static var codeStorage: String = "en"
 Services/WindowManager.swift:158:    nonisolated(unsafe) static var defaults: UserDefaults {
-Services/UpdateService.swift:217:    nonisolated(unsafe) static var defaults: UserDefaults {
-Services/UpdateService.swift:250:    nonisolated(unsafe) static var injectedForTest: UpdateService?
+Services/UpdateService.swift:218:    nonisolated(unsafe) static var defaults: UserDefaults {
+Services/UpdateService.swift:251:    nonisolated(unsafe) static var injectedForTest: UpdateService?
 Services/ClipboardStore.swift:961:    nonisolated(unsafe) let contentCache: NSCache<NSString, NSString> = {
 Services/ClipboardStore.swift:972:    nonisolated(unsafe) private let rtfPlaintextCache: NSCache<NSString, NSString> = {
 Services/ClipboardStore.swift:1079:    nonisolated(unsafe) var pendingFailedIDs = Set<UUID>()
@@ -276,8 +276,8 @@ just copied from the declaration comments.
 | `Services/LanguageManager.swift` | 29 | `injectedForTest: LanguageManager?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
 | `Services/LanguageManager.swift` | 74 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
 | `Services/LanguageManager.swift` | 102 | `codeStorage: String` | guarded by `codeLock` at every access (`LanguageManager.swift:99`, `currentLanguageCode` at `:103`). The previous roster cited ":86", which is the computed property, not the lock | eliminate with actor |
-| `Services/UpdateService.swift` | 217 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
-| `Services/UpdateService.swift` | 250 | `injectedForTest: UpdateService?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
+| `Services/UpdateService.swift` | 218 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage) — no independent state | actor-isolate the canonical seam |
+| `Services/UpdateService.swift` | 251 | `injectedForTest: UpdateService?` | test seam — injects a fake *service instance*. Per-service by design (see "Not in this roster") | keep; typed fake-instance seam |
 | `Services/WindowManager.swift` | 158 | `defaults: UserDefaults` | forwarder over `TestIsolation.defaults` (the canonical storage). Dormant since WINDOW-0001 — frame persistence moved to AppKit's `setFrameAutosaveName`. **ID-REVIEW-1047 (2026-10-28): the declaration moved 113 → 158** because the new `WindowFrameAutosave` gate was added to the same file (AppKit's frame autosave must not run in a test process — it would rewrite the user's saved window position in the user's real `com.clipmemory.app` domain). The COUNT is unchanged at 22 — the new gate uses a plain `nonisolated static func` (no shared mutable state ⇒ no `nonisolated(unsafe)` needed) | actor-isolate the canonical seam |
 | `Utils/TestIsolation.swift` | 97 | `defaultsStorage: UserDefaults` | **canonical** storage for the whole test seam (ID-CRASH-0029). ID-REVIEW-1036 (2026-10-26): the declaration moved from `defaults` to `defaultsStorage` because `defaults` became a lock-guarded computed accessor (`defaultsLock`) — the read-modify-write of a class reference without a lock is the shape that aborted the test host in CI run 40186263416. The storage is `private` so the lock cannot be bypassed by writing the slot directly. The three service forwarders read it through the accessor, so they inherit the lock. ID-CRASH-0066 changed its INITIALIZER from `.standard` to the immutable `baselineDefaults` (an isolated suite under XCTest, `.standard` in production) | migrate to actor in Phase 3 |
 | `Utils/AppPasteboard.swift` | 81 | `overrideBoard: NSPasteboard?` | test seam — the pasteboard the app reads from and writes to. ID-REVIEW-1042 (2026-10-27): in a test process the app binds to a PRIVATE pasteboard, so the suite can neither read nor write the user's real clipboard (ID-REVIEW-1041 measured the damage: the suite's fixtures were captured by a separately running ClipMemory app into the user's real history, and the final `clearContents()` emptied the clipboard). Deliberately NOT `TestIsolation.defaults` — that seam owns `UserDefaults` storage, this one owns a system resource. Guarded by `AppPasteboard.lock`; the read points are NOT all on the main actor (`ClipboardMonitor` polls from its own timer queue), so a bare `static var` would be a data race — the same shape that aborted the test host in CI run 40186263416 | actor-isolate the canonical seam |
