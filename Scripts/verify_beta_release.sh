@@ -21,6 +21,30 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_REPO="${GH_REPO:-irykelee/clipmemory}"
 TAP_REPO="${TAP_REPO:-irykelee/homebrew-clipmemory}"
 
+# ── 三个「用户实际能用的 feed」────────────────────────────────────────
+#
+# ID-BETA-0001（2026-11-08）：**这一组是本轮实测踩出来的坑** ⇒ ⇒
+#
+# ① `releases/latest/download/appcast.xml`（app 的默认主 feed）⇒ ⇒ GitHub 的
+#    `releases/latest` **排除 prerelease** ⇒ ⇒ ⇒ 它解析到**最近一个正式版**的
+#    appcast 资产 ⇒ ⇒ ⇒ ⇒ **里面必然没有 beta 条目** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 即使用户勾了
+#    ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 「接收 beta 版更新」，Sparkle 也**根本没见过**那条 beta 条目
+#    ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **勾开关也没用**。
+# ② `cdn.jsdelivr.net/gh/…@main/appcast.xml` ⇒ ⇒ 镜像 **main 分支** ⇒ ⇒ ⇒
+#    **含** beta 条目 ⇒ ⇒ ⇒ ⇒ 这是 beta 用户**实际**能看到的 feed。
+# ③ `gitee.com/…/raw/main/appcast.xml` ⇒ ⇒ 同样镜像 main ⇒ ⇒ ⇒ **含** beta
+#    ⇒ ⇒ ⇒ ⇒ 且它的 enclosure 指向 **Gitee 资产** ⇒ ⇒ ⇒ ⇒ ⇒ 中国用户**下载得到**。
+#
+# ⇒ ⇒ ⇒ ⇒ 2026-11-08 实测：② 有 beta（命中 4）、① 没有（命中 0）、
+# ⇒ ⇒ ⇒ ⇒ ③ **也没有**（35 条、最新 2.9.6）⇒ ⇒ ⇒ ⇒ 因为 Gitee 同步被
+# ⇒ ⇒ ⇒ ⇒ **beta 版本号**卡死了 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **beta 只在「主 feed 不可达」
+# ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 时才可见** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **网络越差越能看到 beta**。
+#
+# ⇒ ⇒ ⇒ ⇒ 所以这三项**必须**被机械核对 ⇒ ⇒ ⇒ ⇒ 否则同一个坑会再来一次。
+FEED_GITHUB_URL="${CM_FEED_GITHUB_URL:-https://github.com/${API_REPO}/releases/latest/download/appcast.xml}"
+FEED_JSDELIVR_URL="${CM_FEED_JSDELIVR_URL:-https://cdn.jsdelivr.net/gh/${API_REPO}@main/appcast.xml}"
+FEED_GITEE_URL="${CM_FEED_GITEE_URL:-https://gitee.com/irykelee/clipmemory/raw/main/appcast.xml}"
+
 FAILS=0
 fail() { echo "  ❌ $*"; FAILS=$((FAILS + 1)); }
 ok()   { echo "  ✅ $*"; }
@@ -54,6 +78,53 @@ for it in items:
         ver = re.search(r"<sparkle:version>(.*?)</sparkle:version>", it, re.S)
         print(ver.group(1).strip() if ver else "")
 PY
+}
+
+feed_mentions_version() {   # $1 = 本地 appcast 文件，$2 = 版本号
+    # ⇒ ⇒ **原文**匹配（不依赖 XML 解析器）⇒ ⇒ 解析器坏了也不会「假通过」。
+    local f="$1" v="$2"
+    [[ -s "$f" ]] || return 1
+    grep -q "<sparkle:version>${v}</sparkle:version>" "$f"
+}
+
+feed_has_beta() {   # $1 = 本地 appcast 文件，$2 = 版本号 ⇒ ⇒ 在 beta 通道里命中返回 0
+    local f="$1" v="$2"
+    [[ -s "$f" ]] || return 1
+    beta_items "$f" beta | grep -q "^${v}"
+}
+
+check_feed() {      # $1 = 标签, $2 = URL, $3 = 期望（beta|stable）
+    local label="$1" url="$2" expect="$3"
+    local tmp; tmp="$(mktemp -t cm-feed).xml"
+    if ! curl -sfL --max-time 45 "$url" -o "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        if [[ "$expect" == "beta" ]]; then
+            fail "${label} feed **取不到**（${url}）⇒ ⇒ beta 用户看不到 beta"
+        else
+            note "${label} feed 取不到（${url}）⇒ ⇒ 跳过该项断言"
+        fi
+        return 1
+    fi
+    local mentioned="no" inBeta="no"
+    feed_mentions_version "$tmp" "$VERSION" && mentioned="yes"
+    feed_has_beta "$tmp" "$VERSION" && inBeta="yes"
+    rm -f "$tmp"
+    if [[ "$expect" == "beta" ]]; then
+        # ⇒ ⇒ **两个条件都要满足**（原文提到 + 在 beta 通道里）⇒ ⇒ 解析器坏了
+        # ⇒ ⇒ ⇒ ⇒ 就是**红**（fail-closed）⇒ ⇒ ⇒ ⇒ ⇒ 不做「假通过」。
+        if [[ "$mentioned" == "yes" && "$inBeta" == "yes" ]]; then
+            ok "${label} feed 含 ${VERSION} 条目（beta 用户在这里能看到它）"
+            return 0
+        fi
+        fail "${label} feed **不含** ${VERSION}（${url}）⇒ ⇒ beta 用户看不到 beta（提到=${mentioned} 在beta通道=${inBeta}）"
+        return 1
+    fi
+    if [[ "$mentioned" == "no" ]]; then
+        ok "${label} feed 不含 beta 版本条目（预期：GitHub 的 releases/latest 排除 prerelease）"
+        return 0
+    fi
+    fail "${label} feed **居然含** ${VERSION}（${url}）⇒ ⇒ GitHub 的 latest 语义变了 ⇒ ⇒ 结论要重审"
+    return 1
 }
 
 self_test() {
@@ -90,6 +161,43 @@ EOF
     else
         fail "合成夹具：稳定条目解析不对：$stable"
     fi
+
+    # ── ⑤ feed 断言的自检（file:// 夹具 ⇒ ⇒ **不联网**）──────────────────
+    # ⇒ ⇒ 这一段是「Gitee 同步失败 ⇒ 镜像里没有 beta」那个**真 bug** 的
+    # ⇒ ⇒ ⇒ 机械化 ⇒ ⇒ ⇒ ⇒ **镜像缺 beta 必须报红** ⇒ ⇒ ⇒ ⇒ 不许悄悄通过。
+    VERSION="2.10.0-beta.1"
+    local nobeta="$WORK_DIR/no-beta.xml"
+    cat > "$nobeta" <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <item>
+      <title>Version 2.9.6</title>
+      <sparkle:shortVersionString>2.9.6</sparkle:shortVersionString>
+      <sparkle:version>2.9.6</sparkle:version>
+    </item>
+  </channel>
+</rss>
+EOF
+    local before=$FAILS
+    check_feed "夹具·主 feed" "file://${nobeta}" stable
+    check_feed "夹具·jsDelivr" "file://${appcast}" beta
+    check_feed "夹具·Gitee" "file://${appcast}" beta
+    if [[ $FAILS -eq $before ]]; then
+        ok "合成夹具：三条 feed 断言（主不含 beta / 两个镜像含 beta）全过"
+    else
+        fail "合成夹具：feed 断言误报 $((FAILS - before)) 处"
+    fi
+    before=$FAILS
+    check_feed "夹具·镜像缺 beta" "file://${nobeta}" beta
+    if [[ $FAILS -gt $before ]]; then
+        ok "合成夹具：镜像缺 beta 时**报红**（= 那个真 bug 会被抓到）"
+    else
+        fail "合成夹具：镜像缺 beta 却没报红 ⇒ ⇒ 这条检查是**假绿**的"
+    fi
+    # ⇒ ⇒ 上面那次失败是**故意**的 ⇒ ⇒ ⇒ 把计数还原 ⇒ ⇒ ⇒ 否则自检永远红。
+    FAILS=$before
+
     if [[ $FAILS -eq 0 ]]; then
         echo "✅ 自检通过：appcast 的 beta / 稳定条目解析**可复算**"
         return 0
@@ -174,6 +282,14 @@ if gh api "repos/${TAP_REPO}/contents/Casks/clipmemory.rb" -q '.content' 2>/dev/
 else
     ok "Homebrew tap 未指向 beta 版本（brew 用户拿不到 beta）"
 fi
+
+# ⑤ **用户实际能用的 feed** 里能不能看到 beta（ID-BETA-0001，2026-11-08）
+# ⇒ ⇒ 这一段是本轮**实测踩到**的坑的机械化 ⇒ ⇒ 见上面三个 FEED_*_URL 的注释。
+echo ""
+echo "--- ⑤ 用户实际能用的 feed（2026-11-08 新增：这一段抓到过一个真 bug）---"
+check_feed "主 feed（releases/latest）" "$FEED_GITHUB_URL" stable
+check_feed "jsDelivr main 镜像" "$FEED_JSDELIVR_URL" beta
+check_feed "Gitee main 镜像" "$FEED_GITEE_URL" beta
 
 echo ""
 if [[ $FAILS -eq 0 ]]; then
