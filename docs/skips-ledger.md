@@ -6687,3 +6687,126 @@ schema 守卫** ⇒ ⇒ **没跑 multibyte 守卫** ⇒ ⇒ ⇒ ⇒ ⇒ 于是 C
 ⇒ ⇒ ⇒ ⇒ ⇒ 逐个脚本在 3.2 上实跑的矩阵 ⇒ ⇒ ⇒ ⇒ ⇒ 若将来某个脚本需要 bash 4
 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ （例如 `mapfile` 确实更快）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 那就得在
 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **豁免清单**里写明理由，而不是默默用。
+
+
+#### 50.30 「beta 通道」这一族：**通道过滤 ≠ 用户看得见**（2026-11-09）
+
+##### 50.30.1 触发：用户问「beta 在 GitHub 上显示吗？正式版用户怎么体验 beta？」
+
+⇒ ⇒ ⇒ ⇒ 这个问题**逼出**了一个**真 bug** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ **「appcast 里有 beta 条目」≠「用户能拿到 beta」** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 二者之间还差一层：**用户读的那个 feed 里有没有那条** ⇒ ⇒ ⇒ ⇒
+
+##### 50.30.2 三个 feed 的**实测**（全部 curl 过，不是推测）
+
+| feed（app 实际读的） | beta 命中 | 原因 |
+|---|---|---|
+| `github.com/…/releases/latest/download/appcast.xml`（**主**） | **0** | `curl -sIL` 实测 **302 → `releases/download/v2.9.6/appcast.xml`** ⇒ ⇒ GitHub 的 `releases/latest` **排除 prerelease** ⇒ ⇒ 里面最新条目是 2.9.6 |
+| `cdn.jsdelivr.net/gh/…@main/appcast.xml`（兜底） | **4** | 镜像 **main 分支** ⇒ main 的 appcast 有 beta 条目 |
+| `gitee.com/irykelee/clipmemory/raw/main/appcast.xml`（中国镜像） | **0** | 35 条、最新 2.9.6 ⇒ ⇒ **同步被 beta 版本号卡死**（见 §50.30.5） |
+
+⇒ ⇒ ⇒ ⇒ ⇒ **主 feed 装不下 beta** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **勾了开关也看不到** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **通道过滤是对的，但它只管「允许看哪个通道」**
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **不管 feed 里有没有那条** ⇒ ⇒ ⇒ ⇒ ⇒
+
+##### 50.30.3 当时的**兜底顺序**让现象更怪
+
+⇒ ⇒ 兜底只在**主 feed 不可达**时才用 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **主 feed 可达 ⇒ 没有 beta** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **主 feed 不可达 ⇒ 镜像 ⇒ 有 beta** ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **beta 只在网络差的
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 地方可见** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **网络越差越能看到 beta** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **「机制写对了」≠「用户能用」** ⇒ ⇒ ⇒ ⇒
+
+##### 50.30.4 修法（app 侧）
+
+① `FeedChannel` 加 `carriesPrereleaseItems` ⇒ ⇒ **默认 false** ⇒ ⇒ ⇒ 新通道
+   ⇒ ⇒ 默认装不下 ⇒ ⇒ ⇒ 要能装必须**显式**写 true ⇒ ⇒ ⇒ ⇒ 靠默认值兜底。
+   ⚠️ 手写 `init`（不用 memberwise）⇒ ⇒ 因为 Swift 的 memberwise init **不收**
+   ⇒ ⇒ 带初始值的 `let`（实测：`struct A { let x: Int; let y: Int = 0 }` ⇒
+   ⇒ ⇒ ⇒ `A(x: 1, y: 2)` ⇒ ⇒ ⇒ **extra argument 'y'**）。
+② `FeedProbeEngine.resolve(… requiresPrereleaseItems:)` ⇒ ⇒ ⇒ beta 时**排除**
+   ⇒ ⇒ 装不下的通道 ⇒ ⇒ 槽位换成 jsDelivr → Gitee（两个都镜像 main）。
+③ `UpdateService` 把 `betaChannelEnabled` 传进去 ⇒ ⇒ ⇒ **beta 关闭 ⇒ ⇒ 槽位
+   ⇒ ⇒ ⇒ 逐字不变** ⇒ ⇒ ⇒ ⇒ **稳定路径零回归面**（测试钉住）。
+④ **顺序**：勾开关时原先直接 `checkNow()` ⇒ ⇒ ⇒ Sparkle 会去抓**启动时解析好
+   ⇒ ⇒ ⇒ 那个 feed** ⇒ ⇒ ⇒ 用户看到「已是最新版本」⇒ ⇒ ⇒ ⇒ **开关像是坏的**
+   ⇒ ⇒ ⇒ ⇒ ⇒ 新的 `setBetaChannelEnabled(_:)` ⇒ ⇒ **先重探（切 feed）再问
+   ⇒ ⇒ ⇒ Sparkle** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+
+##### 50.30.5 Gitee 侧：**beta 版本号把同步卡死**（本 session 的第三个 beta 形态缺口）
+
+⇒ ⇒ 「Sync Gitee mirror」在 beta 发布后**红了**（run `42438269183`）⇒ ⇒ ⇒
+⇒ ⇒ 「Determine version」失败 ⇒ ⇒ ⇒ ⇒ **Sync 步骤被跳过** ⇒ ⇒ ⇒ ⇒ Gitee 的
+⇒ ⇒ appcast **停在 35 条、最新 2.9.6、beta 命中 0**。
+
+① `git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*'` ⇒ ⇒ 发完
+   beta 后返回 **`v2.10.0-beta.1`** ⇒ ⇒ ⇒ 而 sanity 正则只认 `X.Y.Z` ⇒ ⇒ ⇒ ⇒
+   ⇒ ⇒ **exit 1** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 放宽成 `(-beta\.[0-9]+)?`。
+② `sync_gitee_release.sh` 同一个正则 ⇒ ⇒ 放宽 ⇒ ⇒ ⇒ 脚本其余部分**全部按 tag
+   ⇒ ⇒ ⇒ 拼** ⇒ ⇒ ⇒ ⇒ 没有别的地方假设「三段纯数字」⇒ ⇒ ⇒ ⇒ 放宽一处即可。
+③ **验收步骤**原来按 `<sparkle:shortVersionString>` 匹配条目 ⇒ ⇒ ⇒ **beta
+   ⇒ ⇒ ⇒ 匹配不上**（beta 的 shortVersionString 是 **2.10.0**，不带 `-beta.1`
+   ⇒ ⇒ ⇒ 那是 Sparkle 显示用的）⇒ ⇒ ⇒ ⇒ 换成 `<sparkle:version>` ⇒ ⇒ ⇒ ⇒ ⇒
+   ⇒ ⇒ ⇒ 对**两种形态都成立**（2.9.6 两处都是）。
+
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 这是本 session 挖出的**第三个** beta 形态缺口（前两个：README
+⇒ ⇒ ⇒ ⇒ ⇒ 标题检查、appcast lint 的 beta 后缀）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **每次发 beta
+⇒ ⇒ ⇒ ⇒ ⇒ 都要撞一次** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+
+##### 50.30.6 机械化：验收脚本加 ⑤「**用户实际能用的 feed**」
+
+⇒ ⇒ ⇒ ⇒ 三条断言：**主 feed 必须不含** beta（事实断言，GitHub 语义变了就得
+⇒ ⇒ ⇒ ⇒ 重审）⇒ ⇒ ⇒ **jsDelivr 镜像必须含** ⇒ ⇒ ⇒ **Gitee 镜像必须含**。
+
+⇒ ⇒ ⇒ ⇒ **fail-closed**：beta 那两条要求「原文提到该版本」**且**「在 beta 通道里」
+⇒ ⇒ ⇒ ⇒ ⇒ 两个条件都要满足 ⇒ ⇒ ⇒ ⇒ 解析器坏了就是**红** ⇒ ⇒ ⇒ ⇒ 不做假通过；
+⇒ ⇒ ⇒ ⇒ 「不含」那条只查**原文**（不依赖解析器）⇒ ⇒ ⇒ ⇒ 解析失败**不会**被
+⇒ ⇒ ⇒ ⇒ 误当成「本来就没有 beta」。
+
+⇒ ⇒ ⇒ ⇒ ⚠️ 这条设计是被**实测**逼出来的：最初用解析器判「有没有 beta」⇒ ⇒
+⇒ ⇒ ⇒ 写自检时用 `source <(sed …)` 只抽了两个函数 ⇒ ⇒ ⇒ ⇒ `beta_items` 不在
+⇒ ⇒ ⇒ ⇒ 作用域里 ⇒ ⇒ ⇒ ⇒ **断言仍然绿**（但理由是错的）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **「假通过」长这样** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+
+⇒ ⇒ ⇒ ⇒ **自检**（`--self-test`，`file://` 夹具 ⇒ ⇒ 不联网）：三条全过 +
+⇒ ⇒ ⇒ ⇒ **镜像缺 beta 必须报红**（= Gitee 同步失败那个 bug 的机械化）。
+
+⇒ ⇒ ⇒ ⇒ **实测**：脚本第一次实跑就**抓到 Gitee 镜像缺 beta** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ **这个 bug 从此有守卫了** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+
+##### 50.30.7 测试与演练
+
+① `BetaFeedSelectionTests`（**新**，9 条，全绿）：beta 关 ⇒ 仍选
+   `github-release`；beta 关 + 主挂 ⇒ 仍走 jsDelivr（**与改动前逐字相同**）；
+   beta 开 ⇒ **绝不**选 `github-release`（即使它可达）；beta 开 + policy=.primary
+   ⇒ ⇒ 也不选；beta 开 ⇒ jsDelivr 挂 ⇒ 落到 Gitee；policy=.gitee/.fallback
+   ⇒ ⇒ ⇒ 各自对应；通道标注与真实语义一致；**能装 prerelease 的通道必须是
+   ⇒ ⇒ ⇒ main 分支镜像**。
+② **全量 1457 条里 1 条红** ⇒ ⇒ ⇒ `Audit20260720RegressionTests
+   ⇒ ⇒ ⇒ .testMemoryStorageBackendIsThreadSafeUnderHammer`（「0 items committed」）
+   ⇒ ⇒ ⇒ **与本次改动无关**（剪贴板存储，不是更新链路）⇒ ⇒ ⇒ 且是 STATUS 里
+   ⇒ ⇒ ⇒ **已记录**的 runner flake ⇒ ⇒ ⇒ ⇒ 本地**连跑 5 次全过** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 以 CI run 为准。
+③ ⚠️ **新测试文件必须 `xcodegen generate`** ⇒ ⇒ ⇒ 否则它**根本不在工程里**
+   ⇒ ⇒ ⇒ ⇒ `xcodebuild test` 报「Executed 0 tests」⇒ ⇒ ⇒ ⇒ **绿的假象**。
+
+##### 50.30.8 验收（实测）
+
+⇒ ⇒ 41 条 shell/python 守卫全绿（含 `verify_beta_release.sh --self-test`）⇒ ⇒
+⇒ ⇒ 1457 条 Swift 测试（1 条已知 flake，见 §50.30.7 ②）⇒ ⇒
+⇒ ⇒ `bash Scripts/verify_beta_release.sh v2.10.0-beta.1` ⇒ ⇒ ⇒ ⇒ ⑦ 项 + ⑤
+⇒ ⇒ ⇒ ⇒ ⇒ 的三条 feed 断言 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **全绿**（Gitee 同步补跑之后）。
+
+##### 50.30.9 诚实残余
+
+① **UI 肉眼那一行仍缺**（机制侧已全验，但没人眼看过那个 Toggle ⇒ ⇒ 快照
+   golden 因 `Form` 不栅格化而看不见它）。
+② 「bash 3.2 兼容」仍**只**由静态守卫保证（§50.29.7 提过）⇒ ⇒ ⇒ 没有逐脚本
+   ⇒ ⇒ ⇒ 在 3.2 上实跑的矩阵。
+③ 主 feed 的 prerelease-blind 是**事实**，不是 bug ⇒ ⇒ ⇒ ⇒ 它由 `⑤` 的
+   ⇒ ⇒ ⇒ ⇒ 「主 feed 必须不含 beta」断言**盯着** ⇒ ⇒ ⇒ ⇒ GitHub 哪天改了
+   ⇒ ⇒ ⇒ ⇒ 语义 ⇒ ⇒ ⇒ ⇒ 那条断言会红 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **结论要重审**。

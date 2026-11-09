@@ -45,6 +45,43 @@ static func allowedChannels(forBetaEnabled enabled: Bool) -> Set<String> {
 
 ⇒ ⇒ 通道名**必须**与 appcast 里写的**逐字相同** ⇒ ⇒ 改它等于换了一个通道。
 
+### ⚠️ 通道过滤**不等于**用户能看到 —— **feed 装不装得下**是另一件事
+
+⇒ ⇒ 2026-11-09 **实测**：通道机制本身是对的，但**主 feed 根本装不下 beta**。
+
+| feed（app 实际读的） | 装得下 beta？ | 原因 |
+|---|---|---|
+| `github.com/…/releases/latest/download/appcast.xml`（**主**） | **否** | GitHub 的 `releases/latest` **排除 prerelease** ⇒ 它解析到**最近一个正式版**的 appcast 资产（实测 → v2.9.6、beta 命中 **0**） |
+| `cdn.jsdelivr.net/gh/…@main/appcast.xml`（兜底） | **是** | 镜像 **main 分支**的 appcast（实测命中 4） |
+| `gitee.com/…/raw/main/appcast.xml`（中国镜像） | **是**（修好后） | 同上，且 enclosure 指向 **Gitee 资产** ⇒ 中国用户**下载得到** |
+
+⇒ ⇒ ⇒ ⇒ **「勾了开关」只解决「允许看 beta 通道」** ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ **不解决「feed 里有没有那条 beta」** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **两件事都要成立，用户才看得到** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **第一版 beta 就是这样「开关是坏的」** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+
+⇒ ⇒ ⇒ ⇒ ⇒ 而且当时的**兜底顺序**让现象更怪：主 feed 可达 ⇒ 用主 feed
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ （没有 beta）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 只有主 feed **不可达**时才走
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 镜像（**有** beta）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **beta 只在网络差的地方可见** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **网络越差越能看到 beta**。
+
+⇒ ⇒ **现在的做法**（ID-BETA-0001，2026-11-09）：
+
+| 用户是否勾了 beta | app 选哪个 feed |
+|---|---|
+| **否**（默认） | `github-release`（主）⇒ **逐字不变**，稳定路径零回归 |
+| **是** | **排除**装不下 prerelease 的通道 ⇒ 走 **main 分支镜像**（jsDelivr → Gitee） |
+
+⇒ ⇒ ⇒ 落在 `FeedChannel.carriesPrereleaseItems`（**默认 false** ⇒ 新通道默认
+⇒ ⇒ ⇒ 装不下 ⇒ 要能装必须显式写 true）⇒ ⇒ ⇒ 与
+⇒ ⇒ ⇒ `FeedProbeEngine.resolve(… requiresPrereleaseItems:)` ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ **beta 关闭 ⇒ 槽位逐字不变** ⇒ ⇒ ⇒ ⇒ 这一条由测试钉住。
+
+⇒ ⇒ **验收**：`Scripts/verify_beta_release.sh` 的 ⑤ 会核对**三个 feed 各自
+⇒ ⇒ ⇒ 有没有 beta 条目** ⇒ ⇒ ⇒ 这段检查**当场抓到过 Gitee 缺 beta**
+⇒ ⇒ ⇒ ⇒（那是 beta 版本号把同步卡死造成的）。
+
 ---
 
 ## 二、版本号怎么算（Sparkle 实际比较的是 `CFBundleVersion`）
