@@ -109,7 +109,8 @@ private final class NoOpFeedProbeEngine: FeedProbeEngine, @unchecked Sendable {
         policy: UpdateFeedPolicy,
         lastKnownDate: Date?,
         channels: [FeedChannel],
-        timeout: TimeInterval?
+        timeout: TimeInterval?,
+        requiresPrereleaseItems: Bool
     ) async -> FeedProbeDecision? {
         return nil
     }
@@ -332,6 +333,32 @@ final class UpdateService {
         set { Self.defaults.set(newValue, forKey: betaChannelKey) }
     }
 
+    /// Flip the beta channel **and** re-resolve the feed URL, then ask
+    /// Sparkle for updates.
+    ///
+    /// ID-BETA-0001 (2026-11-08)：**顺序很重要** ⇒ ⇒ 勾上开关后如果直接
+    /// `checkNow()`，Sparkle 会去抓**启动时解析好的那个 feed**
+    /// ⇒ ⇒ ⇒ 而 beta 需要**装得下 prerelease 的 feed**
+    /// ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 用户会看到「已是最新版本」⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **开关像是坏的**
+    /// ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    /// ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+    /// ⇒ ⇒ 所以：**先重探（切 feed）⇒ ⇒ 再检查更新**。
+    ///
+    /// ⇒ ⇒ 关闭 beta 时同样要重探 ⇒ ⇒ ⇒ 否则 feed 还停在 main 镜像上
+    /// ⇒ ⇒ ⇒ ⇒ 虽然 channel 过滤会把 beta 挡住（安全），但 feed 应当
+    /// ⇒ ⇒ ⇒ ⇒ 回到**权威的正式版 feed** ⇒ ⇒ ⇒ ⇒ 免得用户以为在用 GitHub 源。
+    @MainActor
+    func setBetaChannelEnabled(_ enabled: Bool) {
+        guard enabled != Self.betaChannelEnabled else { return }
+        Self.betaChannelEnabled = enabled
+        currentProbeTask?.cancel()
+        currentProbeTask = Task { @MainActor in
+            await triggerProbe()
+            // 探测完成 ⇒ ⇒ feed URL 已切换 ⇒ ⇒ 现在问 Sparkle 才有意义。
+            updaterController.checkForUpdates(nil)
+        }
+    }
+
     /// The channel set Sparkle should be allowed to look in.
     ///
     /// ⇒ ⇒ **空 set** = 只看**默认通道**（= 稳定版）⇒ ⇒ ⇒ ⇒ 这是**默认值**，
@@ -550,7 +577,13 @@ final class UpdateService {
             policy: policy,
             lastKnownDate: lastKnown,
             channels: channels,
-            timeout: nil
+            timeout: nil,
+            // ID-BETA-0001 (2026-11-08)：beta 开启 ⇒ feed **必须装得下**
+            // prerelease 条目 ⇒ ⇒ `github-release`（releases/latest）**排除**
+            // ⇒ ⇒ ⇒ 排除它、改用 main 分支镜像 ⇒ ⇒ ⇒ ⇒ 否则 Sparkle 从来
+            // ⇒ ⇒ ⇒ ⇒ 没见过那条 beta 条目 ⇒ ⇒ ⇒ ⇒ ⇒ **勾开关也没用**。
+            // ⇒ ⇒ ⇒ beta 关闭 ⇒ ⇒ 该参数为 false ⇒ ⇒ ⇒ **行为逐字不变**。
+            requiresPrereleaseItems: Self.betaChannelEnabled
         )
         // Generation check: a newer `triggerProbe()` ran while we were
         // awaiting — its decision wins, drop ours silently.

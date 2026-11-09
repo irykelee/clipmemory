@@ -43,7 +43,11 @@ protocol FeedProbeEngine: Sendable {
         policy: UpdateFeedPolicy,
         lastKnownDate: Date?,
         channels: [FeedChannel],
-        timeout: TimeInterval?
+        timeout: TimeInterval?,
+        /// ID-BETA-0001 (2026-11-08)：beta 开启 ⇒ feed **必须装得下**
+        /// prerelease 条目 ⇒ ⇒ `releases/latest`（排除 prerelease）那条
+        /// ⇒ ⇒ 通道被排除 ⇒ ⇒ 改用 main 分支镜像。
+        requiresPrereleaseItems: Bool
     ) async -> FeedProbeDecision?
 }
 
@@ -97,20 +101,50 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
         policy: UpdateFeedPolicy,
         lastKnownDate: Date?,
         channels: [FeedChannel],
-        timeout: TimeInterval? = nil
+        timeout: TimeInterval? = nil,
+        requiresPrereleaseItems: Bool = false
     ) async -> FeedProbeDecision? {
-        guard let primary = channels.first(where: { $0.kind == .primary }),
-              // NEW-7 (2026-08-06 review): bind the fallback slot by id
-              // ("jsdelivr-mirror") rather than by `kind == .fallback`.
-              // The jsDelivr (kind .fallback) and Gitee (also kind .fallback)
-              // channels share the same enum tag, so the old binding
-              // depended entirely on the order of `knownChannels` in
-              // UpdateFeedPolicy. Removing jsDelivr or reordering the
-              // array would silently route "jsDelivr" selections to the
-              // Gitee URL with no test catching the regression. Id-based
-              // binding makes the choice explicit and order-independent.
-              let fallback = channels.first(where: { $0.id == "jsdelivr-mirror" }) else {
-            return nil
+        // ── 槽位解析 ────────────────────────────────────────────────────────
+        //
+        // ID-BETA-0001 (2026-11-08)：**beta 开启 ⇒ 必须换一个 feed**。
+        //
+        // `github-release` 的 feed 是 `releases/latest/download/appcast.xml`
+        // ⇒ ⇒ GitHub 的 `releases/latest` **排除 prerelease** ⇒ ⇒ 它解析到
+        // ⇒ ⇒ **最近一个正式版**的 appcast 资产 ⇒ ⇒ ⇒ **里面没有 beta 条目**
+        // ⇒ ⇒ ⇒ ⇒ Sparkle 从来没见过那条 beta 条目 ⇒ ⇒ ⇒ ⇒ **勾开关也没用**
+        // ⇒ ⇒ ⇒ （实测：线上该 feed 解析到 v2.9.6、beta 命中 0）。
+        //
+        // ⇒ ⇒ 所以 beta 模式下**排除**装不下 prerelease 的通道，改用
+        // ⇒ ⇒ **main 分支镜像**（jsDelivr / Gitee —— 它们镜像 main 的
+        // ⇒ ⇒ appcast ⇒ 含 beta 条目）。
+        //
+        // ⇒ ⇒ **beta 关闭 ⇒ 槽位逐字不变**（零回归面）。
+        let primary: FeedChannel
+        let fallback: FeedChannel
+        if requiresPrereleaseItems {
+            let capable = channels.filter { $0.carriesPrereleaseItems }
+            guard let jsd = capable.first(where: { $0.id == "jsdelivr-mirror" }),
+                  let gt = capable.first(where: { $0.id == "gitee-mirror" }) else {
+                return nil
+            }
+            primary = jsd
+            fallback = gt
+        } else {
+            guard let p = channels.first(where: { $0.kind == .primary }),
+                  // NEW-7 (2026-08-06 review): bind the fallback slot by id
+                  // ("jsdelivr-mirror") rather than by `kind == .fallback`.
+                  // The jsDelivr (kind .fallback) and Gitee (also kind .fallback)
+                  // channels share the same enum tag, so the old binding
+                  // depended entirely on the order of `knownChannels` in
+                  // UpdateFeedPolicy. Removing jsDelivr or reordering the
+                  // array would silently route "jsDelivr" selections to the
+                  // Gitee URL with no test catching the regression. Id-based
+                  // binding makes the choice explicit and order-independent.
+                  let f = channels.first(where: { $0.id == "jsdelivr-mirror" }) else {
+                return nil
+            }
+            primary = p
+            fallback = f
         }
         // Per-call override wins; otherwise use engine-level config from init.
         let effectiveTimeout = timeout ?? probeTimeoutSeconds
@@ -119,9 +153,12 @@ final class DefaultFeedProbeEngine: FeedProbeEngine {
             return await resolvePrimary(primary: primary, timeout: effectiveTimeout)
         case .fallback:
             // Bypass stale guard — user informed consent. Don't re-fetch primary.
+            // 「用户选了 jsDelivr 镜像」⇒ 无论 beta 与否都是它（按 id 绑定，
+            // 不走上面的槽位 —— beta 模式下 fallback 槽是 Gitee）。
+            let jsdelivr = channels.first(where: { $0.id == "jsdelivr-mirror" }) ?? fallback
             return FeedProbeDecision(
-                chosenURL: fallback.url,
-                usedChannelID: fallback.id,
+                chosenURL: jsdelivr.url,
+                usedChannelID: jsdelivr.id,
                 reason: .userForcedFallback,
                 primaryAppcastXML: nil,
                 primaryLatestDate: nil

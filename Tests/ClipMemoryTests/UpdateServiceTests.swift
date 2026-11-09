@@ -905,7 +905,8 @@ actor StubProbeEngine: FeedProbeEngine {
         policy: UpdateFeedPolicy,
         lastKnownDate: Date?,
         channels: [FeedChannel],
-        timeout: TimeInterval?
+        timeout: TimeInterval?,
+        requiresPrereleaseItems: Bool
     ) async -> FeedProbeDecision? {
         callCount += 1
         onEnter?()

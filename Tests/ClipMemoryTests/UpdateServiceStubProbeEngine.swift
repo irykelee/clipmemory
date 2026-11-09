@@ -16,7 +16,8 @@ final class StubFeedProbeEngine: FeedProbeEngine, @unchecked Sendable {
         policy: UpdateFeedPolicy,
         lastKnownDate: Date?,
         channels: [FeedChannel],
-        timeout: TimeInterval?
+        timeout: TimeInterval?,
+        requiresPrereleaseItems: Bool
     ) async -> FeedProbeDecision? {
         return nil
     }

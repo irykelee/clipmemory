@@ -29,11 +29,13 @@ struct UpdateAboutSettingsView: View {
                 Toggle(L10n.settingsUpdateBetaChannel, isOn: Binding(
                     get: { UpdateService.betaChannelEnabled },
                     set: { newValue in
-                        UpdateService.betaChannelEnabled = newValue
-                        // Just opted in ⇒ check right away so the user sees
-                        // whether a beta exists (instead of waiting for the
-                        // next scheduled check).
-                        if newValue { UpdateService.shared.checkNow() }
+                        // ID-BETA-0001 (2026-11-08)：**先重探 feed 再检查更新**
+                        // ⇒ ⇒ beta 需要一个**装得下 prerelease 条目**的 feed
+                        // ⇒ ⇒ ⇒ 而启动时解析好的那个 feed（GitHub
+                        // ⇒ ⇒ ⇒ ⇒ releases/latest）**装不下** ⇒ ⇒ ⇒ ⇒
+                        // ⇒ ⇒ ⇒ ⇒ 直接 checkNow() 会让用户看到「已是最新」
+                        // ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **开关像是坏的** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+                        UpdateService.shared.setBetaChannelEnabled(newValue)
                     }
                 ))
                 Button(L10n.settingsUpdateCheckNow) { UpdateService.shared.checkNow() }.buttonStyle(.link)
