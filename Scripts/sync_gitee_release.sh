@@ -32,7 +32,15 @@ ok()  { echo "✅ $*"; }
 log() { echo "→ $*"; }
 
 VERSION="${1:-}"
-[[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Usage: $0 vX.Y.Z"
+# ID-BETA-0001 (2026-11-08): 允许 **beta 版本号**（`vX.Y.Z-beta.N`）。
+# ⇒ ⇒ 之前这个正则只认纯 X.Y.Z ⇒ ⇒ 而 beta 发版后 `git describe` 拿到的
+# ⇒ ⇒ 是 `v2.10.0-beta.1` ⇒ ⇒ ⇒ sync-gitee.yml 的「Determine version」
+# ⇒ ⇒ ⇒ **直接 exit 1** ⇒ ⇒ ⇒ ⇒ Gitee 镜像**根本没同步** ⇒ ⇒ ⇒ ⇒ ⇒ 中国用户
+# ⇒ ⇒ ⇒ ⇒ ⇒ 既看不到 beta 条目、也下载不到 beta 资产（实测：Gitee appcast
+# ⇒ ⇒ ⇒ ⇒ ⇒ 35 条、最新 2.9.6、beta 命中 0）。
+# ⇒ ⇒ 脚本其余部分**全部按 tag 拼**（`v${VERSION}`）⇒ ⇒ 没有别的地方假设
+# ⇒ ⇒ 「三段纯数字」⇒ ⇒ 放宽这一处即可。
+[[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]] || die "Usage: $0 vX.Y.Z[-beta.N]"
 VERSION="${VERSION#v}"
 TAG="v${VERSION}"
 

@@ -132,8 +132,14 @@ jobs:
           fi
           # Basic sanity (the script does its own validation but a clearer
           # early error message beats a deeper one).
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "❌ Invalid version '$VERSION' (expected X.Y.Z, no leading v)"
+          # ID-BETA-0001 (2026-11-08): 允许 **beta 版本号** ⇒ ⇒ 之前只认
+          # X.Y.Z ⇒ ⇒ beta 发版后 `git describe` 返回 `2.10.0-beta.1`
+          # ⇒ ⇒ ⇒ 这一步 **exit 1** ⇒ ⇒ ⇒ 「Sync Gitee mirror」被跳过
+          # ⇒ ⇒ ⇒ ⇒ Gitee 镜像**没有 beta 条目也没有 beta 资产**
+          # ⇒ ⇒ ⇒ ⇒ （实测：Gitee appcast 35 条、最新 2.9.6、beta 命中 0
+          # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒）。
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
+            echo "❌ Invalid version '$VERSION' (expected X.Y.Z or X.Y.Z-beta.N, no leading v)"
             exit 1
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -218,13 +224,20 @@ jobs:
           # github.com). Fetch via raw, parse the <enclosure url="..."> for
           # this version. Item title is "Version 2.7.9" (not "ClipMemory
           # v2.7.9" — that's the channel title); we anchor on
-          # <sparkle:shortVersionString>2.7.9</sparkle:shortVersionString>
-          # which is the authoritative version match.
+          # <sparkle:version>2.7.9</sparkle:version> which is the
+          # authoritative version match.
+          #
+          # ID-BETA-0001 (2026-11-08): 原来是按 `<sparkle:shortVersionString>`
+          # 匹配 ⇒ ⇒ **beta 匹配不上** ⇒ ⇒ 因为 beta 的 shortVersionString 是
+          # **2.10.0**（不带 `-beta.1`，那是 Sparkle 显示用的）⇒ ⇒ ⇒ 而
+          # `<sparkle:version>` 才是 **2.10.0-beta.1** ⇒ ⇒ ⇒ ⇒ 而且
+          # `<sparkle:version>` 对**正式版**同样成立（2.9.6 两处都是）⇒ ⇒ ⇒ ⇒
+          # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **换成 version 对两种形态都成立** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
           V="${VERSION#v}"
           # `-L` follows the 302 redirect to raw.giteeusercontent.com (otherwise
           # curl gets the HTML redirect page and the regex finds no <enclosure>).
           ENCLOSURE=$(V="$V" curl -sfL --max-time 15 "https://gitee.com/${OWNER}/${REPO}/raw/main/appcast.xml" \
-            | V="$V" python3 -c 'import re,sys,os; v=os.environ["V"]; m=re.search(r"""<item>.+?<sparkle:shortVersionString>"""+re.escape(v)+r"""</sparkle:shortVersionString>.+?<enclosure[^>]*url="([^"]+)""", sys.stdin.read(), re.DOTALL); print(m.group(1) if m else "")' 2>/dev/null || echo "")
+            | V="$V" python3 -c 'import re,sys,os; v=os.environ["V"]; m=re.search(r"""<item>.+?<sparkle:version>"""+re.escape(v)+r"""</sparkle:version>.+?<enclosure[^>]*url="([^"]+)""", sys.stdin.read(), re.DOTALL); print(m.group(1) if m else "")' 2>/dev/null || echo "")
           if [[ -z "$ENCLOSURE" ]]; then
             fail "no Gitee appcast <item> for ${VERSION} — script may not have pushed the copy"
           elif [[ "$ENCLOSURE" == *"gitee.com/${OWNER}/${REPO}/releases/download/${VERSION}/ClipMemory.tar.gz"* ]]; then
