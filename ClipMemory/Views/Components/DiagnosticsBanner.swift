@@ -37,6 +37,23 @@ struct DiagnosticsBanner: View {
         // Surface it on the same banner UI as keyUnavailable /
         // dataCorruptedCount so a failed tags-load gets the same
         // visibility as other persistence failures.
+        // ID-REVIEW-1027 (2026-11-12): the local SQLite store. It sits
+        // ABOVE the tags-load failure because it is the more structural
+        // problem: the store is the substrate the next release switches
+        // to, and a user who never learns it is broken learns it at the
+        // worst possible moment.
+        //
+        // (ID-REVIEW-1027 round 2, P3-1: the comment above used to say
+        // "ABOVE" while the code checked the tags failure FIRST - the
+        // banner the user saw was the tags one, and the storage one was
+        // never shown. The ORDER now matches the comment.)
+        if let issue = diagnostics.storageMirrorIssue {
+            switch issue {
+            case .fromNewerBuild: return L10n.bannerStorageNewerBuild
+            case .diverged: return L10n.bannerStorageDiverged
+            case .unavailable: return L10n.bannerStorageUnavailable
+            }
+        }
         if diagnostics.tagsLoadFailed { return L10n.bannerTagsLoadFailed }
         if diagnostics.totalCorruptedCount > 0 {
             return L10n.bannerDataCorruptedCount(diagnostics.totalCorruptedCount)

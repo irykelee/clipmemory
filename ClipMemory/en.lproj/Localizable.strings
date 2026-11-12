@@ -450,3 +450,6 @@
 "safeMode.degraded.body" = "Could not write the launch sentinel file. Crash detection is offline until this is resolved — please report via Help → Report Issue.";
 "alert.already.running.title" = "ClipMemory is already running";
 "alert.already.running.message" = "It is already running — this launch did not change your clipboard history. The menu bar icon is the way in.";
+"banner.storage.unavailable" = "The local database could not be prepared — your clipboard history is unaffected.";
+"banner.storage.newer.build" = "The local database was written by a newer ClipMemory — please update the app. Your clipboard history is unaffected.";
+"banner.storage.diverged" = "The local database copy does not match your clipboard history — the history itself is unaffected.";

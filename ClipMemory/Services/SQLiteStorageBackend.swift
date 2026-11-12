@@ -24,22 +24,31 @@
 //  reads on one connection); PR-C may switch to pthread_rwlock_t if
 //  contention shows up. For now: exclusive on every method.
 //
-//  Why recursive (ID-CRASH-0022, 2026-10-15): the transaction trio
-//  (beginTransaction / commitTransaction / rollbackTransaction) is a
-//  CLASS-EXTERNAL entry point, not an internal helper —
-//  `ClipboardStore+Persistence.granularSave` (via a
+//  Why recursive (ID-CRASH-0022, 2026-10-15): the transaction scope
+//  (`withTransaction`) is a CLASS-EXTERNAL entry point, not an internal
+//  helper — `ClipboardStore+Persistence.granularSave` (via a
 //  `backend as? SQLiteStorageBackend` downcast) and `StoreMigration`
-//  both call it, and neither holds this lock. At the same time, five
-//  methods here (save / saveTags / upsertItem / moveToTrash /
-//  restoreFromTrash) already hold the lock when they call the trio.
-//  With a plain NSLock that is a guaranteed self-deadlock — every one
-//  of those five hangs, which took the whole test suite down (the
-//  first such test blocked and the remaining 1083 never ran).
+//  both call it, and the five bulk methods here (save / saveTags /
+//  upsertItem / moveToTrash / restoreFromTrash) call it while they
+//  already hold the lock. With a plain NSLock that is a guaranteed
+//  self-deadlock — every one of those five hangs, which took the whole
+//  test suite down (the first such test blocked and the remaining 1083
+//  never ran).
 //
 //  Recursion here is same-thread only and therefore cannot weaken
-//  cross-thread serialization: granularSave and StoreMigration each
-//  take the lock themselves, so two threads still cannot interleave on
-//  the shared connection.
+//  cross-thread serialization: `withTransaction` takes the lock itself
+//  and holds it for the WHOLE transaction, so two threads still cannot
+//  interleave on the shared connection.
+//
+//  ID-REVIEW-1027 (2026-11-12): the lock is now held for the whole
+//  transaction, not per call. The old trio took the lock PER CALL, so
+//  between `beginTransaction()` returning and the first statement the
+//  lock was FREE — another thread could enter, observe
+//  `sqlite3_get_autocommit(db) == 0` (CONNECTION state, not ownership)
+//  and conclude it owned the transaction. Its writes were absorbed into
+//  a transaction it did not own, and an error on the owner's side rolled
+//  them back: the other thread's write "succeeded" and then vanished.
+//  See docs/design/storage-migration.md §5.5.
 //
 //  Storage location: `~/Library/Application Support/ClipMemory/
 //  store.sqlite3`. The directory is created lazily (sqlite3_open with
@@ -64,10 +73,10 @@
 //  implicit transaction at the SQLite level (PRAGMA journal_mode = WAL
 //  auto-begins transactions per write). Explicit BEGIN/COMMIT is used
 //  by `ClipboardStore.saveItems` (the granular path) when multiple
-//  upserts must be atomic — see `beginTransaction` / `commitTransaction`
-//  / `rollbackTransaction` below. The default-isolation is the
-//  SQLite-level WAL; we don't need explicit isolation in single-statement
-//  writes.
+//  upserts must be atomic — see `withTransaction` below, which is the
+//  ONLY entry point for a multi-statement transaction. The
+//  default-isolation is the SQLite-level WAL; we don't need explicit
+//  isolation in single-statement writes.
 
 import Foundation
 import os.log
@@ -420,70 +429,99 @@ final class SQLiteStorageBackend: StorageBackend {
         return sqlite3_get_autocommit(db) == 0
     }
 
-    /// Run `body` inside an explicit transaction.
+    /// Run `body` inside an explicit transaction, holding the connection
+    /// lock for the WHOLE transaction.
     ///
-    /// ID-CRASH-0022 (2026-10-20): transaction ownership follows the
-    /// CALLER. `granularSave` (docs §3.2.1) and `StoreMigration.runOnce`
-    /// (docs §4.1 step 5) each wrap a batch in BEGIN…COMMIT, and a
-    /// nested BEGIN is a hard SQLite error. So when the caller already
-    /// owns a transaction we neither open a second one nor commit/roll
-    /// back the caller's — the error propagates and the owner rolls
-    /// back.
+    /// This is the ONLY entry point for a transaction that spans more than
+    /// one statement, and it is what closes the transaction-ownership
+    /// defect recorded in docs/design/storage-migration.md §5.5
+    /// (ID-REVIEW-1027, 2026-11-12).
     ///
-    /// But "the caller owns it" is not enough on its own: the inner
-    /// body is MULTIPLE statements (`upsertItemInternal` = INSERT items
-    /// + DELETE item_tags + INSERT item_tags). If the last one fails,
-    /// the inner call has already written the items row — and leaving
-    /// that behind in the caller's transaction means the caller's
-    /// COMMIT persists a half-written item. So the inner call isolates
-    /// itself with a SAVEPOINT: on failure it rolls back to its own
-    /// savepoint (undoing exactly its own writes, leaving the caller's
-    /// other statements intact) and then rethrows.
+    /// **The defect it closes.** The old trio (`beginTransaction` /
+    /// `commitTransaction` / `rollbackTransaction`) took the lock PER
+    /// CALL. Between `beginTransaction()` returning and the first
+    /// statement, the lock was FREE — so another thread could enter,
+    /// observe `sqlite3_get_autocommit(db) == 0` (CONNECTION state, not
+    /// ownership) and conclude that IT owned the transaction. Its writes
+    /// were then absorbed into a transaction it did not own, and an error
+    /// on the owner's side rolled those writes back: the other thread's
+    /// write "succeeded" and then vanished. No log line could attribute
+    /// the loss.
     ///
-    /// When nobody owns a transaction, this method owns it: the body
-    /// then runs in BEGIN/COMMIT, which keeps multi-statement writes
-    /// atomic (e.g. `upsertItemInternal` = INSERT items + DELETE
-    /// item_tags + INSERT item_tags — in autocommit a mid-way failure
-    /// would half-write).
-    private func inTransaction<T>(_ body: () throws -> T) throws -> T {
-        let ownsTransaction = !isInsideTransaction
-        if ownsTransaction {
-            try beginTransaction()
-            do {
-                let result = try body()
-                try commitTransaction()
-                return result
-            } catch {
-                // ID-CRASH-0022 (2026-10-20): a failed ROLLBACK must
-                // not be swallowed. Two things go wrong if it is:
-                //   1. the connection keeps an open transaction, so
-                //      `isInsideTransaction` mis-detects ownership on
-                //      every later call and the next writer silently
-                //      absorbs its writes into a transaction nobody
-                //      commits (silent data loss);
-                //   2. nothing in the log explains why the next
-                //      write vanished.
-                // `rollbackTransaction` recovers by resetting the
-                // connection when the ROLLBACK itself fails, so the
-                // transaction state is known again either way. It
-                // throws only when the connection could not be
-                // recovered at all — and even then the ORIGINAL error
-                // is the one the caller needs.
-                do {
-                    try rollbackTransaction()
-                } catch {
-                    Self.logger.error(
-                        "connection could not be recovered after a failed rollback: \(error.localizedDescription)"
-                    )
-                }
-                throw error
-            }
+    /// **The fix is structural, not a flag.** The lock is held for the
+    /// whole transaction, so while a transaction is open no other thread
+    /// can be inside the backend at all. `isInsideTransaction` can then
+    /// only be true because THIS thread opened it — which is exactly the
+    /// ownership question the check was trying to answer.
+    ///
+    /// **Nested use.** If this thread is already inside a transaction (an
+    /// outer `withTransaction`), the body runs inside a SAVEPOINT, so a
+    /// mid-body failure undoes exactly this call's writes and leaves the
+    /// outer transaction's other statements intact. The outer scope owns
+    /// the COMMIT / ROLLBACK.
+    func withTransaction<T>(_ body: () throws -> T) throws -> T {
+        // The lock is taken HERE, not by the caller. `exec` does not lock,
+        // so without this the transaction's statements ran with the lock
+        // free and a second thread could enter the same connection: it
+        // would read `autocommit == 0` (connection state, not ownership),
+        // take the savepoint branch, and have its write absorbed into a
+        // transaction it did not own. The owner's COMMIT then destroyed
+        // that savepoint and the writer's own ROLLBACK TO failed with
+        // "no such savepoint".
+        //
+        // `lock` is an NSRecursiveLock, so a same-thread NESTED
+        // `withTransaction` re-enters safely and correctly takes the
+        // savepoint branch below.
+        lock.lock()
+        defer { lock.unlock() }
+        if isInsideTransaction {
+            return try runInSavepoint(body)
         }
-        // Caller owns the transaction: isolate our own writes with a
-        // savepoint so a mid-body failure undoes exactly what this
-        // call wrote — and nothing else. SQLite nests savepoints, and
-        // ROLLBACK TO / RELEASE both act on the most recent savepoint
-        // of that name, so a fixed name is safe here.
+        try exec("BEGIN IMMEDIATE TRANSACTION")
+        do {
+            let result = try body()
+            try exec("COMMIT")
+            return result
+        } catch {
+            // A failed ROLLBACK must not be swallowed, and must not
+            // replace the original error. Two things go wrong if the
+            // rollback failure is swallowed:
+            //   1. the connection keeps an open transaction, so
+            //      isInsideTransaction mis-detects ownership on every
+            //      later call and the next writer silently absorbs its
+            //      writes into a transaction nobody commits (silent data
+            //      loss);
+            //   2. nothing in the log explains why the next write
+            //      vanished.
+            // rollbackTransaction recovers by resetting the connection
+            // when the ROLLBACK itself fails, so the transaction state is
+            // known again either way. It throws only when the connection
+            // could not be recovered at all, and even then the ORIGINAL
+            // error is the one the caller needs.
+            do {
+                try rollbackTransaction()
+            } catch {
+                Self.logger.error(
+                    "connection could not be recovered after a failed rollback: \(error.localizedDescription)"
+                )
+            }
+            throw error
+        }
+    }
+
+    /// Run `body` inside a SAVEPOINT.
+    ///
+    /// Used when the caller already owns a transaction (an outer
+    /// `withTransaction` on THIS thread). The savepoint is what keeps the
+    /// caller's transaction from committing a half-written item:
+    /// `upsertItemInternal` is MULTIPLE statements (INSERT items +
+    /// DELETE item_tags + INSERT item_tags), so if the last one fails,
+    /// the items row is already written - and leaving that behind means
+    /// the caller's COMMIT persists a half-written item.
+    ///
+    /// SQLite nests savepoints, and ROLLBACK TO / RELEASE both act on the
+    /// most recent savepoint of that name, so a fixed name is safe here.
+    private func runInSavepoint<T>(_ body: () throws -> T) throws -> T {
         try exec("SAVEPOINT \(Self.savepointName)")
         do {
             let result = try body()
@@ -493,7 +531,7 @@ final class SQLiteStorageBackend: StorageBackend {
             // The ROLLBACK TO is the operation that guarantees the
             // caller's transaction is NOT left holding a half-written
             // row. If it fails, the safety property this savepoint
-            // exists for is broken — and swallowing that failure would
+            // exists for is broken - and swallowing that failure would
             // let the caller's COMMIT persist exactly the partial write
             // we are undoing. So it is logged and escalated, never
             // silently dropped.
@@ -537,27 +575,11 @@ final class SQLiteStorageBackend: StorageBackend {
     }
 
     func save(_ items: [ClipboardItem]) throws {
-        try withLock {
-            // "Save the whole array" in SQLite terms means "replace
-            // every row in items with the new array's rows". This is
-            // the same semantic as FileStorageBackend.save (replaces the
-            // blob) and MemoryStorageBackend.save (replaces the array).
-            // Per docs §3.2.1, callers passing a whole array will
-            // become the granular path (item-by-item upsert in a
-            // transaction) when `SQLiteStorageBackend` becomes the
-            // primary backend; this array-level path remains for the
-            // fallback / legacy callers.
-            // ID-CRASH-0022 (2026-10-20): goes through `inTransaction`
-            // rather than the raw trio, so this method does not open a
-            // nested BEGIN when the caller already owns a transaction,
-            // and a mid-way failure cannot leave a half-written array
-            // behind in the caller's transaction.
-            try inTransaction {
-                try exec("DELETE FROM item_tags")
-                try exec("DELETE FROM items")
-                for item in items {
-                    try upsertItemInternal(item)
-                }
+        try withTransaction {
+            try exec("DELETE FROM item_tags")
+            try exec("DELETE FROM items")
+            for item in items {
+                try upsertItemInternal(item)
             }
         }
     }
@@ -569,31 +591,28 @@ final class SQLiteStorageBackend: StorageBackend {
     }
 
     func saveTags(_ tags: [Tag]) throws {
-        try withLock {
-            // ID-CRASH-0022 (2026-10-20): same as `save(_:)` above.
-            try inTransaction {
-                // ID-REVIEW-1024 follow-up (2026-10-24, independent review
-                // P1): the old body was a blanket `DELETE FROM tags` — and
-                // `item_tags.tag_id REFERENCES tags(id) ON DELETE CASCADE`
-                // (SQLiteSchema) runs with `PRAGMA foreign_keys = ON`.
-                // Deleting the whole catalog therefore cascaded away
-                // EVERY item↔tag row, and since `items` has no `tag_ids`
-                // column (`item_tags` is the only source of membership),
-                // the next load showed every item untagged. Delete only
-                // the tags that are actually gone from the catalog; the
-                // ones that survive keep their memberships.
-                if tags.isEmpty {
-                    try exec("DELETE FROM tags")
-                } else {
-                    let placeholders = Array(repeating: "?", count: tags.count).joined(separator: ",")
-                    let params: [(Int32, SQLiteValue)] = tags.enumerated().map { index, tag in
-                        (Int32(index + 1), .text(tag.id.uuidString))
-                    }
-                    try exec("DELETE FROM tags WHERE id NOT IN (\(placeholders))", params)
+        try withTransaction {
+            // ID-REVIEW-1024 follow-up (2026-10-24, independent review
+            // P1): the old body was a blanket `DELETE FROM tags` — and
+            // `item_tags.tag_id REFERENCES tags(id) ON DELETE CASCADE`
+            // (SQLiteSchema) runs with `PRAGMA foreign_keys = ON`.
+            // Deleting the whole catalog therefore cascaded away
+            // EVERY item↔tag row, and since `items` has no `tag_ids`
+            // column (`item_tags` is the only source of membership),
+            // the next load showed every item untagged. Delete only
+            // the tags that are actually gone from the catalog; the
+            // ones that survive keep their memberships.
+            if tags.isEmpty {
+                try exec("DELETE FROM tags")
+            } else {
+                let placeholders = Array(repeating: "?", count: tags.count).joined(separator: ",")
+                let params: [(Int32, SQLiteValue)] = tags.enumerated().map { index, tag in
+                    (Int32(index + 1), .text(tag.id.uuidString))
                 }
-                for tag in tags {
-                    try upsertTagInternal(tag)
-                }
+                try exec("DELETE FROM tags WHERE id NOT IN (\(placeholders))", params)
+            }
+            for tag in tags {
+                try upsertTagInternal(tag)
             }
         }
     }
@@ -611,10 +630,8 @@ final class SQLiteStorageBackend: StorageBackend {
     // MARK: - Granular methods (real PR-B implementations)
 
     func upsertItem(_ item: ClipboardItem) throws {
-        try withLock {
-            try inTransaction {
-                try upsertItemInternal(item)
-            }
+        try withTransaction {
+            try upsertItemInternal(item)
         }
     }
 
@@ -706,56 +723,52 @@ final class SQLiteStorageBackend: StorageBackend {
     }
 
     func moveToTrash(itemID: UUID, trashSnapshot: ClipboardItem) throws {
-        try withLock {
-            try inTransaction {
-                // Order matters and is fixed by docs §3.3: the trash
-                // snapshot is written first, then the source row is
-                // removed. Both happen in ONE transaction so a failure
-                // leaves neither half applied.
-                try upsertTrashItemInternal(itemID: itemID, snapshot: trashSnapshot)
-                try exec("DELETE FROM items WHERE id = ?", [(1, .text(itemID.uuidString))])
-            }
+        try withTransaction {
+            // Order matters and is fixed by docs §3.3: the trash
+            // snapshot is written first, then the source row is
+            // removed. Both happen in ONE transaction so a failure
+            // leaves neither half applied.
+            try upsertTrashItemInternal(itemID: itemID, snapshot: trashSnapshot)
+            try exec("DELETE FROM items WHERE id = ?", [(1, .text(itemID.uuidString))])
         }
     }
 
     func restoreFromTrash(itemID: UUID) throws {
-        try withLock {
-            try inTransaction {
-                guard let snapshot = try loadTrashItem(itemID: itemID) else {
-                    // ID-CRASH-0022 (2026-10-20): "the row is absent" and
-                    // "the row is present but corrupt" are different
-                    // situations with different operator responses (retry
-                    // vs. restore-from-quarantine), and one message for
-                    // both sent the reader to the wrong cause.
-                    if try trashRowExists(itemID: itemID) {
-                        throw StorageBackendError.storageFailure(
-                            sql: "SELECT ... FROM trash_items WHERE item_id = ?",
-                            code: -1,
-                            detail: """
-                            the trash row for item \(itemID.uuidString) exists but could not be \
-                            decoded; the store is corrupt, not missing — use the quarantine / \
-                            restore path, a retry will not help
-                            """
-                        )
-                    }
-                    throw StorageBackendError.unsupportedFeature(
-                        "restoreFromTrash: no trash row for item \(itemID.uuidString)"
+        try withTransaction {
+            guard let snapshot = try loadTrashItem(itemID: itemID) else {
+                // ID-CRASH-0022 (2026-10-20): "the row is absent" and
+                // "the row is present but corrupt" are different
+                // situations with different operator responses (retry
+                // vs. restore-from-quarantine), and one message for
+                // both sent the reader to the wrong cause.
+                if try trashRowExists(itemID: itemID) {
+                    throw StorageBackendError.storageFailure(
+                        sql: "SELECT ... FROM trash_items WHERE item_id = ?",
+                        code: -1,
+                        detail: """
+                        the trash row for item \(itemID.uuidString) exists but could not be \
+                        decoded; the store is corrupt, not missing — use the quarantine / \
+                        restore path, a retry will not help
+                        """
                     )
                 }
-                // ID-REVIEW-1024 (PR-C, 2026-10-23): the snapshot carries
-                // the tag set it had when it was trashed, and the tag
-                // CATALOG may no longer hold those tags (the user
-                // deleted a tag while the item sat in the bin). The
-                // junction table has a foreign key on tags(id), so a
-                // restore without the placeholder rows would fail with
-                // SQLITE_CONSTRAINT_FOREIGNKEY and the item could
-                // never come back. The placeholder mechanism is the
-                // established answer to exactly this — see
-                // `ensureTagPlaceholders` and its use in StoreMigration.
-                try ensureTagPlaceholders(snapshot.tagIds)
-                try upsertItemInternal(snapshot)
-                try exec("DELETE FROM trash_items WHERE item_id = ?", [(1, .text(itemID.uuidString))])
+                throw StorageBackendError.unsupportedFeature(
+                    "restoreFromTrash: no trash row for item \(itemID.uuidString)"
+                )
             }
+            // ID-REVIEW-1024 (PR-C, 2026-10-23): the snapshot carries
+            // the tag set it had when it was trashed, and the tag
+            // CATALOG may no longer hold those tags (the user
+            // deleted a tag while the item sat in the bin). The
+            // junction table has a foreign key on tags(id), so a
+            // restore without the placeholder rows would fail with
+            // SQLITE_CONSTRAINT_FOREIGNKEY and the item could
+            // never come back. The placeholder mechanism is the
+            // established answer to exactly this — see
+            // `ensureTagPlaceholders` and its use in StoreMigration.
+            try ensureTagPlaceholders(snapshot.tagIds)
+            try upsertItemInternal(snapshot)
+            try exec("DELETE FROM trash_items WHERE item_id = ?", [(1, .text(itemID.uuidString))])
         }
     }
 
@@ -781,12 +794,10 @@ final class SQLiteStorageBackend: StorageBackend {
     /// trash table. The main `items` table is NOT touched: writing the
     /// trash must never delete the user's history.
     func saveTrash(_ items: [ClipboardItem]) throws {
-        try withLock {
-            try inTransaction {
-                try exec("DELETE FROM trash_items")
-                for item in items {
-                    try upsertTrashItemInternal(itemID: item.id, snapshot: item)
-                }
+        try withTransaction {
+            try exec("DELETE FROM trash_items")
+            for item in items {
+                try upsertTrashItemInternal(itemID: item.id, snapshot: item)
             }
         }
     }
@@ -799,14 +810,12 @@ final class SQLiteStorageBackend: StorageBackend {
     /// and nothing else; it never decides on its own what is expired.
     func purgeTrash(deleting itemIDs: Set<UUID>) throws {
         guard !itemIDs.isEmpty else { return }
-        try withLock {
-            try inTransaction {
-                for id in itemIDs {
-                    try exec(
-                        "DELETE FROM trash_items WHERE item_id = ?",
-                        [(1, .text(id.uuidString))]
-                    )
-                }
+        try withTransaction {
+            for id in itemIDs {
+                try exec(
+                    "DELETE FROM trash_items WHERE item_id = ?",
+                    [(1, .text(id.uuidString))]
+                )
             }
         }
     }
@@ -880,30 +889,21 @@ final class SQLiteStorageBackend: StorageBackend {
 
     // MARK: - SQLite-specific transaction helpers
 
-    /// Caller (ClipboardStore.saveItems' granular path) wraps multiple
-    /// upserts in a single transaction so partial failure rolls back.
-    /// WAL + NORMAL synchronous = fsync per checkpoint (per docs §1.1).
-    func beginTransaction() throws {
-        try withLock {
-            try exec("BEGIN IMMEDIATE TRANSACTION")
-        }
-    }
-
-    func commitTransaction() throws {
-        try withLock {
-            try exec("COMMIT")
-        }
-    }
-
     /// Rolls back the current transaction.
     ///
     /// ID-CRASH-0022 (2026-10-20): this THROWS when the ROLLBACK
     /// itself fails. It used to be treated as best-effort — the
     /// caller-side catch in `ClipboardStore+Persistence.swift` now
     /// logs a failed rollback instead of letting it replace the
-    /// original error, and `inTransaction` resets the connection when
+    /// original error, and `withTransaction` resets the connection when
     /// it cannot roll back.
-    func rollbackTransaction() throws {
+    ///
+    /// ID-REVIEW-1027 (2026-11-12): PRIVATE. Only `withTransaction` may
+    /// roll a transaction back - it is the scope that opened it, and
+    /// the scope that holds the lock for its whole life. A public
+    /// rollback that another thread could call would let it undo
+    /// statements it never wrote.
+    private func rollbackTransaction() throws {
         try withLock {
             // ID-CRASH-0022 (2026-10-20): test seam. When set, the NEXT
             // rollback fails — lets the suite exercise the reset path

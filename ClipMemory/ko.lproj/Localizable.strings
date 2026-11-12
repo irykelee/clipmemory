@@ -451,3 +451,6 @@
 "safeMode.degraded.body" = "실행 센티널 파일을 쓸 수 없습니다. 크래시 감지가 오프라인입니다. 도움말 → 문제 보고 로 알려 주세요.";
 "alert.already.running.title" = "ClipMemory가 이미 실행 중입니다";
 "alert.already.running.message" = "이미 실행 중입니다. 이번 실행은 클립보드 기록을 변경하지 않았습니다. 메뉴 바 아이콘으로 들어가세요.";
+"banner.storage.unavailable" = "로컬 데이터베이스를 준비하지 못했습니다 — 클립보드 기록에는 영향이 없습니다.";
+"banner.storage.newer.build" = "로컬 데이터베이스는 더 새로운 ClipMemory가 기록했습니다 — 앱을 업데이트해 주세요. 클립보드 기록에는 영향이 없습니다.";
+"banner.storage.diverged" = "로컬 데이터베이스 복사본이 클립보드 기록과 일치하지 않습니다 — 기록 자체에는 영향이 없습니다.";

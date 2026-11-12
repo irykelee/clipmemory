@@ -163,8 +163,7 @@ extension ClipboardStore {
         // placeholder, every backend method throws so the catch in the
         // caller falls back to saveBlob. Once PR-B replaces the body
         // methods, this becomes the granular fast-path.
-        try backend.beginTransaction()
-        do {
+        try backend.withTransaction {
             // Pull the unique tag set from the items array. SQLite
             // upserts tags idempotently on PK collision.
             //
@@ -178,13 +177,16 @@ extension ClipboardStore {
             // is `ClipboardStore.tags` (keyed by UUID), so the real tag
             // is available right here.
             //
-            // A tag id the catalog does NOT carry is left alone: the
-            // item_tags row then fails its foreign key inside
-            // `upsertItem`, which is the loud failure we want — a broken
-            // reference must not be papered over with a nameless tag
-            // (the same stance `ensureTagPlaceholders` documents). The
-            // app never creates such a reference: `deleteTag` strips the
-            // id from every item's tagIds.
+            // A tag id the catalog does NOT carry is NOT upserted here
+            // (there is no real tag to write), and the per-item write
+            // further down SKIPS that one association and logs it
+            // (ID-REVIEW-1027) — so a broken reference cannot abort the
+            // whole save, and it is still not papered over with a
+            // nameless tag (the same stance `ensureTagPlaceholders`
+            // documents). The app rarely creates such a reference
+            // (`deleteTag` strips the id from every item's tagIds), but
+            // the tag catalog can fail to decode on its own, and that
+            // must not cost the user their whole history.
             var seen = Set<UUID>()
             var tagsToUpsert: [Tag] = []
             for item in items {
@@ -201,8 +203,36 @@ extension ClipboardStore {
             // Per-item upsert + tag attachment. Per docs §3.2.1, the
             // singular attachTag is looped over each tag id (Set<UUID>).
             for item in items {
-                try backend.upsertItem(item)
-                for tagID in item.tagIds {
+                // ID-REVIEW-1027 (2026-11-12): a tag id the catalog does
+                // NOT carry must not void the WHOLE save.
+                //
+                // The blast radius this closes: item_tags carries a
+                // FOREIGN KEY on tags(id), so attaching a tag id that has
+                // no parent row raises SQLITE_CONSTRAINT_FOREIGNKEY. The
+                // write that raised it was ONE association on ONE item,
+                // but it aborted the whole transaction, so the user's
+                // ENTIRE clipboard history failed to save that round — one
+                // unreadable tag directory (the catalog failed to decode,
+                // so it reads as empty) took the whole history with it.
+                // Loud is right; a blast radius that wide is not.
+                //
+                // The fix is to skip the one association and say so.
+                // Writing a nameless placeholder tag instead would
+                // invent a tag the user never created, and the backend's
+                // own contract says a regular write referencing an
+                // unknown tag must fail loudly rather than paper over it
+                // (see ensureTagPlaceholders).
+                let attachable = item.tagIds.filter { tags[$0] != nil }
+                let dangling = item.tagIds.subtracting(attachable)
+                if !dangling.isEmpty {
+                    logger.error(
+                        "ID-REVIEW-1027: skipped \(dangling.count) tag link(s) — the tag catalog does not carry them"
+                    )
+                }
+                var sanitized = item
+                sanitized.tagIds = attachable
+                try backend.upsertItem(sanitized)
+                for tagID in attachable {
                     try backend.attachTag(itemID: item.id, tagID: tagID)
                 }
             }
@@ -213,24 +243,7 @@ extension ClipboardStore {
             for staleID in dbIDs.subtracting(currentIDs) {
                 try backend.hardDeleteItem(id: staleID)
             }
-        } catch {
-            // ID-CRASH-0022 (2026-10-20): the rollback must never
-            // REPLACE the original error. The backend's exec helpers
-            // now throw, so `rollbackTransaction()` can itself throw
-            // (e.g. "cannot rollback - no transaction is active"), and
-            // a throw from here would hide the real cause (a FK
-            // violation, a disk-full) behind a misleading rollback
-            // error. Log the rollback failure; re-throw the original.
-            do {
-                try backend.rollbackTransaction()
-            } catch {
-                logger.error(
-                    "granularSave rollback failed: \(error.localizedDescription, privacy: .public) — re-throwing the original save error"
-                )
-            }
-            throw error
         }
-        try backend.commitTransaction()
     }
 
     /// Schedules a debounced save — coalesces multiple rapid mutations into a single disk write.

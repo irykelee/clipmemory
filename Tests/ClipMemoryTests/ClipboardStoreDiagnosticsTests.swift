@@ -5,6 +5,49 @@ import XCTest
 @MainActor
 final class ClipboardStoreDiagnosticsTests: XCTestCase {
 
+    /// ID-REVIEW-1027 (2026-11-12, independent verifier round 2 · P1-1):
+    /// the merge must NOT erase the flags that OBSERVERS set.
+    ///
+    /// `mergePendingDiagnostics()` rebuilds `DecryptionDiagnostics` from
+    /// the pending-diagnostics queue. The queue knows nothing about
+    /// `tagsLoadFailed` (ID-CRASH-0008) or `storageMirrorIssue`
+    /// (ID-REVIEW-1027) — those are set by observers — so rebuilding the
+    /// struct without carrying them over silently reset them.
+    ///
+    /// Why it matters more than "a flag resets": the menu-bar app does
+    /// NOT open the main window at launch, so the failure is usually
+    /// reported while there is no window to show the banner in. The user
+    /// opens the window later — and the first merge erases the state
+    /// that would have told them. The failure was reported, and the
+    /// signal was destroyed before it could be seen.
+    func testMergingPendingDiagnosticsKeepsTheObserverSetFlags() async throws {
+        store.diagnostics.storageMirrorIssue = .unavailable
+        store.diagnostics.tagsLoadFailed = true
+
+        // Queue one diagnostic so the merge has something to apply and
+        // the test can tell that it actually RAN.
+        store.recordPendingDiagnostic(.internalError)
+        store.mergePendingDiagnostics()
+
+        for _ in 0..<100 {
+            if store.diagnostics.internalErrorCount > 0 { break }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertGreaterThan(
+            store.diagnostics.internalErrorCount, 0,
+            "the merge must have run — otherwise this test proves nothing"
+        )
+
+        XCTAssertEqual(
+            store.diagnostics.storageMirrorIssue, .unavailable,
+            "the merge must not erase the storage issue an observer set"
+        )
+        XCTAssertTrue(
+            store.diagnostics.tagsLoadFailed,
+            "the merge must not erase the tag-load failure an observer set"
+        )
+    }
+
     private var store: ClipboardStore!
 
     /// ID-REVIEW-1037 (2026-10-26): the per-test settings suite.

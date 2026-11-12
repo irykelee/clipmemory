@@ -360,9 +360,9 @@ final class SQLiteStorageBackendTests: XCTestCase {
     /// calls, not placeholder throws). This test exercises the round
     /// trip end-to-end.
     func testBeginCommitRoundTrip() throws {
-        try backend.beginTransaction()
-        try backend.upsertItem(ClipboardItem(id: UUID(), content: "a", type: .text))
-        try backend.commitTransaction()
+        try backend.withTransaction {
+            try backend.upsertItem(ClipboardItem(id: UUID(), content: "a", type: .text))
+        }
         XCTAssertEqual(try backend.load().count, 1)
     }
 
@@ -371,10 +371,16 @@ final class SQLiteStorageBackendTests: XCTestCase {
     /// partial writes — the very thing docs §1.1 promises WAL
     /// prevents.
     func testRollbackActuallyUndoesWrites() throws {
-        try backend.beginTransaction()
-        try backend.upsertItem(ClipboardItem(id: UUID(), content: "tx-a", type: .text))
-        try backend.upsertItem(ClipboardItem(id: UUID(), content: "tx-b", type: .text))
-        try backend.rollbackTransaction()
+        XCTAssertThrowsError(
+            try backend.withTransaction {
+                try backend.upsertItem(ClipboardItem(id: UUID(), content: "tx-a", type: .text))
+                try backend.upsertItem(ClipboardItem(id: UUID(), content: "tx-b", type: .text))
+                throw StorageBackendError.storageFailure(
+                    sql: "test", code: -1, detail: "abort the transaction on purpose"
+                )
+            },
+            "the transaction body must fail so the scope rolls back"
+        )
         // Both inserts must be undone.
         XCTAssertEqual(try backend.load().count, 0,
                        "rollbackTransaction must undo all writes inside the transaction")
@@ -476,8 +482,8 @@ final class SQLiteStorageBackendTests: XCTestCase {
     /// a transaction". Both regressions turn this test red.
     func testInnerFailureDoesNotRollBackCallerTransaction() throws {
         let itemID = UUID()
-        try backend.beginTransaction()
-        try backend.upsertItem(ClipboardItem(id: itemID, content: "before-failure", type: .text))
+        try backend.withTransaction {
+            try backend.upsertItem(ClipboardItem(id: itemID, content: "before-failure", type: .text))
 
         // Fails on the item_tags FK: the tag row does not exist.
         // `upsertItem` goes through the backend's transaction helper,
@@ -489,9 +495,9 @@ final class SQLiteStorageBackendTests: XCTestCase {
             "upsertItem must fail when it references a tag row that does not exist"
         )
 
-        // The caller's transaction must still be open and usable.
-        try backend.upsertItem(ClipboardItem(content: "after-failure", type: .text))
-        try backend.commitTransaction()
+            // The caller's transaction must still be open and usable.
+            try backend.upsertItem(ClipboardItem(content: "after-failure", type: .text))
+        }
 
         let loaded = try backend.load()
         XCTAssertTrue(loaded.contains { $0.content == "before-failure" },
@@ -524,17 +530,17 @@ final class SQLiteStorageBackendTests: XCTestCase {
         let victimID = UUID()
         let victim = ClipboardItem(id: victimID, content: "victim", type: .text)
 
-        try backend.beginTransaction()
-        try backend.upsertItem(ClipboardItem(content: "caller-item", type: .text))
-        try backend.upsertItem(victim)
+        try backend.withTransaction {
+            try backend.upsertItem(ClipboardItem(content: "caller-item", type: .text))
+            try backend.upsertItem(victim)
 
-        // The inner trash operation runs inside the caller's transaction.
-        try backend.moveToTrash(itemID: victimID, trashSnapshot: victim)
+            // The inner trash operation runs inside the caller's transaction.
+            try backend.moveToTrash(itemID: victimID, trashSnapshot: victim)
 
-        // The caller's transaction must still be open: this write and
-        // the commit below must both succeed.
-        try backend.upsertItem(ClipboardItem(content: "after", type: .text))
-        try backend.commitTransaction()
+            // The caller's transaction must still be open: this write
+            // must succeed.
+            try backend.upsertItem(ClipboardItem(content: "after", type: .text))
+        }
 
         let loaded = try backend.load()
         XCTAssertTrue(loaded.contains { $0.content == "caller-item" },

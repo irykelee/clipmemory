@@ -17,6 +17,14 @@ struct DecryptionDiagnostics: Equatable {
     // `DiagnosticsBanner` (the same UI path that handles
     // `keyUnavailable` and `dataCorruptedCount`).
     var tagsLoadFailed: Bool = false
+    // ID-REVIEW-1027 (2026-11-12): why the local SQLite store is not
+    // usable, if it isn't. `nil` = the store is fine.
+    //
+    // The user's history lives in UserDefaults and is NOT affected by
+    // any of these - they say the MIRROR is not there. Without them the
+    // store could fail silently and the user would only find out when
+    // the switch to SQLite-primary lands.
+    var storageMirrorIssue: StorageMirrorService.FailureReason?
     var dismissed: Bool = false
 
     var totalCorruptedCount: Int {

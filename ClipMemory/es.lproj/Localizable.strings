@@ -450,3 +450,6 @@
 "safeMode.degraded.body" = "No se pudo escribir el archivo centinela. La detección de fallos está inactiva. Por favor, informe vía Ayuda → Informar de un problema.";
 "alert.already.running.title" = "ClipMemory ya está en ejecución";
 "alert.already.running.message" = "Ya está en ejecución: este inicio no modificó tu historial del portapapeles. El icono de la barra de menús es la puerta de entrada.";
+"banner.storage.unavailable" = "No se pudo preparar la base de datos local: tu historial del portapapeles no se ve afectado.";
+"banner.storage.newer.build" = "La base de datos local fue escrita por una versión más reciente de ClipMemory: actualiza la aplicación. Tu historial del portapapeles no se ve afectado.";
+"banner.storage.diverged" = "La copia de la base de datos local no coincide con tu historial del portapapeles: el historial no se ve afectado.";

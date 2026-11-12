@@ -250,14 +250,19 @@ final class SQLiteSchemaVersionTests: XCTestCase {
         try writeUserVersion(newer, at: dbURL)
 
         XCTAssertThrowsError(try SQLiteStorageBackend(databaseURL: dbURL)) { error in
+            // ID-REVIEW-1027 (2026-11-12): its OWN case, not a generic
+            // storage failure. The refusal has to carry "please upgrade
+            // ClipMemory" to the user, and a generic failure with the
+            // word "newer" buried in a detail string cannot be
+            // classified by the presentation layer without string
+            // matching.
             guard let backendError = error as? StorageBackendError,
-                  case .storageFailure(_, _, let detail) = backendError else {
-                return XCTFail("expected a storageFailure, got \(error)")
+                  case .databaseFromNewerBuild(let found, let supported) = backendError else {
+                return XCTFail("expected a databaseFromNewerBuild, got \(error)")
             }
-            XCTAssertTrue(
-                detail.contains("newer"),
-                "the error must say the database is newer than this build: \(detail)"
-            )
+            XCTAssertEqual(found, newer, "the error must carry the version found")
+            XCTAssertEqual(supported, SQLiteSchema.version,
+                           "the error must carry the version this build supports")
         }
         XCTAssertEqual(
             try readUserVersion(at: dbURL),

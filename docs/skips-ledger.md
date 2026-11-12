@@ -6810,3 +6810,617 @@ schema 守卫** ⇒ ⇒ **没跑 multibyte 守卫** ⇒ ⇒ ⇒ ⇒ ⇒ 于是 C
 ③ 主 feed 的 prerelease-blind 是**事实**，不是 bug ⇒ ⇒ ⇒ ⇒ 它由 `⑤` 的
    ⇒ ⇒ ⇒ ⇒ 「主 feed 必须不含 beta」断言**盯着** ⇒ ⇒ ⇒ ⇒ GitHub 哪天改了
    ⇒ ⇒ ⇒ ⇒ 语义 ⇒ ⇒ ⇒ ⇒ 那条断言会红 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **结论要重审**。
+
+## 51. 「SQLite 接线前置」这一族 —— 两个潜伏缺陷 + 一个零调用点的后端（ID-REVIEW-1027，2026-11-12）
+
+### 51.1 触发
+
+用户要求「查看项目最新进度，继续开发」。翻项目自己的文档，`docs/design/storage-migration.md` 里明明白白挂着**两个「接线前必须解决」**的潜伏缺陷（§5.5 / §5.6），`CLAUDE.md` 里写着「后端**目前零生产调用点** ⇒ 接线时必须把 `init` 的抛错接到用户可见通道」，而 §4.4.1 明说那条义务「今天还不能落地 —— 因为后端零生产调用点」。
+
+**这就是本轮的活**：不是新功能，是把一份「写好了但没人用」的东西接上线，并把它接上线之前必须先解决的两个缺陷修掉。
+
+### 51.2 §5.5 事务归属：一个「成功返回后凭空消失」的写
+
+**缺陷（连接级状态被当成归属）**：`sqlite3_get_autocommit(db) == 0` 说的是「**连接上**有没有开着事务」，不是「**这个线程**是不是事务的主人」。而旧三件套 `beginTransaction` / `commitTransaction` / `rollbackTransaction` **每次调用各持一次锁** —— 事务开着的时候**锁是放开的**。
+
+**后果**：A 线程 `beginTransaction()` → B 线程进来 → 看到 `autocommit == 0` → 以为事务是**它**的 → 走 SAVEPOINT 分支 → **把自己的写挂进了 A 的事务** → A 那边一出错 ROLLBACK → **B 的写「成功返回了，然后凭空消失」**，而且日志里**没有任何一行能归因这次写到底归谁**。
+
+**修法不是加 flag，是改形状**：`withTransaction { … }` **锁覆盖整个事务**。⇒ 事务开着的时候，别人根本进不来这个后端 ⇒ `isInsideTransaction` 只可能因为**本线程**而为真 ⇒ 它要回答的「归属」问题从此有了确定答案。
+
+⇒ **三件套已删除**（`beginTransaction` / `commitTransaction` 删掉，`rollbackTransaction` 降为 private，只有 `withTransaction` 能回滚一个事务）⇒ **缺陷形状本身不可达**：没人能再开一个「锁不覆盖全程」的事务。
+
+⇒ **调用点全部迁移**：`granularSave`（`ClipboardStore+Persistence.swift`）、`StoreMigration.runOnce`，以及后端内部 7 处 `withLock { inTransaction { … } }`。
+
+**回归测试**：`testConcurrentWriteIsNotAbsorbedIntoAnotherThreadsTransaction` —— A 线程持事务并回滚，B 线程同时写 ⇒ 断言 B 的写**被提交**（用**第二个连接**读回：只有已提交的行列才对另一个连接可见）且 A 的行没有提交。
+
+### 51.3 §5.6 悬空标签：一条坏引用作废整次保存
+
+**缺陷**：标签目录读不出来时（`.tagBackendCorrupted` → `tags = [:]`），一条 item↔tag 的外键违规会**回滚整个事务** ⇒ 用户**整份**剪贴板历史这一轮全部保存失败。一个读不出来的标签目录，把历史带走了。
+
+代码里的注释把它称为「the loud failure we want」——**响是响的，但爆炸半径不对**：一个悬空引用本该只影响那一条关联。
+
+**修法：缩小失败范围**。`granularSave` 在写之前把 item 的 `tagIds` 过滤成「标签目录里确实存在的」那些，**只跳过那一条关联并记日志**，其余写入照常。
+
+⇒ **没有用「无名占位 tag」糊过去**：那会凭空造出一个用户从没创建过的标签，而且后端自己的契约写着「a regular write referencing an unknown tag must fail loudly, not invent a tag」⇒ ⇒ 修法落在**调用方**（调用方本来就知道目录里有没有这个 tag），后端的「响」保持不变。
+
+**回归测试**：`testOneDanglingTagReferenceDoesNotVoidTheWholeSave` —— 标签目录为空 + item 带 tag id ⇒ 断言**其余 item 仍然保存成功**（正是设计文档要求的断言）。
+
+### 51.4 后端第一次有了生产调用点：镜像阶段
+
+新文件 `ClipMemory/Services/StorageMirrorService.swift`。启动时（**后台队列，不挡启动**）：打开 `~/Library/Application Support/ClipMemory/store.sqlite3` → 跑 v1→v2 迁移 → **校验副本**（item id 集合 + tag id 集合必须与源一致）→ 任何失败都发 `.storageMirrorFailed` 通知 → `AppDelegate` observer → `DiagnosticsBanner`。
+
+**用户的历史没有搬家**：读路径、写路径、回滚路径**全部仍在 UserDefaults** ⇒ SQLite 只是**一份经过校验的副本** ⇒ **失败爆炸半径对用户数据 = 0**（源 blob 一个字节都不动，测试 `testSeedDoesNotModifyTheSourceBlobs` 钉住；且失败不写版本戳 ⇒ 下次启动重试，测试 `testAFailedSeedLeavesTheFlagUnsetSoTheNextLaunchRetries` 钉住）。
+
+**刻意不做**：双写（副本是一次性快照，持续一致性检查属于双写阶段）、原子切换（`migration.v1.to.v2.switched` 保持 0）。
+
+**§4.4.1 的义务落地**：
+
+| 义务 | 状态 | 落地位置 |
+|---|---|---|
+| init 失败必须**用户可见**（不是一行日志） | 已落地 | `.storageMirrorFailed` 通知 → `AppDelegate` observer → `DiagnosticsBanner`（`banner.storage.*`）。`NotificationObserverAssertionTests` 的**反向断言**盯着这个通知**必须有生产 observer** ⇒ 死通道回不来。 |
+| 「比本构建新」要说清楚（请升级） | 已落地 | `StorageBackendError.databaseFromNewerBuild(foundVersion:supportedVersion:)` 是**独立错误类型**（不是塞在 `storageFailure` 的 detail 里的一句 "newer"）⇒ 展示层按**类型**分流，不用字符串匹配。 |
+| 重试触发诚实 | 已落地 | 版本戳写在**同一个事务**里 ⇒ 失败即回滚 ⇒ 戳不落 ⇒ 下次启动重试。 |
+| 「不回落到 UserDefaults」 | 挂在**原子切换**上 | 镜像阶段 UserDefaults **本来就是**主存储 ⇒ 不存在「回落到另一个数据源」⇒ 这半句要到 `switched = 1` 的那一版才成立。**义务没消失，只是换了触发条件。** |
+
+新增 3 个 L10n key（`banner.storage.unavailable` / `.newer.build` / `.diverged`），**7 个语言全部补齐**（`LocalizationKeysTests` 的「en 里有的 key，7 个语言都必须有」断言会盯着）。
+
+### 51.5 验证（**实测**）
+
+| 检查 | 结果 |
+|---|---|
+| 编译 | `xcodebuild build` **BUILD SUCCEEDED** |
+| 存储相关测试 | `SQLiteStorageBackendTests` 29/29 + `StoreMigrationTests` 14/14 + `SQLiteSchemaVersionTests` 17/17 + `SQLiteTrashDimensionTests` 10/10 —— **0 失败** |
+| 新增镜像测试 | `StorageMirrorServiceTests` **11/11** —— **0 失败**（2026-11-12 第二轮修复后刷新；原写的 7/7 已过期，见 §51.11 P3-3） |
+| 通知反向断言 | `NotificationObserverAssertionTests` 2/2 —— 新通知**有**生产 observer（否则会红） |
+| **变异**（§5.5） | ✅ **实测**（2026-11-12）：去掉 `withTransaction` 的 `lock.lock()` ⇒ `testConcurrentWriteIsNotAbsorbedIntoAnotherThreadsTransaction` **变红**（`executed=1` ⇒ 用例确实执行，不是空变异）；control 同一用例**绿** ⇒ 用例有判别力 |
+| **变异**（§5.6） | ✅ **实测**（2026-11-12）：去掉 `attachable` 过滤 ⇒ `testOneDanglingTagReferenceDoesNotVoidTheWholeSave` **变红**（`executed=1`）；control 同一用例**绿** |
+| **残留校验** | ✅ 变异跑完后两个被改文件与备份**逐字节一致**（sha256 比对）⇒ 树里没有留下变异残留 |
+
+⇒ ⇒ ⇒ ⇒ **两个新测试都是「有牙齿」的**，不是「用例会存在」而已 —— ⇒ 变体跑不动 / 变异存活 ⇒ 「绿」是假的 ⇒ 这正是本项目反复吃过亏的地方（§50.12.4「`try XCTSkip` 根本不抛」、§50.22.8c「跳过被算成通过」）。
+
+### 51.6 诚实残余
+
+① **镜像是一次性快照**，不是活副本 ⇒ 它会随用户继续剪贴板而过期 ⇒ **双写阶段**（下一轮）才让它保持新鲜 ⇒ **在双写落地之前，原子切换是不能翻的**（会读到过期副本）⇒ 这条必须留在任何「切换」PR 的 checklist 第一条。
+② **「不回落到 UserDefaults」那半句义务仍在**，挂在 `switched = 1` 那一版 ⇒ 见 §51.4 的表。
+③ **UI 肉眼那一行仍缺**（与 §50.30.9 同一族）：横幅**机制**已验（通知 → observer → `DiagnosticsBanner` 分支 → L10n key 齐全 ⇒ 反向断言有牙），但**没有人在真 app 里看过那个横幅长什么样** —— 快照 golden 依旧看不见 `Form` 里的控件。
+④ **镜像阶段对每个用户都是一次性的迁移开销**（10K 条目量级）⇒ 跑在后台队列 ⇒ 不挡启动 ⇒ 但第一次启动后有一段后台 IO。
+⑤ **§7 的 PR 计划表还没更新**（PR-A…PR-D 已落地、PR-C 半边已落地、镜像阶段是 PR-C0）⇒ 文档滞后于代码，本轮已更新 §4.3.5 / §5.5 / §5.6 / §4.4.1，**§7 的表格下一轮补**。
+
+### 51.7 全量测试抓到的**我自己引入的回归** —— 本轮真正的价值
+
+#### 51.7.1 「我说修了」≠「文件里修了」
+
+§51.2 把 §5.5 记成「已修复」，台账里当时写的是：
+
+> `withTransaction` **锁覆盖整个事务**（`lock.lock()` / `defer { lock.unlock()}`）
+
+**那句话在文件里并不成立。** 修完之后再读 `SQLiteStorageBackend.swift`，
+`withTransaction` 的函数体里**一行锁都没有**：
+
+```swift
+func withTransaction<T>(_ body: () throws -> T) throws -> T {
+    if isInsideTransaction {          // ← 没有 lock.lock()
+        return try runInSavepoint(body)
+    }
+    try exec("BEGIN IMMEDIATE TRANSACTION")
+```
+
+而它的**文档注释**写着「holding the connection lock for the WHOLE
+transaction」⇒ ⇒ **注释承诺了、实现没兑现** ⇒ 这正是本台账反复记的
+那个形状：**「说了」不等于「做了」**（§50 一族：守卫的判据说覆盖了，
+实现其实没有）。
+
+#### 51.7.2 谁抓到的：不是定向测试，是**全量**
+
+定向跑 `SQLiteStorageBackendTests` 时是 **29/29 全绿**。全量
+`xcodebuild test` 才撞上：
+
+```
+SQLiteStorageBackendTests.testConcurrentUpsertsDoNotCorruptOrLoseRows
+  failed - concurrent upsert failed: storageFailure(
+    sql: "ROLLBACK TO SAVEPOINT clipmemory_sp", code: -1,
+    detail: "inner-write rollback failed; the caller-owned transaction may
+             contain partial writes (rc=1): no such savepoint: clipmemory_sp")
+  XCTAssertEqual failed: ("29") is not equal to ("100")
+                        - every concurrent write must survive
+```
+
+**根因**（`exec` 不加锁、`withTransaction` 也不加锁 ⇒ 两个线程可以同时
+进入同一条连接）：
+
+```
+A: BEGIN ────────────────────────── COMMIT   ← A 的 COMMIT 把 B 的 savepoint 一起销毁
+B:        看到 autocommit == 0（**连接状态，不是归属**）
+          → 走 savepoint 分支 → 写进 A 的事务
+          → ROLLBACK TO SAVEPOINT clipmemory_sp → 「no such savepoint」
+```
+
+**修法**：`withTransaction` **自己**拿锁（`lock` 是 `NSRecursiveLock`
+⇒ 同线程嵌套可重入 ⇒ 内层照旧走 savepoint 分支）⇒ 每个调用点**按构造**
+被保护 ⇒ 「事务开着但锁放开」这个形状**不再可达**。
+
+#### 51.7.3 两条硬教训
+
+1. **「定向绿」≠「缺陷已修」。** 我那个并发回归测试在**缺陷仍在**的情况下
+   也是绿的 —— 它靠「1 秒超时内必须写进去」的**时序碰运气**。⇒ ⇒
+   **测试必须能在「缺陷还在」时变红**，否则它只是「用例会存在」。
+   ⇒ 全量跑之所以撞上，是因为它把 4 个线程 × 25 次写压进同一窗口，
+   **碰撞概率**才够高。
+2. **变异验证必须真的跑、而且要有 control。** 本轮第一版并发测试在缺陷
+   仍在时也是绿的 ⇒ 它的「绿」是假的。⇒ 变异脚本现在**先跑 control
+   （未变异 ⇒ 必须绿）再跑 mutant（变异 ⇒ 必须红）**，并且**断言
+   `executed ≥ 1`** —— 因为 `-only-testing` 选不中时 xcodebuild 也会
+   exit 0，看着像「变异存活」，其实是「**用例根本没跑**」
+   （§50.12.4「`try XCTSkip` 根本不抛」、§50.22「跳过被算成通过」同族）。
+
+**测试改成确定性编排**：旧版靠时序碰运气；新版用**握手**
+（`ownerReady` → `writerStarted` → `writerFinished`）保证写者**一定**在
+事务窗口内尝试写入 ⇒ **去掉锁 ⇒ 必然红** ⇒ 不再靠运气。
+
+#### 51.7.4 连带损伤：文档里的行号快照（同 commit 刷新）
+
+全量跑还抓到第二个失败，**不是**存储问题：
+
+```
+IsolationSeamConsolidationTests.testDocumentedRosterLineNumbersStillPointAtTheirDeclarations
+  failed - docs/SWIFT6_MIGRATION.md §8's raw output no longer matches the code
+          — refresh the roster in the same commit that moved the declarations
+```
+
+`docs/SWIFT6_MIGRATION.md` §8 存着 `nonisolated(unsafe)` 声明的**行号快照**，
+而且是**两份副本**（raw-output 块 + roster 表格）。我往 `AppDelegate.swift`
+里插了两个 helper ⇒ 那两行声明整体偏移 **+60**（596 → 656、601 → 661）
+⇒ **两份副本同时过期**。
+
+⇒ 同一个 commit 里刷新了三处（守卫只查前两处，第三处靠人读）：
+
+| 位置 | 旧 | 新 |
+|---|---|---|
+| raw-output 块 | `AppDelegate.swift:596` / `:601` | `:656` / `:661` |
+| roster 表格 Line 列 | 596 / 601 | 656 / 661 |
+| **正文行内引用** | `:595` / `:613` / `:604` | `:655` / `:673` / `:664` |
+| 页脚变更记录 | 2026-10-28 | 2026-11-12（本轮） |
+
+⇒ ⇒ **「修一个，看全族」的第二例**：我改的是一个 Swift 文件，**过期的是
+另一份文档** ⇒ 而那份文档的过期**有守卫**（⇒ 会红，不会静默）⇒ 这正是
+「守卫」存在的意义。
+
+### 51.8 Lint ratchet：4 条**新增**违规（不是既有的）
+
+`.swiftlint.yml` 是 **ratchet** 策略：baseline 收着既有 warning，**新增的
+必须消掉**（既有 warning 是历史债，新增的是新债）。
+
+⇒ 判定方法：**不用「这条看起来是既有的」这种直觉** ⇒ 开一份 HEAD 快照
+（`git worktree add /tmp/clipmemory_head HEAD`），**同一套配置**跑一遍
+swiftlint，两边**逐条**对比。（两个坑：worktree 路径会带 `/private` 前缀
+⇒ 直接比路径会全错；行号会漂 ⇒ 必须按「文件 + 规则」归一化后再比。）
+
+⇒ 本轮新增 **4 条**，全部已修 —— 修法是**抽函数 / 拆文件**，**不加
+`swiftlint:disable`**：
+
+| 文件 | 违规 | 修法 |
+|---|---|---|
+| `AppDelegate.swift` | `function_body_length` 54（`applicationDidFinishLaunching`） | 镜像启动抽成 `startStorageMirror()` |
+| `AppDelegate.swift` | `function_body_length` 52（`setupLanguageObserver`） | 观察者注册抽成 `setupStorageMirrorObserver()` |
+| `Services/SQLiteStorageBackend.swift:544` | `vertical_whitespace`（连续两个空行） | 删掉重复空行 |
+| `Tests/.../SQLiteStorageBackendTests.swift` | `file_length` 908（HEAD **771** ⇒ **本轮跨过 800 阈值**） | 两个新用例拆到 `SQLiteStorageBackendRegressionTests.swift`（原文件回到 777） |
+
+⇒ 复跑 swiftlint：**10 条，与 HEAD 基线逐条一致，0 条新增**。
+
+⇒ ⚠️ **附带的一处「几乎没查出来」的伤**：刷 §8 名单时，我第一版脚本用
+「符号后 80 字符内的第一个 `:NNN`」做行内引用替换 ⇒ **把收尾反引号一起
+吃掉了**（文档里变成 `` (`:655) ``）⇒ 而且 `makeStatusItem()` 的标记在文档
+里是 `` `makeStatusItem()` ``（括号在反引号**内**）⇒ 第一版**一个都没
+命中**。⇒ ⇒ **两次都是「替换脚本看起来跑通了、其实没生效」** ⇒ 靠
+「打印 changed: []」这种输出**不能**当验证 ⇒ ⇒ 最后用「写盘后**再读回来
+grep 断言**」才抓住（§51.8 的两个脚本都自带写后校验）。
+
+### 51.9 变异验证抓到的第三层问题：**测试自己会挂死**（而挂死长得像「缺陷复现」）
+
+§51.7.3 说「变异必须让测试变红」。本轮真去做这条时，**测试没有变红 —— 它挂死了**：变异 A（去掉 `withTransaction` 的锁）下，测试跑了 **6 分钟**没结束。
+
+#### 51.9.1 第一反应是错的
+
+我以为那是**生产代码的死锁**（同一条 SQLite 连接被两个线程并发使用）⇒ 于是去
+采样进程、翻线程栈。采样给出的画面是：主线程卡在信号量等待，而**两个 GCD 工作
+线程都已经不在了**。
+
+#### 51.9.2 真相：是**测试自己的 bug**
+
+`DispatchSemaphore` 是**计数信号量**：`signal()` 一次只够**一个** `wait()`。
+而我的测试里：
+
+- A（事务持有者）在事务内等 `writerFinished`；
+- 主线程等行读回来时也等 `writerFinished`；
+- B 只 `signal()` **一次**。
+
+⇒ ⇒ **A 消费掉了那唯一的一个许可** ⇒ 主线程永远等不到 ⇒ **挂死**。
+
+⇒ ⇒ 而 A 的等待**本来就有超时**、B 的写入**很快就返回** ⇒ ⇒
+**生产代码根本没有死锁** ⇒ 是**测试把「一个许可、两个消费者」写进去了**。
+
+#### 51.9.3 面包屑：廉价且决定性
+
+为了定位卡点，我给并发测试加了 4 行 `NSLog` 面包屑。一次运行就把画面摊开了：
+
+```
+[tx-test] A: wrote owner-item, transaction open
+[tx-test] A: signaled ownerReady
+[tx-test] B: ownerReady
+[tx-test] B: signaled writerStarted
+[tx-test] A: writerStarted
+[tx-test] B: upsert returned              ← 写者正常返回了（不是卡在 SQLite）
+[tx-test] B: signaled writerFinished
+[tx-test] A: writerFinished wait returned, rolling back
+[tx-test] A: done                          ← 生产侧 1 秒内全部正常收尾
+[tx-test] main: ownerDone=success
+[tx-test] main: writerDone=timedOut       ← 挂的是主线程（许可被 A 消费了）
+```
+
+⇒ ⇒ **一次采样 + 一次推理**就排除了「生产死锁」这个错误假设 ⇒ ⇒
+**给并发测试留面包屑是廉价的、决定性的**：它把「卡在哪一步」从「靠采样猜」变成
+「一行日志」。
+
+#### 51.9.4 修法（两条，都是**测试设计**层面）
+
+1. **两个观察者 ⇒ 两个信号量**：A 看的 `writerFinished` 与主线程看的
+   `writerDone` 分开，B 各 `signal()` 一次。
+2. **主线程的等待全部有界并断言**：原来是无界 `wait()` ⇒ 任何一边没走到信号点
+   ⇒ **测试永久挂住**（比失败更糟：烧掉 CI 预算，还把真正的断言埋了）⇒
+   现在每个等待都有 30s 上限，**超时本身就是一条带说明的失败**。
+
+⇒ ⇒ 变异 A 现在**约 1 秒内变红**，失败原因明确（写者没能在别人的事务里被吸收
+那条可见性断言），**而不是挂死 6 分钟**。
+
+⇒ ⇒ **元教训**：*「挂死」与「失败」是两回事，而**挂死的那一次最容易被误读成
+「缺陷复现」*** ⇒ ⇒ 任何并发回归测试都必须同时满足两条：**等待有界** +
+**失败可读** ⇒ 否则它既不能证明修复有效，也不能证明修复无效。
+
+### 51.10 独立核验：**VERDICT = FAIL** —— 它抓到的是**我自己新代码里的真 bug**
+
+#### 51.10.1 核验员做了什么
+
+独立核验员（另一个 Agent，**不采信实现者的任何叙述**）跑了：读代码 + 全仓 grep +
+自己的变异测试（5 个）+ 自己的全量 `xcodebuild test`（独立 DerivedData）+ 用
+`git worktree` 开 HEAD 快照做 lint 双向对比 ⇒ 结论 **FAIL**。
+
+⇒ 它**证伪**了我方 8 条怀疑（锁只写在注释里？同名 savepoint 嵌套不安全？
+`NSRecursiveLock` 可重入会削弱跨线程互斥？旧三件套有残留？通知是死通道？
+「比本构建新」是字符串匹配？L10n 缺失？镜像会动用户数据？）⇒ ⇒ 这些是它
+**自己实测**的结论，不是我的。
+
+⇒ 它**确认**的：锁真的在函数体里（`:475-476`）、旧三件套零残留、全量
+**1467 用例 / 4 跳过 / 0 失败**、lint 两侧各 10 条**新增 0**、§8 行号两份副本
+一致（656/661/655/673/664）。
+
+#### 51.10.2 它抓到的那条 P1（本轮真正的收获）
+
+**镜像校验把迁移自己造的占位 tag 判成「副本不一致」。**
+
+⇒ 迁移**故意**给「items 引用了、目录里没有」的 tag id 插**占位行**
+（`ensureTagPlaceholders` —— 否则 `item_tags` 的外键会让整批迁移失败，
+ID-CRASH-0022 写得很清楚）。
+⇒ 而我写的 `contentsMatch` 比的是**目录的 tag id 集合** ⇒ **占位行必然让集合不等**
+⇒ ⇒ **忠实副本被判成不一致** ⇒ **用户看到假警报**（"本地数据库副本与剪贴板历史不一致"）。
+
+⇒ **第二个缺陷（更阴）**：迁移戳写在**迁移事务内** ⇒ 它在校验**之前**就落盘了 ⇒
+而 `.diverged` **不抛异常** ⇒ 戳留着 ⇒ 下次启动走 `alreadySeeded` 短路 ⇒
+⇒ **校验再也不跑** ⇒ ⇒ 副本**永久处于未校验状态**，而横幅下次启动又不再出现
+⇒ ⇒ 用户收到一次吓人的横幅，然后它**静默消失**，底层问题从未被复检。
+
+⇒ ⇒ ⇒ **「失败 ⇒ 不写戳 ⇒ 下次启动重试」这条承诺，只覆盖了抛错那条路径。**
+⇒ ⇒ ⇒ 而我在台账和 CLAUDE.md 里把它写成了「✅ 已落地」⇒ ⇒ **陈述与代码不符**
+（独立核验员的 P1-2）。
+
+**修法**（两条一起，缺一不可）：
+
+1. **比较口径要认识占位行**：镜像的 tag id 集合必须等于「**目录 ∪ items 引用的**」
+   —— 这正是忠实副本该有的集合。
+2. **校验戳独立于迁移戳**：`migration.v1.to.v2.verified` 只在**比对通过**时写 1；
+   **比对失败写 0**；`alreadySeeded` 短路要求**两个戳都齐** ⇒ ⇒ 校验失败 ⇒
+   **下次启动重新校验**（横幅也会再来），而不是「一次吓唬然后永远不再检查」。
+
+⇒ 附带把**内容哈希**也比上了（原来只比 id ⇒ 一份「id 全对、内容全错」的副本会被
+判为已验证）。
+
+⇒ **三个新回归测试 + 变异验证**（变异 C：把比较改回旧口径 ⇒ 必须红；变异 D：
+在失败路径写「已校验」⇒ 必须红）⇒ ⇒ 两个新测试都有牙齿。
+
+#### 51.10.3 另外三条 P2 的处置
+
+| finding | 处置 |
+|---|---|
+| **P2-1** 数组级 `save(_:)` 仍是 §5.6 同族（一坏全灭） | **当前不可达**（回收站走 `saveTrash`、迁移走 granular 方法；`saveBlob` 无生产调用点）⇒ **不现在改**，而是写进设计文档 §4.3.5 的「已知残余」⇒ **原子切换 PR 的 checklist 第一条** ⇒ 理由写明：现在改它会让 `SQLiteStorageBackend.swift` 越过 SwiftLint 的 1250 行 **error** 阈值 ⇒ 构建直接挂 |
+| **P2-2** `granularSave` 里有一段旧注释说「悬空 tag 留着 ⇒ 让外键响亮地失败」⇒ 与 40 行后的新代码（跳过 + 记日志）**自相矛盾** | 改掉旧注释（保留「不用无名占位 tag 糊过去」的立场，但说清新行为）⇒ 这正是本仓反复吃亏的「注释说 A、代码做 B」 |
+| **P2-6 / P2-7** §8 的 markdown 反引号少一个；「Raw output」其实已按路径排序 | 补反引号；把标题改成实话（"listed by path… the guard compares the SETS"） |
+
+#### 51.10.4 核验员自己踩到的两个方法论细节（值得抄下来）
+
+1. **守卫的强度有上限**：它想把 `addObserver(...)` 包进 `if false { }` 来制造
+   「死通道」，结果**测试仍绿** —— 因为 `NotificationObserverAssertionTests` 是
+   **源码文本扫描器**，不是运行时检测 ⇒ ⇒ 那个守卫挡得住「**删掉** observer」，
+   挡不住「**让 observer 永不触发**」⇒ ⇒ 「有守卫」不等于「守得住所有形状」。
+2. **同名 savepoint 到底安不安全**：它用 **sqlite3 CLI 实测**（不是推理）⇒
+   两层嵌套 + 两次 RELEASE **是安全的**；只有「RELEASE 次数多于 SAVEPOINT」才报
+   `no such savepoint` ⇒ ⇒ 把我方一个「疑似隐患」**证伪**了。
+
+⇒ ⇒ **元教训**：*独立核验的价值不只在于「抓 bug」，也在于「**证伪**」* ⇒ ⇒
+一个只会附和的核验员，不如没有 ⇒ ⇒ 核验报告里「我证伪了我的怀疑」那一节，
+和 findings 那一节**同样重要**。
+
+### 51.11 第二轮独立核验：**VERDICT = FAIL**（又是 FAIL）—— 修法本身被抓出新的洞
+
+#### 51.11.1 为什么要跑第二轮
+
+第一轮核验员在我的新代码里抓到一条真 bug ⇒ 我修了它 ⇒ ⇒ **修法本身也是新代码**
+⇒ ⇒ 不核验修法，等于把「刚写的东西」当成「已验证的东西」⇒ ⇒ 第二轮是**必需**的，
+不是可选的礼貌。
+
+#### 51.11.2 第二轮抓到的（我方处置）
+
+| # | finding | 真相 | 处置 |
+|---|---|---|---|
+| **P1-1** | 镜像失败的横幅会被 `mergePendingDiagnostics()` 抹掉 ⇒ 「用户可见」这一腿实际不成立 | **成立**。它重建 `DecryptionDiagnostics` 时只带 4 个字段 ⇒ 观察者设的 `storageMirrorIssue`（以及既有�� `tagsLoadFailed`）落回默认值 ⇒ 而菜单栏 App **启动不开窗口** ⇒ 失败发生时没有窗口可显示 ⇒ 用户后来开窗口时**第一次合并就把状态抹了** ⇒ **失败被报告过，但信号在用户看到之前就被销毁了** | 合并时**带上**观察者设的字段 + 新增回归测试 `testMergingPendingDiagnosticsKeepsTheObserverSetFlags`（变异 M6 验证有牙齿） |
+| **P1-2** | 内容哈希那个测试**没有判别力**（变异存活） | **成立，而且是我的错**：两个 item 都没传 `id` ⇒ `ClipboardItem.init` 各自生成**随机 UUID** ⇒ 断言通过的理由是「**id 不同**」而不是「hash 不同」⇒ 把整段哈希比较删掉，测试**照样绿** | 两个 item 显式**同一个 UUID** ⇒ 变异 M5 现在**必须红**（核验员实测过它之前**存活**） |
+| **P2-1** | 冻结快照 × 活源 ⇒ **永久**假分歧，横幅每次启动都回来且**永不自愈** | **成立**。副本是迁移那一刻的快照，源是活的 ⇒ 迁移戳一落盘，副本**永不重建** ⇒ 每次启动拿**冻结副本**比**更新的源** ⇒ 用户复制一次就是永久假分歧 ⇒ 而「重试」只是**把同一次失败重放一遍** | 校验不过 ⇒ 副本被打上 `store.sqlite3.rebuild` 标记 ⇒ **下次启动先删副本（删在开连接之前）再从当前源重建** ⇒ ⇒ **一次失败、一次自愈**。新增测试 `testADivergedCopyIsRebuiltOnTheNextLaunch`（变异 M7 验证有牙齿） |
+| **P3-1** | `DiagnosticsBanner` 注释说存储横幅在 tags 横幅**之上**，代码却先判 tags | **成立** | 调整判断顺序，让代码与注释一致（存储问题更结构化） |
+| **P3-2** | 台账声称存在一个「en 的 key 必须 7 语言齐全」的**通用守卫** ⇒ 实测**不存在**（全是按功能硬编码 key 列表） | **成立**（事实为真，守卫是假的） | **把守卫补出来**：`LocalizationKeysTests.testEveryEnglishKeyExistsInAllSevenLanguageFiles`（全量 key 比对）⇒ 声称从此为真 |
+| **P3-3** | 台账写「`StorageMirrorServiceTests` 7/7」，实际已 11 个 | **成立** | 刷新数字（本轮已改为 11/11） |
+| **P3-4** | `CLAUDE.md` 被 `.gitignore` 忽略 ⇒ 那段描述**不在版本控制里** | **成立**（`git ls-files CLAUDE.md` 为空） | 不改代码，但**如实记录**：本地 onboarding 文档的改动不可审计、也不随仓库分发 |
+
+⇒ ⇒ 核验员还**证伪**了 8 条怀疑（占位 tag 口径、校验戳的写入路径、nil/空串不对称、
+旧三件套残留、死通道、数组级 `save(_:)` 的可达性、`XCTSkip`/无界等待、lint 与行号漂移）
+⇒ ⇒ 它还**实测**了 `file_length` 的阈值行为（1250 行 = warning，**1251 行** = **error，exit 2**
+⇒ ⇒ ⚠️ **2026-11-12 第三轮核验员复测：这个数字原先写的是 1252，差一** ⇒ ⇒ SwiftLint 的
+error 阈值是 **1251 行起**（1251 / 1252 / 1253 都是 error，exit 2）⇒ ⇒ 差一行意味着
+「还差一行」的措辞不准 ⇒ ⇒ 已订正。
+⇒ 构建会挂）⇒ ⇒ 这条已写进设计文档的「已知残余」。
+
+#### 51.11.3 本轮的四条元教训
+
+1. **「有通道」≠「用户看得到」。** 状态被**重建**抹掉，是「用户可见」这一腿最隐蔽的
+   失败方式：机制全在、通知也发了、守卫也过了 ⇒ 而用户**什么都没看到**。
+   ⇒ ⇒ 凡是「必须用户可见」的义务，都要问一句：**这条状态会被谁重建/清空？**
+2. **断言通过的理由，必须与被断言的性质相关。** 随机 id 让「同一 id 不同 hash」
+   变成了「不同 id」⇒ 断言**绿着**，但它证明的是另一件事 ⇒ ⇒ 变异存活是唯一的
+   揭穿方式（核验员的 M4 实测：删掉整段哈希比较，套件全绿）。
+3. **「重试」必须能改变结果，否则它只是重放。** 冻结副本 vs 活源 ⇒ 重试一万次也是
+   同一次失败 ⇒ ⇒ 「失败 ⇒ 换条路重试」要检查那条**新路**会不会走到**不同的状态**
+   ⇒ ⇒ 这里是「**把副本扔掉重建**」，不是「再比一次」。
+4. **「文档说有守卫」和「有守卫」是两件事。** 台账把一个**不存在**的通用守卫当成
+   既有事实引用了两轮 ⇒ ⇒ 声称要么改成实际的，要么**把守卫补出来**（本轮选了后者）。
+
+⇒ ⇒ **另一条方法论**（核验员自己踩到的）：它第一次做「死通道」变异时把
+`addObserver(...)` 包进 `if false { }`，结果**测试仍绿** ⇒ 因为那个守卫是**源码文本
+扫描器** ⇒ ⇒ **那个守卫挡得住「删掉 observer」，挡不住「让 observer 永不触发」**
+⇒ ⇒ 「有守卫」不等于「守得住所有形状」⇒ ⇒ 核验报告里「我证伪了自己的怀疑」那一节，
+和 findings 那一节**同样重要**。
+
+### 51.12 收口轮：lint ratchet 清零 + 变异重跑 + **全量测试抓出的清单漂移**（2026-11-12）
+
+#### 51.12.1 这一轮做了什么
+
+上一轮（§51.11）的 findings 全部处置完毕后，做了一次**收口**：把 lint ratchet 清零、
+把三个变异 harness 重跑一遍、把全量 `xcodebuild test` 重跑一遍 ⇒ ⇒ **结果不是"绿"，
+而是被全量测试抓出一条新的漂移** ⇒ ⇒ 这一节记的就是它。
+
+#### 51.12.2 lint ratchet：0 条新增
+
+| | HEAD 基线 | 工作区 |
+|---|---|---|
+| 违规总数 | 10 | 10 |
+| 新增违规 | — | **0** |
+
+唯一差异：`Services/StorageBackend.swift` 的**既有** `file_length` 计数 834 → 857
+（本轮往那个文件加了 `StorageBackendError.databaseFromNewerBuild` 等）⇒ ⇒ 同一文件、
+同一规则、同一处 warning，**只是计数长大** ⇒ ⇒ 仍远低于 `file_length` 的 error 阈值
+1250 ⇒ ⇒ 不构成新增违规。
+
+⇒ ⇒ **方法论**：`file_length` 这类"计数型"违规，**不能只看违规条数** ⇒ ⇒ 必须
+**逐条比对集合**（路径 + 规则 + 位置），否则"10 vs 10"会掩盖"换了一条"。本轮第一版
+比对脚本就踩了这个坑（macOS `/private/tmp` 符号链接 ⇒ 路径前缀归一化失败 ⇒ 报出
+10 条"新增"）⇒ ⇒ **对比脚本本身要经得起质疑**。
+
+#### 51.12.3 变异 harness：三个全 PASS
+
+| harness | 变异 | 期望 | 实测 |
+|---|---|---|---|
+| `mutation_check.py` | A：去掉 `withTransaction` 的 `lock.lock()` | 并发回归用例红 | **红**（`executed=1`） |
+| | B：去掉悬空标签过滤 | 悬空标签用例红 | **红**（`executed=1`） |
+| `mutation_check2.py` | C：比较口径退回原始 id 集合 | 占位 tag 用例红 | **红** |
+| | D：分歧路径仍写"已校验" | 重试用例红 | **红** |
+| `mutation_check3.py` | M5：删掉整段 contentHash 比较 | 哈希用例红 | **红**（修复前**存活**） |
+| | M6：合并时丢观察者字段 | 合并持久性用例红 | **红** |
+| | M7：不写重建标记 | 自愈用例红 | **红** |
+
+每个 harness 都要求：control 先绿 ⇒ ⇒ 变异后红 ⇒ ⇒ `executed ≥ 1` ⇒ ⇒ 收尾
+sha256 与备份**逐字节一致** ⇒ ⇒ **跑完树是干净的**（这一条是必须的：变异脚本自己
+把仓库改脏了，后面的测试就测的是被改脏的树）。
+
+#### 51.12.4 全量测试抓出的：`SWIFT6_MIGRATION.md` §8 的行号清单漂移
+
+**第一轮全量跑：1473 用例 / 4 跳过 / 1 失败。**
+
+失败的是 `IsolationSeamConsolidationTests.testDocumentedRosterLineNumbersStillPointAtTheirDeclarations`
+⇒ ⇒ **不是**本轮新代码的问题，而是**文档的行号清单过期了**：
+
+| | 文档写的 | 实测 |
+|---|---|---|
+| `statusItemFactory` | `AppDelegate.swift:656` | **669** |
+| `statusItemCreationCount` | `AppDelegate.swift:661` | **674** |
+| `statusItemFactoryLock` | `:655` | **668** |
+| `makeStatusItem()` | `:673` | **686** |
+| `statusItemCreations` | `:664` | **677** |
+
+**一致偏移 +13 行** ⇒ ⇒ 原因：上一轮处置 findings 时，往 `AppDelegate.swift` 加了
+两个 observer 属性（`:84-93`）和 `.storageMirrorRecovered` 的 observer 块 ⇒ ⇒ 这些
+**都在声明之前** ⇒ ⇒ 声明整体下移。
+
+⇒ ⇒ **这一条为什么重要**：§8 的清单有**两个**守卫（raw-output 块 + roster 表格），
+**它们都红了** ⇒ ⇒ 守得住的部分守住了 ⇒ ⇒ 但它守不住**散文里**的行号引用 ⇒ ⇒
+本轮顺手把**三处一起**对齐了。
+
+#### 51.12.5 同族扫描：散文引用 + 表格里指向**被改文件**的行号
+
+⇒ ⇒ 按"修一个要看全族"的纪律，把 `SWIFT6_MIGRATION.md` §8 里**所有**行号引用
+对着代码核了一遍 ⇒ ⇒ 抓出两处**别的**漂移：
+
+| 引用 | 写的 | 实际 | 性质 |
+|---|---|---|---|
+| `ClipboardStore+Encryption.swift`（pendingFailedIDs 访问点） | `:310,322` | `:325,337` | **本轮改那个文件导致的位移**（HEAD 上 `:310`/`:322` 确实是 `pendingFailedIDsLock.lock()` ⇒ ⇒ **是我弄旧的**） |
+| `ClipboardStore.swift:2464` | 访问点 | `:2451`（`:2464` 是一行注释） | **HEAD 上就已经陈旧**（既有漂移，不是本轮造成） |
+| `ClipboardStore+Encryption.swift`（pendingDiagnostics 访问点） | `:229,262,272` | 还漏了 `:236,:242` | **既有遗漏**（不是错，是不全） |
+
+⇒ ⇒ 三个都改了 ⇒ ⇒ 并且在页脚**留痕**：哪一处是本轮造成的、哪一处是既有的 ⇒ ⇒
+免得下一个读者以为它们同时陈旧（**两种陈旧的成因不一样，处置方式也不一样**）。
+
+#### 51.12.6 又一处注释与实现漂移（自己读出来的，没等测试抓）
+
+`StorageMirrorService.swift` 的**头注释**写的是：
+
+> The AppDelegate turns them into a banner (degraded but working) **or an alert**
+> (the store needs a newer build)
+
+⇒ ⇒ **代码里两种失败都走横幅，没有 NSAlert** ⇒ ⇒ 注释在说一件代码没做的事 ⇒ ⇒
+改成实话：横幅是镜像阶段**唯一**的用户可见通道；NSAlert 留给原子切换阶段（那时
+"打不开库"才是硬停）⇒ ⇒ **同族**：`§4.4.1` 的表格里早就写对了（「❌ 无 alert」）
+⇒ ⇒ ⇒ **文档之间也会互相矛盾** ⇒ ⇒ 一处说 alert、另一处说 ❌ ⇒ ⇒ 判定基准是
+**代码**，不是另一份文档。
+
+#### 51.12.7 收口后的最终数字（实测）
+
+- 全量 `xcodebuild test`：**1473 用例 / 4 跳过 / 0 失败**（4 个跳过是既有 PNG 快照类）
+- SwiftLint vs HEAD：**0 条新增**
+- 变异 harness：7 个变异**全部**让对应测试变红
+- §8 行号清单：raw-output 块 **22 = 22**、表格 **22 = 22**、与实测集合**完全一致**
+  （用独立脚本复算，不依赖 XCTest）
+
+#### 51.12.8 这一轮的元教训
+
+1. **"全量绿"不是终点，"全量绿过之后又改了文档"才是漂移的开始。** ⇒ ⇒ 上一轮
+   全量绿的时候清单是对的；本轮处置 findings 改了 `AppDelegate.swift` ⇒ ⇒ 清单
+   当场就旧了 ⇒ ⇒ ⇒ **改完代码必须重跑全量**（不是重跑受影响的定向用例）。
+2. **有守卫的那一半 ≠ 文档里出现过的全部。** ⇒ ⇒ raw-output 块和表格有守卫 ⇒ ⇒
+   **散文里的行号裸奔** ⇒ ⇒ 而散文的读者恰恰是照着行号去看代码的人。
+3. **漂移的成因要分清**：本轮造成的位移 vs HEAD 上就有的陈旧 vs 表格本来就漏 ⇒ ⇒
+   三者的处置方式不同（改数字 / 补数字 / 留痕说明）⇒ ⇒ 一律"改成现在的样子"会把
+   **成因信息**抹掉 ⇒ ⇒ 页脚要记成因。
+
+### 51.13 第三轮独立核验：**VERDICT = FAIL** —— 「已收敛」的说法，两条都不成立（2026-11-12）
+
+#### 51.13.1 为什么要跑第三轮
+
+前两轮各判 FAIL，抓到的都是**我新代码里的真 bug** ⇒ ⇒ 处置完第二轮的 findings 之后，
+那批修复**本身也是新代码** ⇒ ⇒ 不再核验，就等于把「刚写的东西」当成「已验证的东西」。
+⇒ ⇒ 第三轮跑在**最终状态**上。
+
+#### 51.13.2 核验员抓到的（我方处置）
+
+| # | finding | 真相 | 处置 |
+|---|---|---|---|
+| **P1-1** | **重建自愈根本不收敛** ⇒ 永久假分歧 + 永久横幅 + 用户无法自愈 | **成立**。触发条件：同一条 item 同时在历史 blob 与回收站 blob 里（两个 blob 由**两个独立 debounce 写盘器**分别持久化 ⇒ 两次写盘之间进程被杀就会留下这个状态）。机理：`StoreMigration.migrateTrash` 对回收站里的每条 item 调 `moveToTrash` ⇒ 它 **`DELETE FROM items`** ⇒ 镜像少了这条、源的历史 blob 仍有 ⇒ 比对判分歧 ⇒ 打重建标记 ⇒ **下次启动用同一个源重建 ⇒ 同样的分歧 ⇒ 循环**。而自我保护的 `restoredIDs` 取的是**迁移前数据库的旧状态** ⇒ **首次运行是空集** ⇒ 守卫根本不触发 | **修法是「迁移顺序」，不是「更窄的导入」**：回收站**先于** items 导入 ⇒ ⇒ `items` 里还没有那行 ⇒ ⇒ `moveToTrash` 的 DELETE 变成 no-op ⇒ ⇒ 双 blob 的 item **同时落在两张表** ⇒ ⇒ 镜像对历史 blob **和**回收站 blob **都忠实** ⇒ ⇒ 比对通过 ⇒ ⇒ 自愈真的收敛。安全前提：`trash_items` **刻意没有**指向 `items(id)` 的外键（`SQLiteSchema.swift:299`），且 `upsertTrashItemInternal` 不写 `item_tags` ⇒ ⇒ 回收站导入既不依赖 items 也不依赖 tags。新增回归测试 `testAnItemInBothTheHistoryAndTheTrashBlobDoesNotCauseAPermanentDivergence`（变异 M8 验证有牙齿）。⚠️ **第一版修法走错了**：把 `restoredIDs` 改成「preexisting ∪ 源历史 blob 的 id」⇒ ⇒ 全量测试立刻打脸（既有的 `testMigrationHandlesTrashItems` 红了 —— 它断言双 blob 的 item 要进回收站）⇒ ⇒ 而那个修法会让镜像的**回收站**少掉源里有的行 ⇒ ⇒ **不是忠实** ⇒ ⇒ 改成顺序修法后，既有契约与新契约**同时**满足 |
+| **P2-1** | **源被读了两遍**（TOCTOU）⇒ 忠实副本被判成 diverged | **成立**。`seed()` 先让迁移读一遍源，校验时再读一遍 ⇒ 中间源动了（用户在启动窗口里复制了东西）⇒ 拿**冻结的镜像**比**更新的源** ⇒ 假分歧。核验员实测：迁移 4000 条、中途加 1 条 ⇒ 明明一行没差却判 diverged | 引入 `StoreMigration.SourceSnapshot`：**源只解码一次**，同一份快照同时喂给迁移和比对 ⇒ ⇒ 两者**不可能**互相矛盾。§4.3.5 里「compared against the source as it was when the migration read it」这句话**从假话变成真话**。新增回归测试 `testTheSourceIsReadOnlyOnceSoTheComparisonSeesTheMigratedSnapshot`（用一个「每次读给不同 payload」的 `UserDefaults` 子类，变异 M9 验证有牙齿） |
+| **P2-2** | 恢复通道有洞：`.alreadySeeded` 不发恢复通知 ⇒ 横幅比故障活得久 | **成立**。`.alreadySeeded` 分支只 `break` ⇒ 一次瞬时失败之后，下一次启动走短路路径 ⇒ 横幅永远清不掉 | `.alreadySeeded` 也发 `.storageMirrorRecovered` ⇒ ⇒ **凡是「库是好的」都要说出来**。新增回归测试 `testTheRecoveryNotificationIsPostedEvenWhenTheCopyWasAlreadySeeded`（变异 M10 验证有牙齿） |
+| **P2-3** | 文档声称「每一个新测试都做过变异验证」，与事实不符 | **成立**（本轮新增/改动的测试共 15 个，台账只记了 7 个 ⇒ 「每一个」不成立） | 撤回该声称 ⇒ §8.3 改成**逐条表格**（哪个修复 ↔ 哪个变异 ↔ 哪个测试），并明写「不在表里的测试没有被单独变异验证」 |
+| **P3-1** | 同一份设计文档自相矛盾：§8.3 说比较覆盖 trash，§4.3.5 说 trash 根本没比 | **成立**。§8.3 那句其实想说的是 `testSeedDoesNotModifyTheSourceBlobs`（**源完整性**断言，覆盖 items+tags+trash），不是**校验比对**（比对只覆盖 items+tags） | §8.3 改成两句写清楚，并指向 §4.3.5 的残余条目 |
+| **P3-2** | 重建标记写/删失败只写日志 ⇒ 「重试」腿静默丢失 | **成立但影响有限**（用户仍看得见 diverged 横幅 ⇒ 不是完全静默） | 删除失败的日志级别 `debug` → **`error`**（破坏自愈的事故不该是 debug 级）⇒ 并在 §4.3.5 的残余里记着「标记写不进去 ⇒ 自愈不可能」这一条 |
+| **P3-3** | 台账的 `file_length` 边界数字差一 | **成立**。台账写「1252 行 = error」，实测 **1251 行起**就是 error（exit 2）⇒ ⇒ 「还差一行」的措辞不准 | 订正为 1251，并注明是第三轮核验员复测出来的 |
+
+⇒ ⇒ 核验员还**证伪了 15 条怀疑**（锁只写在注释里 / `isInsideTransaction` 归属 /
+通知是死通道 / 7 语言守卫是假的 / 镜像读错 UserDefaults key / 重建会删到源数据 /
+重建顺序写反 / §5.6 违反三环节铁律 / 并发用例会挂死 / `file_length` 只是 warning /
+数组级 `save(_:)` 残余被写小 / `dismissed` 残余被写小 / 哈希用例是空测试 / …
+）⇒ ⇒ 它还实测了 `file_length` 的真实阈值（1251 = error，exit 2）。
+
+#### 51.13.3 P1-1 的教训：**「重试能成功」也是需要证明的**
+
+⇒ ⇒ 第二轮我给这个族写下的元教训是「**「重试」必须能改变结果，否则它只是重放**」⇒ ⇒
+**这一轮正好被自己的这条教训抓到** ⇒ ⇒ 我修了「重试什么」，却没问「**重试能成功吗**」。
+
+⇒ ⇒ 具体地：重建自愈的**机制**是对的（丢掉副本、从当前源重建）⇒ ⇒ 但**前提**是
+「分歧的成因在副本这一侧」⇒ ⇒ 而 P1-1 的成因**在源这一侧**（同一 item 在两个 blob 里）
+⇒ ⇒ 重建一万次也是同一个结果 ⇒ ⇒ ⇒ **「重试」这条腿要检查它是不是在**不同的状态**上重试**
+⇒ ⇒ 这里的正确答案是「**根本不产生分歧**」（把守卫补对），不是「再试一次」。
+
+⇒ ⇒ **另一条**：核验员把「重建后是否收敛」写成**可断言的性质**（第二次播种必须收敛）
+⇒ ⇒ 我原来的测试只断言「第一次是 diverged」⇒ ⇒ 那是**半条**性质 ⇒ ⇒ 断言要钉住
+**终态**，不是中间态。
+
+#### 51.13.4 本轮的新测试怎么证明自己有牙齿
+
+| 变异 | 回退了什么 | 必须变红的测试 |
+|---|---|---|
+| **M8** | 把回收站导入挪回 items 之后（`moveToTrash` 又会 DELETE 那一行） | `testAnItemInBothTheHistoryAndTheTrashBlobDoesNotCauseAPermanentDivergence` |
+| **M9** | 比对再读一次源 | `testTheSourceIsReadOnlyOnceSoTheComparisonSeesTheMigratedSnapshot` |
+| **M10** | `.alreadySeeded` 不发恢复通知 | `testTheRecoveryNotificationIsPostedEvenWhenTheCopyWasAlreadySeeded` |
+| **M11** | 回收站迁移不再保护「已恢复」的 item（ID-CRASH-0022 的原守卫） | `testMigrationDoesNotDeleteAlreadyRestoredItems`（**既有**测试，顺手验证它有牙） |
+
+⇒ ⇒ 三个 control 全绿、三个变异全红、`executed=1`、收尾 sha256 **逐字节一致**。
+
+#### 51.13.5 核验员**没能验证**的部分（照抄，不藏）
+
+1. **真 app / 真横幅**：测试宿主里 `startStorageMirror()` 从不执行（`TestIsolation`
+   守卫）⇒ ⇒ 启动接线只经「读码 + 变异」验证，**未经运行时验证**。
+2. **迁移窗口宽度**：~100–150ms 是从 4000 条外推的**估计值**，不是测量值。
+3. **P1-1 的真实发生率**：证明了「双 blob ⇒ 永久分歧」，可达性是**代码阅读论证**
+   （两个独立 debounce 写盘器），**没有观察到一次真实崩溃**。
+4. **TSan** 没跑；**`xcodegen generate` 的可复现性**没验（核验员**故意没跑**，怕重写
+   `project.pbxproj`）⇒ ⇒ **本轮已补上**：把 `project.pbxproj` 复制一份 ⇒ 跑
+   `xcodegen generate` ⇒ ⇒ `diff` 结果**逐字节一致** ✅ ⇒ ⇒ CI 那条同步检查的
+   前置条件成立。
+
+#### 51.13.6 这一轮的元教训
+
+1. **「机制正确」不等于「结果收敛」。** ⇒ ⇒ 重建 = 丢掉副本重来 ⇒ ⇒ 这是**机制** ⇒ ⇒
+   但**收敛**要的是「重试之后的状态和上次不同」⇒ ⇒ 源侧的成因，重试一万次也一样。
+2. **断言要钉终态。** 「第一次 diverged」是中间态；「重建后必须收敛」才是这条性质
+   的**全部**。
+3. **文档里的「每一个」「全部」「都」是最贵的三个词。** ⇒ ⇒ 「每一个新测试都做过变异
+   验证」⇒ ⇒ 实测 7/15 ⇒ ⇒ 而这个台账**已经有一次**「声称过不存在的守卫」的前科
+   （§51.11.2 P3-2）⇒ ⇒ ⇒ 表格化（哪个修复 ↔ 哪个变异 ↔ 哪个测试）比一句「都做过」
+   更抗腐。
+
+#### 51.13.7 操作层的坑：**变异 harness 会吞掉「与它并发」的编辑**
+
+⇒ ⇒ 本轮实测踩到：变异 harness 在**启动时**备份被变异的文件、**结束时**逐字节还原 ⇒ ⇒
+所以「harness 运行期间改同一文件」⇒ ⇒ **编辑会被还原吞掉**，而且**没有任何报错**。
+
+⇒ ⇒ 现场：`StorageMirrorService.swift` 的头注释（第三轮的说明）就是在 harness 运行期间改的
+⇒ ⇒ harness 结束后那段注释**回到了旧内容** ⇒ ⇒ 若不是回头 grep `historyItemIDs`，
+**这次编辑会静默消失**。
+
+⇒ ⇒ ⇒ **规则**：① **改代码**和**跑变异 harness**不能并发（同一个文件）；② harness 跑完
+**第一件事**是 `git diff` 看一眼自己的改动还在不在；③ harness 的备份/还原脚本只该在
+**专用 worktree** 里跑 ⇒ ⇒ 或者在 harness 跑完后**重跑一次全量**，用 sha256/grep 双重确认。
+
+⇒ ⇒ 这条与「生成侧退化会污染工具参数」是同族的：**工具/脚本的正常行为，在你没有预期
+它会发生的地方，表现为「你的东西不见了」** ⇒ ⇒ 而「不见了」必须被**主动核对**，不能
+靠「我明明改过」。
+
+#### 51.13.8 第三轮处置后的收口数字（实测）
+
+| 项 | 结果 |
+|---|---|
+| 全量 `xcodebuild test` | **1476 用例 / 4 跳过 / 0 失败**（4 个跳过是既有 PNG 快照类） |
+| SwiftLint vs HEAD | **10 vs 10，0 条新增**；唯一差异 = `StorageBackend.swift` 的**既有** `file_length` 计数 834 → 857（同一文件同一规则，仍远低于 1250 的 error 阈值） |
+| 变异 harness（4 个，共 11 个变异） | **全 PASS**：A / B / C / D / M5 / M6 / M7 / **M8** / **M9** / **M10** / **M11** —— 每个都让对应测试变红，`executed=1`，收尾 sha256 **逐字节一致** |
+| 独立核验员复核我方声称 | 基线 1473/4/0 ✅、lint 逐条一致 ✅、7 个变异全红 ✅、通知守卫有牙 ✅、7 语言守卫有牙 ✅、`file_length` 阈值 1251=error ✅ —— **作者声称的验证结果，他逐条独立复核后全部成立** |
+
+⇒ ⇒ 新的测试：`StorageMirrorServiceTests` 11 → **14**（新增 3 个第三轮回归用例），
+`StoreMigrationTests` 既有 14 个（含被本轮顺序改动**当场打脸**过的那条）全绿。
+
+#### 51.13.9 这一族的三轮总结（值得留给下一个接手的人）
+
+| 轮 | 判决 | 抓到的**类别** |
+|---|---|---|
+| 1 | FAIL | 校验口径错（占位 tag）、验证戳与迁移戳混用、**只比 id 不比 hash** |
+| 2 | FAIL | 状态被重建抹掉（"有通道 ≠ 用户看得到"）、断言通过的理由与被断言的性质无关、**"重试"只是重放**、文档声称了不存在的守卫 |
+| 3 | FAIL | **"机制正确 ≠ 结果收敛"**（重建自愈不收敛）、**TOCTOU（源读两遍）**、**"说库是好的"漏了一条路径**、**文档自我矛盾**、**过度声称** |
+
+⇒ ⇒ ⇒ 三轮**每一轮都抓到真 bug**，而且**每一轮抓到的都是上一轮修复引入的**新代码
+⇒ ⇒ ⇒ **「修完」不是终点，「修完的东西被独立核验过」才是** ⇒ ⇒ 而核验员三次都判
+FAIL，所以「再修一轮」这个循环本身就得**有终止条件** ⇒ ⇒ 这里的终止条件是：
+**变异验证 + 全量 + 独立核验全部针对最终状态跑过一遍，且核验员自己也用变异复现过**
+⇒ ⇒ 第三轮核验员**自己**跑了 11 个变异（含我没记录的 3 个）⇒ ⇒ 他确认**测试质量
+是好的，问题在"记账与声称"** ⇒ ⇒ ⇒ 这是本族第一次出现「**实现与测试都站得住，
+只有账本在说谎**」⇒ ⇒ 那一类最容易被忽略，因为**绿灯全亮**。

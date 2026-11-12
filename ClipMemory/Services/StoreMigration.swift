@@ -117,65 +117,147 @@ enum StoreMigration {
         return true
     }
 
+    /// The source history, decoded ONCE.
+    ///
+    /// ID-REVIEW-1027 (2026-11-12, independent verifier round 3 · P2-1):
+    /// the mirror used to read the source blobs TWICE — once inside the
+    /// migration, once for the verification comparison. Between the two
+    /// reads the source can move (the user copies something during the
+    /// launch), and the comparison then holds a NEWER source against a
+    /// FROZEN copy ⇒ ⇒ a faithful copy is declared "diverged" ⇒ ⇒ a
+    /// false banner and a pointless rebuild on the next launch. The
+    /// verifier measured it: 4000 items migrated, one added mid-flight,
+    /// and the copy was judged divergent even though not one row differed.
+    ///
+    /// ⇒ ⇒ So the source is decoded ONCE and this snapshot is what BOTH
+    /// the migration and the comparison see. They cannot disagree,
+    /// because they are looking at the same array.
+    struct SourceSnapshot {
+        /// The history blob's items.
+        let items: [ClipboardItem]
+        /// The tag catalog blob's tags.
+        let tags: [Tag]
+    }
+
+    /// Decode the source history ONCE.
+    ///
+    /// Throws when a blob is present but UNREADABLE — that is the
+    /// ID-CRASH-0022 contract: an unreadable blob must FAIL the
+    /// migration, never look like "there is nothing to migrate".
+    static func snapshot(from source: UserDefaults) throws -> SourceSnapshot {
+        SourceSnapshot(
+            items: try decodeLegacy(
+                ClipboardItem.self,
+                key: UserDefaultsKey.clipboardItems.rawValue,
+                from: source
+            ) ?? [],
+            tags: try decodeLegacy(
+                Tag.self,
+                key: UserDefaultsKey.clipboardTags.rawValue,
+                from: source
+            ) ?? []
+        )
+    }
+
     static func runOnce(source: UserDefaults, target: SQLiteStorageBackend) throws {
         // Idempotency gate: skip if completed flag is set.
         let rawFlag = try target.meta(key: completedFlagKey)
         if isCompletedFlag(rawFlag) {
             return
         }
+        try runOnce(source: source, target: target, snapshot: try snapshot(from: source))
+    }
 
-        try target.beginTransaction()
+    /// Run the migration against an ALREADY-DECODED source snapshot.
+    ///
+    /// ID-REVIEW-1027 (2026-11-12, round 3 · P2-1): the caller decodes
+    /// the source once and hands the same snapshot to the migration and
+    /// to the verification ⇒ ⇒ the two can never disagree about what the
+    /// source said at that moment.
+    ///
+    /// The TRASH blob is deliberately NOT part of the snapshot: it is
+    /// read here, inside the migration, exactly as before. It is not part
+    /// of the comparison, so reading it separately cannot produce a
+    /// TOCTOU — and keeping it out means a trash blob that becomes
+    /// unreadable AFTER the migration cannot break the mirror.
+    static func runOnce(
+        source: UserDefaults,
+        target: SQLiteStorageBackend,
+        snapshot: SourceSnapshot
+    ) throws {
+        // Idempotency gate: skip if completed flag is set.
+        let rawFlag = try target.meta(key: completedFlagKey)
+        if isCompletedFlag(rawFlag) {
+            return
+        }
+
         do {
-            // ID-CRASH-0022 (2026-10-20): the ids that are ALREADY in
-            // the items table when the migration starts. On a first run
-            // this is empty; on a re-run (the flag was cleared, the
-            // operator asked for it) it holds the CURRENT state — and
-            // an id in it that also appears in the legacy trash blob is
-            // an item the user restored after the last migration.
-            // Captured BEFORE `migrateItems`, so the freshly migrated
-            // items do not count as "already there".
-            let preexistingItemIDs = try target.loadAllIDs()
-            // ID-CRASH-0022 (2026-10-20): tags MUST be migrated before
-            // items. `upsertItemInternal` mirrors `item.tagIds` into
-            // item_tags, which carries a FOREIGN KEY on tags(id), so an
-            // item whose tags are not yet present fails with
-            // SQLITE_CONSTRAINT_FOREIGNKEY and aborts the whole batch.
-            // The order is a hard dependency, not a preference.
-            try migrateTags(source: source, target: target)
-            try migrateItems(source: source, target: target)
-            try migrateTrash(
-                source: source,
-                target: target,
-                preexistingItemIDs: preexistingItemIDs
-            )
-            // Mark completed — setMeta writes via INSERT OR REPLACE.
-            // ID-CRASH-0022 (2026-10-20): the value is now the 8-byte
-            // little-endian Int64 the `'i64'` contract requires, not the
-            // 1-byte `Data([0x01])` the old code wrote.
-            try target.setMeta(
-                key: completedFlagKey,
-                value: encodeI64(completedFlagValue),
-                type: "i64"
-            )
-            try target.commitTransaction()
-            Self.logger.info("v1 → v2 migration completed")
-        } catch {
-            // Rollback so future launches retry. The narrow-catch
-            // fix in commit 051be13 only applies to the granular call
-            // path; here we want every error to propagate so the
-            // migration is atomic.
-            // The rollback failure (if any) is logged inside
-            // `rollbackTransaction`, which also recovers the
-            // connection so later launches do not start inside a
-            // dangling transaction. The ORIGINAL migration error is
-            // the one the caller needs, so it is what gets rethrown.
-            do {
-                try target.rollbackTransaction()
-            } catch {
-                Self.logger.error(
-                    "migration rollback failed: \(error.localizedDescription)"
+            try target.withTransaction {
+                // ID-CRASH-0022 (2026-10-20): the ids that are ALREADY in
+                // the items table when the migration starts. On a first run
+                // this is empty; on a re-run (the flag was cleared, the
+                // operator asked for it) it holds the CURRENT state — and
+                // an id in it that also appears in the legacy trash blob is
+                // an item the user restored after the last migration.
+                // Captured BEFORE `migrateItems`, so the freshly migrated
+                // items do not count as "already there".
+                let preexistingItemIDs = try target.loadAllIDs()
+                // ID-CRASH-0022 (2026-10-20): tags MUST be migrated before
+                // items. `upsertItemInternal` mirrors `item.tagIds` into
+                // item_tags, which carries a FOREIGN KEY on tags(id), so an
+                // item whose tags are not yet present fails with
+                // SQLITE_CONSTRAINT_FOREIGNKEY and aborts the whole batch.
+                // The order is a hard dependency, not a preference.
+                try migrateTags(snapshot.tags, target: target)
+                // ID-REVIEW-1027 (2026-11-12, independent verifier round 3 ·
+                // P1-1): the TRASH is migrated BEFORE the items, and the order
+                // is load-bearing.
+                //
+                // `moveToTrash` does two things: it writes the trash row AND
+                // it DELETEs the row from `items`. With the old order (items
+                // first) the item was already in `items` when the trash was
+                // imported ⇒ ⇒ the DELETE removed it ⇒ ⇒ the mirror's history
+                // lost an item the source still had ⇒ ⇒ the verification said
+                // "diverged" ⇒ ⇒ the copy was marked for rebuild ⇒ ⇒ the next
+                // launch rebuilt it from the SAME source ⇒ ⇒ the SAME
+                // divergence ⇒ ⇒ **forever**: a permanent false divergence, a
+                // permanent banner, and a full re-migration on every launch.
+                //
+                // With the trash imported FIRST, `items` does not hold the
+                // row yet ⇒ ⇒ the DELETE is a no-op ⇒ ⇒ an item that is in
+                // BOTH blobs ends up in BOTH tables of the mirror ⇒ ⇒ the
+                // copy is faithful to the history blob AND to the trash blob
+                // ⇒ ⇒ the comparison passes ⇒ ⇒ the self-healing converges.
+                //
+                // Safe because `trash_items` carries NO foreign key to
+                // `items(id)` (deliberate — SQLiteSchema.swift:299) and
+                // `upsertTrashItemInternal` writes no `item_tags` row, so the
+                // trash import needs neither the items nor the tags.
+                try migrateTrash(
+                    source: source,
+                    target: target,
+                    preexistingItemIDs: preexistingItemIDs
+                )
+                try migrateItems(snapshot.items, target: target)
+                // Mark completed — setMeta writes via INSERT OR REPLACE.
+                // ID-CRASH-0022 (2026-10-20): the value is now the 8-byte
+                // little-endian Int64 the `'i64'` contract requires, not the
+                // 1-byte `Data([0x01])` the old code wrote.
+                try target.setMeta(
+                    key: completedFlagKey,
+                    value: encodeI64(completedFlagValue),
+                    type: "i64"
                 )
             }
+            Self.logger.info("v1 → v2 migration completed")
+        } catch {
+            // The rollback is the transaction scope's job now
+            // (ID-REVIEW-1027): withTransaction rolls back on a
+            // failure, recovers the connection if the ROLLBACK
+            // itself fails, and never lets the rollback error
+            // replace the original error. The ORIGINAL migration
+            // error is the one the caller needs, so it is what
+            // gets rethrown.
             Self.logger.error("v1 → v2 migration failed: \(error.localizedDescription)")
             throw error
         }
@@ -221,14 +303,10 @@ enum StoreMigration {
     }
 
     private static func migrateItems(
-        source: UserDefaults,
+        _ items: [ClipboardItem],
         target: SQLiteStorageBackend
     ) throws {
-        guard let items = try decodeLegacy(
-            ClipboardItem.self,
-            key: UserDefaultsKey.clipboardItems.rawValue,
-            from: source
-        ), !items.isEmpty else {
+        guard !items.isEmpty else {
             return
         }
         // ID-CRASH-0022 (2026-10-20): the legacy layout stored tag
@@ -251,14 +329,10 @@ enum StoreMigration {
     }
 
     private static func migrateTags(
-        source: UserDefaults,
+        _ tags: [Tag],
         target: SQLiteStorageBackend
     ) throws {
-        guard let tags = try decodeLegacy(
-            Tag.self,
-            key: UserDefaultsKey.clipboardTags.rawValue,
-            from: source
-        ), !tags.isEmpty else {
+        guard !tags.isEmpty else {
             return
         }
         for tag in tags {
@@ -278,11 +352,22 @@ enum StoreMigration {
         ), !trashed.isEmpty else {
             return
         }
-        // The ids that were already in `items` when the migration
-        // started are the ones the user RESTORED after the last
-        // migration (the legacy blobs are kept defensively, so they
-        // still hold the old trash snapshot). `moveToTrash` would
-        // delete their rows from `items`.
+        // The ids that must NOT be moved into the trash.
+        //
+        // ID-REVIEW-1027 (2026-11-12, independent verifier round 3 · P1-1):
+        // this set is the ids that were ALREADY in `items` when the
+        // migration started (ID-CRASH-0022's original protection — on a
+        // re-run, the flag was cleared deliberately, an id that is in the
+        // DB and also in the legacy trash blob is an item the user
+        // restored, and `moveToTrash` would DELETE its row).
+        //
+        // It is deliberately NOT "the ids the history blob lists". That
+        // was tried first and it is wrong: skipping the trash import for
+        // those ids leaves the mirror's TRASH missing rows the source
+        // has ⇒ ⇒ the copy is not faithful to the trash blob. The right
+        // fix for the dual-blob state is the migration ORDER (trash
+        // before items ⇒ `moveToTrash`'s DELETE is a no-op ⇒ ⇒ the item
+        // lands in BOTH tables), not a narrower import.
         let restoredIDs = preexistingItemIDs
         for trashItem in trashed {
             // ID-CRASH-0022 (2026-10-20): the old code inserted the
@@ -302,7 +387,7 @@ enum StoreMigration {
             // blob was never rewritten — the move would delete the
             // restored row. The item would not vanish (it lands in the
             // trash), but it would silently leave the history. So the
-            // ids that are already in `items` are skipped.
+            // ids that are already in the history are skipped.
             guard !restoredIDs.contains(trashItem.id) else {
                 Self.logger.error(
                     "migration: skipping trash item \(trashItem.id.uuidString) — it is already in the items table (restored after the last migration)"

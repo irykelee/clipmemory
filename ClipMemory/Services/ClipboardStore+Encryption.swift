@@ -293,10 +293,25 @@ extension ClipboardStore {
         Task { @MainActor [weak self] in
             guard let self else { return }
             // P3: SET (not +=) so banner reflects current pass state only
+            //
+            // ID-REVIEW-1027 (2026-11-12, independent verifier P1-1):
+            // the flags that are NOT part of the pending-diagnostics
+            // queue MUST be carried over. `tagsLoadFailed` (ID-CRASH-0008)
+            // and `storageMirrorIssue` are set by OBSERVERS, not by the
+            // queue - so rebuilding the struct from the queue's four
+            // fields silently reset them, and the banner the user was
+            // supposed to see disappeared on the next merge.
+            //
+            // That is worse than a missing banner: the failure WAS
+            // reported, the user may never have seen it (the menu-bar
+            // app does not open the main window at launch), and the state
+            // that would have shown it was erased before they got there.
             let new = DecryptionDiagnostics(
                 keyUnavailable: snapshotForAsync.0,
                 dataCorruptedCount: snapshotForAsync.1,
                 internalErrorCount: snapshotForAsync.2,
+                tagsLoadFailed: diagnostics.tagsLoadFailed,
+                storageMirrorIssue: diagnostics.storageMirrorIssue,
                 dismissed: diagnostics.dismissed
             )
             if new != diagnostics { diagnostics = new }

@@ -1,6 +1,6 @@
 # Storage migration design — UserDefaults → SQLite
 
-> **Status**: design draft, pending user review. Per batch 2 of the code-review-2026-10-01 §八 (storage migration). No code changes yet — this document gates the implementation work.
+> **Status**: implemented in stages. PR-A (backend), PR-B (migration), PR-C's trash dimension and PR-D (schema authority) have shipped; **§4.3.5 (the mirror phase) landed 2026-11-12 with ID-REVIEW-1027**. The atomic switch (`migration.v1.to.v2.switched = 1`) and the dual-write phase are still ahead — see §7.
 
 ## 1. Motivation
 
@@ -520,6 +520,194 @@ Rollback is a destructive action (deletes the SQLite file). It's gated by:
 
 This makes rollback the explicit, last-resort path — never a silent fallback.
 
+### 4.3.5 The mirror phase (PR-C0, shipped 2026-11-12 — ID-REVIEW-1027)
+
+The phase table in §4.3 has a row between "pre-migration" and
+"dual-write": **dual-read validation**, whose window is "1 launch after
+PR-B ships". This is that phase, and it is what makes the SQLite backend
+a production citizen at all — before it, the backend had **zero**
+production call sites, which is exactly why §4.4.1's obligation could
+not be discharged.
+
+| | read path | write path | UserDefaults state | SQLite state |
+|---|---|---|---|---|
+| **mirror (this phase)** | UserDefaults | UserDefaults | **current** | **verified copy** |
+
+⇒ ⇒ The user's history **does not move**. The read path, the write path
+and the rollback path are all unchanged ⇒ ⇒ the blast radius of any
+failure here is **zero for the user's data**: the source blobs are never
+modified, and a failed seed leaves the **verification stamp** unset, so
+the next launch re-checks the copy from the last good state.
+
+**What runs at launch** (`AppDelegate.applicationDidFinishLaunching`,
+background queue, never blocking the launch):
+
+1. open the store at `~/Library/Application Support/ClipMemory/store.sqlite3`
+   — a failure here (disk full, permission denied, a corrupt file, a
+   store from a newer build) is the `init` failure §4.4.1 talks about;
+2. **decode the source ONCE** — the history blob and the tag blob are
+   decoded into a single `StoreMigration.SourceSnapshot`;
+3. if the migration flag is unset, run the v1 → v2 migration **against that
+   snapshot**;
+4. **verify the copy**: the mirror's item ids **and content hashes** must
+   match the snapshot's, and its tag ids must match the catalog's **∪ the
+   ids the items reference** — the migration deliberately creates
+   placeholder rows for a referenced tag the catalog does not carry
+   (`item_tags` has a FOREIGN KEY on `tags(id)`), and comparing the raw
+   id sets would call every faithful copy "diverged". A real mismatch is
+   a migration bug, and it is reported rather than swallowed;
+5. report every failure to the user-visible channel (banner), never as a
+   log line.
+
+⇒ ⇒ **The source is read ONCE, and that is load-bearing** (independent
+verifier round 3 · P2-1): the source used to be read TWICE — once by the
+migration, once by the comparison — and the source is **live** (the user
+copies things while the app runs) ⇒ ⇒ between the two reads it can move ⇒ ⇒
+the comparison then held a **newer** source against a **frozen** copy ⇒ ⇒ a
+faithful copy was declared "diverged" ⇒ ⇒ a false banner and a pointless
+rebuild. The verifier measured it: 4000 items migrated, one added
+mid-flight, and the copy was judged divergent even though not one row
+differed. ⇒ ⇒ **one snapshot, handed to both** ⇒ ⇒ they cannot disagree.
+
+⇒ ⇒ **The trash migration must not DELETE what the history says is there**
+(independent verifier round 3 · P1-1): an item that is in **both** the
+history blob and the trash blob (the two legacy blobs are written by two
+INDEPENDENT debounce writers, so a kill between the two writes leaves it
+in both) went through `moveToTrash` ⇒ ⇒ `moveToTrash` **DELETEs the row
+from `items`** ⇒ ⇒ the mirror's history lost an item the source still
+had ⇒ ⇒ the verification declared the copy "diverged" ⇒ ⇒ the copy was
+marked for rebuild ⇒ ⇒ rebuilt from the **same** source ⇒ ⇒ the **same**
+divergence ⇒ ⇒ **forever**: a permanent false divergence, a permanent
+banner, and a full re-migration on every launch.
+
+⇒ ⇒ **The fix is the migration ORDER, not a narrower import**: the trash
+is imported **before** the items ⇒ ⇒ `items` does not hold the row yet
+⇒ ⇒ `moveToTrash`'s DELETE is a no-op ⇒ ⇒ the item lands in **both**
+tables ⇒ ⇒ the copy is faithful to the history blob **and** to the trash
+blob ⇒ ⇒ the comparison passes ⇒ ⇒ the self-healing really converges.
+⇒ ⇒ (Safe because `trash_items` carries **no** foreign key to
+`items(id)` — deliberate, see `SQLiteSchema.swift:299` — and
+`upsertTrashItemInternal` writes no `item_tags` row, so the trash import
+needs neither the items nor the tags.)
+⇒ ⇒ ⚠️ the **first** attempt at this fix narrowed the trash import
+instead (skip every id the history blob lists) ⇒ ⇒ that leaves the
+mirror's **trash** missing rows the source has ⇒ ⇒ the copy is then not
+faithful to the trash blob ⇒ ⇒ **the order is the fix; the narrower
+import is not.**
+
+⇒ ⇒ **Two stamps and a marker, three different facts** (ID-REVIEW-1027,
+independent verifier P1-1 / P2-1):
+
+| state | means | written when |
+|---|---|---|
+| `migration.v1.to.v2.completed` | the data was **imported** | inside the migration transaction |
+| `migration.v1.to.v2.verified` | the copy was **checked** | only after a successful comparison |
+| `store.sqlite3.rebuild` (sidecar file) | this copy must be **thrown away and re-seeded** | when the comparison failed |
+
+⇒ the `alreadySeeded` short-circuit needs **both stamps** ⇒ ⇒ a copy that
+failed its verification is **re-checked on the next launch** (and the
+banner comes back) instead of being quietly accepted forever.
+
+⇒ ⇒ **The check is a ONE-SHOT, and that is deliberate** (independent
+verifier P2-1): the mirror is a **frozen snapshot** and the source keeps
+moving ⇒ comparing the copy against the *live* source on every launch
+would report a divergence after the user's very next copy — a permanent
+false alarm with no way out. ⇒ ⇒ so the copy is compared **once**, against
+the source **as it was when the migration read it**, and after that it is
+a snapshot (the doc's "no dual-write" bullet).
+
+⇒ ⇒ **A failed check discards the copy** (the sidecar marker) ⇒ the next
+launch deletes the store file **before opening a connection** and seeds it
+again from the CURRENT source ⇒ ⇒ **self-healing**: the failure is
+reported once, and the next launch repairs it instead of replaying it
+forever. (The wipe cannot happen inside the failing run: the backend has
+no `close()`, only `deinit`, and deleting the file under an open
+connection turns every later statement into "disk I/O error" — measured.)
+⇒ ⇒ ⚠️ **"repairs it" was a claim, not a fact, until round 3**: a
+divergence whose CAUSE is on the source side (e.g. the dual-blob item
+above) is repaired into the **same** divergence ⇒ ⇒ the self-healing only
+converges once the cause is gone ⇒ ⇒ see the P1-1 note above.
+
+⇒ ⇒ **The banner has a recovery leg too**: a successful seed posts
+`.storageMirrorRecovered` ⇒ the observer clears `storageMirrorIssue` ⇒ a
+banner that outlives its failure would train the user to ignore banners.
+⇒ ⇒ **and EVERY path that means "the store is fine" posts it** (round 3 ·
+P2-2): the short-circuit path (`.alreadySeeded` — both stamps in place)
+used to stay silent ⇒ ⇒ a launch that found the copy already in place
+left the banner claiming a fault that no longer existed ⇒ ⇒ the banner
+outlived the failure it was reporting.
+
+⇒ ⇒ **The banner state is durable** (independent verifier P1-1):
+`mergePendingDiagnostics()` rebuilds `DecryptionDiagnostics` from the
+pending-diagnostics queue, and the queue knows nothing about the flags
+**observers** set ⇒ rebuilding without carrying them over erased the
+storage issue on the next merge — and since the menu-bar app does not
+open a window at launch, the failure was usually reported while there
+was no window to show it in ⇒ ⇒ the flags are carried over now
+(`testMergingPendingDiagnosticsKeepsTheObserverSetFlags`).
+
+**What is deliberately NOT here** — the two things that make this phase
+safe rather than a half-built switch:
+
+- **No dual-write.** The mirror is a snapshot of the migration moment,
+  not a live replica ⇒ the continuous divergence check belongs to the
+  dual-write phase, not here.
+- **No switch.** `migration.v1.to.v2.switched` stays 0 ⇒ the atomic
+  switch is still a separate release, and the rollback path (UserDefaults
+  primary) is untouched.
+
+**The next phase (dual-write)** writes to both stores per flush, with
+UserDefaults still primary, and needs the "one owner for the tag
+catalog" constraint from §5.6 to hold.
+
+**Honest residuals of this phase** (ID-REVIEW-1027, independent verifier
+P2-1 / P2-4 / P2-5 — all recorded rather than quietly dropped):
+
+- **The array-level `save(_:)` still has §5.6's blast radius.** It writes
+  every item's `tagIds` into `item_tags`, so a dangling tag id would
+  abort the whole batch there too. It is **not reachable today** (the
+  trash path uses `saveTrash`, and the migration uses the granular
+  methods) ⇒ ⇒ but it **must** be fixed before the atomic switch, when
+  this path becomes the fallback. ⇒ **first item on the switch PR's
+  checklist.**
+- **`SQLiteStorageBackend.swift` sits exactly on SwiftLint's
+  `file_length` error threshold (1250 lines).** One more line turns a
+  warning into a build failure ⇒ ⇒ any change to that file must either
+  stay under the line or come with a split.
+- **The verification compares ids, content hashes and tag ids — and
+  nothing else.** It does NOT compare per-item tag membership
+  (`item_tags`), the item's `content` / `type` / `isPinned` /
+  `ocrText` / `decryptionFailed`, or **the recycle-bin dimension** (the
+  migration imports it — and since round 3 the copy is faithful to it —
+  but **the check does not look at it**) ⇒ ⇒ a migration
+  that dropped an item↔tag association or mangled the trash import
+  would still pass the check and get the "verified" stamp ⇒ ⇒ the check
+  is a **migration smoke test**, not a proof of fidelity ⇒ ⇒ widening
+  it belongs with the dual-write phase (where both sides are live and a
+  full comparison is affordable). ⇒ ⇒ ⚠️ note the asymmetry: the trash
+  dimension is now **imported faithfully** (the order fix above), but it
+  is still **unverified** ⇒ ⇒ a future trash-import regression would
+  not be caught by the stamp.
+- **The diagnostics banner's `dismissed` flag is shared** with the other
+  banners (it is only reset by the key-preparation event) ⇒ ⇒ a user who
+  dismissed an earlier banner in the same session can miss a later
+  storage banner. Low probability (the mirror runs in the first seconds
+  of the launch), but it weakens "must be user-visible" slightly ⇒ it
+  belongs on the switch PR's checklist too.
+- **If the rebuild marker cannot be written, self-healing is impossible.**
+  ⇒ ⇒ the marker is a sidecar file next to the store, so writing it needs
+  the app-support directory to be writable — which it was, moments
+  earlier, because the database in it was just opened and written ⇒ ⇒
+  in practice this is nearly unreachable. But if it happens, the copy is
+  never discarded ⇒ ⇒ every launch re-verifies it against a source that
+  has moved on ⇒ ⇒ the same divergence is replayed, and the diverged
+  banner comes back every launch. The failure is logged at `error` level
+  (round 3 · P3-2 raised it from `debug`) and the user still sees the
+  diverged banner, so it is **not** a silent failure ⇒ ⇒ but the "retry
+  succeeds" property is lost ⇒ ⇒ it belongs on the switch PR's checklist
+  (where a real fallback path can be added).
+
+
 ### 4.4 Schema evolution
 
 > **ID-REVIEW-1024 (PR-D N.4, 2026-10-21) — the gate is now `PRAGMA user_version`, not the `schema_version` table.**
@@ -570,6 +758,16 @@ Whoever wires the SQLite backend into production MUST:
 3. keep the retry trigger honest: the version stamp is not written on failure, so the next launch retries the migration from the last good state.
 
 Leaving this unwritten is how the obligation disappears with PR-C.
+
+**状态：2026-11-12（ID-REVIEW-1027）—— 本节义务已部分落地，剩余部分挂在原子切换上。**
+
+| 义务 | 状态 | 落地位置 |
+|---|---|---|
+| 1. init 失败必须**用户可见**（不是一行日志） | ✅ 已落地（**含持久性**） | `StorageMirrorService.seedAndReport` → `.storageMirrorFailed` 通知 → `AppDelegate.storageMirrorFailedObserver` → `DiagnosticsBanner`（`banner.storage.*`）。`NotificationObserverAssertionTests` 的反向断言会盯着这个通知**必须有生产 observer** ⇒ 死通道回不来。⇒ **两处「有通道 ≠ 用户看得到」的坑已补**（独立核验员 P1-1）：① `mergePendingDiagnostics()` 重建诊断结构体时现在**带上**观察者设的字段 ⇒ 否则下一次合并就把横幅状态抹掉（而菜单栏 App 启动时不开窗口 ⇒ 失败发生时通常根本没有窗口可显示）；② 恢复时发 `.storageMirrorRecovered` ⇒ **横幅会消失**，不会一直挂着一条已经修好的故障。 |
+| 2. "比本构建新"要说清楚（"请升级 ClipMemory"） | ✅ 已落地（分类层） | `StorageBackendError.databaseFromNewerBuild(foundVersion:supportedVersion:)` 是**独立错误类型**（不是塞在 `storageFailure` 的 detail 里的一句 "newer"）⇒ 展示层可以**按类型**分流，不用字符串匹配。`StorageMirrorService.failureReason(for:)` 把它映射成 `.fromNewerBuild` ⇒ 横幅文案明确写"请升级"。 |
+| 3. 重试触发诚实（失败不写版本戳，下次启动重试） | ✅ 已落地（**两个戳 + 一个重建标记**） | **迁移戳** `migration.v1.to.v2.completed` 写在**同一个事务**里 ⇒ 抛错即回滚 ⇒ 戳不落 ⇒ 下次启动重试（`testAFailedSeedLeavesTheFlagUnsetSoTheNextLaunchRetries`）。**校验戳** `migration.v1.to.v2.verified` 独立于迁移戳 ⇒ **只有比对通过才写 1** ⇒ 比对失败写 0 ⇒ 下次启动**重新校验**（`testADivergedCopyIsNotMarkedVerifiedSoTheNextLaunchRetries`）。⇒ 两个戳都齐了才走 `alreadySeeded` 短路 ⇒ ⇒ 「重试诚实」对**抛错**与**校验不通过**两条路径都成立（独立核验员 P1-1 指出原实现只覆盖前者）。⇒ ⇒ **而且重试是能成功的**：校验不过 ⇒ 副本被打上 `store.sqlite3.rebuild` 标记 ⇒ **下次启动先删副本再重建**（删在**开连接之前**，因为后端没有 `close()`）⇒ ⇒ 从**当前**源重新播种并校验 ⇒ ⇒ **一次失败、一次自愈**，而不是把同一次失败每次启动重放一遍（独立核验员 P2-1）。 |
+| 2 的**后半句**："不回落到 UserDefaults" | ⏳ 挂在**原子切换**上 | 镜像阶段（§4.3.5）UserDefaults **本来就是**主存储 ⇒ 不存在"回落到另一个数据源" ⇒ 这半句要到 `migration.v1.to.v2.switched = 1` 的那一版才成立 ⇒ 那一版必须把"新库不可读"变成**硬失败**（不许静默回落）。**本节的义务没有消失，只是换了触发条件。** |
+
 
 ## 5. Concurrency / connection model (SQLite + existing thread constraints)
 
@@ -625,11 +823,11 @@ Multiple readers can hit the same connection simultaneously (SQLite supports thi
 
 If profiling later shows contention, the v2 implementation switches to `pthread_rwlock_t` (reader-writer) — `read_lock` for load methods, `write_lock` for upsertItem / moveToTrash / etc. The wire-format of `StorageBackend` doesn't change; it's a backend-internal optimization. For v1 we ship exclusive-only.
 
-### 5.5 ⚠️ 已知未修复：事务归属按连接状态推断（接线前必须解决）
+### 5.5 ✅ 已修复：事务归属按连接状态推断（ID-REVIEW-1027，2026-11-12）
 
-**状态：2026-10-24 独立审核发现，**未**修复。** 未接线所以对用户无影响；但它是 PR-C 接线的硬前置条件。**
+**状态：2026-10-24 独立审核发现 → 2026-11-12 修复。** 本节不再是"接线前必须解决"的前置条件。
 
-**缺陷。** `inTransaction` 用 `isInsideTransaction`（即 `sqlite3_get_autocommit(db) == 0`，**连接级**状态）来判断"调用方是否已经拥有事务"。可是锁是**每次方法调用**级别的：`withLock` 只在单个 public 方法体内持有 `NSRecursiveLock`，`beginTransaction()` 返回后锁就释放了。
+**缺陷（原样保留，供追溯）。** `inTransaction` 用 `isInsideTransaction`（即 `sqlite3_get_autocommit(db) == 0`，**连接级**状态）来判断"调用方是否已经拥有事务"。可是锁是**每次方法调用**级别的：`withLock` 只在单个 public 方法体内持有 `NSRecursiveLock`，`beginTransaction()` 返回后锁就释放了。
 
 于是 `ClipboardStore+Persistence.swift` 里这种写法会留下窗口：
 
@@ -645,30 +843,74 @@ try backend.commitTransaction()  // ← 持锁 → 释放锁
 2. 外层事务若走 ROLLBACK（错误路径），另一线程刚刚"成功"返回的写入会**一起被回滚**，看起来像凭空消失；
 3. 事务归属没有任何显式记录，日志里也看不出这次写入到底归谁 —— 出事后无法归因。
 
-**为什么本次不修。** `SQLiteStorageBackend` 目前**零生产调用点**（`ClipboardStore` 仍用 `FileStorageBackend`），所以这是潜伏缺陷，不影响 v2.9.6 的用户。修它意味着重写事务所有权模型（把 BEGIN…COMMIT 收敛成**一个**持锁的闭包，或按线程/owner token 显式记录归属），属于并发模型改造 —— 在发版当天对一段没有调用方的代码做这种改造，风险高于收益。**遗留缺陷记在这里，比悄悄带过更安全。**
+**修法：把事务收敛成单一持锁作用域（§5.5 修复项 1）。** `SQLiteStorageBackend.withTransaction { … }` 一次持锁完成 BEGIN…COMMIT，**锁覆盖整个事务**：
 
-**接线前必须做的三件事：**
+```swift
+func withTransaction<T>(_ body: () throws -> T) throws -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    if isInsideTransaction {
+        return try runInSavepoint(body)   // 嵌套：SAVEPOINT 隔离
+    }
+    try exec("BEGIN IMMEDIATE TRANSACTION")
+    do {
+        let result = try body()
+        try exec("COMMIT")
+        return result
+    } catch {
+        do { try rollbackTransaction() } catch { /* 记日志，不替换原错误 */ }
+        throw error
+    }
+}
+```
 
-1. **把事务收敛成单一持锁作用域**：提供 `withTransaction { … }` 一次持锁完成 BEGIN…COMMIT，中间所有语句都在同一把锁内；或者显式记录 owner（thread id / token），`isInsideTransaction` 改成"**我**拥有事务吗"而不是"连接上有事务吗"。
-2. **补一条并发回归测试**：一条线程持事务时，另一线程并发写，断言写入不会挂进别人的事务、也不会被外层 ROLLBACK 吞掉。当前 `Tests/ClipMemoryTests/SQLiteStorageBackendTests.swift` 里只有一条并发用例（`testConcurrentUpsertsDoNotCorruptOrLoseRows`，4 线程 × 25 次 upsert），而**每次 `upsertItem` 自带 BEGIN…COMMIT**，没有出现「一条线程持事务、另一线程在其间写入」的情形，**覆盖不到这条路径**。
-3. **接线时把本节列进 PR-C 的 review checklist**：§4.4.1 的「报错 → 重试 → 用户可见」义务管的是 `init` 的失败；本节管的是事务正确性，两者都要在接线 PR 里同时满足。
+⇒ **修的是形状，不是加一个 flag**：事务开着的时候，**别的线程根本进不来这个后端** ⇒ ⇒ `isInsideTransaction` 只可能因为**本线程**开了事务而为真 ⇒ ⇒ 它要回答的"归属"问题从此有了确定答案。
 
-### 5.6 ⚠️ 已知未修复：一条悬空标签引用会作废整次 items 保存（接线前必须解决）
+⇒ **三件套同时落地**（本节原列的"接线前必须做的三件事"）：
 
-**状态：2026-10-24 独立审核发现，**未**修复。** 未接线所以对用户无影响；它是 PR-C 接线的硬前置条件。**
+1. ✅ 单一持锁作用域 —— `withTransaction { … }`（见上）。旧三件套 `beginTransaction` / `commitTransaction` / `rollbackTransaction` **已删除**（`rollbackTransaction` 降为 private，只有 `withTransaction` 能回滚一个事务）⇒ ⇒ **缺陷形状本身不可达**：没人能再开一个"锁不覆盖全程"的事务。
+2. ✅ 并发回归测试 —— `SQLiteStorageBackendRegressionTests.testConcurrentWriteIsNotAbsorbedIntoAnotherThreadsTransaction`（2026-11-12 从 `SQLiteStorageBackendTests` 拆出：加进原文件会让它越过 SwiftLint 的 800 行阈值）：A 线程持事务并回滚，B 线程同时写 ⇒ 断言 B 的写**被提交**（用**第二个连接**读回 —— 只有已提交的行列才对另一个连接可见）且 A 的行没有提交。
+3. ✅ 本节与 §4.4.1 的义务在同一轮里同时满足（见 §4.4.1 与 §4.3.5）。
 
-**缺陷。** `ClipboardStore+Persistence.granularSave` 对每个 item 都会 `attachTag(itemID:tagID:)`，但只在 `tags` 目录里**找得到**该 tag 时才 `upsertTag`。标签目录读不出来时（`.tagBackendCorrupted` → `tags = [:]`）而 items blob 带着 tag id，`attachTag` 就会撞上 `item_tags` 的外键约束 → 整个事务回滚 → **用户的整份剪贴板历史这一轮全部保存失败**。
+⇒ **调用点已全部迁移**：`granularSave`（`ClipboardStore+Persistence.swift`）与 `StoreMigration.runOnce` 都改用 `withTransaction`；后端内部 7 处 `withLock { inTransaction { … } }` 也一并收敛。
 
-代码里的注释把它称为"the loud failure we want"——**响是响的，但爆炸半径不对**：一个悬空引用本该只影响那一条关联，实际却作废了整次保存。（现状的取舍本身没错：不可以用一个无名占位 tag 把断链糊过去。问题在于失败的范围。）
+⇒ ⚠️ **这一节的第一版实现并没有兑现上面那段代码**（2026-11-12 全量测试抓出来的，记在这里以免后人重蹈）：第一版的 `withTransaction` **函数体里没有 `lock.lock()`**，但它的**文档注释**已经写着「holding the connection lock for the WHOLE transaction」⇒ ⇒ **注释承诺了、实现没做**。⇒ 全量 `xcodebuild test` 撞出 `testConcurrentUpsertsDoNotCorruptOrLoseRows` 失败，报 `no such savepoint: clipmemory_sp`（另一个线程的 `COMMIT` 把本线程的 savepoint 一起销毁了）⇒ ⇒ 补上 `lock.lock()` / `defer { lock.unlock() }` 之后才真正修好。
 
-**为什么本次不修。** 同 §5.5：`SQLiteStorageBackend` 目前**零生产调用点**，`granularSave` 只在后端切到 SQLite 时才走这条路。发版当天改事务/外键语义，比缺陷本身更危险。
+⇒ **判别力**（2026-11-12 变异验证，实测）：去掉 `withTransaction` 的 `lock.lock()` ⇒ `testConcurrentWriteIsNotAbsorbedIntoAnotherThreadsTransaction` **变红**（`executed=1` ⇒ 用例确实执行）；未变异时同一用例**绿** ⇒ ⇒ 该用例对「锁是否覆盖全程」**有判别力**，不是「用例会存在」而已。
 
-**接线前必须做的两件事：**
 
-1. **缩小失败范围**：让那一条 `item_tags` 写失败只跳过这一条关联（并记日志），而不是回滚整次保存；或者先补齐标签行再写关联。断言：标签目录为空 + item 带 tag id 时，**其余 item 仍然保存成功**。
-2. **给标签目录一个明确的所有者**：现在 `saveTags()` 写的是**另一个** backend 实例，而 `granularSave` 只 upsert **被 item 引用到**的 tag —— 目录里没有 item 引用的 tag 永远不会进库。接线时必须指定唯一 owner，否则两处会各写一半。
+### 5.6 ✅ 已修复：一条悬空标签引用会作废整次 items 保存（ID-REVIEW-1027，2026-11-12）
 
-## 7. Split PR plan (5 PRs over ~2-3 weeks)
+**状态：2026-10-24 独立审核发现 → 2026-11-12 修复。** 本节不再是"接线前必须解决"的前置条件。
+
+**缺陷（原样保留，供追溯）。** `ClipboardStore+Persistence.granularSave` 对每个 item 都会 `attachTag(itemID:tagID:)`，但只在 `tags` 目录里**找得到**该 tag 时才 `upsertTag`。标签目录读不出来时（`.tagBackendCorrupted` → `tags = [:]`）而 items blob 带着 tag id，`attachTag` 就会撞上 `item_tags` 的外键约束 → 整个事务回滚 → **用户的整份剪贴板历史这一轮全部保存失败**。
+
+代码里的注释把它称为"the loud failure we want"——**响是响的，但爆炸半径不对**：一个悬空引用本该只影响那一条关联，实际却作废了整次保存。
+
+**修法：缩小失败范围（§5.6 修复项 1）。** `granularSave` 在写之前把 item 的 `tagIds` 过滤成"标签目录里确实存在的"那些，**只跳过那一条关联并记日志**，其余写入照常：
+
+```swift
+let attachable = item.tagIds.filter { tags[$0] != nil }
+let dangling = item.tagIds.subtracting(attachable)
+if !dangling.isEmpty {
+    logger.error("ID-REVIEW-1027: skipped \(dangling.count) tag link(s) — the tag catalog does not carry them")
+}
+var sanitized = item
+sanitized.tagIds = attachable
+try backend.upsertItem(sanitized)
+for tagID in attachable {
+    try backend.attachTag(itemID: item.id, tagID: tagID)
+}
+```
+
+⇒ ⇒ **没有用"无名占位 tag"糊过去**：那会凭空造出一个用户从没创建过的标签，而且后端自己的契约写着"a regular write referencing an unknown tag must fail loudly, not invent a tag"（见 `ensureTagPlaceholders`）⇒ ⇒ 修法落在**调用方**（调用方本来就知道目录里有没有这个 tag），后端的"响"保持不变。
+
+**标签目录的所有者（§5.6 修复项 2）**：镜像阶段（§4.3.5）里 `items` / `tags` / `trash` 三个维度由**同一个** `SQLiteStorageBackend` 实例承载 ⇒ ⇒ 目录只有一个 owner，不存在"两处各写一半"。**双写阶段**（下一轮）落地时，同一条约束继续成立。
+
+**回归测试**：`SQLiteStorageBackendRegressionTests.testOneDanglingTagReferenceDoesNotVoidTheWholeSave`（同上，从 `SQLiteStorageBackendTests` 拆出） —— 标签目录为空 + item 带 tag id ⇒ 断言**其余 item 仍然保存成功**（正是本节要求的断言）。
+
+
+## 7. Split PR plan (6 PRs over ~2-3 weeks)
 
 Each PR is independently mergeable, independently testable, and ships a working binary. Reversible at any commit because `FileStorageBackend` is always present.
 
@@ -676,6 +918,7 @@ Each PR is independently mergeable, independently testable, and ships a working 
 |---|---|---|---|---|
 | **PR-A: SQLiteStorageBackend skeleton** | New file `Services/SQLiteStorageBackend.swift`. Implements the granular protocol methods. **No callers yet.** Mirrors the array-level methods via SELECT * + rebuild. ~600 LOC. | M | Low — no callers, no behavior change |
 | **PR-B: schema_version + migration v1** | New file `Services/StoreMigration.swift`. Implements the one-shot migration from UserDefaults blobs. Sets the `migration.v1.to.v2.completed` flag. ~300 LOC. | M | Low — failure = stay on UserDefaults |
+| **PR-C0: mirror phase — first production call site** ✅ **shipped 2026-11-12** | New file `Services/StorageMirrorService.swift`. Opens the SQLite backend at startup, runs the one-shot migration, then does a **one-shot** content comparison against the live UserDefaults source. Writes the second stamp `migration.v1.to.v2.verified`. On divergence: sidecar marker ⇒ **rebuild the copy on the next launch** (delete happens *before* the connection opens). Failures surface via `DiagnosticsBanner` (`.storageMirrorFailed`) with a recovery channel (`.storageMirrorRecovered`). **The read/write path still runs on UserDefaults**; `migration.v1.to.v2.switched` stays `0`. See §4.3.5. | M | Low-Med — read-only mirror; the worst case is "the copy is stale/absent", never "the source is damaged" |
 | **PR-C: ClipboardStore per-keystroke writes via granular** | Switch `ClipboardStore.saveItems` / `flushPendingSaves` to use granular methods when backend is `SQLiteStorageBackend`, fall back to array-level for `FileStorageBackend`. ~150 LOC diff. | M-H | Med — touches main-thread hot path; needs per-keystroke instrumentation in tests |
 | **PR-D: backup integration** | `BackupService.copyImagesIfPresent` and `BackupPackage` write blobs to the new SQLite format too (add `store.exportToBlobs` and `BackupPackage` consumes the new format on import). Or — simpler — backups keep using their own JSON staging (current behavior); only restore merges via the new backend. ~200 LOC. | L | Low — backups are already independent of storage format |
 | **PR-E: UserDefaults deprecation + UI cleanup** | After 2 release cycles with SQLite primary path, demote `FileStorageBackend` to "import-only fallback" with `XCTSkip`-style guard, and remove the array-level `save(_:)` / `saveTags(_:)` path on the SQLite backend (force callers to granular). Also delete the UserDefaults `clipboardItems` etc. blobs from production defaults. ~100 LOC. | M | Med — irreversible (UserDefaults blobs gone) but gated behind 2-cycle soak |
@@ -683,6 +926,8 @@ Each PR is independently mergeable, independently testable, and ships a working 
 ## 8. Test plan
 
 Each PR adds tests covering the scope. Cumulative test count target after PR-E: ~1150 (current 1048 + ~100 new).
+
+> **Count discipline (ID-TEST-0002, 2026-08-16)**: the number above is a **planning target written when the plan was drafted**, not a live fact — the repo has moved well past it. The **only** source of truth for the current count is `./Scripts/test-count.sh` (static estimate) / `./Scripts/test-count.sh --run` (real `Executed N tests`). ⇒ ⇒ do **not** read the "~1150" above as the suite's current size, and do **not** hard-code a count into release notes.
 
 ### 8.1 PR-A test scope
 
@@ -712,7 +957,48 @@ Each PR adds tests covering the scope. Cumulative test count target after PR-E: 
   - `testDualReadValidationPhase` — second-launch dual-read verification catches divergence
   - `testMigrationNotRunOnFreshInstall` — no blobs → no migration
 
-### 8.3 PR-C test scope
+### 8.3 PR-C0 test scope (shipped 2026-11-12)
+
+- `SQLiteStorageBackendRegressionTests` (new file, 2 tests) — the two defects the independent verifier found in the existing backend:
+  - `testConcurrentWriteIsNotAbsorbedIntoAnotherThreadsTransaction` — the **transaction-ownership** regression (§5.5): a write issued on one thread must not land inside another thread's transaction. Orchestrated with a **handshake** (not a sleep) so the interleaving is deterministic; every wait is **bounded** (30s) and each party uses its **own** semaphore — a shared counting semaphore had one permit consumed by two waiters, which hung the suite for 6 minutes.
+  - `testOneDanglingTagReferenceDoesNotVoidTheWholeSave` — the **blast radius** regression (§5.6): an item carrying a tag id that the catalog does not have must not abort the save of every other item.
+- `StorageMirrorServiceTests` (new file, 14 tests) — the mirror phase:
+  - the copy is **seeded** from the source and the two stamps land (`completed` + `verified`);
+  - a **dangling tag reference in the source** must NOT be read as a divergence (the migration creates a placeholder row for it) — this is the "placeholder-tolerant comparison" rule;
+  - an item whose **content hash differs** MUST be read as a divergence;
+  - a **diverged copy** must NOT get the verified stamp, and must be **re-checked on the next launch**;
+  - a **diverged copy** is **rebuilt on the next launch** (the sidecar marker ⇒ the file is deleted before the connection opens);
+  - the **rebuild marker** is not written for a faithful copy;
+  - `testSeedDoesNotModifyTheSourceBlobs` asserts the **source blobs** (items + tags + trash) are untouched by the seed ⇒ ⇒ ⚠️ **this is the SOURCE-INTEGRITY assertion, NOT the verification comparison** — the comparison itself (`contentsMatch`) covers **items + tags only**; the recycle-bin dimension is imported by the migration but **not** compared (see §4.3.5's residual). ID-REVIEW-1027 round 3 · P3-1 flagged this sentence as self-contradictory with §4.3.5; it is now unambiguous.
+  - a copy that is already seeded needs **both** stamps to short-circuit;
+  - **round 3** — an item in **both** the history blob and the trash blob must NOT cause a divergence (the self-healing has to CONVERGE, not replay the same failure on every launch);
+  - **round 3** — the source must be read **exactly once** (the migration and the comparison share one snapshot);
+  - **round 3** — the `.alreadySeeded` path must ALSO report that the store is healthy (the recovery leg).
+- `ClipboardStoreDiagnosticsTests` — `testMergingPendingDiagnosticsKeepsTheObserverSetFlags`: the **durable banner state** (§4.3.5) — `mergePendingDiagnostics()` must carry the observer-set flags (`tagsLoadFailed`, `storageMirrorIssue`) across, or the storage banner is erased by the next merge.
+- `LocalizationKeysTests` — `testEveryEnglishKeyExistsInAllSevenLanguageFiles`: a **generic** 7-language guard. (The ledger had claimed this guard existed; it did **not** ⇒ it was written.)
+- **Mutation checking — the honest scope** (ID-REVIEW-1027 round 3 · P2-3): the fixes below are mutation-checked, i.e. reverting the fix ⇒ the test must go RED, with `executed ≥ 1` recorded (a skipped test proves nothing) and a byte-identical restore verified afterwards:
+
+  | fix | mutation | test |
+  |---|---|---|
+  | §5.5 transaction ownership | drop `withTransaction`'s `lock.lock()` | `testConcurrentWriteIsNotAbsorbedIntoAnotherThreadsTransaction` |
+  | §5.6 dangling tag | drop the catalog filter | `testOneDanglingTagReferenceDoesNotVoidTheWholeSave` |
+  | placeholder-tolerant comparison | compare the raw tag id sets | `testSeedWithADanglingTagReferenceIsNotReportedAsDiverged` |
+  | separate verified stamp | the divergence path writes "verified" | `testADivergedCopyIsNotMarkedVerifiedSoTheNextLaunchRetries` |
+  | content-hash comparison | delete the whole hash comparison | `testTheCopyComparisonRejectsAnItemWithTheWrongContent` |
+  | rebuild marker | never mark the diverged copy | `testADivergedCopyIsRebuiltOnTheNextLaunch` |
+  | merge carries the flags | rebuild the diagnostics without them | `testMergingPendingDiagnosticsKeepsTheObserverSetFlags` |
+  | 7-language guard | drop a key from `es.lproj` | `testEveryEnglishKeyExistsInAllSevenLanguageFiles` |
+  | notification has a consumer | delete the AppDelegate observer | `testEveryCustomNotificationHasAtLeastOneProductionObserver` |
+  | failure is posted | `report()` stops posting | `testSeedFailureIsPostedToTheUserVisibleChannel` |
+  | `contentsMatch` is real | make it always true | 4 of the mirror tests |
+  | **round 3 · P1-1** dual-blob state | move the trash import back AFTER the items (`moveToTrash` deletes the row again) | `testAnItemInBothTheHistoryAndTheTrashBlobDoesNotCauseAPermanentDivergence` |
+  | **round 3 · P2-1** one snapshot | read the source a second time | `testTheSourceIsReadOnlyOnceSoTheComparisonSeesTheMigratedSnapshot` |
+  | **round 3 · P2-2** recovery leg | drop the `.alreadySeeded` recovery post | `testTheRecoveryNotificationIsPostedEvenWhenTheCopyWasAlreadySeeded` |
+  | **round 3** (既有守卫) | drop the "already restored" protection | `testMigrationDoesNotDeleteAlreadyRestoredItems` |
+
+  ⇒ ⇒ **the tests that are NOT in this table** were not individually mutation-checked; they are covered by the table's mutations (a mutation that turns several tests red covers the rest) ⇒ ⇒ **"every new test is mutation-checked" was an overclaim and is withdrawn** (round 3 · P2-3).
+
+### 8.4 PR-C test scope
 
 - Add `testFlushPendingSavesGranularVsArray` to `ClipboardStoreTests`:
   - With `SQLiteStorageBackend`, `flushPendingSaves` writes only the diff (N items updated → N row writes), verified via SQLite write-count metric (not exposed today — would need a wrapper or file-system counter on the SQLite file).
@@ -720,7 +1006,7 @@ Each PR adds tests covering the scope. Cumulative test count target after PR-E: 
 - Add `testConcurrentFlushPendingSaves` — multi-thread save safety.
 - Add `testUnsupportedFeatureFallback` — `ClipboardStore` falls back to array-level when granular throws `unsupportedFeature`.
 
-### 8.4 PR-D test scope
+### 8.5 PR-D test scope
 
 - `SQLiteSchemaVersionTests` (new file, 17 tests) — ID-REVIEW-1024 N.4, the schema version is AUTHORITATIVE (`PRAGMA user_version`), not a row in the `schema_version` table:
   - the version is stamped, and re-opening changes nothing (`testFreshDatabaseIsStampedWithTheSchemaVersion`, `testReopeningAnExistingDatabaseChangesNothing`);
@@ -739,13 +1025,13 @@ Each PR adds tests covering the scope. Cumulative test count target after PR-E: 
   - `testBackupImageHardLinkUnaffected` — orthogonal regression (ID-REVIEW-1018)
   - `testTrashRetentionPurgeViaSQLite` — retention_days column drives delete
 
-### 8.5 PR-E test scope
+### 8.6 PR-E test scope
 
 - `LegacyFileStorageBackendRemovalTests`:
   - Verify SQLite is the only registered backend post-removal
   - Verify "panic + roll back to last good SQLite snapshot" path on corruption
 
-### 8.6 Cross-cutting
+### 8.7 Cross-cutting
 
 - All existing tests must continue to pass (1048 tests today, +0 new for the legacy path).
 - One new tsan-full weekly job sub-step: run the SQLite backend's concurrent test 50× times and confirm zero races (mirrors the audit pattern from ID-CRASH-0057).
@@ -763,7 +1049,17 @@ Each PR adds tests covering the scope. Cumulative test count target after PR-E: 
 - 8 new StoreMigration tests pass.
 - One-shot migration verified on real `.standard` fixtures (a fixture captured from a v2.9.6 install with 2000 items, 50 tags, 100 image attachments — runs the migration in <5s, content matches bit-for-bit).
 - `migration.v1.to.v2.completed` flag is set; second launch is no-op.
-- Dual-read validation phase (`migration.v1.to.v2.validated`) succeeds on a fixture with intentional mismatches (verifies the rollback path itself).
+- ~~Dual-read validation phase (`migration.v1.to.v2.validated`) succeeds on a fixture with intentional mismatches (verifies the rollback path itself).~~ ⇒ ⇒ **moved to PR-C0** and **renamed**: the flag is `migration.v1.to.v2.verified` (the "validated" name was aspirational and was never implemented — see §4.1 / §4.3.1's ID-CRASH-0022 note).
+
+**PR-C0 acceptance** (shipped 2026-11-12):
+- The SQLite backend has **at least one production call site** — `AppDelegate.startStorageMirror()` opens it on a background queue at launch ⇒ ⇒ §4.4.1's obligation is discharged rather than aspirational.
+- A store whose `PRAGMA user_version` is **newer than this build** is **refused**, and the refusal is **user-visible** (banner), not a log line (`StorageBackendError.databaseFromNewerBuild`).
+- Every init/verification failure is reported through `.storageMirrorFailed` ⇒ ⇒ `DiagnosticsBanner`; **no silent swallow** (§「报错 → 重试 → 用户可见」).
+- The verification is **one-shot** (two stamps: `completed` + `verified`); a copy that fails its check is **re-checked on the next launch**, not accepted forever.
+- A failed check **self-heals**: the sidecar marker ⇒ the copy is deleted **before the connection opens** on the next launch and re-seeded ⇒ ⇒ the banner does not replay forever.
+- The read/write path is **unchanged** (UserDefaults primary); `migration.v1.to.v2.switched` stays `0` ⇒ ⇒ the rollback path is intact.
+- The fixes this phase ships are **mutation-checked**: reverting the fix ⇒ the corresponding test goes RED (`executed ≥ 1`, byte-identical restore verified). The exact scope is the table in §8.3 — **"every new test" was an overclaim and is withdrawn** (independent verifier round 3 · P2-3).
+- The 7-language L10n guard passes for every new key (`LocalizationKeysTests.testEveryEnglishKeyExistsInAllSevenLanguageFiles`).
 
 **PR-C acceptance**:
 - All 1048 prior tests still pass.

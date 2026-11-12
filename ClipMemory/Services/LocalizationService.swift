@@ -675,6 +675,18 @@ struct L10n {
     // `dataCorruptedCount` which has a count.
     static var bannerTagsLoadFailed: String { string("banner.tags.load.failed") }
 
+    // ID-REVIEW-1027 (2026-11-12): banner copy for the local SQLite
+    // store. The user's history lives in UserDefaults and is NOT
+    // affected - these say the MIRROR is not there, so the failure is
+    // visible instead of silent (docs/design/storage-migration.md
+    // 4.4.1). Three distinct facts, three distinct messages: a store
+    // that could not be opened, a store written by a NEWER build (the
+    // user must update the app), and a copy that does not match its
+    // source.
+    static var bannerStorageUnavailable: String { string("banner.storage.unavailable") }
+    static var bannerStorageNewerBuild: String { string("banner.storage.newer.build") }
+    static var bannerStorageDiverged: String { string("banner.storage.diverged") }
+
     // MARK: - VoiceOver / Accessibility labels (Round-2 2026-07-30 audit, L10N-0001..0007)
     /// ID-L10N-0002: Clear search button label (ContentView toolbar × icon).
     static var searchClear: String { string("search.clear") }

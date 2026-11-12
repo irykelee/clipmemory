@@ -81,6 +81,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // same banner that handles `keyUnavailable` and
     // `dataCorruptedCount` — UI side zero new components.
     private var tagBackendCorruptedObserver: NSObjectProtocol?
+    // ID-REVIEW-1027 (2026-11-12): the local SQLite store failed to
+    // open, to be seeded, or to verify. The user's history lives in
+    // UserDefaults and is unaffected, but the store is the substrate the
+    // next release switches to - a silent failure here would surface at
+    // the worst possible moment. The banner is the user-visible leg of
+    // the obligation in docs/design/storage-migration.md 4.4.1.
+    private var storageMirrorFailedObserver: NSObjectProtocol?
+    // ID-REVIEW-1027 (2026-11-12, round 2): the local store recovered.
+    // The failure banner must not outlive the failure.
+    private var storageMirrorRecoveredObserver: NSObjectProtocol?
     // P0-1 (2026-07-28 audit): retry CryptoService.prepareKey after
     // unlock-revealing events (system wake, session-become-active,
     // screen unlock). The original code stranded the clipboard for the
@@ -289,6 +299,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = UpdateService.shared
         // Daily local backup (throttled internally to once per 24h).
         BackupService.shared.performBackupIfNeeded()
+        // ID-REVIEW-1027 (2026-11-12): seed the local SQLite store from
+        // the UserDefaults history, in the BACKGROUND (see
+        // `startStorageMirror()`).
+        startStorageMirror()
         // One-time OCR backfill for pre-existing image items.
         // P2-14 round-2 self-review fix [P1-1]: defer backfill until
         // the async first-load lands, otherwise `items == []` here
@@ -320,6 +334,65 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // would clear the crash we just counted ⇒ safe mode could never
         // trigger).
         SafeModeService.shared.registerSuccessfulLaunch()
+    }
+
+    /// ID-REVIEW-1027 (2026-11-12): seed the local SQLite store from the
+    /// UserDefaults history, in the BACKGROUND.
+    ///
+    /// A 10K-item migration is not a launch-blocking operation, and the
+    /// user's history is served from UserDefaults either way.
+    ///
+    /// The store is a VERIFIED COPY, not the source of truth: the read
+    /// path and the write path both still go to UserDefaults, and the
+    /// atomic switch is a separate release gated on the
+    /// `migration.v1.to.v2.switched` flag
+    /// (docs/design/storage-migration.md 4.3). Nothing here changes
+    /// where the user's history lives.
+    ///
+    /// Split out of `applicationDidFinishLaunching` to keep that
+    /// function within the 50-line body budget (SwiftLint
+    /// `function_body_length`).
+    private func startStorageMirror() {
+        DispatchQueue.global(qos: .utility).async {
+            StorageMirrorService.seedAndReport(
+                source: .standard,
+                databaseURL: StorageMirrorService.databaseURL(
+                    appSupport: AppDirectories.applicationSupport
+                )
+            )
+        }
+    }
+
+    /// ID-REVIEW-1027 (2026-11-12): the local SQLite store failed to open,
+    /// to be seeded, or to verify. Surface it in the diagnostics banner.
+    ///
+    /// Same XCTest guard pattern as the observers in
+    /// `setupLanguageObserver` - the banner mutation is main-actor only,
+    /// and a test process must not touch the user's store.
+    ///
+    /// Split out of `setupLanguageObserver` for the same
+    /// `function_body_length` reason.
+    private func setupStorageMirrorObserver() {
+        storageMirrorFailedObserver = NotificationCenter.default.addObserver(
+            forName: .storageMirrorFailed, object: nil, queue: .main
+        ) { [weak self] note in
+            guard !TestIsolation.isRunningTests else { return }
+            guard let strongSelf = self else { return }
+            let raw = note.userInfo?["reason"] as? String
+            let issue = raw.flatMap { StorageMirrorService.FailureReason(rawValue: $0) }
+                ?? .unavailable
+            ClipboardStore.shared.diagnostics.storageMirrorIssue = issue
+        }
+        // ID-REVIEW-1027 (2026-11-12, round 2): the store is healthy
+        // again ⇒ clear the banner. A failure banner that outlives the
+        // failure trains the user to ignore banners.
+        storageMirrorRecoveredObserver = NotificationCenter.default.addObserver(
+            forName: .storageMirrorRecovered, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard !TestIsolation.isRunningTests else { return }
+            guard let strongSelf = self else { return }
+            ClipboardStore.shared.diagnostics.storageMirrorIssue = nil
+        }
     }
 
     // ID-LIFE-0026 (MEDIUM-2, audit 2026-08-15): graceful-quit gate. AppKit calls this
@@ -871,6 +944,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let strongSelf = self else { return }
             ClipboardStore.shared.diagnostics.tagsLoadFailed = true
         }
+
+        // ID-REVIEW-1027 (2026-11-12): the local SQLite store (see
+        // `setupStorageMirrorObserver()`).
+        setupStorageMirrorObserver()
 
         // H-1 (2026-08-08 audit): v2.8.1's ID-SILENT-0021 fix posted
         // .clipboardSaveFailed but no production observer consumed it —

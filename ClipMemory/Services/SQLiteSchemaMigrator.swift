@@ -214,10 +214,17 @@ enum SQLiteSchemaMigrator {
     /// transaction and once inside it — and the two messages must not
     /// drift apart.
     private static func newerVersionError(_ version: Int, _ supported: Int) -> StorageBackendError {
-        StorageBackendError.storageFailure(
-            sql: "PRAGMA user_version",
-            code: SQLITE_ERROR,
-            detail: "database schema version \(version) is newer than this build supports (\(supported))"
+        // ID-REVIEW-1027 (2026-11-12): its OWN error case, not a generic
+        // storage failure. The file is fine - this build is too old to
+        // understand it - and the user needs a different answer than
+        // "the disk failed": "please upgrade ClipMemory". A generic
+        // failure cannot carry that, and silently falling back to the
+        // UserDefaults store would mean the user reads and writes two
+        // different sets of data (docs/design/storage-migration.md
+        // 4.4.1).
+        StorageBackendError.databaseFromNewerBuild(
+            foundVersion: version,
+            supportedVersion: supported
         )
     }
 

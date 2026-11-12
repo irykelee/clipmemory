@@ -451,3 +451,6 @@
 "safeMode.degraded.body" = "起動センチネルファイルを書き込めませんでした。クラッシュ検出はオフラインです。ヘルプ → 問題を報告 からご報告ください。";
 "alert.already.running.title" = "ClipMemory はすでに実行中です";
 "alert.already.running.message" = "すでに実行中です。この起動ではクリップボード履歴を変更していません。Menubar のアイコンから入れます。";
+"banner.storage.unavailable" = "ローカルデータベースを準備できませんでした — クリップボード履歴に影響はありません。";
+"banner.storage.newer.build" = "ローカルデータベースは新しいバージョンの ClipMemory が書き込んでいます — アプリを更新してください。クリップボード履歴に影響はありません。";
+"banner.storage.diverged" = "ローカルデータベースのコピーがクリップボード履歴と一致しません — 履歴自体に影響はありません。";

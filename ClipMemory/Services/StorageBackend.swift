@@ -231,6 +231,20 @@ enum StorageBackendError: Error, LocalizedError {
     /// would replace the history with the bin.
     case scopeMismatch(String)
 
+    /// ID-REVIEW-1027 (2026-11-12): the database was written by a NEWER
+    /// build of ClipMemory than this one.
+    ///
+    /// This is its OWN case, not a generic storage failure, because the
+    /// user needs a different answer than "the disk failed": the file is
+    /// fine, this build is simply too old to understand it. The
+    /// user-visible channel (docs/design/storage-migration.md 4.4.1)
+    /// must say "please upgrade ClipMemory" - silently falling back to
+    /// the UserDefaults store would mean the user reads and writes two
+    /// different sets of data.
+    ///
+    /// PERMANENT: retrying cannot help until the app is upgraded.
+    case databaseFromNewerBuild(foundVersion: Int, supportedVersion: Int)
+
     /// Whether retrying the failed operation could plausibly succeed.
     ///
     /// ID-REVIEW-1024 (PR-D N.4, 2026-10-21): the schema migration
@@ -250,6 +264,10 @@ enum StorageBackendError: Error, LocalizedError {
             return code == SQLITE_BUSY || code == SQLITE_LOCKED
         case .unsupportedFeature, .productionWriteBlocked, .scopeMismatch:
             return false
+        case .databaseFromNewerBuild:
+            // PERMANENT: the file is fine, this build is too old.
+            // Retrying only produces the same refusal.
+            return false
         }
     }
 
@@ -263,6 +281,11 @@ enum StorageBackendError: Error, LocalizedError {
             return "Refusing to write production UserDefaults key '\(key)' from a test process"
         case .scopeMismatch(let detail):
             return "StorageBackend scope mismatch: \(detail)"
+        case .databaseFromNewerBuild(let found, let supported):
+            return """
+            Storage database schema version \(found) is newer than this build \
+            supports (\(supported)) - upgrade ClipMemory to use it
+            """
         }
     }
 }

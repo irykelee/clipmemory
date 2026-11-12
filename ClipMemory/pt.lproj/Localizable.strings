@@ -450,3 +450,6 @@
 "safeMode.degraded.body" = "Não foi possível escrever o arquivo sentinela. A detecção de falhas está offline. Por favor, reporte via Ajuda → Reportar problema.";
 "alert.already.running.title" = "O ClipMemory já está em execução";
 "alert.already.running.message" = "Já está em execução — esta inicialização não alterou seu histórico da área de transferência. O ícone na barra de menus é a porta de entrada.";
+"banner.storage.unavailable" = "Não foi possível preparar o banco de dados local — seu histórico da área de transferência não é afetado.";
+"banner.storage.newer.build" = "O banco de dados local foi gravado por uma versão mais recente do ClipMemory — atualize o aplicativo. Seu histórico da área de transferência não é afetado.";
+"banner.storage.diverged" = "A cópia do banco de dados local não corresponde ao seu histórico da área de transferência — o histórico em si não é afetado.";

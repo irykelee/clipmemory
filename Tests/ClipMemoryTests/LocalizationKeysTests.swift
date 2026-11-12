@@ -80,6 +80,59 @@ final class LocalizationKeysTests: XCTestCase {
     }
 
     /// Walk all 7 shipping language files and confirm both new keys are
+    /// ID-REVIEW-1027 (2026-11-12, independent verifier round 2 · P3-2):
+    /// the GENERIC 7-language guard.
+    ///
+    /// The ledger claimed this guard existed ("en 里有的 key，7 个语言都必须有")
+    /// — it did not: every case in this file pinned a hard-coded list of
+    /// keys, so a NEW key added to `en.lproj` and forgotten in the other
+    /// six would pass the suite. (The `banner.storage.*` keys added this
+    /// round were exactly that kind of key, and they were unverified.)
+    ///
+    /// Now the guard is real: EVERY key in the English table must exist
+    /// in all seven language files. The resolver falls back to English
+    /// when a locale is missing, so without this a missing translation
+    /// degrades silently instead of failing the build.
+    func testEveryEnglishKeyExistsInAllSevenLanguageFiles() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appResDir = projectRoot.appendingPathComponent("ClipMemory", isDirectory: true)
+
+        func keys(in language: String) throws -> Set<String> {
+            let path = appResDir
+                .appendingPathComponent("\(language).lproj", isDirectory: true)
+                .appendingPathComponent("Localizable.strings")
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: path.path),
+                "Missing .strings file for \(language) at \(path.path)"
+            )
+            let content = try String(contentsOf: path, encoding: .utf8)
+            var found: Set<String> = []
+            for line in content.split(separator: "\n") {
+                guard let match = line.range(of: #"^\s*"([^"]+)"\s*="#,
+                                             options: .regularExpression) else { continue }
+                let key = content[match].dropFirst().prefix { $0 != "\"" }
+                found.insert(String(key))
+            }
+            return found
+        }
+
+        let english = try keys(in: "en")
+        XCTAssertFalse(english.isEmpty, "the English table must not be empty")
+
+        for language in ["en", "es", "ja", "ko", "pt", "zh-Hans", "zh-Hant"] {
+            let translated = try keys(in: language)
+            let missing = english.subtracting(translated).sorted()
+            let sample = missing.prefix(10).joined(separator: ", ")
+            XCTAssertTrue(
+                missing.isEmpty,
+                "\(language).lproj is missing \(missing.count) key(s) that en.lproj has: \(sample)"
+            )
+        }
+    }
+
     /// physically present. This catches "I forgot to add the entry in es.lproj"
     /// regressions that the resolver tests above cannot — the resolver falls
     /// back to English when a locale is missing, so a missing translation
