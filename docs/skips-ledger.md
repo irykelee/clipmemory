@@ -7469,9 +7469,129 @@ ClipboardStore 3 / TrashStore 1）⇒ ⇒ ⇒ 缺口**只此一处**。
 （本族第 2 次出现建议方向相反的事件 —— 上一次是 `Task { @MainActor in … }` vs
 `Task { await … }`）⇒ ⇒ ⇒ ⇒ ⇒ **建议采纳前必须先问「照做会发生什么」**。
 
-② **台账的「锚点一改结论自动失效」实测有效**：那条 `confirmed` 条目在
-`AppDelegate.swift` 被修后**自动不再阻断**（`BLOCKING_COUNT=0`、
-`EFFECTIVE_VERDICT=PASS`）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 修完即放行，不需要手工销账。
+② **台账的「锚点一改结论自动失效」实测有效**（⚠️ **仅限 advisory 模式**，2026-11-13
+核验补记）：那条 `confirmed` 条目在 `AppDelegate.swift` 被修后**自动不再阻断**
+（`BLOCKING_COUNT=0`、`EFFECTIVE_VERDICT=PASS`）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 修完即放行，不需要
+手工销账。⇒ ⇒ ⇒ **但这不是「自动放行」的通用保证**：`review-adjudicate.py` 的
+`entry_applies()` 在文件 sha 变化后返回 False ⇒ ⇒ 该 finding 变成**未被核验**
+⇒ ⇒ ⇒ `strict` 模式下 `model_blocks = bool(unadjudicated)` **仍会阻断** ⇒ ⇒ ⇒ ⇒
+⇒ 「锚点失效即自动不再阻断」这句话**只在默认的 advisory 模式成立** ⇒ ⇒ ⇒ ⇒
+⇒ 写进台账时必须带上模式限定，否则下一个接手的人会以为它是无条件保证。
 
 ③ **「有守卫」与「守卫有牙」是两件事**：新增的测试必须做变异验证
 （删掉修复 ⇒ 必须变红）⇒ ⇒ 否则它只是又一条永远绿的断言。
+## 51.15 独立核验 `aa549ce` 的回响：observer 族警告清理 + 守卫加固（2026-11-13）
+
+**背景**：`aa549ce`（补 `storageMirrorFailedObserver` / `storageMirrorRecoveredObserver`
+的 deinit 释放 + 全族守卫 `ObserverTokenLifecycleTests`）推送后，其 CI 四个 job 全绿
+（`build-and-test` / `lint-ids` / `swiftlint` / `coverage-gate`）⇒ ⇒ ⇒ 随后对
+`aa549ce` 做了**独立核验**（子 agent，不是我自审）⇒ ⇒ ⇒ 结论 **PASS**，
+P0/P1 = 0，3 条 P2 + 5 条 P3。
+
+⇒ ⇒ ⇒ 独立核验员给出的 3 条 P2 + 5 条 P3 里，F-4 指向**编译警告**，并列出了
+6 个警告点 ⇒ ⇒ ⇒ ⇒ 但那 6 个点**不是全部** ⇒ ⇒ ⇒ ⇒ 我自己强制重编
+（`touch` 后重新 build）⇒ ⇒ ⇒ ⇒ 实测 `AppDelegate.swift` 有 **16 条**编译器
+警告（原始诊断行数 = 去重后行数 = 16 ⇒ 没有被 `sort -u` 吃掉重复项）
+⇒ ⇒ ⇒ ⇒ ⇒ 按 `git blame` 拆开：**本轮 `4cd6e0a` 引入 6 条**（:380 / :384×2 / :393 / :394×2），
+更早遗留 **10 条**（a95f92e5 3 / 2a61c028 2 / 90924aa2 2 / 57d8da94 1 / 289d9410 1 / a430f9b2 1）
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **核验报告本身也是局部的**（它如实报告了它查到的，但没声称是
+全集）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 这不是核验员的过失 ⇒ ⇒ ⇒ ⇒ ⇒ 而是**核验 ≠ 免检**
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 复核要用**自己的手段**重查，不能只转述核验员的结论。
+
+| 警告族 | 处数 | 处置 |
+|---|---|---|
+| observer 闭包里 `guard let strongSelf = self` 但 `strongSelf` **从未被使用**（`#NoUsage`） | 3（storageMirrorFailed / storageMirrorRecovered / tagBackendCorrupted） | ✅ 已修：闭包只碰 `ClipboardStore.shared` 单例，**根本不需要 self** ⇒ 删掉 `[weak self]` + 那个 guard |
+| observer 闭包里写 `@MainActor` 隔离的 `diagnostics`（`can not be mutated from a Sendable closure`） | 4 | ✅ 已修：改用仓库既有的 `MainActor.assumeIsolated { … }` 写法（与 `setupKeychainObserver` 里的 `prewarmIfNeeded()` 同形）⇒ 运行时行为不变（`queue: .main` 本来就在主线程），只是把这件事**说给编译器听** |
+| 非 observer 族：nonisolated 方法访问 `@MainActor` 单例 | 4（:1142 / :1146 / :1257×2） | ⏳ **不动**：属于更早遗留（289d9410 / a430f9b2 / 90924aa2），修法涉及**方法隔离**这一架构级决策 ⇒ 单独一轮做 ⇒ ⇒ **如实记录，不声称「零警告」** |
+| 非 observer 族：`Selector(("performFindPanelAction:"))` 手工构造 selector | 1（:542，57d8da94） | ⏳ **不动**，但**理由与上面 4 条不同**：改成 `#selector(...)` 只是一行，**不涉及**方法隔离 ⇒ ⇒ 本轮不做是因为它**不属于 observer 族**、与本次改动无关 ⇒ ⇒ 若按「全清」口径收口，它应当被一并改掉 ⇒ ⇒ **不声称「零警告」** |
+
+⇒ ⇒ ⇒ **行为变化只有一处，而且是变好**：原来「AppDelegate 已释放 ⇒ 闭包 no-op」，
+现在「闭包照常执行」⇒ ⇒ ⇒ ⇒ 因为闭包体做的事（写横幅状态）**与 delegate 存活
+无关** ⇒ ⇒ ⇒ ⇒ 横幅状态不再依赖 AppDelegate 的生命周期。
+
+#### 51.15.1 守卫加固：释放必须发生在「注册所用的那个」通知中心
+
+第一条不变量只检查「deinit 里有 `removeObserver`」⇒ ⇒ **不检查是在哪个中心释放
+的** ⇒ ⇒ ⇒ 独立核验员把释放改成另一个中心后守卫**仍然绿** ⇒ ⇒ ⇒ ⇒ 而 token 会
+永远留在原中心的派发表里 ⇒ ⇒ ⇒ ⇒ 这不是假想：本仓真的犯过一次同类错
+（ID-APP-0002，`sessionDidResignActiveObserver` 注册在 `NotificationCenter.default`
+却在 workspace 中心上释放）⇒ ⇒ ⇒ ⇒ 故加第二条不变量：**同一个 token，必须在它
+注册时用的那个通知中心上被释放** ⇒ ⇒ ⇒ ⇒ 中心别名
+（`let nc = NSWorkspace.shared.notificationCenter`）由守卫**解析后再比较** ⇒ ⇒
+无法识别的中心写法**报红而不是放过**（「查不到 ⇒ 报红」）。
+
+⇒ ⇒ **变异验证（两个方向都要红）**：
+
+| 变异 | 期望 | 实测 |
+|---|---|---|
+| `storageMirrorFailedObserver` 的释放改成 workspace 中心 | 红 | ✅ 红，且失败信息点名 `registered on NotificationCenter.default but released on NSWorkspace.shared.notificationCenter` ⇒ ⇒ ⇒ **旧的存在性检查仍然绿** ⇒ ⇒ ⇒ ⇒ 证明新测试抓的正是旧测试抓不到的东西 |
+| `keychainUnlockObserver`（注册走 `nc` 别名）的释放改成 default 中心 | 红 | ✅ 红，且点名 `registered on NSWorkspace.shared.notificationCenter but released on NotificationCenter.default` ⇒ ⇒ ⇒ ⇒ 别名解析路径**确实生效** |
+| 还原 | 绿 | ✅ 绿；`AppDelegate.swift` sha256 逐字节回到基准 |
+
+⇒ ⇒ ⇒ **`MainActor.assumeIsolated` 的前提是承重的**（2026-11-13 实测，不是推断）：
+该 API 带 precondition ⇒ ⇒ **不在主线程调用会 trap** ⇒ ⇒ 实测：后台队列调用 ⇒
+**SIGTRAP / EXIT=133** ⇒ ⇒ ⇒ ⇒ 所以「回调一定在主线程」一旦不成立就是**崩溃**，
+不是警告 ⇒ ⇒ ⇒ ⇒ 三条独立证据：① **Apple 官方文档**明写 *`queue` — The
+operation queue where the `block` runs* ⇒ ⇒ `queue: .main` ⇒ 主线程 ⇒ ⇒ ② 本仓
+**同一模式**（`setupKeychainObserver` 的 `prewarmIfNeeded()`，:1069）已在生产运行
+⇒ ⇒ ③ 四处注册**全部**带 `queue: .main` ⇒ ⇒ ⇒ ⇒ ⇒ Apple 文档同时保证
+「notification center 强持有 block 直到你移除注册」⇒ ⇒ ⇒ ⇒ 不引用 `self` 就没有
+retain cycle ⇒ ⇒ ⇒ ⇒ 另：Apple 文档的 Tip 明确建议「self 持有 observer 时用 weak」
+⇒ ⇒ ⇒ ⇒ 而本轮这三处闭包**根本不再引用 self** ⇒ ⇒ ⇒ ⇒ ⇒ 删掉 `[weak self]`
+反而更安全（少一层间接）。
+
+⇒ ⇒ ⇒ **判据改动本身要配双向验证**：改判据前先在**真实数据**上跑一遍独立脚本
+⇒ ⇒ 24 个 token 全部配对正确、0 误报、0 个未知中心 ⇒ ⇒ ⇒ 才把它写进守卫 ⇒ ⇒ ⇒ ⇒
+否则「判据写窄了 ⇒ 假阴性」和「判据写宽了 ⇒ 假阳性」都不会让判据自己变红。
+
+#### 51.15.2 守卫的已知盲区（**不要当成「全覆盖」**）
+
+① **声明写法必须字面命中** `var <name>: NSObjectProtocol?` ⇒ ⇒ 用 typealias /
+`any NSObjectProtocol?` / 把 token 存进集合 ⇒ ⇒ 守卫**看不见**这个 token。
+② **移除必须写成** `if let <alias> = <token> { … removeObserver( … ) }` ⇒ ⇒ 换成
+`guard let` 或带嵌套花括号的写法 ⇒ ⇒ 守卫会**报红**（把已正确释放的 token 误报成
+泄漏）⇒ ⇒ ⇒ ⇒ **失效方向与①③相反**：①③ 是真·假阴性（漏掉真缺陷），② 是
+**假阳性**（守卫过窄、误伤）⇒ ⇒ ⇒ ⇒ 把它与①③并列成「已知盲区」会让人误以
+为三类都会漏 ⇒ ⇒ ⇒ ⇒ ② 的代价是**误报**，不是漏报。
+③ 守卫按**文件**聚合 deinit body ⇒ ⇒ 同一文件将来出现第二个带 deinit 的类型时，
+A 类的 token 可能被 B 类的 deinit「顶账」。
+
+⇒ ⇒ ⇒ 三条都是**已知残留** ⇒ ⇒ ⇒ ⇒ 新增 observer 请照抄既有写法 ⇒ ⇒ ⇒ ⇒
+这样才在守卫的射程内 ⇒ ⇒ ⇒ ⇒ **沉默的盲区比没有盲区更危险** —— 所以这里把它
+**写下来**，而不是留成「测试全覆盖」的错觉。
+
+#### 51.15.3 本轮独立核验的结论与据此修正
+
+独立核验员（子 agent，不是我自审）结论 **PASS**，P0/P1 = 0，报出 **2 条 P2 + 4 条 P3**
+⇒ ⇒ ⇒ ⇒ 其中 4 条我已逐条核实并**当场修正**：
+
+| 编号 | 它的发现 | 我的核实 | 处置 |
+|---|---|---|---|
+| P2-1 | 台账写「15 条警告」「遗留 9 条」，实测是 **16 / 10** ⇒ 与同段表格「5 条」自相矛盾（15−11=4≠5） | ✅ **它对、我错** ⇒ 我第一次的统计用 `sort -u` 且那次 build 有增量漏编 ⇒ 独立重测：原始诊断行数 = 去重 = 16，无重复 ⇒ | ✅ 已改（见上） |
+| P2-2 | jsonl 的 P1-1 note **段落重复**：「但…是错的」与「已在本次修复。」各出现 2 次 ⇒ 是我上一轮 append 时把旧段落留下又追加了一遍 | ✅ **它对** ⇒ 逐字计数确认 | ✅ 已重写整条 note（合并转述补全 + 影响界定），去重后各 1 次 |
+| P3-1 | 盲区②的**失效方向写反了**：`guard let` / 嵌套花括号 ⇒ 守卫是**报红**（假阳性、误伤），不是「漏判」 | ✅ **它对** ⇒ 合成样例实测确认 | ✅ 已改措辞，并把②的失效方向与①③明确区分开 |
+| P3-2 | jsonl 3 条 note 的行号引用相对**当前工作区**已漂移（锚点 `9179cbdd…` 早已失效 ⇒ 对门禁无机械作用） | ✅ 属实（既有机制，§51.14.1 ② 已写明） | ✅ 记在这里（note 内的行号相对**锚点版本**正确，不改） |
+| P3-3 | 台账把 `:542` 的 `Selector(...)` 也归因成「方法隔离的架构级决策」⇒ **不成立**（一行可改） | ✅ **它对** ⇒ 我重新 blame 确认归属 `57d8da94` | ✅ 已把该条从「架构级」里拆出来，单独写明理由 |
+| P3-4 | `lint-audit-ids.sh --diff HEAD` **不覆盖工作区**（语义是 `HEAD..HEAD` ⇒ 空范围 ⇒ 空跑） | ✅ **它对** ⇒ 我此前用它得到的 PASS 是**空跑** ⇒ 真正覆盖未提交改动的是**默认 all 模式** | ✅ 已改用默认模式重跑 |
+
+⇒ ⇒ ⇒ ⇒ ⇒ **这一轮自己踩了两次同族坑**：① **统计口径**（`sort -u` + 增量 build
+漏编 ⇒ 数字不可复现）⇒ ⇒ ⇒ ⇒ ⇒ 「实测」必须能被别人复现 ⇒ ⇒ ② **append 造成重复
+段落** ⇒ ⇒ ⇒ ⇒ 追加前先想清楚新内容是**接在后面**还是**并进去** ⇒ ⇒ ⇒ ⇒ ⇒ 两条
+都是同一个教训的两种形态：**产物会被引用 ⇒ 产物本身要经得起别人的核对**。
+
+⇒ ⇒ ⇒ ⇒ ⇒ 而核验员报的 P2-1 恰好又是「核验报告本身是局部的」的又一次实证 ⇒ ⇒ ⇒ ⇒
+它只列了它查到的 6 个警告点，**没有**声称是全集 ⇒ ⇒ ⇒ ⇒ ⇒ 所以它同样是**诚实的局部**
+⇒ ⇒ ⇒ ⇒ ⇒ 但只有把它和自己的独立测量**并排**看，才能发现我那个 15 ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ **核验 ≠ 免检**，对核验员和对被核验的代码都一样。
+
+#### 51.15.4 这一族的新教训
+
+① **核验员的报告也是局部的** ⇒ ⇒ ⇒ 核验员列了 6 个警告点，全文件实测 16 条 ⇒ ⇒ ⇒ ⇒
+⇒ 核验 ≠ 免检 ⇒ ⇒ ⇒ ⇒ 复核要用**自己的手段**（强制重编 + `git blame` 分源），
+不能只转述核验员的结论。
+② **台账里的「实测」必须能回答是哪一次** ⇒ ⇒ ⇒ 此前一条台账记录写着「重新编译无
+任何 warning」⇒ ⇒ ⇒ ⇒ **这句话是假的** ⇒ ⇒ ⇒ ⇒ 已修正 ⇒ ⇒ ⇒ ⇒ ⇒ 编译警告
+不会让 CI 变红 ⇒ ⇒ ⇒ ⇒ ⇒ 所以它只能靠**人工真的去看编译输出**才能发现 ⇒ ⇒ ⇒ ⇒
+⇒ 「CI 绿」不等于「干净」。
+③ **判据要成对**：「有守卫」与「守卫有牙」是两件事 ⇒ ⇒ ⇒ ⇒ 而「有牙」又要
+**两个方向**都验（删掉 ⇒ 红；挪到错误位置 ⇒ 红）。

@@ -375,23 +375,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStorageMirrorObserver() {
         storageMirrorFailedObserver = NotificationCenter.default.addObserver(
             forName: .storageMirrorFailed, object: nil, queue: .main
-        ) { [weak self] note in
+        ) { note in
             guard !TestIsolation.isRunningTests else { return }
-            guard let strongSelf = self else { return }
             let raw = note.userInfo?["reason"] as? String
             let issue = raw.flatMap { StorageMirrorService.FailureReason(rawValue: $0) }
                 ?? .unavailable
-            ClipboardStore.shared.diagnostics.storageMirrorIssue = issue
+            // ID-REVIEW-1027 follow-up (2026-11-13): the observer block is
+            // @Sendable, so the compiler cannot prove it runs on the main
+            // actor even though queue: .main guarantees it at runtime.
+            // MainActor.assumeIsolated states that fact to the compiler.
+            // Same shape as prewarmIfNeeded() in setupKeychainObserver.
+            // The closure no longer captures self at all: it only touches
+            // the ClipboardStore singleton, so the banner state does not
+            // depend on the delegate still being alive.
+            MainActor.assumeIsolated {
+                ClipboardStore.shared.diagnostics.storageMirrorIssue = issue
+            }
         }
         // ID-REVIEW-1027 (2026-11-12, round 2): the store is healthy
         // again ⇒ clear the banner. A failure banner that outlives the
         // failure trains the user to ignore banners.
         storageMirrorRecoveredObserver = NotificationCenter.default.addObserver(
             forName: .storageMirrorRecovered, object: nil, queue: .main
-        ) { [weak self] _ in
+        ) { _ in
             guard !TestIsolation.isRunningTests else { return }
-            guard let strongSelf = self else { return }
-            ClipboardStore.shared.diagnostics.storageMirrorIssue = nil
+            // ID-REVIEW-1027 follow-up (2026-11-13): see the comment on the
+            // .storageMirrorFailed observer above — same Sendable-closure
+            // actor-isolation shape, same MainActor.assumeIsolated fix.
+            MainActor.assumeIsolated {
+                ClipboardStore.shared.diagnostics.storageMirrorIssue = nil
+            }
         }
     }
 
@@ -530,11 +543,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forName: Notification.Name("NetworkMonitor.didBecomeReachable"),
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { _ in
             NSLog("[AppDelegate] NetworkMonitor.didBecomeReachable — draining queued writes")
             ImageStorage.shared.drainPendingWrites()
-            ClipboardStore.shared.flushPendingSaves()
-            _ = self
+            // ID-REVIEW-1027 follow-up (2026-11-13): flushPendingSaves() is
+            // @MainActor-isolated and this block is @Sendable, so the
+            // compiler cannot see that queue: .main puts us on the main
+            // thread. MainActor.assumeIsolated makes that explicit.
+            MainActor.assumeIsolated {
+                ClipboardStore.shared.flushPendingSaves()
+            }
         }
     }
 
@@ -934,15 +952,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // new message; UI side zero new components.
         tagBackendCorruptedObserver = NotificationCenter.default.addObserver(
             forName: .tagBackendCorrupted, object: nil, queue: .main
-        ) { [weak self] _ in
+        ) { _ in
             // Same XCTest guard pattern as the trash / clipboard
             // observers above — tests deliberately post this
             // notification to verify the banner path; banner
             // mutations are main-actor only.
             guard !TestIsolation.isRunningTests else { return }
-            // Same strongSelf unwrap pattern as ID-CRASH-0007.
-            guard let strongSelf = self else { return }
-            ClipboardStore.shared.diagnostics.tagsLoadFailed = true
+            // ID-REVIEW-1027 follow-up (2026-11-13): same Sendable-closure
+            // actor-isolation shape as the storage-mirror observers, same
+            // MainActor.assumeIsolated fix. The closure touches only the
+            // ClipboardStore singleton, so it never needed `self`.
+            MainActor.assumeIsolated {
+                ClipboardStore.shared.diagnostics.tagsLoadFailed = true
+            }
         }
 
         // ID-REVIEW-1027 (2026-11-12): the local SQLite store (see

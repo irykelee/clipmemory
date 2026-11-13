@@ -779,6 +779,29 @@ Leaving this unwritten is how the obligation disappears with PR-C.
 独立审核撞上。⇒ ⇒ ⇒ ⚠️ **不要**把释放放在 `applicationWillResignActive` ——
 用户切走再切回，横幅就再也不会出现/消失 ⇒ ⇒ ⇒ ⇒ 那是拿一个泄漏换一个功能缺失。
 
+**守卫加固：释放必须发生在「注册所用的那个」通知中心**（2026-11-13 独立核验
+F-1）。第一条不变量只检查「deinit 里有 removeObserver」⇒ ⇒ **不检查是在哪个
+中心释放的** ⇒ ⇒ ⇒ 独立核验员把释放改成另一个中心后守卫**仍然绿** ⇒ ⇒ ⇒ ⇒
+而 token 会永远留在原中心的派发表里 ⇒ ⇒ ⇒ ⇒ 这不是假想：本仓真的犯过一次同类
+错（ID-APP-0002，`sessionDidResignActiveObserver` 注册在 `NotificationCenter.default`
+却在 workspace 中心上释放）⇒ ⇒ ⇒ ⇒ 故第二条不变量把「已释放」升级成**配对**：
+**同一个 token，必须在它注册时用的那个通知中心上被释放** ⇒ ⇒ ⇒ ⇒ 中心别名
+（`let nc = NSWorkspace.shared.notificationCenter`）由守卫**解析后再比较** ⇒ ⇒
+无法识别的中心写法**报红而不是放过**（「查不到 ⇒ 报红」）。
+
+**守卫的已知盲区（2026-11-13 实测，不要当成"全覆盖"）**：① 声明写法必须字面命中
+`var <name>: NSObjectProtocol?` ⇒ ⇒ 用 typealias / `any NSObjectProtocol?` /
+把 token 存进集合 ⇒ ⇒ 守卫**看不见**这个 token；② 移除必须写成
+`if let <alias> = <token> { … removeObserver( … ) }` ⇒ ⇒ 换成 `guard let` 或带
+嵌套花括号的写法 ⇒ ⇒ 守卫会**报红**（把已正确释放的 token 误报成泄漏）⇒ ⇒ ⇒ ⇒
+**这条的失效方向与①③相反**：①③ 是真·假阴性（漏掉真缺陷），② 是**假阳性**
+（守卫过窄、误伤）⇒ ⇒ ⇒ ⇒ 代价是误报，不是漏报；③ 守卫按**文件**聚合 deinit body ⇒ ⇒ 同一文件将来
+出现第二个带 deinit 的类型时，A 类的 token 可能被 B 类的 deinit「顶账」。
+⇒ ⇒ 三条都是**已知残留**，不是"已覆盖" ⇒ ⇒ ⇒ ⇒ 新增 observer 请照抄既有写法
+（`var xObserver: NSObjectProtocol?` +
+`if let o = xObserver { NotificationCenter.default.removeObserver(o) }`）⇒ ⇒ ⇒ ⇒
+这样才在守卫的射程内。
+
 ## 5. Concurrency / connection model (SQLite + existing thread constraints)
 
 SQLite + `ClipboardStore` already has a `@MainActor` constraint on its `@Published` properties, plus an `NSLock`-protected inner store (`ClipboardStore.swift:131` per existing architecture). The SQLite backend must fit into this constraint cleanly. Here's the model:
