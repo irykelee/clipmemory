@@ -27,10 +27,15 @@
 
     python3 Scripts/measure-ledger-symbol-density.py              # 全文 + 各节
     python3 Scripts/measure-ledger-symbol-density.py --section 51.18
-    python3 Scripts/measure-ledger-symbol-density.py --check      # 与台账里写的值对照
+    python3 Scripts/measure-ledger-symbol-density.py --self-test  # 口径自检
 
-⚠️ `--check` 只对**台账里显式写了口径标注**的节生效 ⇒ ⇒ 它是**辅助**，
-不是门禁（真门禁在 `Scripts/test/` 下）。
+⚠️ **刻意没有「与台账里写的值对照」的功能**（2026-11-13，独立核验员 P3-2）：
+原 docstring 承诺过 `--check` 会去读台账里写下的数字并比对 ⇒ ⇒ 但实现只是多打印一行
+⇒ ⇒ ⇒ **文档与实现漂移** ⇒ ⇒ ⇒ ⇒ 而这正是本仓反复修过的那类毛病 ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ 现在的口径是：**脚本只负责量**，台账里引用什么数字由**写的人**负责 ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ 要核对就**手工跑一次脚本**再对照 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 若将来真要自动对照 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 必须先把台账里的数字变成
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **可解析的结构**（而不是散文里的「密度 **0.03**」）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
 
 ## 它**不**做什么
 
@@ -140,7 +145,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="量台账的 ⇒ 符号密度")
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--section", help="只看某一节（如 51.18）")
-    parser.add_argument("--check", action="store_true", help="与台账里写的值对照")
     parser.add_argument("--self-test", action="store_true", help="跑口径自检")
     args = parser.parse_args(argv)
 
@@ -168,10 +172,6 @@ def main(argv: list[str] | None = None) -> int:
         stats = measure(lines[start:end])
         print(f"§{number}：{fmt(stats)}")
 
-    if args.check:
-        # ⚠️ 辅助对照：台账里写的是**两位小数**的密度 ⇒ ⇒ 这里同口径复核。
-        print()
-        print(f"（对照口径：全文密度按两位小数 = {whole['density']:.2f}）")
     return 0
 
 
