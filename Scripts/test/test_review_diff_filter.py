@@ -40,6 +40,11 @@
    ⇒ ⇒ 实测 `:(glob)*.py` **只命中根目录** ⇒ ⇒ ⇒ 深层文件**静默失明**
    ⇒ ⇒ ⇒ ⇒ 要跨深度必须写 `:(glob)**/*.py` ⇒ ⇒ ⇒
    ⇒ ⇒ 用了 magic 却**没**写 `**/` 的 ⇒ ⇒ 报红。
+7. **探不到就报红**：深度探针只能覆盖**扩展名是纯单词**的 pattern ⇒ ⇒
+   ⇒ ⇒ 路径锚定的（`docs/*.py` / `**/dir/*.py`）或 magic 没闭合的会被**跳过**
+   ⇒ ⇒ ⇒ ⇒ 跳过 = 它的深度覆盖**从未被验证** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+   ⇒ ⇒ ⇒ ⇒ 守卫要么能测它，要么**明确报红** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+   ⇒ ⇒ ⇒ ⇒ **⇒ ⇒ 「没测到」不等于「没问题」** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
 
 ## 用法
 
@@ -201,6 +206,14 @@ def check_filter(script_text: str, tracked: list[str]) -> list[str]:
             " ⇒ ⇒ ⇒ 深层文件（如 `Scripts/test/*.py`）会**静默失明**"
             " ⇒ ⇒ ⇒ ⇒ 要跨深度必须写 `:(glob)**/*.py`，或保持非 magic 的 `*.py`"
         )
+    for pat in patterns:
+        ext = pattern_extension(pat)
+        if not EXT_RE.match(ext):
+            problems.append(
+                f"{HOOK_REL}: 白名单里的 `{pat}` **探不到**"
+                " ⇒ ⇒ 深度探针**跳过**了它 ⇒ ⇒ ⇒ 它的深度覆盖**从未被验证**"
+                " ⇒ ⇒ ⇒ ⇒ 守卫要么能测它，要么**明确报红** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 报红"
+            )
     try:
         matched, missed, control_rel = probe_pathspec_depth(patterns)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -277,6 +290,11 @@ def self_test(repo_root: str) -> int:
     for required in REQUIRED_PATTERNS:
         mutated = mutated.replace(f"'{required}'", f"':(glob,icase){required}'")
     expect_red("加 `:(glob,icase)` 长格式 magic", mutated, ["magic", "深度探针"])
+
+    # 变异方向 ⑤：加一条**探针覆盖不到**的 pattern（路径锚定）⇒ ⇒ ⇒
+    # ⇒ ⇒ 它会被探针**跳过** ⇒ ⇒ ⇒ ⇒ 它的深度覆盖**从未被验证** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 报红。
+    mutated = original.replace("'*.jsonl'", "'**/dir/*.py' '*.jsonl'")
+    expect_red("加一条探针覆盖不到的 pattern", mutated, ["探不到"])
     # 正向对照：原脚本必须通过
     if check_filter(original, tracked):
         failures.append("  正向对照失败：原脚本竟然报红")
@@ -287,7 +305,7 @@ def self_test(repo_root: str) -> int:
         for line in failures:
             print(line, file=sys.stderr)
         return 1
-    print(f"✅ 自检通过：{len(REQUIRED_PATTERNS) + 2} 个变异方向全部报红"
+    print(f"✅ 自检通过：{len(REQUIRED_PATTERNS) + 3} 个变异方向全部报红"
           f"（白名单必须含 {' / '.join(REQUIRED_PATTERNS)}，且不得用缺 `**/` 的 glob magic）")
     return 0
 
