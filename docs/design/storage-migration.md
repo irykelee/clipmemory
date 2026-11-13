@@ -769,6 +769,16 @@ Leaving this unwritten is how the obligation disappears with PR-C.
 | 2 的**后半句**："不回落到 UserDefaults" | ⏳ 挂在**原子切换**上 | 镜像阶段（§4.3.5）UserDefaults **本来就是**主存储 ⇒ 不存在"回落到另一个数据源" ⇒ 这半句要到 `migration.v1.to.v2.switched = 1` 的那一版才成立 ⇒ 那一版必须把"新库不可读"变成**硬失败**（不许静默回落）。**本节的义务没有消失，只是换了触发条件。** |
 
 
+**Observer 生命周期（2026-11-13 补）**：本节新加的两个 observer token
+（`storageMirrorFailedObserver` / `storageMirrorRecoveredObserver`）走的是仓库
+既有的 **leak guard** 模式 —— 每个 `NSObjectProtocol?` token 都必须在**同类**的
+`deinit` 里被 `removeObserver` 释放 ⇒ ⇒ 否则那个 token 会比它的 delegate 活得久。
+⇒ ⇒ 这条不变量现在由**全族**守卫兜底：`ObserverTokenLifecycleTests` 扫描
+`ClipMemory/` 全树，断言**每一个**声明的 observer token 都在**同文件的 `deinit`**
+里被释放 ⇒ ⇒ ⇒ 下次再加一个忘了清理的 observer，CI 会当场报红，而不是等下一次
+独立审核撞上。⇒ ⇒ ⇒ ⚠️ **不要**把释放放在 `applicationWillResignActive` ——
+用户切走再切回，横幅就再也不会出现/消失 ⇒ ⇒ ⇒ ⇒ 那是拿一个泄漏换一个功能缺失。
+
 ## 5. Concurrency / connection model (SQLite + existing thread constraints)
 
 SQLite + `ClipboardStore` already has a `@MainActor` constraint on its `@Published` properties, plus an `NSLock`-protected inner store (`ClipboardStore.swift:131` per existing architecture). The SQLite backend must fit into this constraint cleanly. Here's the model:

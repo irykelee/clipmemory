@@ -7424,3 +7424,54 @@ FAIL，所以「再修一轮」这个循环本身就得**有终止条件** ⇒ �
 ⇒ ⇒ 第三轮核验员**自己**跑了 11 个变异（含我没记录的 3 个）⇒ ⇒ 他确认**测试质量
 是好的，问题在"记账与声称"** ⇒ ⇒ ⇒ 这是本族第一次出现「**实现与测试都站得住，
 只有账本在说谎**」⇒ ⇒ 那一类最容易被忽略，因为**绿灯全亮**。
+
+## 51.14 推送这一族：pre-push 门禁的人工核验 ⇒ ⇒ 一条**真** P1（2026-11-13）
+
+**背景**：`4cd6e0a` + `f9c3a2c` 两个 commit 推 `origin/main`。按
+`docs/RELEASE_PUSH_CHECKLIST.md` 的 **C1–C3**（本次无版本号 / 无 tag / 无 Release
+⇒ A3/A4/D/E 的发版专属项不适用）逐项 verify，**全部实测**：
+
+| 检查 | 结果 |
+|---|---|
+| C1 `git fetch origin` ⇒ 远端有无新提交 | ✅ 无（`main..origin/main` 为空）⇒ C2 rebase 不需要 |
+| 全量 `xcodebuild test` | ✅ **1476 用例 / 4 跳过 / 0 失败** |
+| 5 个独立 lint 脚本 | ✅ glossary / translations / audit-ids / hotkey-drift / appcast-coverage |
+| Cask 模板 Ruby 语法 / i18n 占位符（7 语种） | ✅ / ✅ |
+| `xcodegen generate` ↔ `project.yml` 同步 | ✅ pbxproj sha256 **逐字节一致** |
+| SwiftLint vs `origin/main` 基线 | ✅ **0 条新增违规**（口径 = 文件+规则；唯一差异是既有 `StorageBackend.swift` file_length 计数 834→857） |
+
+⇒ ⇒ push 本身成功（`9de8f52..f9c3a2c main -> main`），但 pre-push 门禁的独立审核
+（`auto-review-20261113-085841-75788.md`）给出 **2 条 P1 + 1 条 P2** ⇒ ⇒ ⇒ 按纪律
+逐条人工核验 ⇒ ⇒ ⇒ **其中 1 条是真缺陷**。
+
+| Finding | 判决 | 依据 |
+|---|---|---|
+| P1-1「observer 可能泄漏，建议在 `applicationWillResignActive` 移除」 | **confirmed（内核成立，建议的修法错）** | `AppDelegate.deinit` 清理了 **18 个** observer token，唯独本轮新增的 `storageMirrorFailedObserver`（:376）/ `storageMirrorRecoveredObserver`（:389）**不在清单里** ⇒ 违反本仓自己反复修过的同一模式（ID-CRASH-0007/0008/0012/0022/0035 的注释都写着 *Same leak guard as trashLoadFailedObserver*；M-2 / round-15 Finding A 就是因为漏了 `removeObserver` 被当成缺陷修的）⇒ ⇒ **但建议的位置是错的**：在 `applicationWillResignActive` 里移除 ⇒ 用户切走再切回时 observer 已经没了 ⇒ 横幅再也不会出现/消失 ⇒ 那是拿一个泄漏换一个功能缺失 ⇒ ⇒ 正确修法 = `deinit` 补两行 |
+| P1-2「`UserDefaults` 并非完全线程安全」 | 误报 | Apple 官方文档明写 *The `UserDefaults` type is thread-safe…* ⇒ 本仓读的是**本进程自己的** domain（finding 说的「跨进程」不适用）；镜像调用路径 9 个方法**全部**经 `withLock`/`withTransaction` 加锁；UI 侧唯一改动点在 `queue: .main` 的 observer ⇒ 主线程 ⇒ 与 `@MainActor` 的 `ClipboardStore` 无竞态 |
+| P2-1「悬空标签是静默过滤，建议标 Partial Save」 | 不采纳（参考性） | 代码是 `logger.error("… skipped N tag link(s) …")` ⇒ **不静默**；悬空 tag 在目录里**根本没有 Tag 对象** ⇒ 没有任何 UI 聚合能渲染它 ⇒ 「UI 与预期不符」不可能发生；真实后果（副本缺 tag 关联）已由 §4.3.5 诚实残差记录 |
+
+**修复 + 守卫**：① `AppDelegate.deinit` 按既有模式补两行 `removeObserver`；
+② 新增 `Tests/ClipMemoryTests/ObserverTokenLifecycleTests.swift`（2 个用例）——
+**全族**不变量：扫描 `ClipMemory/` 全树，断言**每一个**声明的 observer token 都在
+**同文件的 `deinit`** 里被释放。
+
+⇒ ⇒ **变异验证**：删掉那两行 ⇒ 2 个用例**全红**并点名 culprit
+（`storageMirrorFailedObserver, storageMirrorRecoveredObserver`）⇒ ⇒ 还原后
+sha256 **逐字节一致** ⇒ ⇒ ⇒ ⇒ 守卫有牙。
+
+⇒ ⇒ **全族扫描**：全树只有 3 个文件持有 observer token（AppDelegate 20 /
+ClipboardStore 3 / TrashStore 1）⇒ ⇒ ⇒ 缺口**只此一处**。
+
+#### 51.14.1 这一族的新教训（留给下一个接手的人）
+
+① **「finding 内核成立」≠「finding 的建议成立」** ⇒ ⇒ ⇒ 人工核验要拆成**两问**：
+「它指的位置对吗」「它建议的修法对吗」⇒ ⇒ ⇒ ⇒ 只答第一问就会照抄一个有害的修法
+（本族第 2 次出现建议方向相反的事件 —— 上一次是 `Task { @MainActor in … }` vs
+`Task { await … }`）⇒ ⇒ ⇒ ⇒ ⇒ **建议采纳前必须先问「照做会发生什么」**。
+
+② **台账的「锚点一改结论自动失效」实测有效**：那条 `confirmed` 条目在
+`AppDelegate.swift` 被修后**自动不再阻断**（`BLOCKING_COUNT=0`、
+`EFFECTIVE_VERDICT=PASS`）⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 修完即放行，不需要手工销账。
+
+③ **「有守卫」与「守卫有牙」是两件事**：新增的测试必须做变异验证
+（删掉修复 ⇒ 必须变红）⇒ ⇒ 否则它只是又一条永远绿的断言。

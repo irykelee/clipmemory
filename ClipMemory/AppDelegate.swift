@@ -1459,6 +1459,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // cleanup for `.tagBackendCorrupted`. Same leak guard as
         // trashLoadFailedObserver above.
         if let o = tagBackendCorruptedObserver { NotificationCenter.default.removeObserver(o) }
+        // ID-REVIEW-1027 (2026-11-13, auto-review P1-1): the storage-mirror
+        // observers (.storageMirrorFailed / .storageMirrorRecovered) are
+        // registered in setupStorageMirrorObserver but were missing from
+        // this list ⇒ ⇒ ⇒ ⇒ same leak guard every sibling observer token
+        // has (see ID-CRASH-0007 / 0008 / 0012 / 0022 / 0035 above).
+        // NOTE: the review suggested removing them in
+        // applicationWillResignActive ⇒ ⇒ ⇒ ⇒ that would be wrong: a user
+        // who switches away and back would lose the banner entirely ⇒ ⇒ ⇒ ⇒ ⇒
+        // ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ deinit is the right place (same pattern as the rest).
+        if let o = storageMirrorFailedObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = storageMirrorRecoveredObserver { NotificationCenter.default.removeObserver(o) }
         if let o = keychainUnlockObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = sessionBecomeActiveObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         if let o = didBecomeActiveObserver { NotificationCenter.default.removeObserver(o) }
