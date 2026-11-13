@@ -42,8 +42,17 @@ final class ObserverTokenLifecycleTests: XCTestCase {
     /// has to resolve aliases before it can compare anything.
     private static let centreAliasPattern = #"(?m)^\s*let\s+(\w+)\s*=\s*([\w.]+)\s*$"#
 
-    /// `token = <centre>.addObserver( … )` — where the token was born.
-    private static let registrationCentrePattern = #"(\w+)\s*=\s*([\w.]+)\.addObserver\s*\("#
+    /// `token = <centre>.addObserver( … )` — the WHOLE argument list, so a
+    /// guard can check HOW an observer was registered, not just where.
+    /// One pattern, two consumers: the centre (group 2) and the arguments
+    /// (group 3) ⇒ the same fact is never parsed by two different regexes.
+    ///
+    /// The argument list may contain ONE level of nested parentheses — the
+    /// tree registers `forName: Notification.Name("…")` in places — so the
+    /// body is `(?:[^()]|\([^()]*\))*` rather than a plain `[^)]*`, which
+    /// would stop at the inner `)` and silently truncate the arguments.
+    private static let registrationPattern =
+        #"(\w+)\s*=\s*([\w.]+)\.addObserver\s*\(((?:[^()]|\([^()]*\))*)\)"#
 
     /// `if let alias = token { … <centre>.removeObserver( … ) }` — where the
     /// token was released. The centre is captured separately from the
@@ -201,6 +210,70 @@ final class ObserverTokenLifecycleTests: XCTestCase {
         )
     }
 
+    /// A third invariant, from the 2026-11-13 pre-push review (P2): the
+    /// observer closures that touch `@MainActor` state do it through
+    /// `MainActor.assumeIsolated`, whose precondition **traps** when the
+    /// caller is off the main thread (measured: SIGTRAP / exit 133). The
+    /// only thing keeping them on the main thread is `queue: .main` at
+    /// registration — and that is a **runtime** guarantee, so the compiler
+    /// says nothing if someone drops it.
+    ///
+    /// All 24 block-based observers in the tree register with `queue: .main`
+    /// ⇒ the convention is unanimous ⇒ it can be pinned. If a future
+    /// observer genuinely needs a different queue, exempt it **explicitly**
+    /// and write down why — never let it pass silently.
+    func testEveryObserverIsRegisteredOnTheMainQueue() throws {
+        let files = try Self.productionSwiftFiles()
+        XCTAssertFalse(files.isEmpty, "no production sources found — the scan would be vacuous")
+
+        var offenders: [String] = []
+        var checked = 0
+
+        for path in files {
+            let source = try String(contentsOf: path, encoding: .utf8)
+            let declared = Set(Self.declaredObserverTokens(in: source))
+            guard !declared.isEmpty else { continue }
+            let arguments = Self.registrationArguments(in: source)
+            for token in declared.sorted() {
+                guard let args = arguments[token] else {
+                    offenders.append("\(Self.relative(path)): \(token) — no registration arguments found")
+                    continue
+                }
+                checked += 1
+                if !args.contains("queue: .main") {
+                    offenders.append(
+                        "\(Self.relative(path)): \(token) — registered without 'queue: .main' "
+                        + "(a closure calling MainActor.assumeIsolated would trap)"
+                    )
+                }
+            }
+        }
+
+        XCTAssertGreaterThan(checked, 0, "checked 0 observer tokens — the scan would be vacuous")
+        XCTAssertTrue(
+            offenders.isEmpty,
+            """
+            Observers registered without queue: .main — a closure that calls \
+            MainActor.assumeIsolated traps off the main thread: \
+            \(offenders.sorted().joined(separator: " | "))
+            """
+        )
+    }
+
+    /// token → the argument list of its `addObserver` call.
+    private static func registrationArguments(in source: String) -> [String: String] {
+        var result: [String: String] = [:]
+        guard let regex = try? NSRegularExpression(pattern: registrationPattern) else { return [:] }
+        let range = NSRange(location: 0, length: (source as NSString).length)
+        for match in regex.matches(in: source, range: range) {
+            guard match.numberOfRanges > 3,
+                  let tokenRange = Range(match.range(at: 1), in: source),
+                  let argsRange = Range(match.range(at: 3), in: source) else { continue }
+            result[String(source[tokenRange])] = String(source[argsRange])
+        }
+        return result
+    }
+
     // MARK: - Scanning helpers
 
     private static func productionSwiftFiles() throws -> [URL] {
@@ -322,10 +395,10 @@ final class ObserverTokenLifecycleTests: XCTestCase {
         aliases: [String: String]
     ) -> [String: String] {
         var result: [String: String] = [:]
-        guard let regex = try? NSRegularExpression(pattern: registrationCentrePattern) else { return [:] }
+        guard let regex = try? NSRegularExpression(pattern: registrationPattern) else { return [:] }
         let range = NSRange(location: 0, length: (source as NSString).length)
         for match in regex.matches(in: source, range: range) {
-            guard match.numberOfRanges > 2,
+            guard match.numberOfRanges > 3,
                   let tokenRange = Range(match.range(at: 1), in: source),
                   let centreRange = Range(match.range(at: 2), in: source) else { continue }
             let token = String(source[tokenRange])

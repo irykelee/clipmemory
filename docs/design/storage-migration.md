@@ -789,6 +789,16 @@ F-1）。第一条不变量只检查「deinit 里有 removeObserver」⇒ ⇒ **
 （`let nc = NSWorkspace.shared.notificationCenter`）由守卫**解析后再比较** ⇒ ⇒
 无法识别的中心写法**报红而不是放过**（「查不到 ⇒ 报红」）。
 
+**第三条不变量：observer 必须以 `queue: .main` 注册**（2026-11-13 pre-push 审核
+P2-1）。第二条不变量钉住了「在哪个中心释放」，但还有一条**运行时**前提没人守：
+`MainActor.assumeIsolated` 带 precondition ⇒ ⇒ **不在主线程调用会 trap**
+（实测：后台队列调用 ⇒ SIGTRAP / EXIT=133）⇒ ⇒ 而把它留在主线程的**唯一**保证
+是注册处的 `queue: .main` ⇒ ⇒ ⇒ 那是**运行时**事实 ⇒ ⇒ ⇒ ⇒ **编译器在有人删掉
+queue 时不会给任何警告** ⇒ ⇒ ⇒ ⇒ 「编译通过」不等于「不会崩」⇒ ⇒ ⇒ ⇒ 故第三条
+守卫兜底：断言每个声明的 token 都以 `queue: .main` 注册 ⇒ ⇒ ⇒ ⇒ ⇒ 全仓 **24 个**
+block-based observer **全部**如此 ⇒ ⇒ ⇒ ⇒ 约定统一 ⇒ ⇒ ⇒ ⇒ ⇒ 若将来确需别的
+queue ⇒ ⇒ **显式豁免并写明理由** ⇒ ⇒ ⇒ ⇒ ⇒ 绝不让它静默通过。
+
 **守卫的已知盲区（2026-11-13 实测，不要当成"全覆盖"）**：① 声明写法必须字面命中
 `var <name>: NSObjectProtocol?` ⇒ ⇒ 用 typealias / `any NSObjectProtocol?` /
 把 token 存进集合 ⇒ ⇒ 守卫**看不见**这个 token；② 移除必须写成

@@ -385,6 +385,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // actor even though queue: .main guarantees it at runtime.
             // MainActor.assumeIsolated states that fact to the compiler.
             // Same shape as prewarmIfNeeded() in setupKeychainObserver.
+            // ⚠️ The `queue: .main` above is LOAD-BEARING: assumeIsolated
+            // TRAPS off the main thread (measured: SIGTRAP / exit 133), and
+            // the compiler says nothing if that queue is ever dropped ⇒ ⇒
+            // ObserverTokenLifecycleTests pins it.
             // The closure no longer captures self at all: it only touches
             // the ClipboardStore singleton, so the banner state does not
             // depend on the delegate still being alive.
@@ -402,6 +406,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // ID-REVIEW-1027 follow-up (2026-11-13): see the comment on the
             // .storageMirrorFailed observer above — same Sendable-closure
             // actor-isolation shape, same MainActor.assumeIsolated fix.
+            // The `queue: .main` here is load-bearing for the same reason.
             MainActor.assumeIsolated {
                 ClipboardStore.shared.diagnostics.storageMirrorIssue = nil
             }
@@ -550,6 +555,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // @MainActor-isolated and this block is @Sendable, so the
             // compiler cannot see that queue: .main puts us on the main
             // thread. MainActor.assumeIsolated makes that explicit.
+            // ⚠️ The `queue: .main` above is LOAD-BEARING: assumeIsolated
+            // TRAPS off the main thread ⇒ ⇒ ObserverTokenLifecycleTests
+            // pins it.
             MainActor.assumeIsolated {
                 ClipboardStore.shared.flushPendingSaves()
             }
@@ -962,6 +970,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // actor-isolation shape as the storage-mirror observers, same
             // MainActor.assumeIsolated fix. The closure touches only the
             // ClipboardStore singleton, so it never needed `self`.
+            // The `queue: .main` here is load-bearing for the same reason.
             MainActor.assumeIsolated {
                 ClipboardStore.shared.diagnostics.tagsLoadFailed = true
             }
