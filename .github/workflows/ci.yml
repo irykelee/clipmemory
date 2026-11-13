@@ -362,6 +362,17 @@ jobs:
           python3 Scripts/test/test_adjudication_claims.py
           python3 Scripts/test/test_adjudication_claims.py --self-test
 
+      # 审核窗口白名单守卫（2026-11-13）：喂给独立审核模型的**抽样窗口**里
+      # 必须有守卫脚本（*.py）与人工判决台账（*.jsonl）—— 它们**决定门禁行为**
+      # ⇒ ⇒ 漏了 ⇒ ⇒ 模型看不见 ⇒ ⇒ ⇒ 它对那部分改动**没有下结论的资格**。
+      # 实测：范围 4ab58c1..825fb2f 的窗口里**只有 markdown**，新入库的 179 行
+      # Python 脚本一行都没被看到 ⇒ ⇒ 模型据此连报 2 条假结论。
+      - name: "Review diff filter guard (audit window must include gate files)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_review_diff_filter.py .
+          python3 Scripts/test/test_review_diff_filter.py . --self-test
+
       # ID-BETA-0001: beta 通道的**接线守卫**。
       #
       # ⇒ ⇒ beta 通道的安全性押在三根线上：app 端 delegate 真的转发到纯函数、

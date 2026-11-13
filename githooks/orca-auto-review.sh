@@ -174,10 +174,27 @@ fi
 # P1、并对"提交摘要里提到但 diff 里看不到"的 Swift 改动连报 3 条 P2。
 # 这正是 ID-REVIEW-1025 修过的同一个洞的另一半：那次把"全局 400 行"改成
 # "每文件 N 行"的**意图**写进了注释，但 awk 并没有实现它。
+# ⚠️⚠️ **白名单必须包含「决定门禁行为」的文件类型**（2026-11-13 实测，ID-REVIEW-1032 的同族洞）：
+#   原白名单 = swift / md / sh / yml / yaml ⇒ ⇒ **`*.py` 与 `*.jsonl` 都不在里面**
+#   ⇒ ⇒ ⇒ ⇒ 而这两个扩展名在本仓**恰好是门禁本身**：
+#   ⇒ ⇒ ⇒ ⇒   ① `*.py` = 22 个守卫与脚本（`Scripts/test/test_*.py`、`githooks/review-adjudicate.py`…）
+#   ⇒ ⇒ ⇒ ⇒   ② `*.jsonl` = `githooks/review-adjudication.jsonl` = **人工判决台账** ⇒ ⇒ 它决定
+#   ⇒ ⇒ ⇒ ⇒      哪条 finding 会被记成 `confirmed` ⇒ ⇒ ⇒ ⇒ 从而**决定哪次 push 被阻断**
+#   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+#   ⇒ ⇒ ⇒ ⇒ **实测（2026-11-13）**：范围 `4ab58c1..825fb2f` 的审核窗口里**只有 markdown**
+#   ⇒ ⇒ ⇒ ⇒ ⇒ 新入库的 `Scripts/measure-ledger-symbol-density.py`（179 行）**一行都没被模型看到**
+#   ⇒ ⇒ ⇒ ⇒ ⇒ 范围 `825fb2f..b9ddc4e` 的窗口里也**没有** `review-adjudication.jsonl` 的 hunk
+#   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 审核模型据此连报 2 条「本次提交并未包含 jsonl 变更」的假结论
+#   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+#   ⇒ ⇒ ⇒ ⇒ **「窗口里没有」与「仓库里没有」是两件事** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+#   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+#   ⚠️ `*.json`（3 份守卫语料 + app icon）**刻意不加**：语料是**数据**不是判据，
+#   ⇒ ⇒ ⇒ ⇒ 每次改都吃 90 行预算 ⇒ ⇒ ⇒ ⇒ 且 app icon 的 Contents.json 是纯噪音。
+#   ⇒ ⇒ ⇒ ⇒ 若将来判定语料也必须进窗口 ⇒ ⇒ ⇒ ⇒ 再单独立项（不要顺手加）。
 DIFF=$(
   {
     git diff "$RANGE" -- \
-      '*.swift' '*.md' '*.sh' '*.yml' '*.yaml' 2>/dev/null \
+      '*.swift' '*.md' '*.sh' '*.yml' '*.yaml' '*.py' '*.jsonl' 2>/dev/null \
       | awk -v per_file=90 -v max_files=40 '
           /^diff --git / {
             file_no++
