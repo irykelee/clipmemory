@@ -17,20 +17,25 @@
 
 ## 判据（阈值是**量出来的**，不是拍的）
 
-口径与 `Scripts/measure-ledger-symbol-density.py` 一致：箭头串 = 连续的 `⇒`
+口径与 `Scripts/measure-ledger-symbol-density.py` **基本一致**：箭头串 = 连续的 `⇒`
 （中间可夹空白），长度**只数 `⇒` 个数**、不含空白。
+**唯一差别**：本守卫的密度分母是 `len(note)`（**含**行尾换行符）⇒ ⇒ ⇒
+那个脚本的分母是 `sum(len(line))`（**不含**换行符）⇒ ⇒ ⇒ ⇒ ⇒ 两者最大差 **0.0041**。
 
 | 判据 | 阈值 | 依据（2026-11-13 实测的既有基线） |
 |---|---|---|
 | 1 note 长度 | ≤ **4000** 字符 | 既有基线最长 **2059** ⇒ ⇒ ⇒ 取基线上限 + 余量 |
-| 2 最长箭头串 | ≤ **60** | 既有基线最长 **40** ⇒ ⇒ ⇒ ⇒ 退化样本 **201–23652** ⇒ ⇒ ⇒ ⇒ 3 倍余量仍必被抓 |
-| 3 `⇒` 密度 | ≤ **0.30** | 既有基线最高 **0.2657** ⇒ ⇒ ⇒ ⇒ 退化样本 **0.33–0.50** |
+| 2 最长箭头串 | ≤ **60** | 既有基线最长 **28** ⇒ ⇒ ⇒ ⇒ 退化样本 **201–23652** ⇒ ⇒ ⇒ ⇒ 3 倍余量仍必被抓 |
+| 3 `⇒` 密度 | ≤ **0.30** | 既有基线最高 **0.2657** ⇒ ⇒ ⇒ ⇒ 负对照样本 **0.6187** |
 | 4 纯箭头行 | = **0** | 既有基线**全部为 0** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 退化样本 **5 / 5 / 7 / 666** |
+| 5 理由缺失 | **必报红** | 既有基线**全部非空**（最短 **47** 字）⇒ ⇒ ⇒ ⇒ 空/缺 note 的记录**必报红** ⇒ ⇒ ⇒ ⇒ 「已核验」却说不出为什么 ⇒ ⇒ ⇒ ⇒ ⇒ 比没有记录更坏 |
 
 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 阈值**不是**抄台账散文那套（那套只管 `docs/skips-ledger.md`）
 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 本守卫只管**判决 note** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 刻意**不改**旧脚本 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 改它的 docstring 会废掉旧判决自己的锚点 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ **fail-closed**（2026-11-13 独立核验补）⇒ ⇒ ⇒ ⇒ 台账**缺失 / 读不到 / 有坏 JSON 行** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 坏行必须**报红** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 跳过它 = 少检查了一条 = 装作检查过
 
 ## 用法
 
@@ -50,6 +55,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 
 LEDGER_REL = os.path.join("githooks", "review-adjudication.jsonl")
 
@@ -63,7 +69,7 @@ MAX_PURE_ARROW_LINES = 0
 RUN = re.compile(r"(?:⇒[\s]*)+")
 
 # 每条判据的**标识词** ⇒ ⇒ ⇒ 自检用它断言「这条判据**自己**抓得住」。
-CRITERION_TOKENS = ("长度", "最长箭头串", "密度", "纯箭头行")
+CRITERION_TOKENS = ("长度", "最长箭头串", "密度", "纯箭头行", "理由缺失")
 
 
 def note_stats(note: str) -> dict:
@@ -113,9 +119,14 @@ def fired_tokens(problems: list[str]) -> set[str]:
             if any(token in problem for problem in problems)}
 
 
-def read_records(path: str) -> list[tuple[int, dict]]:
-    """读判决台账 ⇒ ⇒ 返回 (行号, 记录)。坏行**跳过并报出来**（不装作检查过）。"""
+def read_records(path: str) -> tuple[list[tuple[int, dict]], list[tuple[int, str]]]:
+    """读判决台账 ⇒ ⇒ 返回 ((行号, 记录), [(行号, 坏行原因)])。
+
+    坏行**跳过并报出来**（不装作检查过）⇒ ⇒ ⇒ 且 `check_ledger` 会因坏行**报红**
+    ⇒ ⇒ ⇒ ⇒ 跳过它 = 少检查了一条 = 装作检查过 ⇒ ⇒ ⇒ ⇒ 所以坏行不能只警告。
+    """
     records: list[tuple[int, dict]] = []
+    bad: list[tuple[int, str]] = []
     with open(path, encoding="utf-8") as handle:
         for lineno, raw in enumerate(handle, 1):
             line = raw.strip()
@@ -124,26 +135,47 @@ def read_records(path: str) -> list[tuple[int, dict]]:
             try:
                 item = json.loads(line)
             except json.JSONDecodeError as err:
-                print(f"⚠️ {path}:{lineno} 不是合法 JSON：{err}", file=sys.stderr)
+                reason = f"不是合法 JSON：{err}"
+                print(f"⚠️ {path}:{lineno} {reason}", file=sys.stderr)
+                bad.append((lineno, reason))
                 continue
             if not isinstance(item, dict):
-                print(f"⚠️ {path}:{lineno} 不是对象，已跳过", file=sys.stderr)
+                reason = "不是对象"
+                print(f"⚠️ {path}:{lineno} {reason}，已跳过", file=sys.stderr)
+                bad.append((lineno, reason))
                 continue
             records.append((lineno, item))
-    return records
+    return records, bad
+
+
+def check_record(label: str, item: dict) -> list[str]:
+    """一条判决记录 ⇒ ⇒ 返回问题列表（空 = 通过）。
+
+    「理由缺失」单列 ⇒ ⇒ ⇒ 因为 `check_note` 收的是**字符串**⇒ ⇒ ⇒ ⇒
+    而「没有理由」是**记录形状**的问题 ⇒ ⇒ ⇒ ⇒ ⇒ 两者不能混。
+    """
+    note = item.get("note")
+    if not isinstance(note, str) or not note.strip():
+        return [f"{label}: 判决**理由缺失**（note 缺失或为空）⇒ ⇒ ⇒ "
+                "台账显示「已核验」却说不出为什么 ⇒ ⇒ ⇒ ⇒ ⇒ 比没有记录更坏"]
+    return check_note(label, note)
 
 
 def check_ledger(path: str) -> list[str]:
     """整个判决台账 ⇒ ⇒ 返回问题列表（空 = 通过）。"""
     if not os.path.isfile(path):
         return [f"{path}: **找不到判决台账** ⇒ ⇒ ⇒ 守卫自己没跑起来 ⇒ ⇒ ⇒ 不装作检查过"]
-    records = read_records(path)
-    if not records:
-        return [f"{path}: **读不到任何判决记录** ⇒ ⇒ ⇒ ⇒ 守卫不知道自己在守什么"
-                " ⇒ ⇒ ⇒ ⇒ 不装作检查过"]
+    records, bad = read_records(path)
     problems: list[str] = []
+    for lineno, reason in bad:
+        problems.append(f"{path}:{lineno} **坏行**（{reason}）⇒ ⇒ ⇒ "
+                        "这条判决被跳过 = 少检查了一条 ⇒ ⇒ ⇒ ⇒ ⇒ 装作检查过 ⇒ ⇒ ⇒ ⇒ ⇒ 必报红")
+    if not records:
+        problems.append(f"{path}: **读不到任何判决记录** ⇒ ⇒ ⇒ ⇒ 守卫不知道自己在守什么"
+                        " ⇒ ⇒ ⇒ ⇒ 不装作检查过")
+        return problems
     for lineno, item in records:
-        problems.extend(check_note(f"{path}:{lineno}", item.get("note") or ""))
+        problems.extend(check_record(f"{path}:{lineno}", item))
     return problems
 
 
@@ -184,7 +216,26 @@ def self_test(repo_root: str) -> int:
     else:
         print("✅ 正常 note ⇒ 通过 ⇒ 有判别力")
 
-    # ④ 正向对照：真实台账必须通过
+    # ④ 「理由缺失」必须报红 ⇒ ⇒ ⇒ ⇒ 否则「已核验」可以没有理由
+    empty_problems = check_record("合成空理由记录", {})
+    if "理由缺失" not in fired_tokens(empty_problems):
+        failures.append("  合成空理由记录 **没有报红** ⇒ ⇒ ⇒ ⇒ 「已核验」可以没有理由")
+    else:
+        print("✅ 空理由记录 ⇒ 只由「理由缺失」抓住 ⇒ 有牙齿")
+
+    # ⑤ 坏 JSON 行必须报红 ⇒ ⇒ ⇒ ⇒ 跳过它 = 少检查了一条 = 装作检查过
+    with tempfile.TemporaryDirectory() as tmp:
+        bad_ledger = os.path.join(tmp, "review-adjudication.jsonl")
+        with open(bad_ledger, "w", encoding="utf-8") as handle:
+            handle.write('{"match":"x","verdict":"confirmed","note":"有理由"}\n')
+            handle.write('{"match":"y","verdict":"confirmed","note":"理由"\n')
+        bad_problems = check_ledger(bad_ledger)
+        if not any("坏行" in problem for problem in bad_problems):
+            failures.append("  坏 JSON 行 **没有报红** ⇒ ⇒ ⇒ ⇒ 跳过它 = 少检查了一条")
+        else:
+            print("✅ 坏 JSON 行 ⇒ 报红 ⇒ ⇒ ⇒ fail-closed")
+
+    # ⑥ 正向对照：真实台账必须通过
     path = os.path.join(repo_root, LEDGER_REL)
     problems = check_ledger(path)
     if problems:
@@ -217,7 +268,7 @@ def main(argv: list[str] | None = None) -> int:
         for line in problems:
             print(f"   - {line}", file=sys.stderr)
         return 1
-    records = read_records(path)
+    records, _bad = read_records(path)
     print(f"✅ 判决 note 密度：{len(records)} 条判决全部在阈值内"
           f"（长度 ≤ {MAX_NOTE_CHARS} / 最长箭头串 ≤ {MAX_ARROW_RUN}"
           f" / 密度 ≤ {MAX_DENSITY} / 纯箭头行 = 0）")
