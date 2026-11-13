@@ -373,6 +373,17 @@ jobs:
           python3 Scripts/test/test_review_diff_filter.py .
           python3 Scripts/test/test_review_diff_filter.py . --self-test
 
+      # 判决 note 密度守卫（2026-11-13）：`githooks/review-adjudication.jsonl` 的每条
+      # `note` 是**人工判决的理由** ⇒ ⇒ 它一旦退化，理由就变成重复的箭头填充
+      # ⇒ ⇒ ⇒ 而台账仍显示「已核验」⇒ ⇒ ⇒ ⇒ 比没有记录更坏。
+      # 实测：第 8 份报告的判决 note 退化到 48199 字符 / 最长箭头串 23652 / 纯箭头行 666
+      # ⇒ ⇒ ⇒ ⇒ 而当时那条 finding 被判成了 false-positive ⇒ ⇒ ⇒ ⇒ ⇒ 那结论被自己的动作推翻。
+      - name: "Adjudication note density guard (degenerated reasons must be caught)"
+        run: |
+          set -euo pipefail
+          python3 Scripts/test/test_adjudication_note_density.py .
+          python3 Scripts/test/test_adjudication_note_density.py . --self-test
+
       # ID-BETA-0001: beta 通道的**接线守卫**。
       #
       # ⇒ ⇒ beta 通道的安全性押在三根线上：app 端 delegate 真的转发到纯函数、

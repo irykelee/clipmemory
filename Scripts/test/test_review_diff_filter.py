@@ -32,6 +32,9 @@
 4. `--self-test`：把白名单**改坏**（去掉 `*.py` / 去掉 `*.jsonl` /
    给白名单加上 `:(glob)` magic）⇒ ⇒ 每一种都必须**报红** ⇒ ⇒ ⇒
    证明判据**有牙齿**（不是「存在即通过」）。
+   ⇒ ⇒ 变异一律用 `replace(..., 1)`（**只改第一处**）⇒ ⇒ ⇒ ⇒
+   ⇒ ⇒ ⇒ 否则将来 hook 里出现第二处同名 pattern ⇒ ⇒ ⇒ ⇒ 变异会改错地方
+   ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 自检可能**绿在错误的理由**上 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒
 5. **深度覆盖实测**：在**隔离的临时仓库**里，把白名单里的**每一个**扩展名
    在根目录与三层子目录各放一个文件 ⇒ ⇒ 看 `git diff` 到底命中哪些 ⇒ ⇒
    全部命中才算过 ⇒ ⇒ ⇒ 漏一个 ⇒ 报红 ⇒ ⇒ ⇒ ⇒
@@ -278,9 +281,14 @@ def self_test(repo_root: str) -> int:
 
     # 变异方向 ③：给白名单加 `:(glob)` magic ⇒ ⇒ 深度覆盖被打断 ⇒ ⇒
     # ⇒ ⇒ 必须**两条判据**都抓到：静态的「glob magic」+ 实测的「深度探针」。
+    # ⇒ ⇒ `replace(..., 1)`：**只替换第一处** ⇒ ⇒ ⇒ 全量替换是**不精确**的
+    # ⇒ ⇒ ⇒ 一旦 hook 里出现第二处同名 pattern ⇒ ⇒ ⇒ ⇒ 变异会改到**不该改**的地方
+    # ⇒ ⇒ ⇒ ⇒ 变异体与意图脱钩 ⇒ ⇒ ⇒ ⇒ 自检可能**绿在错误的理由**上。
+    # ⇒ ⇒ ⇒ 实测（2026-11-13）`'*.py'` / `'*.jsonl'` 在 hook 里各只出现 1 次
+    # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 现状**无偏差** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 但「无偏差」是**巧合**，不是**保证**。
     mutated = original
     for required in REQUIRED_PATTERNS:
-        mutated = mutated.replace(f"'{required}'", f"'{GLOB_MAGIC}{required}'")
+        mutated = mutated.replace(f"'{required}'", f"'{GLOB_MAGIC}{required}'", 1)
     expect_red("加 `:(glob)` magic", mutated, ["magic", "深度探针"])
 
     # 变异方向 ④：换成**长格式** magic 拼写 `:(glob,icase)` ⇒ ⇒
@@ -288,12 +296,12 @@ def self_test(repo_root: str) -> int:
     # ⇒ ⇒ ⇒ 所以判据 6 必须**整个解析签名**。
     mutated = original
     for required in REQUIRED_PATTERNS:
-        mutated = mutated.replace(f"'{required}'", f"':(glob,icase){required}'")
+        mutated = mutated.replace(f"'{required}'", f"':(glob,icase){required}'", 1)
     expect_red("加 `:(glob,icase)` 长格式 magic", mutated, ["magic", "深度探针"])
 
     # 变异方向 ⑤：加一条**探针覆盖不到**的 pattern（路径锚定）⇒ ⇒ ⇒
     # ⇒ ⇒ 它会被探针**跳过** ⇒ ⇒ ⇒ ⇒ 它的深度覆盖**从未被验证** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 报红。
-    mutated = original.replace("'*.jsonl'", "'**/dir/*.py' '*.jsonl'")
+    mutated = original.replace("'*.jsonl'", "'**/dir/*.py' '*.jsonl'", 1)
     expect_red("加一条探针覆盖不到的 pattern", mutated, ["探不到"])
     # 正向对照：原脚本必须通过
     if check_filter(original, tracked):
