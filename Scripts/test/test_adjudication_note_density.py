@@ -19,8 +19,14 @@
 
 口径与 `Scripts/measure-ledger-symbol-density.py` **基本一致**：箭头串 = 连续的 `⇒`
 （中间可夹空白），长度**只数 `⇒` 个数**、不含空白。
-**唯一差别**：本守卫的密度分母是 `len(note)`（**含**行尾换行符）⇒ ⇒ ⇒
-那个脚本的分母是 `sum(len(line))`（**不含**换行符）⇒ ⇒ ⇒ ⇒ ⇒ 两者最大差 **0.0041**。
+**唯一差别**在**密度分母**：本守卫是 `len(note)`（**含**行尾换行符）⇒ ⇒ ⇒
+那个脚本是 `sum(len(line))`（**不含**换行符）⇒ ⇒ ⇒ ⇒ ⇒ 两者最大差 **0.0041**。
+纯箭头行判定本守卫剥**全部空白**（`\s+`）⇒ ⇒ ⇒ ⇒ 那个脚本只剥 ` ` 与 `\t`
+⇒ ⇒ ⇒ ⇒ ⇒ 差在 CRLF 与其它 Unicode 空白 ⇒ ⇒ ⇒ ⇒ ⇒ LF 文件上两者**完全一致**
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 本守卫是**更严**的那一侧 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 与「fail-closed」一致。
+（2026-11-14 实测修正：原写法只剥 ` ` 与 `\t` ⇒ ⇒ ⇒ ⇒ CRLF 的行尾 `\r` 留在行里
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 纯箭头行**漏检** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 一条 CRLF 纯箭头行 note 能
+⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 同时骗过 5 条判据 ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ review 115551 #2）
 
 | 判据 | 阈值 | 依据（2026-11-13 实测的既有基线） |
 |---|---|---|
@@ -81,7 +87,13 @@ def note_stats(note: str) -> dict:
         lengths = [m.group(0).count("⇒") for m in RUN.finditer(line)]
         arrows += sum(lengths)
         runs.extend(lengths)
-        stripped = line.replace(" ", "").replace("\t", "")
+        # ⇒ ⇒ 2026-11-14 实测修正（review 115551 #2）：原写法只剥 ` ` 与 `\t`
+        # ⇒ ⇒ ⇒ ⇒ CRLF 的行尾 `\r` **留在行里** ⇒ ⇒ ⇒ ⇒ `set(stripped)` 多一个 `\r`
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 纯箭头行**漏检** ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 一条「CRLF 纯箭头行」的
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ note 能**同时**骗过 5 条判据（长度/串/密度/纯箭头行/理由）
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒  ⇒ ⇒ 改成剥**全部空白**（`\s+`）⇒ ⇒ 与本文件
+        # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒  docstring 自述口径「整行去掉空白后只剩 `⇒`」一致
+        stripped = re.sub(r"\s+", "", line)
         if stripped and set(stripped) == {"⇒"}:
             pure_arrow_lines += 1
     chars = len(note)
@@ -197,6 +209,9 @@ def self_test(repo_root: str) -> int:
         ("长箭头串", "⇒ " * (MAX_ARROW_RUN + 1) + "x" * 3000, {"最长箭头串"}),
         ("高密度 note", "⇒字 " * 100, {"密度"}),
         ("纯箭头行 note", "理由文字。\n" + "⇒\n" * 3 + "补充说明。", {"纯箭头行"}),
+        # ⇒ ⇒ 回归用例（review 115551 #2，2026-11-14）：**CRLF** 的行尾 `\r`
+        # ⇒ ⇒ ⇒ ⇒ 原写法剥不掉 ⇒ ⇒ ⇒ ⇒ 纯箭头行漏检 ⇒ ⇒ ⇒ ⇒ ⇒ 用例必须能把它抓住
+        ("CRLF 纯箭头行 note", "理由文字。\r\n" + "⇒\r\n" * 3 + "补充说明。", {"纯箭头行"}),
     ]
     for label, note, expected in cases:
         got = fired_tokens(check_note(label, note))
