@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''判决 note 密度守卫（2026-11-13，第 8 份 pre-push 报告 finding #5 的真缺口）。
+r'''判决 note 密度守卫（2026-11-13，第 8 份 pre-push 报告 finding #5 的真缺口）。
 
 ## 它守的是什么
 

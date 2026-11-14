@@ -122,6 +122,7 @@ CHECKS = [
     ("R150", "docs/skips-ledger.md", "num_match", r"重验检查表实跑判据数[：:]\s*\*\*(\d+)\*\*", "台账**当前状态**行写的「实跑判据数」== 本脚本自报数"),
     ("R151", "docs/skips-ledger.md", "num_match", r"重验检查表覆盖表键数[：:]\s*\*\*(\d+)\*\*", "台账**当前状态**行写的「覆盖表键数」== 本脚本自报数"),
     ("R152", ".github/workflows/ci.yml", "orphan_guard", r"Scripts/test/\*\.sh", "**每个** Scripts/test/*.sh 都必须挂进 CI（否则它写的断言数没人能验证）"),
+    ("R153", "docs/skips-ledger.md", "num_match", r"白名单守卫自检变异方向数[：:]\s*\*\*(\d+)\*\*", "台账写的「白名单守卫自检变异方向数」== 白名单守卫自检**实跑**报称的数（§51.23 把「4 → 5」写成「5 → 6」⇒ ⇒ 散文漂了 ⇒ ⇒ 改由机器核对）"),
     ("R145", "docs/skips-ledger.md", "no_pin", r"\*\*(\d+)\*\* 条有效记录", "台账里**不许**再钉「有效记录数」（手写契约 ⇒ 每入账一次就漂一次）⇒ 改由「覆盖表的每个键都必须存在于台账」保证"),
     ("P2-30", ".github/workflows/ci.yml", "has", r"bash Scripts/test/test_ollama_endpoints\.sh", "CI 调的是脚本本身，不涉及 discover 签名"),
     ("P2-40", "docs/skips-ledger.md", "has", r"2026-10-2[0-9]", "台账里的日期与本仓库时间线一致（不是未来日期）"),
@@ -370,6 +371,22 @@ COVERAGE = {
     "需确认该语法在仓库其他脚本.*中的使用是否一致": ["P1-5"],
 }
 
+def mutation_dir_count() -> int:
+    """白名单守卫自检**实跑**的变异方向数 ⇒ ⇒ 直接读它的 stdout ⇒ ⇒ 不重算公式。
+
+    ⇒ ⇒ 为什么**实跑**而不是解析源码：公式 `len(REQUIRED_PATTERNS) + N` 一改，
+    ⇒ ⇒ 解析源码的判据就跟着错 ⇒ ⇒ ⇒ 而实跑拿到的是**它自己报的数** ⇒ ⇒ ⇒
+    ⇒ ⇒ 台账写错时**两边对不上** ⇒ ⇒ ⇒ 判据立刻红。
+    """
+    import subprocess
+    proc = subprocess.run(
+        [sys.executable, os.path.join(REPO, "Scripts", "test", "test_review_diff_filter.py"),
+         REPO, "--self-test"],
+        cwd=REPO, capture_output=True, text=True, timeout=300)
+    m = re.search(r"自检通过：(\d+) 个变异方向", proc.stdout + proc.stderr)
+    return int(m.group(1)) if m else -1
+
+
 def run_checks(root: str = None, only: str = None) -> list:
     """跑全部判据 ⇒ ⇒ 返回问题列表。
 
@@ -392,7 +409,10 @@ def run_checks(root: str = None, only: str = None) -> list:
             if not m:
                 bad.append((cid, rel, desc, "台账里找不到那句数字"))
                 continue
-            actual = {"R149": len(CHECKS), "R150": len(RUNTIME), "R151": len(COVERAGE)}[cid]
+            actual = {"R149": len(CHECKS), "R150": len(RUNTIME), "R151": len(COVERAGE)}.get(cid)
+            if actual is None:
+                # ⇒ ⇒ R153：台账里的变异方向数 == 白名单守卫**实跑**报称的数
+                actual = mutation_dir_count()
             if int(m.group(1)) != actual:
                 bad.append((cid, rel, desc, f"台账写 {m.group(1)}，本脚本自报 {actual}"))
             continue
@@ -513,7 +533,7 @@ def report(bad: list) -> int:
 
 
 # ── 自检：逐条**注入违规** ⇒ ⇒ 每条判据**必须报红** ──────────────────
-# ⇒ ⇒ 为什么需要：本脚本的 136 条判据**自己**也是「没人验证」的那一类
+# ⇒ ⇒ 为什么需要：本脚本的 137 条判据**自己**也是「没人验证」的那一类
 # ⇒ ⇒ ⇒ ⇒ （第十四轮 e 实测：`test_release.sh` 的 set -e 陷阱因此**静默**活了很多轮）
 # ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ ⇒ 「断言」≠「被断言过」⇒ ⇒ ⇒ ⇒ ⇒ 这里补上后半句。
 def self_test() -> int:
